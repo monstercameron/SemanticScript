@@ -1,0 +1,1 @@
+"""AgentScript standalone linter package."""
