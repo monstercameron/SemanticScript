@@ -57,6 +57,8 @@ import llvmlite.binding as llvm
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import libc_registry
 
+__version__ = "1.0.0"
+
 
 # ============================================================
 # Tokenizer
@@ -611,7 +613,7 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
         prog.current_op.lines.append((verb, args, lineno))
         return
 
-    raise SyntaxError(f"unknown verb: {verb!r}")
+    raise SyntaxError(f"line {lineno}: unknown verb: {verb!r}")
 
 
 # Verbs that carry the operation name as their first arg for §9 checkability.
@@ -2437,8 +2439,13 @@ def jit_run(module_ir: str, opt_level: int = 2,
 
 
 def main():
-    ap = argparse.ArgumentParser(description="AgentScript compiler (LLVM backend)")
-    ap.add_argument("source", help="path to .as source file")
+    ap = argparse.ArgumentParser(
+        prog="ascc",
+        description=f"AgentScript compiler (LLVM backend) v{__version__}",
+    )
+    ap.add_argument("source", nargs="?", help="path to .as source file")
+    ap.add_argument("--version", action="version",
+                    version=f"ascc {__version__}")
     ap.add_argument("--emit-ir", help="write LLVM IR to this path")
     ap.add_argument("--run", action="store_true", help="JIT-execute main after compile")
     ap.add_argument("--lint", action="store_true",
@@ -2454,34 +2461,74 @@ def main():
     ap.add_argument("--emit-exe",
                     help="ahead-of-time compile to a native executable at this path "
                          "(uses clang on PATH or $ASCC_CLANG to link)")
+    ap.add_argument("--quiet", action="store_true",
+                    help="suppress informational messages on success")
     args = ap.parse_args()
 
-    with open(args.source, "r", encoding="utf-8") as f:
-        source = f.read()
+    if not args.source:
+        ap.error("the following arguments are required: source")
 
-    prog = parse(source)
+    try:
+        with open(args.source, "r", encoding="utf-8") as f:
+            source = f.read()
+    except OSError as e:
+        print(f"ascc: cannot read source file: {e}", file=sys.stderr)
+        sys.exit(2)
+
+    try:
+        prog = parse(source)
+    except SyntaxError as e:
+        print(f"ascc: parse error in {args.source}: {e}", file=sys.stderr)
+        sys.exit(2)
 
     if args.lint or args.strict:
         lint(prog, strict=args.strict)
 
     if args.parse_only:
+        if not args.quiet:
+            print(f"ascc: parse OK ({args.source})")
         return
 
-    cg = Codegen(prog)
-    mod = cg.compile()
+    try:
+        cg = Codegen(prog)
+        mod = cg.compile()
+    except NotImplementedError as e:
+        print(f"ascc: {e}", file=sys.stderr)
+        sys.exit(3)
+    except Exception as e:
+        print(f"ascc: codegen error in {args.source}: {e}", file=sys.stderr)
+        sys.exit(3)
     ir_text = str(mod)
 
+    did_output = False
     if args.emit_ir:
         with open(args.emit_ir, "w", encoding="utf-8") as f:
             f.write(ir_text)
+        did_output = True
+        if not args.quiet:
+            print(f"ascc: wrote LLVM IR to {args.emit_ir}")
 
     if args.emit_exe:
-        emit_executable(ir_text, args.emit_exe, opt_level=args.opt_level)
+        try:
+            emit_executable(ir_text, args.emit_exe, opt_level=args.opt_level)
+        except RuntimeError as e:
+            print(f"ascc: {e}", file=sys.stderr)
+            sys.exit(4)
+        did_output = True
+        if not args.quiet:
+            print(f"ascc: wrote executable to {args.emit_exe}")
 
     if args.run:
         rc = jit_run(ir_text, opt_level=args.opt_level,
                      emit_optimized_ir_to=args.emit_optimized_ir)
         sys.exit(rc)
+
+    if not did_output and not args.quiet:
+        # Reaching this branch means the source compiled successfully but
+        # no output flag was given. Tell the user what they could do next
+        # instead of exiting silently.
+        print(f"ascc: compile OK ({args.source}); no output requested. "
+              f"Try --emit-ir, --emit-exe, or --run.")
 
 
 if __name__ == "__main__":

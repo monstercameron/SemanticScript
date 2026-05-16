@@ -17,6 +17,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
+__version__ = "1.0.0"
+
 
 DECLARATION_VERBS = {
     "project", "target", "runtime", "entry", "module", "mode",
@@ -874,7 +876,12 @@ def should_fail(diags: Sequence[Diagnostic], fail_on: str) -> bool:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="Lint AgentScript .as files.")
+    parser = argparse.ArgumentParser(
+        prog="aslint",
+        description=f"Lint AgentScript .as files. v{__version__}",
+    )
+    parser.add_argument("--version", action="version",
+                        version=f"aslint {__version__}")
     parser.add_argument("paths", nargs="+", help="AgentScript files, directories, or glob patterns.")
     parser.add_argument("--format", choices=("text", "json"), default="text", help="Diagnostic output format.")
     parser.add_argument("--fail-on", choices=("error", "warning", "info", "none"), default="error", help="Minimum severity that returns a non-zero exit code.")
