@@ -36,6 +36,18 @@ entirely in AgentScript.
                               resulting executable prints N..1 one per
                               line, then exits M.
 
+    Stage 6 (bootstrap6.as):  First AS-written compiler whose output IR
+                              size scales with the input. Finds every
+                              `CNullTerminatedByteString "..."` literal
+                              in `input6.as` and emits one @.s<i> string
+                              constant plus one @print<i> helper per
+                              literal, then a main() that calls each
+                              helper in source order before exiting with
+                              the parsed `ExitCode`. Adding a writeLine
+                              line to the input produces a measurably
+                              different output exe with no compiler
+                              edit.
+
 The script fails (exit 1) if any stage produces unexpected output.
 """
 
@@ -209,9 +221,34 @@ expected_output5 = "\n".join(str(i) for i in range(expected_start, 0, -1))
 assert_output(result.stdout, expected_output5, "stage 17-20 countdown")
 assert_exit(result.returncode, expected_exit5, "stage 17-20 exit")
 
+# ---------------------------------------------------------------- Stage 6
+step("Stage 21 -- Python ascc.py compiles bootstrap6.as -> bootstrap6.exe")
+compile_as("bootstrap6.as", "bootstrap6.exe")
+
+step("Stage 22 -- bootstrap6.exe scans every CNullTerminatedByteString in input6.as, emits IR")
+emit_ir("bootstrap6.exe", "stage6.ll")
+
+step("Stage 23 -- clang compiles bootstrap6-emitted IR -> stage6_multi.exe")
+clang_build("stage6.ll", "stage6_multi.exe")
+
+step("Stage 24 -- stage6_multi.exe prints every greeting in source order")
+result = run([str(HERE / "stage6_multi.exe")], allow_nonzero=True)
+print(f"  output: {result.stdout!r}  exit: {result.returncode}")
+input6_text = (HERE / "input6.as").read_text(encoding="utf-8")
+# Mirror bootstrap6's parser: collect every CNullTerminatedByteString literal.
+expected_greetings6 = _re.findall(
+    r'CNullTerminatedByteString "([^"]*)"', input6_text)
+match_exit6 = _re.search(r"ExitCode (\d+)", input6_text)
+expected_exit6 = int(match_exit6.group(1))
+expected_output6 = "\n".join(expected_greetings6)
+assert_output(result.stdout, expected_output6, "stage 21-24 greetings")
+assert_exit(result.returncode, expected_exit6, "stage 21-24 exit")
+print(f"  emitted {len(expected_greetings6)} string constant(s) and helper(s)")
+
 print()
 print("=" * 60)
 print("ALL STAGES OK -- AgentScript has compiled AgentScript end-to-end.")
 print("Bootstrap chain: hello -> parsed-greeting -> constant-return ->")
-print("                 greeting+exit -> countdown-with-branches")
+print("                 greeting+exit -> countdown-with-branches ->")
+print("                 input-scaled multi-greeting compiler")
 print("=" * 60)
