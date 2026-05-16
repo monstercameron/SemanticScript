@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+
+*.exe
+*.dll
+*.obj
+*.pdb
+
+*.vsix
+
+.DS_Store
+Thumbs.db
