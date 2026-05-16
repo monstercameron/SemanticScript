@@ -1,0 +1,159 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "AgentScript",
+  "scopeName": "source.agentscript",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#declarationVerbs"
+    },
+    {
+      "include": "#contextVerbs"
+    },
+    {
+      "include": "#actionVerbs"
+    },
+    {
+      "include": "#controlVerbs"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#primitiveTargets"
+    },
+    {
+      "include": "#domainTargets"
+    },
+    {
+      "include": "#errorVariants"
+    },
+    {
+      "include": "#qualifiedNames"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#symbols"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.agentscript",
+          "match": "#.*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.agentscript",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.agentscript",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "declarationVerbs": {
+      "patterns": [
+        {
+          "name": "keyword.declaration.agentscript",
+          "match": "^(\\s*)(project|target|runtime|entry|module|dependency|dependencyEffect|dependencyExports|dependencyFunction|dependencyFunctionInput|dependencyFunctionOutput|dependencyFunctionEffect|dependencyFunctionAsync|importModule|type|typeInvariant|typeRepresentation|typeTrust|typeMemory|typeLayout|record|field|enum|enumCase|error|errorCase|operation|webServer|serverHost|serverPort|route|routeTimeout|routeMiddleware|jsonCodec|policy|errorPolicy|validator|codec|schema|unknownFields|resource|resourceKey|resourceValue|resourceKind|adapter|boundary|mapper|retryPolicy|timeoutBudget|capability|authority|mutex|shared|channel|const|var|testCovers)\\b"
+        }
+      ]
+    },
+    "contextVerbs": {
+      "patterns": [
+        {
+          "name": "keyword.context.agentscript",
+          "match": "^(\\s*)(input|output|effect|memory|async|purpose|invariant|warning|failure|guarantee|security|timing|observability)\\b"
+        }
+      ]
+    },
+    "actionVerbs": {
+      "patterns": [
+        {
+          "name": "keyword.action.agentscript",
+          "match": "^(\\s*)(set|call|arg|run|start|await|bind|bindOk|bindError|ignoreOk|ignoreValue|makeError|new|fieldGet|fieldSet|timeout|cancelOn|defer|deferLog|deferAwaitLog|deferWhenExitLog|select|selectCase|runSelect|taskGroup|startInGroup|awaitGroup|bindGroupError|send|receive|lock|unlock|useRetry|useCapability)\\b"
+        }
+      ]
+    },
+    "controlVerbs": {
+      "patterns": [
+        {
+          "name": "keyword.control.agentscript",
+          "match": "^(\\s*)(label|branch|branchIf|branchIfError|branchSelected|branchIfGroupError|branchIfChannelClosed|returnOk|returnError|returnValue)\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.integer.agentscript",
+          "match": "\\b-?\\d+\\b"
+        }
+      ]
+    },
+    "primitiveTargets": {
+      "patterns": [
+        {
+          "name": "entity.name.function.primitive-target.agentscript",
+          "match": "\\b(?:console\\.writeLine|console\\.writeIntegerLine|console\\.writeInteger|math\\.(?:addI64|subtractI64|multiplyI64|divideI64|moduloI64|equalI64|notEqualI64|lessThanI64|lessThanOrEqualI64|greaterThanI64|greaterThanOrEqualI64|checkedMultiplyI64|subI64|mulI64|divI64|modI64|eqI64|neI64|ltI64|leI64|gtI64|geI64))\\b"
+        }
+      ]
+    },
+    "domainTargets": {
+      "patterns": [
+        {
+          "name": "entity.name.function.domain-target.agentscript",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\.(?:add|addPositiveStep|subtract|subtractStep|subtractPositiveStep|multiply|multiplyByStep|multiplyByCounter|divide|modulo|moduloBy|equal|notEqual|lessThan|lessThanOrEqual|greaterThan|greaterThanOrEqual|square|checkedMultiply|checkedMultiplyByCounter|checkedMultiplyByStep)\\b"
+        }
+      ]
+    },
+    "errorVariants": {
+      "patterns": [
+        {
+          "name": "constant.language.error-variant.agentscript",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\.[A-Z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+    "qualifiedNames": {
+      "patterns": [
+        {
+          "name": "entity.name.namespace.agentscript",
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)+\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.agentscript",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+    "symbols": {
+      "patterns": [
+        {
+          "name": "variable.other.agentscript",
+          "match": "\\b[a-z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,302 @@
+{
+  "name": "agentscript-vscode",
+  "displayName": "AgentScript",
+  "description": "Syntax highlighting and segment coloring for AgentScript .as files.",
+  "version": "0.1.3",
+  "publisher": "agentscript-local",
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:agentscript",
+    "onCommand:agentscript.toggleSegmentColors",
+    "onCommand:agentscript.runLinter"
+  ],
+  "main": "./extension.js",
+  "scripts": {
+    "check": "node --check extension.js"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "agentscript",
+        "aliases": [
+          "AgentScript",
+          "agentscript"
+        ],
+        "extensions": [
+          ".as",
+          ".agentscript"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "agentscript",
+        "scopeName": "source.agentscript",
+        "path": "./syntaxes/agentscript.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "agentscript.toggleSegmentColors",
+        "title": "AgentScript: Toggle Segment Colors"
+      },
+      {
+        "command": "agentscript.runLinter",
+        "title": "AgentScript: Run Linter"
+      }
+    ],
+    "configuration": {
+      "title": "AgentScript",
+      "properties": {
+        "agentScript.segmentColors.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable subtle line segment coloring for AgentScript files."
+        },
+        "agentScript.segmentColors.colorMode": {
+          "type": "string",
+          "default": "background",
+          "enum": [
+            "background",
+            "overview",
+            "both"
+          ],
+          "description": "Controls whether segment colors appear as line backgrounds, overview-ruler markers, or both."
+        },
+        "agentScript.linter.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable AgentScript lint diagnostics using the standalone aslint.py CLI."
+        },
+        "agentScript.linter.run": {
+          "type": "string",
+          "default": "onSave",
+          "enum": [
+            "onSave",
+            "onType",
+            "manual"
+          ],
+          "description": "Controls when the AgentScript linter runs."
+        },
+        "agentScript.linter.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Python executable used to run aslint.py."
+        },
+        "agentScript.linter.path": {
+          "type": "string",
+          "default": "",
+          "description": "Optional path to aslint.py. Leave empty to auto-discover AgentScript/linter/aslint.py from the workspace."
+        }
+      }
+    },
+    "semanticTokenTypes": [
+      {
+        "id": "agentscriptDeclarationVerb",
+        "superType": "keyword",
+        "description": "AgentScript declaration verb."
+      },
+      {
+        "id": "agentscriptContextVerb",
+        "superType": "keyword",
+        "description": "AgentScript metadata or context verb."
+      },
+      {
+        "id": "agentscriptActionVerb",
+        "superType": "keyword",
+        "description": "AgentScript action verb."
+      },
+      {
+        "id": "agentscriptControlVerb",
+        "superType": "keyword",
+        "description": "AgentScript control-flow verb."
+      },
+      {
+        "id": "agentscriptRoleSuffix",
+        "superType": "type",
+        "description": "AgentScript contextual role suffix inside a symbol."
+      },
+      {
+        "id": "agentscriptPrimitiveTarget",
+        "superType": "function",
+        "description": "AgentScript implemented primitive call target."
+      },
+      {
+        "id": "agentscriptDomainTarget",
+        "superType": "method",
+        "description": "AgentScript domain-typed method target."
+      },
+      {
+        "id": "agentscriptErrorVariant",
+        "superType": "enumMember",
+        "description": "AgentScript typed error variant reference."
+      },
+      {
+        "id": "agentscriptOpaqueInput",
+        "superType": "parameter",
+        "description": "AgentScript opaque dependency input."
+      },
+      {
+        "id": "agentscriptDeclaredName",
+        "superType": "variable",
+        "description": "AgentScript declared top-level or operation name."
+      },
+      {
+        "id": "agentscriptConstName",
+        "superType": "variable",
+        "description": "AgentScript constant binding name."
+      },
+      {
+        "id": "agentscriptMutableName",
+        "superType": "variable",
+        "description": "AgentScript mutable binding name."
+      },
+      {
+        "id": "agentscriptCallObject",
+        "superType": "variable",
+        "description": "AgentScript call object name."
+      },
+      {
+        "id": "agentscriptArgumentName",
+        "superType": "parameter",
+        "description": "AgentScript call argument role name."
+      },
+      {
+        "id": "agentscriptLabelName",
+        "superType": "variable",
+        "description": "AgentScript control-flow label name."
+      },
+      {
+        "id": "agentscriptEffectPath",
+        "superType": "namespace",
+        "description": "AgentScript effect or capability path."
+      }
+    ],
+    "configurationDefaults": {
+      "[agentscript]": {
+        "editor.semanticHighlighting.enabled": true,
+        "editor.wordBasedSuggestions": "off"
+      },
+      "editor.semanticTokenColorCustomizations": {
+        "rules": {
+          "agentscriptDeclarationVerb": "#FF7B72",
+          "agentscriptContextVerb": "#7EE787",
+          "agentscriptActionVerb": "#DCDCAA",
+          "agentscriptControlVerb": "#79C0FF",
+          "agentscriptRoleSuffix": "#FFB86C",
+          "agentscriptPrimitiveTarget": "#E3B341",
+          "agentscriptDomainTarget": "#56D4DD",
+          "agentscriptErrorVariant": "#FF6B6B",
+          "agentscriptOpaqueInput": "#DBB2FF",
+          "agentscriptDeclaredName": "#FFA657",
+          "agentscriptConstName": "#F2CC60",
+          "agentscriptMutableName": "#FFA198",
+          "agentscriptCallObject": "#D2A8FF",
+          "agentscriptArgumentName": "#A5D6FF",
+          "agentscriptLabelName": "#79C0FF",
+          "agentscriptEffectPath": "#A5D6A7",
+          "type:agentscript": "#4EC9B0",
+          "namespace:agentscript": "#8B949E",
+          "variable:agentscript": "#C9D1D9",
+          "string:agentscript": "#CE9178",
+          "number:agentscript": "#B5CEA8",
+          "comment:agentscript": "#6A9955"
+        }
+      },
+      "editor.tokenColorCustomizations": {
+        "textMateRules": [
+          {
+            "scope": "keyword.declaration.agentscript",
+            "settings": {
+              "foreground": "#FF7B72",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "keyword.context.agentscript",
+            "settings": {
+              "foreground": "#7EE787",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "keyword.action.agentscript",
+            "settings": {
+              "foreground": "#DCDCAA",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "keyword.control.agentscript",
+            "settings": {
+              "foreground": "#79C0FF",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "entity.name.function.primitive-target.agentscript",
+            "settings": {
+              "foreground": "#E3B341"
+            }
+          },
+          {
+            "scope": "entity.name.function.domain-target.agentscript",
+            "settings": {
+              "foreground": "#56D4DD"
+            }
+          },
+          {
+            "scope": "constant.language.error-variant.agentscript",
+            "settings": {
+              "foreground": "#FF6B6B"
+            }
+          },
+          {
+            "scope": "entity.name.namespace.agentscript",
+            "settings": {
+              "foreground": "#8B949E"
+            }
+          },
+          {
+            "scope": "support.type.agentscript",
+            "settings": {
+              "foreground": "#4EC9B0"
+            }
+          },
+          {
+            "scope": "variable.other.agentscript",
+            "settings": {
+              "foreground": "#C9D1D9"
+            }
+          },
+          {
+            "scope": "string.quoted.double.agentscript",
+            "settings": {
+              "foreground": "#CE9178"
+            }
+          },
+          {
+            "scope": "constant.numeric.integer.agentscript",
+            "settings": {
+              "foreground": "#B5CEA8"
+            }
+          },
+          {
+            "scope": "comment.line.number-sign.agentscript",
+            "settings": {
+              "foreground": "#6A9955",
+              "fontStyle": "italic"
+            }
+          }
+        ]
+      }
+    }
+  }
+}
