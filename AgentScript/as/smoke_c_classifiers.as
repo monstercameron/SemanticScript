@@ -1,0 +1,82 @@
+project SmokeCClassifiers
+target console
+runtime AgentRuntime 0.1
+
+entry console main
+
+error MainError
+errorCase MainError ConsoleWriteFailed CSignedInt32
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+memory main stack max 4KiB
+async main no
+
+purpose main "Verify the <math.h> macro-classifiers (isnan/isinf/isfinite/isnormal/signbit/fpclassify) lower to LLVM ops rather than libc externs"
+invariant main "Each classifier reports the spec-defined int for a representative input"
+
+label startMain
+
+const formatLineText CNullTerminatedByteString "isnan(%g)=%d isinf(%g)=%d isfinite(%g)=%d isnormal(%g)=%d signbit(%g)=%d fpclassify(%g)=%d\n"
+
+const probeValue CFloat64 3.14
+const zeroValue CFloat64 0.0
+
+call isnanCall c.isnan
+arg isnanCall x probeValue
+run isnanCall
+bind isnanResult CSignedInt32 isnanCall
+
+call isinfCall c.isinf
+arg isinfCall x probeValue
+run isinfCall
+bind isinfResult CSignedInt32 isinfCall
+
+call isfiniteCall c.isfinite
+arg isfiniteCall x probeValue
+run isfiniteCall
+bind isfiniteResult CSignedInt32 isfiniteCall
+
+call isnormalCall c.isnormal
+arg isnormalCall x probeValue
+run isnormalCall
+bind isnormalResult CSignedInt32 isnormalCall
+
+call signbitCall c.signbit
+arg signbitCall x probeValue
+run signbitCall
+bind signbitResult CSignedInt32 signbitCall
+
+call fpclassifyCall c.fpclassify
+arg fpclassifyCall x zeroValue
+run fpclassifyCall
+bind fpclassifyResult CSignedInt32 fpclassifyCall
+
+call reportCall c.printf
+arg reportCall format formatLineText
+arg reportCall isnanX probeValue
+arg reportCall isnanV isnanResult
+arg reportCall isinfX probeValue
+arg reportCall isinfV isinfResult
+arg reportCall isfiniteX probeValue
+arg reportCall isfiniteV isfiniteResult
+arg reportCall isnormalX probeValue
+arg reportCall isnormalV isnormalResult
+arg reportCall signbitX probeValue
+arg reportCall signbitV signbitResult
+arg reportCall fpclassifyX zeroValue
+arg reportCall fpclassifyV fpclassifyResult
+run reportCall
+ignoreOk reportCall Void
+bindError reportError CSignedInt32 reportCall
+branchIfError reportCall reportWriteFailed
+
+const successfulExitCode ExitCode 0
+returnOk successfulExitCode
+
+label reportWriteFailed
+makeError reportWriteFailure MainError.ConsoleWriteFailed reportError
+returnError reportWriteFailure

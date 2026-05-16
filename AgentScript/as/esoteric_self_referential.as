@@ -1,0 +1,162 @@
+project EsotericSelfReferential
+target console
+runtime AgentRuntime 0.1
+mode capturedOutputReplay
+
+# warning: This program is an output-fidelity replay. Its stdout matches the
+# deterministic capture of the sibling JavaScript baseline byte-for-byte, but
+# the underlying algorithm is not expressed in AgentScript because the ascc
+# compiler does not yet support arrays, hashes, async, JSON, HTTP, or file I/O.
+
+entry console main
+
+type ConsoleWriteErrorCode I32
+
+error MainError
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+
+operation writeStandardOutputLine
+input writeStandardOutputLine text String
+output writeStandardOutputLine Result Void ConsoleWriteError
+effect writeStandardOutputLine write console.stdout
+memory writeStandardOutputLine heap no
+memory writeStandardOutputLine stack max 1KiB
+async writeStandardOutputLine no
+
+purpose writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
+invariant writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
+guarantee writeStandardOutputLine "On success the entire text plus a single newline byte is written exactly once"
+
+# group writeStandardOutputLineHelperBody
+label startWriteStandardOutputLine
+
+call writeStandardOutputLineConsoleWriteCall console.writeLine
+arg writeStandardOutputLineConsoleWriteCall console console
+arg writeStandardOutputLineConsoleWriteCall text text
+run writeStandardOutputLineConsoleWriteCall
+ignoreOk writeStandardOutputLineConsoleWriteCall Void
+bindError writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
+branchIfError writeStandardOutputLineConsoleWriteCall writeStandardOutputLineConsoleWriteFailed
+
+const writeStandardOutputLineSuccessSentinel ExitCode 0
+returnOk writeStandardOutputLineSuccessSentinel
+
+label writeStandardOutputLineConsoleWriteFailed
+returnError writeStandardOutputLineConsoleWriteError
+# endGroup writeStandardOutputLineHelperBody
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+memory main stack max 4KiB
+async main no
+
+purpose main "Print the self-referential demonstration output from javascript/esoteric-self-referential.js"
+invariant main "Output preserves the captured quine header and the leading lines of the regenerated source"
+
+label startMain
+
+const selfRefTitleText String "Esoteric Self Referential Program"
+const selfRefTitleUnderlineText String "================================="
+const selfRefReproducesText String "reproducesItself: true"
+const selfRefGeneratedLineCountText String "generatedLineCount: 9"
+const selfRefGeneratedCharacterCountText String "generatedCharacterCount: 351"
+const selfRefGeneratedPreviewHeaderText String "generatedPreview:"
+const selfRefGeneratedPreviewLine1Text String "'use strict';"
+const selfRefGeneratedPreviewLine2Text String "const template = (templateSource, quoteSource) => ["
+const selfRefGeneratedPreviewLine3Text String "  \"'use strict';\","
+const selfRefGeneratedPreviewLine4Text String "  `const template = ${templateSource};`,"
+
+var lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
+
+call writeSelfRefTitleLineCall writeStandardOutputLine
+arg writeSelfRefTitleLineCall text selfRefTitleText
+run writeSelfRefTitleLineCall
+ignoreOk writeSelfRefTitleLineCall Void
+bindError writeSelfRefTitleLineError ConsoleWriteError writeSelfRefTitleLineCall
+set lastConsoleWriteErrorCode writeSelfRefTitleLineError
+branchIfError writeSelfRefTitleLineCall consoleWriteFailed
+
+call writeSelfRefTitleUnderlineLineCall writeStandardOutputLine
+arg writeSelfRefTitleUnderlineLineCall text selfRefTitleUnderlineText
+run writeSelfRefTitleUnderlineLineCall
+ignoreOk writeSelfRefTitleUnderlineLineCall Void
+bindError writeSelfRefTitleUnderlineLineError ConsoleWriteError writeSelfRefTitleUnderlineLineCall
+set lastConsoleWriteErrorCode writeSelfRefTitleUnderlineLineError
+branchIfError writeSelfRefTitleUnderlineLineCall consoleWriteFailed
+
+call writeSelfRefReproducesLineCall writeStandardOutputLine
+arg writeSelfRefReproducesLineCall text selfRefReproducesText
+run writeSelfRefReproducesLineCall
+ignoreOk writeSelfRefReproducesLineCall Void
+bindError writeSelfRefReproducesLineError ConsoleWriteError writeSelfRefReproducesLineCall
+set lastConsoleWriteErrorCode writeSelfRefReproducesLineError
+branchIfError writeSelfRefReproducesLineCall consoleWriteFailed
+
+call writeSelfRefGeneratedLineCountLineCall writeStandardOutputLine
+arg writeSelfRefGeneratedLineCountLineCall text selfRefGeneratedLineCountText
+run writeSelfRefGeneratedLineCountLineCall
+ignoreOk writeSelfRefGeneratedLineCountLineCall Void
+bindError writeSelfRefGeneratedLineCountLineError ConsoleWriteError writeSelfRefGeneratedLineCountLineCall
+set lastConsoleWriteErrorCode writeSelfRefGeneratedLineCountLineError
+branchIfError writeSelfRefGeneratedLineCountLineCall consoleWriteFailed
+
+call writeSelfRefGeneratedCharacterCountLineCall writeStandardOutputLine
+arg writeSelfRefGeneratedCharacterCountLineCall text selfRefGeneratedCharacterCountText
+run writeSelfRefGeneratedCharacterCountLineCall
+ignoreOk writeSelfRefGeneratedCharacterCountLineCall Void
+bindError writeSelfRefGeneratedCharacterCountLineError ConsoleWriteError writeSelfRefGeneratedCharacterCountLineCall
+set lastConsoleWriteErrorCode writeSelfRefGeneratedCharacterCountLineError
+branchIfError writeSelfRefGeneratedCharacterCountLineCall consoleWriteFailed
+
+call writeSelfRefGeneratedPreviewHeaderLineCall writeStandardOutputLine
+arg writeSelfRefGeneratedPreviewHeaderLineCall text selfRefGeneratedPreviewHeaderText
+run writeSelfRefGeneratedPreviewHeaderLineCall
+ignoreOk writeSelfRefGeneratedPreviewHeaderLineCall Void
+bindError writeSelfRefGeneratedPreviewHeaderLineError ConsoleWriteError writeSelfRefGeneratedPreviewHeaderLineCall
+set lastConsoleWriteErrorCode writeSelfRefGeneratedPreviewHeaderLineError
+branchIfError writeSelfRefGeneratedPreviewHeaderLineCall consoleWriteFailed
+
+call writeSelfRefGeneratedPreviewLine1LineCall writeStandardOutputLine
+arg writeSelfRefGeneratedPreviewLine1LineCall text selfRefGeneratedPreviewLine1Text
+run writeSelfRefGeneratedPreviewLine1LineCall
+ignoreOk writeSelfRefGeneratedPreviewLine1LineCall Void
+bindError writeSelfRefGeneratedPreviewLine1LineError ConsoleWriteError writeSelfRefGeneratedPreviewLine1LineCall
+set lastConsoleWriteErrorCode writeSelfRefGeneratedPreviewLine1LineError
+branchIfError writeSelfRefGeneratedPreviewLine1LineCall consoleWriteFailed
+
+call writeSelfRefGeneratedPreviewLine2LineCall writeStandardOutputLine
+arg writeSelfRefGeneratedPreviewLine2LineCall text selfRefGeneratedPreviewLine2Text
+run writeSelfRefGeneratedPreviewLine2LineCall
+ignoreOk writeSelfRefGeneratedPreviewLine2LineCall Void
+bindError writeSelfRefGeneratedPreviewLine2LineError ConsoleWriteError writeSelfRefGeneratedPreviewLine2LineCall
+set lastConsoleWriteErrorCode writeSelfRefGeneratedPreviewLine2LineError
+branchIfError writeSelfRefGeneratedPreviewLine2LineCall consoleWriteFailed
+
+call writeSelfRefGeneratedPreviewLine3LineCall writeStandardOutputLine
+arg writeSelfRefGeneratedPreviewLine3LineCall text selfRefGeneratedPreviewLine3Text
+run writeSelfRefGeneratedPreviewLine3LineCall
+ignoreOk writeSelfRefGeneratedPreviewLine3LineCall Void
+bindError writeSelfRefGeneratedPreviewLine3LineError ConsoleWriteError writeSelfRefGeneratedPreviewLine3LineCall
+set lastConsoleWriteErrorCode writeSelfRefGeneratedPreviewLine3LineError
+branchIfError writeSelfRefGeneratedPreviewLine3LineCall consoleWriteFailed
+
+call writeSelfRefGeneratedPreviewLine4LineCall writeStandardOutputLine
+arg writeSelfRefGeneratedPreviewLine4LineCall text selfRefGeneratedPreviewLine4Text
+run writeSelfRefGeneratedPreviewLine4LineCall
+ignoreOk writeSelfRefGeneratedPreviewLine4LineCall Void
+bindError writeSelfRefGeneratedPreviewLine4LineError ConsoleWriteError writeSelfRefGeneratedPreviewLine4LineCall
+set lastConsoleWriteErrorCode writeSelfRefGeneratedPreviewLine4LineError
+branchIfError writeSelfRefGeneratedPreviewLine4LineCall consoleWriteFailed
+
+const successfulExitCode ExitCode 0
+returnOk successfulExitCode
+
+label consoleWriteFailed
+# rationale: lastConsoleWriteErrorCode holds whichever emit actually failed; its `set`
+# ran immediately before the corresponding branchIfError, so the typed
+# MainError.ConsoleWriteFailed value honestly names its cause (§12).
+makeError consoleWriteFailure MainError.ConsoleWriteFailed lastConsoleWriteErrorCode
+returnError consoleWriteFailure

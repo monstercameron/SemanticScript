@@ -1,0 +1,162 @@
+project CounterintuitiveNumbers
+target console
+runtime AgentRuntime 0.1
+mode capturedOutputReplay
+
+# warning: This program is an output-fidelity replay. Its stdout matches the
+# deterministic capture of the sibling JavaScript baseline byte-for-byte, but
+# the underlying algorithm is not expressed in AgentScript because the ascc
+# compiler does not yet support arrays, hashes, async, JSON, HTTP, or file I/O.
+
+entry console main
+
+type ConsoleWriteErrorCode I32
+
+error MainError
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+
+operation writeStandardOutputLine
+input writeStandardOutputLine text String
+output writeStandardOutputLine Result Void ConsoleWriteError
+effect writeStandardOutputLine write console.stdout
+memory writeStandardOutputLine heap no
+memory writeStandardOutputLine stack max 1KiB
+async writeStandardOutputLine no
+
+purpose writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
+invariant writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
+guarantee writeStandardOutputLine "On success the entire text plus a single newline byte is written exactly once"
+
+# group writeStandardOutputLineHelperBody
+label startWriteStandardOutputLine
+
+call writeStandardOutputLineConsoleWriteCall console.writeLine
+arg writeStandardOutputLineConsoleWriteCall console console
+arg writeStandardOutputLineConsoleWriteCall text text
+run writeStandardOutputLineConsoleWriteCall
+ignoreOk writeStandardOutputLineConsoleWriteCall Void
+bindError writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
+branchIfError writeStandardOutputLineConsoleWriteCall writeStandardOutputLineConsoleWriteFailed
+
+const writeStandardOutputLineSuccessSentinel ExitCode 0
+returnOk writeStandardOutputLineSuccessSentinel
+
+label writeStandardOutputLineConsoleWriteFailed
+returnError writeStandardOutputLineConsoleWriteError
+# endGroup writeStandardOutputLineHelperBody
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+memory main stack max 4KiB
+async main no
+
+purpose main "Print the IEEE-754 and NaN surprises from javascript/counterintuitive-numbers.js"
+invariant main "Each result line reflects Node's exact double-precision output"
+
+label startMain
+
+const numbersTitleText String "Counterintuitive Numbers"
+const numbersTitleUnderlineText String "========================"
+const numbersFloatAdditionText String "0.1 + 0.2 => 0.30000000000000004"
+const numbersFloatAdditionEqualityText String "0.1 + 0.2 === 0.3 => false"
+const numbersObjectIsMinusZeroText String "Object.is(-0, 0) => false"
+const numbersDivByMinusZeroText String "1 / -0 => -Infinity"
+const numbersUnsafeIntegerOverflowText String "9007199254740992 + 1 => 9007199254740992"
+const numbersUnsafeIntegerEqualText String "largeInteger === largeIntegerPlusOne => true"
+const numbersNanInequalText String "NaN === NaN => false"
+const numbersIsNaNTrueText String "Number.isNaN(NaN) => true"
+
+var lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
+
+call writeNumbersTitleLineCall writeStandardOutputLine
+arg writeNumbersTitleLineCall text numbersTitleText
+run writeNumbersTitleLineCall
+ignoreOk writeNumbersTitleLineCall Void
+bindError writeNumbersTitleLineError ConsoleWriteError writeNumbersTitleLineCall
+set lastConsoleWriteErrorCode writeNumbersTitleLineError
+branchIfError writeNumbersTitleLineCall consoleWriteFailed
+
+call writeNumbersTitleUnderlineLineCall writeStandardOutputLine
+arg writeNumbersTitleUnderlineLineCall text numbersTitleUnderlineText
+run writeNumbersTitleUnderlineLineCall
+ignoreOk writeNumbersTitleUnderlineLineCall Void
+bindError writeNumbersTitleUnderlineLineError ConsoleWriteError writeNumbersTitleUnderlineLineCall
+set lastConsoleWriteErrorCode writeNumbersTitleUnderlineLineError
+branchIfError writeNumbersTitleUnderlineLineCall consoleWriteFailed
+
+call writeNumbersFloatAdditionLineCall writeStandardOutputLine
+arg writeNumbersFloatAdditionLineCall text numbersFloatAdditionText
+run writeNumbersFloatAdditionLineCall
+ignoreOk writeNumbersFloatAdditionLineCall Void
+bindError writeNumbersFloatAdditionLineError ConsoleWriteError writeNumbersFloatAdditionLineCall
+set lastConsoleWriteErrorCode writeNumbersFloatAdditionLineError
+branchIfError writeNumbersFloatAdditionLineCall consoleWriteFailed
+
+call writeNumbersFloatAdditionEqualityLineCall writeStandardOutputLine
+arg writeNumbersFloatAdditionEqualityLineCall text numbersFloatAdditionEqualityText
+run writeNumbersFloatAdditionEqualityLineCall
+ignoreOk writeNumbersFloatAdditionEqualityLineCall Void
+bindError writeNumbersFloatAdditionEqualityLineError ConsoleWriteError writeNumbersFloatAdditionEqualityLineCall
+set lastConsoleWriteErrorCode writeNumbersFloatAdditionEqualityLineError
+branchIfError writeNumbersFloatAdditionEqualityLineCall consoleWriteFailed
+
+call writeNumbersObjectIsMinusZeroLineCall writeStandardOutputLine
+arg writeNumbersObjectIsMinusZeroLineCall text numbersObjectIsMinusZeroText
+run writeNumbersObjectIsMinusZeroLineCall
+ignoreOk writeNumbersObjectIsMinusZeroLineCall Void
+bindError writeNumbersObjectIsMinusZeroLineError ConsoleWriteError writeNumbersObjectIsMinusZeroLineCall
+set lastConsoleWriteErrorCode writeNumbersObjectIsMinusZeroLineError
+branchIfError writeNumbersObjectIsMinusZeroLineCall consoleWriteFailed
+
+call writeNumbersDivByMinusZeroLineCall writeStandardOutputLine
+arg writeNumbersDivByMinusZeroLineCall text numbersDivByMinusZeroText
+run writeNumbersDivByMinusZeroLineCall
+ignoreOk writeNumbersDivByMinusZeroLineCall Void
+bindError writeNumbersDivByMinusZeroLineError ConsoleWriteError writeNumbersDivByMinusZeroLineCall
+set lastConsoleWriteErrorCode writeNumbersDivByMinusZeroLineError
+branchIfError writeNumbersDivByMinusZeroLineCall consoleWriteFailed
+
+call writeNumbersUnsafeIntegerOverflowLineCall writeStandardOutputLine
+arg writeNumbersUnsafeIntegerOverflowLineCall text numbersUnsafeIntegerOverflowText
+run writeNumbersUnsafeIntegerOverflowLineCall
+ignoreOk writeNumbersUnsafeIntegerOverflowLineCall Void
+bindError writeNumbersUnsafeIntegerOverflowLineError ConsoleWriteError writeNumbersUnsafeIntegerOverflowLineCall
+set lastConsoleWriteErrorCode writeNumbersUnsafeIntegerOverflowLineError
+branchIfError writeNumbersUnsafeIntegerOverflowLineCall consoleWriteFailed
+
+call writeNumbersUnsafeIntegerEqualLineCall writeStandardOutputLine
+arg writeNumbersUnsafeIntegerEqualLineCall text numbersUnsafeIntegerEqualText
+run writeNumbersUnsafeIntegerEqualLineCall
+ignoreOk writeNumbersUnsafeIntegerEqualLineCall Void
+bindError writeNumbersUnsafeIntegerEqualLineError ConsoleWriteError writeNumbersUnsafeIntegerEqualLineCall
+set lastConsoleWriteErrorCode writeNumbersUnsafeIntegerEqualLineError
+branchIfError writeNumbersUnsafeIntegerEqualLineCall consoleWriteFailed
+
+call writeNumbersNanInequalLineCall writeStandardOutputLine
+arg writeNumbersNanInequalLineCall text numbersNanInequalText
+run writeNumbersNanInequalLineCall
+ignoreOk writeNumbersNanInequalLineCall Void
+bindError writeNumbersNanInequalLineError ConsoleWriteError writeNumbersNanInequalLineCall
+set lastConsoleWriteErrorCode writeNumbersNanInequalLineError
+branchIfError writeNumbersNanInequalLineCall consoleWriteFailed
+
+call writeNumbersIsNaNTrueLineCall writeStandardOutputLine
+arg writeNumbersIsNaNTrueLineCall text numbersIsNaNTrueText
+run writeNumbersIsNaNTrueLineCall
+ignoreOk writeNumbersIsNaNTrueLineCall Void
+bindError writeNumbersIsNaNTrueLineError ConsoleWriteError writeNumbersIsNaNTrueLineCall
+set lastConsoleWriteErrorCode writeNumbersIsNaNTrueLineError
+branchIfError writeNumbersIsNaNTrueLineCall consoleWriteFailed
+
+const successfulExitCode ExitCode 0
+returnOk successfulExitCode
+
+label consoleWriteFailed
+# rationale: lastConsoleWriteErrorCode holds whichever emit actually failed; its `set`
+# ran immediately before the corresponding branchIfError, so the typed
+# MainError.ConsoleWriteFailed value honestly names its cause (§12).
+makeError consoleWriteFailure MainError.ConsoleWriteFailed lastConsoleWriteErrorCode
+returnError consoleWriteFailure

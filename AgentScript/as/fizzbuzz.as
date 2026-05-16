@@ -1,0 +1,178 @@
+project FizzBuzz
+target console
+runtime AgentRuntime 0.1
+
+entry console main
+
+type FizzBuzzCounter I64
+type FizzBuzzDivisor I64
+type PositiveFizzBuzzStep I64
+type FizzBuzzRemainder I64
+
+error MainError
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+memory main stack max 16KiB
+async main no
+
+purpose main "Print the FizzBuzz sequence for values from fizzBuzzLowerLimit through fizzBuzzUpperLimit, one entry per output line"
+invariant main "currentFizzBuzzCounter is monotonically increasing and bounded above by fizzBuzzUpperLimit"
+invariant main "Each iteration of the loop body produces exactly one line of output"
+invariant main "fizzBuzzStepValue is strictly greater than zero"
+
+label startMain
+
+const fizzBuzzLowerLimit FizzBuzzCounter 1
+const fizzBuzzUpperLimit FizzBuzzCounter 15
+const fizzBuzzStepValue PositiveFizzBuzzStep 1
+const fizzDivisorValue FizzBuzzDivisor 3
+const buzzDivisorValue FizzBuzzDivisor 5
+const fizzBuzzDivisorValue FizzBuzzDivisor 15
+const remainderZeroValue FizzBuzzRemainder 0
+
+const fizzWordText String "Fizz"
+const buzzWordText String "Buzz"
+const fizzBuzzWordText String "FizzBuzz"
+
+var currentFizzBuzzCounter FizzBuzzCounter fizzBuzzLowerLimit
+
+label fizzBuzzLoopHead
+
+# rationale: Continue while currentFizzBuzzCounter is less than or equal to fizzBuzzUpperLimit.
+call fizzBuzzRangeCheckCall FizzBuzzCounter.lessThanOrEqual
+arg fizzBuzzRangeCheckCall left currentFizzBuzzCounter
+arg fizzBuzzRangeCheckCall right fizzBuzzUpperLimit
+run fizzBuzzRangeCheckCall
+bind fizzBuzzShouldContinue Bool fizzBuzzRangeCheckCall
+
+branchIf fizzBuzzShouldContinue fizzBuzzLoopBody
+branch fizzBuzzFinished
+
+label fizzBuzzLoopBody
+
+# rationale: Compute the remainder of the counter divided by fifteen.
+call moduloByFifteenCall FizzBuzzCounter.moduloBy
+arg moduloByFifteenCall counter currentFizzBuzzCounter
+arg moduloByFifteenCall divisor fizzBuzzDivisorValue
+run moduloByFifteenCall
+bind moduloByFifteenValue FizzBuzzRemainder moduloByFifteenCall
+
+# rationale: A zero remainder against fifteen means the value is divisible by fifteen.
+call isDivisibleByFifteenCheckCall FizzBuzzRemainder.equal
+arg isDivisibleByFifteenCheckCall left moduloByFifteenValue
+arg isDivisibleByFifteenCheckCall right remainderZeroValue
+run isDivisibleByFifteenCheckCall
+bind currentValueIsDivisibleByFifteen Bool isDivisibleByFifteenCheckCall
+
+branchIf currentValueIsDivisibleByFifteen printFizzBuzzWord
+branch checkDivisibleByThree
+
+label printFizzBuzzWord
+call writeFizzBuzzWordCall console.writeLine
+arg writeFizzBuzzWordCall console console
+arg writeFizzBuzzWordCall text fizzBuzzWordText
+run writeFizzBuzzWordCall
+ignoreOk writeFizzBuzzWordCall Void
+bindError writeFizzBuzzWordError ConsoleWriteError writeFizzBuzzWordCall
+branchIfError writeFizzBuzzWordCall fizzBuzzWordWriteFailed
+branch fizzBuzzLoopStep
+
+label checkDivisibleByThree
+call moduloByThreeCall FizzBuzzCounter.moduloBy
+arg moduloByThreeCall counter currentFizzBuzzCounter
+arg moduloByThreeCall divisor fizzDivisorValue
+run moduloByThreeCall
+bind moduloByThreeValue FizzBuzzRemainder moduloByThreeCall
+
+call isDivisibleByThreeCheckCall FizzBuzzRemainder.equal
+arg isDivisibleByThreeCheckCall left moduloByThreeValue
+arg isDivisibleByThreeCheckCall right remainderZeroValue
+run isDivisibleByThreeCheckCall
+bind currentValueIsDivisibleByThree Bool isDivisibleByThreeCheckCall
+
+branchIf currentValueIsDivisibleByThree printFizzWord
+branch checkDivisibleByFive
+
+label printFizzWord
+call writeFizzWordCall console.writeLine
+arg writeFizzWordCall console console
+arg writeFizzWordCall text fizzWordText
+run writeFizzWordCall
+ignoreOk writeFizzWordCall Void
+bindError writeFizzWordError ConsoleWriteError writeFizzWordCall
+branchIfError writeFizzWordCall fizzWordWriteFailed
+branch fizzBuzzLoopStep
+
+label checkDivisibleByFive
+call moduloByFiveCall FizzBuzzCounter.moduloBy
+arg moduloByFiveCall counter currentFizzBuzzCounter
+arg moduloByFiveCall divisor buzzDivisorValue
+run moduloByFiveCall
+bind moduloByFiveValue FizzBuzzRemainder moduloByFiveCall
+
+call isDivisibleByFiveCheckCall FizzBuzzRemainder.equal
+arg isDivisibleByFiveCheckCall left moduloByFiveValue
+arg isDivisibleByFiveCheckCall right remainderZeroValue
+run isDivisibleByFiveCheckCall
+bind currentValueIsDivisibleByFive Bool isDivisibleByFiveCheckCall
+
+branchIf currentValueIsDivisibleByFive printBuzzWord
+branch printCurrentFizzBuzzCounter
+
+label printBuzzWord
+call writeBuzzWordCall console.writeLine
+arg writeBuzzWordCall console console
+arg writeBuzzWordCall text buzzWordText
+run writeBuzzWordCall
+ignoreOk writeBuzzWordCall Void
+bindError writeBuzzWordError ConsoleWriteError writeBuzzWordCall
+branchIfError writeBuzzWordCall buzzWordWriteFailed
+branch fizzBuzzLoopStep
+
+label printCurrentFizzBuzzCounter
+call writeCurrentFizzBuzzCounterCall console.writeIntegerLine
+arg writeCurrentFizzBuzzCounterCall console console
+arg writeCurrentFizzBuzzCounterCall value currentFizzBuzzCounter
+run writeCurrentFizzBuzzCounterCall
+ignoreOk writeCurrentFizzBuzzCounterCall Void
+bindError writeCurrentFizzBuzzCounterError ConsoleWriteError writeCurrentFizzBuzzCounterCall
+branchIfError writeCurrentFizzBuzzCounterCall currentFizzBuzzCounterWriteFailed
+branch fizzBuzzLoopStep
+
+label fizzBuzzLoopStep
+call fizzBuzzCounterIncrementCall FizzBuzzCounter.add
+arg fizzBuzzCounterIncrementCall counter currentFizzBuzzCounter
+arg fizzBuzzCounterIncrementCall step fizzBuzzStepValue
+run fizzBuzzCounterIncrementCall
+bind nextFizzBuzzCounter FizzBuzzCounter fizzBuzzCounterIncrementCall
+set currentFizzBuzzCounter nextFizzBuzzCounter
+branch fizzBuzzLoopHead
+
+label fizzBuzzFinished
+const successfulExitCode ExitCode 0
+returnOk successfulExitCode
+
+# rationale: Each fallible write has its own labeled failure handler so that the
+# MainError.ConsoleWriteFailed value built with `makeError` honestly references
+# the specific raw ConsoleWriteError that was bound on that path (§12).
+
+label fizzBuzzWordWriteFailed
+makeError fizzBuzzWordWriteFailure MainError.ConsoleWriteFailed writeFizzBuzzWordError
+returnError fizzBuzzWordWriteFailure
+
+label fizzWordWriteFailed
+makeError fizzWordWriteFailure MainError.ConsoleWriteFailed writeFizzWordError
+returnError fizzWordWriteFailure
+
+label buzzWordWriteFailed
+makeError buzzWordWriteFailure MainError.ConsoleWriteFailed writeBuzzWordError
+returnError buzzWordWriteFailure
+
+label currentFizzBuzzCounterWriteFailed
+makeError currentFizzBuzzCounterWriteFailure MainError.ConsoleWriteFailed writeCurrentFizzBuzzCounterError
+returnError currentFizzBuzzCounterWriteFailure

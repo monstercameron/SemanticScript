@@ -1,0 +1,90 @@
+project SumOfSquares
+target console
+runtime AgentRuntime 0.1
+
+entry console main
+
+type SumOfSquaresCounter I64
+type SumOfSquaresAccumulator I64
+type PositiveSumOfSquaresStep I64
+
+error MainError
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+memory main stack max 16KiB
+async main no
+
+purpose main "Compute one squared plus two squared up through sumOfSquaresUpperLimit squared and print the result as a single line"
+invariant main "currentSumOfSquaresAccumulator equals the sum of squares from one through currentSumOfSquaresCounter minus one"
+invariant main "sumOfSquaresStepValue is strictly greater than zero"
+
+label startMain
+
+const sumOfSquaresLowerLimit SumOfSquaresCounter 1
+const sumOfSquaresUpperLimit SumOfSquaresCounter 10
+const sumOfSquaresStepValue PositiveSumOfSquaresStep 1
+const sumOfSquaresAccumulatorInitial SumOfSquaresAccumulator 0
+
+var currentSumOfSquaresCounter SumOfSquaresCounter sumOfSquaresLowerLimit
+var currentSumOfSquaresAccumulator SumOfSquaresAccumulator sumOfSquaresAccumulatorInitial
+
+label sumOfSquaresLoopHead
+
+# rationale: Continue while currentSumOfSquaresCounter is less than or equal to sumOfSquaresUpperLimit.
+call sumOfSquaresRangeCheckCall SumOfSquaresCounter.lessThanOrEqual
+arg sumOfSquaresRangeCheckCall left currentSumOfSquaresCounter
+arg sumOfSquaresRangeCheckCall right sumOfSquaresUpperLimit
+run sumOfSquaresRangeCheckCall
+bind sumOfSquaresShouldContinue Bool sumOfSquaresRangeCheckCall
+
+branchIf sumOfSquaresShouldContinue sumOfSquaresLoopBody
+branch sumOfSquaresFinished
+
+label sumOfSquaresLoopBody
+
+# rationale: Square the current counter; the square method takes a single operand and multiplies it by itself.
+call currentCounterSquareCall SumOfSquaresCounter.square
+arg currentCounterSquareCall counter currentSumOfSquaresCounter
+run currentCounterSquareCall
+bind currentCounterSquareValue SumOfSquaresAccumulator currentCounterSquareCall
+
+# rationale: Add the freshly computed square into the running accumulator.
+call sumOfSquaresAccumulatorAddCall SumOfSquaresAccumulator.add
+arg sumOfSquaresAccumulatorAddCall accumulator currentSumOfSquaresAccumulator
+arg sumOfSquaresAccumulatorAddCall summand currentCounterSquareValue
+run sumOfSquaresAccumulatorAddCall
+bind nextSumOfSquaresAccumulator SumOfSquaresAccumulator sumOfSquaresAccumulatorAddCall
+set currentSumOfSquaresAccumulator nextSumOfSquaresAccumulator
+
+# rationale: Advance the counter by exactly sumOfSquaresStepValue.
+call sumOfSquaresCounterIncrementCall SumOfSquaresCounter.add
+arg sumOfSquaresCounterIncrementCall counter currentSumOfSquaresCounter
+arg sumOfSquaresCounterIncrementCall step sumOfSquaresStepValue
+run sumOfSquaresCounterIncrementCall
+bind nextSumOfSquaresCounter SumOfSquaresCounter sumOfSquaresCounterIncrementCall
+set currentSumOfSquaresCounter nextSumOfSquaresCounter
+
+branch sumOfSquaresLoopHead
+
+label sumOfSquaresFinished
+
+# rationale: Emit the final accumulator as a single line of standard output.
+call writeFinalSumOfSquaresAccumulatorCall console.writeIntegerLine
+arg writeFinalSumOfSquaresAccumulatorCall console console
+arg writeFinalSumOfSquaresAccumulatorCall value currentSumOfSquaresAccumulator
+run writeFinalSumOfSquaresAccumulatorCall
+ignoreOk writeFinalSumOfSquaresAccumulatorCall Void
+bindError writeFinalSumOfSquaresAccumulatorError ConsoleWriteError writeFinalSumOfSquaresAccumulatorCall
+branchIfError writeFinalSumOfSquaresAccumulatorCall consoleWriteFailed
+
+const successfulExitCode ExitCode 0
+returnOk successfulExitCode
+
+label consoleWriteFailed
+makeError consoleWriteFailure MainError.ConsoleWriteFailed writeFinalSumOfSquaresAccumulatorError
+returnError consoleWriteFailure
