@@ -9,5 +9,7 @@ __pycache__/
 
 *.vsix
 
+AgentScript/tests/as_compiler_build/
+
 .DS_Store
 Thumbs.db
