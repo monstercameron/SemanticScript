@@ -11,6 +11,7 @@ __pycache__/
 
 AgentScript/tests/as_compiler_build/
 AgentScript/tests/feature_coverage/build/
+AgentScript/bootstrap/bootstrap_general.ll
 
 .claude/
 
