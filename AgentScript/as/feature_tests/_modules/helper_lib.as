@@ -1,0 +1,24 @@
+# Imported helper module. Not run directly; consumed by 121_cross_file_import.as
+# via `importModule helper_lib`. The header (project/target/runtime/entry) is
+# stripped by the import resolver, leaving only the operation definitions for
+# the importer to consume.
+project HelperLib
+target console
+runtime AgentRuntime 0.1
+entry console addSeven
+
+operation addSeven
+input addSeven base I64
+output addSeven Result I64 Void
+memory addSeven heap no
+async addSeven no
+purpose addSeven "Return base + 7. Demonstrates a callable defined in an imported module."
+invariant addSeven "Returns base + 7."
+label startAddSeven
+const sevenValue I64 7
+call sumCall math.addI64
+arg sumCall left base
+arg sumCall right sevenValue
+run sumCall
+bind sumResult I64 sumCall
+returnOk sumResult
