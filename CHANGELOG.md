@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-05-17
+
+- `17ae76633e778e238bac728a0f94b2cd4d083228` - `bootstrap: expand general compiler lowering`
+  - Expanded `bootstrap_general.as` to lower more real AgentScript behavior through the AS-written compiler, including user operations, recursion, float and pointer flows, libc calls, return-error payloads, and broader executable control-flow cases.
+- `1daa366f7baad078243be7bef73268f9e2fd73d6` - `stdlib: tighten AS self-test names`
+  - Cleaned up stdlib self-test source so float initialization and call naming stay compatible with the stricter AS-written compiler path.
+- `d1fd0140d471728c04aa46872f3fe5cb58c286a2` - `tests: add AS compiler feature coverage`
+  - Added 61 focused AgentScript feature programs plus `tests/feature_coverage.py`, and ignored generated feature-coverage build outputs.
+
 ## 2026-05-16
 
 - `a3c90973c1b1d20f040fa05a1138d10a26db59a4` - `chore: add repository ignore rules`
@@ -28,3 +37,7 @@
   - Added 28 standalone `stdlib_as` modules, a stdlib sanity smoke program, and a test harness that compiles and runs every stdlib module.
 - `1745d93ddb41e2ca0e3ef92da78df65fbf1cbe9c` - `docs: refresh AgentScript project state`
   - Refreshed the README, AST, bootstrap, linter, release-note, stdlib, and `as_python` documentation to match the current project state.
+- `bd1a1f0a4cab49bddae4bca9453b900f65567981` - `docs: update dated changelog`
+  - Added the compiler, stdlib, and documentation commits from the previous logical grouping pass to this changelog.
+- `2ab8552026d56c11bc20e0bf630e0bf4e5ca7955` - `Good progress`
+  - Expanded `bootstrap_general.as` toward full oracle parity, added `bootstrap/exit_code_probe.as`, and grew AS-written compiler parity coverage.
