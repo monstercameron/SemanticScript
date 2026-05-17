@@ -2,7 +2,7 @@
   "name": "agentscript-vscode",
   "displayName": "AgentScript",
   "description": "Syntax highlighting and segment coloring for AgentScript .as files.",
-  "version": "0.1.3",
+  "version": "0.1.6",
   "publisher": "agentscript-local",
   "license": "UNLICENSED",
   "engines": {
@@ -94,6 +94,11 @@
           "type": "string",
           "default": "",
           "description": "Optional path to aslint.py. Leave empty to auto-discover AgentScript/linter/aslint.py from the workspace."
+        },
+        "agentScript.linter.skipFutureSyntax": {
+          "type": "boolean",
+          "default": true,
+          "description": "Skip current aslint diagnostics for proposed refined syntax files that are not executable by the current compiler yet."
         }
       }
     },
@@ -129,6 +134,11 @@
         "description": "AgentScript implemented primitive call target."
       },
       {
+        "id": "agentscriptGeneratedTarget",
+        "superType": "function",
+        "description": "AgentScript generated metadata-backed call target."
+      },
+      {
         "id": "agentscriptDomainTarget",
         "superType": "method",
         "description": "AgentScript domain-typed method target."
@@ -137,6 +147,11 @@
         "id": "agentscriptErrorVariant",
         "superType": "enumMember",
         "description": "AgentScript typed error variant reference."
+      },
+      {
+        "id": "agentscriptSchemaValue",
+        "superType": "enumMember",
+        "description": "AgentScript fixed schema value."
       },
       {
         "id": "agentscriptOpaqueInput",
@@ -192,8 +207,10 @@
           "agentscriptControlVerb": "#79C0FF",
           "agentscriptRoleSuffix": "#FFB86C",
           "agentscriptPrimitiveTarget": "#E3B341",
+          "agentscriptGeneratedTarget": "#C297FF",
           "agentscriptDomainTarget": "#56D4DD",
           "agentscriptErrorVariant": "#FF6B6B",
+          "agentscriptSchemaValue": "#B8D7FF",
           "agentscriptOpaqueInput": "#DBB2FF",
           "agentscriptDeclaredName": "#FFA657",
           "agentscriptConstName": "#F2CC60",
@@ -253,9 +270,21 @@
             }
           },
           {
+            "scope": "entity.name.function.generated-target.agentscript",
+            "settings": {
+              "foreground": "#C297FF"
+            }
+          },
+          {
             "scope": "constant.language.error-variant.agentscript",
             "settings": {
               "foreground": "#FF6B6B"
+            }
+          },
+          {
+            "scope": "constant.language.schema-value.agentscript",
+            "settings": {
+              "foreground": "#B8D7FF"
             }
           },
           {

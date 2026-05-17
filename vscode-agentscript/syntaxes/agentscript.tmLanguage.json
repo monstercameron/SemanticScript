@@ -28,10 +28,16 @@
       "include": "#primitiveTargets"
     },
     {
+      "include": "#generatedTargets"
+    },
+    {
       "include": "#domainTargets"
     },
     {
       "include": "#errorVariants"
+    },
+    {
+      "include": "#schemaValues"
     },
     {
       "include": "#qualifiedNames"
@@ -71,7 +77,7 @@
       "patterns": [
         {
           "name": "keyword.declaration.agentscript",
-          "match": "^(\\s*)(project|target|runtime|entry|module|dependency|dependencyEffect|dependencyExports|dependencyFunction|dependencyFunctionInput|dependencyFunctionOutput|dependencyFunctionEffect|dependencyFunctionAsync|importModule|type|typeInvariant|typeRepresentation|typeTrust|typeMemory|typeLayout|record|field|enum|enumCase|error|errorCase|operation|webServer|serverHost|serverPort|route|routeTimeout|routeMiddleware|jsonCodec|policy|errorPolicy|validator|codec|schema|unknownFields|resource|resourceKey|resourceValue|resourceKind|adapter|boundary|mapper|retryPolicy|timeoutBudget|capability|authority|mutex|shared|channel|const|var|testCovers)\\b"
+          "match": "^(\\s*)(section|project|target|runtime|entry|module|dependency|dependencyEffect|dependencyExports|dependencyFunction|dependencyFunctionInput|dependencyFunctionOutput|dependencyFunctionEffect|dependencyFunctionAsync|importModule|type|typeParameter|typeInvariant|typeRepresentation|typeTrust|typeMemory|typeLayout|typeLiteralEncoding|typeLiteralTerminator|record|recordLayout|recordAlign|field|fieldDefault|fieldInvariant|enum|enumCase|error|errorCase|operation|webServer|serverHost|serverPort|route|routeTimeout|routeMiddleware|storage|sharedState|domainLiteral|literal|listLiteral|jsonCodec|policy|errorPolicy|validator|codec|schema|unknownFields|resource|resourceKey|resourceValue|resourceKind|adapter|boundary|mapper|retryPolicy|timeoutBudget|capability|authority|mutex|shared|channel|listType|arrayType|sliceType|smallListType|mapType|const|var|testCovers)\\b"
         }
       ]
     },
@@ -79,7 +85,7 @@
       "patterns": [
         {
           "name": "keyword.context.agentscript",
-          "match": "^(\\s*)(input|output|effect|memory|async|purpose|invariant|warning|failure|guarantee|security|timing|observability)\\b"
+          "match": "^(\\s*)(input|output|effect|memory|memoryHeap|memoryArena|memoryAllocationSource|memoryStackLimit|async|operationBody|purpose|invariant|warning|failure|guarantee|security|timing|observability|dependencyPath|dependencyFailure|intrinsicName|runtimeBinding|runtimeBindingPrecondition|runtimeBindingFailure|recordConstructor|recordConstructorFailure|recordBuildFailure|jsonCodecStrict|jsonCodecUnknownFields|jsonCodecDecodeTarget|jsonCodecEncodeTarget|jsonCodecRequiredField|jsonCodecInput|jsonCodecOutput|jsonCodecDecodeFailure|jsonCodecEncodeFailure|jsonCodecLimit|trustBoundary|trustBoundaryKind|trustBoundaryInput|trustBoundaryOutput|trustBoundaryValidator|trustBoundarySource|domainLiteralSource|domainLiteralTrust|domainLiteralValidation|literalBytes|literalDigest|literalPreview|literalSource|literalTrust|sharedStateOwner|sharedStateGuard|guardTokenSource|guardTokenOwner|guardTokenProtects|guardTokenRelease|listAllocator|arrayLength|smallListInlineCapacity|smallListSpillAllocator|mapKey|mapValue|mapAllocator|listLiteralLength|listLiteralIndexBase|listLiteralIndexPolicy|listLiteralItem|collectionOperation|collectionOperationArg|collectionOperationOutput|collectionOperationFailure|collectionOperationEffect|collectionOperationAllocation|collectionOperationMutation|collectionOperationIndexPolicy|collectionOperationLengthSource|collectionOperationBorrowSource|collectionOperationCapacitySource|collectionOperationSpillAllocator|collectionOperationSpillFailure|retryMaxAttempts|retryInitialDelay|retryMaximumDelay|retryJitter|group|groupPurpose|groupInput|groupOutput|groupError|groupFailure|groupTiming|deferLogSink|deferRunOn|deferOrder|deferFailurePolicy|deferConsumes|deferAwaitLogSink|deferAwaitTimeout|deferWhenExitLogSink)\\b"
         }
       ]
     },
@@ -87,7 +93,7 @@
       "patterns": [
         {
           "name": "keyword.action.agentscript",
-          "match": "^(\\s*)(set|call|arg|run|start|await|bind|bindOk|bindError|ignoreOk|ignoreValue|makeError|new|fieldGet|fieldSet|timeout|cancelOn|defer|deferLog|deferAwaitLog|deferWhenExitLog|select|selectCase|runSelect|taskGroup|startInGroup|awaitGroup|bindGroupError|send|receive|lock|unlock|useRetry|useCapability)\\b"
+          "match": "^(\\s*)(set|call|arg|run|start|await|bind|bindOk|bindError|ignoreOk|ignoreValue|declareFailure|makeError|new|fieldGet|fieldSet|recordBuilder|recordSet|recordCopy|recordBuild|read|timeout|cancelOn|defer|deferLog|deferAwaitLog|deferWhenExitLog|select|selectCase|runSelect|taskGroup|startInGroup|awaitGroup|bindGroupError|send|receive|lock|unlock|useRetry|useCapability)\\b"
         }
       ]
     },
@@ -111,7 +117,7 @@
       "patterns": [
         {
           "name": "entity.name.function.primitive-target.agentscript",
-          "match": "\\b(?:console\\.writeLine|console\\.writeIntegerLine|console\\.writeInteger|math\\.(?:addI64|subtractI64|multiplyI64|divideI64|moduloI64|equalI64|notEqualI64|lessThanI64|lessThanOrEqualI64|greaterThanI64|greaterThanOrEqualI64|checkedMultiplyI64|subI64|mulI64|divI64|modI64|eqI64|neI64|ltI64|leI64|gtI64|geI64))\\b"
+          "match": "\\b(?:console\\.writeLine|console\\.writeIntegerLine|console\\.writeInteger|scheduler\\.sleep|retryPolicy\\.delayForAttempt|metrics\\.computeIncrementI64|math\\.(?:addI64|subtractI64|multiplyI64|divideI64|moduloI64|equalI64|notEqualI64|lessThanI64|lessThanOrEqualI64|greaterThanI64|greaterThanOrEqualI64|equalCSignedInt32|greaterThanOrEqualCByteCount|checkedMultiplyI64|subI64|mulI64|divI64|modI64|eqI64|neI64|ltI64|leI64|gtI64|geI64))\\b"
         }
       ]
     },
@@ -119,7 +125,15 @@
       "patterns": [
         {
           "name": "entity.name.function.domain-target.agentscript",
-          "match": "\\b[A-Z][A-Za-z0-9_]*\\.(?:add|addPositiveStep|subtract|subtractStep|subtractPositiveStep|multiply|multiplyByStep|multiplyByCounter|divide|modulo|moduloBy|equal|notEqual|lessThan|lessThanOrEqual|greaterThan|greaterThanOrEqual|square|checkedMultiply|checkedMultiplyByCounter|checkedMultiplyByStep)\\b"
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\.(?:add|addPositiveStep|subtract|subtractStep|subtractPositiveStep|multiply|multiplyByStep|multiplyByCounter|divide|modulo|moduloBy|equal|notEqual|lessThan|lessThanOrEqual|greaterThan|greaterThanOrEqual|square|checkedMultiply|checkedMultiplyByCounter|checkedMultiplyByStep|length|append|get|set|slice|insert|update|remove)\\b"
+        }
+      ]
+    },
+    "generatedTargets": {
+      "patterns": [
+        {
+          "name": "entity.name.function.generated-target.agentscript",
+          "match": "\\bjson\\.(?:decode|encode)\\.[A-Z][A-Za-z0-9_]*\\b"
         }
       ]
     },
@@ -128,6 +142,14 @@
         {
           "name": "constant.language.error-variant.agentscript",
           "match": "\\b[A-Z][A-Za-z0-9_]*\\.[A-Z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+    "schemaValues": {
+      "patterns": [
+        {
+          "name": "constant.language.schema-value.agentscript",
+          "match": "\\b(?:yes|no|local|module|process|sharedState|immutable|mutable|read|write|log|sourceTape|runtimeBinding|recordConstructor|intrinsic|externalDependency|codecDecode|codecEncode|collectionOperation|success|error|decode|encode|reject|ignore|keep|none|maximumBytes|sha256|utf8|nullByte|validatedRuntimeValue|trustedStaticLiteral|trustedUtf8Literal|trustedExternalCNullTerminatedUtf8Source|rawPointerToValidatedCString|rawUtf8ToValidatedText|row|immutableUpdate|borrowedView|zeroBasedChecked|zeroBasedCheckedRange|contiguousUniqueAscending|arena\\.request|arena\\.process|arena\\.static|returnOk|returnError|reverseRegistration|logAndSuppress|protectedBy|ownedBy)\\b"
         }
       ]
     },

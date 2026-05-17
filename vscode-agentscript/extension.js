@@ -6,27 +6,63 @@ const path = require('path');
 const vscode = require('vscode');
 
 const declarationVerbs = new Set([
+  'section',
   'project', 'target', 'runtime', 'entry', 'module', 'dependency', 'dependencyEffect',
   'dependencyExports', 'dependencyFunction', 'dependencyFunctionInput',
   'dependencyFunctionOutput', 'dependencyFunctionEffect', 'dependencyFunctionAsync',
-  'importModule', 'type', 'typeInvariant', 'typeRepresentation', 'typeTrust',
-  'typeMemory', 'typeLayout', 'record', 'field', 'enum', 'enumCase', 'error',
+  'importModule', 'type', 'typeParameter', 'typeInvariant', 'typeRepresentation', 'typeTrust',
+  'typeMemory', 'typeLayout', 'typeLiteralEncoding', 'typeLiteralTerminator',
+  'record', 'recordLayout', 'recordAlign', 'field', 'fieldDefault', 'fieldInvariant',
+  'enum', 'enumCase', 'error',
   'errorCase', 'operation', 'webServer', 'serverHost', 'serverPort', 'route',
-  'routeTimeout', 'routeMiddleware', 'jsonCodec', 'policy', 'errorPolicy',
+  'routeTimeout', 'routeMiddleware', 'storage', 'sharedState', 'domainLiteral',
+  'literal', 'listLiteral', 'jsonCodec', 'policy', 'errorPolicy',
   'validator', 'codec', 'schema', 'unknownFields', 'resource', 'resourceKey',
   'resourceValue', 'resourceKind', 'adapter', 'boundary', 'mapper', 'retryPolicy',
   'timeoutBudget', 'capability', 'authority', 'mutex', 'shared', 'channel',
+  'listType', 'arrayType', 'sliceType', 'smallListType', 'mapType',
   'const', 'var', 'testCovers',
 ]);
 
 const contextVerbs = new Set([
-  'input', 'output', 'effect', 'memory', 'async', 'purpose', 'invariant', 'warning',
-  'failure', 'guarantee', 'security', 'timing', 'observability',
+  'input', 'output', 'effect', 'memory', 'memoryHeap', 'memoryArena',
+  'memoryAllocationSource', 'memoryStackLimit', 'async', 'operationBody',
+  'purpose', 'invariant', 'warning', 'failure', 'guarantee', 'security',
+  'timing', 'observability',
+  'dependencyPath', 'dependencyFailure', 'intrinsicName',
+  'runtimeBinding', 'runtimeBindingPrecondition', 'runtimeBindingFailure',
+  'recordConstructor', 'recordConstructorFailure', 'recordBuildFailure',
+  'jsonCodecStrict', 'jsonCodecUnknownFields', 'jsonCodecDecodeTarget',
+  'jsonCodecEncodeTarget', 'jsonCodecRequiredField', 'jsonCodecInput',
+  'jsonCodecOutput', 'jsonCodecDecodeFailure', 'jsonCodecEncodeFailure',
+  'jsonCodecLimit',
+  'trustBoundary', 'trustBoundaryKind', 'trustBoundaryInput',
+  'trustBoundaryOutput', 'trustBoundaryValidator', 'trustBoundarySource',
+  'domainLiteralSource', 'domainLiteralTrust', 'domainLiteralValidation',
+  'literalBytes', 'literalDigest', 'literalPreview', 'literalSource', 'literalTrust',
+  'sharedStateOwner', 'sharedStateGuard',
+  'guardTokenSource', 'guardTokenOwner', 'guardTokenProtects', 'guardTokenRelease',
+  'listAllocator', 'arrayLength', 'smallListInlineCapacity', 'smallListSpillAllocator',
+  'mapKey', 'mapValue', 'mapAllocator',
+  'listLiteralLength', 'listLiteralIndexBase', 'listLiteralIndexPolicy', 'listLiteralItem',
+  'collectionOperation', 'collectionOperationArg', 'collectionOperationOutput',
+  'collectionOperationFailure', 'collectionOperationEffect', 'collectionOperationAllocation',
+  'collectionOperationMutation', 'collectionOperationIndexPolicy',
+  'collectionOperationLengthSource', 'collectionOperationBorrowSource',
+  'collectionOperationCapacitySource', 'collectionOperationSpillAllocator',
+  'collectionOperationSpillFailure',
+  'retryMaxAttempts', 'retryInitialDelay', 'retryMaximumDelay', 'retryJitter',
+  'group', 'groupPurpose', 'groupInput', 'groupOutput', 'groupError',
+  'groupFailure', 'groupTiming',
+  'deferLogSink', 'deferRunOn', 'deferOrder', 'deferFailurePolicy',
+  'deferConsumes', 'deferAwaitLogSink', 'deferAwaitTimeout', 'deferWhenExitLogSink',
 ]);
 
 const actionVerbs = new Set([
   'set', 'call', 'arg', 'run', 'start', 'await', 'bind', 'bindOk',
-  'bindError', 'ignoreOk', 'ignoreValue', 'makeError', 'new', 'fieldGet', 'fieldSet', 'timeout', 'cancelOn',
+  'bindError', 'ignoreOk', 'ignoreValue', 'declareFailure', 'makeError',
+  'new', 'fieldGet', 'fieldSet', 'recordBuilder', 'recordSet', 'recordCopy',
+  'recordBuild', 'read', 'timeout', 'cancelOn',
   'defer', 'deferLog', 'deferAwaitLog', 'deferWhenExitLog', 'select', 'selectCase',
   'runSelect', 'taskGroup', 'startInGroup', 'awaitGroup', 'bindGroupError',
   'send', 'receive', 'lock', 'unlock', 'useRetry', 'useCapability',
@@ -38,7 +74,7 @@ const controlVerbs = new Set([
   'returnValue',
 ]);
 
-const roleSuffixPattern = /(Call|Error|Failed|Failure|Result|Option|Request|Response|Token|Timeout|Deadline|Defer|Group|Policy|Codec|Validator|Mapper|Adapter|Boundary|Resource|Capability|Authority|Channel|Mutex|Lock|Select|Record|Field|Enum|Variant|Value|Counter|Step|Accumulator|Divisor|Remainder|Span|Metric|Trace)$/;
+const roleSuffixPattern = /(Call|Error|Failed|Failure|Result|Option|Request|Response|Token|Timeout|Deadline|Defer|Group|Policy|Codec|Validator|Mapper|Adapter|Boundary|Resource|Capability|Authority|Channel|Mutex|Lock|Guard|State|Storage|Select|Record|Builder|Field|Enum|Variant|Value|Counter|Count|Index|Length|Capacity|Allocator|Source|Target|Step|Accumulator|Divisor|Remainder|Span|Metric|Trace)$/;
 
 const primitiveTargets = new Map([
   ['console.writeLine', 'puts(text) -> i32. Writes one text line.'],
@@ -55,7 +91,12 @@ const primitiveTargets = new Map([
   ['math.lessThanOrEqualI64', 'i64 less-than-or-equal comparison returning Bool.'],
   ['math.greaterThanI64', 'i64 greater-than comparison returning Bool.'],
   ['math.greaterThanOrEqualI64', 'i64 greater-than-or-equal comparison returning Bool.'],
+  ['math.equalCSignedInt32', 'C signed 32-bit equality comparison returning Bool.'],
+  ['math.greaterThanOrEqualCByteCount', 'C byte-count greater-than-or-equal comparison returning Bool.'],
   ['math.checkedMultiplyI64', 'i64 signed multiply with overflow detection. Fallible target; use bindOk, bindError, and branchIfError.'],
+  ['scheduler.sleep', 'Async typed-duration sleep target. Use cancelOn, start, await, bindError, and branchIfError.'],
+  ['retryPolicy.delayForAttempt', 'Retry-policy delay calculation target. Fallible when policy or attempt state is invalid.'],
+  ['metrics.computeIncrementI64', 'Metrics-owned counter increment calculation. Fallible target; bind success and error explicitly.'],
   ['math.subI64', 'Alias for math.subtractI64.'],
   ['math.mulI64', 'Alias for math.multiplyI64.'],
   ['math.divI64', 'Alias for math.divideI64.'],
@@ -68,12 +109,82 @@ const primitiveTargets = new Map([
   ['math.geI64', 'Alias for math.greaterThanOrEqualI64.'],
 ]);
 
+const generatedTargetPattern = /^(?:json\.(?:decode|encode)\.[A-Z][A-Za-z0-9_]*)$/;
+
+const generatedTargetHoverText = (text) => {
+  if (text.startsWith('json.decode.')) {
+    return 'Generated JSON decode target. It should be declared by jsonCodecDecodeTarget and backed by jsonCodec input, output, failure, strictness, and limit metadata.';
+  }
+
+  if (text.startsWith('json.encode.')) {
+    return 'Generated JSON encode target. It should be declared by jsonCodecEncodeTarget and backed by jsonCodec input, output, failure, strictness, and limit metadata.';
+  }
+
+  return 'Generated AgentScript target declared by metadata.';
+};
+
+const schemaValues = new Map([
+  ['yes', 'Boolean schema value.'],
+  ['no', 'Boolean schema value.'],
+  ['local', 'Storage scope for operation-local storage.'],
+  ['module', 'Storage scope for module-owned storage.'],
+  ['process', 'Storage scope for process-shared state.'],
+  ['sharedState', 'Shared-state storage scope. Reads and writes require guard-token authority.'],
+  ['immutable', 'Storage mutability: value cannot be changed after declaration.'],
+  ['mutable', 'Storage mutability: value can change through explicit set lines.'],
+  ['read', 'Effect or collection role mode: read.'],
+  ['write', 'Effect or collection role mode: write.'],
+  ['log', 'Effect mode: log/observability output.'],
+  ['sourceTape', 'operationBody kind for normal explicit AgentScript source tape.'],
+  ['runtimeBinding', 'operationBody kind for a semantic signature implemented by runtime binding metadata.'],
+  ['recordConstructor', 'operationBody kind for an operation-backed record constructor.'],
+  ['intrinsic', 'operationBody kind for a primitive intrinsic with intrinsicName metadata.'],
+  ['externalDependency', 'operationBody kind for an injected external dependency with dependencyPath metadata.'],
+  ['codecDecode', 'operationBody kind reserved for generated codec decode bodies.'],
+  ['codecEncode', 'operationBody kind reserved for generated codec encode bodies.'],
+  ['collectionOperation', 'operationBody kind reserved for generated collection operation bodies.'],
+  ['success', 'Generic/result type parameter role for the success value.'],
+  ['error', 'Generic/result type parameter role for the error value.'],
+  ['decode', 'Codec direction: bytes into typed record.'],
+  ['encode', 'Codec direction: typed record into bytes.'],
+  ['reject', 'Codec unknown-field policy: reject unknown fields.'],
+  ['ignore', 'Codec unknown-field policy: ignore unknown fields.'],
+  ['keep', 'Codec unknown-field policy: preserve unknown fields.'],
+  ['none', 'Explicit no-failure marker for an infallible contract.'],
+  ['maximumBytes', 'Codec or literal byte limit kind.'],
+  ['sha256', 'Digest algorithm.'],
+  ['utf8', 'UTF-8 string literal encoding.'],
+  ['nullByte', 'C-string null terminator rule.'],
+  ['validatedRuntimeValue', 'Trust-boundary source: value produced by validator at runtime.'],
+  ['trustedStaticLiteral', 'Trust-boundary source: static literal accepted by type literal rules.'],
+  ['trustedUtf8Literal', 'Trust-boundary source: static UTF-8 literal accepted by validation rules.'],
+  ['trustedExternalCNullTerminatedUtf8Source', 'Trust-boundary source: externally stored C-null-terminated UTF-8 data with digest/source metadata.'],
+  ['rawPointerToValidatedCString', 'Trust-boundary kind: raw pointer becomes validated C string.'],
+  ['rawUtf8ToValidatedText', 'Trust-boundary kind: raw UTF-8 becomes validated text.'],
+  ['row', 'Record layout kind: row layout.'],
+  ['immutableUpdate', 'Collection mutation mode: returns a new collection value.'],
+  ['borrowedView', 'Collection mutation/view mode: returns a borrowed view.'],
+  ['zeroBasedChecked', 'Collection index policy: zero-based and checked.'],
+  ['zeroBasedCheckedRange', 'Collection range policy: zero-based and checked.'],
+  ['contiguousUniqueAscending', 'List literal index policy: indices must be contiguous, unique, and ascending.'],
+  ['arena.request', 'Named request arena allocator.'],
+  ['arena.process', 'Named process arena allocator.'],
+  ['arena.static', 'Named static arena allocator.'],
+  ['returnOk', 'Defer lifecycle trigger for success returns.'],
+  ['returnError', 'Defer lifecycle trigger for error returns.'],
+  ['reverseRegistration', 'Defer ordering policy: cleanup runs in reverse registration order.'],
+  ['logAndSuppress', 'Defer failure policy: log cleanup failure and preserve the original return.'],
+  ['protectedBy', 'Authority marker: following token is the guard token protecting the operation.'],
+  ['ownedBy', 'Authority marker: following token owns the module mutation.'],
+]);
+
 const domainMethods = new Set([
   'add', 'addPositiveStep', 'subtract', 'subtractStep', 'subtractPositiveStep',
   'multiply', 'multiplyByStep', 'multiplyByCounter', 'divide', 'modulo', 'moduloBy',
   'equal', 'notEqual',
   'lessThan', 'lessThanOrEqual', 'greaterThan', 'greaterThanOrEqual',
   'square', 'checkedMultiply', 'checkedMultiplyByCounter', 'checkedMultiplyByStep',
+  'length', 'append', 'get', 'set', 'slice', 'insert', 'update', 'remove',
 ]);
 
 const primitiveTypes = new Map([
@@ -82,6 +193,17 @@ const primitiveTypes = new Map([
   ['ExitCode', '32-bit process exit code.'],
   ['Bool', 'Boolean value.'],
   ['String', 'Null-terminated UTF-8 string.'],
+  ['Bytes', 'Byte sequence.'],
+  ['Utf8Text', 'UTF-8 text value.'],
+  ['RawUtf8Text', 'Unvalidated UTF-8 text bytes.'],
+  ['RawJsonBytes', 'Untrusted JSON byte input.'],
+  ['JsonBytes', 'Validated/generated JSON bytes.'],
+  ['CNullTerminatedByteString', 'Validated null-terminated C byte string.'],
+  ['RawCStringPointer', 'Raw C string pointer before trust-boundary validation.'],
+  ['COpaqueMemoryAddress', 'Opaque memory address value.'],
+  ['CByteCount', 'C ABI byte-count value.'],
+  ['CSignedInt32', 'C ABI signed 32-bit integer.'],
+  ['CSignedInt64', 'C ABI signed 64-bit integer.'],
   ['Void', 'No useful success value. Used with ignoreOk/ignoreValue to make explicit discards visible.'],
   ['DurationMilliseconds', '64-bit duration in milliseconds.'],
   ['MonotonicMilliseconds', '64-bit monotonic timestamp in milliseconds.'],
@@ -90,6 +212,7 @@ const primitiveTypes = new Map([
 
 const opaqueInputs = new Set([
   'console', 'process', 'environment', 'httpRequest', 'databaseClient', 'clock',
+  'accountRepository', 'metricsRuntime', 'scheduler', 'metricsLock',
 ]);
 
 const verbHoverText = new Map([
@@ -209,6 +332,122 @@ const verbHoverText = new Map([
   ['returnValue', 'Return plain value.'],
 ]);
 
+const refinedVerbHoverText = new Map([
+  ['section', 'Attention anchor: section lowerCamel.dot.path. Sections do not create scope.'],
+  ['storage', 'Refined storage declaration: storage scope mutability name Type value. Makes local/module and mutable/immutable explicit.'],
+  ['sharedState', 'Exceptional shared mutable state declaration. Requires owner, guard, and guard-token protected reads/writes.'],
+  ['read', 'Refined guarded read action, such as read sharedState value Type slot protectedBy guardToken.'],
+  ['typeParameter', 'Split generic/type argument metadata: typeParameter Alias role Type. Avoids overloaded type tails.'],
+  ['operationBody', 'Operation body source contract. Use sourceTape for normal tape, or runtimeBinding, recordConstructor, intrinsic, externalDependency for bodyless targets.'],
+  ['runtimeBinding', 'Runtime target metadata for a semantic operation signature. This is not an alias.'],
+  ['runtimeBindingPrecondition', 'Runtime binding safety precondition. Use one line per precondition.'],
+  ['runtimeBindingFailure', 'Runtime binding failure edge. Use one line per typed failure origin.'],
+  ['intrinsicName', 'Intrinsic binding metadata required when operationBody is intrinsic.'],
+  ['dependencyPath', 'External dependency binding metadata required when operationBody is externalDependency.'],
+  ['dependencyFailure', 'External dependency failure edge.'],
+  ['recordLayout', 'Record layout metadata. Split from record so layout is independently addressable.'],
+  ['recordAlign', 'Record alignment metadata. Split from record so memory layout is explicit.'],
+  ['recordConstructor', 'Record-constructor body metadata for a semantic constructor operation.'],
+  ['recordConstructorFailure', 'Failure edge for an operation-backed record constructor.'],
+  ['recordBuilder', 'Executable record builder creation. Use for large records instead of object literals.'],
+  ['recordSet', 'Executable builder field assignment. Sets exactly one field in one builder.'],
+  ['recordCopy', 'Executable immutable-update builder creation from an existing record.'],
+  ['recordBuild', 'Executable builder finalization call. Must be run and bound like a call object.'],
+  ['recordBuildFailure', 'Failure edge for one recordBuild call.'],
+  ['memoryHeap', 'Memory contract: whether general heap allocation is allowed.'],
+  ['memoryArena', 'Memory contract: named arena allocation allowed for this operation.'],
+  ['memoryAllocationSource', 'Memory contract: names the call that justifies dynamic allocation.'],
+  ['memoryStackLimit', 'Memory contract: stack bound for an operation.'],
+  ['domainLiteral', 'Named typed domain literal. Prefer this for reused domain constants and platform values.'],
+  ['domainLiteralSource', 'Provenance edge for platform or external literal values.'],
+  ['domainLiteralTrust', 'Trust edge explaining why a domain literal may carry a trust-boundary type.'],
+  ['domainLiteralValidation', 'Validation edge explaining why a domain literal may carry a validated app type.'],
+  ['literal', 'Long literal declaration. Pair with size, digest, preview, source, and trust lines.'],
+  ['literalBytes', 'Long literal byte-size metadata.'],
+  ['literalDigest', 'Long literal digest metadata.'],
+  ['literalPreview', 'Short recoverability preview for a long literal.'],
+  ['literalSource', 'Source path or provenance for a long literal.'],
+  ['literalTrust', 'Trust edge for a long literal.'],
+  ['trustBoundary', 'Marks a type that requires validation or trusted provenance before use.'],
+  ['trustBoundaryKind', 'Names the kind of trust transition.'],
+  ['trustBoundaryInput', 'Names the raw input type for a trust boundary.'],
+  ['trustBoundaryOutput', 'Names the trusted output type for a trust boundary.'],
+  ['trustBoundaryValidator', 'Names the operation that can cross a trust boundary.'],
+  ['trustBoundarySource', 'Names one allowed trusted source kind.'],
+  ['typeLiteralEncoding', 'String-literal encoding contract for a type.'],
+  ['typeLiteralTerminator', 'String-literal terminator contract for a type.'],
+  ['jsonCodecStrict', 'JSON codec strictness edge. Split from jsonCodec to keep one fact per line.'],
+  ['jsonCodecUnknownFields', 'JSON codec unknown-field policy edge.'],
+  ['jsonCodecDecodeTarget', 'Generated JSON decode target for a record codec.'],
+  ['jsonCodecEncodeTarget', 'Generated JSON encode target for a record codec.'],
+  ['jsonCodecRequiredField', 'One required field for strict codec decoding.'],
+  ['jsonCodecInput', 'Input role and type for generated codec direction.'],
+  ['jsonCodecOutput', 'Output shape for generated codec direction.'],
+  ['jsonCodecDecodeFailure', 'One generated decode failure edge.'],
+  ['jsonCodecEncodeFailure', 'One generated encode failure edge.'],
+  ['jsonCodecLimit', 'One codec limit edge such as maximumBytes or maxDepth.'],
+  ['listType', 'Typed dynamic-length value collection declaration.'],
+  ['listAllocator', 'Allocator metadata for a list type.'],
+  ['arrayType', 'Typed fixed-length array declaration.'],
+  ['arrayLength', 'Fixed array length metadata.'],
+  ['sliceType', 'Borrowed view collection declaration.'],
+  ['smallListType', 'Small-buffer collection declaration.'],
+  ['smallListInlineCapacity', 'Inline-capacity metadata for a small list.'],
+  ['smallListSpillAllocator', 'Spill allocator metadata for a small list.'],
+  ['mapType', 'Typed dictionary declaration.'],
+  ['mapKey', 'Map key type metadata.'],
+  ['mapValue', 'Map value type metadata.'],
+  ['mapAllocator', 'Map allocator metadata.'],
+  ['collectionOperation', 'Collection operation contract declaration.'],
+  ['collectionOperationArg', 'Required argument role for a collection operation.'],
+  ['collectionOperationOutput', 'Result shape for a collection operation.'],
+  ['collectionOperationFailure', 'Failure edge for a collection operation.'],
+  ['collectionOperationEffect', 'Effect edge for a collection operation role.'],
+  ['collectionOperationAllocation', 'Allocator edge for a collection operation.'],
+  ['collectionOperationMutation', 'Mutation mode edge for a collection operation.'],
+  ['collectionOperationIndexPolicy', 'Index origin and bounds policy for indexed collection operations.'],
+  ['collectionOperationLengthSource', 'Length source for indexed collection operations.'],
+  ['collectionOperationBorrowSource', 'Borrow source for view-producing collection operations.'],
+  ['collectionOperationCapacitySource', 'Capacity source for fixed/small collection operations.'],
+  ['collectionOperationSpillAllocator', 'Spill allocator edge for small collection operations.'],
+  ['collectionOperationSpillFailure', 'Spill failure edge for small collection operations.'],
+  ['listLiteral', 'Named literal collection declaration.'],
+  ['listLiteralLength', 'Literal collection length metadata.'],
+  ['listLiteralIndexBase', 'Literal collection index base metadata.'],
+  ['listLiteralIndexPolicy', 'Literal collection completeness/index policy.'],
+  ['listLiteralItem', 'One item in a literal collection.'],
+  ['sharedStateOwner', 'Owner metadata for shared mutable state.'],
+  ['sharedStateGuard', 'Guard metadata for shared mutable state.'],
+  ['guardTokenSource', 'Connects a guard token to the acquire call that produced it.'],
+  ['guardTokenOwner', 'Owner metadata for a guard token.'],
+  ['guardTokenProtects', 'Names the shared-state slot protected by a guard token.'],
+  ['guardTokenRelease', 'Connects a guard token to the cleanup that releases it.'],
+  ['deferLogSink', 'Log sink metadata required for deferLog cleanup failures.'],
+  ['deferRunOn', 'Cleanup lifecycle metadata: returnOk and/or returnError.'],
+  ['deferOrder', 'Cleanup ordering metadata.'],
+  ['deferFailurePolicy', 'Cleanup failure policy, usually logAndSuppress.'],
+  ['deferConsumes', 'Resource or guard token consumed at cleanup execution.'],
+  ['deferAwaitLogSink', 'Log sink metadata for awaited async cleanup.'],
+  ['deferAwaitTimeout', 'Timeout bound for awaited async cleanup.'],
+  ['deferWhenExitLogSink', 'Log sink metadata for conditional cleanup.'],
+  ['retryMaxAttempts', 'Retry policy max-attempts edge.'],
+  ['retryInitialDelay', 'Retry policy initial-delay edge.'],
+  ['retryMaximumDelay', 'Retry policy maximum-delay edge.'],
+  ['retryJitter', 'Retry policy jitter edge.'],
+  ['group', 'Symbolic attention group. Groups are metadata, not lexical blocks or scopes.'],
+  ['groupPurpose', 'Purpose metadata for a symbolic group.'],
+  ['groupInput', 'Value consumed by a symbolic group.'],
+  ['groupOutput', 'Value produced by a symbolic group.'],
+  ['groupError', 'Raw error value produced by bindError inside a group.'],
+  ['groupFailure', 'Domain failure value produced by declareFailure or makeError inside a group.'],
+  ['groupTiming', 'Timing policy or duration related to a group.'],
+  ['declareFailure', 'Create a no-payload domain failure value before returnError.'],
+]);
+
+refinedVerbHoverText.forEach((text, verb) => {
+  verbHoverText.set(verb, text);
+});
+
 const semanticLegend = new vscode.SemanticTokensLegend([
   'agentscriptDeclarationVerb',
   'agentscriptContextVerb',
@@ -216,8 +455,10 @@ const semanticLegend = new vscode.SemanticTokensLegend([
   'agentscriptControlVerb',
   'agentscriptRoleSuffix',
   'agentscriptPrimitiveTarget',
+  'agentscriptGeneratedTarget',
   'agentscriptDomainTarget',
   'agentscriptErrorVariant',
+  'agentscriptSchemaValue',
   'agentscriptOpaqueInput',
   'agentscriptDeclaredName',
   'agentscriptConstName',
@@ -242,10 +483,118 @@ let linterEnabled = true;
 let linterRunMode = 'onSave';
 let linterPythonPath = 'python';
 let linterConfiguredPath = '';
+let linterSkipFutureSyntax = true;
 let diagnosticCollection = null;
 let lintStatusBarItem = null;
 const lintUpdateTimeouts = new Map();
 const runningLintProcesses = new Map();
+
+const futureSyntaxLinterSkipVerbs = new Set([
+  'section',
+  'storage',
+  'sharedState',
+  'operationBody',
+  'memoryHeap',
+  'memoryArena',
+  'memoryAllocationSource',
+  'memoryStackLimit',
+  'runtimeBinding',
+  'runtimeBindingPrecondition',
+  'runtimeBindingFailure',
+  'intrinsicName',
+  'dependencyPath',
+  'dependencyFailure',
+  'recordConstructor',
+  'recordConstructorFailure',
+  'recordBuildFailure',
+  'typeParameter',
+  'typeLiteralEncoding',
+  'typeLiteralTerminator',
+  'trustBoundary',
+  'trustBoundaryKind',
+  'trustBoundaryInput',
+  'trustBoundaryOutput',
+  'trustBoundaryValidator',
+  'trustBoundarySource',
+  'domainLiteral',
+  'domainLiteralSource',
+  'domainLiteralTrust',
+  'domainLiteralValidation',
+  'literal',
+  'literalBytes',
+  'literalDigest',
+  'literalPreview',
+  'literalSource',
+  'literalTrust',
+  'jsonCodec',
+  'jsonCodecStrict',
+  'jsonCodecUnknownFields',
+  'jsonCodecDecodeTarget',
+  'jsonCodecEncodeTarget',
+  'jsonCodecRequiredField',
+  'jsonCodecInput',
+  'jsonCodecOutput',
+  'jsonCodecDecodeFailure',
+  'jsonCodecEncodeFailure',
+  'jsonCodecLimit',
+  'recordBuilder',
+  'recordSet',
+  'recordCopy',
+  'recordBuild',
+  'listType',
+  'listAllocator',
+  'arrayType',
+  'arrayLength',
+  'sliceType',
+  'smallListType',
+  'smallListInlineCapacity',
+  'smallListSpillAllocator',
+  'mapType',
+  'mapKey',
+  'mapValue',
+  'mapAllocator',
+  'listLiteral',
+  'listLiteralLength',
+  'listLiteralIndexBase',
+  'listLiteralIndexPolicy',
+  'listLiteralItem',
+  'collectionOperation',
+  'collectionOperationArg',
+  'collectionOperationOutput',
+  'collectionOperationFailure',
+  'collectionOperationEffect',
+  'collectionOperationAllocation',
+  'collectionOperationMutation',
+  'collectionOperationIndexPolicy',
+  'collectionOperationLengthSource',
+  'collectionOperationBorrowSource',
+  'collectionOperationCapacitySource',
+  'collectionOperationSpillAllocator',
+  'collectionOperationSpillFailure',
+  'group',
+  'groupPurpose',
+  'groupInput',
+  'groupOutput',
+  'groupError',
+  'groupFailure',
+  'groupTiming',
+  'guardTokenSource',
+  'guardTokenOwner',
+  'guardTokenProtects',
+  'guardTokenRelease',
+  'deferLog',
+  'deferLogSink',
+  'deferRunOn',
+  'deferOrder',
+  'deferFailurePolicy',
+  'deferConsumes',
+  'deferAwaitLog',
+  'deferAwaitLogSink',
+  'deferAwaitTimeout',
+  'deferWhenExitLog',
+  'deferWhenExitLogSink',
+  'read',
+]);
 
 const verbStyles = {
   declaration: { color: '#FF7B72', fontWeight: '600' },
@@ -464,21 +813,51 @@ const isDomainTarget = (text) => {
 };
 
 const operationReferenceVerbs = new Set([
-  'input', 'output', 'effect', 'memory', 'async', 'purpose', 'invariant',
-  'warning', 'failure', 'guarantee', 'security', 'timing', 'observability',
-  'authority',
+  'input', 'output', 'effect', 'memory', 'memoryHeap', 'memoryArena',
+  'memoryAllocationSource', 'memoryStackLimit', 'async', 'operationBody',
+  'purpose', 'invariant', 'warning', 'failure', 'guarantee', 'security',
+  'timing', 'observability', 'authority', 'runtimeBinding',
+  'runtimeBindingPrecondition', 'runtimeBindingFailure', 'intrinsicName',
+  'dependencyPath', 'dependencyFailure', 'recordConstructor',
+  'recordConstructorFailure', 'jsonCodecStrict', 'jsonCodecUnknownFields',
+  'jsonCodecDecodeTarget', 'jsonCodecEncodeTarget', 'jsonCodecRequiredField',
+  'jsonCodecInput', 'jsonCodecOutput', 'jsonCodecDecodeFailure',
+  'jsonCodecEncodeFailure', 'jsonCodecLimit', 'typeParameter',
+  'typeLiteralEncoding', 'typeLiteralTerminator', 'trustBoundary',
+  'trustBoundaryKind', 'trustBoundaryInput', 'trustBoundaryOutput',
+  'trustBoundaryValidator', 'trustBoundarySource', 'domainLiteralSource',
+  'domainLiteralTrust', 'domainLiteralValidation', 'literalBytes',
+  'literalDigest', 'literalPreview', 'literalSource', 'literalTrust',
+  'sharedStateOwner', 'sharedStateGuard', 'guardTokenSource',
+  'guardTokenOwner', 'guardTokenProtects', 'guardTokenRelease',
+  'listAllocator', 'arrayLength', 'smallListInlineCapacity',
+  'smallListSpillAllocator', 'mapKey', 'mapValue', 'mapAllocator',
+  'listLiteralLength', 'listLiteralIndexBase', 'listLiteralIndexPolicy',
+  'listLiteralItem', 'collectionOperationArg', 'collectionOperationOutput',
+  'collectionOperationFailure', 'collectionOperationEffect',
+  'collectionOperationAllocation', 'collectionOperationMutation',
+  'collectionOperationIndexPolicy', 'collectionOperationLengthSource',
+  'collectionOperationBorrowSource', 'collectionOperationCapacitySource',
+  'collectionOperationSpillAllocator', 'collectionOperationSpillFailure',
+  'retryMaxAttempts', 'retryInitialDelay', 'retryMaximumDelay', 'retryJitter',
+  'groupPurpose', 'groupInput', 'groupOutput', 'groupError', 'groupFailure',
+  'groupTiming', 'deferLogSink', 'deferRunOn', 'deferOrder',
+  'deferFailurePolicy', 'deferConsumes', 'deferAwaitLogSink',
+  'deferAwaitTimeout', 'deferWhenExitLogSink',
 ]);
 
 const namedDeclarationVerbs = new Set([
   'project', 'operation', 'webServer', 'record', 'enum', 'error', 'codec',
   'jsonCodec', 'validator', 'mapper', 'adapter', 'boundary', 'policy',
   'errorPolicy', 'retryPolicy', 'timeoutBudget', 'resource', 'capability',
-  'mutex', 'shared', 'channel',
+  'mutex', 'shared', 'channel', 'section', 'domainLiteral', 'literal',
+  'listLiteral', 'listType', 'arrayType', 'sliceType', 'smallListType',
+  'mapType', 'collectionOperation',
 ]);
 
 const singleCallReferenceVerbs = new Set([
   'run', 'start', 'await', 'timeout', 'cancelOn', 'ignoreOk', 'ignoreValue',
-  'useRetry',
+  'useRetry', 'recordBuild',
 ]);
 
 const branchLabelPositions = new Map([
@@ -507,8 +886,42 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
     return 'agentscriptMutableName';
   }
 
-  if (verb === 'set' && index === 1) {
+  if (verb === 'type' && index === 1) {
+    return 'agentscriptDeclaredName';
+  }
+
+  if ((verb === 'enumCase' || verb === 'errorCase') && index === 2) {
+    return 'agentscriptDeclaredName';
+  }
+
+  if ((verb === 'field' || verb === 'fieldDefault' || verb === 'fieldInvariant') && index === 2) {
+    return 'agentscriptArgumentName';
+  }
+
+  if (verb === 'typeParameter' && index === 2 && (text === 'success' || text === 'error')) {
+    return 'agentscriptSchemaValue';
+  }
+
+  if (verb === 'storage' && index === 3) {
+    return tokens[2] && tokens[2].text === 'mutable'
+      ? 'agentscriptMutableName'
+      : 'agentscriptConstName';
+  }
+
+  if (verb === 'sharedState' && index === 3) {
     return 'agentscriptMutableName';
+  }
+
+  if (verb === 'set' && index === 1 && !['local', 'module', 'sharedState'].includes(text)) {
+    return 'agentscriptMutableName';
+  }
+
+  if (verb === 'set' && index === 2 && tokens[1] && ['local', 'module', 'sharedState'].includes(tokens[1].text)) {
+    return 'agentscriptMutableName';
+  }
+
+  if (verb === 'read' && index === 2 && tokens[1] && tokens[1].text === 'sharedState') {
+    return 'agentscriptDeclaredName';
   }
 
   if (verb === 'label' && index === 1) {
@@ -521,6 +934,22 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
 
   if (verb === 'call' && index === 1) {
     return 'agentscriptCallObject';
+  }
+
+  if (verb === 'recordBuild' && index === 1) {
+    return 'agentscriptCallObject';
+  }
+
+  if (verb === 'recordBuildFailure' && index === 1) {
+    return 'agentscriptCallObject';
+  }
+
+  if (verb === 'memoryAllocationSource' && index === 2) {
+    return 'agentscriptCallObject';
+  }
+
+  if (verb === 'recordBuilder' && index === 1) {
+    return 'agentscriptDeclaredName';
   }
 
   if (verb === 'arg' && index === 1) {
@@ -539,8 +968,52 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
     return 'agentscriptCallObject';
   }
 
-  if (verb === 'makeError' && index === 1) {
+  if ((verb === 'bind' || verb === 'bindOk') && index === 1) {
+    return 'agentscriptConstName';
+  }
+
+  if (verb === 'bindError' && index === 1) {
     return 'agentscriptMutableName';
+  }
+
+  if ((verb === 'makeError' || verb === 'declareFailure') && index === 1) {
+    return 'agentscriptMutableName';
+  }
+
+  if (verb === 'input' && index === 2) {
+    return 'agentscriptArgumentName';
+  }
+
+  if (verb === 'fieldGet' && index === 1) {
+    return 'agentscriptConstName';
+  }
+
+  if (verb === 'fieldGet' && index === 4) {
+    return 'agentscriptArgumentName';
+  }
+
+  if (verb === 'fieldSet' && index === 1) {
+    return 'agentscriptConstName';
+  }
+
+  if (verb === 'fieldSet' && index === 4) {
+    return 'agentscriptArgumentName';
+  }
+
+  if (verb === 'recordCopy' && index === 1) {
+    return 'agentscriptDeclaredName';
+  }
+
+  if (verb === 'recordSet' && index === 2) {
+    return 'agentscriptArgumentName';
+  }
+
+  if (verb === 'guardTokenSource' && index === 2) {
+    return 'agentscriptCallObject';
+  }
+
+  if (verb === 'guardTokenRelease' && index === 2) {
+    return 'agentscriptDeclaredName';
   }
 
   if (namedDeclarationVerbs.has(verb) && index === 1) {
@@ -551,7 +1024,47 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
     return 'agentscriptDeclaredName';
   }
 
-  if ((verb === 'effect' || verb === 'dependencyEffect') && index >= 2 && isLowerQualifiedName(text)) {
+  if (verb === 'collectionOperationArg' && index === 2) {
+    return 'agentscriptArgumentName';
+  }
+
+  if (verb === 'jsonCodecInput' && index === 3) {
+    return 'agentscriptArgumentName';
+  }
+
+  if (verb === 'jsonCodecRequiredField' && index === 2) {
+    return 'agentscriptArgumentName';
+  }
+
+  if (verb.startsWith('group') && index === 1) {
+    return 'agentscriptDeclaredName';
+  }
+
+  if ((verb.startsWith('defer') || verb === 'guardTokenRelease') && index === 1) {
+    return 'agentscriptDeclaredName';
+  }
+
+  if ((verb === 'deferLog' || verb === 'deferAwaitLog') && index === 2) {
+    return 'agentscriptDeclaredName';
+  }
+
+  if (verb === 'deferWhenExitLog' && index === 3) {
+    return 'agentscriptDeclaredName';
+  }
+
+  if ((verb === 'deferLogSink' || verb === 'deferAwaitLogSink' || verb === 'deferWhenExitLogSink') && index === 2 && isLowerQualifiedName(text)) {
+    return 'agentscriptEffectPath';
+  }
+
+  if ((verb === 'effect' || verb === 'dependencyEffect') && index >= 3 && /^[a-z][A-Za-z0-9_]*(?:\.[a-zA-Z_][A-Za-z0-9_]*)*$/.test(text)) {
+    return 'agentscriptEffectPath';
+  }
+
+  if ((verb === 'runtimeBinding' || verb === 'dependencyPath' || verb === 'intrinsicName') && index === 2 && isLowerQualifiedName(text)) {
+    return 'agentscriptEffectPath';
+  }
+
+  if (verb === 'collectionOperationEffect' && index === 3 && /^[a-z][A-Za-z0-9_]*(?:\.[a-zA-Z_][A-Za-z0-9_]*)*$/.test(text)) {
     return 'agentscriptEffectPath';
   }
 
@@ -615,12 +1128,20 @@ const tokenTypeForSymbol = (text, index, tokens) => {
     return contextTokenType;
   }
 
+  if (schemaValues.has(text)) {
+    return 'agentscriptSchemaValue';
+  }
+
   if (opaqueInputs.has(text)) {
     return 'agentscriptOpaqueInput';
   }
 
   if (primitiveTargets.has(text)) {
     return 'agentscriptPrimitiveTarget';
+  }
+
+  if (generatedTargetPattern.test(text)) {
+    return 'agentscriptGeneratedTarget';
   }
 
   if (isDomainTarget(text)) {
@@ -650,6 +1171,18 @@ const tokenTypeForSymbol = (text, index, tokens) => {
   return null;
 };
 
+const roleSuffixBaseTokenTypes = new Set([
+  'agentscriptDeclaredName',
+  'agentscriptConstName',
+  'agentscriptMutableName',
+  'agentscriptCallObject',
+  'agentscriptArgumentName',
+  'agentscriptLabelName',
+  'variable',
+]);
+
+const canSplitRoleSuffix = (tokenType) => roleSuffixBaseTokenTypes.has(tokenType);
+
 const provideDocumentSemanticTokens = (document) => {
   const builder = new vscode.SemanticTokensBuilder(semanticLegend);
 
@@ -658,21 +1191,24 @@ const provideDocumentSemanticTokens = (document) => {
     const tokens = tokenizeLine(lineText);
 
     tokens.forEach((token, tokenIndex) => {
-      const contextTokenType = contextTokenTypeForSymbol(token.text, tokenIndex, tokens);
+      const tokenType = tokenTypeForSymbol(token.text, tokenIndex, tokens);
       const suffixMatch = token.text.match(roleSuffixPattern);
 
-      if (tokenIndex > 0 && suffixMatch && /^[a-z][A-Za-z0-9_]*$/.test(token.text)) {
+      if (
+        tokenIndex > 0
+        && suffixMatch
+        && /^[a-z][A-Za-z0-9_]*$/.test(token.text)
+        && canSplitRoleSuffix(tokenType)
+      ) {
         const suffixStart = token.start + token.text.length - suffixMatch[0].length;
 
         if (suffixStart > token.start) {
-          builder.push(lineIndex, token.start, suffixStart - token.start, contextTokenType || 'variable', []);
+          builder.push(lineIndex, token.start, suffixStart - token.start, tokenType || 'variable', []);
         }
 
         builder.push(lineIndex, suffixStart, suffixMatch[0].length, 'agentscriptRoleSuffix', []);
         return;
       }
-
-      const tokenType = tokenTypeForSymbol(token.text, tokenIndex, tokens);
 
       if (tokenType) {
         builder.push(lineIndex, token.start, token.length, tokenType, []);
@@ -754,18 +1290,23 @@ const provideHover = (document, position) => {
   const { token, tokenIndex, tokens } = found;
   const text = token.text;
 
+  const tokenType = tokenTypeForSymbol(text, tokenIndex, tokens);
   const suffixHover = roleSuffixHover(token, position.character);
 
-  if (suffixHover && tokenIndex > 0) {
+  if (suffixHover && tokenIndex > 0 && canSplitRoleSuffix(tokenType)) {
     return suffixHover;
   }
 
   if (tokenIndex === 0 && verbHoverText.has(text)) {
-    return markdownHover(`AST verb: ${text}`, verbHoverText.get(text));
+    return markdownHover(`AgentScript verb: ${text}`, verbHoverText.get(text));
   }
 
   if (primitiveTargets.has(text)) {
     return markdownHover(`Primitive call target: ${text}`, primitiveTargets.get(text));
+  }
+
+  if (generatedTargetPattern.test(text)) {
+    return markdownHover(`Generated target: ${text}`, generatedTargetHoverText(text));
   }
 
   if (isDomainTarget(text)) {
@@ -784,6 +1325,10 @@ const provideHover = (document, position) => {
 
   if (primitiveTypes.has(text)) {
     return markdownHover(`Primitive type: ${text}`, primitiveTypes.get(text));
+  }
+
+  if (schemaValues.has(text)) {
+    return markdownHover(`Schema value: ${text}`, schemaValues.get(text));
   }
 
   if (opaqueInputs.has(text)) {
@@ -822,11 +1367,34 @@ const syncConfiguration = () => {
   linterRunMode = linterConfig.get('run', 'onSave');
   linterPythonPath = linterConfig.get('pythonPath', 'python');
   linterConfiguredPath = linterConfig.get('path', '');
+  linterSkipFutureSyntax = linterConfig.get('skipFutureSyntax', true);
 };
 
 const isAgentScriptDocument = (document) => (
   document && document.languageId === 'agentscript' && document.uri.scheme === 'file'
 );
+
+const documentUsesFutureSyntax = (document) => {
+  const text = document.getText();
+
+  if (
+    text.includes('future refined syntax')
+    || text.includes('not current executable AgentScript')
+  ) {
+    return true;
+  }
+
+  return text.split(/\r?\n/).some((line) => {
+    const trimmedLine = line.trim();
+
+    if (!trimmedLine || trimmedLine.startsWith('#')) {
+      return false;
+    }
+
+    const verb = trimmedLine.split(/\s+/, 1)[0];
+    return futureSyntaxLinterSkipVerbs.has(verb);
+  });
+};
 
 const candidateLinterPaths = (document) => {
   const candidates = [];
@@ -981,6 +1549,21 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
     return;
   }
 
+  const documentKey = document.uri.toString();
+  const existingProcess = runningLintProcesses.get(documentKey);
+
+  if (existingProcess) {
+    existingProcess.kill();
+    runningLintProcesses.delete(documentKey);
+  }
+
+  if (linterSkipFutureSyntax && documentUsesFutureSyntax(document)) {
+    diagnosticCollection.delete(document.uri);
+    setLinterStatus('$(info) AgentScript future syntax', 'Current aslint is skipped for refined future syntax.');
+    clearLinterStatusLater();
+    return;
+  }
+
   const linterPath = findLinterPath(document);
 
   if (!linterPath) {
@@ -993,13 +1576,6 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
     }
 
     return;
-  }
-
-  const documentKey = document.uri.toString();
-  const existingProcess = runningLintProcesses.get(documentKey);
-
-  if (existingProcess) {
-    existingProcess.kill();
   }
 
   setLinterStatus('$(sync~spin) AgentScript lint', document.fileName);
