@@ -20,3 +20,11 @@
   - Added compiler unit tests, AS-written compiler parity checks, and ignored generated parity build outputs.
 - `de281cd6274ddce624e7267ac241bd87d6f5539f` - `docs: document AgentScript 1.0 toolchain`
   - Refreshed the implementation README and added AgentScript-specific release notes for the 1.0 toolchain.
+- `ac04baca0c664ab19c56fcc4a7c6e15dde8b3d90` - `docs: update dated changelog`
+  - Added the latest logical source commits to this date-grouped changelog.
+- `ddadd5a5f9eaa12fc3a431d428da2e9ef748e1e3` - `compiler: support typed AS helper operations`
+  - Added typed same-file user-operation returns, lazy `puts` / `printf` extern declarations, integer/float conversion lowering, and stdlib-style helper use in `bootstrap_general.as`.
+- `7f5716e21ff6ed3287a6cc49957bd423283ca251` - `stdlib: add AS standard library self-tests`
+  - Added 28 standalone `stdlib_as` modules, a stdlib sanity smoke program, and a test harness that compiles and runs every stdlib module.
+- `1745d93ddb41e2ca0e3ef92da78df65fbf1cbe9c` - `docs: refresh AgentScript project state`
+  - Refreshed the README, AST, bootstrap, linter, release-note, stdlib, and `as_python` documentation to match the current project state.
