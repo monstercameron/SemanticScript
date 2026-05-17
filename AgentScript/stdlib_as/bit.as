@@ -16,12 +16,12 @@ errorCase MainError TestFailed CSignedInt32
 # for compound ops; acceptable for tooling, not for hot loops.
 #
 # Operations:
-#   bitShiftLeft(n, k)        - n * 2^k (clipped at 64-bit width).
-#   bitShiftRight(n, k)       - n / 2^k (arithmetic, signed).
-#   testBit(n, k)             - 1 if bit k of n is set, 0 otherwise.
-#   setBit(n, k)              - n with bit k forced to 1.
-#   clearBit(n, k)            - n with bit k forced to 0.
-#   flipBit(n, k)             - n with bit k toggled.
+#   shiftSignedInt64BitsLeft(n, k)        - n * 2^k (clipped at 64-bit width).
+#   shiftSignedInt64BitsRight(n, k)       - n / 2^k (arithmetic, signed).
+#   isSignedInt64BitSet(n, k)             - 1 if bit k of n is set, 0 otherwise.
+#   setSignedInt64Bit(n, k)              - n with bit k forced to 1.
+#   clearSignedInt64Bit(n, k)            - n with bit k forced to 0.
+#   toggleSignedInt64Bit(n, k)             - n with bit k toggled.
 #   bitwiseAnd(a, b)          - AND, bit-by-bit.
 #   bitwiseOr(a, b)           - OR, bit-by-bit.
 #   bitwiseXor(a, b)          - XOR, bit-by-bit.
@@ -29,14 +29,14 @@ errorCase MainError TestFailed CSignedInt32
 # ============================================================
 
 
-operation bitShiftLeft
-input bitShiftLeft n CSignedInt64
-input bitShiftLeft k CSignedInt64
-output bitShiftLeft Result CSignedInt64 Void
-memory bitShiftLeft heap no
-async bitShiftLeft no
-purpose bitShiftLeft "n << k via multiplication by 2^k. k must be 0..63; outside that range the result wraps."
-label startBitShiftLeft
+operation shiftSignedInt64BitsLeft
+input shiftSignedInt64BitsLeft inputValue CSignedInt64
+input shiftSignedInt64BitsLeft bitIndex CSignedInt64
+output shiftSignedInt64BitsLeft Result CSignedInt64 Void
+memory shiftSignedInt64BitsLeft heap no
+async shiftSignedInt64BitsLeft no
+purpose shiftSignedInt64BitsLeft "n << k via multiplication by 2^k. k must be 0..63; outside that range the result wraps."
+label startShiftSignedInt64BitsLeft
 const zeroSl I64 0
 const oneSl I64 1
 const twoSl I64 2
@@ -45,7 +45,7 @@ var iter I64 0
 label slLoop
 call doneCall math.greaterThanOrEqualI64
 arg doneCall left iter
-arg doneCall right k
+arg doneCall right bitIndex
 run doneCall
 bind done Bool doneCall
 branchIf done slApply
@@ -64,21 +64,21 @@ set iter nextIter
 branch slLoop
 label slApply
 call applyCall math.multiplyI64
-arg applyCall left n
+arg applyCall left inputValue
 arg applyCall right result
 run applyCall
 bind shifted CSignedInt64 applyCall
 returnOk shifted
 
 
-operation bitShiftRight
-input bitShiftRight n CSignedInt64
-input bitShiftRight k CSignedInt64
-output bitShiftRight Result CSignedInt64 Void
-memory bitShiftRight heap no
-async bitShiftRight no
-purpose bitShiftRight "n >> k (arithmetic) via division by 2^k."
-label startBitShiftRight
+operation shiftSignedInt64BitsRight
+input shiftSignedInt64BitsRight inputValue CSignedInt64
+input shiftSignedInt64BitsRight bitIndex CSignedInt64
+output shiftSignedInt64BitsRight Result CSignedInt64 Void
+memory shiftSignedInt64BitsRight heap no
+async shiftSignedInt64BitsRight no
+purpose shiftSignedInt64BitsRight "n >> k (arithmetic) via division by 2^k."
+label startShiftSignedInt64BitsRight
 const zeroSr I64 0
 const oneSr I64 1
 const twoSr I64 2
@@ -87,7 +87,7 @@ var iterSr I64 0
 label srLoop
 call srDone math.greaterThanOrEqualI64
 arg srDone left iterSr
-arg srDone right k
+arg srDone right bitIndex
 run srDone
 bind srDoneB Bool srDone
 branchIf srDoneB srApply
@@ -106,28 +106,28 @@ set iterSr srItN
 branch srLoop
 label srApply
 call srDiv math.divideI64
-arg srDiv left n
+arg srDiv left inputValue
 arg srDiv right divisor
 run srDiv
 bind shifted CSignedInt64 srDiv
 returnOk shifted
 
 
-operation testBit
-input testBit n CSignedInt64
-input testBit k CSignedInt64
-output testBit Result CSignedInt32 Void
-memory testBit heap no
-async testBit no
-purpose testBit "1 if bit k of n is set; 0 otherwise. (n >> k) & 1."
-label startTestBit
+operation isSignedInt64BitSet
+input isSignedInt64BitSet inputValue CSignedInt64
+input isSignedInt64BitSet bitIndex CSignedInt64
+output isSignedInt64BitSet Result CSignedInt32 Void
+memory isSignedInt64BitSet heap no
+async isSignedInt64BitSet no
+purpose isSignedInt64BitSet "1 if bit k of n is set; 0 otherwise. (n >> k) & 1."
+label startIsSignedInt64BitSet
 const oneTb CSignedInt32 1
 const zeroTb CSignedInt32 0
 const twoTb I64 2
 const zeroI I64 0
-call shiftCall bitShiftRight
-arg shiftCall n n
-arg shiftCall k k
+call shiftCall shiftSignedInt64BitsRight
+arg shiftCall n inputValue
+arg shiftCall k bitIndex
 run shiftCall
 bindOk shifted CSignedInt64 shiftCall
 call modCall math.moduloI64
@@ -146,17 +146,17 @@ label tbTrue
 returnOk oneTb
 
 
-operation setBit
-input setBit n CSignedInt64
-input setBit k CSignedInt64
-output setBit Result CSignedInt64 Void
-memory setBit heap no
-async setBit no
-purpose setBit "n with bit k forced to 1. If bit k is already set, returns n unchanged. Else returns n + 2^k."
-label startSetBit
-call alreadyCall testBit
-arg alreadyCall n n
-arg alreadyCall k k
+operation setSignedInt64Bit
+input setSignedInt64Bit inputValue CSignedInt64
+input setSignedInt64Bit bitIndex CSignedInt64
+output setSignedInt64Bit Result CSignedInt64 Void
+memory setSignedInt64Bit heap no
+async setSignedInt64Bit no
+purpose setSignedInt64Bit "n with bit k forced to 1. If bit k is already set, returns n unchanged. Else returns n + 2^k."
+label startSetSignedInt64Bit
+call alreadyCall isSignedInt64BitSet
+arg alreadyCall n inputValue
+arg alreadyCall k bitIndex
 run alreadyCall
 bindOk alreadyB CSignedInt32 alreadyCall
 const oneI32 CSignedInt32 1
@@ -174,7 +174,7 @@ var iter2 I64 0
 label sbPowLoop
 call sbDoneCall math.greaterThanOrEqualI64
 arg sbDoneCall left iter2
-arg sbDoneCall right k
+arg sbDoneCall right bitIndex
 run sbDoneCall
 bind sbDone Bool sbDoneCall
 branchIf sbDone sbAdd
@@ -193,27 +193,27 @@ set iter2 sbIN
 branch sbPowLoop
 label sbAdd
 call sbAddCall math.addI64
-arg sbAddCall left n
+arg sbAddCall left inputValue
 arg sbAddCall right pow
 run sbAddCall
 bind sbR CSignedInt64 sbAddCall
 returnOk sbR
 
 label sbReturn
-returnOk n
+returnOk inputValue
 
 
-operation clearBit
-input clearBit n CSignedInt64
-input clearBit k CSignedInt64
-output clearBit Result CSignedInt64 Void
-memory clearBit heap no
-async clearBit no
-purpose clearBit "n with bit k forced to 0. If already cleared, return n unchanged. Else n - 2^k."
-label startClearBit
-call alreadyCall testBit
-arg alreadyCall n n
-arg alreadyCall k k
+operation clearSignedInt64Bit
+input clearSignedInt64Bit inputValue CSignedInt64
+input clearSignedInt64Bit bitIndex CSignedInt64
+output clearSignedInt64Bit Result CSignedInt64 Void
+memory clearSignedInt64Bit heap no
+async clearSignedInt64Bit no
+purpose clearSignedInt64Bit "n with bit k forced to 0. If already cleared, return n unchanged. Else n - 2^k."
+label startClearSignedInt64Bit
+call alreadyCall isSignedInt64BitSet
+arg alreadyCall n inputValue
+arg alreadyCall k bitIndex
 run alreadyCall
 bindOk alreadyB CSignedInt32 alreadyCall
 const zeroI32 CSignedInt32 0
@@ -231,7 +231,7 @@ var iter2 I64 0
 label cbPowLoop
 call cbDoneCall math.greaterThanOrEqualI64
 arg cbDoneCall left iter2
-arg cbDoneCall right k
+arg cbDoneCall right bitIndex
 run cbDoneCall
 bind cbDone Bool cbDoneCall
 branchIf cbDone cbSub
@@ -250,27 +250,27 @@ set iter2 cbIN
 branch cbPowLoop
 label cbSub
 call cbSubCall math.subtractI64
-arg cbSubCall left n
+arg cbSubCall left inputValue
 arg cbSubCall right pow
 run cbSubCall
 bind cbR CSignedInt64 cbSubCall
 returnOk cbR
 
 label cbReturn
-returnOk n
+returnOk inputValue
 
 
-operation flipBit
-input flipBit n CSignedInt64
-input flipBit k CSignedInt64
-output flipBit Result CSignedInt64 Void
-memory flipBit heap no
-async flipBit no
-purpose flipBit "n with bit k toggled. Implementation: if testBit(n,k) then clearBit else setBit."
-label startFlipBit
-call wasSet testBit
-arg wasSet n n
-arg wasSet k k
+operation toggleSignedInt64Bit
+input toggleSignedInt64Bit inputValue CSignedInt64
+input toggleSignedInt64Bit bitIndex CSignedInt64
+output toggleSignedInt64Bit Result CSignedInt64 Void
+memory toggleSignedInt64Bit heap no
+async toggleSignedInt64Bit no
+purpose toggleSignedInt64Bit "n with bit k toggled. Implementation: if isSignedInt64BitSet(n,k) then clearSignedInt64Bit else setSignedInt64Bit."
+label startToggleSignedInt64Bit
+call wasSet isSignedInt64BitSet
+arg wasSet n inputValue
+arg wasSet k bitIndex
 run wasSet
 bindOk wasSetB CSignedInt32 wasSet
 const oneI32 CSignedInt32 1
@@ -280,16 +280,16 @@ arg ck right oneI32
 run ck
 bind isSet Bool ck
 branchIf isSet fbClear
-call setIt setBit
-arg setIt n n
-arg setIt k k
+call setIt setSignedInt64Bit
+arg setIt n inputValue
+arg setIt k bitIndex
 run setIt
 bindOk sR CSignedInt64 setIt
 returnOk sR
 label fbClear
-call clearIt clearBit
-arg clearIt n n
-arg clearIt k k
+call clearIt clearSignedInt64Bit
+arg clearIt n inputValue
+arg clearIt k bitIndex
 run clearIt
 bindOk cR CSignedInt64 clearIt
 returnOk cR
@@ -308,11 +308,11 @@ async main no
 purpose main "Smoke-test bit ops. Prints OK."
 label startMain
 
-# bitShiftLeft(3, 4) == 48
+# shiftSignedInt64BitsLeft(3, 4) == 48
 const c3 CSignedInt64 3
 const c4 CSignedInt64 4
 const c48 CSignedInt64 48
-call sl1 bitShiftLeft
+call sl1 shiftSignedInt64BitsLeft
 arg sl1 n c3
 arg sl1 k c4
 run sl1
@@ -326,8 +326,8 @@ branchIf sl1Ok sl1Lbl
 branch testFailed
 label sl1Lbl
 
-# bitShiftRight(48, 4) == 3
-call sr1 bitShiftRight
+# shiftSignedInt64BitsRight(48, 4) == 3
+call sr1 shiftSignedInt64BitsRight
 arg sr1 n c48
 arg sr1 k c4
 run sr1
@@ -341,10 +341,10 @@ branchIf sr1Ok sr1Lbl
 branch testFailed
 label sr1Lbl
 
-# testBit(48, 4) == 1 (48 == 0b110000, bit 4 is set)
+# isSignedInt64BitSet(48, 4) == 1 (48 == 0b110000, bit 4 is set)
 const oneI32t CSignedInt32 1
 const zeroI32t CSignedInt32 0
-call tb1 testBit
+call tb1 isSignedInt64BitSet
 arg tb1 n c48
 arg tb1 k c4
 run tb1
@@ -358,10 +358,10 @@ branchIf tb1Ok tb1Lbl
 branch testFailed
 label tb1Lbl
 
-# setBit(0, 3) == 8
+# setSignedInt64Bit(0, 3) == 8
 const c0 CSignedInt64 0
 const c8 CSignedInt64 8
-call sb1 setBit
+call sb1 setSignedInt64Bit
 arg sb1 n c0
 arg sb1 k c3
 run sb1
@@ -375,11 +375,11 @@ branchIf sb1Ok sb1Lbl
 branch testFailed
 label sb1Lbl
 
-# clearBit(15, 1) == 13
+# clearSignedInt64Bit(15, 1) == 13
 const c15 CSignedInt64 15
 const c1 CSignedInt64 1
 const c13 CSignedInt64 13
-call cb1 clearBit
+call cb1 clearSignedInt64Bit
 arg cb1 n c15
 arg cb1 k c1
 run cb1
@@ -393,10 +393,10 @@ branchIf cb1Ok cb1Lbl
 branch testFailed
 label cb1Lbl
 
-# flipBit(5, 1) == 7
+# toggleSignedInt64Bit(5, 1) == 7
 const c5 CSignedInt64 5
 const c7 CSignedInt64 7
-call fb1 flipBit
+call fb1 toggleSignedInt64Bit
 arg fb1 n c5
 arg fb1 k c1
 run fb1

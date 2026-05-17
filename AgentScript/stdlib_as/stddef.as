@@ -15,20 +15,20 @@ errorCase MainError TestFailed CSignedInt32
 # COpaqueMemoryAddress); this file exposes the few callable surfaces.
 #
 # Operations:
-#   nullPointer            - returns the NULL pointer.
-#   bytesInPointer         - sizeof(void*) on x86-64 = 8.
-#   bytesInSignedInt32     - 4.
-#   bytesInSignedInt64     - 8.
-#   bytesInFloat64         - 8.
+#   nullOpaquePointerValue   - returns the NULL pointer.
+#   byteSizeOfOpaquePointer  - sizeof(void*) on x86-64 = 8.
+#   byteSizeOfSignedInt32    - 4.
+#   byteSizeOfSignedInt64    - 8.
+#   byteSizeOfFloat64        - 8.
 # ============================================================
 
 
-operation nullPointer
-output nullPointer Result COpaqueMemoryAddress Void
-memory nullPointer heap no
-async nullPointer no
-purpose nullPointer "Returns the NULL pointer (i8* 0)."
-label startNullPointer
+operation nullOpaquePointerValue
+output nullOpaquePointerValue Result COpaqueMemoryAddress Void
+memory nullOpaquePointerValue heap no
+async nullOpaquePointerValue no
+purpose nullOpaquePointerValue "Returns the NULL pointer (i8* 0)."
+label startNullOpaquePointerValue
 # We synthesize NULL by allocating zero bytes? No — use c.malloc(0) which
 # is implementation-defined. Cleaner: build via pointer arithmetic from
 # a known global. Simplest: malloc(1), then free + reuse pattern is bad.
@@ -47,42 +47,42 @@ bind nullVal CNullTerminatedByteString envCall
 returnOk nullVal
 
 
-operation bytesInPointer
-output bytesInPointer Result CSignedInt64 Void
-memory bytesInPointer heap no
-async bytesInPointer no
-purpose bytesInPointer "sizeof(void*) on the AgentScript target (x86-64 Windows): 8 bytes."
-label startBytesInPointer
+operation byteSizeOfOpaquePointer
+output byteSizeOfOpaquePointer Result CSignedInt64 Void
+memory byteSizeOfOpaquePointer heap no
+async byteSizeOfOpaquePointer no
+purpose byteSizeOfOpaquePointer "sizeof(void*) on the AgentScript target (x86-64 Windows): 8 bytes."
+label startByteSizeOfOpaquePointer
 const v CSignedInt64 8
 returnOk v
 
 
-operation bytesInSignedInt32
-output bytesInSignedInt32 Result CSignedInt64 Void
-memory bytesInSignedInt32 heap no
-async bytesInSignedInt32 no
-purpose bytesInSignedInt32 "sizeof(int32_t) = 4."
-label startBytesInSignedInt32
+operation byteSizeOfSignedInt32
+output byteSizeOfSignedInt32 Result CSignedInt64 Void
+memory byteSizeOfSignedInt32 heap no
+async byteSizeOfSignedInt32 no
+purpose byteSizeOfSignedInt32 "sizeof(int32_t) = 4."
+label startByteSizeOfSignedInt32
 const v CSignedInt64 4
 returnOk v
 
 
-operation bytesInSignedInt64
-output bytesInSignedInt64 Result CSignedInt64 Void
-memory bytesInSignedInt64 heap no
-async bytesInSignedInt64 no
-purpose bytesInSignedInt64 "sizeof(int64_t) = 8."
-label startBytesInSignedInt64
+operation byteSizeOfSignedInt64
+output byteSizeOfSignedInt64 Result CSignedInt64 Void
+memory byteSizeOfSignedInt64 heap no
+async byteSizeOfSignedInt64 no
+purpose byteSizeOfSignedInt64 "sizeof(int64_t) = 8."
+label startByteSizeOfSignedInt64
 const v CSignedInt64 8
 returnOk v
 
 
-operation bytesInFloat64
-output bytesInFloat64 Result CSignedInt64 Void
-memory bytesInFloat64 heap no
-async bytesInFloat64 no
-purpose bytesInFloat64 "sizeof(double) = 8."
-label startBytesInFloat64
+operation byteSizeOfFloat64
+output byteSizeOfFloat64 Result CSignedInt64 Void
+memory byteSizeOfFloat64 heap no
+async byteSizeOfFloat64 no
+purpose byteSizeOfFloat64 "sizeof(double) = 8."
+label startByteSizeOfFloat64
 const v CSignedInt64 8
 returnOk v
 
@@ -100,7 +100,7 @@ async main no
 purpose main "Smoke-test the stddef accessors. Prints OK."
 
 label startMain
-call s1 bytesInPointer
+call s1 byteSizeOfOpaquePointer
 run s1
 bindOk s1Res CSignedInt64 s1
 const eight CSignedInt64 8
@@ -113,7 +113,7 @@ branchIf s1Ok s1OkLabel
 branch testFailed
 label s1OkLabel
 
-call s2 bytesInSignedInt32
+call s2 byteSizeOfSignedInt32
 run s2
 bindOk s2Res CSignedInt64 s2
 const four CSignedInt64 4

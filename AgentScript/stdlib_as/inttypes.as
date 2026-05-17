@@ -11,81 +11,81 @@ errorCase MainError TestFailed CSignedInt32
 # AGENTSCRIPT STANDARD LIBRARY: <inttypes.h>-style helpers.
 #
 # Operations:
-#   imaxabs(n)             Like libc imaxabs: absolute value of n.
-#   imaxdiv(a, b)          Returns quotient (the remainder is dropped
+#   absoluteMaxWidthSignedInt(n)             Like libc absoluteMaxWidthSignedInt: absolute value of n.
+#   divideMaxWidthSignedIntQuotient(a, b)          Returns quotient (the remainder is dropped
 #                          at this layer; AS doesn't support struct
 #                          returns from user-operations yet).
-#   imaxmodulus(a, b)      Returns remainder.
-#   parsePositiveBinary(s) Parse a base-2 string of '0'/'1'.
-#   parsePositiveOctal(s)  Parse a base-8 string of '0'..'7'.
+#   divideMaxWidthSignedIntRemainder(a, b)      Returns remainder.
+#   parsePositiveBinaryCStringToSignedInt64(s) Parse a base-2 string of '0'/'1'.
+#   parsePositiveOctalCStringToSignedInt64(s)  Parse a base-8 string of '0'..'7'.
 # ============================================================
 
 
-operation imaxabs
-input imaxabs n CSignedInt64
-output imaxabs Result CSignedInt64 Void
-memory imaxabs heap no
-async imaxabs no
-purpose imaxabs "Absolute value of intmax_t."
-label startImaxabs
+operation absoluteMaxWidthSignedInt
+input absoluteMaxWidthSignedInt inputValue CSignedInt64
+output absoluteMaxWidthSignedInt Result CSignedInt64 Void
+memory absoluteMaxWidthSignedInt heap no
+async absoluteMaxWidthSignedInt no
+purpose absoluteMaxWidthSignedInt "Absolute value of intmax_t."
+label startAbsoluteMaxWidthSignedInt
 const zeroI I64 0
 const negOneI I64 -1
 call ltz math.lessThanI64
-arg ltz left n
+arg ltz left inputValue
 arg ltz right zeroI
 run ltz
 bind isN Bool ltz
 branchIf isN flip
-returnOk n
+returnOk inputValue
 label flip
 call neg math.multiplyI64
-arg neg left n
+arg neg left inputValue
 arg neg right negOneI
 run neg
 bind flipped CSignedInt64 neg
 returnOk flipped
 
 
-operation imaxdiv
-input imaxdiv a CSignedInt64
-input imaxdiv b CSignedInt64
-output imaxdiv Result CSignedInt64 Void
-memory imaxdiv heap no
-async imaxdiv no
-purpose imaxdiv "Integer quotient a/b. Note: real libc imaxdiv returns a struct with both quotient and remainder; AS user-operations can't return tuples yet, so we expose this and imaxmodulus separately."
-label startImaxdiv
+operation divideMaxWidthSignedIntQuotient
+input divideMaxWidthSignedIntQuotient leftValue CSignedInt64
+input divideMaxWidthSignedIntQuotient rightValue CSignedInt64
+output divideMaxWidthSignedIntQuotient Result CSignedInt64 Void
+memory divideMaxWidthSignedIntQuotient heap no
+async divideMaxWidthSignedIntQuotient no
+purpose divideMaxWidthSignedIntQuotient "Integer quotient a/b. Note: real libc divideMaxWidthSignedIntQuotient returns a struct with both quotient and remainder; AS user-operations can't return tuples yet, so we expose this and divideMaxWidthSignedIntRemainder separately."
+label startDivideMaxWidthSignedIntQuotient
 call divCall math.divideI64
-arg divCall left a
-arg divCall right b
+arg divCall left leftValue
+arg divCall right rightValue
 run divCall
 bind q CSignedInt64 divCall
 returnOk q
 
 
-operation imaxmodulus
-input imaxmodulus a CSignedInt64
-input imaxmodulus b CSignedInt64
-output imaxmodulus Result CSignedInt64 Void
-memory imaxmodulus heap no
-async imaxmodulus no
-purpose imaxmodulus "Integer remainder a%b."
-label startImaxmodulus
+operation divideMaxWidthSignedIntRemainder
+input divideMaxWidthSignedIntRemainder leftValue CSignedInt64
+input divideMaxWidthSignedIntRemainder rightValue CSignedInt64
+output divideMaxWidthSignedIntRemainder Result CSignedInt64 Void
+memory divideMaxWidthSignedIntRemainder heap no
+async divideMaxWidthSignedIntRemainder no
+purpose divideMaxWidthSignedIntRemainder "Integer remainder a%b."
+label startDivideMaxWidthSignedIntRemainder
 call modCall math.moduloI64
-arg modCall left a
-arg modCall right b
+arg modCall left leftValue
+arg modCall right rightValue
 run modCall
 bind r CSignedInt64 modCall
 returnOk r
 
 
-operation parsePositiveBinary
-input parsePositiveBinary s CNullTerminatedByteString
-output parsePositiveBinary Result CSignedInt64 Void
-effect parsePositiveBinary read memory.buffer
-memory parsePositiveBinary heap no
-async parsePositiveBinary no
-purpose parsePositiveBinary "Parse a non-empty C-string of '0' and '1' bytes as a base-2 unsigned integer. Stops at the first non-'0'/'1' byte. Returns 0 if the first byte is non-binary."
-label startParsePositiveBinary
+operation parsePositiveBinaryCStringToSignedInt64
+input parsePositiveBinaryCStringToSignedInt64 inputText CNullTerminatedByteString
+output parsePositiveBinaryCStringToSignedInt64 Result CSignedInt64 Void
+effect parsePositiveBinaryCStringToSignedInt64 read memory.buffer
+memory parsePositiveBinaryCStringToSignedInt64 heap no
+async parsePositiveBinaryCStringToSignedInt64 no
+purpose parsePositiveBinaryCStringToSignedInt64 "Parse a non-empty C-string of '0' and '1' bytes as a base-2 unsigned integer. Stops at the first non-'0'/'1' byte. Returns 0 if the first byte is non-binary."
+label startParsePositiveBinaryCStringToSignedInt64
 const zeroPb I64 0
 const onePb I64 1
 const twoPb I64 2
@@ -95,7 +95,7 @@ var pbAccum I64 0
 var pbCursor I64 0
 label pbLoop
 call pbLoad pointer.loadByte
-arg pbLoad buffer s
+arg pbLoad buffer inputText
 arg pbLoad offset pbCursor
 run pbLoad
 bind pbByte I8 pbLoad
@@ -145,14 +145,14 @@ label pbDone
 returnOk pbAccum
 
 
-operation parsePositiveOctal
-input parsePositiveOctal s CNullTerminatedByteString
-output parsePositiveOctal Result CSignedInt64 Void
-effect parsePositiveOctal read memory.buffer
-memory parsePositiveOctal heap no
-async parsePositiveOctal no
-purpose parsePositiveOctal "Parse a non-empty C-string of '0'..'7' as a base-8 unsigned integer."
-label startParsePositiveOctal
+operation parsePositiveOctalCStringToSignedInt64
+input parsePositiveOctalCStringToSignedInt64 inputText CNullTerminatedByteString
+output parsePositiveOctalCStringToSignedInt64 Result CSignedInt64 Void
+effect parsePositiveOctalCStringToSignedInt64 read memory.buffer
+memory parsePositiveOctalCStringToSignedInt64 heap no
+async parsePositiveOctalCStringToSignedInt64 no
+purpose parsePositiveOctalCStringToSignedInt64 "Parse a non-empty C-string of '0'..'7' as a base-8 unsigned integer."
+label startParsePositiveOctalCStringToSignedInt64
 const zeroOc I64 0
 const oneOc I64 1
 const eightOc I64 8
@@ -162,7 +162,7 @@ var ocAccum I64 0
 var ocCursor I64 0
 label ocLoop
 call ocLoad pointer.loadByte
-arg ocLoad buffer s
+arg ocLoad buffer inputText
 arg ocLoad offset ocCursor
 run ocLoad
 bind ocByte I8 ocLoad
@@ -218,10 +218,10 @@ async main no
 purpose main "Smoke-test inttypes ports. Prints OK."
 label startMain
 
-# parsePositiveBinary("1101") == 13
+# parsePositiveBinaryCStringToSignedInt64("1101") == 13
 const binStr CNullTerminatedByteString "1101"
 const expected13 CSignedInt64 13
-call b1 parsePositiveBinary
+call b1 parsePositiveBinaryCStringToSignedInt64
 arg b1 s binStr
 run b1
 bindOk b1Res CSignedInt64 b1
@@ -234,10 +234,10 @@ branchIf b1Ok b1Lbl
 branch testFailed
 label b1Lbl
 
-# parsePositiveOctal("755") == 493
+# parsePositiveOctalCStringToSignedInt64("755") == 493
 const octStr CNullTerminatedByteString "755"
 const expected493 CSignedInt64 493
-call o1 parsePositiveOctal
+call o1 parsePositiveOctalCStringToSignedInt64
 arg o1 s octStr
 run o1
 bindOk o1Res CSignedInt64 o1

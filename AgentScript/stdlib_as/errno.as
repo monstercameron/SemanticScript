@@ -14,145 +14,145 @@ errorCase MainError TestFailed CSignedInt32
 # constants from the POSIX errno header.
 #
 # Operations (each returns the canonical numeric code):
-#   errEPERM, errENOENT, errESRCH, errEINTR, errEIO, errENOMEM,
-#   errEACCES, errEFAULT, errEEXIST, errENOTDIR, errEISDIR,
-#   errEINVAL, errENFILE, errEMFILE, errENOSPC, errEPIPE,
-#   errERANGE
+#   permissionDeniedErrorNumber, fileNotFoundErrorNumber, processNotFoundErrorNumber, interruptedSystemCallErrorNumber, inputOutputErrorNumber, outOfMemoryErrorNumber,
+#   accessDeniedErrorNumber, badAddressErrorNumber, fileAlreadyExistsErrorNumber, errENOTDIR, errEISDIR,
+#   invalidArgumentErrorNumber, errENFILE, errEMFILE, noSpaceLeftOnDeviceErrorNumber, brokenPipeErrorNumber,
+#   resultOutOfRangeErrorNumber
 #
-# Plus errorMessage(code) -> CNullTerminatedByteString that returns a
+# Plus lookupErrnoMessageCString(code) -> CNullTerminatedByteString that returns a
 # short message for the known codes (uses no libc strerror).
 # ============================================================
 
-operation errEPERM
-output errEPERM Result CSignedInt32 Void
-memory errEPERM heap no
-async errEPERM no
-purpose errEPERM "Operation not permitted (1)."
+operation permissionDeniedErrorNumber
+output permissionDeniedErrorNumber Result CSignedInt32 Void
+memory permissionDeniedErrorNumber heap no
+async permissionDeniedErrorNumber no
+purpose permissionDeniedErrorNumber "Operation not permitted (1)."
 label startEPERM
 const v CSignedInt32 1
 returnOk v
 
-operation errENOENT
-output errENOENT Result CSignedInt32 Void
-memory errENOENT heap no
-async errENOENT no
-purpose errENOENT "No such file or directory (2)."
+operation fileNotFoundErrorNumber
+output fileNotFoundErrorNumber Result CSignedInt32 Void
+memory fileNotFoundErrorNumber heap no
+async fileNotFoundErrorNumber no
+purpose fileNotFoundErrorNumber "No such file or directory (2)."
 label startENOENT
 const v CSignedInt32 2
 returnOk v
 
-operation errESRCH
-output errESRCH Result CSignedInt32 Void
-memory errESRCH heap no
-async errESRCH no
-purpose errESRCH "No such process (3)."
+operation processNotFoundErrorNumber
+output processNotFoundErrorNumber Result CSignedInt32 Void
+memory processNotFoundErrorNumber heap no
+async processNotFoundErrorNumber no
+purpose processNotFoundErrorNumber "No such process (3)."
 label startESRCH
 const v CSignedInt32 3
 returnOk v
 
-operation errEINTR
-output errEINTR Result CSignedInt32 Void
-memory errEINTR heap no
-async errEINTR no
-purpose errEINTR "Interrupted system call (4)."
+operation interruptedSystemCallErrorNumber
+output interruptedSystemCallErrorNumber Result CSignedInt32 Void
+memory interruptedSystemCallErrorNumber heap no
+async interruptedSystemCallErrorNumber no
+purpose interruptedSystemCallErrorNumber "Interrupted system call (4)."
 label startEINTR
 const v CSignedInt32 4
 returnOk v
 
-operation errEIO
-output errEIO Result CSignedInt32 Void
-memory errEIO heap no
-async errEIO no
-purpose errEIO "Input/output error (5)."
+operation inputOutputErrorNumber
+output inputOutputErrorNumber Result CSignedInt32 Void
+memory inputOutputErrorNumber heap no
+async inputOutputErrorNumber no
+purpose inputOutputErrorNumber "Input/output error (5)."
 label startEIO
 const v CSignedInt32 5
 returnOk v
 
-operation errENOMEM
-output errENOMEM Result CSignedInt32 Void
-memory errENOMEM heap no
-async errENOMEM no
-purpose errENOMEM "Out of memory (12)."
+operation outOfMemoryErrorNumber
+output outOfMemoryErrorNumber Result CSignedInt32 Void
+memory outOfMemoryErrorNumber heap no
+async outOfMemoryErrorNumber no
+purpose outOfMemoryErrorNumber "Out of memory (12)."
 label startENOMEM
 const v CSignedInt32 12
 returnOk v
 
-operation errEACCES
-output errEACCES Result CSignedInt32 Void
-memory errEACCES heap no
-async errEACCES no
-purpose errEACCES "Permission denied (13)."
+operation accessDeniedErrorNumber
+output accessDeniedErrorNumber Result CSignedInt32 Void
+memory accessDeniedErrorNumber heap no
+async accessDeniedErrorNumber no
+purpose accessDeniedErrorNumber "Permission denied (13)."
 label startEACCES
 const v CSignedInt32 13
 returnOk v
 
-operation errEFAULT
-output errEFAULT Result CSignedInt32 Void
-memory errEFAULT heap no
-async errEFAULT no
-purpose errEFAULT "Bad address (14)."
+operation badAddressErrorNumber
+output badAddressErrorNumber Result CSignedInt32 Void
+memory badAddressErrorNumber heap no
+async badAddressErrorNumber no
+purpose badAddressErrorNumber "Bad address (14)."
 label startEFAULT
 const v CSignedInt32 14
 returnOk v
 
-operation errEEXIST
-output errEEXIST Result CSignedInt32 Void
-memory errEEXIST heap no
-async errEEXIST no
-purpose errEEXIST "File exists (17)."
+operation fileAlreadyExistsErrorNumber
+output fileAlreadyExistsErrorNumber Result CSignedInt32 Void
+memory fileAlreadyExistsErrorNumber heap no
+async fileAlreadyExistsErrorNumber no
+purpose fileAlreadyExistsErrorNumber "File exists (17)."
 label startEEXIST
 const v CSignedInt32 17
 returnOk v
 
-operation errEINVAL
-output errEINVAL Result CSignedInt32 Void
-memory errEINVAL heap no
-async errEINVAL no
-purpose errEINVAL "Invalid argument (22)."
+operation invalidArgumentErrorNumber
+output invalidArgumentErrorNumber Result CSignedInt32 Void
+memory invalidArgumentErrorNumber heap no
+async invalidArgumentErrorNumber no
+purpose invalidArgumentErrorNumber "Invalid argument (22)."
 label startEINVAL
 const v CSignedInt32 22
 returnOk v
 
-operation errENOSPC
-output errENOSPC Result CSignedInt32 Void
-memory errENOSPC heap no
-async errENOSPC no
-purpose errENOSPC "No space left on device (28)."
+operation noSpaceLeftOnDeviceErrorNumber
+output noSpaceLeftOnDeviceErrorNumber Result CSignedInt32 Void
+memory noSpaceLeftOnDeviceErrorNumber heap no
+async noSpaceLeftOnDeviceErrorNumber no
+purpose noSpaceLeftOnDeviceErrorNumber "No space left on device (28)."
 label startENOSPC
 const v CSignedInt32 28
 returnOk v
 
-operation errEPIPE
-output errEPIPE Result CSignedInt32 Void
-memory errEPIPE heap no
-async errEPIPE no
-purpose errEPIPE "Broken pipe (32)."
+operation brokenPipeErrorNumber
+output brokenPipeErrorNumber Result CSignedInt32 Void
+memory brokenPipeErrorNumber heap no
+async brokenPipeErrorNumber no
+purpose brokenPipeErrorNumber "Broken pipe (32)."
 label startEPIPE
 const v CSignedInt32 32
 returnOk v
 
-operation errERANGE
-output errERANGE Result CSignedInt32 Void
-memory errERANGE heap no
-async errERANGE no
-purpose errERANGE "Result out of range (34)."
+operation resultOutOfRangeErrorNumber
+output resultOutOfRangeErrorNumber Result CSignedInt32 Void
+memory resultOutOfRangeErrorNumber heap no
+async resultOutOfRangeErrorNumber no
+purpose resultOutOfRangeErrorNumber "Result out of range (34)."
 label startERANGE
 const v CSignedInt32 34
 returnOk v
 
 
 # ============================================================
-# errorMessage(code) -> short C-string description.
+# lookupErrnoMessageCString(code) -> short C-string description.
 # Pure AS chain of code comparisons; no strerror() libc call.
 # ============================================================
-operation errorMessage
-input errorMessage code CSignedInt32
-output errorMessage Result CNullTerminatedByteString Void
-memory errorMessage heap no
-async errorMessage no
-purpose errorMessage "Return a short English message for known POSIX errno values, or 'unknown error' for others. Pure-AS — no libc strerror."
+operation lookupErrnoMessageCString
+input lookupErrnoMessageCString errorNumber CSignedInt32
+output lookupErrnoMessageCString Result CNullTerminatedByteString Void
+memory lookupErrnoMessageCString heap no
+async lookupErrnoMessageCString no
+purpose lookupErrnoMessageCString "Return a short English message for known POSIX errno values, or 'unknown error' for others. Pure-AS — no libc strerror."
 
-label startErrorMessage
+label startLookupErrnoMessageCString
 const msgEPERM CNullTerminatedByteString "operation not permitted"
 const msgENOENT CNullTerminatedByteString "no such file or directory"
 const msgESRCH CNullTerminatedByteString "no such process"
@@ -183,79 +183,79 @@ const c32 CSignedInt32 32
 const c34 CSignedInt32 34
 
 call eq1 math.equalI64
-arg eq1 left code
+arg eq1 left errorNumber
 arg eq1 right c1
 run eq1
 bind is1 Bool eq1
 branchIf is1 retEPERM
 call eq2 math.equalI64
-arg eq2 left code
+arg eq2 left errorNumber
 arg eq2 right c2
 run eq2
 bind is2 Bool eq2
 branchIf is2 retENOENT
 call eq3 math.equalI64
-arg eq3 left code
+arg eq3 left errorNumber
 arg eq3 right c3
 run eq3
 bind is3 Bool eq3
 branchIf is3 retESRCH
 call eq4 math.equalI64
-arg eq4 left code
+arg eq4 left errorNumber
 arg eq4 right c4
 run eq4
 bind is4 Bool eq4
 branchIf is4 retEINTR
 call eq5 math.equalI64
-arg eq5 left code
+arg eq5 left errorNumber
 arg eq5 right c5
 run eq5
 bind is5 Bool eq5
 branchIf is5 retEIO
 call eq12 math.equalI64
-arg eq12 left code
+arg eq12 left errorNumber
 arg eq12 right c12
 run eq12
 bind is12 Bool eq12
 branchIf is12 retENOMEM
 call eq13 math.equalI64
-arg eq13 left code
+arg eq13 left errorNumber
 arg eq13 right c13
 run eq13
 bind is13 Bool eq13
 branchIf is13 retEACCES
 call eq14 math.equalI64
-arg eq14 left code
+arg eq14 left errorNumber
 arg eq14 right c14
 run eq14
 bind is14 Bool eq14
 branchIf is14 retEFAULT
 call eq17 math.equalI64
-arg eq17 left code
+arg eq17 left errorNumber
 arg eq17 right c17
 run eq17
 bind is17 Bool eq17
 branchIf is17 retEEXIST
 call eq22 math.equalI64
-arg eq22 left code
+arg eq22 left errorNumber
 arg eq22 right c22
 run eq22
 bind is22 Bool eq22
 branchIf is22 retEINVAL
 call eq28 math.equalI64
-arg eq28 left code
+arg eq28 left errorNumber
 arg eq28 right c28
 run eq28
 bind is28 Bool eq28
 branchIf is28 retENOSPC
 call eq32 math.equalI64
-arg eq32 left code
+arg eq32 left errorNumber
 arg eq32 right c32
 run eq32
 bind is32 Bool eq32
 branchIf is32 retEPIPE
 call eq34 math.equalI64
-arg eq34 left code
+arg eq34 left errorNumber
 arg eq34 right c34
 run eq34
 bind is34 Bool eq34
@@ -300,10 +300,10 @@ output main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Smoke-test errno accessors and errorMessage. Prints OK."
+purpose main "Smoke-test errno accessors and lookupErrnoMessageCString. Prints OK."
 
 label startMain
-call e1 errENOENT
+call e1 fileNotFoundErrorNumber
 run e1
 bindOk e1Res CSignedInt32 e1
 const two32 CSignedInt32 2
@@ -316,8 +316,8 @@ branchIf e1Ok e1OkLabel
 branch testFailed
 label e1OkLabel
 
-# errorMessage(2) should be a non-empty string.
-call em1 errorMessage
+# lookupErrnoMessageCString(2) should be a non-empty string.
+call em1 lookupErrnoMessageCString
 arg em1 code two32
 run em1
 bindOk em1Res CNullTerminatedByteString em1

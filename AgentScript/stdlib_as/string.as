@@ -12,38 +12,38 @@ errorCase MainError TestFailed CSignedInt32
 #
 # Every operation here is implemented in pure AgentScript using
 # pointer.loadByte / pointer.storeByte + math primitives. There is NO
-# libc string call — strlen / memcpy / strcmp / etc. do not appear in
+# libc string call — stringByteLength / memcpy / compareCString / etc. do not appear in
 # the emitted IR as externs.
 #
 # Operations:
-#   strlen(s)                  byte count up to NUL
-#   strcmp(a, b)               lex compare two C-strings
-#   strncmp(a, b, n)           lex compare up to n bytes
-#   strchr(s, c)               offset of first c, -1 if absent
-#   strrchr(s, c)              offset of LAST c, -1 if absent
-#   strstr(haystack, needle)   offset of first occurrence of needle, -1 if absent
-#   strspn(s, accept)          length of leading run of bytes in accept
-#   copyCString(dest, src)     like strcpy: copy bytes (and NUL) from src to dest
+#   stringByteLength(s)                  byte count up to NUL
+#   compareCString(a, b)               lex compare two C-strings
+#   compareCStringPrefixBytes(a, b, n)           lex compare up to n bytes
+#   findFirstCharacterInCString(s, c)               offset of first c, -1 if absent
+#   findLastCharacterInCString(s, c)              offset of LAST c, -1 if absent
+#   findSubstringInCString(haystack, needle)   offset of first occurrence of needle, -1 if absent
+#   countInitialCStringBytesInAcceptSet(s, accept)          length of leading run of bytes in accept
+#   copyCStringToDestinationBuffer(dest, src)     like strcpy: copy bytes (and NUL) from src to dest
 # ============================================================
 
 
-# ---- strlen(s) -> byte count up to NUL ----
-operation strlen
-input strlen s CNullTerminatedByteString
-output strlen Result CByteCount Void
-effect strlen read memory.buffer
-memory strlen heap no
-memory strlen stack max 1KiB
-async strlen no
-purpose strlen "Pure-AS strlen: walk bytes from s until a NUL, return the count."
+# ---- stringByteLength(s) -> byte count up to NUL ----
+operation stringByteLength
+input stringByteLength inputText CNullTerminatedByteString
+output stringByteLength Result CByteCount Void
+effect stringByteLength read memory.buffer
+memory stringByteLength heap no
+memory stringByteLength stack max 1KiB
+async stringByteLength no
+purpose stringByteLength "Pure-AS stringByteLength: walk bytes from s until a NUL, return the count."
 
-label startStrlen
+label startStringByteLength
 const zeroI64 I64 0
 const oneI64 I64 1
 var cursor I64 0
 label strlenLoop
 call loadCall pointer.loadByte
-arg loadCall buffer s
+arg loadCall buffer inputText
 arg loadCall offset cursor
 run loadCall
 bind byteValue I8 loadCall
@@ -64,29 +64,29 @@ label strlenDone
 returnOk cursor
 
 
-# ---- strcmp(a, b) -> 0 if equal, signed diff otherwise ----
-operation strcmp
-input strcmp a CNullTerminatedByteString
-input strcmp b CNullTerminatedByteString
-output strcmp Result CSignedInt32 Void
-effect strcmp read memory.buffer
-memory strcmp heap no
-memory strcmp stack max 1KiB
-async strcmp no
-purpose strcmp "Pure-AS strcmp: returns 0 on equal C-strings, signed diff of first mismatching byte otherwise."
+# ---- compareCString(a, b) -> 0 if equal, signed diff otherwise ----
+operation compareCString
+input compareCString leftValue CNullTerminatedByteString
+input compareCString rightValue CNullTerminatedByteString
+output compareCString Result CSignedInt32 Void
+effect compareCString read memory.buffer
+memory compareCString heap no
+memory compareCString stack max 1KiB
+async compareCString no
+purpose compareCString "Pure-AS compareCString: returns 0 on equal C-strings, signed diff of first mismatching byte otherwise."
 
-label startStrcmp
+label startCompareCString
 const zeroI64a I64 0
 const oneI64a I64 1
 var idx I64 0
 label strcmpLoop
 call loadACall pointer.loadByte
-arg loadACall buffer a
+arg loadACall buffer leftValue
 arg loadACall offset idx
 run loadACall
 bind aByte I8 loadACall
 call loadBCall pointer.loadByte
-arg loadBCall buffer b
+arg loadBCall buffer rightValue
 arg loadBCall offset idx
 run loadBCall
 bind bByte I8 loadBCall
@@ -120,36 +120,36 @@ label strcmpReturnEqual
 returnOk zeroI64a
 
 
-# ---- strncmp(a, b, n) -> like strcmp but max n bytes ----
-operation strncmp
-input strncmp a CNullTerminatedByteString
-input strncmp b CNullTerminatedByteString
-input strncmp n CByteCount
-output strncmp Result CSignedInt32 Void
-effect strncmp read memory.buffer
-memory strncmp heap no
-memory strncmp stack max 1KiB
-async strncmp no
-purpose strncmp "Pure-AS strncmp: compare up to n bytes of a and b. Returns 0 if equal-in-first-n-or-both-NUL, signed diff at first mismatch, 0 if n==0."
+# ---- compareCStringPrefixBytes(a, b, n) -> like compareCString but max n bytes ----
+operation compareCStringPrefixBytes
+input compareCStringPrefixBytes leftValue CNullTerminatedByteString
+input compareCStringPrefixBytes rightValue CNullTerminatedByteString
+input compareCStringPrefixBytes maxByteCount CByteCount
+output compareCStringPrefixBytes Result CSignedInt32 Void
+effect compareCStringPrefixBytes read memory.buffer
+memory compareCStringPrefixBytes heap no
+memory compareCStringPrefixBytes stack max 1KiB
+async compareCStringPrefixBytes no
+purpose compareCStringPrefixBytes "Pure-AS compareCStringPrefixBytes: compare up to n bytes of a and b. Returns 0 if equal-in-first-n-or-both-NUL, signed diff at first mismatch, 0 if n==0."
 
-label startStrncmp
+label startCompareCStringPrefixBytes
 const zeroI64b I64 0
 const oneI64b I64 1
 var nidx I64 0
 label strncmpLoop
 call nLimitCall math.greaterThanOrEqualI64
 arg nLimitCall left nidx
-arg nLimitCall right n
+arg nLimitCall right maxByteCount
 run nLimitCall
 bind nReached Bool nLimitCall
 branchIf nReached strncmpReturnEqual
 call loadAnCall pointer.loadByte
-arg loadAnCall buffer a
+arg loadAnCall buffer leftValue
 arg loadAnCall offset nidx
 run loadAnCall
 bind anByte I8 loadAnCall
 call loadBnCall pointer.loadByte
-arg loadBnCall buffer b
+arg loadBnCall buffer rightValue
 arg loadBnCall offset nidx
 run loadBnCall
 bind bnByte I8 loadBnCall
@@ -183,31 +183,31 @@ label strncmpReturnEqual
 returnOk zeroI64b
 
 
-# ---- strchr(s, c) -> offset of first c, -1 if absent ----
-operation strchr
-input strchr s CNullTerminatedByteString
-input strchr c CSignedInt32
-output strchr Result CSignedInt64 Void
-effect strchr read memory.buffer
-memory strchr heap no
-memory strchr stack max 1KiB
-async strchr no
-purpose strchr "Pure-AS strchr: find first byte equal to c; return offset or -1 if not found before NUL."
+# ---- findFirstCharacterInCString(s, c) -> offset of first c, -1 if absent ----
+operation findFirstCharacterInCString
+input findFirstCharacterInCString inputText CNullTerminatedByteString
+input findFirstCharacterInCString characterCode CSignedInt32
+output findFirstCharacterInCString Result CSignedInt64 Void
+effect findFirstCharacterInCString read memory.buffer
+memory findFirstCharacterInCString heap no
+memory findFirstCharacterInCString stack max 1KiB
+async findFirstCharacterInCString no
+purpose findFirstCharacterInCString "Pure-AS findFirstCharacterInCString: find first byte equal to c; return offset or -1 if not found before NUL."
 
-label startStrchr
+label startFindFirstCharacterInCString
 const zeroI64c I64 0
 const oneI64c I64 1
 const negOneI64c I64 -1
 var chIdx I64 0
 label strchrLoop
 call chLoadCall pointer.loadByte
-arg chLoadCall buffer s
+arg chLoadCall buffer inputText
 arg chLoadCall offset chIdx
 run chLoadCall
 bind chByte I8 chLoadCall
 call chMatchCall math.equalI64
 arg chMatchCall left chByte
-arg chMatchCall right c
+arg chMatchCall right characterCode
 run chMatchCall
 bind chMatch Bool chMatchCall
 branchIf chMatch strchrFound
@@ -230,18 +230,18 @@ label strchrNotFound
 returnOk negOneI64c
 
 
-# ---- strrchr(s, c) -> offset of LAST c, -1 if absent ----
-operation strrchr
-input strrchr s CNullTerminatedByteString
-input strrchr c CSignedInt32
-output strrchr Result CSignedInt64 Void
-effect strrchr read memory.buffer
-memory strrchr heap no
-memory strrchr stack max 1KiB
-async strrchr no
-purpose strrchr "Pure-AS strrchr: track the last-seen offset of c while walking; return it (or -1)."
+# ---- findLastCharacterInCString(s, c) -> offset of LAST c, -1 if absent ----
+operation findLastCharacterInCString
+input findLastCharacterInCString inputText CNullTerminatedByteString
+input findLastCharacterInCString characterCode CSignedInt32
+output findLastCharacterInCString Result CSignedInt64 Void
+effect findLastCharacterInCString read memory.buffer
+memory findLastCharacterInCString heap no
+memory findLastCharacterInCString stack max 1KiB
+async findLastCharacterInCString no
+purpose findLastCharacterInCString "Pure-AS findLastCharacterInCString: track the last-seen offset of c while walking; return it (or -1)."
 
-label startStrrchr
+label startFindLastCharacterInCString
 const zeroI64d I64 0
 const oneI64d I64 1
 const negOneI64d I64 -1
@@ -249,13 +249,13 @@ var rcIdx I64 0
 var rcLastSeen I64 -1
 label strrchrLoop
 call rcLoadCall pointer.loadByte
-arg rcLoadCall buffer s
+arg rcLoadCall buffer inputText
 arg rcLoadCall offset rcIdx
 run rcLoadCall
 bind rcByte I8 rcLoadCall
 call rcMatchCall math.equalI64
 arg rcMatchCall left rcByte
-arg rcMatchCall right c
+arg rcMatchCall right characterCode
 run rcMatchCall
 bind rcMatch Bool rcMatchCall
 branchIf rcMatch strrchrRecord
@@ -281,18 +281,18 @@ label strrchrDone
 returnOk rcLastSeen
 
 
-# ---- strstr(haystack, needle) -> offset of first needle occurrence ----
-operation strstr
-input strstr haystack CNullTerminatedByteString
-input strstr needle CNullTerminatedByteString
-output strstr Result CSignedInt64 Void
-effect strstr read memory.buffer
-memory strstr heap no
-memory strstr stack max 1KiB
-async strstr no
-purpose strstr "Pure-AS naive substring search. Returns offset of needle in haystack, or -1 if absent. Special case: needle empty -> 0."
+# ---- findSubstringInCString(haystack, needle) -> offset of first needle occurrence ----
+operation findSubstringInCString
+input findSubstringInCString searchText CNullTerminatedByteString
+input findSubstringInCString targetSubstring CNullTerminatedByteString
+output findSubstringInCString Result CSignedInt64 Void
+effect findSubstringInCString read memory.buffer
+memory findSubstringInCString heap no
+memory findSubstringInCString stack max 1KiB
+async findSubstringInCString no
+purpose findSubstringInCString "Pure-AS naive substring search. Returns offset of needle in haystack, or -1 if absent. Special case: needle empty -> 0."
 
-label startStrstr
+label startFindSubstringInCString
 const zeroI64e I64 0
 const oneI64e I64 1
 const negOneI64e I64 -1
@@ -300,7 +300,7 @@ var hStart I64 0
 
 label strstrOuter
 call peekNeedleCall pointer.loadByte
-arg peekNeedleCall buffer needle
+arg peekNeedleCall buffer targetSubstring
 arg peekNeedleCall offset zeroI64e
 run peekNeedleCall
 bind needleHead I8 peekNeedleCall
@@ -312,7 +312,7 @@ bind needleEmpty Bool needleEmptyCall
 branchIf needleEmpty strstrFound
 
 call peekHaystackCall pointer.loadByte
-arg peekHaystackCall buffer haystack
+arg peekHaystackCall buffer searchText
 arg peekHaystackCall offset hStart
 run peekHaystackCall
 bind haystackHere I8 peekHaystackCall
@@ -326,7 +326,7 @@ branchIf haystackAtEnd strstrNotFound
 var matchOffset I64 0
 label strstrInner
 call innerNeedleCall pointer.loadByte
-arg innerNeedleCall buffer needle
+arg innerNeedleCall buffer targetSubstring
 arg innerNeedleCall offset matchOffset
 run innerNeedleCall
 bind innerNeedleByte I8 innerNeedleCall
@@ -343,7 +343,7 @@ arg innerHaystackOffsetCall right matchOffset
 run innerHaystackOffsetCall
 bind innerHaystackOffset I64 innerHaystackOffsetCall
 call innerHaystackLoadCall pointer.loadByte
-arg innerHaystackLoadCall buffer haystack
+arg innerHaystackLoadCall buffer searchText
 arg innerHaystackLoadCall offset innerHaystackOffset
 run innerHaystackLoadCall
 bind innerHaystackByte I8 innerHaystackLoadCall
@@ -389,25 +389,25 @@ label strstrNotFound
 returnOk negOneI64e
 
 
-# ---- strspn(s, accept) -> length of leading run of bytes in accept ----
-operation strspn
-input strspn s CNullTerminatedByteString
-input strspn accept CNullTerminatedByteString
-output strspn Result CByteCount Void
-effect strspn read memory.buffer
-memory strspn heap no
-memory strspn stack max 1KiB
-async strspn no
-purpose strspn "Length of the longest prefix of s consisting entirely of bytes that appear somewhere in accept. Pure AS: O(len(s) * len(accept))."
+# ---- countInitialCStringBytesInAcceptSet(s, accept) -> length of leading run of bytes in accept ----
+operation countInitialCStringBytesInAcceptSet
+input countInitialCStringBytesInAcceptSet inputText CNullTerminatedByteString
+input countInitialCStringBytesInAcceptSet acceptedCharacters CNullTerminatedByteString
+output countInitialCStringBytesInAcceptSet Result CByteCount Void
+effect countInitialCStringBytesInAcceptSet read memory.buffer
+memory countInitialCStringBytesInAcceptSet heap no
+memory countInitialCStringBytesInAcceptSet stack max 1KiB
+async countInitialCStringBytesInAcceptSet no
+purpose countInitialCStringBytesInAcceptSet "Length of the longest prefix of s consisting entirely of bytes that appear somewhere in accept. Pure AS: O(len(s) * len(accept))."
 
-label startStrspn
+label startCountInitialCStringBytesInAcceptSet
 const zeroI64f I64 0
 const oneI64f I64 1
 var sIdx I64 0
 
 label spnSLoop
 call spnLoadSCall pointer.loadByte
-arg spnLoadSCall buffer s
+arg spnLoadSCall buffer inputText
 arg spnLoadSCall offset sIdx
 run spnLoadSCall
 bind spnSByte I8 spnLoadSCall
@@ -421,7 +421,7 @@ branchIf spnSAtEnd spnDone
 var aIdx I64 0
 label spnALoop
 call spnLoadACall pointer.loadByte
-arg spnLoadACall buffer accept
+arg spnLoadACall buffer acceptedCharacters
 arg spnLoadACall offset aIdx
 run spnLoadACall
 bind spnAByte I8 spnLoadACall
@@ -461,31 +461,31 @@ label spnDone
 returnOk sIdx
 
 
-# ---- copyCString(dest, src) -> bytes copied including NUL ----
-operation copyCString
-input copyCString dest COpaqueMemoryAddress
-input copyCString src CNullTerminatedByteString
-output copyCString Result CByteCount Void
-effect copyCString read memory.buffer
-effect copyCString write memory.buffer
-memory copyCString heap no
-memory copyCString stack max 1KiB
-async copyCString no
-purpose copyCString "Pure-AS strcpy: copy each byte of src to dest including the terminating NUL. Returns count of bytes written (= strlen(src) + 1). Caller is responsible for dest being large enough."
+# ---- copyCStringToDestinationBuffer(dest, src) -> bytes copied including NUL ----
+operation copyCStringToDestinationBuffer
+input copyCStringToDestinationBuffer destinationBuffer COpaqueMemoryAddress
+input copyCStringToDestinationBuffer sourceBuffer CNullTerminatedByteString
+output copyCStringToDestinationBuffer Result CByteCount Void
+effect copyCStringToDestinationBuffer read memory.buffer
+effect copyCStringToDestinationBuffer write memory.buffer
+memory copyCStringToDestinationBuffer heap no
+memory copyCStringToDestinationBuffer stack max 1KiB
+async copyCStringToDestinationBuffer no
+purpose copyCStringToDestinationBuffer "Pure-AS strcpy: copy each byte of src to dest including the terminating NUL. Returns count of bytes written (= stringByteLength(src) + 1). Caller is responsible for dest being large enough."
 
-label startCopyCString
+label startCopyCStringToDestinationBuffer
 const zeroI64g I64 0
 const oneI64g I64 1
 var cpIdx I64 0
 label cpLoop
 call cpLoadCall pointer.loadByte
-arg cpLoadCall buffer src
+arg cpLoadCall buffer sourceBuffer
 arg cpLoadCall offset cpIdx
 run cpLoadCall
 bind cpByte I8 cpLoadCall
 
 call cpStoreCall pointer.storeByte
-arg cpStoreCall buffer dest
+arg cpStoreCall buffer destinationBuffer
 arg cpStoreCall offset cpIdx
 arg cpStoreCall value cpByte
 run cpStoreCall
@@ -514,21 +514,21 @@ bind cpFinal CByteCount cpFinalCall
 returnOk cpFinal
 
 
-# ---- strcat(dest, src) -> total bytes in dest after the append ----
+# ---- appendCStringToDestinationBuffer(dest, src) -> total bytes in dest after the append ----
 # Append src to the end of dest's existing NUL-terminated content.
 # Caller must ensure dest has enough room.
-operation strcat
-input strcat dest COpaqueMemoryAddress
-input strcat src CNullTerminatedByteString
-output strcat Result CByteCount Void
-effect strcat read memory.buffer
-effect strcat write memory.buffer
-memory strcat heap no
-memory strcat stack max 1KiB
-async strcat no
-purpose strcat "Pure-AS strcat: find the NUL in dest, then copy src (including its NUL) starting at that offset. Returns the resulting length (= strlen(dest)+strlen(src))."
+operation appendCStringToDestinationBuffer
+input appendCStringToDestinationBuffer destinationBuffer COpaqueMemoryAddress
+input appendCStringToDestinationBuffer sourceBuffer CNullTerminatedByteString
+output appendCStringToDestinationBuffer Result CByteCount Void
+effect appendCStringToDestinationBuffer read memory.buffer
+effect appendCStringToDestinationBuffer write memory.buffer
+memory appendCStringToDestinationBuffer heap no
+memory appendCStringToDestinationBuffer stack max 1KiB
+async appendCStringToDestinationBuffer no
+purpose appendCStringToDestinationBuffer "Pure-AS appendCStringToDestinationBuffer: find the NUL in dest, then copy src (including its NUL) starting at that offset. Returns the resulting length (= stringByteLength(dest)+stringByteLength(src))."
 
-label startStrcat
+label startAppendCStringToDestinationBuffer
 const zeroCat I64 0
 const oneCat I64 1
 
@@ -536,7 +536,7 @@ const oneCat I64 1
 var destEnd I64 0
 label catFindEnd
 call catLoadCall pointer.loadByte
-arg catLoadCall buffer dest
+arg catLoadCall buffer destinationBuffer
 arg catLoadCall offset destEnd
 run catLoadCall
 bind catByte I8 catLoadCall
@@ -560,7 +560,7 @@ label catEndFound
 var catSrcIdx I64 0
 label catCopyLoop
 call catSrcLoadCall pointer.loadByte
-arg catSrcLoadCall buffer src
+arg catSrcLoadCall buffer sourceBuffer
 arg catSrcLoadCall offset catSrcIdx
 run catSrcLoadCall
 bind catSrcByte I8 catSrcLoadCall
@@ -572,7 +572,7 @@ run catWriteOffsetCall
 bind catWriteOffset I64 catWriteOffsetCall
 
 call catStoreCall pointer.storeByte
-arg catStoreCall buffer dest
+arg catStoreCall buffer destinationBuffer
 arg catStoreCall offset catWriteOffset
 arg catStoreCall value catSrcByte
 run catStoreCall
@@ -601,23 +601,23 @@ bind catTotal CByteCount catTotalCall
 returnOk catTotal
 
 
-# ---- strncpy(dest, src, n) -> bytes written ----
+# ---- copyCStringPrefixToDestinationBuffer(dest, src, n) -> bytes written ----
 # Copy at most n bytes from src to dest. If src is shorter than n, pad
-# with NUL up to n bytes (matching C strncpy semantics). Does NOT
-# guarantee NUL-termination if strlen(src) >= n.
-operation strncpy
-input strncpy dest COpaqueMemoryAddress
-input strncpy src CNullTerminatedByteString
-input strncpy n CByteCount
-output strncpy Result CByteCount Void
-effect strncpy read memory.buffer
-effect strncpy write memory.buffer
-memory strncpy heap no
-memory strncpy stack max 1KiB
-async strncpy no
-purpose strncpy "Pure-AS strncpy. Up to n bytes copied from src to dest; remainder NUL-padded. Returns n."
+# with NUL up to n bytes (matching C copyCStringPrefixToDestinationBuffer semantics). Does NOT
+# guarantee NUL-termination if stringByteLength(src) >= n.
+operation copyCStringPrefixToDestinationBuffer
+input copyCStringPrefixToDestinationBuffer destinationBuffer COpaqueMemoryAddress
+input copyCStringPrefixToDestinationBuffer sourceBuffer CNullTerminatedByteString
+input copyCStringPrefixToDestinationBuffer maxByteCount CByteCount
+output copyCStringPrefixToDestinationBuffer Result CByteCount Void
+effect copyCStringPrefixToDestinationBuffer read memory.buffer
+effect copyCStringPrefixToDestinationBuffer write memory.buffer
+memory copyCStringPrefixToDestinationBuffer heap no
+memory copyCStringPrefixToDestinationBuffer stack max 1KiB
+async copyCStringPrefixToDestinationBuffer no
+purpose copyCStringPrefixToDestinationBuffer "Pure-AS copyCStringPrefixToDestinationBuffer. Up to n bytes copied from src to dest; remainder NUL-padded. Returns n."
 
-label startStrncpy
+label startCopyCStringPrefixToDestinationBuffer
 const zeroNcp I64 0
 const oneNcp I64 1
 var ncpIdx I64 0
@@ -625,7 +625,7 @@ var ncpReachedNul I64 0
 label ncpLoop
 call ncpDoneCall math.greaterThanOrEqualI64
 arg ncpDoneCall left ncpIdx
-arg ncpDoneCall right n
+arg ncpDoneCall right maxByteCount
 run ncpDoneCall
 bind ncpDone Bool ncpDoneCall
 branchIf ncpDone strncpyReturn
@@ -638,7 +638,7 @@ bind ncpAlreadyAtEnd Bool ncpReachedCheckCall
 branchIf ncpAlreadyAtEnd ncpPadZero
 
 call ncpLoadCall pointer.loadByte
-arg ncpLoadCall buffer src
+arg ncpLoadCall buffer sourceBuffer
 arg ncpLoadCall offset ncpIdx
 run ncpLoadCall
 bind ncpByte I8 ncpLoadCall
@@ -651,7 +651,7 @@ bind ncpIsEnd Bool ncpIsEndCall
 branchIf ncpIsEnd ncpEnterPadMode
 
 call ncpStoreCall pointer.storeByte
-arg ncpStoreCall buffer dest
+arg ncpStoreCall buffer destinationBuffer
 arg ncpStoreCall offset ncpIdx
 arg ncpStoreCall value ncpByte
 run ncpStoreCall
@@ -663,7 +663,7 @@ branch ncpPadZero
 
 label ncpPadZero
 call ncpZeroStoreCall pointer.storeByte
-arg ncpZeroStoreCall buffer dest
+arg ncpZeroStoreCall buffer destinationBuffer
 arg ncpZeroStoreCall offset ncpIdx
 arg ncpZeroStoreCall value zeroNcp
 run ncpZeroStoreCall
@@ -679,26 +679,26 @@ set ncpIdx ncpNext
 branch ncpLoop
 
 label strncpyReturn
-returnOk n
+returnOk maxByteCount
 
 
-operation strcspn
-input strcspn s CNullTerminatedByteString
-input strcspn reject CNullTerminatedByteString
-output strcspn Result CByteCount Void
-effect strcspn read memory.buffer
-memory strcspn heap no
-async strcspn no
-purpose strcspn "Length of leading prefix of s NOT containing any byte in reject. Pure AS: O(len(s) * len(reject))."
+operation countInitialCStringBytesNotInRejectSet
+input countInitialCStringBytesNotInRejectSet inputText CNullTerminatedByteString
+input countInitialCStringBytesNotInRejectSet rejectedCharacters CNullTerminatedByteString
+output countInitialCStringBytesNotInRejectSet Result CByteCount Void
+effect countInitialCStringBytesNotInRejectSet read memory.buffer
+memory countInitialCStringBytesNotInRejectSet heap no
+async countInitialCStringBytesNotInRejectSet no
+purpose countInitialCStringBytesNotInRejectSet "Length of leading prefix of s NOT containing any byte in reject. Pure AS: O(len(s) * len(reject))."
 
-label startStrcspn
+label startCountInitialCStringBytesNotInRejectSet
 const zeroCs I64 0
 const oneCs I64 1
 var csIdx I64 0
 
 label cspnSLoop
 call cspnLoadSCall pointer.loadByte
-arg cspnLoadSCall buffer s
+arg cspnLoadSCall buffer inputText
 arg cspnLoadSCall offset csIdx
 run cspnLoadSCall
 bind cspnSByte I8 cspnLoadSCall
@@ -712,7 +712,7 @@ branchIf cspnSAtEnd cspnDone
 var aIdxCs I64 0
 label cspnALoop
 call cspnLoadACall pointer.loadByte
-arg cspnLoadACall buffer reject
+arg cspnLoadACall buffer rejectedCharacters
 arg cspnLoadACall offset aIdxCs
 run cspnLoadACall
 bind cspnAByte I8 cspnLoadACall
@@ -752,16 +752,16 @@ label cspnDone
 returnOk csIdx
 
 
-operation strpbrk
-input strpbrk s CNullTerminatedByteString
-input strpbrk accept CNullTerminatedByteString
-output strpbrk Result CSignedInt64 Void
-effect strpbrk read memory.buffer
-memory strpbrk heap no
-async strpbrk no
-purpose strpbrk "Offset of the first byte of s that appears anywhere in accept, or -1 if absent before the NUL."
+operation findFirstCStringByteInAcceptSet
+input findFirstCStringByteInAcceptSet inputText CNullTerminatedByteString
+input findFirstCStringByteInAcceptSet acceptedCharacters CNullTerminatedByteString
+output findFirstCStringByteInAcceptSet Result CSignedInt64 Void
+effect findFirstCStringByteInAcceptSet read memory.buffer
+memory findFirstCStringByteInAcceptSet heap no
+async findFirstCStringByteInAcceptSet no
+purpose findFirstCStringByteInAcceptSet "Offset of the first byte of s that appears anywhere in accept, or -1 if absent before the NUL."
 
-label startStrpbrk
+label startFindFirstCStringByteInAcceptSet
 const zeroPb I64 0
 const oneIPb I64 1
 const negOnePb I64 -1
@@ -769,7 +769,7 @@ var pbIdx I64 0
 
 label pbSLoop
 call pbLoadSCall pointer.loadByte
-arg pbLoadSCall buffer s
+arg pbLoadSCall buffer inputText
 arg pbLoadSCall offset pbIdx
 run pbLoadSCall
 bind pbSByte I8 pbLoadSCall
@@ -783,7 +783,7 @@ branchIf pbAtEnd pbNotFound
 var pbAidx I64 0
 label pbALoop
 call pbLoadACall pointer.loadByte
-arg pbLoadACall buffer accept
+arg pbLoadACall buffer acceptedCharacters
 arg pbLoadACall offset pbAidx
 run pbLoadACall
 bind pbAByte I8 pbLoadACall
@@ -825,19 +825,19 @@ label pbNotFound
 returnOk negOnePb
 
 
-operation strdup
-input strdup s CNullTerminatedByteString
-output strdup Result COpaqueMemoryAddress Void
-effect strdup read memory.buffer
-effect strdup allocate heap
-memory strdup heap yes
-async strdup no
-purpose strdup "Allocate a heap copy of s. Caller owns the returned pointer (must c.free). Returns NULL on allocation failure."
+operation duplicateCStringIntoOwnedMemory
+input duplicateCStringIntoOwnedMemory inputText CNullTerminatedByteString
+output duplicateCStringIntoOwnedMemory Result COpaqueMemoryAddress Void
+effect duplicateCStringIntoOwnedMemory read memory.buffer
+effect duplicateCStringIntoOwnedMemory allocate heap
+memory duplicateCStringIntoOwnedMemory heap yes
+async duplicateCStringIntoOwnedMemory no
+purpose duplicateCStringIntoOwnedMemory "Allocate a heap copy of s. Caller owns the returned pointer (must c.free). Returns NULL on allocation failure."
 
-label startStrdup
-# len = strlen(s)
-call lenCall strlen
-arg lenCall s s
+label startDuplicateCStringIntoOwnedMemory
+# len = stringByteLength(s)
+call lenCall stringByteLength
+arg lenCall s inputText
 run lenCall
 bindOk lenV CByteCount lenCall
 
@@ -860,10 +860,10 @@ run nullCheckCall
 bind isNull Bool nullCheckCall
 branchIf isNull strdupNull
 
-# Otherwise copy via copyCString.
-call copyCall copyCString
+# Otherwise copy via copyCStringToDestinationBuffer.
+call copyCall copyCStringToDestinationBuffer
 arg copyCall dest dest
-arg copyCall src s
+arg copyCall src inputText
 run copyCall
 ignoreOk copyCall CByteCount
 
@@ -873,24 +873,24 @@ label strdupNull
 returnOk dest
 
 
-operation strncat
-input strncat dest COpaqueMemoryAddress
-input strncat src CNullTerminatedByteString
-input strncat n CByteCount
-output strncat Result CByteCount Void
-effect strncat read memory.buffer
-effect strncat write memory.buffer
-memory strncat heap no
-async strncat no
-purpose strncat "Append at most n bytes from src to dest's existing NUL-terminated content. Always writes a NUL terminator after the appended bytes."
-label startStrncat
+operation appendCStringPrefixToDestinationBuffer
+input appendCStringPrefixToDestinationBuffer destinationBuffer COpaqueMemoryAddress
+input appendCStringPrefixToDestinationBuffer sourceBuffer CNullTerminatedByteString
+input appendCStringPrefixToDestinationBuffer maxByteCount CByteCount
+output appendCStringPrefixToDestinationBuffer Result CByteCount Void
+effect appendCStringPrefixToDestinationBuffer read memory.buffer
+effect appendCStringPrefixToDestinationBuffer write memory.buffer
+memory appendCStringPrefixToDestinationBuffer heap no
+async appendCStringPrefixToDestinationBuffer no
+purpose appendCStringPrefixToDestinationBuffer "Append at most n bytes from src to dest's existing NUL-terminated content. Always writes a NUL terminator after the appended bytes."
+label startAppendCStringPrefixToDestinationBuffer
 const zeroNc I64 0
 const oneNc I64 1
 # Find end of dest.
 var dEnd I64 0
 label ncFindEnd
 call ncLoadCall pointer.loadByte
-arg ncLoadCall buffer dest
+arg ncLoadCall buffer destinationBuffer
 arg ncLoadCall offset dEnd
 run ncLoadCall
 bind ncByte I8 ncLoadCall
@@ -913,12 +913,12 @@ var srcIdx I64 0
 label ncCopyLoop
 call ncDoneCall math.greaterThanOrEqualI64
 arg ncDoneCall left srcIdx
-arg ncDoneCall right n
+arg ncDoneCall right maxByteCount
 run ncDoneCall
 bind ncDone Bool ncDoneCall
 branchIf ncDone ncWriteNul
 call ncSrcLoad pointer.loadByte
-arg ncSrcLoad buffer src
+arg ncSrcLoad buffer sourceBuffer
 arg ncSrcLoad offset srcIdx
 run ncSrcLoad
 bind ncSrcByte I8 ncSrcLoad
@@ -934,7 +934,7 @@ arg ncWriteOff right srcIdx
 run ncWriteOff
 bind writeOff I64 ncWriteOff
 call ncStore pointer.storeByte
-arg ncStore buffer dest
+arg ncStore buffer destinationBuffer
 arg ncStore offset writeOff
 arg ncStore value ncSrcByte
 run ncStore
@@ -952,7 +952,7 @@ arg ncNulOff right srcIdx
 run ncNulOff
 bind nulOff I64 ncNulOff
 call ncNulStore pointer.storeByte
-arg ncNulStore buffer dest
+arg ncNulStore buffer destinationBuffer
 arg ncNulStore offset nulOff
 arg ncNulStore value zeroNc
 run ncNulStore
@@ -964,15 +964,15 @@ bind ncTotalRes CByteCount ncTotal
 returnOk ncTotalRes
 
 
-operation beginsWith
-input beginsWith s CNullTerminatedByteString
-input beginsWith prefix CNullTerminatedByteString
-output beginsWith Result CSignedInt32 Void
-effect beginsWith read memory.buffer
-memory beginsWith heap no
-async beginsWith no
-purpose beginsWith "1 if s starts with prefix; 0 otherwise. Pure AS via byte-by-byte compare."
-label startBeginsWith
+operation cstringBeginsWithPrefix
+input cstringBeginsWithPrefix inputText CNullTerminatedByteString
+input cstringBeginsWithPrefix prefixText CNullTerminatedByteString
+output cstringBeginsWithPrefix Result CSignedInt32 Void
+effect cstringBeginsWithPrefix read memory.buffer
+memory cstringBeginsWithPrefix heap no
+async cstringBeginsWithPrefix no
+purpose cstringBeginsWithPrefix "1 if s starts with prefix; 0 otherwise. Pure AS via byte-by-byte compare."
+label startCstringBeginsWithPrefix
 const zeroBw I64 0
 const oneBw I64 1
 const trueBw CSignedInt32 1
@@ -980,7 +980,7 @@ const falseBw CSignedInt32 0
 var bwIdx I64 0
 label bwLoop
 call bwPrefLoad pointer.loadByte
-arg bwPrefLoad buffer prefix
+arg bwPrefLoad buffer prefixText
 arg bwPrefLoad offset bwIdx
 run bwPrefLoad
 bind bwPrefByte I8 bwPrefLoad
@@ -991,7 +991,7 @@ run bwPrefEnd
 bind bwPrefAtEnd Bool bwPrefEnd
 branchIf bwPrefAtEnd bwAllMatched
 call bwSLoad pointer.loadByte
-arg bwSLoad buffer s
+arg bwSLoad buffer inputText
 arg bwSLoad offset bwIdx
 run bwSLoad
 bind bwSByte I8 bwSLoad
@@ -1022,26 +1022,26 @@ label bwMismatch
 returnOk falseBw
 
 
-operation endsWith
-input endsWith s CNullTerminatedByteString
-input endsWith suffix CNullTerminatedByteString
-output endsWith Result CSignedInt32 Void
-effect endsWith read memory.buffer
-memory endsWith heap no
-async endsWith no
-purpose endsWith "1 if s ends with suffix; 0 otherwise. Implemented as: strlen(suffix) <= strlen(s), then compare last strlen(suffix) bytes of s with suffix."
-label startEndsWith
+operation cstringEndsWithSuffix
+input cstringEndsWithSuffix inputText CNullTerminatedByteString
+input cstringEndsWithSuffix suffixText CNullTerminatedByteString
+output cstringEndsWithSuffix Result CSignedInt32 Void
+effect cstringEndsWithSuffix read memory.buffer
+memory cstringEndsWithSuffix heap no
+async cstringEndsWithSuffix no
+purpose cstringEndsWithSuffix "1 if s ends with suffix; 0 otherwise. Implemented as: stringByteLength(suffix) <= stringByteLength(s), then compare last stringByteLength(suffix) bytes of s with suffix."
+label startCstringEndsWithSuffix
 const trueEw CSignedInt32 1
 const falseEw CSignedInt32 0
 const oneEw I64 1
 
-call sLenCall strlen
-arg sLenCall s s
+call sLenCall stringByteLength
+arg sLenCall s inputText
 run sLenCall
 bindOk sLen CByteCount sLenCall
 
-call suffLenCall strlen
-arg suffLenCall s suffix
+call suffLenCall stringByteLength
+arg suffLenCall s suffixText
 run suffLenCall
 bindOk suffLen CByteCount suffLenCall
 
@@ -1070,7 +1070,7 @@ bind ewDoneB Bool ewDone
 branchIf ewDoneB ewTrue
 
 call ewSuffLoad pointer.loadByte
-arg ewSuffLoad buffer suffix
+arg ewSuffLoad buffer suffixText
 arg ewSuffLoad offset ewIdx
 run ewSuffLoad
 bind ewSuffByte I8 ewSuffLoad
@@ -1080,7 +1080,7 @@ arg ewSOffCall right ewIdx
 run ewSOffCall
 bind ewSOff I64 ewSOffCall
 call ewSLoad pointer.loadByte
-arg ewSLoad buffer s
+arg ewSLoad buffer inputText
 arg ewSLoad offset ewSOff
 run ewSLoad
 bind ewSByte I8 ewSLoad
@@ -1135,8 +1135,8 @@ const twoI64 I64 2
 const threeI64 I64 3
 const negOneI64test I64 -1
 
-# strlen("Hello") == 5
-call l1 strlen
+# stringByteLength("Hello") == 5
+call l1 stringByteLength
 arg l1 s hello
 run l1
 bindOk l1Res CByteCount l1
@@ -1149,8 +1149,8 @@ branchIf l1Ok l1OkLabel
 branch testFailed
 label l1OkLabel
 
-# strcmp("Hello", "Hello") == 0
-call c1 strcmp
+# compareCString("Hello", "Hello") == 0
+call c1 compareCString
 arg c1 a hello
 arg c1 b helloCopy
 run c1
@@ -1164,8 +1164,8 @@ branchIf c1Ok c1OkLabel
 branch testFailed
 label c1OkLabel
 
-# strncmp("Hello, World", "Hello", 5) == 0
-call nc1 strncmp
+# compareCStringPrefixBytes("Hello, World", "Hello", 5) == 0
+call nc1 compareCStringPrefixBytes
 arg nc1 a helloComma
 arg nc1 b hello
 arg nc1 n fiveLen
@@ -1180,9 +1180,9 @@ branchIf nc1Ok nc1OkLabel
 branch testFailed
 label nc1OkLabel
 
-# strchr("Hello", 'l') == 2
+# findFirstCharacterInCString("Hello", 'l') == 2
 const lowerL CSignedInt32 108
-call ch1 strchr
+call ch1 findFirstCharacterInCString
 arg ch1 s hello
 arg ch1 c lowerL
 run ch1
@@ -1196,8 +1196,8 @@ branchIf ch1Ok ch1OkLabel
 branch testFailed
 label ch1OkLabel
 
-# strrchr("Hello", 'l') == 3
-call rch1 strrchr
+# findLastCharacterInCString("Hello", 'l') == 3
+call rch1 findLastCharacterInCString
 arg rch1 s hello
 arg rch1 c lowerL
 run rch1
@@ -1211,8 +1211,8 @@ branchIf rch1Ok rch1OkLabel
 branch testFailed
 label rch1OkLabel
 
-# strstr("Hello, World", "lo,") == 3
-call ss1 strstr
+# findSubstringInCString("Hello, World", "lo,") == 3
+call ss1 findSubstringInCString
 arg ss1 haystack helloComma
 arg ss1 needle lo
 run ss1
@@ -1226,8 +1226,8 @@ branchIf ss1Ok ss1OkLabel
 branch testFailed
 label ss1OkLabel
 
-# strstr("Hello, World", "xyz") == -1
-call ss2 strstr
+# findSubstringInCString("Hello, World", "xyz") == -1
+call ss2 findSubstringInCString
 arg ss2 haystack helloComma
 arg ss2 needle xyz
 run ss2
@@ -1241,8 +1241,8 @@ branchIf ss2Ok ss2OkLabel
 branch testFailed
 label ss2OkLabel
 
-# strspn("12345abc", "0123456789") == 5
-call sp1 strspn
+# countInitialCStringBytesInAcceptSet("12345abc", "0123456789") == 5
+call sp1 countInitialCStringBytesInAcceptSet
 arg sp1 s justDigits
 arg sp1 accept digits
 run sp1
@@ -1256,20 +1256,20 @@ branchIf sp1Ok sp1OkLabel
 branch testFailed
 label sp1OkLabel
 
-# copyCString hello -> heap buffer, then strcmp it
+# copyCStringToDestinationBuffer hello -> heap buffer, then compareCString it
 const bufSize CByteCount 16
 call alloc1 c.malloc
 arg alloc1 size bufSize
 run alloc1
 bind dest1 COpaqueMemoryAddress alloc1
 
-call cc1 copyCString
+call cc1 copyCStringToDestinationBuffer
 arg cc1 dest dest1
 arg cc1 src hello
 run cc1
 bindOk cc1Res CByteCount cc1
 
-call cc1Cmp strcmp
+call cc1Cmp compareCString
 arg cc1Cmp a dest1
 arg cc1Cmp b hello
 run cc1Cmp
@@ -1287,7 +1287,7 @@ call free1 c.free
 arg free1 ptr dest1
 run free1
 
-# strcat into a buffer that already has "Hello"; append "!" -> "Hello!"
+# appendCStringToDestinationBuffer into a buffer that already has "Hello"; append "!" -> "Hello!"
 const bufSize2 CByteCount 32
 const helloExc CNullTerminatedByteString "Hello!"
 const exclSuffix CNullTerminatedByteString "!"
@@ -1295,17 +1295,17 @@ call alloc2 c.malloc
 arg alloc2 size bufSize2
 run alloc2
 bind dest2 COpaqueMemoryAddress alloc2
-call seed2 copyCString
+call seed2 copyCStringToDestinationBuffer
 arg seed2 dest dest2
 arg seed2 src hello
 run seed2
 ignoreOk seed2 CByteCount
-call cat2 strcat
+call cat2 appendCStringToDestinationBuffer
 arg cat2 dest dest2
 arg cat2 src exclSuffix
 run cat2
 ignoreOk cat2 CByteCount
-call catCmp strcmp
+call catCmp compareCString
 arg catCmp a dest2
 arg catCmp b helloExc
 run catCmp
@@ -1322,20 +1322,20 @@ call free2 c.free
 arg free2 ptr dest2
 run free2
 
-# strncpy hello -> 16-byte buffer, pad rest with zeros.
+# copyCStringPrefixToDestinationBuffer hello -> 16-byte buffer, pad rest with zeros.
 const sixteenLen CByteCount 16
 call alloc3 c.malloc
 arg alloc3 size sixteenLen
 run alloc3
 bind dest3 COpaqueMemoryAddress alloc3
-call ncp1 strncpy
+call ncp1 copyCStringPrefixToDestinationBuffer
 arg ncp1 dest dest3
 arg ncp1 src hello
 arg ncp1 n sixteenLen
 run ncp1
 ignoreOk ncp1 CByteCount
 # Verify first 5 bytes are "Hello", rest are NUL.
-call ncpCmp strncmp
+call ncpCmp compareCStringPrefixBytes
 arg ncpCmp a dest3
 arg ncpCmp b hello
 arg ncpCmp n fiveLen
@@ -1353,10 +1353,10 @@ call free3 c.free
 arg free3 ptr dest3
 run free3
 
-# strcspn("hello,world", ",") == 5 (the comma is at index 5)
+# countInitialCStringBytesNotInRejectSet("hello,world", ",") == 5 (the comma is at index 5)
 const helloWorld CNullTerminatedByteString "hello,world"
 const commaStr CNullTerminatedByteString ","
-call csn1 strcspn
+call csn1 countInitialCStringBytesNotInRejectSet
 arg csn1 s helloWorld
 arg csn1 reject commaStr
 run csn1
@@ -1370,9 +1370,9 @@ branchIf csn1Ok csn1OkLabel
 branch testFailed
 label csn1OkLabel
 
-# strpbrk("hello,world", ",.;") == 5
+# findFirstCStringByteInAcceptSet("hello,world", ",.;") == 5
 const punctSet CNullTerminatedByteString ",.;"
-call pbk1 strpbrk
+call pbk1 findFirstCStringByteInAcceptSet
 arg pbk1 s helloWorld
 arg pbk1 accept punctSet
 run pbk1
@@ -1386,8 +1386,8 @@ branchIf pbk1Ok pbk1OkLabel
 branch testFailed
 label pbk1OkLabel
 
-# strdup("Hello") returns a heap copy that strcmp's equal to original
-call sd1 strdup
+# duplicateCStringIntoOwnedMemory("Hello") returns a heap copy that compareCString's equal to original
+call sd1 duplicateCStringIntoOwnedMemory
 arg sd1 s hello
 run sd1
 bindOk sd1Res COpaqueMemoryAddress sd1
@@ -1396,7 +1396,7 @@ arg sd1NullCheck pointer sd1Res
 run sd1NullCheck
 bind sd1IsNull Bool sd1NullCheck
 branchIf sd1IsNull testFailed
-call sd1Cmp strcmp
+call sd1Cmp compareCString
 arg sd1Cmp a sd1Res
 arg sd1Cmp b hello
 run sd1Cmp
@@ -1413,9 +1413,9 @@ call sd1Free c.free
 arg sd1Free ptr sd1Res
 run sd1Free
 
-# beginsWith("Hello, World", "Hello") == 1
+# cstringBeginsWithPrefix("Hello, World", "Hello") == 1
 const oneI32trueChk CSignedInt32 1
-call bw1 beginsWith
+call bw1 cstringBeginsWithPrefix
 arg bw1 s helloComma
 arg bw1 prefix hello
 run bw1
@@ -1429,9 +1429,9 @@ branchIf bw1Ok bw1OkLabel
 branch testFailed
 label bw1OkLabel
 
-# endsWith("Hello, World", "World") - need an actual "World" string
+# cstringEndsWithSuffix("Hello, World", "World") - need an actual "World" string
 const worldOnly CNullTerminatedByteString "World"
-call ew1 endsWith
+call ew1 cstringEndsWithSuffix
 arg ew1 s helloComma
 arg ew1 suffix worldOnly
 run ew1
@@ -1445,7 +1445,7 @@ branchIf ew1Ok ew1OkLabel
 branch testFailed
 label ew1OkLabel
 
-# strncat: seed with "Hi", append "there!" max 4 -> "Hithere"
+# appendCStringPrefixToDestinationBuffer: seed with "Hi", append "there!" max 4 -> "Hithere"
 const bufSizeNc CByteCount 32
 const hi CNullTerminatedByteString "Hi"
 const thereMore CNullTerminatedByteString "there!"
@@ -1455,18 +1455,18 @@ call allocNc c.malloc
 arg allocNc size bufSizeNc
 run allocNc
 bind destNc COpaqueMemoryAddress allocNc
-call seedNc copyCString
+call seedNc copyCStringToDestinationBuffer
 arg seedNc dest destNc
 arg seedNc src hi
 run seedNc
 ignoreOk seedNc CByteCount
-call ncatCall strncat
+call ncatCall appendCStringPrefixToDestinationBuffer
 arg ncatCall dest destNc
 arg ncatCall src thereMore
 arg ncatCall n fourNc
 run ncatCall
 ignoreOk ncatCall CByteCount
-call ncCmp strcmp
+call ncCmp compareCString
 arg ncCmp a destNc
 arg ncCmp b expectedHiThere
 run ncCmp

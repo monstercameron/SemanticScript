@@ -11,47 +11,47 @@ errorCase MainError TestFailed CSignedInt32
 # AGENTSCRIPT STANDARD LIBRARY: numeric / pointer conversions.
 #
 # Operations:
-#   int32ToInt64(n)             Sign-extend i32 -> i64.
-#   int64ToInt32(n)             Truncate i64 -> i32.
-#   byteToUnsignedInt(b)        (b + 256) % 256.
-#   intToFloat(n)               Wraps math.intToFloat.
-#   floatToInt(x)               Wraps math.floatToInt (toward zero).
+#   widenSignedInt32ToSignedInt64(n)             Sign-extend i32 -> i64.
+#   narrowSignedInt64ToSignedInt32(n)             Truncate i64 -> i32.
+#   convertByteValueToUnsignedInt32(b)        (b + 256) % 256.
+#   convertSignedInt64ToFloat64(n)               Wraps math.convertSignedInt64ToFloat64.
+#   convertFloat64ToSignedInt64(x)               Wraps math.convertFloat64ToSignedInt64 (toward zero).
 #   floatToIntRounded(x)        Round half-away-from-zero, then to i64.
-#   pointerToOffset(base, p)    p - base (signed i64).
-#   pointerAdvance(base, off)   base + off (returns new pointer).
+#   calculateCStringPointerOffset(base, p)    p - base (signed i64).
+#   advanceOpaquePointerByByteOffset(base, off)   base + off (returns new pointer).
 # ============================================================
 
 
-operation int32ToInt64
-input int32ToInt64 n CSignedInt32
-output int32ToInt64 Result CSignedInt64 Void
-memory int32ToInt64 heap no
-async int32ToInt64 no
-purpose int32ToInt64 "Sign-extend a 32-bit signed integer to 64 bits."
-label startInt32ToInt64
-returnOk n
+operation widenSignedInt32ToSignedInt64
+input widenSignedInt32ToSignedInt64 inputValue CSignedInt32
+output widenSignedInt32ToSignedInt64 Result CSignedInt64 Void
+memory widenSignedInt32ToSignedInt64 heap no
+async widenSignedInt32ToSignedInt64 no
+purpose widenSignedInt32ToSignedInt64 "Sign-extend a 32-bit signed integer to 64 bits."
+label startWidenSignedInt32ToSignedInt64
+returnOk inputValue
 
 
-operation int64ToInt32
-input int64ToInt32 n CSignedInt64
-output int64ToInt32 Result CSignedInt32 Void
-memory int64ToInt32 heap no
-async int64ToInt32 no
-purpose int64ToInt32 "Truncate a 64-bit signed integer to 32 bits. The truncation is handled by the returnOk codegen path which coerces to the operation's declared return type."
-label startInt64ToInt32
-returnOk n
+operation narrowSignedInt64ToSignedInt32
+input narrowSignedInt64ToSignedInt32 inputValue CSignedInt64
+output narrowSignedInt64ToSignedInt32 Result CSignedInt32 Void
+memory narrowSignedInt64ToSignedInt32 heap no
+async narrowSignedInt64ToSignedInt32 no
+purpose narrowSignedInt64ToSignedInt32 "Truncate a 64-bit signed integer to 32 bits. The truncation is handled by the returnOk codegen path which coerces to the operation's declared return type."
+label startNarrowSignedInt64ToSignedInt32
+returnOk inputValue
 
 
-operation byteToUnsignedInt
-input byteToUnsignedInt b CSignedInt32
-output byteToUnsignedInt Result CSignedInt32 Void
-memory byteToUnsignedInt heap no
-async byteToUnsignedInt no
-purpose byteToUnsignedInt "Treat the low 8 bits of b as an unsigned byte in 0..255. Useful after pointer.loadByte which sign-extends."
-label startByteToUnsignedInt
+operation convertByteValueToUnsignedInt32
+input convertByteValueToUnsignedInt32 signExtendedByteValue CSignedInt32
+output convertByteValueToUnsignedInt32 Result CSignedInt32 Void
+memory convertByteValueToUnsignedInt32 heap no
+async convertByteValueToUnsignedInt32 no
+purpose convertByteValueToUnsignedInt32 "Treat the low 8 bits of b as an unsigned byte in 0..255. Useful after pointer.loadByte which sign-extends."
+label startConvertByteValueToUnsignedInt32
 const tFs I64 256
 call shift math.addI64
-arg shift left b
+arg shift left signExtendedByteValue
 arg shift right tFs
 run shift
 bind shifted I64 shift
@@ -63,63 +63,63 @@ bind r CSignedInt32 modCall
 returnOk r
 
 
-operation intToFloat
-input intToFloat n CSignedInt64
-output intToFloat Result CFloat64 Void
-memory intToFloat heap no
-async intToFloat no
-purpose intToFloat "Signed i64 to double via math.intToFloat."
-label startIntToFloat
-call ift math.intToFloat
-arg ift value n
+operation convertSignedInt64ToFloat64
+input convertSignedInt64ToFloat64 inputValue CSignedInt64
+output convertSignedInt64ToFloat64 Result CFloat64 Void
+memory convertSignedInt64ToFloat64 heap no
+async convertSignedInt64ToFloat64 no
+purpose convertSignedInt64ToFloat64 "Signed i64 to double via math.convertSignedInt64ToFloat64."
+label startConvertSignedInt64ToFloat64
+call ift math.convertSignedInt64ToFloat64
+arg ift value inputValue
 run ift
 bind r CFloat64 ift
 returnOk r
 
 
-operation floatToInt
-input floatToInt x CFloat64
-output floatToInt Result CSignedInt64 Void
-memory floatToInt heap no
-async floatToInt no
-purpose floatToInt "Double to i64 via math.floatToInt (truncate toward zero)."
-label startFloatToInt
-call fti math.floatToInt
-arg fti value x
+operation convertFloat64ToSignedInt64
+input convertFloat64ToSignedInt64 inputValue CFloat64
+output convertFloat64ToSignedInt64 Result CSignedInt64 Void
+memory convertFloat64ToSignedInt64 heap no
+async convertFloat64ToSignedInt64 no
+purpose convertFloat64ToSignedInt64 "Double to i64 via math.convertFloat64ToSignedInt64 (truncate toward zero)."
+label startConvertFloat64ToSignedInt64
+call fti math.convertFloat64ToSignedInt64
+arg fti value inputValue
 run fti
 bind r CSignedInt64 fti
 returnOk r
 
 
-operation pointerToOffset
-input pointerToOffset base CNullTerminatedByteString
-input pointerToOffset p CNullTerminatedByteString
-output pointerToOffset Result CSignedInt64 Void
-effect pointerToOffset read memory.buffer
-memory pointerToOffset heap no
-async pointerToOffset no
-purpose pointerToOffset "Returns p - base as a signed i64. Both pointers must lie in the same allocation for the result to be meaningful."
-label startPointerToOffset
+operation calculateCStringPointerOffset
+input calculateCStringPointerOffset baseValue CNullTerminatedByteString
+input calculateCStringPointerOffset pointerValue CNullTerminatedByteString
+output calculateCStringPointerOffset Result CSignedInt64 Void
+effect calculateCStringPointerOffset read memory.buffer
+memory calculateCStringPointerOffset heap no
+async calculateCStringPointerOffset no
+purpose calculateCStringPointerOffset "Returns p - base as a signed i64. Both pointers must lie in the same allocation for the result to be meaningful."
+label startCalculateCStringPointerOffset
 call diff pointer.difference
-arg diff left p
-arg diff right base
+arg diff left pointerValue
+arg diff right baseValue
 run diff
 bind r CSignedInt64 diff
 returnOk r
 
 
-operation pointerAdvance
-input pointerAdvance base COpaqueMemoryAddress
-input pointerAdvance offset CByteCount
-output pointerAdvance Result COpaqueMemoryAddress Void
-effect pointerAdvance read memory.buffer
-memory pointerAdvance heap no
-async pointerAdvance no
-purpose pointerAdvance "Returns base + offset as a new pointer (no dereference)."
-label startPointerAdvance
+operation advanceOpaquePointerByByteOffset
+input advanceOpaquePointerByByteOffset baseValue COpaqueMemoryAddress
+input advanceOpaquePointerByByteOffset byteOffset CByteCount
+output advanceOpaquePointerByByteOffset Result COpaqueMemoryAddress Void
+effect advanceOpaquePointerByByteOffset read memory.buffer
+memory advanceOpaquePointerByByteOffset heap no
+async advanceOpaquePointerByByteOffset no
+purpose advanceOpaquePointerByByteOffset "Returns base + offset as a new pointer (no dereference)."
+label startAdvanceOpaquePointerByByteOffset
 call adv pointer.offset
-arg adv base base
-arg adv offset offset
+arg adv base baseValue
+arg adv offset byteOffset
 run adv
 bind r COpaqueMemoryAddress adv
 returnOk r
@@ -138,10 +138,10 @@ async main no
 purpose main "Smoke-test conversion ports. Prints OK."
 label startMain
 
-# int32ToInt64(-1) == -1
+# widenSignedInt32ToSignedInt64(-1) == -1
 const negOne32 CSignedInt32 -1
 const negOne64 CSignedInt64 -1
-call c1 int32ToInt64
+call c1 widenSignedInt32ToSignedInt64
 arg c1 n negOne32
 run c1
 bindOk c1Res CSignedInt64 c1
@@ -154,10 +154,10 @@ branchIf c1Ok c1Lbl
 branch testFailed
 label c1Lbl
 
-# byteToUnsignedInt(-1) == 255 (the byte 0xFF)
+# convertByteValueToUnsignedInt32(-1) == 255 (the byte 0xFF)
 const negOne32b CSignedInt32 -1
 const expected255 CSignedInt32 255
-call c2 byteToUnsignedInt
+call c2 convertByteValueToUnsignedInt32
 arg c2 b negOne32b
 run c2
 bindOk c2Res CSignedInt32 c2
@@ -170,10 +170,10 @@ branchIf c2Ok c2Lbl
 branch testFailed
 label c2Lbl
 
-# floatToInt(3.7) == 3
+# convertFloat64ToSignedInt64(3.7) == 3
 const c37 CFloat64 3.7
 const expected3 CSignedInt64 3
-call c3 floatToInt
+call c3 convertFloat64ToSignedInt64
 arg c3 x c37
 run c3
 bindOk c3Res CSignedInt64 c3

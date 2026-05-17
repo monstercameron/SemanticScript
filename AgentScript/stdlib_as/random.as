@@ -21,10 +21,10 @@ errorCase MainError TestFailed CSignedInt32
 # games but not cryptography.
 #
 # Operations:
-#   makeRandomState(seed)      Allocate a state slot, store the seed,
+#   createDeterministicRandomState(seed)      Allocate a state slot, store the seed,
 #                              return the slot pointer.
-#   freeRandomState(state)     Release the slot.
-#   nextRandomInt(state)       Advance and return the next i32 in
+#   releaseDeterministicRandomState(state)     Release the slot.
+#   nextDeterministicRandomSignedInt64(state)       Advance and return the next i32 in
 #                              [0, 2^31 - 1).
 #   nextRandomInRange(state, max)
 #                              Returns an int in [0, max-1] using
@@ -33,15 +33,15 @@ errorCase MainError TestFailed CSignedInt32
 # ============================================================
 
 
-operation makeRandomState
-input makeRandomState seed CSignedInt64
-output makeRandomState Result COpaqueMemoryAddress Void
-effect makeRandomState allocate heap
-memory makeRandomState heap yes
-async makeRandomState no
-purpose makeRandomState "Allocate an 8-byte state slot. Stores `seed` (or 1 if seed <= 0, since the MINSTD LCG can't be seeded with zero)."
+operation createDeterministicRandomState
+input createDeterministicRandomState randomSeed CSignedInt64
+output createDeterministicRandomState Result COpaqueMemoryAddress Void
+effect createDeterministicRandomState allocate heap
+memory createDeterministicRandomState heap yes
+async createDeterministicRandomState no
+purpose createDeterministicRandomState "Allocate an 8-byte state slot. Stores `seed` (or 1 if seed <= 0, since the MINSTD LCG can't be seeded with zero)."
 
-label startMakeRandomState
+label startCreateDeterministicRandomState
 const eightBytes CByteCount 8
 call alloc c.malloc
 arg alloc size eightBytes
@@ -51,13 +51,13 @@ bind slot COpaqueMemoryAddress alloc
 # Normalize seed: 0 or negative -> 1.
 const oneSeed I64 1
 call leZero math.lessThanOrEqualI64
-arg leZero left seed
+arg leZero left randomSeed
 arg leZero right oneSeed
 run leZero
 bind needsNorm Bool leZero
 var actualSeed I64 1
 branchIf needsNorm useOne
-set actualSeed seed
+set actualSeed randomSeed
 branch storeIt
 label useOne
 set actualSeed oneSeed
@@ -226,34 +226,34 @@ run s7
 returnOk slot
 
 
-operation freeRandomState
-input freeRandomState state COpaqueMemoryAddress
-output freeRandomState Result CSignedInt32 Void
-effect freeRandomState free heap
-memory freeRandomState heap yes
-async freeRandomState no
-purpose freeRandomState "Free the slot returned by makeRandomState."
-label startFreeRandomState
+operation releaseDeterministicRandomState
+input releaseDeterministicRandomState randomState COpaqueMemoryAddress
+output releaseDeterministicRandomState Result CSignedInt32 Void
+effect releaseDeterministicRandomState free heap
+memory releaseDeterministicRandomState heap yes
+async releaseDeterministicRandomState no
+purpose releaseDeterministicRandomState "Free the slot returned by createDeterministicRandomState."
+label startReleaseDeterministicRandomState
 call f c.free
-arg f ptr state
+arg f ptr randomState
 run f
 const okFree CSignedInt32 0
 returnOk okFree
 
 
-operation loadUnsignedByte
-input loadUnsignedByte buffer COpaqueMemoryAddress
-input loadUnsignedByte offset CByteCount
-output loadUnsignedByte Result CSignedInt64 Void
-effect loadUnsignedByte read memory.buffer
-memory loadUnsignedByte heap no
-async loadUnsignedByte no
-purpose loadUnsignedByte "pointer.loadByte returns a signed I8 that sign-extends to negative for bytes 128..255. This helper normalizes to the unsigned interpretation via (b + 256) % 256."
-label startLoadUnsignedByte
+operation loadUnsignedByteFromBufferOffset
+input loadUnsignedByteFromBufferOffset byteBuffer COpaqueMemoryAddress
+input loadUnsignedByteFromBufferOffset byteOffset CByteCount
+output loadUnsignedByteFromBufferOffset Result CSignedInt64 Void
+effect loadUnsignedByteFromBufferOffset read memory.buffer
+memory loadUnsignedByteFromBufferOffset heap no
+async loadUnsignedByteFromBufferOffset no
+purpose loadUnsignedByteFromBufferOffset "pointer.loadByte returns a signed I8 that sign-extends to negative for bytes 128..255. This helper normalizes to the unsigned interpretation via (b + 256) % 256."
+label startLoadUnsignedByteFromBufferOffset
 const tFs256 I64 256
 call rawLoad pointer.loadByte
-arg rawLoad buffer buffer
-arg rawLoad offset offset
+arg rawLoad buffer byteBuffer
+arg rawLoad offset byteOffset
 run rawLoad
 bind raw I8 rawLoad
 call shiftPos math.addI64
@@ -269,14 +269,14 @@ bind unsigned CSignedInt64 modCall
 returnOk unsigned
 
 
-operation readRandomState
-input readRandomState state COpaqueMemoryAddress
-output readRandomState Result CSignedInt64 Void
-effect readRandomState read memory.buffer
-memory readRandomState heap no
-async readRandomState no
-purpose readRandomState "Load the i64 state value from an 8-byte little-endian slot using loadUnsignedByte so high-bit-set bytes don't sign-extend."
-label startReadRandomState
+operation readDeterministicRandomState
+input readDeterministicRandomState randomState COpaqueMemoryAddress
+output readDeterministicRandomState Result CSignedInt64 Void
+effect readDeterministicRandomState read memory.buffer
+memory readDeterministicRandomState heap no
+async readDeterministicRandomState no
+purpose readDeterministicRandomState "Load the i64 state value from an 8-byte little-endian slot using loadUnsignedByteFromBufferOffset so high-bit-set bytes don't sign-extend."
+label startReadDeterministicRandomState
 const zeroOff CByteCount 0
 const oneOff CByteCount 1
 const twoOff CByteCount 2
@@ -293,43 +293,43 @@ const tFiftySix5 I64 1099511627776
 const tFiftySix6 I64 281474976710656
 const tFiftySix7 I64 72057594037927936
 
-call l0 loadUnsignedByte
-arg l0 buffer state
+call l0 loadUnsignedByteFromBufferOffset
+arg l0 buffer randomState
 arg l0 offset zeroOff
 run l0
 bindOk by0 CSignedInt64 l0
-call l1 loadUnsignedByte
-arg l1 buffer state
+call l1 loadUnsignedByteFromBufferOffset
+arg l1 buffer randomState
 arg l1 offset oneOff
 run l1
 bindOk by1 CSignedInt64 l1
-call l2 loadUnsignedByte
-arg l2 buffer state
+call l2 loadUnsignedByteFromBufferOffset
+arg l2 buffer randomState
 arg l2 offset twoOff
 run l2
 bindOk by2 CSignedInt64 l2
-call l3 loadUnsignedByte
-arg l3 buffer state
+call l3 loadUnsignedByteFromBufferOffset
+arg l3 buffer randomState
 arg l3 offset threeOff
 run l3
 bindOk by3 CSignedInt64 l3
-call l4 loadUnsignedByte
-arg l4 buffer state
+call l4 loadUnsignedByteFromBufferOffset
+arg l4 buffer randomState
 arg l4 offset fourOff
 run l4
 bindOk by4 CSignedInt64 l4
-call l5 loadUnsignedByte
-arg l5 buffer state
+call l5 loadUnsignedByteFromBufferOffset
+arg l5 buffer randomState
 arg l5 offset fiveOff
 run l5
 bindOk by5 CSignedInt64 l5
-call l6 loadUnsignedByte
-arg l6 buffer state
+call l6 loadUnsignedByteFromBufferOffset
+arg l6 buffer randomState
 arg l6 offset sixOff
 run l6
 bindOk by6 CSignedInt64 l6
-call l7 loadUnsignedByte
-arg l7 buffer state
+call l7 loadUnsignedByteFromBufferOffset
+arg l7 buffer randomState
 arg l7 offset sevenOff
 run l7
 bindOk by7 CSignedInt64 l7
@@ -410,18 +410,18 @@ bind composed I64 a7a
 returnOk composed
 
 
-operation nextRandomInt
-input nextRandomInt state COpaqueMemoryAddress
-output nextRandomInt Result CSignedInt64 Void
-effect nextRandomInt read memory.buffer
-effect nextRandomInt write memory.buffer
-memory nextRandomInt heap no
-async nextRandomInt no
-purpose nextRandomInt "Advance the MINSTD LCG and return the new state value. LCG: s = (s * 48271) mod 2147483647."
+operation nextDeterministicRandomSignedInt64
+input nextDeterministicRandomSignedInt64 randomState COpaqueMemoryAddress
+output nextDeterministicRandomSignedInt64 Result CSignedInt64 Void
+effect nextDeterministicRandomSignedInt64 read memory.buffer
+effect nextDeterministicRandomSignedInt64 write memory.buffer
+memory nextDeterministicRandomSignedInt64 heap no
+async nextDeterministicRandomSignedInt64 no
+purpose nextDeterministicRandomSignedInt64 "Advance the MINSTD LCG and return the new state value. LCG: s = (s * 48271) mod 2147483647."
 
-label startNextRandomInt
-call loadCall readRandomState
-arg loadCall state state
+label startNextDeterministicRandomSignedInt64
+call loadCall readDeterministicRandomState
+arg loadCall state randomState
 run loadCall
 bindOk current CSignedInt64 loadCall
 
@@ -440,7 +440,7 @@ arg modCall right modulus
 run modCall
 bind newState I64 modCall
 
-# Re-store newState into the slot byte-by-byte (mirror of makeRandomState).
+# Re-store newState into the slot byte-by-byte (mirror of createDeterministicRandomState).
 var workN I64 0
 set workN newState
 
@@ -459,7 +459,7 @@ arg mn0 right tFs
 run mn0
 bind nb0 I64 mn0
 call sN0 pointer.storeByte
-arg sN0 buffer state
+arg sN0 buffer randomState
 arg sN0 offset o0
 arg sN0 value nb0
 run sN0
@@ -476,7 +476,7 @@ arg mn1 right tFs
 run mn1
 bind nb1 I64 mn1
 call sN1 pointer.storeByte
-arg sN1 buffer state
+arg sN1 buffer randomState
 arg sN1 offset o1
 arg sN1 value nb1
 run sN1
@@ -493,7 +493,7 @@ arg mn2 right tFs
 run mn2
 bind nb2 I64 mn2
 call sN2 pointer.storeByte
-arg sN2 buffer state
+arg sN2 buffer randomState
 arg sN2 offset o2
 arg sN2 value nb2
 run sN2
@@ -510,7 +510,7 @@ arg mn3 right tFs
 run mn3
 bind nb3 I64 mn3
 call sN3 pointer.storeByte
-arg sN3 buffer state
+arg sN3 buffer randomState
 arg sN3 offset o3
 arg sN3 value nb3
 run sN3
@@ -528,7 +528,7 @@ arg mn4 right tFs
 run mn4
 bind nb4 I64 mn4
 call sN4 pointer.storeByte
-arg sN4 buffer state
+arg sN4 buffer randomState
 arg sN4 offset o4
 arg sN4 value nb4
 run sN4
@@ -545,7 +545,7 @@ arg mn5 right tFs
 run mn5
 bind nb5 I64 mn5
 call sN5 pointer.storeByte
-arg sN5 buffer state
+arg sN5 buffer randomState
 arg sN5 offset o5
 arg sN5 value nb5
 run sN5
@@ -562,7 +562,7 @@ arg mn6 right tFs
 run mn6
 bind nb6 I64 mn6
 call sN6 pointer.storeByte
-arg sN6 buffer state
+arg sN6 buffer randomState
 arg sN6 offset o6
 arg sN6 value nb6
 run sN6
@@ -574,7 +574,7 @@ bind wN7 I64 dN7
 set workN wN7
 
 call sN7 pointer.storeByte
-arg sN7 buffer state
+arg sN7 buffer randomState
 arg sN7 offset o7
 arg sN7 value workN
 run sN7
@@ -597,12 +597,12 @@ purpose main "Smoke-test the LCG. Seeds with 1, draws 3 numbers and verifies the
 
 label startMain
 const seedOne CSignedInt64 1
-call makeS makeRandomState
+call makeS createDeterministicRandomState
 arg makeS seed seedOne
 run makeS
 bindOk st COpaqueMemoryAddress makeS
 
-call n1 nextRandomInt
+call n1 nextDeterministicRandomSignedInt64
 arg n1 state st
 run n1
 bindOk n1Val CSignedInt64 n1
@@ -616,7 +616,7 @@ branchIf c1 c1OkLabel
 branch testFailed
 label c1OkLabel
 
-call n2 nextRandomInt
+call n2 nextDeterministicRandomSignedInt64
 arg n2 state st
 run n2
 bindOk n2Val CSignedInt64 n2
@@ -631,7 +631,7 @@ branchIf c2 c2OkLabel
 branch testFailed
 label c2OkLabel
 
-call freeIt freeRandomState
+call freeIt releaseDeterministicRandomState
 arg freeIt state st
 run freeIt
 ignoreOk freeIt CSignedInt32

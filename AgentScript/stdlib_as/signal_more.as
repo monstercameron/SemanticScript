@@ -13,142 +13,142 @@ errorCase MainError TestFailed CSignedInt32
 # Standard POSIX signals beyond the core six exposed in signal.as.
 #
 # Operations:
-#   sigSIGHUP, sigSIGQUIT, sigSIGTRAP, sigSIGBUS, sigSIGKILL,
-#   sigSIGUSR1, sigSIGUSR2, sigSIGPIPE, sigSIGALRM, sigSIGCHLD,
-#   sigSIGCONT, sigSIGSTOP, sigSIGTSTP, sigSIGTTIN, sigSIGTTOU.
+#   hangupSignalNumber, quitSignalNumber, traceTrapSignalNumber, busErrorSignalNumber, killSignalNumber,
+#   userSignalOneNumber, userSignalTwoNumber, brokenPipeSignalNumber, alarmSignalNumber, childStatusChangedSignalNumber,
+#   continueSignalNumber, stopSignalNumber, terminalStopSignalNumber, terminalInputSignalNumber, terminalOutputSignalNumber.
 # ============================================================
 
-operation sigSIGHUP
-output sigSIGHUP Result CSignedInt32 Void
-memory sigSIGHUP heap no
-async sigSIGHUP no
-purpose sigSIGHUP "SIGHUP (1)."
+operation hangupSignalNumber
+output hangupSignalNumber Result CSignedInt32 Void
+memory hangupSignalNumber heap no
+async hangupSignalNumber no
+purpose hangupSignalNumber "SIGHUP (1)."
 label start
 const v CSignedInt32 1
 returnOk v
 
-operation sigSIGQUIT
-output sigSIGQUIT Result CSignedInt32 Void
-memory sigSIGQUIT heap no
-async sigSIGQUIT no
-purpose sigSIGQUIT "SIGQUIT (3)."
+operation quitSignalNumber
+output quitSignalNumber Result CSignedInt32 Void
+memory quitSignalNumber heap no
+async quitSignalNumber no
+purpose quitSignalNumber "SIGQUIT (3)."
 label start
 const v CSignedInt32 3
 returnOk v
 
-operation sigSIGTRAP
-output sigSIGTRAP Result CSignedInt32 Void
-memory sigSIGTRAP heap no
-async sigSIGTRAP no
-purpose sigSIGTRAP "SIGTRAP (5)."
+operation traceTrapSignalNumber
+output traceTrapSignalNumber Result CSignedInt32 Void
+memory traceTrapSignalNumber heap no
+async traceTrapSignalNumber no
+purpose traceTrapSignalNumber "SIGTRAP (5)."
 label start
 const v CSignedInt32 5
 returnOk v
 
-operation sigSIGBUS
-output sigSIGBUS Result CSignedInt32 Void
-memory sigSIGBUS heap no
-async sigSIGBUS no
-purpose sigSIGBUS "SIGBUS (7)."
+operation busErrorSignalNumber
+output busErrorSignalNumber Result CSignedInt32 Void
+memory busErrorSignalNumber heap no
+async busErrorSignalNumber no
+purpose busErrorSignalNumber "SIGBUS (7)."
 label start
 const v CSignedInt32 7
 returnOk v
 
-operation sigSIGKILL
-output sigSIGKILL Result CSignedInt32 Void
-memory sigSIGKILL heap no
-async sigSIGKILL no
-purpose sigSIGKILL "SIGKILL (9)."
+operation killSignalNumber
+output killSignalNumber Result CSignedInt32 Void
+memory killSignalNumber heap no
+async killSignalNumber no
+purpose killSignalNumber "SIGKILL (9)."
 label start
 const v CSignedInt32 9
 returnOk v
 
-operation sigSIGUSR1
-output sigSIGUSR1 Result CSignedInt32 Void
-memory sigSIGUSR1 heap no
-async sigSIGUSR1 no
-purpose sigSIGUSR1 "SIGUSR1 (10)."
+operation userSignalOneNumber
+output userSignalOneNumber Result CSignedInt32 Void
+memory userSignalOneNumber heap no
+async userSignalOneNumber no
+purpose userSignalOneNumber "SIGUSR1 (10)."
 label start
 const v CSignedInt32 10
 returnOk v
 
-operation sigSIGUSR2
-output sigSIGUSR2 Result CSignedInt32 Void
-memory sigSIGUSR2 heap no
-async sigSIGUSR2 no
-purpose sigSIGUSR2 "SIGUSR2 (12)."
+operation userSignalTwoNumber
+output userSignalTwoNumber Result CSignedInt32 Void
+memory userSignalTwoNumber heap no
+async userSignalTwoNumber no
+purpose userSignalTwoNumber "SIGUSR2 (12)."
 label start
 const v CSignedInt32 12
 returnOk v
 
-operation sigSIGPIPE
-output sigSIGPIPE Result CSignedInt32 Void
-memory sigSIGPIPE heap no
-async sigSIGPIPE no
-purpose sigSIGPIPE "SIGPIPE (13)."
+operation brokenPipeSignalNumber
+output brokenPipeSignalNumber Result CSignedInt32 Void
+memory brokenPipeSignalNumber heap no
+async brokenPipeSignalNumber no
+purpose brokenPipeSignalNumber "SIGPIPE (13)."
 label start
 const v CSignedInt32 13
 returnOk v
 
-operation sigSIGALRM
-output sigSIGALRM Result CSignedInt32 Void
-memory sigSIGALRM heap no
-async sigSIGALRM no
-purpose sigSIGALRM "SIGALRM (14)."
+operation alarmSignalNumber
+output alarmSignalNumber Result CSignedInt32 Void
+memory alarmSignalNumber heap no
+async alarmSignalNumber no
+purpose alarmSignalNumber "SIGALRM (14)."
 label start
 const v CSignedInt32 14
 returnOk v
 
-operation sigSIGCHLD
-output sigSIGCHLD Result CSignedInt32 Void
-memory sigSIGCHLD heap no
-async sigSIGCHLD no
-purpose sigSIGCHLD "SIGCHLD (17)."
+operation childStatusChangedSignalNumber
+output childStatusChangedSignalNumber Result CSignedInt32 Void
+memory childStatusChangedSignalNumber heap no
+async childStatusChangedSignalNumber no
+purpose childStatusChangedSignalNumber "SIGCHLD (17)."
 label start
 const v CSignedInt32 17
 returnOk v
 
-operation sigSIGCONT
-output sigSIGCONT Result CSignedInt32 Void
-memory sigSIGCONT heap no
-async sigSIGCONT no
-purpose sigSIGCONT "SIGCONT (18)."
+operation continueSignalNumber
+output continueSignalNumber Result CSignedInt32 Void
+memory continueSignalNumber heap no
+async continueSignalNumber no
+purpose continueSignalNumber "SIGCONT (18)."
 label start
 const v CSignedInt32 18
 returnOk v
 
-operation sigSIGSTOP
-output sigSIGSTOP Result CSignedInt32 Void
-memory sigSIGSTOP heap no
-async sigSIGSTOP no
-purpose sigSIGSTOP "SIGSTOP (19)."
+operation stopSignalNumber
+output stopSignalNumber Result CSignedInt32 Void
+memory stopSignalNumber heap no
+async stopSignalNumber no
+purpose stopSignalNumber "SIGSTOP (19)."
 label start
 const v CSignedInt32 19
 returnOk v
 
-operation sigSIGTSTP
-output sigSIGTSTP Result CSignedInt32 Void
-memory sigSIGTSTP heap no
-async sigSIGTSTP no
-purpose sigSIGTSTP "SIGTSTP (20)."
+operation terminalStopSignalNumber
+output terminalStopSignalNumber Result CSignedInt32 Void
+memory terminalStopSignalNumber heap no
+async terminalStopSignalNumber no
+purpose terminalStopSignalNumber "SIGTSTP (20)."
 label start
 const v CSignedInt32 20
 returnOk v
 
-operation sigSIGTTIN
-output sigSIGTTIN Result CSignedInt32 Void
-memory sigSIGTTIN heap no
-async sigSIGTTIN no
-purpose sigSIGTTIN "SIGTTIN (21)."
+operation terminalInputSignalNumber
+output terminalInputSignalNumber Result CSignedInt32 Void
+memory terminalInputSignalNumber heap no
+async terminalInputSignalNumber no
+purpose terminalInputSignalNumber "SIGTTIN (21)."
 label start
 const v CSignedInt32 21
 returnOk v
 
-operation sigSIGTTOU
-output sigSIGTTOU Result CSignedInt32 Void
-memory sigSIGTTOU heap no
-async sigSIGTTOU no
-purpose sigSIGTTOU "SIGTTOU (22)."
+operation terminalOutputSignalNumber
+output terminalOutputSignalNumber Result CSignedInt32 Void
+memory terminalOutputSignalNumber heap no
+async terminalOutputSignalNumber no
+purpose terminalOutputSignalNumber "SIGTTOU (22)."
 label start
 const v CSignedInt32 22
 returnOk v
@@ -161,7 +161,7 @@ memory main heap no
 async main no
 purpose main "Smoke-test extra signal accessors. Prints OK."
 label startMain
-call s1 sigSIGKILL
+call s1 killSignalNumber
 run s1
 bindOk s1Res CSignedInt32 s1
 const nine CSignedInt32 9

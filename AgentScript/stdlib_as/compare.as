@@ -11,37 +11,37 @@ errorCase MainError TestFailed CSignedInt32
 # AGENTSCRIPT STANDARD LIBRARY: comparison helpers.
 #
 # Operations:
-#   compareInt(a, b)       Returns -1 / 0 / +1 (canonical 3-way).
-#   isEqualInt(a, b)       1 if a == b, else 0.
-#   isLessInt(a, b)        1 if a < b, else 0.
-#   isLessEqualInt(a, b)   1 if a <= b, else 0.
-#   isGreaterInt(a, b)     1 if a > b, else 0.
-#   isGreaterEqualInt(a, b) 1 if a >= b, else 0.
-#   compareFloat(a, b)     Same for CFloat64.
-#   isCloseFloat(a, b, eps) 1 if |a-b| <= eps, else 0.
+#   compareSignedInt64Ordering(a, b)       Returns -1 / 0 / +1 (canonical 3-way).
+#   areSignedInt64ValuesEqual(a, b)       1 if a == b, else 0.
+#   isSignedInt64LeftLessThanRight(a, b)        1 if a < b, else 0.
+#   isSignedInt64LeftLessThanOrEqualRight(a, b)   1 if a <= b, else 0.
+#   isSignedInt64LeftGreaterThanRight(a, b)     1 if a > b, else 0.
+#   isSignedInt64LeftGreaterThanOrEqualRight(a, b) 1 if a >= b, else 0.
+#   compareFloat64Ordering(a, b)     Same for CFloat64.
+#   areFloat64ValuesWithinTolerance(a, b, eps) 1 if |a-b| <= eps, else 0.
 # ============================================================
 
 
-operation compareInt
-input compareInt a CSignedInt64
-input compareInt b CSignedInt64
-output compareInt Result CSignedInt32 Void
-memory compareInt heap no
-async compareInt no
-purpose compareInt "3-way: -1 if a<b, +1 if a>b, 0 if equal."
-label startCompareInt
+operation compareSignedInt64Ordering
+input compareSignedInt64Ordering leftValue CSignedInt64
+input compareSignedInt64Ordering rightValue CSignedInt64
+output compareSignedInt64Ordering Result CSignedInt32 Void
+memory compareSignedInt64Ordering heap no
+async compareSignedInt64Ordering no
+purpose compareSignedInt64Ordering "3-way: -1 if a<b, +1 if a>b, 0 if equal."
+label startCompareSignedInt64Ordering
 const negOne CSignedInt32 -1
 const posOne CSignedInt32 1
 const zero CSignedInt32 0
 call lt math.lessThanI64
-arg lt left a
-arg lt right b
+arg lt left leftValue
+arg lt right rightValue
 run lt
 bind aLess Bool lt
 branchIf aLess retLt
 call gt math.greaterThanI64
-arg gt left a
-arg gt right b
+arg gt left leftValue
+arg gt right rightValue
 run gt
 bind aGreater Bool gt
 branchIf aGreater retGt
@@ -52,19 +52,19 @@ label retGt
 returnOk posOne
 
 
-operation isEqualInt
-input isEqualInt a CSignedInt64
-input isEqualInt b CSignedInt64
-output isEqualInt Result CSignedInt32 Void
-memory isEqualInt heap no
-async isEqualInt no
-purpose isEqualInt "1 if a == b, else 0."
-label startIsEqualInt
+operation areSignedInt64ValuesEqual
+input areSignedInt64ValuesEqual leftValue CSignedInt64
+input areSignedInt64ValuesEqual rightValue CSignedInt64
+output areSignedInt64ValuesEqual Result CSignedInt32 Void
+memory areSignedInt64ValuesEqual heap no
+async areSignedInt64ValuesEqual no
+purpose areSignedInt64ValuesEqual "1 if a == b, else 0."
+label startAreSignedInt64ValuesEqual
 const t CSignedInt32 1
 const f CSignedInt32 0
 call eq math.equalI64
-arg eq left a
-arg eq right b
+arg eq left leftValue
+arg eq right rightValue
 run eq
 bind eqB Bool eq
 branchIf eqB retT
@@ -73,19 +73,19 @@ label retT
 returnOk t
 
 
-operation isLessInt
-input isLessInt a CSignedInt64
-input isLessInt b CSignedInt64
-output isLessInt Result CSignedInt32 Void
-memory isLessInt heap no
-async isLessInt no
-purpose isLessInt "1 if a < b, else 0."
-label startIsLessInt
+operation isSignedInt64LeftLessThanRight
+input isSignedInt64LeftLessThanRight leftValue CSignedInt64
+input isSignedInt64LeftLessThanRight rightValue CSignedInt64
+output isSignedInt64LeftLessThanRight Result CSignedInt32 Void
+memory isSignedInt64LeftLessThanRight heap no
+async isSignedInt64LeftLessThanRight no
+purpose isSignedInt64LeftLessThanRight "1 if a < b, else 0."
+label startIsSignedInt64LeftLessThanRight
 const t CSignedInt32 1
 const f CSignedInt32 0
 call lt math.lessThanI64
-arg lt left a
-arg lt right b
+arg lt left leftValue
+arg lt right rightValue
 run lt
 bind ltB Bool lt
 branchIf ltB retT
@@ -94,19 +94,19 @@ label retT
 returnOk t
 
 
-operation isLessEqualInt
-input isLessEqualInt a CSignedInt64
-input isLessEqualInt b CSignedInt64
-output isLessEqualInt Result CSignedInt32 Void
-memory isLessEqualInt heap no
-async isLessEqualInt no
-purpose isLessEqualInt "1 if a <= b, else 0."
-label startIsLessEqualInt
+operation isSignedInt64LeftLessThanOrEqualRight
+input isSignedInt64LeftLessThanOrEqualRight leftValue CSignedInt64
+input isSignedInt64LeftLessThanOrEqualRight rightValue CSignedInt64
+output isSignedInt64LeftLessThanOrEqualRight Result CSignedInt32 Void
+memory isSignedInt64LeftLessThanOrEqualRight heap no
+async isSignedInt64LeftLessThanOrEqualRight no
+purpose isSignedInt64LeftLessThanOrEqualRight "1 if a <= b, else 0."
+label startIsSignedInt64LeftLessThanOrEqualRight
 const t CSignedInt32 1
 const f CSignedInt32 0
 call le math.lessThanOrEqualI64
-arg le left a
-arg le right b
+arg le left leftValue
+arg le right rightValue
 run le
 bind leB Bool le
 branchIf leB retT
@@ -115,19 +115,19 @@ label retT
 returnOk t
 
 
-operation isGreaterInt
-input isGreaterInt a CSignedInt64
-input isGreaterInt b CSignedInt64
-output isGreaterInt Result CSignedInt32 Void
-memory isGreaterInt heap no
-async isGreaterInt no
-purpose isGreaterInt "1 if a > b, else 0."
-label startIsGreaterInt
+operation isSignedInt64LeftGreaterThanRight
+input isSignedInt64LeftGreaterThanRight leftValue CSignedInt64
+input isSignedInt64LeftGreaterThanRight rightValue CSignedInt64
+output isSignedInt64LeftGreaterThanRight Result CSignedInt32 Void
+memory isSignedInt64LeftGreaterThanRight heap no
+async isSignedInt64LeftGreaterThanRight no
+purpose isSignedInt64LeftGreaterThanRight "1 if a > b, else 0."
+label startIsSignedInt64LeftGreaterThanRight
 const t CSignedInt32 1
 const f CSignedInt32 0
 call gt math.greaterThanI64
-arg gt left a
-arg gt right b
+arg gt left leftValue
+arg gt right rightValue
 run gt
 bind gtB Bool gt
 branchIf gtB retT
@@ -136,19 +136,19 @@ label retT
 returnOk t
 
 
-operation isGreaterEqualInt
-input isGreaterEqualInt a CSignedInt64
-input isGreaterEqualInt b CSignedInt64
-output isGreaterEqualInt Result CSignedInt32 Void
-memory isGreaterEqualInt heap no
-async isGreaterEqualInt no
-purpose isGreaterEqualInt "1 if a >= b, else 0."
-label startIsGreaterEqualInt
+operation isSignedInt64LeftGreaterThanOrEqualRight
+input isSignedInt64LeftGreaterThanOrEqualRight leftValue CSignedInt64
+input isSignedInt64LeftGreaterThanOrEqualRight rightValue CSignedInt64
+output isSignedInt64LeftGreaterThanOrEqualRight Result CSignedInt32 Void
+memory isSignedInt64LeftGreaterThanOrEqualRight heap no
+async isSignedInt64LeftGreaterThanOrEqualRight no
+purpose isSignedInt64LeftGreaterThanOrEqualRight "1 if a >= b, else 0."
+label startIsSignedInt64LeftGreaterThanOrEqualRight
 const t CSignedInt32 1
 const f CSignedInt32 0
 call ge math.greaterThanOrEqualI64
-arg ge left a
-arg ge right b
+arg ge left leftValue
+arg ge right rightValue
 run ge
 bind geB Bool ge
 branchIf geB retT
@@ -157,26 +157,26 @@ label retT
 returnOk t
 
 
-operation compareFloat
-input compareFloat a CFloat64
-input compareFloat b CFloat64
-output compareFloat Result CSignedInt32 Void
-memory compareFloat heap no
-async compareFloat no
-purpose compareFloat "3-way for doubles. Does not handle NaN specially (no IEEE NaN support in our F64 surface yet)."
-label startCompareFloat
+operation compareFloat64Ordering
+input compareFloat64Ordering leftValue CFloat64
+input compareFloat64Ordering rightValue CFloat64
+output compareFloat64Ordering Result CSignedInt32 Void
+memory compareFloat64Ordering heap no
+async compareFloat64Ordering no
+purpose compareFloat64Ordering "3-way for doubles. Does not handle NaN specially (no IEEE NaN support in our F64 surface yet)."
+label startCompareFloat64Ordering
 const negOne CSignedInt32 -1
 const posOne CSignedInt32 1
 const zero CSignedInt32 0
 call lt math.lessThanF64
-arg lt left a
-arg lt right b
+arg lt left leftValue
+arg lt right rightValue
 run lt
 bind aLess Bool lt
 branchIf aLess retLt
 call gt math.greaterThanF64
-arg gt left a
-arg gt right b
+arg gt left leftValue
+arg gt right rightValue
 run gt
 bind aGreater Bool gt
 branchIf aGreater retGt
@@ -187,22 +187,22 @@ label retGt
 returnOk posOne
 
 
-operation isCloseFloat
-input isCloseFloat a CFloat64
-input isCloseFloat b CFloat64
-input isCloseFloat epsilon CFloat64
-output isCloseFloat Result CSignedInt32 Void
-memory isCloseFloat heap no
-async isCloseFloat no
-purpose isCloseFloat "1 if |a-b| <= epsilon, else 0."
-label startIsCloseFloat
+operation areFloat64ValuesWithinTolerance
+input areFloat64ValuesWithinTolerance leftValue CFloat64
+input areFloat64ValuesWithinTolerance rightValue CFloat64
+input areFloat64ValuesWithinTolerance tolerance CFloat64
+output areFloat64ValuesWithinTolerance Result CSignedInt32 Void
+memory areFloat64ValuesWithinTolerance heap no
+async areFloat64ValuesWithinTolerance no
+purpose areFloat64ValuesWithinTolerance "1 if |a-b| <= epsilon, else 0."
+label startAreFloat64ValuesWithinTolerance
 const t CSignedInt32 1
 const f CSignedInt32 0
 const zeroF CFloat64 0.0
 const negOneF CFloat64 -1.0
 call diff math.subtractF64
-arg diff left a
-arg diff right b
+arg diff left leftValue
+arg diff right rightValue
 run diff
 bind dRaw CFloat64 diff
 var d CFloat64 zeroF
@@ -225,7 +225,7 @@ branch checkAbs
 label checkAbs
 call le math.lessThanOrEqualF64
 arg le left d
-arg le right epsilon
+arg le right tolerance
 run le
 bind ok Bool le
 branchIf ok retT
@@ -252,8 +252,8 @@ const c10 CSignedInt64 10
 const negOne32 CSignedInt32 -1
 const trueChk CSignedInt32 1
 
-# compareInt(5, 10) == -1
-call c1 compareInt
+# compareSignedInt64Ordering(5, 10) == -1
+call c1 compareSignedInt64Ordering
 arg c1 a c5
 arg c1 b c10
 run c1
@@ -267,8 +267,8 @@ branchIf c1Ok c1Lbl
 branch testFailed
 label c1Lbl
 
-# isLessInt(5, 10) == 1
-call l1 isLessInt
+# isSignedInt64LeftLessThanRight(5, 10) == 1
+call l1 isSignedInt64LeftLessThanRight
 arg l1 a c5
 arg l1 b c10
 run l1

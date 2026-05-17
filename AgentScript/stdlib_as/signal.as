@@ -15,85 +15,85 @@ errorCase MainError TestFailed CSignedInt32
 # because AS doesn't have first-class function pointers).
 #
 # Operations:
-#   raiseSignal(signum)       Wrap c.raise. Returns 0 on success.
-#   sigSIGABRT, sigSIGFPE,
-#   sigSIGILL, sigSIGINT,
-#   sigSIGSEGV, sigSIGTERM     Standard signal-number accessors.
+#   raiseProcessSignalNumber(signalNumber)       Wrap c.raise. Returns 0 on success.
+#   abortSignalNumber, floatingPointExceptionSignalNumber,
+#   illegalInstructionSignalNumber, interruptSignalNumber,
+#   segmentationViolationSignalNumber, terminationSignalNumber     Standard signal-number accessors.
 # ============================================================
 
 
-operation raiseSignal
-input raiseSignal signum CSignedInt32
-output raiseSignal Result CSignedInt32 Void
-effect raiseSignal write process.signal
-memory raiseSignal heap no
-async raiseSignal no
-purpose raiseSignal "Wrap c.raise. Delivers signum to this process; returns 0 on success and a non-zero result on failure."
+operation raiseProcessSignalNumber
+input raiseProcessSignalNumber signalNumber CSignedInt32
+output raiseProcessSignalNumber Result CSignedInt32 Void
+effect raiseProcessSignalNumber write process.signal
+memory raiseProcessSignalNumber heap no
+async raiseProcessSignalNumber no
+purpose raiseProcessSignalNumber "Wrap c.raise. Delivers signalNumber to this process; returns 0 on success and a non-zero result on failure."
 
-label startRaiseSignal
+label startRaiseProcessSignalNumber
 call libcCall c.raise
-arg libcCall sig signum
+arg libcCall sig signalNumber
 run libcCall
 bind raiseResult CSignedInt32 libcCall
 returnOk raiseResult
 
 
-operation sigSIGABRT
-output sigSIGABRT Result CSignedInt32 Void
-memory sigSIGABRT heap no
-async sigSIGABRT no
-purpose sigSIGABRT "SIGABRT (6). Abnormal-termination signal raised by abort()."
-label startSigSIGABRT
+operation abortSignalNumber
+output abortSignalNumber Result CSignedInt32 Void
+memory abortSignalNumber heap no
+async abortSignalNumber no
+purpose abortSignalNumber "SIGABRT (6). Abnormal-termination signal raised by abort()."
+label startAbortSignalNumber
 const v CSignedInt32 6
 returnOk v
 
 
-operation sigSIGFPE
-output sigSIGFPE Result CSignedInt32 Void
-memory sigSIGFPE heap no
-async sigSIGFPE no
-purpose sigSIGFPE "SIGFPE (8). Erroneous arithmetic (divide by zero, overflow)."
-label startSigSIGFPE
+operation floatingPointExceptionSignalNumber
+output floatingPointExceptionSignalNumber Result CSignedInt32 Void
+memory floatingPointExceptionSignalNumber heap no
+async floatingPointExceptionSignalNumber no
+purpose floatingPointExceptionSignalNumber "SIGFPE (8). Erroneous arithmetic (divide by zero, overflow)."
+label startFloatingPointExceptionSignalNumber
 const v CSignedInt32 8
 returnOk v
 
 
-operation sigSIGILL
-output sigSIGILL Result CSignedInt32 Void
-memory sigSIGILL heap no
-async sigSIGILL no
-purpose sigSIGILL "SIGILL (4). Illegal instruction."
-label startSigSIGILL
+operation illegalInstructionSignalNumber
+output illegalInstructionSignalNumber Result CSignedInt32 Void
+memory illegalInstructionSignalNumber heap no
+async illegalInstructionSignalNumber no
+purpose illegalInstructionSignalNumber "SIGILL (4). Illegal instruction."
+label startIllegalInstructionSignalNumber
 const v CSignedInt32 4
 returnOk v
 
 
-operation sigSIGINT
-output sigSIGINT Result CSignedInt32 Void
-memory sigSIGINT heap no
-async sigSIGINT no
-purpose sigSIGINT "SIGINT (2). Interactive attention signal (Ctrl-C)."
-label startSigSIGINT
+operation interruptSignalNumber
+output interruptSignalNumber Result CSignedInt32 Void
+memory interruptSignalNumber heap no
+async interruptSignalNumber no
+purpose interruptSignalNumber "SIGINT (2). Interactive attention signal (Ctrl-C)."
+label startInterruptSignalNumber
 const v CSignedInt32 2
 returnOk v
 
 
-operation sigSIGSEGV
-output sigSIGSEGV Result CSignedInt32 Void
-memory sigSIGSEGV heap no
-async sigSIGSEGV no
-purpose sigSIGSEGV "SIGSEGV (11). Invalid memory reference (segmentation fault)."
-label startSigSIGSEGV
+operation segmentationViolationSignalNumber
+output segmentationViolationSignalNumber Result CSignedInt32 Void
+memory segmentationViolationSignalNumber heap no
+async segmentationViolationSignalNumber no
+purpose segmentationViolationSignalNumber "SIGSEGV (11). Invalid memory reference (segmentation fault)."
+label startSegmentationViolationSignalNumber
 const v CSignedInt32 11
 returnOk v
 
 
-operation sigSIGTERM
-output sigSIGTERM Result CSignedInt32 Void
-memory sigSIGTERM heap no
-async sigSIGTERM no
-purpose sigSIGTERM "SIGTERM (15). Termination request."
-label startSigSIGTERM
+operation terminationSignalNumber
+output terminationSignalNumber Result CSignedInt32 Void
+memory terminationSignalNumber heap no
+async terminationSignalNumber no
+purpose terminationSignalNumber "SIGTERM (15). Termination request."
+label startTerminationSignalNumber
 const v CSignedInt32 15
 returnOk v
 
@@ -113,7 +113,7 @@ purpose main "Smoke-test signal accessors. Prints OK."
 
 label startMain
 
-call s1 sigSIGABRT
+call s1 abortSignalNumber
 run s1
 bindOk s1Res CSignedInt32 s1
 const six CSignedInt32 6
@@ -126,7 +126,7 @@ branchIf s1Ok s1OkLabel
 branch testFailed
 label s1OkLabel
 
-call s2 sigSIGTERM
+call s2 terminationSignalNumber
 run s2
 bindOk s2Res CSignedInt32 s2
 const fifteen CSignedInt32 15

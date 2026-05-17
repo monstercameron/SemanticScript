@@ -14,51 +14,51 @@ errorCase MainError WriteFailed CSignedInt32
 # ONE bottom-level OS primitive: c.putchar (the only thing that
 # actually crosses into the host OS to deliver a byte to stdout).
 #
-# - putByte(c)         : floor primitive wrapper — one byte to stdout.
-# - putLine(s)            : write a NUL-terminated string + newline,
-#                        byte-by-byte through putByte.
-# - putString(s)   : write a NUL-terminated string, no trailing
+# - writeByteToStandardOutput(c)         : floor primitive wrapper — one byte to stdout.
+# - writeCStringLineToStandardOutput(s)            : write a NUL-terminated string + newline,
+#                        byte-by-byte through writeByteToStandardOutput.
+# - writeCStringToStandardOutput(s)   : write a NUL-terminated string, no trailing
 #                        newline. (Useful for prompts, partial lines.)
-# - putIntegerDecimal(n) : print a signed 64-bit integer in decimal,
+# - writeSignedInt64DecimalToStandardOutput(n) : print a signed 64-bit integer in decimal,
 #                        followed by a newline, byte-by-byte.
 #
 # All operations work for the ASCII subset; multibyte / locale handling
 # is intentionally out of scope at this layer.
 # ============================================================
 
-# ---- putByte(c) ----
+# ---- writeByteToStandardOutput(c) ----
 # Thin wrapper over the floor primitive c.putchar. Exists so user
 # code never names a c.* function directly — every higher level
 # bottoms out through this operation.
-operation putByte
-input putByte c CSignedInt32
-output putByte Result CSignedInt32 Void
-effect putByte write console.stdout
-memory putByte heap no
-memory putByte stack max 1KiB
-async putByte no
-purpose putByte "Write one byte to stdout. The single line of code that ever crosses out to the host OS in the AgentScript stdlib."
+operation writeByteToStandardOutput
+input writeByteToStandardOutput characterCode CSignedInt32
+output writeByteToStandardOutput Result CSignedInt32 Void
+effect writeByteToStandardOutput write console.stdout
+memory writeByteToStandardOutput heap no
+memory writeByteToStandardOutput stack max 1KiB
+async writeByteToStandardOutput no
+purpose writeByteToStandardOutput "Write one byte to stdout. The single line of code that ever crosses out to the host OS in the AgentScript stdlib."
 
 label startPutchar
 call libcCall c.putchar
-arg libcCall c c
+arg libcCall c characterCode
 run libcCall
 bind result CSignedInt32 libcCall
 returnOk result
 
 
-# ---- putString(s) ----
-# Walk the string byte by byte, calling putByte for each. Stops at the
+# ---- writeCStringToStandardOutput(s) ----
+# Walk the string byte by byte, calling writeByteToStandardOutput for each. Stops at the
 # first NUL. Returns the number of bytes written.
-operation putString
-input putString s CNullTerminatedByteString
-output putString Result CByteCount Void
-effect putString write console.stdout
-effect putString read memory.buffer
-memory putString heap no
-memory putString stack max 1KiB
-async putString no
-purpose putString "Write every byte of s to stdout via putByte until a NUL is reached. Returns the byte count. Pure AS — no libc string call."
+operation writeCStringToStandardOutput
+input writeCStringToStandardOutput inputText CNullTerminatedByteString
+output writeCStringToStandardOutput Result CByteCount Void
+effect writeCStringToStandardOutput write console.stdout
+effect writeCStringToStandardOutput read memory.buffer
+memory writeCStringToStandardOutput heap no
+memory writeCStringToStandardOutput stack max 1KiB
+async writeCStringToStandardOutput no
+purpose writeCStringToStandardOutput "Write every byte of s to stdout via writeByteToStandardOutput until a NUL is reached. Returns the byte count. Pure AS — no libc string call."
 
 label startPutsNoNewline
 const zeroI64a I64 0
@@ -67,7 +67,7 @@ var idxA I64 0
 
 label putsNoNewlineLoop
 call loadByteCall pointer.loadByte
-arg loadByteCall buffer s
+arg loadByteCall buffer inputText
 arg loadByteCall offset idxA
 run loadByteCall
 bind currentByte I8 loadByteCall
@@ -79,7 +79,7 @@ run isNullCall
 bind isNull Bool isNullCall
 branchIf isNull putsNoNewlineDone
 
-call putCall putByte
+call putCall writeByteToStandardOutput
 arg putCall c currentByte
 run putCall
 ignoreOk putCall CSignedInt32
@@ -96,26 +96,26 @@ label putsNoNewlineDone
 returnOk idxA
 
 
-# ---- putLine(s) ----
-# Like libc putLine: write s followed by a newline.
-operation putLine
-input putLine s CNullTerminatedByteString
-output putLine Result CByteCount Void
-effect putLine write console.stdout
-effect putLine read memory.buffer
-memory putLine heap no
-memory putLine stack max 1KiB
-async putLine no
-purpose putLine "Write s + newline to stdout. Delegates the bytes to putString, then emits one LF via putByte."
+# ---- writeCStringLineToStandardOutput(s) ----
+# Like libc writeCStringLineToStandardOutput: write s followed by a newline.
+operation writeCStringLineToStandardOutput
+input writeCStringLineToStandardOutput inputText CNullTerminatedByteString
+output writeCStringLineToStandardOutput Result CByteCount Void
+effect writeCStringLineToStandardOutput write console.stdout
+effect writeCStringLineToStandardOutput read memory.buffer
+memory writeCStringLineToStandardOutput heap no
+memory writeCStringLineToStandardOutput stack max 1KiB
+async writeCStringLineToStandardOutput no
+purpose writeCStringLineToStandardOutput "Write s + newline to stdout. Delegates the bytes to writeCStringToStandardOutput, then emits one LF via writeByteToStandardOutput."
 
 label startPuts
-call bodyCall putString
-arg bodyCall s s
+call bodyCall writeCStringToStandardOutput
+arg bodyCall s inputText
 run bodyCall
 bindOk bodyByteCount CByteCount bodyCall
 
 const newlineCode CSignedInt32 10
-call newlineCall putByte
+call newlineCall writeByteToStandardOutput
 arg newlineCall c newlineCode
 run newlineCall
 ignoreOk newlineCall CSignedInt32
@@ -129,20 +129,20 @@ bind totalCount CByteCount totalCall
 returnOk totalCount
 
 
-# ---- putIntegerDecimal(n) ----
+# ---- writeSignedInt64DecimalToStandardOutput(n) ----
 # Print a signed 64-bit integer in decimal, then a newline. Pure AS:
 # extracts digits via repeated divide-by-10 and mod-10, buffers them
 # in reverse order on a stack-allocated byte array, then emits them
-# in forward order through putByte. Handles negative numbers by
+# in forward order through writeByteToStandardOutput. Handles negative numbers by
 # emitting a '-' first and printing the absolute value.
-operation putIntegerDecimal
-input putIntegerDecimal n CSignedInt64
-output putIntegerDecimal Result CByteCount Void
-effect putIntegerDecimal write console.stdout
-memory putIntegerDecimal heap no
-memory putIntegerDecimal stack max 4KiB
-async putIntegerDecimal no
-purpose putIntegerDecimal "Pure-AS itoa-then-print: extract decimal digits from n (handling sign), buffer them in reverse on a 24-byte scratch area, then emit forward through putByte. No sprintf, no printf."
+operation writeSignedInt64DecimalToStandardOutput
+input writeSignedInt64DecimalToStandardOutput inputValue CSignedInt64
+output writeSignedInt64DecimalToStandardOutput Result CByteCount Void
+effect writeSignedInt64DecimalToStandardOutput write console.stdout
+memory writeSignedInt64DecimalToStandardOutput heap no
+memory writeSignedInt64DecimalToStandardOutput stack max 4KiB
+async writeSignedInt64DecimalToStandardOutput no
+purpose writeSignedInt64DecimalToStandardOutput "Pure-AS itoa-then-print: extract decimal digits from n (handling sign), buffer them in reverse on a 24-byte scratch area, then emit forward through writeByteToStandardOutput. No sprintf, no printf."
 
 label startWriteIntDecimal
 
@@ -164,11 +164,11 @@ bind digitBuffer COpaqueMemoryAddress allocCall
 
 # Detect sign; work with the absolute value.
 var workingValue I64 0
-set workingValue n
+set workingValue inputValue
 var isNegative I64 0
 
 call signCheckCall math.lessThanI64
-arg signCheckCall left n
+arg signCheckCall left inputValue
 arg signCheckCall right zeroI64
 run signCheckCall
 bind isNegativeBool Bool signCheckCall
@@ -178,7 +178,7 @@ branch signDone
 label flipSign
 set isNegative oneI64
 call negCall math.multiplyI64
-arg negCall left n
+arg negCall left inputValue
 arg negCall right negOneI64
 run negCall
 bind negated I64 negCall
@@ -198,7 +198,7 @@ branch decomposeDigits
 
 label emitZero
 const charZero CSignedInt32 48
-call putZero putByte
+call putZero writeByteToStandardOutput
 arg putZero c charZero
 run putZero
 ignoreOk putZero CSignedInt32
@@ -262,7 +262,7 @@ branchIf needsSign emitMinus
 branch emitDigitsForward
 
 label emitMinus
-call putMinus putByte
+call putMinus writeByteToStandardOutput
 arg putMinus c asciiMinus
 run putMinus
 ignoreOk putMinus CSignedInt32
@@ -296,7 +296,7 @@ arg loadDigitCall offset decCursor
 run loadDigitCall
 bind digitToEmit I8 loadDigitCall
 
-call putDigit putByte
+call putDigit writeByteToStandardOutput
 arg putDigit c digitToEmit
 run putDigit
 ignoreOk putDigit CSignedInt32
@@ -304,7 +304,7 @@ ignoreOk putDigit CSignedInt32
 branch emitNext
 
 label emitTrailingNewline
-call putNewline putByte
+call putNewline writeByteToStandardOutput
 arg putNewline c newlineByte
 run putNewline
 ignoreOk putNewline CSignedInt32
@@ -320,15 +320,15 @@ returnOk digitCount
 # Smoke test
 # ============================================================
 
-operation putUnsignedDecimal
-input putUnsignedDecimal n CSignedInt64
-output putUnsignedDecimal Result CByteCount Void
-effect putUnsignedDecimal write console.stdout
-memory putUnsignedDecimal heap yes
-async putUnsignedDecimal no
-purpose putUnsignedDecimal "Print n as an unsigned decimal integer (no sign), followed by a newline. For negative n, prints the two's-complement representation as if it were unsigned. Pure AS via digit extraction."
+operation writeUnsignedInt64DecimalToStandardOutput
+input writeUnsignedInt64DecimalToStandardOutput inputValue CSignedInt64
+output writeUnsignedInt64DecimalToStandardOutput Result CByteCount Void
+effect writeUnsignedInt64DecimalToStandardOutput write console.stdout
+memory writeUnsignedInt64DecimalToStandardOutput heap yes
+async writeUnsignedInt64DecimalToStandardOutput no
+purpose writeUnsignedInt64DecimalToStandardOutput "Print n as an unsigned decimal integer (no sign), followed by a newline. For negative n, prints the two's-complement representation as if it were unsigned. Pure AS via digit extraction."
 
-label startPutUnsignedDecimal
+label startWriteUnsignedInt64DecimalToStandardOutput
 const zeroU I64 0
 const oneU I64 1
 const tenU I64 10
@@ -339,7 +339,7 @@ const zeroOffU CByteCount 0
 
 # Special case: zero -> print '0\n'
 call eqZeroUCall math.equalI64
-arg eqZeroUCall left n
+arg eqZeroUCall left inputValue
 arg eqZeroUCall right zeroU
 run eqZeroUCall
 bind eqZeroU Bool eqZeroUCall
@@ -351,7 +351,7 @@ run allocBufU
 bind digitBufU COpaqueMemoryAddress allocBufU
 
 var workU I64 0
-set workU n
+set workU inputValue
 var digCountU I64 0
 
 label putUDecLoop
@@ -411,14 +411,14 @@ arg loadDigUCall buffer digitBufU
 arg loadDigUCall offset decCurU
 run loadDigUCall
 bind digToEmitU I8 loadDigUCall
-call putDigU putByte
+call putDigU writeByteToStandardOutput
 arg putDigU c digToEmitU
 run putDigU
 ignoreOk putDigU CSignedInt32
 branch putUDecEmitNext
 
 label putUDecTrailNewline
-call putNlU putByte
+call putNlU writeByteToStandardOutput
 arg putNlU c newlineU
 run putNlU
 ignoreOk putNlU CSignedInt32
@@ -429,11 +429,11 @@ returnOk digCountU
 
 label putUDecZero
 const charZeroU CSignedInt32 48
-call putZeroU putByte
+call putZeroU writeByteToStandardOutput
 arg putZeroU c charZeroU
 run putZeroU
 ignoreOk putZeroU CSignedInt32
-call putNlUZ putByte
+call putNlUZ writeByteToStandardOutput
 arg putNlUZ c newlineU
 run putNlUZ
 ignoreOk putNlUZ CSignedInt32
@@ -441,15 +441,15 @@ const oneCB CByteCount 1
 returnOk oneCB
 
 
-operation putHex
-input putHex n CSignedInt64
-output putHex Result CByteCount Void
-effect putHex write console.stdout
-memory putHex heap yes
-async putHex no
-purpose putHex "Print n in hexadecimal (lowercase), no '0x' prefix, no leading zeros except for n == 0. Followed by a newline. Pure AS — extracts nibbles via division by 16."
+operation writeSignedInt64HexToStandardOutput
+input writeSignedInt64HexToStandardOutput inputValue CSignedInt64
+output writeSignedInt64HexToStandardOutput Result CByteCount Void
+effect writeSignedInt64HexToStandardOutput write console.stdout
+memory writeSignedInt64HexToStandardOutput heap yes
+async writeSignedInt64HexToStandardOutput no
+purpose writeSignedInt64HexToStandardOutput "Print n in hexadecimal (lowercase), no '0x' prefix, no leading zeros except for n == 0. Followed by a newline. Pure AS — extracts nibbles via division by 16."
 
-label startPutHex
+label startWriteSignedInt64HexToStandardOutput
 const zeroHx I64 0
 const oneHx I64 1
 const sixteenHx I64 16
@@ -460,7 +460,7 @@ const newlineHx CSignedInt32 10
 const scratchHx CByteCount 32
 
 call eqZeroHxCall math.equalI64
-arg eqZeroHxCall left n
+arg eqZeroHxCall left inputValue
 arg eqZeroHxCall right zeroHx
 run eqZeroHxCall
 bind eqZeroHx Bool eqZeroHxCall
@@ -472,7 +472,7 @@ run allocBufHx
 bind hxBuf COpaqueMemoryAddress allocBufHx
 
 var workHx I64 0
-set workHx n
+set workHx inputValue
 var digCountHx I64 0
 var digValHx I64 0
 
@@ -555,14 +555,14 @@ arg loadHxCall buffer hxBuf
 arg loadHxCall offset decCurHx
 run loadHxCall
 bind hxToEmit I8 loadHxCall
-call putHxDigit putByte
+call putHxDigit writeByteToStandardOutput
 arg putHxDigit c hxToEmit
 run putHxDigit
 ignoreOk putHxDigit CSignedInt32
 branch putHexEmitNext
 
 label putHexTrailNewline
-call putNlHx putByte
+call putNlHx writeByteToStandardOutput
 arg putNlHx c newlineHx
 run putNlHx
 ignoreOk putNlHx CSignedInt32
@@ -573,11 +573,11 @@ returnOk digCountHx
 
 label putHexZero
 const charZeroHx CSignedInt32 48
-call putZeroHx putByte
+call putZeroHx writeByteToStandardOutput
 arg putZeroHx c charZeroHx
 run putZeroHx
 ignoreOk putZeroHx CSignedInt32
-call putNlHxZ putByte
+call putNlHxZ writeByteToStandardOutput
 arg putNlHxZ c newlineHx
 run putNlHxZ
 ignoreOk putNlHxZ CSignedInt32
@@ -592,53 +592,53 @@ effect main write console.stdout
 memory main heap yes
 memory main stack max 16KiB
 async main no
-purpose main "Smoke-test the AgentScript stdlib stdio operations: putLine, putString, putIntegerDecimal, putUnsignedDecimal, putHex. Expected stdout (7 lines):\nHello, AgentScript stdlib!\nno-newline-then-putLine\n42\n-1234\n0\n255\nff"
+purpose main "Smoke-test the AgentScript stdlib stdio operations: writeCStringLineToStandardOutput, writeCStringToStandardOutput, writeSignedInt64DecimalToStandardOutput, writeUnsignedInt64DecimalToStandardOutput, writeSignedInt64HexToStandardOutput. Expected stdout (7 lines):\nHello, AgentScript stdlib!\nno-newline-then-writeCStringLineToStandardOutput\n42\n-1234\n0\n255\nff"
 
 label startMain
 
 const greeting CNullTerminatedByteString "Hello, AgentScript stdlib!"
-call putsGreeting putLine
+call putsGreeting writeCStringLineToStandardOutput
 arg putsGreeting s greeting
 run putsGreeting
 ignoreOk putsGreeting CByteCount
 
-const noNl CNullTerminatedByteString "no-newline-then-putLine"
-call putNoNl putString
+const noNl CNullTerminatedByteString "no-newline-then-writeCStringLineToStandardOutput"
+call putNoNl writeCStringToStandardOutput
 arg putNoNl s noNl
 run putNoNl
 ignoreOk putNoNl CByteCount
 
 const emptyMarker CNullTerminatedByteString ""
-call putEmpty putLine
+call putEmpty writeCStringLineToStandardOutput
 arg putEmpty s emptyMarker
 run putEmpty
 ignoreOk putEmpty CByteCount
 
 const fortyTwo CSignedInt64 42
-call put42 putIntegerDecimal
+call put42 writeSignedInt64DecimalToStandardOutput
 arg put42 n fortyTwo
 run put42
 ignoreOk put42 CByteCount
 
 const negThing CSignedInt64 -1234
-call putNeg putIntegerDecimal
+call putNeg writeSignedInt64DecimalToStandardOutput
 arg putNeg n negThing
 run putNeg
 ignoreOk putNeg CByteCount
 
 const zeroVal CSignedInt64 0
-call put0 putIntegerDecimal
+call put0 writeSignedInt64DecimalToStandardOutput
 arg put0 n zeroVal
 run put0
 ignoreOk put0 CByteCount
 
 const u255 CSignedInt64 255
-call putU putUnsignedDecimal
+call putU writeUnsignedInt64DecimalToStandardOutput
 arg putU n u255
 run putU
 ignoreOk putU CByteCount
 
-call putH putHex
+call putH writeSignedInt64HexToStandardOutput
 arg putH n u255
 run putH
 ignoreOk putH CByteCount

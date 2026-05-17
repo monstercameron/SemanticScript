@@ -15,27 +15,27 @@ errorCase MainError TestFailed CSignedInt32
 # I8 sign-extension.
 #
 # Operations:
-#   arraySumBytes(buf, count)     Sum of all byte values.
-#   arrayMinByte(buf, count)      Minimum byte value (0..255).
-#   arrayMaxByte(buf, count)      Maximum byte value.
-#   arrayContainsByte(buf, count, value)
+#   sumSignedByteValuesInBuffer(buf, count)     Sum of all byte values.
+#   findMinimumSignedByteInBuffer(buf, count)      Minimum byte value (0..255).
+#   findMaximumSignedByteInBuffer(buf, count)      Maximum byte value.
+#   bufferContainsSignedByteValue(buf, count, value)
 #                                  1 if value occurs, else 0.
-#   arrayCountByte(buf, count, value)
+#   countSignedByteValueInBuffer(buf, count, value)
 #                                  Number of occurrences.
-#   arrayReverseInPlace(buf, count)
+#   reverseBytesInBufferInPlace(buf, count)
 #                                  Reverse bytes in place. Returns count.
 # ============================================================
 
 
-operation arraySumBytes
-input arraySumBytes buf CNullTerminatedByteString
-input arraySumBytes count CByteCount
-output arraySumBytes Result CSignedInt64 Void
-effect arraySumBytes read memory.buffer
-memory arraySumBytes heap no
-async arraySumBytes no
-purpose arraySumBytes "Sum every byte in the first count bytes of buf, treating each as unsigned."
-label startArraySumBytes
+operation sumSignedByteValuesInBuffer
+input sumSignedByteValuesInBuffer byteBuffer CNullTerminatedByteString
+input sumSignedByteValuesInBuffer byteCount CByteCount
+output sumSignedByteValuesInBuffer Result CSignedInt64 Void
+effect sumSignedByteValuesInBuffer read memory.buffer
+memory sumSignedByteValuesInBuffer heap no
+async sumSignedByteValuesInBuffer no
+purpose sumSignedByteValuesInBuffer "Sum every byte in the first count bytes of buf, treating each as unsigned."
+label startSumSignedByteValuesInBuffer
 const zero I64 0
 const oneI I64 1
 const tFs I64 256
@@ -44,12 +44,12 @@ var idx I64 0
 label loopHead
 call doneCall math.greaterThanOrEqualI64
 arg doneCall left idx
-arg doneCall right count
+arg doneCall right byteCount
 run doneCall
 bind done Bool doneCall
 branchIf done sumDone
 call loadCall pointer.loadByte
-arg loadCall buffer buf
+arg loadCall buffer byteBuffer
 arg loadCall offset idx
 run loadCall
 bind byteRaw I8 loadCall
@@ -80,15 +80,15 @@ label sumDone
 returnOk sum
 
 
-operation arrayMinByte
-input arrayMinByte buf CNullTerminatedByteString
-input arrayMinByte count CByteCount
-output arrayMinByte Result CSignedInt64 Void
-effect arrayMinByte read memory.buffer
-memory arrayMinByte heap no
-async arrayMinByte no
-purpose arrayMinByte "Smallest unsigned byte. Returns 256 (out-of-range sentinel) for empty arrays."
-label startArrayMinByte
+operation findMinimumSignedByteInBuffer
+input findMinimumSignedByteInBuffer byteBuffer CNullTerminatedByteString
+input findMinimumSignedByteInBuffer byteCount CByteCount
+output findMinimumSignedByteInBuffer Result CSignedInt64 Void
+effect findMinimumSignedByteInBuffer read memory.buffer
+memory findMinimumSignedByteInBuffer heap no
+async findMinimumSignedByteInBuffer no
+purpose findMinimumSignedByteInBuffer "Smallest unsigned byte. Returns 256 (out-of-range sentinel) for empty arrays."
+label startFindMinimumSignedByteInBuffer
 const oneI I64 1
 const tFs I64 256
 const sentinelEmpty I64 256
@@ -97,12 +97,12 @@ var idx I64 0
 label loopHead
 call doneCall math.greaterThanOrEqualI64
 arg doneCall left idx
-arg doneCall right count
+arg doneCall right byteCount
 run doneCall
 bind done Bool doneCall
 branchIf done minDone
 call loadCall pointer.loadByte
-arg loadCall buffer buf
+arg loadCall buffer byteBuffer
 arg loadCall offset idx
 run loadCall
 bind byteRaw I8 loadCall
@@ -138,15 +138,15 @@ label minDone
 returnOk minVal
 
 
-operation arrayMaxByte
-input arrayMaxByte buf CNullTerminatedByteString
-input arrayMaxByte count CByteCount
-output arrayMaxByte Result CSignedInt64 Void
-effect arrayMaxByte read memory.buffer
-memory arrayMaxByte heap no
-async arrayMaxByte no
-purpose arrayMaxByte "Largest unsigned byte. Returns -1 for empty arrays."
-label startArrayMaxByte
+operation findMaximumSignedByteInBuffer
+input findMaximumSignedByteInBuffer byteBuffer CNullTerminatedByteString
+input findMaximumSignedByteInBuffer byteCount CByteCount
+output findMaximumSignedByteInBuffer Result CSignedInt64 Void
+effect findMaximumSignedByteInBuffer read memory.buffer
+memory findMaximumSignedByteInBuffer heap no
+async findMaximumSignedByteInBuffer no
+purpose findMaximumSignedByteInBuffer "Largest unsigned byte. Returns -1 for empty arrays."
+label startFindMaximumSignedByteInBuffer
 const oneI I64 1
 const tFs I64 256
 const negSentinel I64 -1
@@ -155,12 +155,12 @@ var idx I64 0
 label loopHead
 call doneCall math.greaterThanOrEqualI64
 arg doneCall left idx
-arg doneCall right count
+arg doneCall right byteCount
 run doneCall
 bind done Bool doneCall
 branchIf done maxDone
 call loadCall pointer.loadByte
-arg loadCall buffer buf
+arg loadCall buffer byteBuffer
 arg loadCall offset idx
 run loadCall
 bind byteRaw I8 loadCall
@@ -196,16 +196,16 @@ label maxDone
 returnOk maxVal
 
 
-operation arrayContainsByte
-input arrayContainsByte buf CNullTerminatedByteString
-input arrayContainsByte count CByteCount
-input arrayContainsByte value CSignedInt32
-output arrayContainsByte Result CSignedInt32 Void
-effect arrayContainsByte read memory.buffer
-memory arrayContainsByte heap no
-async arrayContainsByte no
-purpose arrayContainsByte "1 if any byte in [0, count) equals value, else 0."
-label startArrayContainsByte
+operation bufferContainsSignedByteValue
+input bufferContainsSignedByteValue byteBuffer CNullTerminatedByteString
+input bufferContainsSignedByteValue byteCount CByteCount
+input bufferContainsSignedByteValue targetValue CSignedInt32
+output bufferContainsSignedByteValue Result CSignedInt32 Void
+effect bufferContainsSignedByteValue read memory.buffer
+memory bufferContainsSignedByteValue heap no
+async bufferContainsSignedByteValue no
+purpose bufferContainsSignedByteValue "1 if any byte in [0, count) equals value, else 0."
+label startBufferContainsSignedByteValue
 const oneI I64 1
 const trueR CSignedInt32 1
 const falseR CSignedInt32 0
@@ -213,18 +213,18 @@ var idx I64 0
 label loopHead
 call doneCall math.greaterThanOrEqualI64
 arg doneCall left idx
-arg doneCall right count
+arg doneCall right byteCount
 run doneCall
 bind done Bool doneCall
 branchIf done notFound
 call loadCall pointer.loadByte
-arg loadCall buffer buf
+arg loadCall buffer byteBuffer
 arg loadCall offset idx
 run loadCall
 bind byteRaw I8 loadCall
 call eqCall math.equalI64
 arg eqCall left byteRaw
-arg eqCall right value
+arg eqCall right targetValue
 run eqCall
 bind eq Bool eqCall
 branchIf eq found
@@ -241,34 +241,34 @@ label notFound
 returnOk falseR
 
 
-operation arrayCountByte
-input arrayCountByte buf CNullTerminatedByteString
-input arrayCountByte count CByteCount
-input arrayCountByte value CSignedInt32
-output arrayCountByte Result CSignedInt64 Void
-effect arrayCountByte read memory.buffer
-memory arrayCountByte heap no
-async arrayCountByte no
-purpose arrayCountByte "Number of bytes equal to value in [0, count)."
-label startArrayCountByte
+operation countSignedByteValueInBuffer
+input countSignedByteValueInBuffer byteBuffer CNullTerminatedByteString
+input countSignedByteValueInBuffer byteCount CByteCount
+input countSignedByteValueInBuffer targetValue CSignedInt32
+output countSignedByteValueInBuffer Result CSignedInt64 Void
+effect countSignedByteValueInBuffer read memory.buffer
+memory countSignedByteValueInBuffer heap no
+async countSignedByteValueInBuffer no
+purpose countSignedByteValueInBuffer "Number of bytes equal to value in [0, count)."
+label startCountSignedByteValueInBuffer
 const oneI I64 1
 var counter I64 0
 var idx I64 0
 label loopHead
 call doneCall math.greaterThanOrEqualI64
 arg doneCall left idx
-arg doneCall right count
+arg doneCall right byteCount
 run doneCall
 bind done Bool doneCall
 branchIf done countDone
 call loadCall pointer.loadByte
-arg loadCall buffer buf
+arg loadCall buffer byteBuffer
 arg loadCall offset idx
 run loadCall
 bind byteRaw I8 loadCall
 call eqCall math.equalI64
 arg eqCall left byteRaw
-arg eqCall right value
+arg eqCall right targetValue
 run eqCall
 bind eq Bool eqCall
 branchIf eq incCounter
@@ -293,22 +293,22 @@ label countDone
 returnOk counter
 
 
-operation arrayReverseInPlace
-input arrayReverseInPlace buf COpaqueMemoryAddress
-input arrayReverseInPlace count CByteCount
-output arrayReverseInPlace Result CByteCount Void
-effect arrayReverseInPlace read memory.buffer
-effect arrayReverseInPlace write memory.buffer
-memory arrayReverseInPlace heap no
-async arrayReverseInPlace no
-purpose arrayReverseInPlace "Reverse the order of the first count bytes of buf in place. Returns count."
-label startArrayReverseInPlace
+operation reverseBytesInBufferInPlace
+input reverseBytesInBufferInPlace byteBuffer COpaqueMemoryAddress
+input reverseBytesInBufferInPlace byteCount CByteCount
+output reverseBytesInBufferInPlace Result CByteCount Void
+effect reverseBytesInBufferInPlace read memory.buffer
+effect reverseBytesInBufferInPlace write memory.buffer
+memory reverseBytesInBufferInPlace heap no
+async reverseBytesInBufferInPlace no
+purpose reverseBytesInBufferInPlace "Reverse the order of the first count bytes of buf in place. Returns count."
+label startReverseBytesInBufferInPlace
 const oneI I64 1
 const twoI I64 2
 var leftIdx I64 0
 var rightIdx I64 0
 call rInit math.subtractI64
-arg rInit left count
+arg rInit left byteCount
 arg rInit right oneI
 run rInit
 bind rIdx0 I64 rInit
@@ -323,23 +323,23 @@ bind done Bool doneCall
 branchIf done revDone
 
 call leftLoadCall pointer.loadByte
-arg leftLoadCall buffer buf
+arg leftLoadCall buffer byteBuffer
 arg leftLoadCall offset leftIdx
 run leftLoadCall
 bind leftByte I8 leftLoadCall
 call rightLoadCall pointer.loadByte
-arg rightLoadCall buffer buf
+arg rightLoadCall buffer byteBuffer
 arg rightLoadCall offset rightIdx
 run rightLoadCall
 bind rightByte I8 rightLoadCall
 
 call swapLeftCall pointer.storeByte
-arg swapLeftCall buffer buf
+arg swapLeftCall buffer byteBuffer
 arg swapLeftCall offset leftIdx
 arg swapLeftCall value rightByte
 run swapLeftCall
 call swapRightCall pointer.storeByte
-arg swapRightCall buffer buf
+arg swapRightCall buffer byteBuffer
 arg swapRightCall offset rightIdx
 arg swapRightCall value leftByte
 run swapRightCall
@@ -359,7 +359,7 @@ set rightIdx nextRight
 branch loopHead
 
 label revDone
-returnOk count
+returnOk byteCount
 
 
 # ============================================================
@@ -379,8 +379,8 @@ label startMain
 const fiveCount CByteCount 5
 const hello CNullTerminatedByteString "hello"
 
-# arraySumBytes("hello", 5) == 'h'+'e'+'l'+'l'+'o' = 104+101+108+108+111 = 532
-call s1 arraySumBytes
+# sumSignedByteValuesInBuffer("hello", 5) == 'h'+'e'+'l'+'l'+'o' = 104+101+108+108+111 = 532
+call s1 sumSignedByteValuesInBuffer
 arg s1 buf hello
 arg s1 count fiveCount
 run s1
@@ -395,9 +395,9 @@ branchIf s1Ok s1Lbl
 branch testFailed
 label s1Lbl
 
-# arrayContainsByte("hello", 5, 'l') == 1
+# bufferContainsSignedByteValue("hello", 5, 'l') == 1
 const lowerL CSignedInt32 108
-call c1 arrayContainsByte
+call c1 bufferContainsSignedByteValue
 arg c1 buf hello
 arg c1 count fiveCount
 arg c1 value lowerL
@@ -413,8 +413,8 @@ branchIf c1Ok c1Lbl
 branch testFailed
 label c1Lbl
 
-# arrayCountByte("hello", 5, 'l') == 2
-call cb1 arrayCountByte
+# countSignedByteValueInBuffer("hello", 5, 'l') == 2
+call cb1 countSignedByteValueInBuffer
 arg cb1 buf hello
 arg cb1 count fiveCount
 arg cb1 value lowerL

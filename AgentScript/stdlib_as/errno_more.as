@@ -11,207 +11,207 @@ errorCase MainError TestFailed CSignedInt32
 # AGENTSCRIPT STANDARD LIBRARY: extended POSIX errno values.
 #
 # Operations:
-#   errEAGAIN, errEBADF, errEBUSY, errECHILD, errEDEADLK,
-#   errEDOM, errEILSEQ, errELOOP, errEMLINK, errENAMETOOLONG,
-#   errENODEV, errENOEXEC, errENOLCK, errENOSYS, errENOTBLK,
-#   errENOTEMPTY, errENOTSOCK, errENOTTY, errEROFS, errEWOULDBLOCK,
-#   errEXDEV, errEMSGSIZE, errENETUNREACH, errETIMEDOUT.
+#   tryAgainErrorNumber, badFileDescriptorErrorNumber, resourceBusyErrorNumber, noChildProcessErrorNumber, deadlockWouldOccurErrorNumber,
+#   mathDomainErrorNumber, illegalByteSequenceErrorNumber, tooManySymbolicLinksErrorNumber, tooManyLinksErrorNumber, nameTooLongErrorNumber,
+#   noSuchDeviceErrorNumber, execFormatErrorNumber, noLockAvailableErrorNumber, functionNotImplementedErrorNumber, errENOTBLK,
+#   directoryNotEmptyErrorNumber, errENOTSOCK, inappropriateIoctlErrorNumber, readOnlyFileSystemErrorNumber, errEWOULDBLOCK,
+#   crossDeviceLinkErrorNumber, errEMSGSIZE, errENETUNREACH, operationTimedOutErrorNumber.
 # ============================================================
 
-operation errEAGAIN
-output errEAGAIN Result CSignedInt32 Void
-memory errEAGAIN heap no
-async errEAGAIN no
-purpose errEAGAIN "EAGAIN (11)."
+operation tryAgainErrorNumber
+output tryAgainErrorNumber Result CSignedInt32 Void
+memory tryAgainErrorNumber heap no
+async tryAgainErrorNumber no
+purpose tryAgainErrorNumber "EAGAIN (11)."
 label start
 const v CSignedInt32 11
 returnOk v
 
-operation errEBADF
-output errEBADF Result CSignedInt32 Void
-memory errEBADF heap no
-async errEBADF no
-purpose errEBADF "EBADF (9)."
+operation badFileDescriptorErrorNumber
+output badFileDescriptorErrorNumber Result CSignedInt32 Void
+memory badFileDescriptorErrorNumber heap no
+async badFileDescriptorErrorNumber no
+purpose badFileDescriptorErrorNumber "EBADF (9)."
 label start
 const v CSignedInt32 9
 returnOk v
 
-operation errEBUSY
-output errEBUSY Result CSignedInt32 Void
-memory errEBUSY heap no
-async errEBUSY no
-purpose errEBUSY "EBUSY (16)."
+operation resourceBusyErrorNumber
+output resourceBusyErrorNumber Result CSignedInt32 Void
+memory resourceBusyErrorNumber heap no
+async resourceBusyErrorNumber no
+purpose resourceBusyErrorNumber "EBUSY (16)."
 label start
 const v CSignedInt32 16
 returnOk v
 
-operation errECHILD
-output errECHILD Result CSignedInt32 Void
-memory errECHILD heap no
-async errECHILD no
-purpose errECHILD "ECHILD (10)."
+operation noChildProcessErrorNumber
+output noChildProcessErrorNumber Result CSignedInt32 Void
+memory noChildProcessErrorNumber heap no
+async noChildProcessErrorNumber no
+purpose noChildProcessErrorNumber "ECHILD (10)."
 label start
 const v CSignedInt32 10
 returnOk v
 
-operation errEDEADLK
-output errEDEADLK Result CSignedInt32 Void
-memory errEDEADLK heap no
-async errEDEADLK no
-purpose errEDEADLK "EDEADLK (35)."
+operation deadlockWouldOccurErrorNumber
+output deadlockWouldOccurErrorNumber Result CSignedInt32 Void
+memory deadlockWouldOccurErrorNumber heap no
+async deadlockWouldOccurErrorNumber no
+purpose deadlockWouldOccurErrorNumber "EDEADLK (35)."
 label start
 const v CSignedInt32 35
 returnOk v
 
-operation errEDOM
-output errEDOM Result CSignedInt32 Void
-memory errEDOM heap no
-async errEDOM no
-purpose errEDOM "EDOM (33)."
+operation mathDomainErrorNumber
+output mathDomainErrorNumber Result CSignedInt32 Void
+memory mathDomainErrorNumber heap no
+async mathDomainErrorNumber no
+purpose mathDomainErrorNumber "EDOM (33)."
 label start
 const v CSignedInt32 33
 returnOk v
 
-operation errEILSEQ
-output errEILSEQ Result CSignedInt32 Void
-memory errEILSEQ heap no
-async errEILSEQ no
-purpose errEILSEQ "EILSEQ (84)."
+operation illegalByteSequenceErrorNumber
+output illegalByteSequenceErrorNumber Result CSignedInt32 Void
+memory illegalByteSequenceErrorNumber heap no
+async illegalByteSequenceErrorNumber no
+purpose illegalByteSequenceErrorNumber "EILSEQ (84)."
 label start
 const v CSignedInt32 84
 returnOk v
 
-operation errELOOP
-output errELOOP Result CSignedInt32 Void
-memory errELOOP heap no
-async errELOOP no
-purpose errELOOP "ELOOP (40)."
+operation tooManySymbolicLinksErrorNumber
+output tooManySymbolicLinksErrorNumber Result CSignedInt32 Void
+memory tooManySymbolicLinksErrorNumber heap no
+async tooManySymbolicLinksErrorNumber no
+purpose tooManySymbolicLinksErrorNumber "ELOOP (40)."
 label start
 const v CSignedInt32 40
 returnOk v
 
-operation errEMLINK
-output errEMLINK Result CSignedInt32 Void
-memory errEMLINK heap no
-async errEMLINK no
-purpose errEMLINK "EMLINK (31)."
+operation tooManyLinksErrorNumber
+output tooManyLinksErrorNumber Result CSignedInt32 Void
+memory tooManyLinksErrorNumber heap no
+async tooManyLinksErrorNumber no
+purpose tooManyLinksErrorNumber "EMLINK (31)."
 label start
 const v CSignedInt32 31
 returnOk v
 
-operation errENAMETOOLONG
-output errENAMETOOLONG Result CSignedInt32 Void
-memory errENAMETOOLONG heap no
-async errENAMETOOLONG no
-purpose errENAMETOOLONG "ENAMETOOLONG (36)."
+operation nameTooLongErrorNumber
+output nameTooLongErrorNumber Result CSignedInt32 Void
+memory nameTooLongErrorNumber heap no
+async nameTooLongErrorNumber no
+purpose nameTooLongErrorNumber "ENAMETOOLONG (36)."
 label start
 const v CSignedInt32 36
 returnOk v
 
-operation errENODEV
-output errENODEV Result CSignedInt32 Void
-memory errENODEV heap no
-async errENODEV no
-purpose errENODEV "ENODEV (19)."
+operation noSuchDeviceErrorNumber
+output noSuchDeviceErrorNumber Result CSignedInt32 Void
+memory noSuchDeviceErrorNumber heap no
+async noSuchDeviceErrorNumber no
+purpose noSuchDeviceErrorNumber "ENODEV (19)."
 label start
 const v CSignedInt32 19
 returnOk v
 
-operation errENOEXEC
-output errENOEXEC Result CSignedInt32 Void
-memory errENOEXEC heap no
-async errENOEXEC no
-purpose errENOEXEC "ENOEXEC (8)."
+operation execFormatErrorNumber
+output execFormatErrorNumber Result CSignedInt32 Void
+memory execFormatErrorNumber heap no
+async execFormatErrorNumber no
+purpose execFormatErrorNumber "ENOEXEC (8)."
 label start
 const v CSignedInt32 8
 returnOk v
 
-operation errENOLCK
-output errENOLCK Result CSignedInt32 Void
-memory errENOLCK heap no
-async errENOLCK no
-purpose errENOLCK "ENOLCK (37)."
+operation noLockAvailableErrorNumber
+output noLockAvailableErrorNumber Result CSignedInt32 Void
+memory noLockAvailableErrorNumber heap no
+async noLockAvailableErrorNumber no
+purpose noLockAvailableErrorNumber "ENOLCK (37)."
 label start
 const v CSignedInt32 37
 returnOk v
 
-operation errENOSYS
-output errENOSYS Result CSignedInt32 Void
-memory errENOSYS heap no
-async errENOSYS no
-purpose errENOSYS "ENOSYS (38)."
+operation functionNotImplementedErrorNumber
+output functionNotImplementedErrorNumber Result CSignedInt32 Void
+memory functionNotImplementedErrorNumber heap no
+async functionNotImplementedErrorNumber no
+purpose functionNotImplementedErrorNumber "ENOSYS (38)."
 label start
 const v CSignedInt32 38
 returnOk v
 
-operation errENOTEMPTY
-output errENOTEMPTY Result CSignedInt32 Void
-memory errENOTEMPTY heap no
-async errENOTEMPTY no
-purpose errENOTEMPTY "ENOTEMPTY (39)."
+operation directoryNotEmptyErrorNumber
+output directoryNotEmptyErrorNumber Result CSignedInt32 Void
+memory directoryNotEmptyErrorNumber heap no
+async directoryNotEmptyErrorNumber no
+purpose directoryNotEmptyErrorNumber "ENOTEMPTY (39)."
 label start
 const v CSignedInt32 39
 returnOk v
 
-operation errENOTDIR
-output errENOTDIR Result CSignedInt32 Void
-memory errENOTDIR heap no
-async errENOTDIR no
-purpose errENOTDIR "ENOTDIR (20)."
+operation notDirectoryErrorNumber
+output notDirectoryErrorNumber Result CSignedInt32 Void
+memory notDirectoryErrorNumber heap no
+async notDirectoryErrorNumber no
+purpose notDirectoryErrorNumber "ENOTDIR (20)."
 label start
 const v CSignedInt32 20
 returnOk v
 
-operation errEISDIR
-output errEISDIR Result CSignedInt32 Void
-memory errEISDIR heap no
-async errEISDIR no
-purpose errEISDIR "EISDIR (21)."
+operation isDirectoryErrorNumber
+output isDirectoryErrorNumber Result CSignedInt32 Void
+memory isDirectoryErrorNumber heap no
+async isDirectoryErrorNumber no
+purpose isDirectoryErrorNumber "EISDIR (21)."
 label start
 const v CSignedInt32 21
 returnOk v
 
-operation errEMFILE
-output errEMFILE Result CSignedInt32 Void
-memory errEMFILE heap no
-async errEMFILE no
-purpose errEMFILE "EMFILE (24)."
+operation tooManyOpenFilesErrorNumber
+output tooManyOpenFilesErrorNumber Result CSignedInt32 Void
+memory tooManyOpenFilesErrorNumber heap no
+async tooManyOpenFilesErrorNumber no
+purpose tooManyOpenFilesErrorNumber "EMFILE (24)."
 label start
 const v CSignedInt32 24
 returnOk v
 
-operation errENOTTY
-output errENOTTY Result CSignedInt32 Void
-memory errENOTTY heap no
-async errENOTTY no
-purpose errENOTTY "ENOTTY (25)."
+operation inappropriateIoctlErrorNumber
+output inappropriateIoctlErrorNumber Result CSignedInt32 Void
+memory inappropriateIoctlErrorNumber heap no
+async inappropriateIoctlErrorNumber no
+purpose inappropriateIoctlErrorNumber "ENOTTY (25)."
 label start
 const v CSignedInt32 25
 returnOk v
 
-operation errEROFS
-output errEROFS Result CSignedInt32 Void
-memory errEROFS heap no
-async errEROFS no
-purpose errEROFS "EROFS (30)."
+operation readOnlyFileSystemErrorNumber
+output readOnlyFileSystemErrorNumber Result CSignedInt32 Void
+memory readOnlyFileSystemErrorNumber heap no
+async readOnlyFileSystemErrorNumber no
+purpose readOnlyFileSystemErrorNumber "EROFS (30)."
 label start
 const v CSignedInt32 30
 returnOk v
 
-operation errEXDEV
-output errEXDEV Result CSignedInt32 Void
-memory errEXDEV heap no
-async errEXDEV no
-purpose errEXDEV "EXDEV (18)."
+operation crossDeviceLinkErrorNumber
+output crossDeviceLinkErrorNumber Result CSignedInt32 Void
+memory crossDeviceLinkErrorNumber heap no
+async crossDeviceLinkErrorNumber no
+purpose crossDeviceLinkErrorNumber "EXDEV (18)."
 label start
 const v CSignedInt32 18
 returnOk v
 
-operation errETIMEDOUT
-output errETIMEDOUT Result CSignedInt32 Void
-memory errETIMEDOUT heap no
-async errETIMEDOUT no
-purpose errETIMEDOUT "ETIMEDOUT (110)."
+operation operationTimedOutErrorNumber
+output operationTimedOutErrorNumber Result CSignedInt32 Void
+memory operationTimedOutErrorNumber heap no
+async operationTimedOutErrorNumber no
+purpose operationTimedOutErrorNumber "ETIMEDOUT (110)."
 label start
 const v CSignedInt32 110
 returnOk v
@@ -224,7 +224,7 @@ memory main heap no
 async main no
 purpose main "Smoke-test extra errno accessors. Prints OK."
 label startMain
-call s1 errEAGAIN
+call s1 tryAgainErrorNumber
 run s1
 bindOk s1Res CSignedInt32 s1
 const eleven CSignedInt32 11

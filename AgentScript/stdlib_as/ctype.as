@@ -10,32 +10,32 @@ errorCase MainError TestFailed CSignedInt32
 # ============================================================
 # AGENTSCRIPT STANDARD LIBRARY: <ctype.h>-style classifiers.
 #
-# Operations: isdigit, isalpha, isalnum, isspace, isblank, iscntrl,
-#             isupper, islower, isxdigit, isprint, isgraph, ispunct,
-#             toupper, tolower.
+# Operations: isAsciiDecimalDigitCode, isAsciiLetterCode, isAsciiLetterOrDigitCode, isAsciiWhitespaceCode, isAsciiBlankCode, isAsciiControlCode,
+#             isAsciiUppercaseLetterCode, isAsciiLowercaseLetterCode, isAsciiHexDigitCode, isAsciiPrintableCode, isAsciiGraphicalCode, isAsciiPunctuationCode,
+#             convertAsciiLetterCodeToUppercase, convertAsciiLetterCodeToLowercase.
 # All ASCII-only; no locale. Pure AS — math comparisons only.
 # ============================================================
 
-operation isdigit
-input isdigit c CSignedInt32
-output isdigit Result CSignedInt32 Void
-memory isdigit heap no
-memory isdigit stack max 1KiB
-async isdigit no
-purpose isdigit "ASCII isdigit: true if c is in 0x30..0x39 inclusive."
-label startIsdigit
+operation isAsciiDecimalDigitCode
+input isAsciiDecimalDigitCode characterCode CSignedInt32
+output isAsciiDecimalDigitCode Result CSignedInt32 Void
+memory isAsciiDecimalDigitCode heap no
+memory isAsciiDecimalDigitCode stack max 1KiB
+async isAsciiDecimalDigitCode no
+purpose isAsciiDecimalDigitCode "ASCII isAsciiDecimalDigitCode: true if c is in 0x30..0x39 inclusive."
+label startIsAsciiDecimalDigitCode
 const d0 CSignedInt32 48
 const d9 CSignedInt32 57
 const trueDigit CSignedInt32 1
 const falseDigit CSignedInt32 0
 call digBelowCall math.lessThanI64
-arg digBelowCall left c
+arg digBelowCall left characterCode
 arg digBelowCall right d0
 run digBelowCall
 bind digBelow Bool digBelowCall
 branchIf digBelow isdigitFalse
 call digAboveCall math.greaterThanI64
-arg digAboveCall left c
+arg digAboveCall left characterCode
 arg digAboveCall right d9
 run digAboveCall
 bind digAbove Bool digAboveCall
@@ -45,26 +45,26 @@ label isdigitFalse
 returnOk falseDigit
 
 
-operation islower
-input islower c CSignedInt32
-output islower Result CSignedInt32 Void
-memory islower heap no
-memory islower stack max 1KiB
-async islower no
-purpose islower "ASCII islower: 0x61..0x7A."
-label startIslower
+operation isAsciiLowercaseLetterCode
+input isAsciiLowercaseLetterCode characterCode CSignedInt32
+output isAsciiLowercaseLetterCode Result CSignedInt32 Void
+memory isAsciiLowercaseLetterCode heap no
+memory isAsciiLowercaseLetterCode stack max 1KiB
+async isAsciiLowercaseLetterCode no
+purpose isAsciiLowercaseLetterCode "ASCII isAsciiLowercaseLetterCode: 0x61..0x7A."
+label startIsAsciiLowercaseLetterCode
 const la CSignedInt32 97
 const lz CSignedInt32 122
 const trueLower CSignedInt32 1
 const falseLower CSignedInt32 0
 call lwBelowCall math.lessThanI64
-arg lwBelowCall left c
+arg lwBelowCall left characterCode
 arg lwBelowCall right la
 run lwBelowCall
 bind lwBelow Bool lwBelowCall
 branchIf lwBelow islowerFalse
 call lwAboveCall math.greaterThanI64
-arg lwAboveCall left c
+arg lwAboveCall left characterCode
 arg lwAboveCall right lz
 run lwAboveCall
 bind lwAbove Bool lwAboveCall
@@ -74,26 +74,26 @@ label islowerFalse
 returnOk falseLower
 
 
-operation isupper
-input isupper c CSignedInt32
-output isupper Result CSignedInt32 Void
-memory isupper heap no
-memory isupper stack max 1KiB
-async isupper no
-purpose isupper "ASCII isupper: 0x41..0x5A."
-label startIsupper
+operation isAsciiUppercaseLetterCode
+input isAsciiUppercaseLetterCode characterCode CSignedInt32
+output isAsciiUppercaseLetterCode Result CSignedInt32 Void
+memory isAsciiUppercaseLetterCode heap no
+memory isAsciiUppercaseLetterCode stack max 1KiB
+async isAsciiUppercaseLetterCode no
+purpose isAsciiUppercaseLetterCode "ASCII isAsciiUppercaseLetterCode: 0x41..0x5A."
+label startIsAsciiUppercaseLetterCode
 const uA CSignedInt32 65
 const uZ CSignedInt32 90
 const trueUpper CSignedInt32 1
 const falseUpper CSignedInt32 0
 call upBelowCall math.lessThanI64
-arg upBelowCall left c
+arg upBelowCall left characterCode
 arg upBelowCall right uA
 run upBelowCall
 bind upBelow Bool upBelowCall
 branchIf upBelow isupperFalse
 call upAboveCall math.greaterThanI64
-arg upAboveCall left c
+arg upAboveCall left characterCode
 arg upAboveCall right uZ
 run upAboveCall
 bind upAbove Bool upAboveCall
@@ -103,17 +103,17 @@ label isupperFalse
 returnOk falseUpper
 
 
-operation isalpha
-input isalpha c CSignedInt32
-output isalpha Result CSignedInt32 Void
-memory isalpha heap no
-memory isalpha stack max 1KiB
-async isalpha no
-purpose isalpha "ASCII isalpha: returns 1 if c is A..Z or a..z."
-label startIsalpha
+operation isAsciiLetterCode
+input isAsciiLetterCode characterCode CSignedInt32
+output isAsciiLetterCode Result CSignedInt32 Void
+memory isAsciiLetterCode heap no
+memory isAsciiLetterCode stack max 1KiB
+async isAsciiLetterCode no
+purpose isAsciiLetterCode "ASCII isAsciiLetterCode: returns 1 if c is A..Z or a..z."
+label startIsAsciiLetterCode
 const oneCSI CSignedInt32 1
-call alphaUpCall isupper
-arg alphaUpCall c c
+call alphaUpCall isAsciiUppercaseLetterCode
+arg alphaUpCall c characterCode
 run alphaUpCall
 bindOk alphaUpRes CSignedInt32 alphaUpCall
 call alphaUpEqCall math.equalI64
@@ -122,8 +122,8 @@ arg alphaUpEqCall right oneCSI
 run alphaUpEqCall
 bind alphaIsUp Bool alphaUpEqCall
 branchIf alphaIsUp isalphaTrue
-call alphaLwCall islower
-arg alphaLwCall c c
+call alphaLwCall isAsciiLowercaseLetterCode
+arg alphaLwCall c characterCode
 run alphaLwCall
 bindOk alphaLwRes CSignedInt32 alphaLwCall
 call alphaLwEqCall math.equalI64
@@ -139,17 +139,17 @@ const trueAlpha CSignedInt32 1
 returnOk trueAlpha
 
 
-operation isalnum
-input isalnum c CSignedInt32
-output isalnum Result CSignedInt32 Void
-memory isalnum heap no
-memory isalnum stack max 1KiB
-async isalnum no
-purpose isalnum "ASCII isalnum = isalpha OR isdigit."
-label startIsalnum
+operation isAsciiLetterOrDigitCode
+input isAsciiLetterOrDigitCode characterCode CSignedInt32
+output isAsciiLetterOrDigitCode Result CSignedInt32 Void
+memory isAsciiLetterOrDigitCode heap no
+memory isAsciiLetterOrDigitCode stack max 1KiB
+async isAsciiLetterOrDigitCode no
+purpose isAsciiLetterOrDigitCode "ASCII isAsciiLetterOrDigitCode = isAsciiLetterCode OR isAsciiDecimalDigitCode."
+label startIsAsciiLetterOrDigitCode
 const oneAlnum CSignedInt32 1
-call alnumAlphaCall isalpha
-arg alnumAlphaCall c c
+call alnumAlphaCall isAsciiLetterCode
+arg alnumAlphaCall c characterCode
 run alnumAlphaCall
 bindOk alnumAlphaRes CSignedInt32 alnumAlphaCall
 call alnumAlphaEqCall math.equalI64
@@ -158,8 +158,8 @@ arg alnumAlphaEqCall right oneAlnum
 run alnumAlphaEqCall
 bind alnumIsAlpha Bool alnumAlphaEqCall
 branchIf alnumIsAlpha isalnumTrue
-call alnumDigCall isdigit
-arg alnumDigCall c c
+call alnumDigCall isAsciiDecimalDigitCode
+arg alnumDigCall c characterCode
 run alnumDigCall
 bindOk alnumDigRes CSignedInt32 alnumDigCall
 call alnumDigEqCall math.equalI64
@@ -174,18 +174,18 @@ label isalnumTrue
 returnOk oneAlnum
 
 
-operation isxdigit
-input isxdigit c CSignedInt32
-output isxdigit Result CSignedInt32 Void
-memory isxdigit heap no
-memory isxdigit stack max 1KiB
-async isxdigit no
-purpose isxdigit "ASCII isxdigit: true if c is a hexadecimal digit (0-9, A-F, a-f)."
-label startIsxdigit
+operation isAsciiHexDigitCode
+input isAsciiHexDigitCode characterCode CSignedInt32
+output isAsciiHexDigitCode Result CSignedInt32 Void
+memory isAsciiHexDigitCode heap no
+memory isAsciiHexDigitCode stack max 1KiB
+async isAsciiHexDigitCode no
+purpose isAsciiHexDigitCode "ASCII isAsciiHexDigitCode: true if c is a hexadecimal digit (0-9, A-F, a-f)."
+label startIsAsciiHexDigitCode
 const oneHex CSignedInt32 1
 const falseHex CSignedInt32 0
-call xdDigCall isdigit
-arg xdDigCall c c
+call xdDigCall isAsciiDecimalDigitCode
+arg xdDigCall c characterCode
 run xdDigCall
 bindOk xdDigRes CSignedInt32 xdDigCall
 call xdDigEqCall math.equalI64
@@ -197,13 +197,13 @@ branchIf xdIsDigit isxdigitTrue
 const uAhex CSignedInt32 65
 const uFhex CSignedInt32 70
 call xdUpBelowCall math.lessThanI64
-arg xdUpBelowCall left c
+arg xdUpBelowCall left characterCode
 arg xdUpBelowCall right uAhex
 run xdUpBelowCall
 bind xdUpBelow Bool xdUpBelowCall
 branchIf xdUpBelow checkLowerHex
 call xdUpAboveCall math.greaterThanI64
-arg xdUpAboveCall left c
+arg xdUpAboveCall left characterCode
 arg xdUpAboveCall right uFhex
 run xdUpAboveCall
 bind xdUpAbove Bool xdUpAboveCall
@@ -213,13 +213,13 @@ label checkLowerHex
 const laHex CSignedInt32 97
 const lfHex CSignedInt32 102
 call xdLwBelowCall math.lessThanI64
-arg xdLwBelowCall left c
+arg xdLwBelowCall left characterCode
 arg xdLwBelowCall right laHex
 run xdLwBelowCall
 bind xdLwBelow Bool xdLwBelowCall
 branchIf xdLwBelow isxdigitFalse
 call xdLwAboveCall math.greaterThanI64
-arg xdLwAboveCall left c
+arg xdLwAboveCall left characterCode
 arg xdLwAboveCall right lfHex
 run xdLwAboveCall
 bind xdLwAbove Bool xdLwAboveCall
@@ -231,14 +231,14 @@ label isxdigitTrue
 returnOk oneHex
 
 
-operation isspace
-input isspace c CSignedInt32
-output isspace Result CSignedInt32 Void
-memory isspace heap no
-memory isspace stack max 1KiB
-async isspace no
-purpose isspace "ASCII isspace: true for space, tab, LF, VT, FF, CR."
-label startIsspace
+operation isAsciiWhitespaceCode
+input isAsciiWhitespaceCode characterCode CSignedInt32
+output isAsciiWhitespaceCode Result CSignedInt32 Void
+memory isAsciiWhitespaceCode heap no
+memory isAsciiWhitespaceCode stack max 1KiB
+async isAsciiWhitespaceCode no
+purpose isAsciiWhitespaceCode "ASCII isAsciiWhitespaceCode: true for space, tab, LF, VT, FF, CR."
+label startIsAsciiWhitespaceCode
 const sSpace CSignedInt32 32
 const sTab CSignedInt32 9
 const sLf CSignedInt32 10
@@ -248,37 +248,37 @@ const sCr CSignedInt32 13
 const trueSpace CSignedInt32 1
 const falseSpace CSignedInt32 0
 call sEqSpaceCall math.equalI64
-arg sEqSpaceCall left c
+arg sEqSpaceCall left characterCode
 arg sEqSpaceCall right sSpace
 run sEqSpaceCall
 bind sIsSpaceB Bool sEqSpaceCall
 branchIf sIsSpaceB isspaceTrue
 call sEqTabCall math.equalI64
-arg sEqTabCall left c
+arg sEqTabCall left characterCode
 arg sEqTabCall right sTab
 run sEqTabCall
 bind sIsTabB Bool sEqTabCall
 branchIf sIsTabB isspaceTrue
 call sEqLfCall math.equalI64
-arg sEqLfCall left c
+arg sEqLfCall left characterCode
 arg sEqLfCall right sLf
 run sEqLfCall
 bind sIsLfB Bool sEqLfCall
 branchIf sIsLfB isspaceTrue
 call sEqVtCall math.equalI64
-arg sEqVtCall left c
+arg sEqVtCall left characterCode
 arg sEqVtCall right sVt
 run sEqVtCall
 bind sIsVtB Bool sEqVtCall
 branchIf sIsVtB isspaceTrue
 call sEqFfCall math.equalI64
-arg sEqFfCall left c
+arg sEqFfCall left characterCode
 arg sEqFfCall right sFf
 run sEqFfCall
 bind sIsFfB Bool sEqFfCall
 branchIf sIsFfB isspaceTrue
 call sEqCrCall math.equalI64
-arg sEqCrCall left c
+arg sEqCrCall left characterCode
 arg sEqCrCall right sCr
 run sEqCrCall
 bind sIsCrB Bool sEqCrCall
@@ -288,26 +288,26 @@ label isspaceTrue
 returnOk trueSpace
 
 
-operation isblank
-input isblank c CSignedInt32
-output isblank Result CSignedInt32 Void
-memory isblank heap no
-memory isblank stack max 1KiB
-async isblank no
-purpose isblank "ASCII isblank: true only for space or horizontal tab."
-label startIsblank
+operation isAsciiBlankCode
+input isAsciiBlankCode characterCode CSignedInt32
+output isAsciiBlankCode Result CSignedInt32 Void
+memory isAsciiBlankCode heap no
+memory isAsciiBlankCode stack max 1KiB
+async isAsciiBlankCode no
+purpose isAsciiBlankCode "ASCII isAsciiBlankCode: true only for space or horizontal tab."
+label startIsAsciiBlankCode
 const blSpace CSignedInt32 32
 const blTab CSignedInt32 9
 const trueBlank CSignedInt32 1
 const falseBlank CSignedInt32 0
 call blSpCall math.equalI64
-arg blSpCall left c
+arg blSpCall left characterCode
 arg blSpCall right blSpace
 run blSpCall
 bind blIsSp Bool blSpCall
 branchIf blIsSp isblankTrue
 call blTbCall math.equalI64
-arg blTbCall left c
+arg blTbCall left characterCode
 arg blTbCall right blTab
 run blTbCall
 bind blIsTb Bool blTbCall
@@ -317,26 +317,26 @@ label isblankTrue
 returnOk trueBlank
 
 
-operation iscntrl
-input iscntrl c CSignedInt32
-output iscntrl Result CSignedInt32 Void
-memory iscntrl heap no
-memory iscntrl stack max 1KiB
-async iscntrl no
-purpose iscntrl "ASCII iscntrl: 0x00..0x1F or 0x7F."
-label startIscntrl
+operation isAsciiControlCode
+input isAsciiControlCode characterCode CSignedInt32
+output isAsciiControlCode Result CSignedInt32 Void
+memory isAsciiControlCode heap no
+memory isAsciiControlCode stack max 1KiB
+async isAsciiControlCode no
+purpose isAsciiControlCode "ASCII isAsciiControlCode: 0x00..0x1F or 0x7F."
+label startIsAsciiControlCode
 const cntrlMax CSignedInt32 31
 const cntrlDel CSignedInt32 127
 const trueCntrl CSignedInt32 1
 const falseCntrl CSignedInt32 0
 call cnLeCall math.lessThanOrEqualI64
-arg cnLeCall left c
+arg cnLeCall left characterCode
 arg cnLeCall right cntrlMax
 run cnLeCall
 bind cnIsLow Bool cnLeCall
 branchIf cnIsLow iscntrlTrue
 call cnEqCall math.equalI64
-arg cnEqCall left c
+arg cnEqCall left characterCode
 arg cnEqCall right cntrlDel
 run cnEqCall
 bind cnIsDel Bool cnEqCall
@@ -346,26 +346,26 @@ label iscntrlTrue
 returnOk trueCntrl
 
 
-operation isprint
-input isprint c CSignedInt32
-output isprint Result CSignedInt32 Void
-memory isprint heap no
-memory isprint stack max 1KiB
-async isprint no
-purpose isprint "ASCII isprint: 0x20..0x7E."
-label startIsprint
+operation isAsciiPrintableCode
+input isAsciiPrintableCode characterCode CSignedInt32
+output isAsciiPrintableCode Result CSignedInt32 Void
+memory isAsciiPrintableCode heap no
+memory isAsciiPrintableCode stack max 1KiB
+async isAsciiPrintableCode no
+purpose isAsciiPrintableCode "ASCII isAsciiPrintableCode: 0x20..0x7E."
+label startIsAsciiPrintableCode
 const prMin CSignedInt32 32
 const prMax CSignedInt32 126
 const truePr CSignedInt32 1
 const falsePr CSignedInt32 0
 call prBelowCall math.lessThanI64
-arg prBelowCall left c
+arg prBelowCall left characterCode
 arg prBelowCall right prMin
 run prBelowCall
 bind prBelow Bool prBelowCall
 branchIf prBelow isprintFalse
 call prAboveCall math.greaterThanI64
-arg prAboveCall left c
+arg prAboveCall left characterCode
 arg prAboveCall right prMax
 run prAboveCall
 bind prAbove Bool prAboveCall
@@ -375,26 +375,26 @@ label isprintFalse
 returnOk falsePr
 
 
-operation isgraph
-input isgraph c CSignedInt32
-output isgraph Result CSignedInt32 Void
-memory isgraph heap no
-memory isgraph stack max 1KiB
-async isgraph no
-purpose isgraph "ASCII isgraph: 0x21..0x7E (printable minus space)."
-label startIsgraph
+operation isAsciiGraphicalCode
+input isAsciiGraphicalCode characterCode CSignedInt32
+output isAsciiGraphicalCode Result CSignedInt32 Void
+memory isAsciiGraphicalCode heap no
+memory isAsciiGraphicalCode stack max 1KiB
+async isAsciiGraphicalCode no
+purpose isAsciiGraphicalCode "ASCII isAsciiGraphicalCode: 0x21..0x7E (printable minus space)."
+label startIsAsciiGraphicalCode
 const grMin CSignedInt32 33
 const grMax CSignedInt32 126
 const trueGr CSignedInt32 1
 const falseGr CSignedInt32 0
 call grBelowCall math.lessThanI64
-arg grBelowCall left c
+arg grBelowCall left characterCode
 arg grBelowCall right grMin
 run grBelowCall
 bind grBelow Bool grBelowCall
 branchIf grBelow isgraphFalse
 call grAboveCall math.greaterThanI64
-arg grAboveCall left c
+arg grAboveCall left characterCode
 arg grAboveCall right grMax
 run grAboveCall
 bind grAbove Bool grAboveCall
@@ -404,18 +404,18 @@ label isgraphFalse
 returnOk falseGr
 
 
-operation ispunct
-input ispunct c CSignedInt32
-output ispunct Result CSignedInt32 Void
-memory ispunct heap no
-memory ispunct stack max 1KiB
-async ispunct no
-purpose ispunct "ASCII ispunct: printable, non-space, non-alphanumeric."
-label startIspunct
+operation isAsciiPunctuationCode
+input isAsciiPunctuationCode characterCode CSignedInt32
+output isAsciiPunctuationCode Result CSignedInt32 Void
+memory isAsciiPunctuationCode heap no
+memory isAsciiPunctuationCode stack max 1KiB
+async isAsciiPunctuationCode no
+purpose isAsciiPunctuationCode "ASCII isAsciiPunctuationCode: printable, non-space, non-alphanumeric."
+label startIsAsciiPunctuationCode
 const onePunct CSignedInt32 1
 const zeroPunct CSignedInt32 0
-call puGrCall isgraph
-arg puGrCall c c
+call puGrCall isAsciiGraphicalCode
+arg puGrCall c characterCode
 run puGrCall
 bindOk puGrRes CSignedInt32 puGrCall
 call puGrEqCall math.equalI64
@@ -426,8 +426,8 @@ bind puIsGr Bool puGrEqCall
 branchIf puIsGr puCheckAlnum
 returnOk zeroPunct
 label puCheckAlnum
-call puAlnumCall isalnum
-arg puAlnumCall c c
+call puAlnumCall isAsciiLetterOrDigitCode
+arg puAlnumCall c characterCode
 run puAlnumCall
 bindOk puAlnumRes CSignedInt32 puAlnumCall
 call puAlnumEqCall math.equalI64
@@ -441,70 +441,70 @@ label ispunctFalse
 returnOk zeroPunct
 
 
-operation toupper
-input toupper c CSignedInt32
-output toupper Result CSignedInt32 Void
-memory toupper heap no
-memory toupper stack max 1KiB
-async toupper no
-purpose toupper "Maps 0x61..0x7A down by 32; passes through everything else."
-label startToupper
+operation convertAsciiLetterCodeToUppercase
+input convertAsciiLetterCodeToUppercase characterCode CSignedInt32
+output convertAsciiLetterCodeToUppercase Result CSignedInt32 Void
+memory convertAsciiLetterCodeToUppercase heap no
+memory convertAsciiLetterCodeToUppercase stack max 1KiB
+async convertAsciiLetterCodeToUppercase no
+purpose convertAsciiLetterCodeToUppercase "Maps 0x61..0x7A down by 32; passes through everything else."
+label startConvertAsciiLetterCodeToUppercase
 const lAtu CSignedInt32 97
 const lZtu CSignedInt32 122
 const gapTu CSignedInt32 32
 call tuBelowCall math.lessThanI64
-arg tuBelowCall left c
+arg tuBelowCall left characterCode
 arg tuBelowCall right lAtu
 run tuBelowCall
 bind tuBelow Bool tuBelowCall
 branchIf tuBelow toupperPass
 call tuAboveCall math.greaterThanI64
-arg tuAboveCall left c
+arg tuAboveCall left characterCode
 arg tuAboveCall right lZtu
 run tuAboveCall
 bind tuAbove Bool tuAboveCall
 branchIf tuAbove toupperPass
 call tuShiftCall math.subtractI64
-arg tuShiftCall left c
+arg tuShiftCall left characterCode
 arg tuShiftCall right gapTu
 run tuShiftCall
 bind tuShifted CSignedInt32 tuShiftCall
 returnOk tuShifted
 label toupperPass
-returnOk c
+returnOk characterCode
 
 
-operation tolower
-input tolower c CSignedInt32
-output tolower Result CSignedInt32 Void
-memory tolower heap no
-memory tolower stack max 1KiB
-async tolower no
-purpose tolower "Maps 0x41..0x5A up by 32; passes through everything else."
-label startTolower
+operation convertAsciiLetterCodeToLowercase
+input convertAsciiLetterCodeToLowercase characterCode CSignedInt32
+output convertAsciiLetterCodeToLowercase Result CSignedInt32 Void
+memory convertAsciiLetterCodeToLowercase heap no
+memory convertAsciiLetterCodeToLowercase stack max 1KiB
+async convertAsciiLetterCodeToLowercase no
+purpose convertAsciiLetterCodeToLowercase "Maps 0x41..0x5A up by 32; passes through everything else."
+label startConvertAsciiLetterCodeToLowercase
 const uAtl CSignedInt32 65
 const uZtl CSignedInt32 90
 const gapTl CSignedInt32 32
 call tlBelowCall math.lessThanI64
-arg tlBelowCall left c
+arg tlBelowCall left characterCode
 arg tlBelowCall right uAtl
 run tlBelowCall
 bind tlBelow Bool tlBelowCall
 branchIf tlBelow tolowerPass
 call tlAboveCall math.greaterThanI64
-arg tlAboveCall left c
+arg tlAboveCall left characterCode
 arg tlAboveCall right uZtl
 run tlAboveCall
 bind tlAbove Bool tlAboveCall
 branchIf tlAbove tolowerPass
 call tlShiftCall math.addI64
-arg tlShiftCall left c
+arg tlShiftCall left characterCode
 arg tlShiftCall right gapTl
 run tlShiftCall
 bind tlShifted CSignedInt32 tlShiftCall
 returnOk tlShifted
 label tolowerPass
-returnOk c
+returnOk characterCode
 
 
 # ============================================================
@@ -532,7 +532,7 @@ const tabC CSignedInt32 9
 const lfC CSignedInt32 10
 const nullC CSignedInt32 0
 
-call t1 isdigit
+call t1 isAsciiDecimalDigitCode
 arg t1 c digit5
 run t1
 bindOk t1Res CSignedInt32 t1
@@ -545,7 +545,7 @@ branchIf t1Ok t1OkLabel
 branch testFailed
 label t1OkLabel
 
-call t2 isalpha
+call t2 isAsciiLetterCode
 arg t2 c lowerH
 run t2
 bindOk t2Res CSignedInt32 t2
@@ -558,7 +558,7 @@ branchIf t2Ok t2OkLabel
 branch testFailed
 label t2OkLabel
 
-call t3 isalnum
+call t3 isAsciiLetterOrDigitCode
 arg t3 c digit5
 run t3
 bindOk t3Res CSignedInt32 t3
@@ -571,7 +571,7 @@ branchIf t3Ok t3OkLabel
 branch testFailed
 label t3OkLabel
 
-call t4 isalnum
+call t4 isAsciiLetterOrDigitCode
 arg t4 c exclMark
 run t4
 bindOk t4Res CSignedInt32 t4
@@ -584,7 +584,7 @@ branchIf t4Ok t4OkLabel
 branch testFailed
 label t4OkLabel
 
-call t5 isxdigit
+call t5 isAsciiHexDigitCode
 arg t5 c hexF
 run t5
 bindOk t5Res CSignedInt32 t5
@@ -597,7 +597,7 @@ branchIf t5Ok t5OkLabel
 branch testFailed
 label t5OkLabel
 
-call t6 isspace
+call t6 isAsciiWhitespaceCode
 arg t6 c spaceC
 run t6
 bindOk t6Res CSignedInt32 t6
@@ -610,7 +610,7 @@ branchIf t6Ok t6OkLabel
 branch testFailed
 label t6OkLabel
 
-call t7 isblank
+call t7 isAsciiBlankCode
 arg t7 c tabC
 run t7
 bindOk t7Res CSignedInt32 t7
@@ -623,7 +623,7 @@ branchIf t7Ok t7OkLabel
 branch testFailed
 label t7OkLabel
 
-call t8 isblank
+call t8 isAsciiBlankCode
 arg t8 c lfC
 run t8
 bindOk t8Res CSignedInt32 t8
@@ -636,7 +636,7 @@ branchIf t8Ok t8OkLabel
 branch testFailed
 label t8OkLabel
 
-call t9 iscntrl
+call t9 isAsciiControlCode
 arg t9 c nullC
 run t9
 bindOk t9Res CSignedInt32 t9
@@ -649,7 +649,7 @@ branchIf t9Ok t9OkLabel
 branch testFailed
 label t9OkLabel
 
-call t10 isprint
+call t10 isAsciiPrintableCode
 arg t10 c spaceC
 run t10
 bindOk t10Res CSignedInt32 t10
@@ -662,7 +662,7 @@ branchIf t10Ok t10OkLabel
 branch testFailed
 label t10OkLabel
 
-call t11 isgraph
+call t11 isAsciiGraphicalCode
 arg t11 c spaceC
 run t11
 bindOk t11Res CSignedInt32 t11
@@ -675,7 +675,7 @@ branchIf t11Ok t11OkLabel
 branch testFailed
 label t11OkLabel
 
-call t12 ispunct
+call t12 isAsciiPunctuationCode
 arg t12 c exclMark
 run t12
 bindOk t12Res CSignedInt32 t12
@@ -688,7 +688,7 @@ branchIf t12Ok t12OkLabel
 branch testFailed
 label t12OkLabel
 
-call t13 toupper
+call t13 convertAsciiLetterCodeToUppercase
 arg t13 c lowerH
 run t13
 bindOk t13Res CSignedInt32 t13
@@ -701,7 +701,7 @@ branchIf t13Ok t13OkLabel
 branch testFailed
 label t13OkLabel
 
-call t14 tolower
+call t14 convertAsciiLetterCodeToLowercase
 arg t14 c upperH
 run t14
 bindOk t14Res CSignedInt32 t14

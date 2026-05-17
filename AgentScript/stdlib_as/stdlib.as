@@ -11,27 +11,27 @@ errorCase MainError WriteFailed CSignedInt32
 # AGENTSCRIPT STANDARD LIBRARY: <stdlib.h>-style numeric ops.
 #
 # Operations:
-#   parseDecimalInt(s)     - like atol/atoll. Decimal C-string -> i64.
-#   parseHexInt(s)         - like strtol(s, NULL, 16). Hex C-string -> i64.
-#   absoluteInt(n)         - like abs/labs/llabs. |n|.
-#   minInt(a, b)           - min of two signed 64-bit ints.
-#   maxInt(a, b)           - max of two signed 64-bit ints.
-#   powerInt(base, exp)    - integer power base^exp via repeated multiplication.
-#   gcdInt(a, b)           - greatest common divisor (Euclidean algorithm).
-#   clampInt(x, lo, hi)    - clamp x into [lo, hi].
+#   parseDecimalCStringToSignedInt64(s)     - like atol/atoll. Decimal C-string -> i64.
+#   parseHexCStringToSignedInt64(s)         - like strtol(s, NULL, 16). Hex C-string -> i64.
+#   absoluteSignedInt64(n)         - like abs/labs/llabs. |n|.
+#   minimumSignedInt64(a, b)           - min of two signed 64-bit ints.
+#   maximumSignedInt64(a, b)           - max of two signed 64-bit ints.
+#   powerSignedInt64(base, exp)    - integer power base^exp via repeated multiplication.
+#   greatestCommonDivisorSignedInt64(a, b)           - greatest common divisor (Euclidean algorithm).
+#   clampSignedInt64ToInclusiveRange(x, lo, hi)    - clamp x into [lo, hi].
 # ============================================================
 
 
-operation parseDecimalInt
-input parseDecimalInt s CNullTerminatedByteString
-output parseDecimalInt Result CSignedInt64 Void
-effect parseDecimalInt read memory.buffer
-memory parseDecimalInt heap no
-memory parseDecimalInt stack max 1KiB
-async parseDecimalInt no
-purpose parseDecimalInt "AS-native atoi/atol. Skips ASCII whitespace, accepts optional sign, accumulates decimal digits until a non-digit byte."
+operation parseDecimalCStringToSignedInt64
+input parseDecimalCStringToSignedInt64 inputText CNullTerminatedByteString
+output parseDecimalCStringToSignedInt64 Result CSignedInt64 Void
+effect parseDecimalCStringToSignedInt64 read memory.buffer
+memory parseDecimalCStringToSignedInt64 heap no
+memory parseDecimalCStringToSignedInt64 stack max 1KiB
+async parseDecimalCStringToSignedInt64 no
+purpose parseDecimalCStringToSignedInt64 "AS-native atoi/atol. Skips ASCII whitespace, accepts optional sign, accumulates decimal digits until a non-digit byte."
 
-label startParseDecimalInt
+label startParseDecimalCStringToSignedInt64
 const zeroI64a I64 0
 const oneI64a I64 1
 const negOneI64a I64 -1
@@ -45,7 +45,7 @@ const asciiMinusI64 I64 45
 var cursor I64 0
 label skipWs
 call wsLoadCall pointer.loadByte
-arg wsLoadCall buffer s
+arg wsLoadCall buffer inputText
 arg wsLoadCall offset cursor
 run wsLoadCall
 bind wsByte I8 wsLoadCall
@@ -73,7 +73,7 @@ branch skipWs
 label checkSign
 var signMultiplier I64 1
 call signLoadCall pointer.loadByte
-arg signLoadCall buffer s
+arg signLoadCall buffer inputText
 arg signLoadCall offset cursor
 run signLoadCall
 bind signByte I8 signLoadCall
@@ -111,7 +111,7 @@ label parseDigits
 var accumulator I64 0
 label digitStep
 call digLoadCall pointer.loadByte
-arg digLoadCall buffer s
+arg digLoadCall buffer inputText
 arg digLoadCall offset cursor
 run digLoadCall
 bind digByte I8 digLoadCall
@@ -159,16 +159,16 @@ bind signedResult CSignedInt64 signApplyCall
 returnOk signedResult
 
 
-operation parseHexInt
-input parseHexInt s CNullTerminatedByteString
-output parseHexInt Result CSignedInt64 Void
-effect parseHexInt read memory.buffer
-memory parseHexInt heap no
-memory parseHexInt stack max 1KiB
-async parseHexInt no
-purpose parseHexInt "AS-native strtol(s, NULL, 16). Skips whitespace, accepts optional sign and optional 0x/0X prefix, then accumulates hex digits."
+operation parseHexCStringToSignedInt64
+input parseHexCStringToSignedInt64 inputText CNullTerminatedByteString
+output parseHexCStringToSignedInt64 Result CSignedInt64 Void
+effect parseHexCStringToSignedInt64 read memory.buffer
+memory parseHexCStringToSignedInt64 heap no
+memory parseHexCStringToSignedInt64 stack max 1KiB
+async parseHexCStringToSignedInt64 no
+purpose parseHexCStringToSignedInt64 "AS-native strtol(s, NULL, 16). Skips whitespace, accepts optional sign and optional 0x/0X prefix, then accumulates hex digits."
 
-label startParseHexInt
+label startParseHexCStringToSignedInt64
 const zeroH I64 0
 const oneH I64 1
 const negOneH I64 -1
@@ -193,7 +193,7 @@ const upperAOffset I64 55
 var hxCursor I64 0
 label hxSkipWs
 call hxWsLoadCall pointer.loadByte
-arg hxWsLoadCall buffer s
+arg hxWsLoadCall buffer inputText
 arg hxWsLoadCall offset hxCursor
 run hxWsLoadCall
 bind hxWsByte I8 hxWsLoadCall
@@ -222,7 +222,7 @@ branch hxSkipWs
 label hxCheckSign
 var hxSignMul I64 1
 call hxSignLoadCall pointer.loadByte
-arg hxSignLoadCall buffer s
+arg hxSignLoadCall buffer inputText
 arg hxSignLoadCall offset hxCursor
 run hxSignLoadCall
 bind hxSignByte I8 hxSignLoadCall
@@ -260,7 +260,7 @@ branch hxCheckPrefix
 label hxCheckPrefix
 # Optional 0x or 0X prefix
 call hxPrefLoadCall pointer.loadByte
-arg hxPrefLoadCall buffer s
+arg hxPrefLoadCall buffer inputText
 arg hxPrefLoadCall offset hxCursor
 run hxPrefLoadCall
 bind hxPrefByte I8 hxPrefLoadCall
@@ -279,7 +279,7 @@ arg hxIncPref1Call right oneH
 run hxIncPref1Call
 bind hxIncPref1 I64 hxIncPref1Call
 call hxLoadPrefX pointer.loadByte
-arg hxLoadPrefX buffer s
+arg hxLoadPrefX buffer inputText
 arg hxLoadPrefX offset hxIncPref1
 run hxLoadPrefX
 bind hxPrefXByte I8 hxLoadPrefX
@@ -315,7 +315,7 @@ var hxAccum I64 0
 var hxDecValue I64 0
 label hxDigitStep
 call hxDigLoadCall pointer.loadByte
-arg hxDigLoadCall buffer s
+arg hxDigLoadCall buffer inputText
 arg hxDigLoadCall offset hxCursor
 run hxDigLoadCall
 bind hxDigByte I8 hxDigLoadCall
@@ -412,18 +412,18 @@ bind hxFinal CSignedInt64 hxSignApplyCall
 returnOk hxFinal
 
 
-operation absoluteInt
-input absoluteInt n CSignedInt64
-output absoluteInt Result CSignedInt64 Void
-memory absoluteInt heap no
-memory absoluteInt stack max 1KiB
-async absoluteInt no
-purpose absoluteInt "Return |n|. Mirrors libc abs/labs/llabs semantics."
-label startAbsoluteInt
+operation absoluteSignedInt64
+input absoluteSignedInt64 inputValue CSignedInt64
+output absoluteSignedInt64 Result CSignedInt64 Void
+memory absoluteSignedInt64 heap no
+memory absoluteSignedInt64 stack max 1KiB
+async absoluteSignedInt64 no
+purpose absoluteSignedInt64 "Return |n|. Mirrors libc abs/labs/llabs semantics."
+label startAbsoluteSignedInt64
 const zeroI64b I64 0
 const negOneI64b I64 -1
 call isNegCall math.lessThanI64
-arg isNegCall left n
+arg isNegCall left inputValue
 arg isNegCall right zeroI64b
 run isNegCall
 bind isNeg Bool isNegCall
@@ -431,68 +431,68 @@ branchIf isNeg flipIt
 branch alreadyPositive
 label flipIt
 call flipCall math.multiplyI64
-arg flipCall left n
+arg flipCall left inputValue
 arg flipCall right negOneI64b
 run flipCall
 bind flipped CSignedInt64 flipCall
 returnOk flipped
 label alreadyPositive
-returnOk n
+returnOk inputValue
 
 
-operation minInt
-input minInt a CSignedInt64
-input minInt b CSignedInt64
-output minInt Result CSignedInt64 Void
-memory minInt heap no
-memory minInt stack max 1KiB
-async minInt no
-purpose minInt "Smaller of a and b."
-label startMinInt
+operation minimumSignedInt64
+input minimumSignedInt64 leftValue CSignedInt64
+input minimumSignedInt64 rightValue CSignedInt64
+output minimumSignedInt64 Result CSignedInt64 Void
+memory minimumSignedInt64 heap no
+memory minimumSignedInt64 stack max 1KiB
+async minimumSignedInt64 no
+purpose minimumSignedInt64 "Smaller of a and b."
+label startMinimumSignedInt64
 call cmpCall math.lessThanI64
-arg cmpCall left a
-arg cmpCall right b
+arg cmpCall left leftValue
+arg cmpCall right rightValue
 run cmpCall
 bind aLessThan Bool cmpCall
 branchIf aLessThan returnA
-returnOk b
+returnOk rightValue
 label returnA
-returnOk a
+returnOk leftValue
 
 
-operation maxInt
-input maxInt a CSignedInt64
-input maxInt b CSignedInt64
-output maxInt Result CSignedInt64 Void
-memory maxInt heap no
-memory maxInt stack max 1KiB
-async maxInt no
-purpose maxInt "Larger of a and b."
-label startMaxInt
+operation maximumSignedInt64
+input maximumSignedInt64 leftValue CSignedInt64
+input maximumSignedInt64 rightValue CSignedInt64
+output maximumSignedInt64 Result CSignedInt64 Void
+memory maximumSignedInt64 heap no
+memory maximumSignedInt64 stack max 1KiB
+async maximumSignedInt64 no
+purpose maximumSignedInt64 "Larger of a and b."
+label startMaximumSignedInt64
 call cmpMaxCall math.greaterThanI64
-arg cmpMaxCall left a
-arg cmpMaxCall right b
+arg cmpMaxCall left leftValue
+arg cmpMaxCall right rightValue
 run cmpMaxCall
 bind aGreater Bool cmpMaxCall
 branchIf aGreater returnAmax
-returnOk b
+returnOk rightValue
 label returnAmax
-returnOk a
+returnOk leftValue
 
 
-operation powerInt
-input powerInt base CSignedInt64
-input powerInt exponent CSignedInt64
-output powerInt Result CSignedInt64 Void
-memory powerInt heap no
-memory powerInt stack max 1KiB
-async powerInt no
-purpose powerInt "Integer pow: returns base^exponent by repeated multiplication. exponent must be >= 0. Returns 1 if exponent == 0; returns 0 if exponent < 0 (no fractional results)."
-label startPowerInt
+operation powerSignedInt64
+input powerSignedInt64 baseValue CSignedInt64
+input powerSignedInt64 exponentValue CSignedInt64
+output powerSignedInt64 Result CSignedInt64 Void
+memory powerSignedInt64 heap no
+memory powerSignedInt64 stack max 1KiB
+async powerSignedInt64 no
+purpose powerSignedInt64 "Integer pow: returns base^exponent by repeated multiplication. exponent must be >= 0. Returns 1 if exponent == 0; returns 0 if exponent < 0 (no fractional results)."
+label startPowerSignedInt64
 const zeroP I64 0
 const oneP I64 1
 call exNegCall math.lessThanI64
-arg exNegCall left exponent
+arg exNegCall left exponentValue
 arg exNegCall right zeroP
 run exNegCall
 bind exNeg Bool exNegCall
@@ -502,13 +502,13 @@ var counter I64 0
 label powLoop
 call powDoneCall math.greaterThanOrEqualI64
 arg powDoneCall left counter
-arg powDoneCall right exponent
+arg powDoneCall right exponentValue
 run powDoneCall
 bind powDone Bool powDoneCall
 branchIf powDone powReturn
 call powMulCall math.multiplyI64
 arg powMulCall left product
-arg powMulCall right base
+arg powMulCall right baseValue
 run powMulCall
 bind nextProd I64 powMulCall
 set product nextProd
@@ -525,21 +525,21 @@ label powerZero
 returnOk zeroP
 
 
-operation gcdInt
-input gcdInt a CSignedInt64
-input gcdInt b CSignedInt64
-output gcdInt Result CSignedInt64 Void
-memory gcdInt heap no
-memory gcdInt stack max 1KiB
-async gcdInt no
-purpose gcdInt "Greatest common divisor via Euclidean algorithm. gcd(a, 0) = |a|; gcd handles either argument being negative by working on the absolute values."
-label startGcdInt
-call absACall absoluteInt
-arg absACall n a
+operation greatestCommonDivisorSignedInt64
+input greatestCommonDivisorSignedInt64 leftValue CSignedInt64
+input greatestCommonDivisorSignedInt64 rightValue CSignedInt64
+output greatestCommonDivisorSignedInt64 Result CSignedInt64 Void
+memory greatestCommonDivisorSignedInt64 heap no
+memory greatestCommonDivisorSignedInt64 stack max 1KiB
+async greatestCommonDivisorSignedInt64 no
+purpose greatestCommonDivisorSignedInt64 "Greatest common divisor via Euclidean algorithm. gcd(a, 0) = |a|; gcd handles either argument being negative by working on the absolute values."
+label startGreatestCommonDivisorSignedInt64
+call absACall absoluteSignedInt64
+arg absACall n leftValue
 run absACall
 bindOk absA CSignedInt64 absACall
-call absBCall absoluteInt
-arg absBCall n b
+call absBCall absoluteSignedInt64
+arg absBCall n rightValue
 run absBCall
 bindOk absB CSignedInt64 absBCall
 var x I64 0
@@ -566,33 +566,33 @@ label gcdReturn
 returnOk x
 
 
-operation clampInt
-input clampInt x CSignedInt64
-input clampInt lo CSignedInt64
-input clampInt hi CSignedInt64
-output clampInt Result CSignedInt64 Void
-memory clampInt heap no
-memory clampInt stack max 1KiB
-async clampInt no
-purpose clampInt "Clamp x into [lo, hi]: return lo if x<lo, hi if x>hi, else x."
-label startClampInt
+operation clampSignedInt64ToInclusiveRange
+input clampSignedInt64ToInclusiveRange inputValue CSignedInt64
+input clampSignedInt64ToInclusiveRange lowerBound CSignedInt64
+input clampSignedInt64ToInclusiveRange upperBound CSignedInt64
+output clampSignedInt64ToInclusiveRange Result CSignedInt64 Void
+memory clampSignedInt64ToInclusiveRange heap no
+memory clampSignedInt64ToInclusiveRange stack max 1KiB
+async clampSignedInt64ToInclusiveRange no
+purpose clampSignedInt64ToInclusiveRange "Clamp x into [lo, hi]: return lo if x<lo, hi if x>hi, else x."
+label startClampSignedInt64ToInclusiveRange
 call belowLoCall math.lessThanI64
-arg belowLoCall left x
-arg belowLoCall right lo
+arg belowLoCall left inputValue
+arg belowLoCall right lowerBound
 run belowLoCall
 bind belowLo Bool belowLoCall
 branchIf belowLo returnLo
 call aboveHiCall math.greaterThanI64
-arg aboveHiCall left x
-arg aboveHiCall right hi
+arg aboveHiCall left inputValue
+arg aboveHiCall right upperBound
 run aboveHiCall
 bind aboveHi Bool aboveHiCall
 branchIf aboveHi returnHi
-returnOk x
+returnOk inputValue
 label returnLo
-returnOk lo
+returnOk lowerBound
 label returnHi
-returnOk hi
+returnOk upperBound
 
 
 # ============================================================
@@ -605,13 +605,13 @@ output main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Smoke-test parseDecimalInt / parseHexInt / absoluteInt / minInt / maxInt / powerInt / gcdInt / clampInt. Prints OK."
+purpose main "Smoke-test parseDecimalCStringToSignedInt64 / parseHexCStringToSignedInt64 / absoluteSignedInt64 / minimumSignedInt64 / maximumSignedInt64 / powerSignedInt64 / greatestCommonDivisorSignedInt64 / clampSignedInt64ToInclusiveRange. Prints OK."
 
 label startMain
 
 const numStr CNullTerminatedByteString "12345"
 const expected1 CSignedInt64 12345
-call p1 parseDecimalInt
+call p1 parseDecimalCStringToSignedInt64
 arg p1 s numStr
 run p1
 bindOk p1Res CSignedInt64 p1
@@ -626,7 +626,7 @@ label p1OkLabel
 
 const negStr CNullTerminatedByteString "  -42"
 const expected2 CSignedInt64 -42
-call p2 parseDecimalInt
+call p2 parseDecimalCStringToSignedInt64
 arg p2 s negStr
 run p2
 bindOk p2Res CSignedInt64 p2
@@ -639,10 +639,10 @@ branchIf p2Ok p2OkLabel
 branch testFailed
 label p2OkLabel
 
-# parseHexInt("0x1F") == 31
+# parseHexCStringToSignedInt64("0x1F") == 31
 const hexStr CNullTerminatedByteString "0x1F"
 const expectedHex CSignedInt64 31
-call h1 parseHexInt
+call h1 parseHexCStringToSignedInt64
 arg h1 s hexStr
 run h1
 bindOk h1Res CSignedInt64 h1
@@ -655,10 +655,10 @@ branchIf h1Ok h1OkLabel
 branch testFailed
 label h1OkLabel
 
-# parseHexInt("-ff") == -255
+# parseHexCStringToSignedInt64("-ff") == -255
 const negHexStr CNullTerminatedByteString "-ff"
 const expectedNegHex CSignedInt64 -255
-call h2 parseHexInt
+call h2 parseHexCStringToSignedInt64
 arg h2 s negHexStr
 run h2
 bindOk h2Res CSignedInt64 h2
@@ -673,7 +673,7 @@ label h2OkLabel
 
 const negNinetyNine CSignedInt64 -99
 const ninetyNine CSignedInt64 99
-call a1 absoluteInt
+call a1 absoluteSignedInt64
 arg a1 n negNinetyNine
 run a1
 bindOk a1Res CSignedInt64 a1
@@ -688,7 +688,7 @@ label a1OkLabel
 
 const sevenInt CSignedInt64 7
 const threeInt CSignedInt64 3
-call m1 minInt
+call m1 minimumSignedInt64
 arg m1 a sevenInt
 arg m1 b threeInt
 run m1
@@ -702,7 +702,7 @@ branchIf m1Ok m1OkLabel
 branch testFailed
 label m1OkLabel
 
-call m2 maxInt
+call m2 maximumSignedInt64
 arg m2 a sevenInt
 arg m2 b threeInt
 run m2
@@ -716,11 +716,11 @@ branchIf m2Ok m2OkLabel
 branch testFailed
 label m2OkLabel
 
-# powerInt(2, 10) == 1024
+# powerSignedInt64(2, 10) == 1024
 const twoBase CSignedInt64 2
 const tenExp CSignedInt64 10
 const expected1024 CSignedInt64 1024
-call pw1 powerInt
+call pw1 powerSignedInt64
 arg pw1 base twoBase
 arg pw1 exponent tenExp
 run pw1
@@ -734,11 +734,11 @@ branchIf pw1Ok pw1OkLabel
 branch testFailed
 label pw1OkLabel
 
-# gcdInt(54, 24) == 6
+# greatestCommonDivisorSignedInt64(54, 24) == 6
 const fiftyFour CSignedInt64 54
 const twentyFour CSignedInt64 24
 const sixI64 CSignedInt64 6
-call g1 gcdInt
+call g1 greatestCommonDivisorSignedInt64
 arg g1 a fiftyFour
 arg g1 b twentyFour
 run g1
@@ -752,11 +752,11 @@ branchIf g1Ok g1OkLabel
 branch testFailed
 label g1OkLabel
 
-# clampInt(50, 0, 10) == 10
+# clampSignedInt64ToInclusiveRange(50, 0, 10) == 10
 const fiftyI64 CSignedInt64 50
 const zeroI64Lo CSignedInt64 0
 const tenI64Hi CSignedInt64 10
-call cl1 clampInt
+call cl1 clampSignedInt64ToInclusiveRange
 arg cl1 x fiftyI64
 arg cl1 lo zeroI64Lo
 arg cl1 hi tenI64Hi

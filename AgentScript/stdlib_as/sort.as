@@ -14,28 +14,28 @@ errorCase MainError TestFailed CSignedInt32
 # normalization applied during compare).
 #
 # Operations:
-#   bubbleSortBytes(buf, count)   In-place bubble sort.
-#   insertionSortBytes(buf, count) In-place insertion sort.
-#   isSortedBytes(buf, count)     1 if monotonically non-decreasing.
+#   sortBytesWithBubbleSortInPlace(buf, count)   In-place bubble sort.
+#   sortBytesWithInsertionSortInPlace(buf, count) In-place insertion sort.
+#   areBytesSortedAscending(buf, count)     1 if monotonically non-decreasing.
 #   selectionSortBytes(buf, count) Selection sort.
 # ============================================================
 
 
-operation bubbleSortBytes
-input bubbleSortBytes buf COpaqueMemoryAddress
-input bubbleSortBytes count CByteCount
-output bubbleSortBytes Result CByteCount Void
-effect bubbleSortBytes read memory.buffer
-effect bubbleSortBytes write memory.buffer
-memory bubbleSortBytes heap no
-async bubbleSortBytes no
-purpose bubbleSortBytes "Bubble-sort the first count bytes of buf in non-decreasing order. O(n^2). Returns count."
-label startBubbleSortBytes
+operation sortBytesWithBubbleSortInPlace
+input sortBytesWithBubbleSortInPlace byteBuffer COpaqueMemoryAddress
+input sortBytesWithBubbleSortInPlace byteCount CByteCount
+output sortBytesWithBubbleSortInPlace Result CByteCount Void
+effect sortBytesWithBubbleSortInPlace read memory.buffer
+effect sortBytesWithBubbleSortInPlace write memory.buffer
+memory sortBytesWithBubbleSortInPlace heap no
+async sortBytesWithBubbleSortInPlace no
+purpose sortBytesWithBubbleSortInPlace "Bubble-sort the first count bytes of buf in non-decreasing order. O(n^2). Returns count."
+label startSortBytesWithBubbleSortInPlace
 const oneI I64 1
 const tFs I64 256
 var i I64 0
 var n I64 0
-set n count
+set n byteCount
 label outerHead
 call outerDone math.greaterThanOrEqualI64
 arg outerDone left i
@@ -65,7 +65,7 @@ branchIf iDone outerAdvance
 
 # Load buf[j], buf[j+1]
 call leftLoadCall pointer.loadByte
-arg leftLoadCall buffer buf
+arg leftLoadCall buffer byteBuffer
 arg leftLoadCall offset j
 run leftLoadCall
 bind leftRaw I8 leftLoadCall
@@ -75,7 +75,7 @@ arg jPlus1 right oneI
 run jPlus1
 bind jp1 I64 jPlus1
 call rightLoadCall pointer.loadByte
-arg rightLoadCall buffer buf
+arg rightLoadCall buffer byteBuffer
 arg rightLoadCall offset jp1
 run rightLoadCall
 bind rightRaw I8 rightLoadCall
@@ -114,12 +114,12 @@ branch innerAdvance
 
 label swap
 call swapL pointer.storeByte
-arg swapL buffer buf
+arg swapL buffer byteBuffer
 arg swapL offset j
 arg swapL value rightRaw
 run swapL
 call swapR pointer.storeByte
-arg swapR buffer buf
+arg swapR buffer byteBuffer
 arg swapR offset jp1
 arg swapR value leftRaw
 run swapR
@@ -144,32 +144,32 @@ set i iNext
 branch outerHead
 
 label bsDone
-returnOk count
+returnOk byteCount
 
 
-operation isSortedBytes
-input isSortedBytes buf CNullTerminatedByteString
-input isSortedBytes count CByteCount
-output isSortedBytes Result CSignedInt32 Void
-effect isSortedBytes read memory.buffer
-memory isSortedBytes heap no
-async isSortedBytes no
-purpose isSortedBytes "1 if every adjacent pair satisfies buf[i] <= buf[i+1], else 0. Empty / single-element arrays are sorted."
-label startIsSortedBytes
+operation areBytesSortedAscending
+input areBytesSortedAscending byteBuffer CNullTerminatedByteString
+input areBytesSortedAscending byteCount CByteCount
+output areBytesSortedAscending Result CSignedInt32 Void
+effect areBytesSortedAscending read memory.buffer
+memory areBytesSortedAscending heap no
+async areBytesSortedAscending no
+purpose areBytesSortedAscending "1 if every adjacent pair satisfies buf[i] <= buf[i+1], else 0. Empty / single-element arrays are sorted."
+label startAreBytesSortedAscending
 const oneI I64 1
 const tFs I64 256
 const trueR CSignedInt32 1
 const falseR CSignedInt32 0
 # count <= 1 -> sorted
 call leOneCall math.lessThanOrEqualI64
-arg leOneCall left count
+arg leOneCall left byteCount
 arg leOneCall right oneI
 run leOneCall
 bind leOne Bool leOneCall
 branchIf leOne sortedTrue
 var idx I64 0
 call boundCall math.subtractI64
-arg boundCall left count
+arg boundCall left byteCount
 arg boundCall right oneI
 run boundCall
 bind innerBound I64 boundCall
@@ -181,7 +181,7 @@ run doneCall
 bind done Bool doneCall
 branchIf done sortedTrue
 call leftLoad pointer.loadByte
-arg leftLoad buffer buf
+arg leftLoad buffer byteBuffer
 arg leftLoad offset idx
 run leftLoad
 bind leftRaw I8 leftLoad
@@ -191,7 +191,7 @@ arg idxPlus1 right oneI
 run idxPlus1
 bind ip1 I64 idxPlus1
 call rightLoad pointer.loadByte
-arg rightLoad buffer buf
+arg rightLoad buffer byteBuffer
 arg rightLoad offset ip1
 run rightLoad
 bind rightRaw I8 rightLoad
@@ -238,30 +238,30 @@ label sortedFalse
 returnOk falseR
 
 
-operation insertionSortBytes
-input insertionSortBytes buf COpaqueMemoryAddress
-input insertionSortBytes count CByteCount
-output insertionSortBytes Result CByteCount Void
-effect insertionSortBytes read memory.buffer
-effect insertionSortBytes write memory.buffer
-memory insertionSortBytes heap no
-async insertionSortBytes no
-purpose insertionSortBytes "In-place insertion sort. O(n^2) worst case, O(n) on nearly-sorted input."
-label startInsertionSortBytes
+operation sortBytesWithInsertionSortInPlace
+input sortBytesWithInsertionSortInPlace byteBuffer COpaqueMemoryAddress
+input sortBytesWithInsertionSortInPlace byteCount CByteCount
+output sortBytesWithInsertionSortInPlace Result CByteCount Void
+effect sortBytesWithInsertionSortInPlace read memory.buffer
+effect sortBytesWithInsertionSortInPlace write memory.buffer
+memory sortBytesWithInsertionSortInPlace heap no
+async sortBytesWithInsertionSortInPlace no
+purpose sortBytesWithInsertionSortInPlace "In-place insertion sort. O(n^2) worst case, O(n) on nearly-sorted input."
+label startSortBytesWithInsertionSortInPlace
 const oneI I64 1
 const tFs I64 256
 var i I64 1
 label outerHead
 call outerDone math.greaterThanOrEqualI64
 arg outerDone left i
-arg outerDone right count
+arg outerDone right byteCount
 run outerDone
 bind oDone Bool outerDone
 branchIf oDone isDone
 
 # Load key = buf[i] (we shift smaller elements right and re-store key)
 call keyLoad pointer.loadByte
-arg keyLoad buffer buf
+arg keyLoad buffer byteBuffer
 arg keyLoad offset i
 run keyLoad
 bind keyRaw I8 keyLoad
@@ -294,7 +294,7 @@ run jNegCall
 bind jNeg Bool jNegCall
 branchIf jNeg shiftDone
 call sLoad pointer.loadByte
-arg sLoad buffer buf
+arg sLoad buffer byteBuffer
 arg sLoad offset j
 run sLoad
 bind sRaw I8 sLoad
@@ -323,7 +323,7 @@ arg jPlus1 right oneI
 run jPlus1
 bind jp1 I64 jPlus1
 call storeShift pointer.storeByte
-arg storeShift buffer buf
+arg storeShift buffer byteBuffer
 arg storeShift offset jp1
 arg storeShift value sRaw
 run storeShift
@@ -343,7 +343,7 @@ arg insertAt right oneI
 run insertAt
 bind insertOff I64 insertAt
 call insertStore pointer.storeByte
-arg insertStore buffer buf
+arg insertStore buffer byteBuffer
 arg insertStore offset insertOff
 arg insertStore value keyRaw
 run insertStore
@@ -357,7 +357,7 @@ set i iNext
 branch outerHead
 
 label isDone
-returnOk count
+returnOk byteCount
 
 
 # ============================================================
@@ -419,13 +419,13 @@ arg s4 offset o4
 arg s4 value nine
 run s4
 
-call bs bubbleSortBytes
+call bs sortBytesWithBubbleSortInPlace
 arg bs buf buf
 arg bs count lenCB
 run bs
 ignoreOk bs CByteCount
 
-call chk isSortedBytes
+call chk areBytesSortedAscending
 arg chk buf buf
 arg chk count lenCB
 run chk
