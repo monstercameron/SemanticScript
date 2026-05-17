@@ -9,11 +9,89 @@ errorCase MainError ConsoleWriteFailed CSignedInt32
 errorCase MainError InputOpenFailed CSignedInt32
 errorCase MainError AllocationFailed CSignedInt32
 
+# ============================================================
+# Stdlib-style helper operations.
+#
+# These mirror operations defined in stdlib_as/*.as. Today AS does
+# not support cross-file calls, so the compiler-side helpers live
+# here alongside main(). The shapes match the corresponding stdlib
+# operations and can be lifted out unchanged once multi-file linking
+# is in place.
+# ============================================================
+
+operation lineStartsWithKeyword
+input lineStartsWithKeyword linePointer COpaqueMemoryAddress
+input lineStartsWithKeyword keyword CNullTerminatedByteString
+input lineStartsWithKeyword keywordLength CByteCount
+output lineStartsWithKeyword Result Bool Void
+memory lineStartsWithKeyword heap no
+memory lineStartsWithKeyword stack max 1KiB
+async lineStartsWithKeyword no
+purpose lineStartsWithKeyword "Report whether the first keywordLength bytes at linePointer match keyword. Wraps c.strncmp and the zero-equality test that every verb-prefix check needs."
+invariant lineStartsWithKeyword "Returns true exactly when c.strncmp reports zero across keywordLength bytes."
+
+label startLineStartsWithKeyword
+const zeroComparisonValue CSignedInt32 0
+call comparePrefixCall c.strncmp
+arg comparePrefixCall left linePointer
+arg comparePrefixCall right keyword
+arg comparePrefixCall count keywordLength
+run comparePrefixCall
+bind prefixComparisonResult CSignedInt32 comparePrefixCall
+
+call isPrefixMatchCall math.equalI64
+arg isPrefixMatchCall left prefixComparisonResult
+arg isPrefixMatchCall right zeroComparisonValue
+run isPrefixMatchCall
+bind isPrefixMatch Bool isPrefixMatchCall
+returnOk isPrefixMatch
+
+
+operation findLineEndOffset
+input findLineEndOffset bufferBase COpaqueMemoryAddress
+input findLineEndOffset lineStartPointer COpaqueMemoryAddress
+input findLineEndOffset fileEndOffset CSignedInt64
+input findLineEndOffset newlineByteCode CSignedInt32
+output findLineEndOffset Result CSignedInt64 Void
+effect findLineEndOffset read memory.buffer
+memory findLineEndOffset heap no
+memory findLineEndOffset stack max 1KiB
+async findLineEndOffset no
+purpose findLineEndOffset "Return the offset (relative to bufferBase) of the first newline byte at or after lineStartPointer, falling back to fileEndOffset when no newline remains. Wraps the c.strchr+pointer.isNull+pointer.difference cascade that both compiler passes need before processing a line."
+invariant findLineEndOffset "The returned offset is always within [0, fileEndOffset] and points at either a newline byte or the trailing NUL of the source buffer."
+
+label startFindLineEndOffset
+call locateNewlineCall c.strchr
+arg locateNewlineCall haystack lineStartPointer
+arg locateNewlineCall needle newlineByteCode
+run locateNewlineCall
+bind newlinePointer COpaqueMemoryAddress locateNewlineCall
+
+call newlineMissingCheckCall pointer.isNull
+arg newlineMissingCheckCall pointer newlinePointer
+run newlineMissingCheckCall
+bind newlineMissing Bool newlineMissingCheckCall
+branchIf newlineMissing fallbackToFileEnd
+branch computeNewlineRelativeOffset
+
+label computeNewlineRelativeOffset
+call newlineRelativeOffsetCall pointer.difference
+arg newlineRelativeOffsetCall left newlinePointer
+arg newlineRelativeOffsetCall right bufferBase
+run newlineRelativeOffsetCall
+bind newlineRelativeOffset CSignedInt64 newlineRelativeOffsetCall
+returnOk newlineRelativeOffset
+
+label fallbackToFileEnd
+returnOk fileEndOffset
+
+
 operation main
 input main console Console
 output main Result ExitCode MainError
 effect main read filesystem
-effect main read environment
+effect main write filesystem
+effect main read process.environment
 effect main write console.stdout
 effect main allocate heap
 effect main read memory.buffer
@@ -207,39 +285,16 @@ run pass1IsEofCall
 bind pass1IsEof Bool pass1IsEofCall
 branchIf pass1IsEof pass1Done
 
-# Find the next newline (or end-of-buffer NUL) from this point.
-call pass1FindNewlineCall c.strchr
-arg pass1FindNewlineCall haystack pass1LineStartPtr
-arg pass1FindNewlineCall needle newlineCharCode
-run pass1FindNewlineCall
-bind pass1NewlinePtr COpaqueMemoryAddress pass1FindNewlineCall
-
-# If no more newlines, the rest of the buffer is one final line. We
-# treat the file's terminating NUL as the line end in that case.
-call pass1NewlineNullCheckCall pointer.isNull
-arg pass1NewlineNullCheckCall pointer pass1NewlinePtr
-run pass1NewlineNullCheckCall
-bind pass1NoMoreNewlines Bool pass1NewlineNullCheckCall
-
-var pass1LineEndOffset I64 0
-branchIf pass1NoMoreNewlines pass1HandleFinalLine
-branch pass1NormalLineSetup
-
-label pass1HandleFinalLine
-# end offset = buffer NUL position = pass1Cursor + strlen(line) — we
-# can compute this by walking forward, but simpler: use the global
-# bytesRead. The NUL is at readBuffer + inputBytesRead.
-set pass1LineEndOffset inputBytesRead
-branch pass1ProcessLine
-
-label pass1NormalLineSetup
-call pass1NewlineOffsetCall pointer.difference
-arg pass1NewlineOffsetCall left pass1NewlinePtr
-arg pass1NewlineOffsetCall right readBuffer
-run pass1NewlineOffsetCall
-bind pass1NewlineOffset CSignedInt64 pass1NewlineOffsetCall
-set pass1LineEndOffset pass1NewlineOffset
-branch pass1ProcessLine
+# Find the line-end offset. Delegates to findLineEndOffset which
+# wraps the c.strchr/pointer.isNull/pointer.difference cascade,
+# falling back to the file-end offset when no newline remains.
+call pass1LineEndOffsetCall findLineEndOffset
+arg pass1LineEndOffsetCall bufferBase readBuffer
+arg pass1LineEndOffsetCall lineStartPointer pass1LineStartPtr
+arg pass1LineEndOffsetCall fileEndOffset inputBytesRead
+arg pass1LineEndOffsetCall newlineByteCode newlineCharCode
+run pass1LineEndOffsetCall
+bindOk pass1LineEndOffset CSignedInt64 pass1LineEndOffsetCall
 
 label pass1ProcessLine
 
@@ -251,21 +306,17 @@ label pass1ProcessLine
 # fall through for any line that doesn't match.
 
 # Test if line starts with "const " (verb const followed by space).
-# We use c.strncmp to compare the first 6 bytes against "const ".
+# Delegates to the stdlib-style lineStartsWithKeyword helper which
+# wraps the c.strncmp+zero-equality pattern that every verb-prefix
+# check needs.
 const constPrefix CNullTerminatedByteString "const "
 const constPrefixLen CByteCount 6
-call pass1IsConstLineCall c.strncmp
-arg pass1IsConstLineCall left pass1LineStartPtr
-arg pass1IsConstLineCall right constPrefix
-arg pass1IsConstLineCall count constPrefixLen
+call pass1IsConstLineCall lineStartsWithKeyword
+arg pass1IsConstLineCall linePointer pass1LineStartPtr
+arg pass1IsConstLineCall keyword constPrefix
+arg pass1IsConstLineCall keywordLength constPrefixLen
 run pass1IsConstLineCall
-bind pass1ConstCmpResult CSignedInt32 pass1IsConstLineCall
-
-call pass1IsConstCall math.equalI64
-arg pass1IsConstCall left pass1ConstCmpResult
-arg pass1IsConstCall right zeroByteOffset
-run pass1IsConstCall
-bind pass1IsConst Bool pass1IsConstCall
+bindOk pass1IsConst Bool pass1IsConstLineCall
 branchIf pass1IsConst pass1HandleConst
 branch pass1AdvanceLine
 
@@ -643,50 +694,24 @@ arg pass2LineStartPtrCall offset pass2Cursor
 run pass2LineStartPtrCall
 bind pass2LineStartPtr COpaqueMemoryAddress pass2LineStartPtrCall
 
-call pass2FindNewlineCall c.strchr
-arg pass2FindNewlineCall haystack pass2LineStartPtr
-arg pass2FindNewlineCall needle newlineCharCode
-run pass2FindNewlineCall
-bind pass2NewlinePtr COpaqueMemoryAddress pass2FindNewlineCall
-
-call pass2NewlineNullCheckCall pointer.isNull
-arg pass2NewlineNullCheckCall pointer pass2NewlinePtr
-run pass2NewlineNullCheckCall
-bind pass2NoMoreNewlines Bool pass2NewlineNullCheckCall
-
-var pass2LineEndOffset I64 0
-branchIf pass2NoMoreNewlines pass2HandleFinalLine
-branch pass2NormalLineSetup
-
-label pass2HandleFinalLine
-set pass2LineEndOffset inputBytesRead
-branch pass2ProcessLine
-
-label pass2NormalLineSetup
-call pass2NewlineOffsetCall pointer.difference
-arg pass2NewlineOffsetCall left pass2NewlinePtr
-arg pass2NewlineOffsetCall right readBuffer
-run pass2NewlineOffsetCall
-bind pass2NewlineOffset CSignedInt64 pass2NewlineOffsetCall
-set pass2LineEndOffset pass2NewlineOffset
-branch pass2ProcessLine
+call pass2LineEndOffsetCall findLineEndOffset
+arg pass2LineEndOffsetCall bufferBase readBuffer
+arg pass2LineEndOffsetCall lineStartPointer pass2LineStartPtr
+arg pass2LineEndOffsetCall fileEndOffset inputBytesRead
+arg pass2LineEndOffsetCall newlineByteCode newlineCharCode
+run pass2LineEndOffsetCall
+bindOk pass2LineEndOffset CSignedInt64 pass2LineEndOffsetCall
 
 label pass2ProcessLine
 
 const pass2ConstPrefix CNullTerminatedByteString "const "
 const pass2ConstPrefixLen CByteCount 6
-call pass2IsConstLineCall c.strncmp
-arg pass2IsConstLineCall left pass2LineStartPtr
-arg pass2IsConstLineCall right pass2ConstPrefix
-arg pass2IsConstLineCall count pass2ConstPrefixLen
+call pass2IsConstLineCall lineStartsWithKeyword
+arg pass2IsConstLineCall linePointer pass2LineStartPtr
+arg pass2IsConstLineCall keyword pass2ConstPrefix
+arg pass2IsConstLineCall keywordLength pass2ConstPrefixLen
 run pass2IsConstLineCall
-bind pass2ConstCmpResult CSignedInt32 pass2IsConstLineCall
-
-call pass2IsConstCall math.equalI64
-arg pass2IsConstCall left pass2ConstCmpResult
-arg pass2IsConstCall right zeroByteOffset
-run pass2IsConstCall
-bind pass2IsConst Bool pass2IsConstCall
+bindOk pass2IsConst Bool pass2IsConstLineCall
 branchIf pass2IsConst pass2HandleConst
 branch pass2AdvanceLine
 

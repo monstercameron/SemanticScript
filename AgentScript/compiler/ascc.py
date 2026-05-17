@@ -890,10 +890,14 @@ class Codegen:
         self._declare_externals()
 
     def _declare_externals(self):
-        puts_ty = ir.FunctionType(I32, [I8P])
-        self.puts = ir.Function(self.module, puts_ty, name="puts")
-        printf_ty = ir.FunctionType(I32, [I8P], var_arg=True)
-        self.printf = ir.Function(self.module, printf_ty, name="printf")
+        # `puts` and `printf` are declared lazily, on first reference (see
+        # `_get_puts` / `_get_printf`). The lazy declaration lets an
+        # AgentScript program define its OWN user-operation called `puts`
+        # (e.g. an AS-native stdio.as that bottoms out through c.putchar)
+        # without colliding with the compiler's libc glue. The first call
+        # that actually needs the libc symbol gets it declared then.
+        self._puts = None
+        self._printf = None
         # LLVM signed-multiply-with-overflow intrinsic. Produces a literal
         # struct { i64 product, i1 overflowOccurred }. Used to lower checked
         # multiplication call targets so callers can branchIfError on the
@@ -908,6 +912,25 @@ class Codegen:
         self._libc_funcs = {}
         # Cache for stdio stream globals (stdin / stdout / stderr).
         self._libc_streams = {}
+
+    @property
+    def puts(self):
+        """Lazily declare the libc puts extern. Skipped if the program
+        already defines a user-operation named `puts` (in that case
+        console.writeLine etc. will pick up the AS-native one through the
+        user-op dispatch path, not through self.puts)."""
+        if self._puts is None:
+            self._puts = ir.Function(self.module, ir.FunctionType(I32, [I8P]),
+                                     name="puts")
+        return self._puts
+
+    @property
+    def printf(self):
+        if self._printf is None:
+            self._printf = ir.Function(self.module,
+                                       ir.FunctionType(I32, [I8P], var_arg=True),
+                                       name="printf")
+        return self._printf
 
     # Attribute groups applied to libc declarations so the LLVM optimizer can
     # treat them as nearly-pure functions. Without these the JIT cannot hoist
@@ -1174,9 +1197,34 @@ class Codegen:
     # ---------- user-defined operations ----------
     def _declare_user_op(self, op: Operation):
         """Walk the operation's `input` lines, drop opaque-dep params, build
-        the LLVM function prototype, and record it for later call-site lookup."""
+        the LLVM function prototype, and record it for later call-site lookup.
+
+        The return type is derived from the operation's `output` line:
+            output OPNAME Result OK_TYPE ERR_TYPE     -> OK_TYPE
+            output OPNAME OK_TYPE                     -> OK_TYPE
+        If OK_TYPE is `Void` (the spec's no-value success leg), we fall back
+        to i32 because the LLVM ABI still needs a concrete return slot — the
+        i32 then carries a sentinel zero. If the output line is missing or
+        the OK type isn't a known AS type alias, we also use i32 (backward
+        compatible with pre-typed user-ops)."""
         params = []  # list of (pname, llvm_type, source_type_name)
+        return_type = I32  # default
+        return_type_name = None
         for verb, args, _ln in op.lines:
+            if verb == "output" and len(args) >= 2:
+                # args = [opname, ...rest]
+                rest = args[1:]
+                ok_type_name = None
+                if len(rest) >= 1 and rest[0] == "Result" and len(rest) >= 2:
+                    ok_type_name = rest[1]
+                elif len(rest) >= 1:
+                    ok_type_name = rest[0]
+                if ok_type_name and ok_type_name not in ("Void", "CVoid"):
+                    rt = llvm_type_for(self.prog, ok_type_name)
+                    if rt is not None:
+                        return_type = rt
+                        return_type_name = ok_type_name
+                continue
             if verb != "input" or len(args) < 3:
                 continue
             _owner_op_name, pname, ptype = args[0], args[1], args[2]
@@ -1187,11 +1235,16 @@ class Codegen:
                 # Unknown PascalCase type → also treated as opaque and skipped.
                 continue
             params.append((pname, llty, ptype))
-        fnty = ir.FunctionType(I32, [pt[1] for pt in params])
+        fnty = ir.FunctionType(return_type, [pt[1] for pt in params])
         fn = ir.Function(self.module, fnty, name=op.name)
         for i, (pname, _, _) in enumerate(params):
             fn.args[i].name = pname
-        self._user_ops[op.name] = {"fn": fn, "params": params}
+        self._user_ops[op.name] = {
+            "fn": fn,
+            "params": params,
+            "return_type": return_type,
+            "return_type_name": return_type_name,
+        }
 
     def _compile_user_op(self, op: Operation):
         info = self._user_ops[op.name]
@@ -1522,9 +1575,29 @@ class Codegen:
                 val = resolve(args[0])
                 if val is SENTINEL:
                     raise ValueError(f"{verb}: cannot return opaque input")
-                if val.type != I32:
-                    if isinstance(val.type, ir.IntType):
-                        val = builder.sext(val, I32) if val.type.width < 32 else builder.trunc(val, I32)
+                target_type = fn.function_type.return_type
+                if val.type != target_type:
+                    # Integer-to-integer: sext or trunc as appropriate.
+                    if (isinstance(val.type, ir.IntType)
+                            and isinstance(target_type, ir.IntType)):
+                        if val.type.width < target_type.width:
+                            val = builder.sext(val, target_type)
+                        elif val.type.width > target_type.width:
+                            val = builder.trunc(val, target_type)
+                    # Pointer-to-pointer of different pointee types: bitcast.
+                    elif (isinstance(val.type, ir.PointerType)
+                            and isinstance(target_type, ir.PointerType)):
+                        val = builder.bitcast(val, target_type)
+                    # Float-to-float: extend/truncate.
+                    elif (isinstance(val.type, (ir.FloatType, ir.DoubleType))
+                            and isinstance(target_type, (ir.FloatType, ir.DoubleType))):
+                        if isinstance(target_type, ir.DoubleType) and isinstance(val.type, ir.FloatType):
+                            val = builder.fpext(val, target_type)
+                        elif isinstance(target_type, ir.FloatType) and isinstance(val.type, ir.DoubleType):
+                            val = builder.fptrunc(val, target_type)
+                    # Otherwise: fall through; llvmlite will complain if the
+                    # mismatch is genuinely irreconcilable, which is what we
+                    # want for surfacing source-level type errors.
                 builder.ret(val)
                 continue
 
@@ -1611,6 +1684,27 @@ class Codegen:
             n = to_i64(arg_val_named("value"))
             fmt_ptr = self._i8p(builder, "%lld\n")
             call["result"] = builder.call(self.printf, [fmt_ptr, n], name=f"{call_name}_res")
+            return
+
+        if target == "math.intToFloat":
+            # Convert a signed integer to double precision (sitofp).
+            # Used by AS-stdlib float math to bridge integer counters
+            # into float computations without linking libm.
+            usable = [(k, v) for k, v in call["args"].items()
+                      if v not in opaque_inputs]
+            v = resolve(usable[0][1])
+            v = to_i64(v)
+            call["result"] = builder.sitofp(v, F64, name=f"{call_name}_res")
+            return
+        if target == "math.floatToInt":
+            # Convert a double-precision value to a signed 64-bit integer
+            # by rounding toward zero (fptosi). Used to implement
+            # floor/ceil/trunc in pure AS.
+            usable = [(k, v) for k, v in call["args"].items()
+                      if v not in opaque_inputs]
+            v = resolve(usable[0][1])
+            v = self._coerce_for_libc(builder, v, "CDouble")
+            call["result"] = builder.fptosi(v, I64, name=f"{call_name}_res")
             return
 
         if target == "math.checkedMultiplyI64":
@@ -1849,8 +1943,9 @@ class Codegen:
                     elif v.type.width > _llty.width:
                         v = builder.trunc(v, _llty)
                 arg_values.append(v)
-            call["result"] = builder.call(op_info["fn"], arg_values,
-                                          name=f"{call_name}_res")
+            result = builder.call(op_info["fn"], arg_values,
+                                  name=f"{call_name}_res")
+            call["result"] = result
             # User-defined operations may return either a libc-style
             # negative error code (when they propagate a primitive's error
             # via returnError) OR a positive makeError variant index. The
@@ -1858,9 +1953,28 @@ class Codegen:
             # first case; recording `result != 0` here catches both, which
             # is what spec §12 (failure-flow precision) requires for any
             # operation whose output contract is `Result A B`.
-            call["error_cond"] = builder.icmp_signed(
-                "!=", call["result"], ir.Constant(I32, 0),
-                name=f"{call_name}_isErr")
+            #
+            # The error-cond predicate depends on the return type:
+            #   integer return: != 0
+            #   pointer return: != null (NULL pointer is the failure marker)
+            #   float return:   != 0.0 (matches the i32 convention)
+            rt = result.type
+            if isinstance(rt, ir.IntType):
+                call["error_cond"] = builder.icmp_signed(
+                    "!=", result, ir.Constant(rt, 0),
+                    name=f"{call_name}_isErr")
+            elif isinstance(rt, ir.PointerType):
+                call["error_cond"] = builder.icmp_unsigned(
+                    "!=", result, ir.Constant(rt, None),
+                    name=f"{call_name}_isErr")
+            elif isinstance(rt, (ir.FloatType, ir.DoubleType)):
+                call["error_cond"] = builder.fcmp_ordered(
+                    "!=", result, ir.Constant(rt, 0.0),
+                    name=f"{call_name}_isErr")
+            else:
+                # Unknown return shape: leave error_cond unset; callers that
+                # branchIfError on this will get a clear codegen error.
+                pass
             return
 
         raise ValueError(f"unsupported call target: {target!r}")
