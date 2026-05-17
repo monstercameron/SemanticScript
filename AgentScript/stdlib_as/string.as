@@ -1460,12 +1460,12 @@ arg seedNc dest destNc
 arg seedNc src hi
 run seedNc
 ignoreOk seedNc CByteCount
-call nc1 strncat
-arg nc1 dest destNc
-arg nc1 src thereMore
-arg nc1 n fourNc
-run nc1
-ignoreOk nc1 CByteCount
+call ncatCall strncat
+arg ncatCall dest destNc
+arg ncatCall src thereMore
+arg ncatCall n fourNc
+run ncatCall
+ignoreOk ncatCall CByteCount
 call ncCmp strcmp
 arg ncCmp a destNc
 arg ncCmp b expectedHiThere

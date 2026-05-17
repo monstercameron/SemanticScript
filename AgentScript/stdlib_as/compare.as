@@ -205,7 +205,7 @@ arg diff left a
 arg diff right b
 run diff
 bind dRaw CFloat64 diff
-var d CFloat64 0.0
+var d CFloat64 zeroF
 set d dRaw
 call lt math.lessThanF64
 arg lt left d
