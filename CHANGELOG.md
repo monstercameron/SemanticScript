@@ -2,6 +2,22 @@
 
 ## 2026-05-17
 
+- `7e6e86f97908f15a163591ded7bfd3f5a5a705e0` - `chore: ignore generated bootstrap IR`
+  - Ignored the generated `AgentScript/bootstrap/bootstrap_general.ll` artifact so feature and bootstrap runs do not leave generated IR in source status.
+- `38f32ad3de915b8fcea68ec500ee454d455dfdfd` - `docs: add refined syntax research artifacts`
+  - Added the project-wide README plus the refined syntax research notes, broad syntax showcase, and Mermaid graph under `experiments/`.
+- `10f1224bfbc597ff782338218563391cd7b6ac9c` - `tooling: support refined AgentScript syntax in VS Code`
+  - Expanded the VS Code extension for refined syntax verbs, schema values, generated codec targets, aggregate/guard/defer families, and future-syntax linter skipping.
+- `536a5169a8accbc42c1beb89fd08aa1a6126dc14` - `tests: cover records imports and C call edges`
+  - Added feature tests 109-126 plus a helper module covering records, record parameters, imports, pointer/C call paths, signal registration, `c.printf` arity, and a documented nested-record xfail.
+- `5d46e973b28ce4713b66f6e182fcbf8b7cdffc17` - `bootstrap: add record and import lowering paths`
+  - Expanded `bootstrap_general.as` with record field discovery/emission, record-typed call argument handling, import inlining, signal declaration support, and safer empty-body fallback output.
+- `44092b69b269e3534c3f95aafbad81c1f951e0b0` - `compiler: support imports and external web targets`
+  - Added import resolution, web-server target stubs, external-module call fallbacks, structural reserved-verb no-ops needed by current tooling, and optional traceback diagnostics.
+- `60b758ae10ccd66cf7e0fceb22093babcf63e5cf` - `good progress`
+  - Expanded the AS-written compiler and feature corpus for pointer, float, libc, recursion, multi-argument calls, and broader generated-IR coverage.
+- `39a0329b933af0fa45d9eb4ba465d376b1722b27` - `docs: update dated changelog`
+  - Added the previous compiler, stdlib, and feature-coverage commits to the date-grouped repository changelog.
 - `17ae76633e778e238bac728a0f94b2cd4d083228` - `bootstrap: expand general compiler lowering`
   - Expanded `bootstrap_general.as` to lower more real AgentScript behavior through the AS-written compiler, including user operations, recursion, float and pointer flows, libc calls, return-error payloads, and broader executable control-flow cases.
 - `1daa366f7baad078243be7bef73268f9e2fd73d6` - `stdlib: tighten AS self-test names`
