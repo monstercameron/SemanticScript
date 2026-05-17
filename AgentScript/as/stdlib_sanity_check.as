@@ -1,0 +1,475 @@
+project StdlibSanityCheck
+target console
+runtime AgentRuntime 0.1
+
+entry console main
+
+error MainError
+errorCase MainError WriteFailed CSignedInt32
+
+# ============================================================
+# Sanity-check demo: exercises a handful of stdlib_as/* operations
+# (inlined here because cross-file calls aren't supported yet).
+#
+# Operations exercised:
+#   putByte / putString / putLine / putIntegerDecimal  (stdio.as)
+#   strlen                                              (string.as)
+#   factorial                                           (math.as)
+# ============================================================
+
+
+operation putByte
+input putByte byteValue CSignedInt32
+output putByte Result CSignedInt32 Void
+effect putByte write console.stdout
+memory putByte heap no
+memory putByte stack max 1KiB
+async putByte no
+purpose putByte "Write one byte to stdout. The only line that crosses to the host OS."
+invariant putByte "Returns the byte written when c.putchar reports a non-negative result."
+
+label startPutByte
+call putByteHostCall c.putchar
+arg putByteHostCall c byteValue
+run putByteHostCall
+bind putByteResult CSignedInt32 putByteHostCall
+returnOk putByteResult
+
+
+operation putString
+input putString sourceText CNullTerminatedByteString
+output putString Result CByteCount Void
+effect putString write console.stdout
+effect putString read memory.buffer
+memory putString heap no
+memory putString stack max 1KiB
+async putString no
+purpose putString "Walk a C-string and emit each byte via putByte until a NUL terminator."
+invariant putString "At putStringLoop, cursorIndex bytes have already been written to stdout."
+
+label startPutString
+const zeroIndex CByteCount 0
+const oneIndex CByteCount 1
+var cursorIndex CByteCount zeroIndex
+
+label putStringLoop
+call loadByteCall pointer.loadByte
+arg loadByteCall buffer sourceText
+arg loadByteCall offset cursorIndex
+run loadByteCall
+bind currentByte I8 loadByteCall
+
+call isNulCall math.equalI64
+arg isNulCall left currentByte
+arg isNulCall right zeroIndex
+run isNulCall
+bind reachedNul Bool isNulCall
+branchIf reachedNul putStringDone
+
+call emitByteCall putByte
+arg emitByteCall byteValue currentByte
+run emitByteCall
+ignoreOk emitByteCall CSignedInt32
+
+call advanceCursorCall math.addI64
+arg advanceCursorCall left cursorIndex
+arg advanceCursorCall right oneIndex
+run advanceCursorCall
+bind nextCursor CByteCount advanceCursorCall
+set cursorIndex nextCursor
+branch putStringLoop
+
+label putStringDone
+returnOk cursorIndex
+
+
+operation putLine
+input putLine sourceText CNullTerminatedByteString
+output putLine Result CByteCount Void
+effect putLine write console.stdout
+effect putLine read memory.buffer
+memory putLine heap no
+memory putLine stack max 1KiB
+async putLine no
+purpose putLine "Write sourceText to stdout, then emit a single newline byte."
+invariant putLine "totalBytesWritten always equals putString's count plus one for the newline."
+
+label startPutLine
+call putLineBodyCall putString
+arg putLineBodyCall sourceText sourceText
+run putLineBodyCall
+bindOk bodyByteCount CByteCount putLineBodyCall
+
+const newlineByte CSignedInt32 10
+call putLineNewlineCall putByte
+arg putLineNewlineCall byteValue newlineByte
+run putLineNewlineCall
+ignoreOk putLineNewlineCall CSignedInt32
+
+const oneNewline CByteCount 1
+call totalBytesCall math.addI64
+arg totalBytesCall left bodyByteCount
+arg totalBytesCall right oneNewline
+run totalBytesCall
+bind totalBytesWritten CByteCount totalBytesCall
+returnOk totalBytesWritten
+
+
+operation putIntegerDecimal
+input putIntegerDecimal numberToPrint CSignedInt64
+output putIntegerDecimal Result CByteCount Void
+effect putIntegerDecimal write console.stdout
+effect putIntegerDecimal allocate heap
+effect putIntegerDecimal free heap
+effect putIntegerDecimal write memory.buffer
+effect putIntegerDecimal read memory.buffer
+memory putIntegerDecimal heap yes
+memory putIntegerDecimal stack max 4KiB
+async putIntegerDecimal no
+purpose putIntegerDecimal "Print a signed 64-bit decimal integer (no trailing newline). Pure-AS itoa."
+invariant putIntegerDecimal "At digitDecomposeLoop, digitCount equals the number of digits already buffered in reverse order."
+invariant putIntegerDecimal "digitBuffer is allocated on entry to decompose and freed on exit from emitDone."
+
+label startPutIntegerDecimal
+const zeroValue CSignedInt64 0
+const oneValue CSignedInt64 1
+const tenValue CSignedInt64 10
+const negativeOneValue CSignedInt64 -1
+const asciiZeroOffset CSignedInt64 48
+const asciiMinusByte CSignedInt32 45
+const digitBufferBytes CByteCount 32
+
+call allocBufferCall c.malloc
+arg allocBufferCall size digitBufferBytes
+run allocBufferCall
+bind digitBuffer COpaqueMemoryAddress allocBufferCall
+
+var workingMagnitude CSignedInt64 zeroValue
+set workingMagnitude numberToPrint
+var negativeFlag CSignedInt64 zeroValue
+
+call signCheckCall math.lessThanI64
+arg signCheckCall left numberToPrint
+arg signCheckCall right zeroValue
+run signCheckCall
+bind isNegativeBool Bool signCheckCall
+branchIf isNegativeBool flipSign
+branch signDone
+
+label flipSign
+set negativeFlag oneValue
+call negateCall math.multiplyI64
+arg negateCall left numberToPrint
+arg negateCall right negativeOneValue
+run negateCall
+bind negatedValue CSignedInt64 negateCall
+set workingMagnitude negatedValue
+branch signDone
+
+label signDone
+call isZeroCheckCall math.equalI64
+arg isZeroCheckCall left workingMagnitude
+arg isZeroCheckCall right zeroValue
+run isZeroCheckCall
+bind isZeroValue Bool isZeroCheckCall
+branchIf isZeroValue emitZeroDigit
+branch decomposeDigits
+
+label emitZeroDigit
+const asciiZeroByte CSignedInt32 48
+call putZeroDigitCall putByte
+arg putZeroDigitCall byteValue asciiZeroByte
+run putZeroDigitCall
+ignoreOk putZeroDigitCall CSignedInt32
+branch emitDone
+
+label decomposeDigits
+const zeroIndexDec CByteCount 0
+const oneIndexDec CByteCount 1
+var digitCount CByteCount zeroIndexDec
+
+label digitDecomposeLoop
+call extractDigitCall math.moduloI64
+arg extractDigitCall left workingMagnitude
+arg extractDigitCall right tenValue
+run extractDigitCall
+bind digitValue CSignedInt64 extractDigitCall
+
+call digitToAsciiCall math.addI64
+arg digitToAsciiCall left digitValue
+arg digitToAsciiCall right asciiZeroOffset
+run digitToAsciiCall
+bind digitAsciiByte CSignedInt32 digitToAsciiCall
+
+call storeDigitCall pointer.storeByte
+arg storeDigitCall buffer digitBuffer
+arg storeDigitCall offset digitCount
+arg storeDigitCall value digitAsciiByte
+run storeDigitCall
+
+call incrementCountCall math.addI64
+arg incrementCountCall left digitCount
+arg incrementCountCall right oneIndexDec
+run incrementCountCall
+bind nextDigitCount CByteCount incrementCountCall
+set digitCount nextDigitCount
+
+call divideByTenCall math.divideI64
+arg divideByTenCall left workingMagnitude
+arg divideByTenCall right tenValue
+run divideByTenCall
+bind nextMagnitude CSignedInt64 divideByTenCall
+set workingMagnitude nextMagnitude
+
+call hasMoreCall math.greaterThanI64
+arg hasMoreCall left workingMagnitude
+arg hasMoreCall right zeroValue
+run hasMoreCall
+bind hasMoreDigits Bool hasMoreCall
+branchIf hasMoreDigits digitDecomposeLoop
+branch emitSignByte
+
+label emitSignByte
+call needsSignCall math.equalI64
+arg needsSignCall left negativeFlag
+arg needsSignCall right oneValue
+run needsSignCall
+bind needsMinusSign Bool needsSignCall
+branchIf needsMinusSign emitMinusSign
+branch emitDigitsForward
+
+label emitMinusSign
+call putMinusCall putByte
+arg putMinusCall byteValue asciiMinusByte
+run putMinusCall
+ignoreOk putMinusCall CSignedInt32
+branch emitDigitsForward
+
+label emitDigitsForward
+var emitCursor CByteCount zeroIndexDec
+set emitCursor digitCount
+
+label emitNextDigit
+call cursorAtZeroCall math.equalI64
+arg cursorAtZeroCall left emitCursor
+arg cursorAtZeroCall right zeroValue
+run cursorAtZeroCall
+bind cursorIsZero Bool cursorAtZeroCall
+branchIf cursorIsZero emitDone
+
+call decrementCursorCall math.subtractI64
+arg decrementCursorCall left emitCursor
+arg decrementCursorCall right oneIndexDec
+run decrementCursorCall
+bind decrementedCursor CByteCount decrementCursorCall
+set emitCursor decrementedCursor
+
+call loadDigitByteCall pointer.loadByte
+arg loadDigitByteCall buffer digitBuffer
+arg loadDigitByteCall offset decrementedCursor
+run loadDigitByteCall
+bind digitByteToEmit I8 loadDigitByteCall
+
+call putDigitByteCall putByte
+arg putDigitByteCall byteValue digitByteToEmit
+run putDigitByteCall
+ignoreOk putDigitByteCall CSignedInt32
+branch emitNextDigit
+
+label emitDone
+call freeBufferCall c.free
+arg freeBufferCall ptr digitBuffer
+run freeBufferCall
+const finishedByteCount CByteCount 1
+returnOk finishedByteCount
+
+
+operation strlen
+input strlen sourceText CNullTerminatedByteString
+output strlen Result CByteCount Void
+effect strlen read memory.buffer
+memory strlen heap no
+memory strlen stack max 1KiB
+async strlen no
+purpose strlen "Pure-AS strlen: walk bytes from sourceText until a NUL, returning the byte count."
+invariant strlen "At strlenLoop, cursorByteCount equals the number of non-NUL bytes seen so far."
+
+label startStrlen
+const zeroByteCount CByteCount 0
+const oneByteCount CByteCount 1
+var cursorByteCount CByteCount zeroByteCount
+
+label strlenLoop
+call probeByteCall pointer.loadByte
+arg probeByteCall buffer sourceText
+arg probeByteCall offset cursorByteCount
+run probeByteCall
+bind probedByte I8 probeByteCall
+
+call probeIsNulCall math.equalI64
+arg probeIsNulCall left probedByte
+arg probeIsNulCall right zeroByteCount
+run probeIsNulCall
+bind probeReachedNul Bool probeIsNulCall
+branchIf probeReachedNul strlenDone
+
+call advanceProbeCall math.addI64
+arg advanceProbeCall left cursorByteCount
+arg advanceProbeCall right oneByteCount
+run advanceProbeCall
+bind nextProbeIndex CByteCount advanceProbeCall
+set cursorByteCount nextProbeIndex
+branch strlenLoop
+
+label strlenDone
+returnOk cursorByteCount
+
+
+operation factorial
+input factorial upperLimit CSignedInt64
+output factorial Result CSignedInt64 Void
+memory factorial heap no
+memory factorial stack max 1KiB
+async factorial no
+purpose factorial "Compute upperLimit! using a multiplicative loop; returns 1 when upperLimit <= 0."
+invariant factorial "At factorialLoop, runningProduct equals factorial(currentCounter - 1)."
+
+label startFactorial
+const zeroFactorial CSignedInt64 0
+const oneFactorial CSignedInt64 1
+
+call upperLimitNonPositiveCall math.lessThanOrEqualI64
+arg upperLimitNonPositiveCall left upperLimit
+arg upperLimitNonPositiveCall right zeroFactorial
+run upperLimitNonPositiveCall
+bind upperLimitNonPositive Bool upperLimitNonPositiveCall
+branchIf upperLimitNonPositive factorialReturnsOne
+
+var runningProduct CSignedInt64 oneFactorial
+var currentCounter CSignedInt64 oneFactorial
+
+label factorialLoop
+call counterPastLimitCall math.greaterThanI64
+arg counterPastLimitCall left currentCounter
+arg counterPastLimitCall right upperLimit
+run counterPastLimitCall
+bind counterPastLimit Bool counterPastLimitCall
+branchIf counterPastLimit factorialReturnProduct
+
+call multiplyAccumulatorCall math.multiplyI64
+arg multiplyAccumulatorCall left runningProduct
+arg multiplyAccumulatorCall right currentCounter
+run multiplyAccumulatorCall
+bind nextProduct CSignedInt64 multiplyAccumulatorCall
+set runningProduct nextProduct
+
+call advanceCounterCall math.addI64
+arg advanceCounterCall left currentCounter
+arg advanceCounterCall right oneFactorial
+run advanceCounterCall
+bind nextCounter CSignedInt64 advanceCounterCall
+set currentCounter nextCounter
+branch factorialLoop
+
+label factorialReturnProduct
+returnOk runningProduct
+
+label factorialReturnsOne
+returnOk oneFactorial
+
+
+# ============================================================
+# main: exercise the operations and print results.
+# ============================================================
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+effect main read memory.buffer
+effect main allocate heap
+effect main free heap
+effect main write memory.buffer
+memory main heap yes
+memory main stack max 4KiB
+async main no
+purpose main "Run a small sanity check across stdlib operations and print the results."
+invariant main "Each demo line completes successfully before the next call is issued."
+
+label startMain
+
+const greetingText CNullTerminatedByteString "AgentScript stdlib sanity check"
+call printGreetingCall putLine
+arg printGreetingCall sourceText greetingText
+run printGreetingCall
+ignoreOk printGreetingCall CByteCount
+
+const strlenLabelText CNullTerminatedByteString "strlen(\"Hello, AgentScript!\") = "
+call printStrlenLabelCall putString
+arg printStrlenLabelCall sourceText strlenLabelText
+run printStrlenLabelCall
+ignoreOk printStrlenLabelCall CByteCount
+
+const sampleText CNullTerminatedByteString "Hello, AgentScript!"
+call measureSampleCall strlen
+arg measureSampleCall sourceText sampleText
+run measureSampleCall
+bindOk sampleByteCount CByteCount measureSampleCall
+
+call printSampleLengthCall putIntegerDecimal
+arg printSampleLengthCall numberToPrint sampleByteCount
+run printSampleLengthCall
+ignoreOk printSampleLengthCall CByteCount
+
+const newlineByteValue CSignedInt32 10
+call newlineAfterStrlenCall putByte
+arg newlineAfterStrlenCall byteValue newlineByteValue
+run newlineAfterStrlenCall
+ignoreOk newlineAfterStrlenCall CSignedInt32
+
+const factorialFiveLabelText CNullTerminatedByteString "5! = "
+call printFactorialFiveLabelCall putString
+arg printFactorialFiveLabelCall sourceText factorialFiveLabelText
+run printFactorialFiveLabelCall
+ignoreOk printFactorialFiveLabelCall CByteCount
+
+const factorialFiveInput CSignedInt64 5
+call computeFactorialFiveCall factorial
+arg computeFactorialFiveCall upperLimit factorialFiveInput
+run computeFactorialFiveCall
+bindOk factorialFiveResult CSignedInt64 computeFactorialFiveCall
+
+call printFactorialFiveCall putIntegerDecimal
+arg printFactorialFiveCall numberToPrint factorialFiveResult
+run printFactorialFiveCall
+ignoreOk printFactorialFiveCall CByteCount
+
+call newlineAfterFactorialFiveCall putByte
+arg newlineAfterFactorialFiveCall byteValue newlineByteValue
+run newlineAfterFactorialFiveCall
+ignoreOk newlineAfterFactorialFiveCall CSignedInt32
+
+const factorialTenLabelText CNullTerminatedByteString "10! = "
+call printFactorialTenLabelCall putString
+arg printFactorialTenLabelCall sourceText factorialTenLabelText
+run printFactorialTenLabelCall
+ignoreOk printFactorialTenLabelCall CByteCount
+
+const factorialTenInput CSignedInt64 10
+call computeFactorialTenCall factorial
+arg computeFactorialTenCall upperLimit factorialTenInput
+run computeFactorialTenCall
+bindOk factorialTenResult CSignedInt64 computeFactorialTenCall
+
+call printFactorialTenCall putIntegerDecimal
+arg printFactorialTenCall numberToPrint factorialTenResult
+run printFactorialTenCall
+ignoreOk printFactorialTenCall CByteCount
+
+call newlineAfterFactorialTenCall putByte
+arg newlineAfterFactorialTenCall byteValue newlineByteValue
+run newlineAfterFactorialTenCall
+ignoreOk newlineAfterFactorialTenCall CSignedInt32
+
+const successfulExitCode ExitCode 0
+returnOk successfulExitCode
