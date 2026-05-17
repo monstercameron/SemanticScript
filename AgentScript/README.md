@@ -1,141 +1,120 @@
-# AgentScript — reference implementation
+# AgentScript reference implementation
 
-> AgentScript 1.0.0 — a minimal but real implementation of the AgentScript
-> language from the spec at `../AgentScript.md`. The compiler emits LLVM IR
-> via `llvmlite` and either JIT-executes through MCJIT or links to a native
-> executable through `clang`. Programs in `as/` match the behavior of their
-> `js/` peers byte-for-byte (validated by `tests/compare.py`).
+AgentScript 1.0.0 is a minimal but real implementation of the language spec
+in `../AgentScript.md`. The compiler emits LLVM IR through `llvmlite`, can
+JIT-run with MCJIT, and can link native executables through `clang`.
 
-```
+The 28 oracle-backed programs in `as/` match their JavaScript peers
+byte-for-byte via `tests/compare.py`. The AS-written `bootstrap_general.as`
+compiler currently passes 23 of those oracle programs via
+`tests/as_compiler_parity.py`.
+
+## Layout
+
+```text
 <project root>/
-├── javascript/             canonical Node.js benchmark oracles
-│   ├── hello.js
-│   ├── countdown.js
-│   ├── fizzbuzz.js
-│   ├── factorial.js
-│   ├── sum_of_squares.js
-│   └── … (28 programs)
-├── AgentScript.md          the language spec
-└── AgentScript/
-    ├── AST.md              full syntax-tree design
-    ├── README.md           this file
-    ├── CHANGELOG.md        release notes
-    ├── compiler/
-    │   ├── ascc.py         tokenizer + parser + LLVM codegen + JIT runner
-    │   └── libc_registry.py  C-stdlib function signatures
-    ├── linter/
-    │   └── aslint.py       standalone source-level linter
-    ├── bootstrap/
-    │   ├── bootstrap.as    stage 1 — emits fixed hello-world IR
-    │   ├── bootstrap2.as   stage 2 — extracts first quoted string
-    │   ├── bootstrap3.as   stage 3 — parses ExitCode literal
-    │   ├── bootstrap4.as   stage 4 — greeting + ExitCode
-    │   ├── bootstrap5.as   stage 5 — countdown loop with branches
-    │   ├── input*.as       inputs each stage parses
-    │   ├── run_bootstrap_chain.py  full end-to-end chain check
-    │   └── README.md       bootstrap-chain documentation
-    ├── as/                 AgentScript programs
-    │   ├── hello.as
-    │   ├── countdown.as
-    │   ├── fizzbuzz.as
-    │   ├── factorial.as
-    │   └── …
-    └── tests/
-        ├── compare.py      parity oracle (Node vs. AS, byte-for-byte)
-        └── test_compiler.py  compiler unit tests
+  javascript/                 Node.js oracle programs
+  python/                     Python comparison programs
+  AgentScript.md              language spec
+  CHANGELOG.md                date-grouped repository changelog
+  AgentScript/
+    AST.md                    implemented syntax-tree/codegen surface
+    README.md                 this file
+    CHANGELOG.md              toolchain release notes
+    compiler/
+      ascc.py                 tokenizer, parser, LLVM codegen, runner
+      libc_registry.py        C standard-library signature registry
+    linter/
+      aslint.py               standalone source linter
+    bootstrap/
+      bootstrap.as            stage 1 fixed hello-world IR emitter
+      bootstrap2.as           stage 2 first quoted-string parser
+      bootstrap3.as           stage 3 ExitCode parser
+      bootstrap4.as           stage 4 greeting + ExitCode compiler
+      bootstrap5.as           stage 5 countdown-loop IR emitter
+      bootstrap6.as           stage 6 input-scaled multi-string compiler
+      bootstrap_general.as    current AS-written compiler for parity tests
+      run_bootstrap_chain.py  end-to-end bootstrap verification
+    as/                       AgentScript programs and smoke files
+    stdlib_as/                standalone AS stdlib-shaped modules
+    as_python/                reserved for future Python parity mirrors
+    tests/
+      compare.py              Python ascc vs Node parity, 28 programs
+      as_compiler_parity.py   bootstrap_general vs Node parity, 23 targets
+      test_compiler.py        compiler/bootstrap smoke checks
+      test_stdlib.py          stdlib_as self-test runner
 ```
 
-Parity tests use `<project root>/javascript/<name>.js` as the oracle for
-each `AgentScript/as/<name>.as`.
+## Quick Start
 
-## Quick start
+Run from `AgentScript/` unless noted otherwise.
 
-```
-# print the version
+```powershell
 python compiler/ascc.py --version
-
-# compile and JIT-run a program
 python compiler/ascc.py as/fizzbuzz.as --run
-
-# write LLVM IR to disk
 python compiler/ascc.py as/fizzbuzz.as --emit-ir fizzbuzz.ll
-
-# ahead-of-time compile to a native exe (requires clang)
 python compiler/ascc.py as/fizzbuzz.as --emit-exe fizzbuzz.exe
-
-# lint a single file or a whole directory
 python linter/aslint.py as/fizzbuzz.as --summary
 python linter/aslint.py as --strict
 ```
 
-## Run the test suites
+## Tests
 
-```
-# parity: every as/<name>.as must match javascript/<name>.js byte-for-byte
+```powershell
+# 28 oracle-backed as/<name>.as files match javascript/<name>.js
 python tests/compare.py
 
-# compiler-internal unit tests (tokenizer, parser, codegen, bootstrap IR)
+# AS-written compiler parity: 23 current bootstrap_general targets
+python tests/as_compiler_parity.py
+
+# compiler-internal checks
 python tests/test_compiler.py
 
-# full self-hosting bootstrap chain (5 stages, 20 sub-stages)
+# stdlib_as self-tests
+python tests/test_stdlib.py
+
+# full self-hosting bootstrap chain: 6 stages, 24 sub-stages
 python bootstrap/run_bootstrap_chain.py
 ```
 
-## CLI
+## Implemented Surface
 
-```
-ascc 1.0.0
+The reference compiler covers the subset documented in `AST.md`: enough to
+compile console programs, C-stdlib bridge calls, pointer-buffer programs,
+stdlib-shaped helper modules, and the current bootstrap compilers.
 
-usage: ascc [-h] [--version] [--emit-ir EMIT_IR] [--run] [--lint] [--strict]
-            [--parse-only] [--opt-level OPT_LEVEL]
-            [--emit-optimized-ir EMIT_OPTIMIZED_IR] [--emit-exe EMIT_EXE]
-            [--quiet]
-            [source]
-```
+Implemented runtime/codegen pieces include:
 
-Exit codes:
+- top-level `project`, `target`, `runtime`, and `entry` headers;
+- operation contracts: `input`, `output`, `effect`, `memory`, `async`,
+  `purpose`, `invariant`, and related metadata;
+- constants, variables, mutation, labels, branches, and returns;
+- named call objects with `arg`, `run`, `bind`, `bindOk`, `bindError`,
+  `ignoreOk`, and `branchIfError`;
+- same-file user-defined operation calls with typed returns derived from each
+  operation's `output` line;
+- integer and floating-point math primitives, including `math.intToFloat` and
+  `math.floatToInt`;
+- stdout helpers through `console.writeLine` and `console.writeIntegerLine`;
+- direct C calls through `c.<funcName>` using `compiler/libc_registry.py`;
+- pointer primitives: `pointer.loadByte`, `pointer.storeByte`,
+  `pointer.offset`, `pointer.difference`, and `pointer.isNull`.
 
-| Code | Meaning                                                     |
-| ---- | ----------------------------------------------------------- |
-| 0    | success (or, with `--run`, the program's own return code)   |
-| 2    | parse error or source not readable                          |
-| 3    | codegen error (including reserved-hard verbs not yet lowered) |
-| 4    | linker error (clang failure when using `--emit-exe`)        |
+Spec verbs with runtime meaning that are not lowered yet are parsed for
+inspection but rejected in normal compile mode. See `AST.md` for the exact
+reserved-hard list.
 
-## What's implemented vs. the full spec
+## Bootstrap Status
 
-The spec is large. The reference compiler covers the subset listed in
-`AST.md` §3–§6 — enough to compile and run console programs that exercise:
+`bootstrap/` demonstrates AgentScript compiling narrower AgentScript subsets.
+Every numbered stage is real `.as` source compiled by the trusted Python
+reference compiler, then run to emit LLVM IR for another `.as` input.
 
-- top-level `project` / `target` / `runtime` / `entry` headers
-- operation headers (`input`, `output`, `effect`, `memory`, `async`,
-  `purpose`, `invariant`, `warning`)
-- constants and mutable variables (`const`, `var`, `set`)
-- named call objects with `arg` / `run` / `bindOk` / `bindError` / `bind`
-- branching via `branchIf`, `branchIfError`, `branch`
-- labels as first-class basic blocks
-- explicit failure-flow `returnError` / `returnOk` / `returnValue`
-- a `math.*` namespace for arithmetic and comparison
-- a `console.*` namespace for stdout writes (`writeLine`, `writeIntegerLine`)
-- a full C-stdlib bridge (`c.<funcName>`, plus camelCase aliases for
-  underscored C symbols)
-- pointer primitives (`pointer.loadByte`, `pointer.storeByte`,
-  `pointer.offset`, `pointer.difference`, `pointer.isNull`)
+`bootstrap_general.as` is separate from the numbered chain. It reads a target
+program from `AS_INPUT`, emits LLVM IR, and currently handles the 23 oracle
+programs whose stdout can be reproduced from source string constants. It is
+not yet a full compiler for loops, mutation, computed integer output, stdin, or
+real call dispatch.
 
-See [`CHANGELOG.md`](CHANGELOG.md) for the full feature matrix and the
-list of spec verbs that are reserved-hard (parsed but not yet lowered).
-
-## Self-hosting bootstrap chain
-
-`bootstrap/` contains an iterative bootstrap demonstrating that AgentScript
-can compile AgentScript. Each stage's compiler is a real `.as` source file;
-running them produces LLVM IR for another `.as` source file, which clang
-then turns into a native executable.
-
-```
-python bootstrap/run_bootstrap_chain.py
-```
-
-See [`bootstrap/README.md`](bootstrap/README.md) for the precise AgentScript
-subset each stage compiles and the list of features still needed before
-the AgentScript compiler can compile its own Python source.
+See `bootstrap/README.md` for the detailed stage matrix and remaining
+self-hosting blockers.

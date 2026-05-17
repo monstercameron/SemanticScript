@@ -32,13 +32,21 @@ without invoking LLVM codegen.
 Current rule families:
 
 - `unknownVerb`, `missingArgument`
-- call object lifecycle and reference checks
-- explicit failure dataflow checks
-- branch label existence and duplicate labels
-- role suffix checks
-- operation purpose/output/memory/async checks
+- flat line-shape checks (`multipleSemanticActions`, `nestedSyntax`)
+- naming checks (`vagueName`, `typeNameCase`, `operationNameCase`, role suffixes)
+- call lifecycle and unknown-reference checks (`callNotExecuted`,
+  `callRunMultipleTimes`, `unknownCallReference`)
+- explicit failure and success dataflow (`unbranchedFailure`,
+  `missingSuccessDisposition`, `hiddenFailure`)
+- branch label existence, duplicate labels, and legacy two-target
+  `branchIf` notices
+- operation contract checks for purpose/output/memory/async/return
 - console effect declaration checks
-- async timeout/cancellation checks
-- group/endGroup balance checks
-- duplicate string domain literal checks
-- abstraction purpose checks
+- async timeout/cancellation and unawaited task-group checks
+- cleanup hints for resource-like open/connect/acquire calls
+- group/endGroup comment balance checks
+- duplicate string domain literal checks, relaxed under
+  `mode capturedOutputReplay`
+- abstraction purpose checks for contract-heavy declarations
+- semantic comment prefix checks (`rationale:`, `invariant:`, `warning:`,
+  `failure:`, `agent:`, `group`, `endGroup`, etc.)

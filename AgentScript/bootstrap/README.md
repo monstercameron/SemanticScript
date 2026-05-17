@@ -18,42 +18,44 @@ The chain is honest about what is and isn't self-hosting:
 | 4     | `bootstrap4.as`      | `input4.as`         | Prints greeting, exits with parsed integer      | Combines stage 2 and stage 3 in one parser pass over the buffer.                  |
 | 5     | `bootstrap5.as`      | `input5.as`         | Prints countdown N..1, exits with parsed `ExitCode`| Adds real LLVM basic-block control flow: emitted IR has entry/loopHead/loopBody/loopExit blocks joined by a conditional branch on an alloca-backed counter. |
 | 6     | `bootstrap6.as`      | `input6.as`         | Prints every greeting in source order, exits with parsed `ExitCode` | **First stage whose output IR size scales with the input.** Finds every `CNullTerminatedByteString "..."` literal and emits one `@.s<i>` constant + one `@print<i>` helper for each, then a `main()` that calls them in source order. Adding or removing a writeLine line in the input produces a measurably different exe with **no compiler edit**. |
-| 7     | `bootstrap7.as`      | `AS_INPUT` env var → any `.as` | Prints every `String "..."`/`CNullTerminatedByteString "..."` in source order | **First env-var-driven AS compiler.** Same loop as bootstrap6 but with a unified `String "` marker (which is a substring of `CNullTerminatedByteString "`). Drives the AS-compiler parity harness against `as/hello.as`, `as/hello_world.as`, `as/hello_via_helper.as`. |
-| 8     | `bootstrap8.as`      | `AS_INPUT` env var → countdown-shape `.as` | Prints N..1, exits parsed `ExitCode` | Specialized for countdown-shape programs. Marker: `CountdownValue <N>`. Matches `as/countdown.as`. |
-| 9     | `bootstrap9.as`      | `AS_INPUT` env var → factorial-shape `.as` | Prints product 1*2*...*N, exits `ExitCode` | Specialized for factorial-shape programs. Marker: `factorialUpperLimit FactorialCounter <N>`. Emits an LLVM loop with a counter alloca and an accumulator alloca, multiplying each iteration. Matches `as/factorial.as`. |
-| 10    | `bootstrap10.as`     | `AS_INPUT` env var → sum-of-squares-shape `.as` | Prints Σ(i²) for i=1..N, exits `ExitCode` | Specialized for sum-of-squares programs. Marker: `sumOfSquaresUpperLimit SumOfSquaresCounter <N>`. Same skeleton as bootstrap9 but the loop body squares `cur` first then adds to the accumulator. Matches `as/sum_of_squares.as`. |
+
+`bootstrap_general.as` is separate from the numbered chain. It is the
+current AS-written compiler used by `tests/as_compiler_parity.py`; it
+reads the target program from `AS_INPUT`, emits LLVM IR to stdout, and
+passes 23 oracle-backed programs today.
 
 ## bootstrap_general.as — the real general-purpose compiler
 
 `bootstrap_general.as` is the first AS-written compiler to use **real
-per-line verb dispatch** (`c.strncmp` against `"const "`, `"call "`,
-etc. at the start of each line) rather than whole-file marker scanning.
+per-line verb dispatch** rather than whole-file marker scanning. It now
+keeps repeated scanning work in same-file helper operations such as
+`lineStartsWithKeyword` and `findLineEndOffset`; those helpers still bottom
+out in the trusted compiler's `c.strncmp`, `c.strchr`, and pointer primitives.
 That is the foundation a general-purpose AgentScript compiler needs.
 
-**v0.1 verb coverage:** `const NAME String "..."` and `const NAME
-CNullTerminatedByteString "..."`. Every other line is currently
-ignored. The two-pass structure emits all string constants at module
-scope in pass 1, then walks again to emit a `main()` that puts each
-constant in source order.
+**v0.1 verb coverage:** line-by-line detection of `const NAME String "..."`
+and `const NAME CNullTerminatedByteString "..."`, with escape-aware string
+body emission. Every other line is still ignored. The two-pass structure
+emits all string constants at module scope in pass 1, then walks again to
+emit a `main()` that puts each constant in source order.
 
-**Programs it currently handles:** the hello-family — `hello.as`,
-`hello_world.as`, `hello_via_helper.as` (3 programs). Their JS oracle
-output is exactly the concatenated set of fixed string constants in the
-source, so v0.1's "emit puts for every String constant" gives a
-correct exe.
+**Programs it currently handles:** 23 oracle-backed programs whose expected
+stdout is exactly the concatenation of string constants in source order.
+That includes the hello-family, captured-output replay programs, and the
+long-running `webserver_console.as` banner case.
 
-**Programs it does NOT yet handle:** anything that:
-- prints a computed integer (`console.writeIntegerLine value`)
-- uses `c.printf` with format substitution
-- has branchIf / loops / math.* arithmetic
-- requires real call/arg/run dispatch (it currently emits a puts per
-  string constant regardless of whether that string is the arg of a
-  console.writeLine; the hello-family programs happen to match)
+**Programs it does NOT yet handle:** anything whose output depends on real
+execution semantics instead of source string constants:
+- computed integer output (`console.writeIntegerLine value`)
+- `c.printf` format substitution
+- `var` / `set` mutation and math.* arithmetic
+- `branchIf` / loops / conditional control flow
+- stdin-driven behavior
+- real call/arg/run dispatch (it currently emits a puts per string const,
+  regardless of whether the program actually runs that call)
 
 **Architectural roadmap toward 28/28:**
-Each subsequent version of `bootstrap_general.as` adds verb handlers.
-The current marker-extracting `bootstrap8`–`bootstrap11` will be
-absorbed when their feature is added to the general compiler.
+Each subsequent version of `bootstrap_general.as` adds real verb handlers.
 
 1. v0.2: per-line `call NAME TARGET` / `arg NAME ARGNAME VALUE` /
    `run NAME` tracking. Maintains a small in-memory table of pending
@@ -76,20 +78,14 @@ target list using the AS-written compiler indicated, links via clang,
 and diffs the resulting exe's output against the Node.js reference
 program byte-for-byte.
 
-Current score: **23 / 28 programs pass via the general AS-written compiler.**
+Current score: **23 / 28 oracle-backed programs pass via
+`bootstrap_general.as`.**
 
-Every passing program is compiled by **the same** `bootstrap_general.as`.
-No per-program specialized compilers. The harness lives at
-`tests/as_compiler_parity.py`. The 5 programs that don't pass through
-the general compiler (countdown, factorial, sum_of_squares, fizzbuzz,
-todos_list) require features the general compiler doesn't yet emit —
-integer printing in loops, math.* arithmetic, conditional control flow,
-and stdin handling.
-
-22 of the 25 are compiled by `bootstrap_general.as` (real per-line verb
-dispatch + escape-aware byte walker for string bodies). 3 are compiled
-by the leftover specialized loop emitters (`bootstrap8`–`bootstrap10`)
-because the general compiler does not yet emit math loops.
+Every passing program is compiled by the same AS-written compiler. There
+are no per-program specialized compilers in the current tree. The harness
+lives at `tests/as_compiler_parity.py`. The 5 programs that do not pass
+through the general compiler yet require integer output, mutation, math,
+conditional control flow, loops, or stdin handling.
 
 | program                              | compiler            |
 | ------------------------------------ | ------------------- |
@@ -129,13 +125,13 @@ Not yet supported (5 / 28):
 
 These are the next features `bootstrap_general` needs to grow:
 `console.writeIntegerLine`, `var`/`set`, math.* primitives, `branchIf`
-on computed conditions, and `c.fgets`-style stdin dispatch.
+on computed conditions, loop emission, real `returnOk ExitCode` handling,
+and `c.fgets`-style stdin dispatch.
 
 `webserver_console.as` passes because its banner string is just a
 `String "..."` constant. The harness runs both sides under
 long-running mode (1.5 s, then terminate, compare captured stdout).
 
-The remaining 22 programs each need additional bootstrap stages.
 Continuing to grow this score is the explicit follow-up work.
 
 ## What is genuinely self-hosting today
@@ -301,22 +297,28 @@ loopExit:
 To compile `compiler/ascc.py`-shaped programs from AgentScript-only
 code, the bootstrap parser still needs:
 
-1. Generic line-oriented tokenization (split by whitespace, handle
-   `"…"` literals with escape rules).
-2. A real symbol table mapping AS identifiers to LLVM SSA values.
-3. Dispatch table for AS verbs (`const`, `var`, `set`, `call`, `arg`,
+1. Full line-oriented tokenization beyond the current `const` string
+   scanner: split by whitespace, preserve quoted literals, and decode
+   escape rules for every verb handler.
+2. A real symbol table mapping AS identifiers to LLVM globals, allocas,
+   SSA values, call objects, labels, and operation-local scopes.
+3. Dispatch table for executable AS verbs (`const`, `var`, `set`, `call`, `arg`,
    `run`, `bind`, `bindOk`, `bindError`, `ignoreOk`, `makeError`,
    `label`, `branch`, `branchIf`, `branchIfError`, `returnOk`,
    `returnError`, etc.).
-4. Dynamic LLVM IR emitters for each verb (currently each stage emits a
-   fixed template).
+4. Dynamic LLVM IR emitters for each verb. `bootstrap_general` already
+   emits an input-dependent set of string constants and puts calls, but
+   the emitted `main()` is still a string-replay skeleton rather than a
+   real lowering of the target program's call graph.
 5. Heap-allocated string interning so that multiple distinct
    `CNullTerminatedByteString` constants can be emitted in a single
    module.
 6. Dynamic basic-block tracking — generate fresh `bb_<n>` labels per
    `label` verb and patch forward branches as they become available.
-7. A `c.*` libc dispatcher (the registry currently lives in
-   `compiler/libc_registry.py` as Python).
+7. A target-program `c.*` libc dispatcher in the AS-written compiler.
+   The trusted Python compiler already has this registry in
+   `compiler/libc_registry.py`; the self-host path still needs an
+   AgentScript representation of the signatures it can emit.
 8. Real handling of `bindOk` / `bindError` / `branchIfError` —
    bootstrap5 still uses the libc error-code convention via the trusted
    compiler when building itself.

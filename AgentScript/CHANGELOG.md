@@ -5,6 +5,38 @@ standalone linter (`aslint`), and bootstrap chain.
 
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## Unreleased
+
+### Compiler (`compiler/ascc.py`)
+
+- Declares libc `puts` and `printf` lazily so AgentScript programs can define
+  same-named user operations without colliding with compiler glue.
+- Derives same-file user-operation return types from their `output` lines
+  instead of hard-coding every user operation to `i32`.
+- Coerces `returnOk`, `returnError`, and `returnValue` to the enclosing
+  operation's LLVM return type across integer, pointer, and float returns.
+- Adds return-shape-aware user-operation error predicates: integer `!= 0`,
+  pointer `!= null`, and float `!= 0.0`.
+- Adds `math.intToFloat` and `math.floatToInt` lowering for AS-written float
+  helper code.
+
+### Standard library experiments (`stdlib_as/`)
+
+- Adds 28 standalone AgentScript stdlib-shaped modules with runnable
+  self-tests, covering strings, ctype, memory, integer math, float helpers,
+  errno/limits/constants, process/time/signal wrappers, arrays, sorting, and
+  related small utilities.
+- Adds `tests/test_stdlib.py`, which compiles and runs every `stdlib_as/*.as`
+  file through the trusted Python reference compiler.
+- Adds `as/stdlib_sanity_check.as` as a compact single-file smoke program for
+  stdlib-style helper operations.
+
+### Bootstrap
+
+- Extracts repeated `bootstrap_general.as` line-scanning logic into
+  stdlib-style same-file helpers, including keyword-prefix checks and
+  line-end discovery.
+
 ## 1.0.0 — 2026-05-16
 
 The first stable release of the reference toolchain.
@@ -69,11 +101,14 @@ The first stable release of the reference toolchain.
 
 ### Tests
 
-- New `tests/test_compiler.py` runs 19 unit tests covering the
-  tokenizer, parser line-number propagation, codegen smoke, and IR
-  contents of bootstrap stages 3, 4, and 5.
+- New `tests/test_compiler.py` runs compiler/bootstrap checks covering the
+  tokenizer, parser line-number propagation, codegen smoke, bootstrap
+  stages 3-6, and `bootstrap_general.as` output against selected JS oracles.
 - `tests/compare.py` continues to provide the byte-for-byte parity
   oracle against the Node reference programs (28 programs).
+- New `tests/as_compiler_parity.py` checks the AS-written
+  `bootstrap_general.as` compiler against the Node reference output for
+  its current 23 target programs.
 
 ### Self-hosting bootstrap (`bootstrap/`)
 
@@ -88,8 +123,15 @@ The first stable release of the reference toolchain.
   control flow (entry / loopHead / loopBody / loopExit, alloca-backed
   counter, conditional branch) — proving the AS-written codegen can
   drive multi-block IR.
+- New `bootstrap6.as`: scans every `CNullTerminatedByteString "..."`
+  literal in `input6.as` and emits input-scaled LLVM IR with one string
+  constant and print helper per literal.
+- New `bootstrap_general.as`: first AS-written compiler in this tree that
+  is driven by `AS_INPUT` and uses line-by-line `const` dispatch plus
+  escape-aware string emission. It currently passes 23 oracle-backed
+  programs whose stdout is captured as source string constants.
 - New `bootstrap/run_bootstrap_chain.py`: end-to-end verification that
-  builds and validates all 5 self-hosted compilers in order.
+  builds and validates all 6 numbered self-hosted compilers in order.
 - New `bootstrap/README.md`: precise documentation of which AgentScript
   subset each stage compiles, and what's still required before
   full self-host.

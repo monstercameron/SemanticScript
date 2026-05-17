@@ -192,14 +192,19 @@ branchIfError CALL_NAME LABEL              (or use the success-only `bind`)
 ```
 
 A `call X opName` where `opName` matches a user-defined `operation` in the
-same program lowers to an LLVM function call. Each user operation compiles
-to `i32 @opName(params…)`. The parameter list is derived from the op's
-`input` lines, with opaque-dependency symbols (`console`, `process`,
-`environment`, `httpRequest`, `databaseClient`, `clock`) filtered out —
-those are documentation-only at the ABI boundary. The caller's `arg` line
-names map to the operation's declared parameter names. The return value
-follows the puts/printf convention: negative = error, non-negative = ok,
-so `branchIfError` continues to work on user-op results.
+same program lowers to an LLVM function call. The parameter list is derived
+from the op's `input` lines, with opaque-dependency symbols (`console`,
+`process`, `environment`, `httpRequest`, `databaseClient`, `clock`) filtered
+out; those are documentation-only at the ABI boundary. The caller's `arg`
+line names map to the operation's declared parameter names.
+
+The return type is derived from the op's `output` line. `output OP Result A B`
+returns the success payload type `A`; `output OP A` returns `A`; `Void` falls
+back to an `i32` zero sentinel because LLVM still needs a concrete return slot
+for the current ABI. `returnOk`, `returnError`, and `returnValue` are coerced
+to that LLVM return type when possible. `branchIfError` uses the call's
+recorded error predicate: integer returns compare `!= 0`, pointer returns
+compare `!= null`, and float returns compare `!= 0.0`.
 
 The canonical example is the `writeStandardOutputLine` helper used by the
 captured-output-replay programs:
@@ -620,6 +625,8 @@ math.lessThanI64             -> i1                        # alias: math.ltI64
 math.lessThanOrEqualI64      -> i1                        # alias: math.leI64
 math.greaterThanI64          -> i1                        # alias: math.gtI64
 math.greaterThanOrEqualI64   -> i1                        # alias: math.geI64
+math.intToFloat              -> f64 (signed i64 to double)
+math.floatToInt              -> i64 (double to signed i64, round toward zero)
 ```
 
 `console.writeLine` and `console.writeIntegerLine` are *line-emitting* calls
@@ -679,12 +686,19 @@ domain role.
 I64, DurationMilliseconds, MonotonicMilliseconds, UtcMilliseconds   64-bit int
 I32, ExitCode                                                       32-bit int
 Bool                                                                i1
+F64, CFloat64, CDouble                                              f64
 String                                                              null-terminated UTF-8 (i8*)
+COpaqueMemoryAddress, CNullTerminatedByteString                     i8*
+CSignedByte / CUnsignedByte                                         i8
+CSignedInt16 / CUnsignedInt16                                       i16
+CSignedInt32 / CUnsignedInt32                                       i32
+CSignedInt64 / CUnsignedInt64 / CByteCount / CAddressOffset         i64
 ```
 
 User-declared `type` aliases follow the chain (`type CountdownValue I64`,
 `type CountdownStep I64`, etc.). Aliases are resolved transitively before
-codegen, so the underlying LLVM type is always one of the primitives above.
+codegen, so the underlying LLVM type is one of the primitives above or one
+of the C-aligned aliases listed in section 12.
 
 Opaque PascalCase types used only in headers and dependency declarations
 (`Console`, `Process`, `Environment`, `HttpRequest`, `DatabaseClient`,
@@ -735,22 +749,38 @@ as values in `arg` lines but never as values that flow into computation.
 | Bind / BindOk / BindError | SSA name bound to the call's return value         |
 | MakeErrorStmt         | bind name to constant `i32` = (1-based variant index)  |
 | Checked-multiply call | `llvm.smul.with.overflow.i64` → `extractvalue {i64,i1}, 0/1`; product is the call's `result`, overflow bit is its `error_cond` |
-| Reserved body verbs (taskGroup, defer*, send/receive, lock/unlock, select*, new/fieldGet/fieldSet, useRetry, useCapability) | stored in op.lines, no codegen yet — tooling can index them |
+| BranchIfStmt          | `br i1 cond, true_bb, fallthrough_bb`                 |
+| BranchIfErrorStmt     | conditional `br` using the call's recorded error predicate (`!= 0`, `!= null`, or `!= 0.0`) |
+| BranchStmt            | unconditional `br`                                    |
+| ReturnOk / ReturnError / ReturnValue | `ret <operation output LLVM type> value` |
+| IgnoreOkStmt          | no instruction emitted (the call's SSA value already exists; the line just attests that no `bindOk` will consume it) |
+| Domain method (`T.m`) | dispatched to underlying primitive (e.g. `math.subtractI64` for `CountdownValue.subtractPositiveStep`) |
+| Reserved-soft verbs (`guarantee`, `failure`, `security`, `timing`, `observability`, `useCapability`, `importModule`) | stored in op.lines as metadata and skipped by codegen |
+| Reserved-hard verbs (`taskGroup`, `defer*`, `send`/`receive`, `lock`/`unlock`, `select*`, `new`/`fieldGet`/`fieldSet`, `useRetry`) | parsed for inspection, but codegen raises `NotImplementedError` instead of silently dropping runtime behavior |
+
+Each codegen row of this table is implemented in `compiler/ascc.py`. The
+reserved rows are intentionally parser/tooling surface until their runtime
+lowering exists.
 
 ## 8. Codegen vs. parse-only verb partition
 
 The compiler distinguishes two kinds of body verbs:
 
 - `BODY_VERBS_CODEGEN` — emits LLVM IR.
-- `BODY_VERBS_RESERVED` — parsed and recorded in the AST, but **codegen
-  treats them as semantic metadata**. The runtime semantics are defined
-  by the spec; this compiler does not yet lower them.
+- `BODY_VERBS_RESERVED_SOFT` — parsed and recorded in the AST as pure
+  metadata. Codegen skips these because they do not change runtime
+  behavior.
+- `BODY_VERBS_RESERVED_HARD` — parsed and recorded for `--parse-only`,
+  linter, editor, and review tooling, but codegen raises
+  `NotImplementedError` if a compiled program uses them. These verbs have
+  runtime semantics in the spec, so silently dropping them would violate
+  the hidden-behavior law.
 
 This split is honest: the language surface is real, but the compiler
-implementation is partial. A program can use the reserved verbs to
-describe richer behavior (cleanup, concurrency, channels, records),
-have it parse, lint, and be inspectable by tooling — even though
-running it would require the broader runtime that the spec describes.
+implementation is partial. A program can use hard-reserved verbs under
+`--parse-only` to describe richer behavior (cleanup, concurrency,
+channels, records) and still be inspectable by tooling. Normal compile
+mode refuses those verbs until their runtime lowering exists.
 
 ## 9. Linter (agent-safety checks)
 
@@ -769,12 +799,3 @@ implements the spec's linter-class rules:
 
 `--strict` escalates any warning to a non-zero exit, so CI can refuse
 to ship programs that drift from the constitution.
-| BranchIfStmt          | `br i1 cond, true_bb, fallthrough_bb`                 |
-| BranchIfErrorStmt     | `icmp slt result, 0` + conditional `br`               |
-| BranchStmt            | unconditional `br`                                    |
-| ReturnOk / ReturnError / ReturnValue | `ret i32 value`                        |
-| IgnoreOkStmt          | no instruction emitted (the call's SSA value already exists; the line just attests that no `bindOk` will consume it) |
-| Domain method (`T.m`) | dispatched to underlying primitive (e.g. `math.subtractI64` for `CountdownValue.subtractPositiveStep`) |
-
-Each row of this table is implemented in `compiler/ascc.py`; the AST schema
-in this document and the codegen path stay one-to-one.
