@@ -1,0 +1,1659 @@
+section experiments.refinedSyntaxExample
+# rationale: Proposed AgentScript syntax after attention-alignment research.
+# rationale: This file is a broad syntax showcase, not a minimal program.
+# rationale: This file intentionally uses future refined syntax.
+# rationale: This file is not current executable AgentScript.
+# rationale: runtimeBinding is target metadata.
+# rationale: operationBody records one operation's executable source kind.
+
+section stdlib.string.agentFacing
+operation compareCString
+input compareCString left CNullTerminatedByteString
+input compareCString right CNullTerminatedByteString
+output compareCString Result CSignedInt32 CStringCompareError
+effect compareCString read left
+effect compareCString read right
+memoryHeap compareCString no
+async compareCString no
+operationBody compareCString runtimeBinding
+purpose compareCString "Compare two null-terminated byte strings using the semantic AgentScript signature for C strcmp behavior"
+runtimeBinding compareCString runtime.cstring.compare
+runtimeBindingPrecondition compareCString "left is a validated CNullTerminatedByteString value"
+runtimeBindingPrecondition compareCString "right is a validated CNullTerminatedByteString value"
+runtimeBindingFailure compareCString CStringCompareError.InvalidCStringInput
+runtimeBindingFailure compareCString CStringCompareError.RuntimeCompareFailed
+
+operation stringByteLength
+input stringByteLength inputText CNullTerminatedByteString
+output stringByteLength Result CByteCount CStringLengthError
+effect stringByteLength read inputText
+memoryHeap stringByteLength no
+async stringByteLength no
+operationBody stringByteLength runtimeBinding
+purpose stringByteLength "Return the byte length of a null-terminated byte string using the semantic AgentScript signature for C strlen behavior"
+runtimeBinding stringByteLength runtime.cstring.byteLength
+runtimeBindingPrecondition stringByteLength "inputText is a validated CNullTerminatedByteString value"
+runtimeBindingFailure stringByteLength CStringLengthError.RuntimeLengthReadFailed
+
+operation validateCString
+input validateCString candidatePointer RawCStringPointer
+output validateCString CStringValidationResult
+effect validateCString read candidatePointer
+memoryHeap validateCString no
+async validateCString no
+operationBody validateCString runtimeBinding
+purpose validateCString "Validate one raw C string pointer"
+runtimeBinding validateCString runtime.cstring.validateNullTerminated
+runtimeBindingPrecondition validateCString "candidatePointer validation scan is bounded by the configured maximum scan byte count"
+runtimeBindingFailure validateCString CStringValidationError.MissingNullTerminator
+runtimeBindingFailure validateCString CStringValidationError.UnreadableCStringMemory
+
+section stdlib.text.agentFacing
+operation validateUtf8Text
+input validateUtf8Text candidateText RawUtf8Text
+output validateUtf8Text ValidatedTextResult
+effect validateUtf8Text read candidateText
+memoryHeap validateUtf8Text no
+async validateUtf8Text no
+operationBody validateUtf8Text runtimeBinding
+purpose validateUtf8Text "Validate that one raw UTF-8 text value satisfies application text safety rules"
+runtimeBinding validateUtf8Text runtime.text.validateUtf8
+runtimeBindingPrecondition validateUtf8Text "candidateText validation scan is bounded by the configured maximum text byte length"
+runtimeBindingFailure validateUtf8Text TextValidationError.InvalidUtf8
+runtimeBindingFailure validateUtf8Text TextValidationError.ExceedsMaximumLength
+
+section stdlib.time.agentFacing
+operation isLeapYearAsCInt
+input isLeapYearAsCInt candidateYear CSignedInt64
+output isLeapYearAsCInt Result CSignedInt32 TimePredicateError
+effect isLeapYearAsCInt read candidateYear
+memoryHeap isLeapYearAsCInt no
+async isLeapYearAsCInt no
+operationBody isLeapYearAsCInt runtimeBinding
+purpose isLeapYearAsCInt "Return C integer predicate value"
+runtimeBinding isLeapYearAsCInt runtime.calendar.isLeapYearAsCInt
+runtimeBindingPrecondition isLeapYearAsCInt "candidateYear is within supported proleptic Gregorian calendar range"
+runtimeBindingFailure isLeapYearAsCInt TimePredicateError.InvalidYear
+
+operation isLeapYear
+input isLeapYear candidateYear CSignedInt64
+output isLeapYear Result Bool TimePredicateError
+effect isLeapYear read candidateYear
+memoryHeap isLeapYear no
+async isLeapYear no
+operationBody isLeapYear runtimeBinding
+purpose isLeapYear "Return true when candidateYear is a leap year"
+runtimeBinding isLeapYear runtime.calendar.isLeapYearBool
+runtimeBindingPrecondition isLeapYear "candidateYear is within supported proleptic Gregorian calendar range"
+runtimeBindingFailure isLeapYear TimePredicateError.InvalidYear
+
+section stdlib.memory.agentFacing
+operation copyMemoryBytes
+input copyMemoryBytes destinationBuffer COpaqueMemoryAddress
+input copyMemoryBytes sourceBuffer COpaqueMemoryAddress
+input copyMemoryBytes byteCount CByteCount
+output copyMemoryBytes Result COpaqueMemoryAddress MemoryCopyError
+effect copyMemoryBytes read sourceBuffer
+effect copyMemoryBytes write destinationBuffer
+memoryHeap copyMemoryBytes no
+async copyMemoryBytes no
+operationBody copyMemoryBytes runtimeBinding
+purpose copyMemoryBytes "Copy byteCount bytes from sourceBuffer into destinationBuffer using the semantic AgentScript signature for C memcpy behavior"
+runtimeBinding copyMemoryBytes runtime.memory.copyBytes
+runtimeBindingPrecondition copyMemoryBytes "sourceBuffer validation is bounded by byteCount"
+runtimeBindingPrecondition copyMemoryBytes "destinationBuffer validation is bounded by byteCount"
+runtimeBindingPrecondition copyMemoryBytes "sourceDestinationBufferPair is non-overlapping for byteCount bytes"
+runtimeBindingFailure copyMemoryBytes MemoryCopyError.InvalidSourceBuffer
+runtimeBindingFailure copyMemoryBytes MemoryCopyError.InvalidDestinationBuffer
+runtimeBindingFailure copyMemoryBytes MemoryCopyError.OverlappingBuffers
+runtimeBindingFailure copyMemoryBytes MemoryCopyError.RuntimeCopyFailed
+
+section stdlib.metrics.agentFacing
+operation releaseMetricsLockGuard
+input releaseMetricsLockGuard guardToken GuardToken
+output releaseMetricsLockGuard Result GuardReleaseStatus SharedStateGuardReleaseError
+effect releaseMetricsLockGuard write metrics.lock
+memoryHeap releaseMetricsLockGuard no
+async releaseMetricsLockGuard no
+operationBody releaseMetricsLockGuard runtimeBinding
+purpose releaseMetricsLockGuard "Release one metrics lock guard during cleanup"
+runtimeBinding releaseMetricsLockGuard metricsLock.release
+runtimeBindingPrecondition releaseMetricsLockGuard "guardToken was returned by acquireMetricsLockGuard"
+runtimeBindingPrecondition releaseMetricsLockGuard "guardToken has not already been released"
+runtimeBindingFailure releaseMetricsLockGuard SharedStateGuardReleaseError.ReleaseFailed
+
+operation acquireMetricsLockGuard
+input acquireMetricsLockGuard runtime MetricsRuntime
+input acquireMetricsLockGuard sharedState SharedStateReference
+output acquireMetricsLockGuard Result GuardToken SharedStateGuardError
+effect acquireMetricsLockGuard write metrics.lock
+memoryHeap acquireMetricsLockGuard no
+async acquireMetricsLockGuard no
+operationBody acquireMetricsLockGuard runtimeBinding
+purpose acquireMetricsLockGuard "Acquire one metrics lock guard before shared-state mutation"
+runtimeBinding acquireMetricsLockGuard metricsLock.acquire
+runtimeBindingPrecondition acquireMetricsLockGuard "runtime owns accountLookupFailureCount metrics"
+runtimeBindingPrecondition acquireMetricsLockGuard "sharedState is guarded by metricsLock"
+runtimeBindingFailure acquireMetricsLockGuard SharedStateGuardError.AcquireFailed
+
+operation metrics.computeIncrementI64
+input metrics.computeIncrementI64 runtime MetricsRuntime
+input metrics.computeIncrementI64 current I64
+input metrics.computeIncrementI64 step I64
+output metrics.computeIncrementI64 Result I64 MetricsWriteError
+effect metrics.computeIncrementI64 read runtime
+effect metrics.computeIncrementI64 read current
+effect metrics.computeIncrementI64 read step
+memoryHeap metrics.computeIncrementI64 no
+async metrics.computeIncrementI64 no
+operationBody metrics.computeIncrementI64 runtimeBinding
+purpose metrics.computeIncrementI64 "Compute the next metrics counter value through a metrics-owned primitive"
+runtimeBinding metrics.computeIncrementI64 metrics.computeIncrementI64
+runtimeBindingFailure metrics.computeIncrementI64 MetricsWriteError.IncrementFailed
+
+section stdlib.math.agentFacing
+operation math.addI64
+input math.addI64 left I64
+input math.addI64 right I64
+output math.addI64 I64
+effect math.addI64 read left
+effect math.addI64 read right
+memoryHeap math.addI64 no
+async math.addI64 no
+operationBody math.addI64 intrinsic
+purpose math.addI64 "Add two signed 64-bit integer values"
+intrinsicName math.addI64 arithmetic.addI64
+
+operation math.lessThanI64
+input math.lessThanI64 left I64
+input math.lessThanI64 right I64
+output math.lessThanI64 Bool
+effect math.lessThanI64 read left
+effect math.lessThanI64 read right
+memoryHeap math.lessThanI64 no
+async math.lessThanI64 no
+operationBody math.lessThanI64 intrinsic
+purpose math.lessThanI64 "Compare whether left signed 64-bit integer is less than right"
+intrinsicName math.lessThanI64 arithmetic.lessThanI64
+
+operation math.greaterThanOrEqualI64
+input math.greaterThanOrEqualI64 left I64
+input math.greaterThanOrEqualI64 right I64
+output math.greaterThanOrEqualI64 Bool
+effect math.greaterThanOrEqualI64 read left
+effect math.greaterThanOrEqualI64 read right
+memoryHeap math.greaterThanOrEqualI64 no
+async math.greaterThanOrEqualI64 no
+operationBody math.greaterThanOrEqualI64 intrinsic
+purpose math.greaterThanOrEqualI64 "Compare whether left signed 64-bit integer is greater than or equal to right"
+intrinsicName math.greaterThanOrEqualI64 arithmetic.greaterThanOrEqualI64
+
+operation math.greaterThanOrEqualCByteCount
+input math.greaterThanOrEqualCByteCount left CByteCount
+input math.greaterThanOrEqualCByteCount right CByteCount
+output math.greaterThanOrEqualCByteCount Bool
+effect math.greaterThanOrEqualCByteCount read left
+effect math.greaterThanOrEqualCByteCount read right
+memoryHeap math.greaterThanOrEqualCByteCount no
+async math.greaterThanOrEqualCByteCount no
+operationBody math.greaterThanOrEqualCByteCount intrinsic
+purpose math.greaterThanOrEqualCByteCount "Compare whether left C byte count is greater than or equal to right"
+intrinsicName math.greaterThanOrEqualCByteCount arithmetic.greaterThanOrEqualCByteCount
+
+operation math.equalCSignedInt32
+input math.equalCSignedInt32 left CSignedInt32
+input math.equalCSignedInt32 right CSignedInt32
+output math.equalCSignedInt32 Bool
+effect math.equalCSignedInt32 read left
+effect math.equalCSignedInt32 read right
+memoryHeap math.equalCSignedInt32 no
+async math.equalCSignedInt32 no
+operationBody math.equalCSignedInt32 intrinsic
+purpose math.equalCSignedInt32 "Compare whether two C signed 32-bit integer values are equal"
+intrinsicName math.equalCSignedInt32 arithmetic.equalCSignedInt32
+
+section stdlib.retry.agentFacing
+operation retryPolicy.delayForAttempt
+input retryPolicy.delayForAttempt policy RetryPolicy
+input retryPolicy.delayForAttempt attemptIndex I64
+output retryPolicy.delayForAttempt Result DurationMilliseconds RetryPolicyError
+effect retryPolicy.delayForAttempt read policy
+effect retryPolicy.delayForAttempt read attemptIndex
+effect retryPolicy.delayForAttempt read retryPolicy.jitterSource
+memoryHeap retryPolicy.delayForAttempt no
+async retryPolicy.delayForAttempt no
+operationBody retryPolicy.delayForAttempt runtimeBinding
+purpose retryPolicy.delayForAttempt "Compute one retry delay from a named retry policy and attempt index"
+runtimeBinding retryPolicy.delayForAttempt retryPolicy.delayForAttempt
+runtimeBindingFailure retryPolicy.delayForAttempt RetryPolicyError.DelayComputeFailed
+
+section stdlib.scheduler.agentFacing
+operation scheduler.sleep
+input scheduler.sleep duration DurationMilliseconds
+output scheduler.sleep Result Void SchedulerSleepError
+effect scheduler.sleep read duration
+effect scheduler.sleep read scheduler.clock
+effect scheduler.sleep write scheduler.timerQueue
+memoryHeap scheduler.sleep no
+async scheduler.sleep yes
+operationBody scheduler.sleep runtimeBinding
+purpose scheduler.sleep "Wait for one typed duration with caller-provided cancellation"
+runtimeBinding scheduler.sleep scheduler.sleep
+runtimeBindingFailure scheduler.sleep SchedulerSleepError.SleepFailed
+
+section experiments.dependencies.accountRepository
+operation accountRepository.balance.findByAccountId
+input accountRepository.balance.findByAccountId accountId AccountId
+input accountRepository.balance.findByAccountId attemptIndex I64
+output accountRepository.balance.findByAccountId Result AccountBalance AccountLookupError
+effect accountRepository.balance.findByAccountId read accountRepository.balance
+effect accountRepository.balance.findByAccountId read accountId
+effect accountRepository.balance.findByAccountId read attemptIndex
+memoryHeap accountRepository.balance.findByAccountId no
+async accountRepository.balance.findByAccountId yes
+operationBody accountRepository.balance.findByAccountId externalDependency
+purpose accountRepository.balance.findByAccountId "Read one account balance from the injected account repository dependency"
+dependencyPath accountRepository.balance.findByAccountId accountRepository.balance.findByAccountId
+dependencyFailure accountRepository.balance.findByAccountId AccountLookupError.AttemptsExhausted
+
+section stdlib.signal.agentFacing
+domainLiteral signalKillNumber CSignedInt32 9
+domainLiteralSource signalKillNumber posix.SIGKILL
+
+section experiments.types
+type AccountId UuidV7
+type CustomerId UuidV7
+type TaskId UuidV7
+type RawUtf8Text Bytes
+type RawJsonBytes Bytes
+type JsonBytes Bytes
+type ValidatedText Utf8Text
+type TaskTitle ValidatedText
+type GuardReleaseStatus Unit
+type SharedStateReference OpaqueResource
+type RawCStringPointer COpaqueMemoryAddress
+trustBoundary CNullTerminatedByteString
+trustBoundaryKind CNullTerminatedByteString rawPointerToValidatedCString
+trustBoundaryInput CNullTerminatedByteString RawCStringPointer
+trustBoundaryOutput CNullTerminatedByteString CNullTerminatedByteString
+trustBoundaryValidator CNullTerminatedByteString validateCString
+trustBoundarySource CNullTerminatedByteString validatedRuntimeValue
+trustBoundarySource CNullTerminatedByteString trustedStaticLiteral
+trustBoundarySource CNullTerminatedByteString trustedExternalCNullTerminatedUtf8Source
+typeLiteralEncoding CNullTerminatedByteString utf8
+typeLiteralTerminator CNullTerminatedByteString nullByte
+trustBoundary ValidatedText
+trustBoundaryKind ValidatedText rawUtf8ToValidatedText
+trustBoundaryInput ValidatedText RawUtf8Text
+trustBoundaryOutput ValidatedText ValidatedText
+trustBoundaryValidator ValidatedText validateUtf8Text
+trustBoundarySource ValidatedText validatedRuntimeValue
+trustBoundarySource ValidatedText trustedUtf8Literal
+typeLiteralEncoding ValidatedText utf8
+type AccountLookupResult Result
+typeParameter AccountLookupResult success AccountBalance
+typeParameter AccountLookupResult error AccountLookupError
+
+type CStringValidationResult Result
+typeParameter CStringValidationResult success CNullTerminatedByteString
+typeParameter CStringValidationResult error CStringValidationError
+
+type ValidatedTextResult Result
+typeParameter ValidatedTextResult success ValidatedText
+typeParameter ValidatedTextResult error TextValidationError
+
+section experiments.errors
+error CStringCompareError
+errorCase CStringCompareError InvalidCStringInput
+errorCase CStringCompareError RuntimeCompareFailed
+error CStringLengthError
+errorCase CStringLengthError RuntimeLengthReadFailed
+error CStringValidationError
+errorCase CStringValidationError MissingNullTerminator
+errorCase CStringValidationError UnreadableCStringMemory
+errorCase CStringValidationError LabelTooShort
+errorCase CStringValidationError LengthReadFailed CStringLengthError
+error TextValidationError
+errorCase TextValidationError InvalidUtf8
+errorCase TextValidationError ExceedsMaximumLength
+error MemoryCopyError
+errorCase MemoryCopyError InvalidSourceBuffer
+errorCase MemoryCopyError InvalidDestinationBuffer
+errorCase MemoryCopyError OverlappingBuffers
+errorCase MemoryCopyError RuntimeCopyFailed
+error AccountLookupError
+errorCase AccountLookupError AttemptsExhausted
+errorCase AccountLookupError MetricsWriteFailed MetricsWriteError
+errorCase AccountLookupError SharedStateGuardFailed SharedStateGuardError
+errorCase AccountLookupError RetryDelayComputeFailed RetryPolicyError
+errorCase AccountLookupError RetryDelayFailed SchedulerSleepError
+errorCase AccountLookupError NegativeAvailableBalance
+error RetryPolicyError
+errorCase RetryPolicyError DelayComputeFailed
+error SchedulerSleepError
+errorCase SchedulerSleepError SleepFailed
+error SharedStateGuardError
+errorCase SharedStateGuardError AcquireFailed
+error MetricsWriteError
+errorCase MetricsWriteError IncrementFailed
+error AccountResponseBuildError
+errorCase AccountResponseBuildError CreateFailed RecordCreateError
+error RecordCreateError
+errorCase RecordCreateError InvalidFieldValue
+error TimePredicateError
+errorCase TimePredicateError InvalidYear
+error SharedStateGuardReleaseError
+errorCase SharedStateGuardReleaseError ReleaseFailed
+error MainError
+errorCase MainError CompareCStringFailed CStringCompareError
+errorCase MainError CompareCStringMismatch
+errorCase MainError MemoryCopyFailed MemoryCopyError
+errorCase MainError LeapYearBoolReadFailed TimePredicateError
+errorCase MainError LeapYearCIntReadFailed TimePredicateError
+errorCase MainError LeapYearBoolMismatch
+errorCase MainError LeapYearCIntMismatch
+error TaskBuildError
+errorCase TaskBuildError InvalidFieldValue
+error TaskListAppendError
+errorCase TaskListAppendError AllocationFailed
+error TaskListReadError
+errorCase TaskListReadError IndexOutOfRange
+error TaskSliceCreateError
+errorCase TaskSliceCreateError IndexOutOfRange
+error TaskSliceReadError
+errorCase TaskSliceReadError IndexOutOfRange
+error FixedTaskArrayReadError
+errorCase FixedTaskArrayReadError IndexOutOfRange
+error SmallTaskListAppendError
+errorCase SmallTaskListAppendError SpillAllocationFailed
+error TaskMapInsertError
+errorCase TaskMapInsertError AllocationFailed
+error TaskMapReadError
+errorCase TaskMapReadError KeyNotFound
+error JsonDecodeError
+errorCase JsonDecodeError InvalidJson
+errorCase JsonDecodeError SchemaMismatch
+error JsonEncodeError
+errorCase JsonEncodeError EncodeFailed
+error TaskCollectionOperationError
+errorCase TaskCollectionOperationError AppendFailed TaskListAppendError
+errorCase TaskCollectionOperationError IndexOutOfRange
+errorCase TaskCollectionOperationError ReadFailed TaskListReadError
+errorCase TaskCollectionOperationError SliceCreateFailed TaskSliceCreateError
+errorCase TaskCollectionOperationError SliceReadFailed TaskSliceReadError
+errorCase TaskCollectionOperationError FixedArrayReadFailed FixedTaskArrayReadError
+errorCase TaskCollectionOperationError SmallListAppendFailed SmallTaskListAppendError
+error TaskMapOperationError
+errorCase TaskMapOperationError InsertFailed TaskMapInsertError
+errorCase TaskMapOperationError ReadFailed TaskMapReadError
+
+record AccountBalance
+recordLayout AccountBalance row
+recordAlign AccountBalance 16
+field AccountBalance accountId AccountId
+field AccountBalance availableCents I64
+field AccountBalance pendingCents I64
+field AccountBalance updatedAtUtc UtcMilliseconds
+
+record AccountBalanceResponse
+recordLayout AccountBalanceResponse row
+recordAlign AccountBalanceResponse 16
+field AccountBalanceResponse accountId AccountId
+field AccountBalanceResponse availableCents I64
+field AccountBalanceResponse pendingCents I64
+field AccountBalanceResponse displayText CNullTerminatedByteString
+
+record Task
+recordLayout Task row
+recordAlign Task 16
+field Task id TaskId
+field Task title TaskTitle
+field Task completed Bool
+
+listType TaskList Task
+listAllocator TaskList arena.request
+collectionOperation TaskList.length
+collectionOperationArg TaskList.length list TaskList
+collectionOperationOutput TaskList.length I64
+collectionOperationFailure TaskList.length none
+collectionOperationEffect TaskList.length read list
+collectionOperation TaskList.append
+collectionOperationArg TaskList.append list TaskList
+collectionOperationArg TaskList.append item Task
+collectionOperationOutput TaskList.append Result TaskList TaskListAppendError
+collectionOperationFailure TaskList.append TaskListAppendError.AllocationFailed
+collectionOperationEffect TaskList.append read list
+collectionOperationEffect TaskList.append read item
+collectionOperationAllocation TaskList.append arena.request
+collectionOperationMutation TaskList.append immutableUpdate
+collectionOperation TaskList.get
+collectionOperationArg TaskList.get list TaskList
+collectionOperationArg TaskList.get index I64
+collectionOperationOutput TaskList.get Result Task TaskListReadError
+collectionOperationFailure TaskList.get TaskListReadError.IndexOutOfRange
+collectionOperationEffect TaskList.get read list
+collectionOperationEffect TaskList.get read index
+collectionOperationIndexPolicy TaskList.get zeroBasedChecked
+collectionOperationLengthSource TaskList.get TaskList.length
+collectionOperation TaskList.slice
+collectionOperationArg TaskList.slice list TaskList
+collectionOperationArg TaskList.slice startIndex I64
+collectionOperationArg TaskList.slice length I64
+collectionOperationOutput TaskList.slice Result TaskSlice TaskSliceCreateError
+collectionOperationFailure TaskList.slice TaskSliceCreateError.IndexOutOfRange
+collectionOperationEffect TaskList.slice read list
+collectionOperationEffect TaskList.slice read startIndex
+collectionOperationEffect TaskList.slice read length
+collectionOperationMutation TaskList.slice borrowedView
+collectionOperationIndexPolicy TaskList.slice zeroBasedCheckedRange
+collectionOperationLengthSource TaskList.slice TaskList.length
+collectionOperationBorrowSource TaskList.slice list
+sliceType TaskSlice Task
+collectionOperation TaskSlice.get
+collectionOperationArg TaskSlice.get slice TaskSlice
+collectionOperationArg TaskSlice.get index I64
+collectionOperationOutput TaskSlice.get Result Task TaskSliceReadError
+collectionOperationFailure TaskSlice.get TaskSliceReadError.IndexOutOfRange
+collectionOperationEffect TaskSlice.get read slice
+collectionOperationEffect TaskSlice.get read index
+collectionOperationIndexPolicy TaskSlice.get zeroBasedChecked
+collectionOperationBorrowSource TaskSlice.get slice
+arrayType FixedTaskArray Task
+arrayLength FixedTaskArray fixedTaskArrayLength
+collectionOperation FixedTaskArray.get
+collectionOperationArg FixedTaskArray.get array FixedTaskArray
+collectionOperationArg FixedTaskArray.get index I64
+collectionOperationOutput FixedTaskArray.get Result Task FixedTaskArrayReadError
+collectionOperationFailure FixedTaskArray.get FixedTaskArrayReadError.IndexOutOfRange
+collectionOperationEffect FixedTaskArray.get read array
+collectionOperationEffect FixedTaskArray.get read index
+collectionOperationIndexPolicy FixedTaskArray.get zeroBasedChecked
+collectionOperationCapacitySource FixedTaskArray.get fixedTaskArrayLength
+smallListType SmallTaskList Task
+smallListInlineCapacity SmallTaskList smallTaskListInlineCapacity
+smallListSpillAllocator SmallTaskList arena.request
+collectionOperation SmallTaskList.append
+collectionOperationArg SmallTaskList.append list SmallTaskList
+collectionOperationArg SmallTaskList.append item Task
+collectionOperationOutput SmallTaskList.append Result SmallTaskList SmallTaskListAppendError
+collectionOperationFailure SmallTaskList.append SmallTaskListAppendError.SpillAllocationFailed
+collectionOperationEffect SmallTaskList.append read list
+collectionOperationEffect SmallTaskList.append read item
+collectionOperationAllocation SmallTaskList.append arena.request
+collectionOperationMutation SmallTaskList.append immutableUpdate
+collectionOperationCapacitySource SmallTaskList.append smallTaskListInlineCapacity
+collectionOperationSpillAllocator SmallTaskList.append arena.request
+collectionOperationSpillFailure SmallTaskList.append SmallTaskListAppendError.SpillAllocationFailed
+mapType TaskMap
+mapKey TaskMap TaskId
+mapValue TaskMap Task
+mapAllocator TaskMap arena.process
+collectionOperation TaskMap.insert
+collectionOperationArg TaskMap.insert map TaskMap
+collectionOperationArg TaskMap.insert key TaskId
+collectionOperationArg TaskMap.insert value Task
+collectionOperationOutput TaskMap.insert Result TaskMap TaskMapInsertError
+collectionOperationFailure TaskMap.insert TaskMapInsertError.AllocationFailed
+collectionOperationEffect TaskMap.insert read map
+collectionOperationEffect TaskMap.insert read key
+collectionOperationEffect TaskMap.insert read value
+collectionOperationAllocation TaskMap.insert arena.process
+collectionOperationMutation TaskMap.insert immutableUpdate
+collectionOperation TaskMap.get
+collectionOperationArg TaskMap.get map TaskMap
+collectionOperationArg TaskMap.get key TaskId
+collectionOperationOutput TaskMap.get Result Task TaskMapReadError
+collectionOperationFailure TaskMap.get TaskMapReadError.KeyNotFound
+collectionOperationEffect TaskMap.get read map
+collectionOperationEffect TaskMap.get read key
+listType TaskTitleList TaskTitle
+listAllocator TaskTitleList arena.static
+
+operation createAccountBalanceResponseRecord
+input createAccountBalanceResponseRecord accountId AccountId
+input createAccountBalanceResponseRecord availableCents I64
+input createAccountBalanceResponseRecord pendingCents I64
+input createAccountBalanceResponseRecord displayText CNullTerminatedByteString
+output createAccountBalanceResponseRecord Result AccountBalanceResponse RecordCreateError
+effect createAccountBalanceResponseRecord read accountId
+effect createAccountBalanceResponseRecord read availableCents
+effect createAccountBalanceResponseRecord read pendingCents
+effect createAccountBalanceResponseRecord read displayText
+memoryHeap createAccountBalanceResponseRecord no
+async createAccountBalanceResponseRecord no
+operationBody createAccountBalanceResponseRecord recordConstructor
+purpose createAccountBalanceResponseRecord "Create one AccountBalanceResponse record from explicit field values"
+recordConstructor createAccountBalanceResponseRecord AccountBalanceResponse
+recordConstructorFailure createAccountBalanceResponseRecord RecordCreateError.InvalidFieldValue
+
+section experiments.codecs
+jsonCodec AccountBalanceResponse
+jsonCodecStrict AccountBalanceResponse yes
+jsonCodecUnknownFields AccountBalanceResponse reject
+jsonCodecDecodeTarget AccountBalanceResponse json.decode.AccountBalanceResponse
+jsonCodecEncodeTarget AccountBalanceResponse json.encode.AccountBalanceResponse
+jsonCodecRequiredField AccountBalanceResponse accountId
+jsonCodecRequiredField AccountBalanceResponse availableCents
+jsonCodecRequiredField AccountBalanceResponse pendingCents
+jsonCodecRequiredField AccountBalanceResponse displayText
+jsonCodecInput AccountBalanceResponse decode bytes RawJsonBytes
+jsonCodecOutput AccountBalanceResponse decode Result AccountBalanceResponse JsonDecodeError
+jsonCodecDecodeFailure AccountBalanceResponse JsonDecodeError.InvalidJson
+jsonCodecDecodeFailure AccountBalanceResponse JsonDecodeError.SchemaMismatch
+jsonCodecInput AccountBalanceResponse encode value AccountBalanceResponse
+jsonCodecOutput AccountBalanceResponse encode Result JsonBytes JsonEncodeError
+jsonCodecEncodeFailure AccountBalanceResponse JsonEncodeError.EncodeFailed
+jsonCodecLimit AccountBalanceResponse maximumBytes accountBalanceResponseJsonMaximumBytes
+jsonCodec Task
+jsonCodecStrict Task yes
+jsonCodecUnknownFields Task reject
+jsonCodecDecodeTarget Task json.decode.Task
+jsonCodecEncodeTarget Task json.encode.Task
+jsonCodecRequiredField Task id
+jsonCodecRequiredField Task title
+jsonCodecRequiredField Task completed
+jsonCodecInput Task decode bytes RawJsonBytes
+jsonCodecOutput Task decode Result Task JsonDecodeError
+jsonCodecDecodeFailure Task JsonDecodeError.InvalidJson
+jsonCodecDecodeFailure Task JsonDecodeError.SchemaMismatch
+jsonCodecInput Task encode value Task
+jsonCodecOutput Task encode Result JsonBytes JsonEncodeError
+jsonCodecEncodeFailure Task JsonEncodeError.EncodeFailed
+jsonCodecLimit Task maximumBytes taskJsonMaximumBytes
+
+section experiments.literalsAndConstants
+domainLiteral successfulExitCode ExitCode 0
+storage module immutable zeroCount I64 0
+storage module immutable oneStep I64 1
+storage module immutable firstAttemptIndex I64 0
+storage module immutable requestRetryLimit I64 3
+domainLiteral equalCStringResult CSignedInt32 0
+domainLiteral falseIntValue CSignedInt32 0
+domainLiteral trueIntValue CSignedInt32 1
+storage module immutable minimumAccountLabelBytes CByteCount 3
+storage module immutable fixedTaskArrayLength I64 128
+storage module immutable smallTaskListInlineCapacity I64 16
+storage module immutable taskStartsIncomplete Bool false
+storage module immutable defaultTaskTitleCount I64 3
+storage module immutable accountBalanceResponseJsonMaximumBytes CByteCount 4096
+storage module immutable taskJsonMaximumBytes CByteCount 2048
+domainLiteral emptyBalanceText CNullTerminatedByteString "balance unavailable"
+domainLiteralTrust emptyBalanceText trustedStaticLiteral
+domainLiteral smokeLeftText CNullTerminatedByteString "agent"
+domainLiteralTrust smokeLeftText trustedStaticLiteral
+domainLiteral smokeRightText CNullTerminatedByteString "agent"
+domainLiteralTrust smokeRightText trustedStaticLiteral
+domainLiteral setupTaskTitle TaskTitle "setup project"
+domainLiteralValidation setupTaskTitle trustedUtf8Literal
+domainLiteral writeTestsTaskTitle TaskTitle "write tests"
+domainLiteralValidation writeTestsTaskTitle trustedUtf8Literal
+domainLiteral runServerTaskTitle TaskTitle "run server"
+domainLiteralValidation runServerTaskTitle trustedUtf8Literal
+
+section experiments.aggregateLiterals
+listLiteral defaultTaskTitles TaskTitleList
+listLiteralLength defaultTaskTitles defaultTaskTitleCount
+listLiteralIndexBase defaultTaskTitles zeroCount
+listLiteralIndexPolicy defaultTaskTitles contiguousUniqueAscending
+listLiteralItem defaultTaskTitles 0 setupTaskTitle
+listLiteralItem defaultTaskTitles 1 writeTestsTaskTitle
+listLiteralItem defaultTaskTitles 2 runServerTaskTitle
+
+section experiments.longLiterals
+literal accountLookupFailureTemplate CNullTerminatedByteString
+literalBytes accountLookupFailureTemplate 128
+literalDigest accountLookupFailureTemplate sha256 4d8f2c6b7a91e5d034c2b8f16a0d9e7531f6c8b427aa90d3e5c114f62b8a0d79
+literalPreview accountLookupFailureTemplate "Unable to read account balance"
+literalSource accountLookupFailureTemplate "assets/account_lookup_failure.txt"
+literalTrust accountLookupFailureTemplate trustedExternalCNullTerminatedUtf8Source
+
+literal accountBalanceJsonTemplate CNullTerminatedByteString
+literalBytes accountBalanceJsonTemplate 256
+literalDigest accountBalanceJsonTemplate sha256 93b0f1a7c6d44e2985a7b2c10d4f9e6a321c8b7d5e4061f2a9c3b8d774e5f012
+literalPreview accountBalanceJsonTemplate "{\"accountId\":\"...\",\"availableCents\":0}"
+literalSource accountBalanceJsonTemplate "assets/account_balance_response.json"
+literalTrust accountBalanceJsonTemplate trustedExternalCNullTerminatedUtf8Source
+
+section experiments.retryPolicy
+storage module immutable accountLookupRetryInitialDelay DurationMilliseconds 50
+storage module immutable accountLookupRetryMaximumDelay DurationMilliseconds 500
+storage module immutable accountLookupAttemptTimeout DurationMilliseconds 750
+
+retryPolicy accountLookupRetryPolicy
+retryMaxAttempts accountLookupRetryPolicy requestRetryLimit
+retryInitialDelay accountLookupRetryPolicy accountLookupRetryInitialDelay
+retryMaximumDelay accountLookupRetryPolicy accountLookupRetryMaximumDelay
+retryJitter accountLookupRetryPolicy yes
+
+section experiments.moduleState
+# rationale: Module mutable storage is intentionally visible.
+# rationale: Module mutable storage should stay rare.
+storage module mutable lastAccountLookupRevision I64 zeroCount
+storage module immutable moduleStateOwner ModuleOwner accountLookupModule
+storage module immutable accountLookupFailureMetricsEnabled Bool true
+
+section experiments.sharedState
+sharedState process mutable accountLookupFailureCount I64 zeroCount
+sharedStateOwner accountLookupFailureCount metricsRuntime
+sharedStateGuard accountLookupFailureCount metricsLock
+
+section experiments.operations.aggregates
+operation buildTaskWithBuilder
+input buildTaskWithBuilder taskId TaskId
+input buildTaskWithBuilder taskTitle TaskTitle
+output buildTaskWithBuilder Result Task TaskBuildError
+effect buildTaskWithBuilder read taskId
+effect buildTaskWithBuilder read taskTitle
+memoryHeap buildTaskWithBuilder no
+memoryStackLimit buildTaskWithBuilder 4KiB
+async buildTaskWithBuilder no
+operationBody buildTaskWithBuilder sourceTape
+purpose buildTaskWithBuilder "Build one Task record without packed aggregate literal syntax"
+
+label startBuildTaskWithBuilder
+
+group taskRecordBuild
+groupPurpose taskRecordBuild "Construct one task through addressable field assignments"
+groupInput taskRecordBuild taskId
+groupInput taskRecordBuild taskTitle
+groupOutput taskRecordBuild builtTask
+groupError taskRecordBuild taskBuildError
+
+recordBuilder taskBuilder Task
+recordSet taskBuilder id taskId
+recordSet taskBuilder title taskTitle
+recordSet taskBuilder completed taskStartsIncomplete
+recordBuild taskBuildCall taskBuilder
+recordBuildFailure taskBuildCall TaskBuildError.InvalidFieldValue
+run taskBuildCall
+bindOk builtTask Task taskBuildCall
+bindError taskBuildError TaskBuildError taskBuildCall
+branchIfError taskBuildCall taskBuildFailed
+returnOk builtTask
+
+label taskBuildFailed
+returnError taskBuildError
+
+operation appendAndReadTask
+input appendAndReadTask taskList TaskList
+input appendAndReadTask createdTask Task
+input appendAndReadTask taskIndex I64
+output appendAndReadTask Result Task TaskCollectionOperationError
+effect appendAndReadTask read taskList
+effect appendAndReadTask read createdTask
+effect appendAndReadTask read taskIndex
+memoryHeap appendAndReadTask no
+memoryArena appendAndReadTask arena.request
+memoryAllocationSource appendAndReadTask taskListAppendCall
+memoryStackLimit appendAndReadTask 8KiB
+async appendAndReadTask no
+operationBody appendAndReadTask sourceTape
+purpose appendAndReadTask "Return one indexed task after immutable list append"
+invariant appendAndReadTask "TaskList.get remains fallible even after explicit bounds checks"
+
+label startAppendAndReadTask
+
+group immutableTaskAppend
+groupPurpose immutableTaskAppend "Append without mutating the input task list"
+groupInput immutableTaskAppend taskList
+groupInput immutableTaskAppend createdTask
+groupOutput immutableTaskAppend updatedTaskList
+groupError immutableTaskAppend taskListAppendError
+groupFailure immutableTaskAppend taskListAppendFailure
+
+call taskListAppendCall TaskList.append
+arg taskListAppendCall list taskList
+arg taskListAppendCall item createdTask
+run taskListAppendCall
+bindOk updatedTaskList TaskList taskListAppendCall
+bindError taskListAppendError TaskListAppendError taskListAppendCall
+branchIfError taskListAppendCall taskListAppendFailed
+
+group taskListIndexBounds
+groupPurpose taskListIndexBounds "Check requested index bounds"
+groupInput taskListIndexBounds taskIndex
+groupInput taskListIndexBounds updatedTaskList
+groupOutput taskListIndexBounds updatedTaskListLength
+groupOutput taskListIndexBounds taskIndexIsNonNegative
+groupOutput taskListIndexBounds taskIndexIsBelowLength
+groupFailure taskListIndexBounds taskIndexOutOfRangeFailure
+
+call updatedTaskListLengthCall TaskList.length
+arg updatedTaskListLengthCall list updatedTaskList
+run updatedTaskListLengthCall
+bind updatedTaskListLength I64 updatedTaskListLengthCall
+
+call taskIndexNonNegativeCheckCall math.greaterThanOrEqualI64
+arg taskIndexNonNegativeCheckCall left taskIndex
+arg taskIndexNonNegativeCheckCall right zeroCount
+run taskIndexNonNegativeCheckCall
+bind taskIndexIsNonNegative Bool taskIndexNonNegativeCheckCall
+branchIf taskIndexIsNonNegative taskIndexUpperBoundCheck
+branch taskIndexOutOfRange
+
+label taskIndexUpperBoundCheck
+call taskIndexUpperBoundCheckCall math.lessThanI64
+arg taskIndexUpperBoundCheckCall left taskIndex
+arg taskIndexUpperBoundCheckCall right updatedTaskListLength
+run taskIndexUpperBoundCheckCall
+bind taskIndexIsBelowLength Bool taskIndexUpperBoundCheckCall
+branchIf taskIndexIsBelowLength taskListReadAllowed
+branch taskIndexOutOfRange
+
+label taskListReadAllowed
+
+group taskListIndexedRead
+groupPurpose taskListIndexedRead "Read one item through the typed collection operation"
+groupInput taskListIndexedRead updatedTaskList
+groupInput taskListIndexedRead taskIndex
+groupOutput taskListIndexedRead selectedTask
+groupFailure taskListIndexedRead taskListReadFailure
+
+call taskListReadCall TaskList.get
+arg taskListReadCall list updatedTaskList
+arg taskListReadCall index taskIndex
+run taskListReadCall
+bindOk selectedTask Task taskListReadCall
+bindError taskListReadError TaskListReadError taskListReadCall
+branchIfError taskListReadCall taskListReadFailed
+returnOk selectedTask
+
+label taskListAppendFailed
+makeError taskListAppendFailure TaskCollectionOperationError.AppendFailed taskListAppendError
+returnError taskListAppendFailure
+
+label taskIndexOutOfRange
+# rationale: taskIndexOutOfRange is produced by explicit precheck.
+# rationale: taskListReadFailed preserves unexpected TaskList.get failure dataflow.
+declareFailure taskIndexOutOfRangeFailure TaskCollectionOperationError.IndexOutOfRange
+returnError taskIndexOutOfRangeFailure
+
+label taskListReadFailed
+makeError taskListReadFailure TaskCollectionOperationError.ReadFailed taskListReadError
+returnError taskListReadFailure
+
+operation countCompletedTasks
+input countCompletedTasks taskList TaskList
+output countCompletedTasks Result I64 TaskCollectionOperationError
+effect countCompletedTasks read taskList
+memoryHeap countCompletedTasks no
+memoryStackLimit countCompletedTasks 8KiB
+async countCompletedTasks no
+operationBody countCompletedTasks sourceTape
+purpose countCompletedTasks "Count completed tasks through an explicit index loop"
+invariant countCompletedTasks "Every list read is performed through TaskList.get"
+
+label startCountCompletedTasks
+
+group completedTaskIterationSetup
+groupPurpose completedTaskIterationSetup "Initialize explicit collection cursor state"
+groupInput completedTaskIterationSetup taskList
+groupOutput completedTaskIterationSetup taskIterationLength
+groupOutput completedTaskIterationSetup taskIterationIndex
+groupOutput completedTaskIterationSetup completedTaskCount
+
+call taskIterationLengthCall TaskList.length
+arg taskIterationLengthCall list taskList
+run taskIterationLengthCall
+bind taskIterationLength I64 taskIterationLengthCall
+storage local mutable taskIterationIndex I64 zeroCount
+storage local mutable completedTaskCount I64 zeroCount
+
+label completedTaskLoopHead
+call taskIterationRangeCheckCall math.lessThanI64
+arg taskIterationRangeCheckCall left taskIterationIndex
+arg taskIterationRangeCheckCall right taskIterationLength
+run taskIterationRangeCheckCall
+bind taskIterationInRange Bool taskIterationRangeCheckCall
+branchIf taskIterationInRange completedTaskLoopBody
+branch completedTaskLoopFinished
+
+label completedTaskLoopBody
+call currentTaskReadCall TaskList.get
+arg currentTaskReadCall list taskList
+arg currentTaskReadCall index taskIterationIndex
+run currentTaskReadCall
+bindOk currentTask Task currentTaskReadCall
+bindError currentTaskReadError TaskListReadError currentTaskReadCall
+branchIfError currentTaskReadCall currentTaskReadFailed
+
+fieldGet currentTaskCompleted Bool currentTask completed
+branchIf currentTaskCompleted completedTaskIncrementRequired
+branch completedTaskIndexAdvance
+
+label completedTaskIncrementRequired
+call completedTaskCountIncrementCall math.addI64
+arg completedTaskCountIncrementCall left completedTaskCount
+arg completedTaskCountIncrementCall right oneStep
+run completedTaskCountIncrementCall
+bind nextCompletedTaskCount I64 completedTaskCountIncrementCall
+set local completedTaskCount nextCompletedTaskCount
+branch completedTaskIndexAdvance
+
+label completedTaskIndexAdvance
+call taskIterationIndexAdvanceCall math.addI64
+arg taskIterationIndexAdvanceCall left taskIterationIndex
+arg taskIterationIndexAdvanceCall right oneStep
+run taskIterationIndexAdvanceCall
+bind nextTaskIterationIndex I64 taskIterationIndexAdvanceCall
+set local taskIterationIndex nextTaskIterationIndex
+branch completedTaskLoopHead
+
+label completedTaskLoopFinished
+returnOk completedTaskCount
+
+label currentTaskReadFailed
+makeError currentTaskReadFailure TaskCollectionOperationError.ReadFailed currentTaskReadError
+returnError currentTaskReadFailure
+
+section experiments.operations.edgeCoverage
+operation validateRuntimeTaskTitle
+input validateRuntimeTaskTitle rawTitle RawUtf8Text
+output validateRuntimeTaskTitle ValidatedTextResult
+effect validateRuntimeTaskTitle read rawTitle
+memoryHeap validateRuntimeTaskTitle no
+memoryStackLimit validateRuntimeTaskTitle 4KiB
+async validateRuntimeTaskTitle no
+operationBody validateRuntimeTaskTitle sourceTape
+purpose validateRuntimeTaskTitle "Validate one runtime UTF-8 task title"
+
+label startValidateRuntimeTaskTitle
+
+group runtimeTaskTitleValidation
+groupPurpose runtimeTaskTitleValidation "Promote runtime UTF-8 text into validated text"
+groupInput runtimeTaskTitleValidation rawTitle
+groupOutput runtimeTaskTitleValidation runtimeTaskTitle
+groupError runtimeTaskTitleValidation runtimeTaskTitleValidationError
+
+call runtimeTaskTitleValidationCall validateUtf8Text
+arg runtimeTaskTitleValidationCall candidateText rawTitle
+run runtimeTaskTitleValidationCall
+bindOk runtimeTaskTitle ValidatedText runtimeTaskTitleValidationCall
+bindError runtimeTaskTitleValidationError TextValidationError runtimeTaskTitleValidationCall
+branchIfError runtimeTaskTitleValidationCall runtimeTaskTitleValidationFailed
+returnOk runtimeTaskTitle
+
+label runtimeTaskTitleValidationFailed
+returnError runtimeTaskTitleValidationError
+
+operation decodeTaskJson
+input decodeTaskJson taskJsonBytes RawJsonBytes
+output decodeTaskJson Result Task JsonDecodeError
+effect decodeTaskJson read taskJsonBytes
+memoryHeap decodeTaskJson no
+memoryStackLimit decodeTaskJson 8KiB
+async decodeTaskJson no
+operationBody decodeTaskJson sourceTape
+purpose decodeTaskJson "Decode one Task record through its declared JSON codec"
+
+label startDecodeTaskJson
+
+group taskJsonDecode
+groupPurpose taskJsonDecode "Decode raw JSON bytes into a typed Task record"
+groupInput taskJsonDecode taskJsonBytes
+groupOutput taskJsonDecode decodedTask
+groupError taskJsonDecode taskJsonDecodeError
+
+call taskJsonDecodeCall json.decode.Task
+arg taskJsonDecodeCall bytes taskJsonBytes
+run taskJsonDecodeCall
+bindOk decodedTask Task taskJsonDecodeCall
+bindError taskJsonDecodeError JsonDecodeError taskJsonDecodeCall
+branchIfError taskJsonDecodeCall taskJsonDecodeFailed
+returnOk decodedTask
+
+label taskJsonDecodeFailed
+returnError taskJsonDecodeError
+
+operation encodeAccountBalanceResponseJson
+input encodeAccountBalanceResponseJson accountBalanceResponse AccountBalanceResponse
+output encodeAccountBalanceResponseJson Result JsonBytes JsonEncodeError
+effect encodeAccountBalanceResponseJson read accountBalanceResponse
+memoryHeap encodeAccountBalanceResponseJson no
+memoryStackLimit encodeAccountBalanceResponseJson 8KiB
+async encodeAccountBalanceResponseJson no
+operationBody encodeAccountBalanceResponseJson sourceTape
+purpose encodeAccountBalanceResponseJson "Encode one AccountBalanceResponse through its declared JSON codec"
+
+label startEncodeAccountBalanceResponseJson
+
+group accountBalanceResponseJsonEncode
+groupPurpose accountBalanceResponseJsonEncode "Encode typed response record into JSON bytes"
+groupInput accountBalanceResponseJsonEncode accountBalanceResponse
+groupOutput accountBalanceResponseJsonEncode accountBalanceResponseJson
+groupError accountBalanceResponseJsonEncode accountBalanceResponseJsonEncodeError
+
+call accountBalanceResponseJsonEncodeCall json.encode.AccountBalanceResponse
+arg accountBalanceResponseJsonEncodeCall value accountBalanceResponse
+run accountBalanceResponseJsonEncodeCall
+bindOk accountBalanceResponseJson JsonBytes accountBalanceResponseJsonEncodeCall
+bindError accountBalanceResponseJsonEncodeError JsonEncodeError accountBalanceResponseJsonEncodeCall
+branchIfError accountBalanceResponseJsonEncodeCall accountBalanceResponseJsonEncodeFailed
+returnOk accountBalanceResponseJson
+
+label accountBalanceResponseJsonEncodeFailed
+returnError accountBalanceResponseJsonEncodeError
+
+operation measureLookupFailureTemplate
+output measureLookupFailureTemplate Result CByteCount CStringLengthError
+effect measureLookupFailureTemplate read accountLookupFailureTemplate
+memoryHeap measureLookupFailureTemplate no
+memoryStackLimit measureLookupFailureTemplate 4KiB
+async measureLookupFailureTemplate no
+operationBody measureLookupFailureTemplate sourceTape
+purpose measureLookupFailureTemplate "Read byte length from one external long literal"
+
+label startMeasureLookupFailureTemplate
+
+group lookupFailureTemplateLength
+groupPurpose lookupFailureTemplateLength "Exercise long literal metadata through a concrete string operation"
+groupInput lookupFailureTemplateLength accountLookupFailureTemplate
+groupOutput lookupFailureTemplateLength lookupFailureTemplateByteLength
+groupError lookupFailureTemplateLength lookupFailureTemplateLengthError
+
+call lookupFailureTemplateLengthCall stringByteLength
+arg lookupFailureTemplateLengthCall inputText accountLookupFailureTemplate
+run lookupFailureTemplateLengthCall
+bindOk lookupFailureTemplateByteLength CByteCount lookupFailureTemplateLengthCall
+bindError lookupFailureTemplateLengthError CStringLengthError lookupFailureTemplateLengthCall
+branchIfError lookupFailureTemplateLengthCall lookupFailureTemplateLengthFailed
+returnOk lookupFailureTemplateByteLength
+
+label lookupFailureTemplateLengthFailed
+returnError lookupFailureTemplateLengthError
+
+operation insertAndReadTaskMap
+input insertAndReadTaskMap taskMap TaskMap
+input insertAndReadTaskMap taskId TaskId
+input insertAndReadTaskMap taskValue Task
+output insertAndReadTaskMap Result Task TaskMapOperationError
+effect insertAndReadTaskMap read taskMap
+effect insertAndReadTaskMap read taskId
+effect insertAndReadTaskMap read taskValue
+memoryHeap insertAndReadTaskMap no
+memoryArena insertAndReadTaskMap arena.process
+memoryAllocationSource insertAndReadTaskMap taskMapInsertCall
+memoryStackLimit insertAndReadTaskMap 8KiB
+async insertAndReadTaskMap no
+operationBody insertAndReadTaskMap sourceTape
+purpose insertAndReadTaskMap "Round-trip one typed map entry"
+
+label startInsertAndReadTaskMap
+
+group immutableTaskMapInsert
+groupPurpose immutableTaskMapInsert "Insert into typed map without mutating the input map"
+groupInput immutableTaskMapInsert taskMap
+groupInput immutableTaskMapInsert taskId
+groupInput immutableTaskMapInsert taskValue
+groupOutput immutableTaskMapInsert updatedTaskMap
+groupError immutableTaskMapInsert taskMapInsertError
+groupFailure immutableTaskMapInsert taskMapInsertFailure
+
+call taskMapInsertCall TaskMap.insert
+arg taskMapInsertCall map taskMap
+arg taskMapInsertCall key taskId
+arg taskMapInsertCall value taskValue
+run taskMapInsertCall
+bindOk updatedTaskMap TaskMap taskMapInsertCall
+bindError taskMapInsertError TaskMapInsertError taskMapInsertCall
+branchIfError taskMapInsertCall taskMapInsertFailed
+
+group typedTaskMapRead
+groupPurpose typedTaskMapRead "Read typed map value through explicit key"
+groupInput typedTaskMapRead updatedTaskMap
+groupInput typedTaskMapRead taskId
+groupOutput typedTaskMapRead mappedTask
+groupError typedTaskMapRead taskMapReadError
+groupFailure typedTaskMapRead taskMapReadFailure
+
+call taskMapReadCall TaskMap.get
+arg taskMapReadCall map updatedTaskMap
+arg taskMapReadCall key taskId
+run taskMapReadCall
+bindOk mappedTask Task taskMapReadCall
+bindError taskMapReadError TaskMapReadError taskMapReadCall
+branchIfError taskMapReadCall taskMapReadFailed
+returnOk mappedTask
+
+label taskMapInsertFailed
+makeError taskMapInsertFailure TaskMapOperationError.InsertFailed taskMapInsertError
+returnError taskMapInsertFailure
+
+label taskMapReadFailed
+makeError taskMapReadFailure TaskMapOperationError.ReadFailed taskMapReadError
+returnError taskMapReadFailure
+
+operation readTaskFromSlice
+input readTaskFromSlice taskList TaskList
+input readTaskFromSlice sliceStartIndex I64
+input readTaskFromSlice sliceLength I64
+input readTaskFromSlice sliceReadIndex I64
+output readTaskFromSlice Result Task TaskCollectionOperationError
+effect readTaskFromSlice read taskList
+effect readTaskFromSlice read sliceStartIndex
+effect readTaskFromSlice read sliceLength
+effect readTaskFromSlice read sliceReadIndex
+memoryHeap readTaskFromSlice no
+memoryStackLimit readTaskFromSlice 8KiB
+async readTaskFromSlice no
+operationBody readTaskFromSlice sourceTape
+purpose readTaskFromSlice "Read one item through a borrowed task slice"
+
+label startReadTaskFromSlice
+
+group taskSliceCreate
+groupPurpose taskSliceCreate "Create borrowed view over typed task list"
+groupInput taskSliceCreate taskList
+groupInput taskSliceCreate sliceStartIndex
+groupInput taskSliceCreate sliceLength
+groupOutput taskSliceCreate taskSlice
+groupError taskSliceCreate taskSliceCreateError
+groupFailure taskSliceCreate taskSliceCreateFailure
+
+call taskSliceCreateCall TaskList.slice
+arg taskSliceCreateCall list taskList
+arg taskSliceCreateCall startIndex sliceStartIndex
+arg taskSliceCreateCall length sliceLength
+run taskSliceCreateCall
+bindOk taskSlice TaskSlice taskSliceCreateCall
+bindError taskSliceCreateError TaskSliceCreateError taskSliceCreateCall
+branchIfError taskSliceCreateCall taskSliceCreateFailed
+
+group taskSliceRead
+groupPurpose taskSliceRead "Read one item from borrowed task slice"
+groupInput taskSliceRead taskSlice
+groupInput taskSliceRead sliceReadIndex
+groupOutput taskSliceRead slicedTask
+groupError taskSliceRead taskSliceReadError
+groupFailure taskSliceRead taskSliceReadFailure
+
+call taskSliceReadCall TaskSlice.get
+arg taskSliceReadCall slice taskSlice
+arg taskSliceReadCall index sliceReadIndex
+run taskSliceReadCall
+bindOk slicedTask Task taskSliceReadCall
+bindError taskSliceReadError TaskSliceReadError taskSliceReadCall
+branchIfError taskSliceReadCall taskSliceReadFailed
+returnOk slicedTask
+
+label taskSliceCreateFailed
+makeError taskSliceCreateFailure TaskCollectionOperationError.SliceCreateFailed taskSliceCreateError
+returnError taskSliceCreateFailure
+
+label taskSliceReadFailed
+makeError taskSliceReadFailure TaskCollectionOperationError.SliceReadFailed taskSliceReadError
+returnError taskSliceReadFailure
+
+operation readFixedTaskArrayItem
+input readFixedTaskArrayItem fixedTaskArray FixedTaskArray
+input readFixedTaskArrayItem taskIndex I64
+output readFixedTaskArrayItem Result Task TaskCollectionOperationError
+effect readFixedTaskArrayItem read fixedTaskArray
+effect readFixedTaskArrayItem read taskIndex
+memoryHeap readFixedTaskArrayItem no
+memoryStackLimit readFixedTaskArrayItem 4KiB
+async readFixedTaskArrayItem no
+operationBody readFixedTaskArrayItem sourceTape
+purpose readFixedTaskArrayItem "Read one item from a fixed-length task array"
+
+label startReadFixedTaskArrayItem
+
+group fixedTaskArrayRead
+groupPurpose fixedTaskArrayRead "Read typed fixed array item through explicit index"
+groupInput fixedTaskArrayRead fixedTaskArray
+groupInput fixedTaskArrayRead taskIndex
+groupOutput fixedTaskArrayRead fixedArrayTask
+groupError fixedTaskArrayRead fixedTaskArrayReadError
+groupFailure fixedTaskArrayRead fixedTaskArrayReadFailure
+
+call fixedTaskArrayReadCall FixedTaskArray.get
+arg fixedTaskArrayReadCall array fixedTaskArray
+arg fixedTaskArrayReadCall index taskIndex
+run fixedTaskArrayReadCall
+bindOk fixedArrayTask Task fixedTaskArrayReadCall
+bindError fixedTaskArrayReadError FixedTaskArrayReadError fixedTaskArrayReadCall
+branchIfError fixedTaskArrayReadCall fixedTaskArrayReadFailed
+returnOk fixedArrayTask
+
+label fixedTaskArrayReadFailed
+makeError fixedTaskArrayReadFailure TaskCollectionOperationError.FixedArrayReadFailed fixedTaskArrayReadError
+returnError fixedTaskArrayReadFailure
+
+operation appendSmallTaskList
+input appendSmallTaskList smallTaskList SmallTaskList
+input appendSmallTaskList createdTask Task
+output appendSmallTaskList Result SmallTaskList TaskCollectionOperationError
+effect appendSmallTaskList read smallTaskList
+effect appendSmallTaskList read createdTask
+memoryHeap appendSmallTaskList no
+memoryArena appendSmallTaskList arena.request
+memoryAllocationSource appendSmallTaskList smallTaskListAppendCall
+memoryStackLimit appendSmallTaskList 8KiB
+async appendSmallTaskList no
+operationBody appendSmallTaskList sourceTape
+purpose appendSmallTaskList "Append one task to a small-list collection"
+
+label startAppendSmallTaskList
+
+group smallTaskListAppend
+groupPurpose smallTaskListAppend "Append using inline-capacity spill metadata"
+groupInput smallTaskListAppend smallTaskList
+groupInput smallTaskListAppend createdTask
+groupOutput smallTaskListAppend updatedSmallTaskList
+groupError smallTaskListAppend smallTaskListAppendError
+groupFailure smallTaskListAppend smallTaskListAppendFailure
+
+call smallTaskListAppendCall SmallTaskList.append
+arg smallTaskListAppendCall list smallTaskList
+arg smallTaskListAppendCall item createdTask
+run smallTaskListAppendCall
+bindOk updatedSmallTaskList SmallTaskList smallTaskListAppendCall
+bindError smallTaskListAppendError SmallTaskListAppendError smallTaskListAppendCall
+branchIfError smallTaskListAppendCall smallTaskListAppendFailed
+returnOk updatedSmallTaskList
+
+label smallTaskListAppendFailed
+makeError smallTaskListAppendFailure TaskCollectionOperationError.SmallListAppendFailed smallTaskListAppendError
+returnError smallTaskListAppendFailure
+
+section experiments.operations.validation
+operation validateAccountLabel
+input validateAccountLabel candidatePointer RawCStringPointer
+output validateAccountLabel CStringValidationResult
+effect validateAccountLabel read candidatePointer
+memoryHeap validateAccountLabel no
+memoryStackLimit validateAccountLabel 4KiB
+async validateAccountLabel no
+operationBody validateAccountLabel sourceTape
+purpose validateAccountLabel "Validate one raw account label pointer"
+invariant validateAccountLabel "Every branch target names the validation outcome"
+
+label startValidateAccountLabel
+
+group candidateCStringValidation
+groupPurpose candidateCStringValidation "Promote raw C string pointer to trusted null-terminated string"
+groupInput candidateCStringValidation candidatePointer
+groupOutput candidateCStringValidation candidateLabel
+groupError candidateCStringValidation candidateCStringValidationError
+
+call candidateCStringValidationCall validateCString
+arg candidateCStringValidationCall candidatePointer candidatePointer
+run candidateCStringValidationCall
+bindOk candidateLabel CNullTerminatedByteString candidateCStringValidationCall
+bindError candidateCStringValidationError CStringValidationError candidateCStringValidationCall
+branchIfError candidateCStringValidationCall candidateCStringValidationFailed
+
+group accountLabelLengthRead
+groupPurpose accountLabelLengthRead "Read label byte length using semantic stdlib operation"
+groupInput accountLabelLengthRead candidateLabel
+groupOutput accountLabelLengthRead accountLabelByteLength
+groupFailure accountLabelLengthRead accountLabelLengthReadFailure
+
+call accountLabelByteLengthReadCall stringByteLength
+arg accountLabelByteLengthReadCall inputText candidateLabel
+run accountLabelByteLengthReadCall
+bindOk accountLabelByteLength CByteCount accountLabelByteLengthReadCall
+bindError accountLabelLengthReadError CStringLengthError accountLabelByteLengthReadCall
+branchIfError accountLabelByteLengthReadCall accountLabelLengthReadFailed
+
+group accountLabelMinimumCheck
+groupPurpose accountLabelMinimumCheck "Check the minimum semantic byte length"
+groupInput accountLabelMinimumCheck accountLabelByteLength
+groupOutput accountLabelMinimumCheck accountLabelHasMinimumBytes
+groupFailure accountLabelMinimumCheck accountLabelTooShortFailure
+
+call accountLabelMinimumCheckCall math.greaterThanOrEqualCByteCount
+arg accountLabelMinimumCheckCall left accountLabelByteLength
+arg accountLabelMinimumCheckCall right minimumAccountLabelBytes
+run accountLabelMinimumCheckCall
+bind accountLabelHasMinimumBytes Bool accountLabelMinimumCheckCall
+branchIf accountLabelHasMinimumBytes accountLabelAccepted
+branch accountLabelTooShort
+
+label accountLabelAccepted
+returnOk candidateLabel
+
+label accountLabelTooShort
+declareFailure accountLabelTooShortFailure CStringValidationError.LabelTooShort
+returnError accountLabelTooShortFailure
+
+label accountLabelLengthReadFailed
+makeError accountLabelLengthReadFailure CStringValidationError.LengthReadFailed accountLabelLengthReadError
+returnError accountLabelLengthReadFailure
+
+label candidateCStringValidationFailed
+# rationale: candidateCStringValidationError is already the operation error type, so no makeError mapping is needed.
+returnError candidateCStringValidationError
+
+section experiments.operations.lookup
+operation getAccountBalanceWithRetry
+input getAccountBalanceWithRetry normalizedAccountId AccountId
+input getAccountBalanceWithRetry accountRepository AccountRepository
+input getAccountBalanceWithRetry metricsRuntime MetricsRuntime
+input getAccountBalanceWithRetry accountLookupCancellationToken CancellationToken
+output getAccountBalanceWithRetry AccountLookupResult
+effect getAccountBalanceWithRetry read normalizedAccountId
+effect getAccountBalanceWithRetry read accountRepository.balance
+effect getAccountBalanceWithRetry read metricsRuntime
+effect getAccountBalanceWithRetry read accountLookupCancellationToken
+effect getAccountBalanceWithRetry read metrics.lookupFailures
+effect getAccountBalanceWithRetry write metrics.lookupFailures
+effect getAccountBalanceWithRetry write metrics.lock
+effect getAccountBalanceWithRetry read module.lookupRevision
+effect getAccountBalanceWithRetry write module.lookupRevision
+effect getAccountBalanceWithRetry read retryPolicy.jitterSource
+effect getAccountBalanceWithRetry read scheduler.clock
+effect getAccountBalanceWithRetry write scheduler.timerQueue
+effect getAccountBalanceWithRetry log cleanup.metricsLockRelease
+memoryHeap getAccountBalanceWithRetry no
+memoryStackLimit getAccountBalanceWithRetry 16KiB
+async getAccountBalanceWithRetry yes
+operationBody getAccountBalanceWithRetry sourceTape
+purpose getAccountBalanceWithRetry "Read one account balance through bounded async retry"
+invariant getAccountBalanceWithRetry "Every failure path names the failed call stem"
+invariant getAccountBalanceWithRetry "Local mutable storage is mutated only through set local"
+invariant getAccountBalanceWithRetry "Every async delay uses accountLookupCancellationToken"
+invariant getAccountBalanceWithRetry "Every repository lookup uses accountLookupCancellationToken"
+
+label startGetAccountBalanceWithRetry
+
+group accountLookupAttemptState
+groupPurpose accountLookupAttemptState "Initialize retry-local mutable attempt state"
+groupInput accountLookupAttemptState requestRetryLimit
+groupOutput accountLookupAttemptState lookupAttemptIndex
+groupTiming accountLookupAttemptState accountLookupRetryPolicy
+
+storage local immutable lookupAttemptLimit I64 requestRetryLimit
+storage local mutable lookupAttemptIndex I64 firstAttemptIndex
+
+label accountLookupAttemptLoop
+
+group accountLookupLimitCheck
+groupPurpose accountLookupLimitCheck "Stop retry loop when all attempts are consumed"
+groupInput accountLookupLimitCheck lookupAttemptIndex
+groupInput accountLookupLimitCheck lookupAttemptLimit
+groupOutput accountLookupLimitCheck lookupAttemptsRemain
+groupFailure accountLookupLimitCheck accountLookupAttemptsExhaustedFailure
+
+call accountLookupLimitCheckCall math.lessThanI64
+arg accountLookupLimitCheckCall left lookupAttemptIndex
+arg accountLookupLimitCheckCall right lookupAttemptLimit
+run accountLookupLimitCheckCall
+bind lookupAttemptsRemain Bool accountLookupLimitCheckCall
+branchIf lookupAttemptsRemain accountLookupAttemptAllowed
+branch accountLookupAttemptsExhausted
+
+label accountLookupAttemptAllowed
+
+group accountBalanceLookup
+groupPurpose accountBalanceLookup "Read account balance from repository"
+groupInput accountBalanceLookup normalizedAccountId
+groupInput accountBalanceLookup lookupAttemptIndex
+groupInput accountBalanceLookup accountLookupCancellationToken
+groupOutput accountBalanceLookup accountBalance
+groupError accountBalanceLookup accountBalanceLookupError
+groupTiming accountBalanceLookup accountLookupAttemptTimeout
+
+# invariant: accountBalanceLookupCall owns this group result stem.
+call accountBalanceLookupCall accountRepository.balance.findByAccountId
+arg accountBalanceLookupCall accountId normalizedAccountId
+arg accountBalanceLookupCall attemptIndex lookupAttemptIndex
+cancelOn accountBalanceLookupCall accountLookupCancellationToken
+timeout accountBalanceLookupCall accountLookupAttemptTimeout
+start accountBalanceLookupCall
+await accountBalanceLookupCall
+bindOk accountBalance AccountBalance accountBalanceLookupCall
+bindError accountBalanceLookupError AccountLookupError accountBalanceLookupCall
+branchIfError accountBalanceLookupCall accountBalanceLookupFailed
+
+branch accountBalanceLookupSucceeded
+
+label accountBalanceLookupFailed
+
+group accountLookupRetryAdvance
+groupPurpose accountLookupRetryAdvance "Advance local mutable attempt index after one failed lookup"
+groupInput accountLookupRetryAdvance lookupAttemptIndex
+groupInput accountLookupRetryAdvance lookupAttemptLimit
+groupOutput accountLookupRetryAdvance nextLookupAttemptIndex
+groupOutput accountLookupRetryAdvance retryAttemptsRemainAfterFailure
+
+# timing: Retry state mutation is local to this operation.
+call lookupAttemptAdvanceCall math.addI64
+arg lookupAttemptAdvanceCall left lookupAttemptIndex
+arg lookupAttemptAdvanceCall right oneStep
+run lookupAttemptAdvanceCall
+bind nextLookupAttemptIndex I64 lookupAttemptAdvanceCall
+set local lookupAttemptIndex nextLookupAttemptIndex
+
+call accountLookupRetryContinuationCheckCall math.lessThanI64
+arg accountLookupRetryContinuationCheckCall left nextLookupAttemptIndex
+arg accountLookupRetryContinuationCheckCall right lookupAttemptLimit
+run accountLookupRetryContinuationCheckCall
+bind retryAttemptsRemainAfterFailure Bool accountLookupRetryContinuationCheckCall
+branchIf retryAttemptsRemainAfterFailure accountLookupRetryDelayReady
+branch accountLookupAttemptsExhausted
+
+label accountLookupRetryDelayReady
+
+group accountLookupRetryDelayCompute
+groupPurpose accountLookupRetryDelayCompute "Derive policy-owned retry delay"
+groupInput accountLookupRetryDelayCompute accountLookupRetryPolicy
+groupInput accountLookupRetryDelayCompute lookupAttemptIndex
+groupOutput accountLookupRetryDelayCompute accountLookupRetryDelayDuration
+groupError accountLookupRetryDelayCompute accountLookupRetryDelayComputeError
+groupFailure accountLookupRetryDelayCompute accountLookupRetryDelayComputeFailure
+groupTiming accountLookupRetryDelayCompute accountLookupRetryPolicy
+
+call accountLookupRetryDelayComputeCall retryPolicy.delayForAttempt
+arg accountLookupRetryDelayComputeCall policy accountLookupRetryPolicy
+arg accountLookupRetryDelayComputeCall attemptIndex lookupAttemptIndex
+run accountLookupRetryDelayComputeCall
+bindOk accountLookupRetryDelayDuration DurationMilliseconds accountLookupRetryDelayComputeCall
+bindError accountLookupRetryDelayComputeError RetryPolicyError accountLookupRetryDelayComputeCall
+branchIfError accountLookupRetryDelayComputeCall accountLookupRetryDelayComputeFailed
+
+group accountLookupRetryDelayWait
+groupPurpose accountLookupRetryDelayWait "Wait for retry delay with cancellation"
+groupInput accountLookupRetryDelayWait accountLookupRetryDelayDuration
+groupInput accountLookupRetryDelayWait accountLookupCancellationToken
+groupError accountLookupRetryDelayWait accountLookupRetryDelayError
+groupFailure accountLookupRetryDelayWait accountLookupRetryDelayFailure
+groupTiming accountLookupRetryDelayWait accountLookupRetryPolicy
+
+call accountLookupRetryDelayCall scheduler.sleep
+arg accountLookupRetryDelayCall duration accountLookupRetryDelayDuration
+cancelOn accountLookupRetryDelayCall accountLookupCancellationToken
+start accountLookupRetryDelayCall
+await accountLookupRetryDelayCall
+ignoreOk accountLookupRetryDelayCall Void
+bindError accountLookupRetryDelayError SchedulerSleepError accountLookupRetryDelayCall
+branchIfError accountLookupRetryDelayCall accountLookupRetryDelayFailed
+branch accountLookupAttemptLoop
+
+label accountLookupAttemptsExhausted
+# rationale: accountLookupAttemptsExhaustedFailure intentionally omits the last repository error so callers receive one stable retry exhaustion variant.
+declareFailure accountLookupAttemptsExhaustedFailure AccountLookupError.AttemptsExhausted
+
+group accountLookupFailureMetrics
+groupPurpose accountLookupFailureMetrics "Increment process-shared failure counter under explicit guard"
+groupInput accountLookupFailureMetrics accountLookupAttemptsExhaustedFailure
+groupInput accountLookupFailureMetrics accountLookupFailureMetricsEnabled
+groupOutput accountLookupFailureMetrics nextFailureCount
+groupError accountLookupFailureMetrics accountLookupGuardAcquireError
+groupError accountLookupFailureMetrics accountLookupFailureMetricIncrementError
+groupFailure accountLookupFailureMetrics accountLookupGuardAcquireFailure
+groupFailure accountLookupFailureMetrics accountLookupFailureMetricFailure
+
+# safety: shared state mutation requires an explicit guard token, not only guard metadata.
+branchIf accountLookupFailureMetricsEnabled accountLookupMetricWriteRequired
+branch accountLookupFailureReturn
+
+label accountLookupMetricWriteRequired
+call accountLookupGuardAcquireCall acquireMetricsLockGuard
+arg accountLookupGuardAcquireCall runtime metricsRuntime
+arg accountLookupGuardAcquireCall sharedState accountLookupFailureCount
+run accountLookupGuardAcquireCall
+bindOk accountLookupGuardToken GuardToken accountLookupGuardAcquireCall
+bindError accountLookupGuardAcquireError SharedStateGuardError accountLookupGuardAcquireCall
+branchIfError accountLookupGuardAcquireCall accountLookupGuardAcquireFailed
+guardTokenSource accountLookupGuardToken accountLookupGuardAcquireCall
+guardTokenOwner accountLookupGuardToken metricsRuntime
+guardTokenProtects accountLookupGuardToken accountLookupFailureCount
+deferLog metricsLockReleaseDefer releaseMetricsLockGuard accountLookupGuardToken
+deferLogSink metricsLockReleaseDefer cleanup.metricsLockRelease
+deferRunOn metricsLockReleaseDefer returnOk
+deferRunOn metricsLockReleaseDefer returnError
+deferOrder metricsLockReleaseDefer reverseRegistration
+deferFailurePolicy metricsLockReleaseDefer logAndSuppress
+deferConsumes metricsLockReleaseDefer accountLookupGuardToken
+guardTokenRelease accountLookupGuardToken metricsLockReleaseDefer
+
+read sharedState accountLookupFailureCurrentCount I64 accountLookupFailureCount protectedBy accountLookupGuardToken
+
+call accountLookupFailureMetricIncrementCall metrics.computeIncrementI64
+arg accountLookupFailureMetricIncrementCall runtime metricsRuntime
+arg accountLookupFailureMetricIncrementCall current accountLookupFailureCurrentCount
+arg accountLookupFailureMetricIncrementCall step oneStep
+run accountLookupFailureMetricIncrementCall
+bindOk nextFailureCount I64 accountLookupFailureMetricIncrementCall
+bindError accountLookupFailureMetricIncrementError MetricsWriteError accountLookupFailureMetricIncrementCall
+branchIfError accountLookupFailureMetricIncrementCall accountLookupFailureMetricFailed
+set sharedState accountLookupFailureCount nextFailureCount protectedBy accountLookupGuardToken
+branch accountLookupFailureReturn
+
+label accountLookupFailureReturn
+returnError accountLookupAttemptsExhaustedFailure
+
+label accountLookupFailureMetricFailed
+makeError accountLookupFailureMetricFailure AccountLookupError.MetricsWriteFailed accountLookupFailureMetricIncrementError
+returnError accountLookupFailureMetricFailure
+
+label accountLookupGuardAcquireFailed
+makeError accountLookupGuardAcquireFailure AccountLookupError.SharedStateGuardFailed accountLookupGuardAcquireError
+returnError accountLookupGuardAcquireFailure
+
+label accountLookupRetryDelayComputeFailed
+makeError accountLookupRetryDelayComputeFailure AccountLookupError.RetryDelayComputeFailed accountLookupRetryDelayComputeError
+returnError accountLookupRetryDelayComputeFailure
+
+label accountLookupRetryDelayFailed
+makeError accountLookupRetryDelayFailure AccountLookupError.RetryDelayFailed accountLookupRetryDelayError
+returnError accountLookupRetryDelayFailure
+
+label accountBalanceLookupSucceeded
+
+group accountBalanceValidation
+groupPurpose accountBalanceValidation "Ensure the account balance has a non-negative available amount"
+groupInput accountBalanceValidation accountBalance
+groupOutput accountBalanceValidation availableBalanceValue
+groupOutput accountBalanceValidation availableBalanceIsNonNegative
+groupFailure accountBalanceValidation accountBalanceValidationFailure
+
+fieldGet availableBalanceValue I64 accountBalance availableCents
+
+call availableBalanceNonNegativeCheckCall math.greaterThanOrEqualI64
+arg availableBalanceNonNegativeCheckCall left availableBalanceValue
+arg availableBalanceNonNegativeCheckCall right zeroCount
+run availableBalanceNonNegativeCheckCall
+bind availableBalanceIsNonNegative Bool availableBalanceNonNegativeCheckCall
+branchIf availableBalanceIsNonNegative accountBalanceAccepted
+branch accountBalanceValidationFailed
+
+label accountBalanceAccepted
+
+group moduleRevisionUpdate
+groupPurpose moduleRevisionUpdate "Demonstrate rare module mutable storage update"
+groupInput moduleRevisionUpdate lastAccountLookupRevision
+groupInput moduleRevisionUpdate moduleStateOwner
+groupOutput moduleRevisionUpdate nextAccountLookupRevision
+
+call moduleRevisionIncrementCall math.addI64
+arg moduleRevisionIncrementCall left lastAccountLookupRevision
+arg moduleRevisionIncrementCall right oneStep
+run moduleRevisionIncrementCall
+bind nextAccountLookupRevision I64 moduleRevisionIncrementCall
+set module lastAccountLookupRevision nextAccountLookupRevision ownedBy moduleStateOwner
+returnOk accountBalance
+
+label accountBalanceValidationFailed
+declareFailure accountBalanceValidationFailure AccountLookupError.NegativeAvailableBalance
+returnError accountBalanceValidationFailure
+
+section experiments.operations.response
+operation buildAccountBalanceResponse
+input buildAccountBalanceResponse accountBalance AccountBalance
+input buildAccountBalanceResponse displayText CNullTerminatedByteString
+output buildAccountBalanceResponse Result AccountBalanceResponse AccountResponseBuildError
+effect buildAccountBalanceResponse read accountBalance
+effect buildAccountBalanceResponse read displayText
+memoryHeap buildAccountBalanceResponse no
+memoryStackLimit buildAccountBalanceResponse 8KiB
+async buildAccountBalanceResponse no
+operationBody buildAccountBalanceResponse sourceTape
+purpose buildAccountBalanceResponse "Build one account balance response record"
+
+label startBuildAccountBalanceResponse
+
+group accountBalanceResponseBuild
+groupPurpose accountBalanceResponseBuild "Construct one response record"
+groupInput accountBalanceResponseBuild accountBalance
+groupInput accountBalanceResponseBuild displayText
+groupOutput accountBalanceResponseBuild accountBalanceResponse
+
+fieldGet accountBalanceAccountId AccountId accountBalance accountId
+fieldGet accountBalanceAvailableCents I64 accountBalance availableCents
+fieldGet accountBalancePendingCents I64 accountBalance pendingCents
+
+call accountBalanceResponseCreateCall createAccountBalanceResponseRecord
+arg accountBalanceResponseCreateCall accountId accountBalanceAccountId
+arg accountBalanceResponseCreateCall availableCents accountBalanceAvailableCents
+arg accountBalanceResponseCreateCall pendingCents accountBalancePendingCents
+arg accountBalanceResponseCreateCall displayText displayText
+run accountBalanceResponseCreateCall
+bindOk accountBalanceResponse AccountBalanceResponse accountBalanceResponseCreateCall
+bindError accountBalanceResponseCreateError RecordCreateError accountBalanceResponseCreateCall
+branchIfError accountBalanceResponseCreateCall accountBalanceResponseCreateFailed
+returnOk accountBalanceResponse
+
+label accountBalanceResponseCreateFailed
+makeError accountBalanceResponseCreateFailure AccountResponseBuildError.CreateFailed accountBalanceResponseCreateError
+returnError accountBalanceResponseCreateFailure
+
+section stdlib.string.smokeTest
+operation compareCStringSmokeTest
+output compareCStringSmokeTest Result ExitCode MainError
+memoryHeap compareCStringSmokeTest no
+async compareCStringSmokeTest no
+operationBody compareCStringSmokeTest sourceTape
+purpose compareCStringSmokeTest "Smoke-test agent-facing string comparison names"
+
+label startCompareCStringSmokeTest
+
+group compareIdenticalCStringCase
+groupPurpose compareIdenticalCStringCase "Compare identical C strings with semantic call stems"
+groupInput compareIdenticalCStringCase smokeLeftText
+groupInput compareIdenticalCStringCase smokeRightText
+groupOutput compareIdenticalCStringCase compareIdenticalCStringResult
+groupFailure compareIdenticalCStringCase compareIdenticalCStringFailure
+
+storage local immutable compareExpectedEqualResult CSignedInt32 equalCStringResult
+
+call compareIdenticalCStringCall compareCString
+arg compareIdenticalCStringCall left smokeLeftText
+arg compareIdenticalCStringCall right smokeRightText
+run compareIdenticalCStringCall
+bindOk compareIdenticalCStringResult CSignedInt32 compareIdenticalCStringCall
+bindError compareIdenticalCStringError CStringCompareError compareIdenticalCStringCall
+branchIfError compareIdenticalCStringCall compareIdenticalCStringFailed
+
+call compareIdenticalCStringCheckCall math.equalCSignedInt32
+arg compareIdenticalCStringCheckCall left compareIdenticalCStringResult
+arg compareIdenticalCStringCheckCall right compareExpectedEqualResult
+run compareIdenticalCStringCheckCall
+bind compareIdenticalCStringMatched Bool compareIdenticalCStringCheckCall
+branchIf compareIdenticalCStringMatched compareIdenticalCStringPassed
+branch compareIdenticalCStringMismatch
+
+label compareIdenticalCStringPassed
+returnOk successfulExitCode
+
+label compareIdenticalCStringFailed
+makeError compareIdenticalCStringFailure MainError.CompareCStringFailed compareIdenticalCStringError
+returnError compareIdenticalCStringFailure
+
+label compareIdenticalCStringMismatch
+declareFailure compareIdenticalCStringMismatchFailure MainError.CompareCStringMismatch
+returnError compareIdenticalCStringMismatchFailure
+
+section stdlib.memory.smokeTest
+operation copyMemoryBytesSmokeTest
+input copyMemoryBytesSmokeTest destinationBuffer COpaqueMemoryAddress
+input copyMemoryBytesSmokeTest sourceBuffer COpaqueMemoryAddress
+output copyMemoryBytesSmokeTest Result ExitCode MainError
+effect copyMemoryBytesSmokeTest read sourceBuffer
+effect copyMemoryBytesSmokeTest write destinationBuffer
+memoryHeap copyMemoryBytesSmokeTest no
+async copyMemoryBytesSmokeTest no
+operationBody copyMemoryBytesSmokeTest sourceTape
+purpose copyMemoryBytesSmokeTest "Smoke-test semantic memory copy argument names"
+
+label startCopyMemoryBytesSmokeTest
+
+group copyMemoryBytesCase
+groupPurpose copyMemoryBytesCase "Copy a small source buffer into a destination buffer"
+groupInput copyMemoryBytesCase sourceBuffer
+groupInput copyMemoryBytesCase destinationBuffer
+groupOutput copyMemoryBytesCase copiedDestinationBuffer
+groupFailure copyMemoryBytesCase copyMemoryBytesFailure
+
+storage local immutable copyByteCount CByteCount minimumAccountLabelBytes
+
+call copyMemoryBytesCall copyMemoryBytes
+arg copyMemoryBytesCall destinationBuffer destinationBuffer
+arg copyMemoryBytesCall sourceBuffer sourceBuffer
+arg copyMemoryBytesCall byteCount copyByteCount
+run copyMemoryBytesCall
+bindOk copiedDestinationBuffer COpaqueMemoryAddress copyMemoryBytesCall
+bindError copyMemoryBytesError MemoryCopyError copyMemoryBytesCall
+branchIfError copyMemoryBytesCall copyMemoryBytesFailed
+returnOk successfulExitCode
+
+label copyMemoryBytesFailed
+makeError copyMemoryBytesFailure MainError.MemoryCopyFailed copyMemoryBytesError
+returnError copyMemoryBytesFailure
+
+section stdlib.time.smokeTest
+operation leapYearSmokeTest
+output leapYearSmokeTest Result ExitCode MainError
+memoryHeap leapYearSmokeTest no
+async leapYearSmokeTest no
+operationBody leapYearSmokeTest sourceTape
+purpose leapYearSmokeTest "Smoke-test leap year predicate surfaces"
+
+label startLeapYearSmokeTest
+storage local immutable leapYearCandidate CSignedInt64 2024
+storage local immutable expectedLeapYearCInt CSignedInt32 trueIntValue
+
+call leapYearBoolCheckCall isLeapYear
+arg leapYearBoolCheckCall candidateYear leapYearCandidate
+run leapYearBoolCheckCall
+bindOk leapYearBoolResult Bool leapYearBoolCheckCall
+bindError leapYearBoolError TimePredicateError leapYearBoolCheckCall
+branchIfError leapYearBoolCheckCall leapYearBoolReadFailed
+branchIf leapYearBoolResult leapYearBoolCheckPassed
+branch leapYearBoolMismatch
+
+label leapYearBoolCheckPassed
+call leapYearCIntCheckCall isLeapYearAsCInt
+arg leapYearCIntCheckCall candidateYear leapYearCandidate
+run leapYearCIntCheckCall
+bindOk leapYearCIntResult CSignedInt32 leapYearCIntCheckCall
+bindError leapYearCIntError TimePredicateError leapYearCIntCheckCall
+branchIfError leapYearCIntCheckCall leapYearCIntCheckFailed
+
+call leapYearCIntEqualCheckCall math.equalCSignedInt32
+arg leapYearCIntEqualCheckCall left leapYearCIntResult
+arg leapYearCIntEqualCheckCall right expectedLeapYearCInt
+run leapYearCIntEqualCheckCall
+bind leapYearCIntMatched Bool leapYearCIntEqualCheckCall
+branchIf leapYearCIntMatched leapYearCIntCheckPassed
+branch leapYearCIntMismatch
+
+label leapYearCIntCheckPassed
+returnOk successfulExitCode
+
+label leapYearBoolReadFailed
+makeError leapYearBoolFailure MainError.LeapYearBoolReadFailed leapYearBoolError
+returnError leapYearBoolFailure
+
+label leapYearCIntCheckFailed
+makeError leapYearCIntFailure MainError.LeapYearCIntReadFailed leapYearCIntError
+returnError leapYearCIntFailure
+
+label leapYearBoolMismatch
+declareFailure leapYearBoolMismatchFailure MainError.LeapYearBoolMismatch
+returnError leapYearBoolMismatchFailure
+
+label leapYearCIntMismatch
+declareFailure leapYearCIntMismatchFailure MainError.LeapYearCIntMismatch
+returnError leapYearCIntMismatchFailure
