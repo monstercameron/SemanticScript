@@ -77,6 +77,12 @@ PROGRAMS = [
     ("simple_calculator.as",              "simple-calculator.js",                "bootstrap_general"),
     ("string_analyzer.as",                "string-analyzer.js",                  "bootstrap_general"),
     ("webserver_console.as",              "webserver-console.js",                "bootstrap_general:long"),
+    # Integer-output programs (var/set/math/branchIf/writeIntegerLine path).
+    ("countdown.as",                      "countdown.js",                        "bootstrap_general"),
+    ("factorial.as",                      "factorial.js",                        "bootstrap_general"),
+    ("sum_of_squares.as",                 "sum_of_squares.js",                   "bootstrap_general"),
+    ("fizzbuzz.as",                       "fizzbuzz.js",                         "bootstrap_general"),
+    ("todos_list.as",                     "todos-list.js",                       "bootstrap_general:stdin=1\\n7\\n"),
 ]
 
 
