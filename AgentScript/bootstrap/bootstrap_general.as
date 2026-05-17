@@ -2295,14 +2295,36 @@ arg slotLineHasConstCall keywordLength constPrefixForSlotLength
 run slotLineHasConstCall
 bindOk slotLineHasConst Bool slotLineHasConstCall
 branchIf slotLineHasConst inspectSlotConstLine
+
+# `var X T "literal"` also contributes a slot (pass1 emits an @.sN
+# for it). Detect var lines that start with a quote-init value.
+const varPrefixForSlot CNullTerminatedByteString "var "
+const varPrefixForSlotLength CByteCount 4
+call slotLineHasVarCall lineStartsWithKeyword
+arg slotLineHasVarCall linePointer slotLineStartPointer
+arg slotLineHasVarCall keyword varPrefixForSlot
+arg slotLineHasVarCall keywordLength varPrefixForSlotLength
+run slotLineHasVarCall
+bindOk slotLineHasVar Bool slotLineHasVarCall
+branchIf slotLineHasVar inspectSlotVarLine
 branch advanceSlotScanCursor
 
+label inspectSlotVarLine
+var slotHeaderPrefixLen CSignedInt64 zeroSlotScanStep
+set slotHeaderPrefixLen varPrefixForSlotLength
+branch slotInspectAfterHeader
+
 label inspectSlotConstLine
-# Skip "const ", read NAME token, then TYPE token. If TYPE is String
-# or CNullTerminatedByteString, this is a string-const slot candidate.
+set slotHeaderPrefixLen constPrefixForSlotLength
+branch slotInspectAfterHeader
+
+label slotInspectAfterHeader
+# Skip the verb keyword, read NAME token, then TYPE token. If TYPE is
+# String or CNullTerminatedByteString AND (for var) the VALUE token
+# starts with a quote, this counts as a string-const slot candidate.
 call slotConstNamePtrCall pointer.offset
 arg slotConstNamePtrCall base slotLineStartPointer
-arg slotConstNamePtrCall offset constPrefixForSlotLength
+arg slotConstNamePtrCall offset slotHeaderPrefixLen
 run slotConstNamePtrCall
 bind slotConstNamePointer COpaqueMemoryAddress slotConstNamePtrCall
 
@@ -2339,7 +2361,44 @@ arg slotTypeIsCStringCall keyword cstringTypeName
 arg slotTypeIsCStringCall keywordLength cstringTypeNameLength
 run slotTypeIsCStringCall
 bindOk slotTypeIsCString Bool slotTypeIsCStringCall
-branchIf slotTypeIsCString slotIsStringConst
+branchIf slotTypeIsCString slotMaybeStringConst
+branch advanceSlotScanCursor
+
+label slotMaybeStringConst
+# For const X TYPE "...": TYPE → String/CString implies a literal.
+# For var X TYPE val: we must verify the VALUE starts with `"`, since
+# var can also use a const name (no slot allocated). Look ahead past
+# TYPE + space and check the first byte.
+call afterSlotTypeLenCall extractTokenLength
+arg afterSlotTypeLenCall tokenStartPointer slotConstTypePointer
+run afterSlotTypeLenCall
+bindOk slotTypeTokenLen CSignedInt64 afterSlotTypeLenCall
+
+call afterSlotTypeOffsetCall math.addI64
+arg afterSlotTypeOffsetCall left slotTypeTokenLen
+arg afterSlotTypeOffsetCall right oneSlotScanStep
+run afterSlotTypeOffsetCall
+bind afterSlotTypeOffset CSignedInt64 afterSlotTypeOffsetCall
+
+call slotValuePtrCall pointer.offset
+arg slotValuePtrCall base slotConstTypePointer
+arg slotValuePtrCall offset afterSlotTypeOffset
+run slotValuePtrCall
+bind slotValuePointer COpaqueMemoryAddress slotValuePtrCall
+
+call slotValueFirstByteCall pointer.loadByte
+arg slotValueFirstByteCall buffer slotValuePointer
+arg slotValueFirstByteCall offset zeroSlotScanStep
+run slotValueFirstByteCall
+bind slotValueFirstByte I8 slotValueFirstByteCall
+
+const slotQuoteCode CSignedInt64 34
+call slotValueIsQuoteCall math.equalI64
+arg slotValueIsQuoteCall left slotValueFirstByte
+arg slotValueIsQuoteCall right slotQuoteCode
+run slotValueIsQuoteCall
+bind slotValueIsQuote Bool slotValueIsQuoteCall
+branchIf slotValueIsQuote slotIsStringConst
 branch advanceSlotScanCursor
 
 label slotIsStringConst
@@ -2446,12 +2505,32 @@ arg byteLengthLineHasConstCall keywordLength constPrefixForLengthLength
 run byteLengthLineHasConstCall
 bindOk byteLengthLineHasConst Bool byteLengthLineHasConstCall
 branchIf byteLengthLineHasConst inspectByteLengthConstLine
+
+# Same `var X T "literal"` extension as findStringConstSlotByName.
+const varPrefixForLength CNullTerminatedByteString "var "
+const varPrefixForLengthLength CByteCount 4
+call byteLengthLineHasVarCall lineStartsWithKeyword
+arg byteLengthLineHasVarCall linePointer byteLengthLineStartPointer
+arg byteLengthLineHasVarCall keyword varPrefixForLength
+arg byteLengthLineHasVarCall keywordLength varPrefixForLengthLength
+run byteLengthLineHasVarCall
+bindOk byteLengthLineHasVar Bool byteLengthLineHasVarCall
+branchIf byteLengthLineHasVar inspectByteLengthVarLine
 branch advanceByteLengthScanCursor
 
+label inspectByteLengthVarLine
+var byteLengthHeaderLen CSignedInt64 zeroLengthScanStep
+set byteLengthHeaderLen varPrefixForLengthLength
+branch byteLengthInspectAfterHeader
+
 label inspectByteLengthConstLine
+set byteLengthHeaderLen constPrefixForLengthLength
+branch byteLengthInspectAfterHeader
+
+label byteLengthInspectAfterHeader
 call byteLengthConstNamePtrCall pointer.offset
 arg byteLengthConstNamePtrCall base byteLengthLineStartPointer
-arg byteLengthConstNamePtrCall offset constPrefixForLengthLength
+arg byteLengthConstNamePtrCall offset byteLengthHeaderLen
 run byteLengthConstNamePtrCall
 bind byteLengthConstNamePointer COpaqueMemoryAddress byteLengthConstNamePtrCall
 
@@ -3253,6 +3332,519 @@ var fbindFalseResult Bool zeroFBindStep
 returnOk fbindFalseResult
 
 
+operation isNamePointerBindInBody
+input isNamePointerBindInBody bufferBase COpaqueMemoryAddress
+input isNamePointerBindInBody bufferEndOffset CSignedInt64
+input isNamePointerBindInBody bodyStartOffset CSignedInt64
+input isNamePointerBindInBody candidateNamePointer COpaqueMemoryAddress
+input isNamePointerBindInBody candidateNameLength CSignedInt64
+output isNamePointerBindInBody Result Bool Void
+effect isNamePointerBindInBody read memory.buffer
+memory isNamePointerBindInBody heap no
+async isNamePointerBindInBody no
+purpose isNamePointerBindInBody "Walk the current op body for `bind <name> CNullTerminatedByteString …` or `bind <name> COpaqueMemoryAddress …` (also bindOk variants). Returns true if found; used by libc-passthrough emitters to choose between `i64` and `i8*` arg types."
+invariant isNamePointerBindInBody "Stops at the next `operation ` line so binds in sibling ops don't leak in."
+
+label startIsNamePointerBindInBody
+const onePbindStep CSignedInt64 1
+const zeroPbindStep CSignedInt64 0
+const newlinePbindByte CSignedInt32 10
+const pbindBindVerb CNullTerminatedByteString "bind "
+const pbindBindVerbLength CByteCount 5
+const pbindBindOkVerb CNullTerminatedByteString "bindOk "
+const pbindBindOkVerbLength CByteCount 7
+const pbindOpKeyword CNullTerminatedByteString "operation "
+const pbindOpKeywordLength CByteCount 10
+
+var pbindScanCursor CSignedInt64 zeroPbindStep
+set pbindScanCursor bodyStartOffset
+
+label pbindScanLoop
+call pbindAtEndCall math.greaterThanOrEqualI64
+arg pbindAtEndCall left pbindScanCursor
+arg pbindAtEndCall right bufferEndOffset
+run pbindAtEndCall
+bind pbindAtEnd Bool pbindAtEndCall
+branchIf pbindAtEnd pbindReportFalse
+
+call pbindLineStartPtrCall pointer.offset
+arg pbindLineStartPtrCall base bufferBase
+arg pbindLineStartPtrCall offset pbindScanCursor
+run pbindLineStartPtrCall
+bind pbindLineStartPointer COpaqueMemoryAddress pbindLineStartPtrCall
+
+call pbindLineEndCall findLineEndOffset
+arg pbindLineEndCall bufferBase bufferBase
+arg pbindLineEndCall lineStartPointer pbindLineStartPointer
+arg pbindLineEndCall fileEndOffset bufferEndOffset
+arg pbindLineEndCall newlineByteCode newlinePbindByte
+run pbindLineEndCall
+bindOk pbindLineEndOffset CSignedInt64 pbindLineEndCall
+
+call pbindLineIsOpCall lineStartsWithKeyword
+arg pbindLineIsOpCall linePointer pbindLineStartPointer
+arg pbindLineIsOpCall keyword pbindOpKeyword
+arg pbindLineIsOpCall keywordLength pbindOpKeywordLength
+run pbindLineIsOpCall
+bindOk pbindLineIsOp Bool pbindLineIsOpCall
+branchIf pbindLineIsOp pbindReportFalse
+
+call pbindLineIsBindCall lineStartsWithKeyword
+arg pbindLineIsBindCall linePointer pbindLineStartPointer
+arg pbindLineIsBindCall keyword pbindBindVerb
+arg pbindLineIsBindCall keywordLength pbindBindVerbLength
+run pbindLineIsBindCall
+bindOk pbindLineIsBind Bool pbindLineIsBindCall
+branchIf pbindLineIsBind pbindInspectBind
+branch pbindMaybeBindOk
+
+label pbindMaybeBindOk
+call pbindLineIsBindOkCall lineStartsWithKeyword
+arg pbindLineIsBindOkCall linePointer pbindLineStartPointer
+arg pbindLineIsBindOkCall keyword pbindBindOkVerb
+arg pbindLineIsBindOkCall keywordLength pbindBindOkVerbLength
+run pbindLineIsBindOkCall
+bindOk pbindLineIsBindOk Bool pbindLineIsBindOkCall
+branchIf pbindLineIsBindOk pbindInspectBindOk
+branch advancePbindScan
+
+label pbindInspectBind
+var pbindKwLen CSignedInt64 zeroPbindStep
+set pbindKwLen pbindBindVerbLength
+branch pbindReadNameAndType
+
+label pbindInspectBindOk
+set pbindKwLen pbindBindOkVerbLength
+branch pbindReadNameAndType
+
+label pbindReadNameAndType
+call pbindNamePtrCall pointer.offset
+arg pbindNamePtrCall base pbindLineStartPointer
+arg pbindNamePtrCall offset pbindKwLen
+run pbindNamePtrCall
+bind pbindNamePointer COpaqueMemoryAddress pbindNamePtrCall
+
+call pbindNameLenCall extractTokenLength
+arg pbindNameLenCall tokenStartPointer pbindNamePointer
+run pbindNameLenCall
+bindOk pbindNameTokenLength CSignedInt64 pbindNameLenCall
+
+call pbindNameLenMatchCall math.equalI64
+arg pbindNameLenMatchCall left pbindNameTokenLength
+arg pbindNameLenMatchCall right candidateNameLength
+run pbindNameLenMatchCall
+bind pbindNameLenMatch Bool pbindNameLenMatchCall
+branchIf pbindNameLenMatch pbindCompareName
+branch advancePbindScan
+
+label pbindCompareName
+call pbindNameCmpCall c.strncmp
+arg pbindNameCmpCall left pbindNamePointer
+arg pbindNameCmpCall right candidateNamePointer
+arg pbindNameCmpCall count pbindNameTokenLength
+run pbindNameCmpCall
+bind pbindNameCmpResult CSignedInt32 pbindNameCmpCall
+
+call pbindNameMatchEqCall math.equalI64
+arg pbindNameMatchEqCall left pbindNameCmpResult
+arg pbindNameMatchEqCall right zeroPbindStep
+run pbindNameMatchEqCall
+bind pbindNameMatch Bool pbindNameMatchEqCall
+branchIf pbindNameMatch pbindCheckType
+branch advancePbindScan
+
+label pbindCheckType
+call afterPbindNameCall math.addI64
+arg afterPbindNameCall left pbindNameTokenLength
+arg afterPbindNameCall right onePbindStep
+run afterPbindNameCall
+bind afterPbindNameOffset CSignedInt64 afterPbindNameCall
+
+call pbindTypePtrCall pointer.offset
+arg pbindTypePtrCall base pbindNamePointer
+arg pbindTypePtrCall offset afterPbindNameOffset
+run pbindTypePtrCall
+bind pbindTypePointer COpaqueMemoryAddress pbindTypePtrCall
+
+call pbindTypeIsPointerCall isTypeTokenBytePointer
+arg pbindTypeIsPointerCall typeNamePointer pbindTypePointer
+run pbindTypeIsPointerCall
+bindOk pbindTypeIsPointer Bool pbindTypeIsPointerCall
+branchIf pbindTypeIsPointer pbindReportTrue
+branch advancePbindScan
+
+label advancePbindScan
+call advancePbindCall math.addI64
+arg advancePbindCall left pbindLineEndOffset
+arg advancePbindCall right onePbindStep
+run advancePbindCall
+bind nextPbindCursor CSignedInt64 advancePbindCall
+set pbindScanCursor nextPbindCursor
+branch pbindScanLoop
+
+label pbindReportTrue
+var pbindTrueResult Bool onePbindStep
+returnOk pbindTrueResult
+
+label pbindReportFalse
+var pbindFalseResult Bool zeroPbindStep
+returnOk pbindFalseResult
+
+
+operation isNameBoolBindInBody
+input isNameBoolBindInBody bufferBase COpaqueMemoryAddress
+input isNameBoolBindInBody bufferEndOffset CSignedInt64
+input isNameBoolBindInBody bodyStartOffset CSignedInt64
+input isNameBoolBindInBody candidateNamePointer COpaqueMemoryAddress
+input isNameBoolBindInBody candidateNameLength CSignedInt64
+output isNameBoolBindInBody Result Bool Void
+effect isNameBoolBindInBody read memory.buffer
+memory isNameBoolBindInBody heap no
+async isNameBoolBindInBody no
+purpose isNameBoolBindInBody "Walk the function body looking for `bind <name> Bool ...` or `bindOk <name> Bool ...`. Returns true iff candidate is a Bool-typed bind. Used to zext i1 → i64 when a Bool bind feeds into an i64-returning ret in user-op scope."
+invariant isNameBoolBindInBody "Stops at the next `operation ` line."
+
+label startIsNameBoolBindInBody
+const oneBbindStep CSignedInt64 1
+const zeroBbindStep CSignedInt64 0
+const newlineBbindByte CSignedInt32 10
+const bbindVerbKw CNullTerminatedByteString "bind "
+const bbindVerbKwLength CByteCount 5
+const bbindOkVerbKw CNullTerminatedByteString "bindOk "
+const bbindOkVerbKwLength CByteCount 7
+const bbindOpKeyword CNullTerminatedByteString "operation "
+const bbindOpKeywordLength CByteCount 10
+const bbindBoolTypeName CNullTerminatedByteString "Bool"
+const bbindBoolTypeNameLength CByteCount 4
+
+var bbindScanCursor CSignedInt64 zeroBbindStep
+set bbindScanCursor bodyStartOffset
+
+label bbindScanLoop
+call bbindAtEndCall math.greaterThanOrEqualI64
+arg bbindAtEndCall left bbindScanCursor
+arg bbindAtEndCall right bufferEndOffset
+run bbindAtEndCall
+bind bbindAtEnd Bool bbindAtEndCall
+branchIf bbindAtEnd bbindReportFalse
+
+call bbindLineStartPtrCall pointer.offset
+arg bbindLineStartPtrCall base bufferBase
+arg bbindLineStartPtrCall offset bbindScanCursor
+run bbindLineStartPtrCall
+bind bbindLineStartPointer COpaqueMemoryAddress bbindLineStartPtrCall
+
+call bbindLineEndCall findLineEndOffset
+arg bbindLineEndCall bufferBase bufferBase
+arg bbindLineEndCall lineStartPointer bbindLineStartPointer
+arg bbindLineEndCall fileEndOffset bufferEndOffset
+arg bbindLineEndCall newlineByteCode newlineBbindByte
+run bbindLineEndCall
+bindOk bbindLineEndOffset CSignedInt64 bbindLineEndCall
+
+call bbindLineIsOpCall lineStartsWithKeyword
+arg bbindLineIsOpCall linePointer bbindLineStartPointer
+arg bbindLineIsOpCall keyword bbindOpKeyword
+arg bbindLineIsOpCall keywordLength bbindOpKeywordLength
+run bbindLineIsOpCall
+bindOk bbindLineIsOp Bool bbindLineIsOpCall
+branchIf bbindLineIsOp bbindReportFalse
+
+call bbindLineIsBindCall lineStartsWithKeyword
+arg bbindLineIsBindCall linePointer bbindLineStartPointer
+arg bbindLineIsBindCall keyword bbindVerbKw
+arg bbindLineIsBindCall keywordLength bbindVerbKwLength
+run bbindLineIsBindCall
+bindOk bbindLineIsBind Bool bbindLineIsBindCall
+branchIf bbindLineIsBind bbindInspectBind
+branch bbindMaybeBindOk
+
+label bbindMaybeBindOk
+call bbindLineIsBindOkCall lineStartsWithKeyword
+arg bbindLineIsBindOkCall linePointer bbindLineStartPointer
+arg bbindLineIsBindOkCall keyword bbindOkVerbKw
+arg bbindLineIsBindOkCall keywordLength bbindOkVerbKwLength
+run bbindLineIsBindOkCall
+bindOk bbindLineIsBindOk Bool bbindLineIsBindOkCall
+branchIf bbindLineIsBindOk bbindInspectBindOk
+branch advanceBbindScan
+
+label bbindInspectBind
+var bbindKwLen CSignedInt64 zeroBbindStep
+set bbindKwLen bbindVerbKwLength
+branch bbindReadNameAndType
+
+label bbindInspectBindOk
+set bbindKwLen bbindOkVerbKwLength
+branch bbindReadNameAndType
+
+label bbindReadNameAndType
+call bbindNamePtrCall pointer.offset
+arg bbindNamePtrCall base bbindLineStartPointer
+arg bbindNamePtrCall offset bbindKwLen
+run bbindNamePtrCall
+bind bbindNamePointer COpaqueMemoryAddress bbindNamePtrCall
+
+call bbindNameLenCall extractTokenLength
+arg bbindNameLenCall tokenStartPointer bbindNamePointer
+run bbindNameLenCall
+bindOk bbindNameTokenLength CSignedInt64 bbindNameLenCall
+
+call bbindNameLenMatchCall math.equalI64
+arg bbindNameLenMatchCall left bbindNameTokenLength
+arg bbindNameLenMatchCall right candidateNameLength
+run bbindNameLenMatchCall
+bind bbindNameLenMatch Bool bbindNameLenMatchCall
+branchIf bbindNameLenMatch bbindCompareName
+branch advanceBbindScan
+
+label bbindCompareName
+call bbindNameCmpCall c.strncmp
+arg bbindNameCmpCall left bbindNamePointer
+arg bbindNameCmpCall right candidateNamePointer
+arg bbindNameCmpCall count bbindNameTokenLength
+run bbindNameCmpCall
+bind bbindNameCmpResult CSignedInt32 bbindNameCmpCall
+
+call bbindNameMatchEqCall math.equalI64
+arg bbindNameMatchEqCall left bbindNameCmpResult
+arg bbindNameMatchEqCall right zeroBbindStep
+run bbindNameMatchEqCall
+bind bbindNameMatch Bool bbindNameMatchEqCall
+branchIf bbindNameMatch bbindCheckType
+branch advanceBbindScan
+
+label bbindCheckType
+call afterBbindNameCall math.addI64
+arg afterBbindNameCall left bbindNameTokenLength
+arg afterBbindNameCall right oneBbindStep
+run afterBbindNameCall
+bind afterBbindNameOffset CSignedInt64 afterBbindNameCall
+
+call bbindTypePtrCall pointer.offset
+arg bbindTypePtrCall base bbindNamePointer
+arg bbindTypePtrCall offset afterBbindNameOffset
+run bbindTypePtrCall
+bind bbindTypePointer COpaqueMemoryAddress bbindTypePtrCall
+
+call bbindTypeLengthCall extractTokenLength
+arg bbindTypeLengthCall tokenStartPointer bbindTypePointer
+run bbindTypeLengthCall
+bindOk bbindTypeTokenLength CSignedInt64 bbindTypeLengthCall
+
+# Bool is exactly 4 chars; reject any other length.
+call bbindTypeLenMatchCall math.equalI64
+arg bbindTypeLenMatchCall left bbindTypeTokenLength
+arg bbindTypeLenMatchCall right bbindBoolTypeNameLength
+run bbindTypeLenMatchCall
+bind bbindTypeLenMatch Bool bbindTypeLenMatchCall
+branchIf bbindTypeLenMatch bbindCompareTypeBytes
+branch advanceBbindScan
+
+label bbindCompareTypeBytes
+call bbindTypeCmpCall c.strncmp
+arg bbindTypeCmpCall left bbindTypePointer
+arg bbindTypeCmpCall right bbindBoolTypeName
+arg bbindTypeCmpCall count bbindBoolTypeNameLength
+run bbindTypeCmpCall
+bind bbindTypeCmpResult CSignedInt32 bbindTypeCmpCall
+call bbindTypeMatchEqCall math.equalI64
+arg bbindTypeMatchEqCall left bbindTypeCmpResult
+arg bbindTypeMatchEqCall right zeroBbindStep
+run bbindTypeMatchEqCall
+bind bbindTypeMatch Bool bbindTypeMatchEqCall
+branchIf bbindTypeMatch bbindReportTrue
+branch advanceBbindScan
+
+label advanceBbindScan
+call advanceBbindCall math.addI64
+arg advanceBbindCall left bbindLineEndOffset
+arg advanceBbindCall right oneBbindStep
+run advanceBbindCall
+bind nextBbindCursor CSignedInt64 advanceBbindCall
+set bbindScanCursor nextBbindCursor
+branch bbindScanLoop
+
+label bbindReportTrue
+var bbindTrueResult Bool oneBbindStep
+returnOk bbindTrueResult
+
+label bbindReportFalse
+var bbindFalseResult Bool zeroBbindStep
+returnOk bbindFalseResult
+
+
+operation isCallTargetUserOp
+input isCallTargetUserOp bufferBase COpaqueMemoryAddress
+input isCallTargetUserOp bufferEndOffset CSignedInt64
+input isCallTargetUserOp bodyStartOffset CSignedInt64
+input isCallTargetUserOp callNamePointer COpaqueMemoryAddress
+input isCallTargetUserOp callNameLength CSignedInt64
+output isCallTargetUserOp Result Bool Void
+effect isCallTargetUserOp read memory.buffer
+memory isCallTargetUserOp heap no
+async isCallTargetUserOp no
+purpose isCallTargetUserOp "Find the `call <callName> <target>` line in the current op body and report whether the target is a user-defined operation (no dot in the name)."
+invariant isCallTargetUserOp "Bind handler uses this to decide whether a Bool result needs `trunc i64 → i1` (user-op call returns i64) or `or i1 X, false` (builtin icmp/fcmp returns i1)."
+
+label startIsCallTargetUserOp
+const oneCtStep CSignedInt64 1
+const zeroCtStep CSignedInt64 0
+const newlineCtByte CSignedInt32 10
+const ctCallVerb CNullTerminatedByteString "call "
+const ctCallVerbLength CByteCount 5
+const ctOpKeyword CNullTerminatedByteString "operation "
+const ctOpKeywordLength CByteCount 10
+const ctDotByte CSignedInt32 46
+
+var ctScanCursor CSignedInt64 zeroCtStep
+set ctScanCursor bodyStartOffset
+
+label ctScanLoop
+call ctAtEndCall math.greaterThanOrEqualI64
+arg ctAtEndCall left ctScanCursor
+arg ctAtEndCall right bufferEndOffset
+run ctAtEndCall
+bind ctAtEnd Bool ctAtEndCall
+branchIf ctAtEnd ctReportFalse
+
+call ctLineStartPtrCall pointer.offset
+arg ctLineStartPtrCall base bufferBase
+arg ctLineStartPtrCall offset ctScanCursor
+run ctLineStartPtrCall
+bind ctLineStartPointer COpaqueMemoryAddress ctLineStartPtrCall
+
+call ctLineEndCall findLineEndOffset
+arg ctLineEndCall bufferBase bufferBase
+arg ctLineEndCall lineStartPointer ctLineStartPointer
+arg ctLineEndCall fileEndOffset bufferEndOffset
+arg ctLineEndCall newlineByteCode newlineCtByte
+run ctLineEndCall
+bindOk ctLineEndOffset CSignedInt64 ctLineEndCall
+
+call ctLineIsOpCall lineStartsWithKeyword
+arg ctLineIsOpCall linePointer ctLineStartPointer
+arg ctLineIsOpCall keyword ctOpKeyword
+arg ctLineIsOpCall keywordLength ctOpKeywordLength
+run ctLineIsOpCall
+bindOk ctLineIsOp Bool ctLineIsOpCall
+branchIf ctLineIsOp ctReportFalse
+
+call ctLineIsCallCall lineStartsWithKeyword
+arg ctLineIsCallCall linePointer ctLineStartPointer
+arg ctLineIsCallCall keyword ctCallVerb
+arg ctLineIsCallCall keywordLength ctCallVerbLength
+run ctLineIsCallCall
+bindOk ctLineIsCall Bool ctLineIsCallCall
+branchIf ctLineIsCall ctInspectCallLine
+branch advanceCtScan
+
+label ctInspectCallLine
+call ctCallNamePtrCall pointer.offset
+arg ctCallNamePtrCall base ctLineStartPointer
+arg ctCallNamePtrCall offset ctCallVerbLength
+run ctCallNamePtrCall
+bind ctCallNamePointer COpaqueMemoryAddress ctCallNamePtrCall
+
+call ctCallNameLenCall extractTokenLength
+arg ctCallNameLenCall tokenStartPointer ctCallNamePointer
+run ctCallNameLenCall
+bindOk ctCallNameTokenLength CSignedInt64 ctCallNameLenCall
+
+call ctCallNameLenMatchCall math.equalI64
+arg ctCallNameLenMatchCall left ctCallNameTokenLength
+arg ctCallNameLenMatchCall right callNameLength
+run ctCallNameLenMatchCall
+bind ctCallNameLenMatch Bool ctCallNameLenMatchCall
+branchIf ctCallNameLenMatch ctCompareCallName
+branch advanceCtScan
+
+label ctCompareCallName
+call ctCallNameCmpCall c.strncmp
+arg ctCallNameCmpCall left ctCallNamePointer
+arg ctCallNameCmpCall right callNamePointer
+arg ctCallNameCmpCall count ctCallNameTokenLength
+run ctCallNameCmpCall
+bind ctCallNameCmpResult CSignedInt32 ctCallNameCmpCall
+
+call ctCallNameMatchEqCall math.equalI64
+arg ctCallNameMatchEqCall left ctCallNameCmpResult
+arg ctCallNameMatchEqCall right zeroCtStep
+run ctCallNameMatchEqCall
+bind ctCallNameMatch Bool ctCallNameMatchEqCall
+branchIf ctCallNameMatch ctInspectTarget
+branch advanceCtScan
+
+label ctInspectTarget
+call afterCtCallNameCall math.addI64
+arg afterCtCallNameCall left ctCallNameTokenLength
+arg afterCtCallNameCall right oneCtStep
+run afterCtCallNameCall
+bind afterCtCallNameOffset CSignedInt64 afterCtCallNameCall
+
+call ctTargetPtrCall pointer.offset
+arg ctTargetPtrCall base ctCallNamePointer
+arg ctTargetPtrCall offset afterCtCallNameOffset
+run ctTargetPtrCall
+bind ctTargetPointer COpaqueMemoryAddress ctTargetPtrCall
+
+call ctTargetLenCall extractTokenLength
+arg ctTargetLenCall tokenStartPointer ctTargetPointer
+run ctTargetLenCall
+bindOk ctTargetTokenLength CSignedInt64 ctTargetLenCall
+
+# Scan the target token for a `.` byte. Any dot means it's a built-in
+# namespaced primitive (math.X, c.X, pointer.X, console.X). No dot
+# means it's a user-defined operation name.
+var ctTargetByteCursor CSignedInt64 zeroCtStep
+
+label ctTargetScanLoop
+call ctTargetScanAtEndCall math.greaterThanOrEqualI64
+arg ctTargetScanAtEndCall left ctTargetByteCursor
+arg ctTargetScanAtEndCall right ctTargetTokenLength
+run ctTargetScanAtEndCall
+bind ctTargetScanAtEnd Bool ctTargetScanAtEndCall
+branchIf ctTargetScanAtEnd ctReportTrue
+
+call ctTargetByteLoadCall pointer.loadByte
+arg ctTargetByteLoadCall buffer ctTargetPointer
+arg ctTargetByteLoadCall offset ctTargetByteCursor
+run ctTargetByteLoadCall
+bind ctTargetByte I8 ctTargetByteLoadCall
+
+call ctTargetIsDotCall math.equalI64
+arg ctTargetIsDotCall left ctTargetByte
+arg ctTargetIsDotCall right ctDotByte
+run ctTargetIsDotCall
+bind ctTargetIsDot Bool ctTargetIsDotCall
+branchIf ctTargetIsDot ctReportFalse
+
+call advanceCtTargetCursorCall math.addI64
+arg advanceCtTargetCursorCall left ctTargetByteCursor
+arg advanceCtTargetCursorCall right oneCtStep
+run advanceCtTargetCursorCall
+bind nextCtTargetCursor CSignedInt64 advanceCtTargetCursorCall
+set ctTargetByteCursor nextCtTargetCursor
+branch ctTargetScanLoop
+
+label advanceCtScan
+call advanceCtCall math.addI64
+arg advanceCtCall left ctLineEndOffset
+arg advanceCtCall right oneCtStep
+run advanceCtCall
+bind nextCtCursor CSignedInt64 advanceCtCall
+set ctScanCursor nextCtCursor
+branch ctScanLoop
+
+label ctReportTrue
+var ctTrueResult Bool oneCtStep
+returnOk ctTrueResult
+
+label ctReportFalse
+var ctFalseResult Bool zeroCtStep
+returnOk ctFalseResult
+
+
 operation isNameVarInCurrentOpBody
 input isNameVarInCurrentOpBody bufferBase COpaqueMemoryAddress
 input isNameVarInCurrentOpBody bufferEndOffset CSignedInt64
@@ -3369,6 +3961,144 @@ returnOk vibTrueResult
 label vibReportFalse
 var vibFalseResult Bool zeroVibStep
 returnOk vibFalseResult
+
+
+operation isNameDeclaredAsKindPointerVar
+input isNameDeclaredAsKindPointerVar bufferBase COpaqueMemoryAddress
+input isNameDeclaredAsKindPointerVar bufferEndOffset CSignedInt64
+input isNameDeclaredAsKindPointerVar bodyStartOffset CSignedInt64
+input isNameDeclaredAsKindPointerVar candidateNamePointer COpaqueMemoryAddress
+input isNameDeclaredAsKindPointerVar candidateNameLength CSignedInt64
+output isNameDeclaredAsKindPointerVar Result Bool Void
+effect isNameDeclaredAsKindPointerVar read memory.buffer
+memory isNameDeclaredAsKindPointerVar heap no
+async isNameDeclaredAsKindPointerVar no
+purpose isNameDeclaredAsKindPointerVar "Return true iff there is a `var <name> <type> ...` line in the current op body (between bodyStartOffset and the next operation declaration) AND the type token is a byte-pointer type (CNullTerminatedByteString or COpaqueMemoryAddress)."
+invariant isNameDeclaredAsKindPointerVar "Used by `set` to choose between `store i8* …, i8**` and the default `store i64 …, i64*`."
+
+label startIsNameDeclaredAsKindPointerVar
+const onePvStep CSignedInt64 1
+const zeroPvStep CSignedInt64 0
+const newlinePvByte CSignedInt32 10
+const pvVarKeyword CNullTerminatedByteString "var "
+const pvVarKeywordLength CByteCount 4
+const pvOpKeyword CNullTerminatedByteString "operation "
+const pvOpKeywordLength CByteCount 10
+
+var pvScanCursor CSignedInt64 zeroPvStep
+set pvScanCursor bodyStartOffset
+
+label pvScanLoop
+call pvAtEndCall math.greaterThanOrEqualI64
+arg pvAtEndCall left pvScanCursor
+arg pvAtEndCall right bufferEndOffset
+run pvAtEndCall
+bind pvAtEnd Bool pvAtEndCall
+branchIf pvAtEnd pvReportFalse
+
+call pvLineStartPtrCall pointer.offset
+arg pvLineStartPtrCall base bufferBase
+arg pvLineStartPtrCall offset pvScanCursor
+run pvLineStartPtrCall
+bind pvLineStartPointer COpaqueMemoryAddress pvLineStartPtrCall
+
+call pvLineEndCall findLineEndOffset
+arg pvLineEndCall bufferBase bufferBase
+arg pvLineEndCall lineStartPointer pvLineStartPointer
+arg pvLineEndCall fileEndOffset bufferEndOffset
+arg pvLineEndCall newlineByteCode newlinePvByte
+run pvLineEndCall
+bindOk pvLineEndOffset CSignedInt64 pvLineEndCall
+
+call pvLineIsOpCall lineStartsWithKeyword
+arg pvLineIsOpCall linePointer pvLineStartPointer
+arg pvLineIsOpCall keyword pvOpKeyword
+arg pvLineIsOpCall keywordLength pvOpKeywordLength
+run pvLineIsOpCall
+bindOk pvLineIsOp Bool pvLineIsOpCall
+branchIf pvLineIsOp pvReportFalse
+
+call pvLineIsVarCall lineStartsWithKeyword
+arg pvLineIsVarCall linePointer pvLineStartPointer
+arg pvLineIsVarCall keyword pvVarKeyword
+arg pvLineIsVarCall keywordLength pvVarKeywordLength
+run pvLineIsVarCall
+bindOk pvLineIsVar Bool pvLineIsVarCall
+branchIf pvLineIsVar pvCompareName
+branch advancePvScan
+
+label pvCompareName
+call pvNamePtrCall pointer.offset
+arg pvNamePtrCall base pvLineStartPointer
+arg pvNamePtrCall offset pvVarKeywordLength
+run pvNamePtrCall
+bind pvNamePointer COpaqueMemoryAddress pvNamePtrCall
+
+call pvNameLenCall extractTokenLength
+arg pvNameLenCall tokenStartPointer pvNamePointer
+run pvNameLenCall
+bindOk pvNameTokenLength CSignedInt64 pvNameLenCall
+
+call pvNameLenMatchCall math.equalI64
+arg pvNameLenMatchCall left pvNameTokenLength
+arg pvNameLenMatchCall right candidateNameLength
+run pvNameLenMatchCall
+bind pvNameLenMatch Bool pvNameLenMatchCall
+branchIf pvNameLenMatch pvCompareBytes
+branch advancePvScan
+
+label pvCompareBytes
+call pvNameCmpCall c.strncmp
+arg pvNameCmpCall left pvNamePointer
+arg pvNameCmpCall right candidateNamePointer
+arg pvNameCmpCall count pvNameTokenLength
+run pvNameCmpCall
+bind pvNameCmpResult CSignedInt32 pvNameCmpCall
+
+call pvNameMatchEqCall math.equalI64
+arg pvNameMatchEqCall left pvNameCmpResult
+arg pvNameMatchEqCall right zeroPvStep
+run pvNameMatchEqCall
+bind pvNameMatch Bool pvNameMatchEqCall
+branchIf pvNameMatch pvCheckType
+branch advancePvScan
+
+label pvCheckType
+call afterPvNameCall math.addI64
+arg afterPvNameCall left pvNameTokenLength
+arg afterPvNameCall right onePvStep
+run afterPvNameCall
+bind afterPvNameOffset CSignedInt64 afterPvNameCall
+
+call pvTypePtrCall pointer.offset
+arg pvTypePtrCall base pvNamePointer
+arg pvTypePtrCall offset afterPvNameOffset
+run pvTypePtrCall
+bind pvTypePointer COpaqueMemoryAddress pvTypePtrCall
+
+call pvTypeIsPointerCall isTypeTokenBytePointer
+arg pvTypeIsPointerCall typeNamePointer pvTypePointer
+run pvTypeIsPointerCall
+bindOk pvTypeIsPointer Bool pvTypeIsPointerCall
+branchIf pvTypeIsPointer pvReportTrue
+branch advancePvScan
+
+label advancePvScan
+call advancePvCall math.addI64
+arg advancePvCall left pvLineEndOffset
+arg advancePvCall right onePvStep
+run advancePvCall
+bind nextPvCursor CSignedInt64 advancePvCall
+set pvScanCursor nextPvCursor
+branch pvScanLoop
+
+label pvReportTrue
+var pvTrueResult Bool onePvStep
+returnOk pvTrueResult
+
+label pvReportFalse
+var pvFalseResult Bool zeroPvStep
+returnOk pvFalseResult
 
 
 operation emitUserOperationDefinitions
@@ -3962,7 +4692,11 @@ purpose locateOperationMainBodyStart "Locate the byte offset within the source b
 invariant locateOperationMainBodyStart "Returned offset is always within [0, bufferEndOffset]."
 
 label startLocateOperationMainBodyStart
-const operationMainMarker CNullTerminatedByteString "operation main"
+# Use a newline-anchored marker so the substring search only matches a
+# line whose first six characters are `operation main` (and not a
+# `operation main` reference that appears inside a string literal or
+# comment such as the purpose strings elsewhere in the buffer).
+const operationMainMarker CNullTerminatedByteString "\noperation main\n"
 const labelKeywordPrefix CNullTerminatedByteString "label "
 const labelKeywordPrefixLength CByteCount 6
 const newlineMarkerByteCode CSignedInt32 10
@@ -3979,11 +4713,19 @@ run operationMainAbsentCall
 bind operationMainAbsent Bool operationMainAbsentCall
 branchIf operationMainAbsent operationMainMissing
 
+# strstr returns the pointer to the leading "\n". Add 1 to skip it so
+# operationMainStartOffset points at the `o` of `operation main`.
 call operationMainOffsetCall pointer.difference
 arg operationMainOffsetCall left operationMainPointer
 arg operationMainOffsetCall right bufferBase
 run operationMainOffsetCall
-bind operationMainStartOffset CSignedInt64 operationMainOffsetCall
+bind operationMainRawOffset CSignedInt64 operationMainOffsetCall
+const oneCharForward CSignedInt64 1
+call operationMainAdjustCall math.addI64
+arg operationMainAdjustCall left operationMainRawOffset
+arg operationMainAdjustCall right oneCharForward
+run operationMainAdjustCall
+bind operationMainStartOffset CSignedInt64 operationMainAdjustCall
 
 const oneOpScanStep CSignedInt64 1
 const zeroOpScanStep CSignedInt64 0
@@ -4258,7 +5000,26 @@ arg allocaVarNameLengthCall tokenStartPointer allocaVarNamePointer
 run allocaVarNameLengthCall
 bindOk allocaVarNameTokenLength CSignedInt64 allocaVarNameLengthCall
 
-# Determine type for the alloca: CFloat64 → double, else i64.
+# Determine type for the alloca: CFloat64 → double, byte-pointer
+# (CNullTerminatedByteString / COpaqueMemoryAddress) → i8*, else i64.
+# Extract the type token from the var line: skip name + space, read T.
+call allocaAfterNameOffsetCall math.addI64
+arg allocaAfterNameOffsetCall left allocaVarNameTokenLength
+arg allocaAfterNameOffsetCall right oneAllocaStep
+run allocaAfterNameOffsetCall
+bind allocaAfterNameOffset CSignedInt64 allocaAfterNameOffsetCall
+
+call allocaTypePtrCall pointer.offset
+arg allocaTypePtrCall base allocaVarNamePointer
+arg allocaTypePtrCall offset allocaAfterNameOffset
+run allocaTypePtrCall
+bind allocaTypePointer COpaqueMemoryAddress allocaTypePtrCall
+
+call allocaTypeIsPointerCall isTypeTokenBytePointer
+arg allocaTypeIsPointerCall typeNamePointer allocaTypePointer
+run allocaTypeIsPointerCall
+bindOk allocaVarIsPointer Bool allocaTypeIsPointerCall
+
 call allocaVarIsFloatCall isNameCFloat64Type
 arg allocaVarIsFloatCall bufferBase bufferBase
 arg allocaVarIsFloatCall bufferEndOffset bufferEndOffset
@@ -4266,7 +5027,9 @@ arg allocaVarIsFloatCall candidateNamePointer allocaVarNamePointer
 arg allocaVarIsFloatCall candidateNameLength allocaVarNameTokenLength
 run allocaVarIsFloatCall
 bindOk allocaVarIsFloat Bool allocaVarIsFloatCall
+
 branchIf allocaVarIsFloat emitAllocaFloatLine
+branchIf allocaVarIsPointer emitAllocaPointerLine
 branch emitAllocaIntLine
 
 label emitAllocaFloatLine
@@ -4276,6 +5039,15 @@ arg emitAllocaFloatCall format allocaFloatFormat
 arg emitAllocaFloatCall nameLen allocaVarNameTokenLength
 arg emitAllocaFloatCall namePtr allocaVarNamePointer
 run emitAllocaFloatCall
+branch advanceAllocaScanCursor
+
+label emitAllocaPointerLine
+const allocaPtrFormat CNullTerminatedByteString "  %%%.*s = alloca i8*\n"
+call emitAllocaPtrCall c.printf
+arg emitAllocaPtrCall format allocaPtrFormat
+arg emitAllocaPtrCall nameLen allocaVarNameTokenLength
+arg emitAllocaPtrCall namePtr allocaVarNamePointer
+run emitAllocaPtrCall
 branch advanceAllocaScanCursor
 
 label emitAllocaIntLine
@@ -4380,12 +5152,26 @@ var pendingCallNameStartOffset CSignedInt64 zeroVerbStep
 var pendingCallNameLength CSignedInt64 zeroVerbStep
 var pendingCallTargetStartOffset CSignedInt64 zeroVerbStep
 var pendingCallTargetLength CSignedInt64 zeroVerbStep
+# Offset of the `call X T` LINE itself (not the call name within it).
+# Used by the generic arg-rescan emitter to walk forward through the
+# subsequent `arg X K V` lines for this call regardless of how many.
+var pendingCallLineEndOffset CSignedInt64 zeroVerbStep
 var pendingCallArg1ValueStartOffset CSignedInt64 zeroVerbStep
 var pendingCallArg1ValueLength CSignedInt64 zeroVerbStep
 var pendingCallArg2ValueStartOffset CSignedInt64 zeroVerbStep
 var pendingCallArg2ValueLength CSignedInt64 zeroVerbStep
 var pendingCallArg3ValueStartOffset CSignedInt64 zeroVerbStep
 var pendingCallArg3ValueLength CSignedInt64 zeroVerbStep
+var pendingCallArg4ValueStartOffset CSignedInt64 zeroVerbStep
+var pendingCallArg4ValueLength CSignedInt64 zeroVerbStep
+var pendingCallArg5ValueStartOffset CSignedInt64 zeroVerbStep
+var pendingCallArg5ValueLength CSignedInt64 zeroVerbStep
+var pendingCallArg6ValueStartOffset CSignedInt64 zeroVerbStep
+var pendingCallArg6ValueLength CSignedInt64 zeroVerbStep
+var pendingCallArg7ValueStartOffset CSignedInt64 zeroVerbStep
+var pendingCallArg7ValueLength CSignedInt64 zeroVerbStep
+var pendingCallArg8ValueStartOffset CSignedInt64 zeroVerbStep
+var pendingCallArg8ValueLength CSignedInt64 zeroVerbStep
 var pendingCallArgCount CSignedInt64 zeroVerbStep
 
 label verbWalkerLoop
@@ -4576,8 +5362,9 @@ arg varInitRefLengthCall tokenStartPointer varInitReferencePointer
 run varInitRefLengthCall
 bindOk varInitReferenceLength CSignedInt64 varInitRefLengthCall
 
-# Determine the var's type (CFloat64 vs everything-as-i64) so the
-# alloca/store are emitted with the correct LLVM type.
+# Determine the var's type. CFloat64 → double, byte-pointer → i8*,
+# else i64. The alloca itself was pre-emitted in the entry block; here
+# we only emit the initial store with the matching type.
 call thisVarIsFloatCall isNameCFloat64Type
 arg thisVarIsFloatCall bufferBase bufferBase
 arg thisVarIsFloatCall bufferEndOffset bufferEndOffset
@@ -4585,8 +5372,93 @@ arg thisVarIsFloatCall candidateNamePointer varNamePointer
 arg thisVarIsFloatCall candidateNameLength varNameLength
 run thisVarIsFloatCall
 bindOk thisVarIsFloat Bool thisVarIsFloatCall
+
+call thisVarTypeIsPointerCall isTypeTokenBytePointer
+arg thisVarTypeIsPointerCall typeNamePointer varTypePointer
+run thisVarTypeIsPointerCall
+bindOk thisVarIsPointer Bool thisVarTypeIsPointerCall
+
 branchIf thisVarIsFloat emitFloatVarAllocaAndStore
+branchIf thisVarIsPointer emitPointerVarStore
 branch emitIntegerVarAllocaAndStore
+
+label emitPointerVarStore
+# Pointer-typed var: emit `store i8* <init>, i8** %X`. The init can
+# be either (a) a string-const name → GEP into @.sN via name lookup
+# OR (b) a literal-string `"..."` inline on the var line → look up the
+# slot via the VAR's own name (pass1 emits @.sN for each var literal).
+const ptrVarQuoteByteCode CSignedInt64 34
+call ptrVarInitFirstByteCall pointer.loadByte
+arg ptrVarInitFirstByteCall buffer varInitReferencePointer
+arg ptrVarInitFirstByteCall offset zeroVerbStep
+run ptrVarInitFirstByteCall
+bind ptrVarInitFirstByte I8 ptrVarInitFirstByteCall
+call ptrVarInitIsLiteralCall math.equalI64
+arg ptrVarInitIsLiteralCall left ptrVarInitFirstByte
+arg ptrVarInitIsLiteralCall right ptrVarQuoteByteCode
+run ptrVarInitIsLiteralCall
+bind ptrVarInitIsLiteral Bool ptrVarInitIsLiteralCall
+
+# Lookup name: literal-string init → varNamePointer; else → init ref name.
+var ptrVarLookupNamePtr COpaqueMemoryAddress varInitReferencePointer
+set ptrVarLookupNamePtr varInitReferencePointer
+var ptrVarLookupNameLen CSignedInt64 zeroVerbStep
+set ptrVarLookupNameLen varInitReferenceLength
+branchIf ptrVarInitIsLiteral useVarNameForSlotLookup
+branch slotLookupReady
+
+label useVarNameForSlotLookup
+set ptrVarLookupNamePtr varNamePointer
+set ptrVarLookupNameLen varNameLength
+branch slotLookupReady
+
+label slotLookupReady
+call ptrVarInitSlotCall findStringConstSlotByName
+arg ptrVarInitSlotCall bufferBase bufferBase
+arg ptrVarInitSlotCall bufferEndOffset bufferEndOffset
+arg ptrVarInitSlotCall targetNamePointer ptrVarLookupNamePtr
+arg ptrVarInitSlotCall targetNameLength ptrVarLookupNameLen
+run ptrVarInitSlotCall
+bindOk ptrVarInitSlot CSignedInt64 ptrVarInitSlotCall
+
+call ptrVarInitSizeCall findStringConstByteLengthByName
+arg ptrVarInitSizeCall bufferBase bufferBase
+arg ptrVarInitSizeCall bufferEndOffset bufferEndOffset
+arg ptrVarInitSizeCall targetNamePointer ptrVarLookupNamePtr
+arg ptrVarInitSizeCall targetNameLength ptrVarLookupNameLen
+run ptrVarInitSizeCall
+bindOk ptrVarInitSize CSignedInt64 ptrVarInitSizeCall
+
+call ptrVarInitIsConstCall math.greaterThanOrEqualI64
+arg ptrVarInitIsConstCall left ptrVarInitSlot
+arg ptrVarInitIsConstCall right zeroVerbStep
+run ptrVarInitIsConstCall
+bind ptrVarInitIsStrConst Bool ptrVarInitIsConstCall
+branchIf ptrVarInitIsStrConst emitPointerVarStoreFromStringConst
+branch emitPointerVarStoreNullInit
+
+label emitPointerVarStoreFromStringConst
+const ptrVarStoreFormat CNullTerminatedByteString "  store i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0), i8** %%%.*s\n"
+call emitPtrVarStoreCall c.printf
+arg emitPtrVarStoreCall format ptrVarStoreFormat
+arg emitPtrVarStoreCall a1 ptrVarInitSize
+arg emitPtrVarStoreCall a2 ptrVarInitSize
+arg emitPtrVarStoreCall s ptrVarInitSlot
+arg emitPtrVarStoreCall nameLen varNameLength
+arg emitPtrVarStoreCall namePtr varNamePointer
+run emitPtrVarStoreCall
+set blockNeedsTerminator oneFlagValue
+branch advanceVerbWalkerCursor
+
+label emitPointerVarStoreNullInit
+const ptrVarStoreNullFormat CNullTerminatedByteString "  store i8* null, i8** %%%.*s\n"
+call emitPtrVarStoreNullCall c.printf
+arg emitPtrVarStoreNullCall format ptrVarStoreNullFormat
+arg emitPtrVarStoreNullCall nameLen varNameLength
+arg emitPtrVarStoreNullCall namePtr varNamePointer
+run emitPtrVarStoreNullCall
+set blockNeedsTerminator oneFlagValue
+branch advanceVerbWalkerCursor
 
 label emitFloatVarAllocaAndStore
 # Alloca was pre-emitted into the entry block by emitAllocasForBodyVars,
@@ -4857,6 +5729,48 @@ set blockNeedsTerminator oneFlagValue
 branch advanceVerbWalkerCursor
 
 label emitSetFromConst
+# If the dest is a pointer-typed var AND the source const is a
+# string-const, emit `store i8* getelementptr ..., i8** %dest`.
+# Otherwise fall through to the integer-store path.
+call setConstDestIsPointerCall isNameDeclaredAsKindPointerVar
+arg setConstDestIsPointerCall bufferBase bufferBase
+arg setConstDestIsPointerCall bufferEndOffset bufferEndOffset
+arg setConstDestIsPointerCall bodyStartOffset operationBodyStartOffset
+arg setConstDestIsPointerCall candidateNamePointer setDestNamePointer
+arg setConstDestIsPointerCall candidateNameLength setDestNameLength
+run setConstDestIsPointerCall
+bindOk setConstDestIsPointer Bool setConstDestIsPointerCall
+branchIf setConstDestIsPointer emitSetFromConstPointer
+branch emitSetFromConstInt
+
+label emitSetFromConstPointer
+call setPtrSrcSlotCall findStringConstSlotByName
+arg setPtrSrcSlotCall bufferBase bufferBase
+arg setPtrSrcSlotCall bufferEndOffset bufferEndOffset
+arg setPtrSrcSlotCall targetNamePointer setSourceNamePointer
+arg setPtrSrcSlotCall targetNameLength setSourceNameLength
+run setPtrSrcSlotCall
+bindOk setPtrSrcSlot CSignedInt64 setPtrSrcSlotCall
+call setPtrSrcSizeCall findStringConstByteLengthByName
+arg setPtrSrcSizeCall bufferBase bufferBase
+arg setPtrSrcSizeCall bufferEndOffset bufferEndOffset
+arg setPtrSrcSizeCall targetNamePointer setSourceNamePointer
+arg setPtrSrcSizeCall targetNameLength setSourceNameLength
+run setPtrSrcSizeCall
+bindOk setPtrSrcSize CSignedInt64 setPtrSrcSizeCall
+const setFromConstPtrFormat CNullTerminatedByteString "  store i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0), i8** %%%.*s\n"
+call emitSetFromConstPtrCall c.printf
+arg emitSetFromConstPtrCall format setFromConstPtrFormat
+arg emitSetFromConstPtrCall a1 setPtrSrcSize
+arg emitSetFromConstPtrCall a2 setPtrSrcSize
+arg emitSetFromConstPtrCall s setPtrSrcSlot
+arg emitSetFromConstPtrCall destLen setDestNameLength
+arg emitSetFromConstPtrCall destPtr setDestNamePointer
+run emitSetFromConstPtrCall
+set blockNeedsTerminator oneFlagValue
+branch advanceVerbWalkerCursor
+
+label emitSetFromConstInt
 call resolveSetConstCall findConstIntegerValueByNameAfterOffset
 arg resolveSetConstCall bufferBase bufferBase
 arg resolveSetConstCall bufferEndOffset bufferEndOffset
@@ -4884,10 +5798,53 @@ arg setBindDestIsFloatCall candidateNamePointer setDestNamePointer
 arg setBindDestIsFloatCall candidateNameLength setDestNameLength
 run setBindDestIsFloatCall
 bindOk setBindDestIsFloat Bool setBindDestIsFloatCall
+
+# Look up whether dest is a pointer-typed var by scanning the body
+# for its `var <name> <type> ...` line and checking the type.
+call setDestIsPointerCall isNameDeclaredAsKindPointerVar
+arg setDestIsPointerCall bufferBase bufferBase
+arg setDestIsPointerCall bufferEndOffset bufferEndOffset
+arg setDestIsPointerCall bodyStartOffset operationBodyStartOffset
+arg setDestIsPointerCall candidateNamePointer setDestNamePointer
+arg setDestIsPointerCall candidateNameLength setDestNameLength
+run setDestIsPointerCall
+bindOk setDestIsPointer Bool setDestIsPointerCall
+
 branchIf setBindDestIsFloat emitSetFromBindFloat
+branchIf setDestIsPointer emitSetFromBindPointer
 branch emitSetFromBindInt
 
 label emitSetFromBindInt
+# If source is a Bool bind (i1) and dest is an i64 var, zext the i1
+# to i64 first. Otherwise emit a direct `store i64`.
+call setSrcIsBoolBindCall isNameBoolBindInBody
+arg setSrcIsBoolBindCall bufferBase bufferBase
+arg setSrcIsBoolBindCall bufferEndOffset bufferEndOffset
+arg setSrcIsBoolBindCall bodyStartOffset operationBodyStartOffset
+arg setSrcIsBoolBindCall candidateNamePointer setSourceNamePointer
+arg setSrcIsBoolBindCall candidateNameLength setSourceNameLength
+run setSrcIsBoolBindCall
+bindOk setSrcIsBoolBind Bool setSrcIsBoolBindCall
+branchIf setSrcIsBoolBind emitSetFromBoolBindWiden
+branch emitSetFromBindIntDirect
+
+label emitSetFromBoolBindWiden
+const setBoolWidenFmt CNullTerminatedByteString "  %%%.*s_zext = zext i1 %%%.*s to i64\n  store i64 %%%.*s_zext, i64* %%%.*s\n"
+call emitSetBoolWidenCall c.printf
+arg emitSetBoolWidenCall format setBoolWidenFmt
+arg emitSetBoolWidenCall n1 setSourceNameLength
+arg emitSetBoolWidenCall p1 setSourceNamePointer
+arg emitSetBoolWidenCall n2 setSourceNameLength
+arg emitSetBoolWidenCall p2 setSourceNamePointer
+arg emitSetBoolWidenCall n3 setSourceNameLength
+arg emitSetBoolWidenCall p3 setSourceNamePointer
+arg emitSetBoolWidenCall n4 setDestNameLength
+arg emitSetBoolWidenCall p4 setDestNamePointer
+run emitSetBoolWidenCall
+set blockNeedsTerminator oneFlagValue
+branch advanceVerbWalkerCursor
+
+label emitSetFromBindIntDirect
 const setFromBindFormat CNullTerminatedByteString "  store i64 %%%.*s, i64* %%%.*s\n"
 call emitSetFromBindCall c.printf
 arg emitSetFromBindCall format setFromBindFormat
@@ -4908,6 +5865,18 @@ arg emitSetFromBindFloatCall sourcePointerArg setSourceNamePointer
 arg emitSetFromBindFloatCall destLengthArg setDestNameLength
 arg emitSetFromBindFloatCall destPointerArg setDestNamePointer
 run emitSetFromBindFloatCall
+set blockNeedsTerminator oneFlagValue
+branch advanceVerbWalkerCursor
+
+label emitSetFromBindPointer
+const setFromBindPtrFormat CNullTerminatedByteString "  store i8* %%%.*s, i8** %%%.*s\n"
+call emitSetFromBindPtrCall c.printf
+arg emitSetFromBindPtrCall format setFromBindPtrFormat
+arg emitSetFromBindPtrCall sourceLengthArg setSourceNameLength
+arg emitSetFromBindPtrCall sourcePointerArg setSourceNamePointer
+arg emitSetFromBindPtrCall destLengthArg setDestNameLength
+arg emitSetFromBindPtrCall destPointerArg setDestNamePointer
+run emitSetFromBindPtrCall
 set blockNeedsTerminator oneFlagValue
 branch advanceVerbWalkerCursor
 
@@ -4972,6 +5941,7 @@ bindOk callTargetTokenLength CSignedInt64 callTargetLengthCall
 
 set pendingCallTargetStartOffset callTargetStartAbsolute
 set pendingCallTargetLength callTargetTokenLength
+set pendingCallLineEndOffset walkerLineEndOffset
 set pendingCallArgCount zeroVerbStep
 branch advanceVerbWalkerCursor
 
@@ -5077,6 +6047,11 @@ label fillNextArgSlot
 const oneArgSlotStep CSignedInt64 1
 const twoArgSlots CSignedInt64 2
 const threeArgSlots CSignedInt64 3
+const fourArgSlots CSignedInt64 4
+const fiveArgSlots CSignedInt64 5
+const sixArgSlots CSignedInt64 6
+const sevenArgSlots CSignedInt64 7
+const eightArgSlots CSignedInt64 8
 call slotIsFirstCall math.equalI64
 arg slotIsFirstCall left pendingCallArgCount
 arg slotIsFirstCall right zeroVerbStep
@@ -5089,7 +6064,37 @@ arg slotIsSecondCall right oneArgSlotStep
 run slotIsSecondCall
 bind slotIsSecond Bool slotIsSecondCall
 branchIf slotIsSecond fillArg2Slot
-branch fillArg3Slot
+call slotIsThirdCall math.equalI64
+arg slotIsThirdCall left pendingCallArgCount
+arg slotIsThirdCall right twoArgSlots
+run slotIsThirdCall
+bind slotIsThird Bool slotIsThirdCall
+branchIf slotIsThird fillArg3Slot
+call slotIsFourthCall math.equalI64
+arg slotIsFourthCall left pendingCallArgCount
+arg slotIsFourthCall right threeArgSlots
+run slotIsFourthCall
+bind slotIsFourth Bool slotIsFourthCall
+branchIf slotIsFourth fillArg4Slot
+call slotIsFifthCall math.equalI64
+arg slotIsFifthCall left pendingCallArgCount
+arg slotIsFifthCall right fourArgSlots
+run slotIsFifthCall
+bind slotIsFifth Bool slotIsFifthCall
+branchIf slotIsFifth fillArg5Slot
+call slotIsSixthCall math.equalI64
+arg slotIsSixthCall left pendingCallArgCount
+arg slotIsSixthCall right fiveArgSlots
+run slotIsSixthCall
+bind slotIsSixth Bool slotIsSixthCall
+branchIf slotIsSixth fillArg6Slot
+call slotIsSeventhCall math.equalI64
+arg slotIsSeventhCall left pendingCallArgCount
+arg slotIsSeventhCall right sixArgSlots
+run slotIsSeventhCall
+bind slotIsSeventh Bool slotIsSeventhCall
+branchIf slotIsSeventh fillArg7Slot
+branch fillArg8Slot
 
 label fillArg1Slot
 set pendingCallArg1ValueStartOffset argValueStartAbsolute
@@ -5107,6 +6112,36 @@ label fillArg3Slot
 set pendingCallArg3ValueStartOffset argValueStartAbsolute
 set pendingCallArg3ValueLength argValueTokenLength
 set pendingCallArgCount threeArgSlots
+branch advanceVerbWalkerCursor
+
+label fillArg4Slot
+set pendingCallArg4ValueStartOffset argValueStartAbsolute
+set pendingCallArg4ValueLength argValueTokenLength
+set pendingCallArgCount fourArgSlots
+branch advanceVerbWalkerCursor
+
+label fillArg5Slot
+set pendingCallArg5ValueStartOffset argValueStartAbsolute
+set pendingCallArg5ValueLength argValueTokenLength
+set pendingCallArgCount fiveArgSlots
+branch advanceVerbWalkerCursor
+
+label fillArg6Slot
+set pendingCallArg6ValueStartOffset argValueStartAbsolute
+set pendingCallArg6ValueLength argValueTokenLength
+set pendingCallArgCount sixArgSlots
+branch advanceVerbWalkerCursor
+
+label fillArg7Slot
+set pendingCallArg7ValueStartOffset argValueStartAbsolute
+set pendingCallArg7ValueLength argValueTokenLength
+set pendingCallArgCount sevenArgSlots
+branch advanceVerbWalkerCursor
+
+label fillArg8Slot
+set pendingCallArg8ValueStartOffset argValueStartAbsolute
+set pendingCallArg8ValueLength argValueTokenLength
+set pendingCallArgCount eightArgSlots
 branch advanceVerbWalkerCursor
 
 # ---- dispatch: run X ----
@@ -5234,6 +6269,52 @@ const suffixExit CNullTerminatedByteString "exit"
 const suffixExitLength CByteCount 4
 const suffixAtoi CNullTerminatedByteString "atoi"
 const suffixAtoiLength CByteCount 4
+const suffixStrstr CNullTerminatedByteString "strstr"
+const suffixStrstrLength CByteCount 6
+const suffixFopen CNullTerminatedByteString "fopen"
+const suffixFopenLength CByteCount 5
+const suffixFclose CNullTerminatedByteString "fclose"
+const suffixFcloseLength CByteCount 6
+const suffixFread CNullTerminatedByteString "fread"
+const suffixFreadLength CByteCount 5
+const suffixCputs CNullTerminatedByteString "puts"
+const suffixCputsLength CByteCount 4
+const suffixSnprintf CNullTerminatedByteString "snprintf"
+const suffixSnprintfLength CByteCount 8
+const suffixMemcpy CNullTerminatedByteString "memcpy"
+const suffixMemcpyLength CByteCount 6
+const suffixMemset CNullTerminatedByteString "memset"
+const suffixMemsetLength CByteCount 6
+const suffixMemcmp CNullTerminatedByteString "memcmp"
+const suffixMemcmpLength CByteCount 6
+const suffixFgets CNullTerminatedByteString "fgets"
+const suffixFgetsLength CByteCount 5
+const suffixCprintf CNullTerminatedByteString "printf"
+const suffixCprintfLength CByteCount 6
+const suffixSqrt CNullTerminatedByteString "sqrt"
+const suffixSqrtLength CByteCount 4
+const suffixSin CNullTerminatedByteString "sin"
+const suffixSinLength CByteCount 3
+const suffixCos CNullTerminatedByteString "cos"
+const suffixCosLength CByteCount 3
+const suffixExp CNullTerminatedByteString "exp"
+const suffixExpLength CByteCount 3
+const suffixLog CNullTerminatedByteString "log"
+const suffixLogLength CByteCount 3
+const suffixFabs CNullTerminatedByteString "fabs"
+const suffixFabsLength CByteCount 4
+const suffixIsnan CNullTerminatedByteString "isnan"
+const suffixIsnanLength CByteCount 5
+const suffixIsinf CNullTerminatedByteString "isinf"
+const suffixIsinfLength CByteCount 5
+const suffixIsfinite CNullTerminatedByteString "isfinite"
+const suffixIsfiniteLength CByteCount 8
+const suffixSignbit CNullTerminatedByteString "signbit"
+const suffixSignbitLength CByteCount 7
+const suffixFpclassify CNullTerminatedByteString "fpclassify"
+const suffixFpclassifyLength CByteCount 10
+const suffixCsnprintf CNullTerminatedByteString "snprintf"
+const suffixCsnprintfLength CByteCount 8
 
 # Probe ORDER matters because prefixes overlap:
 #   greaterThanOrEqual ⊃ greaterThan      -> probe GTE first
@@ -5595,6 +6676,226 @@ arg probeIsAtoiCall keywordLength suffixAtoiLength
 run probeIsAtoiCall
 bindOk probeIsAtoi Bool probeIsAtoiCall
 branchIf probeIsAtoi emitAtoiRun
+branch probeStrstr
+
+label probeStrstr
+call probeIsStrstrCall lineStartsWithKeyword
+arg probeIsStrstrCall linePointer methodSuffixPointer
+arg probeIsStrstrCall keyword suffixStrstr
+arg probeIsStrstrCall keywordLength suffixStrstrLength
+run probeIsStrstrCall
+bindOk probeIsStrstr Bool probeIsStrstrCall
+branchIf probeIsStrstr emitStrstrRun
+branch probeFopen
+
+label probeFopen
+call probeIsFopenCall lineStartsWithKeyword
+arg probeIsFopenCall linePointer methodSuffixPointer
+arg probeIsFopenCall keyword suffixFopen
+arg probeIsFopenCall keywordLength suffixFopenLength
+run probeIsFopenCall
+bindOk probeIsFopen Bool probeIsFopenCall
+branchIf probeIsFopen emitFopenRun
+branch probeFclose
+
+label probeFclose
+call probeIsFcloseCall lineStartsWithKeyword
+arg probeIsFcloseCall linePointer methodSuffixPointer
+arg probeIsFcloseCall keyword suffixFclose
+arg probeIsFcloseCall keywordLength suffixFcloseLength
+run probeIsFcloseCall
+bindOk probeIsFclose Bool probeIsFcloseCall
+branchIf probeIsFclose emitFcloseRun
+branch probeFread
+
+label probeFread
+call probeIsFreadCall lineStartsWithKeyword
+arg probeIsFreadCall linePointer methodSuffixPointer
+arg probeIsFreadCall keyword suffixFread
+arg probeIsFreadCall keywordLength suffixFreadLength
+run probeIsFreadCall
+bindOk probeIsFread Bool probeIsFreadCall
+branchIf probeIsFread emitFreadRun
+branch probeCputs
+
+label probeCputs
+call probeIsCputsCall lineStartsWithKeyword
+arg probeIsCputsCall linePointer methodSuffixPointer
+arg probeIsCputsCall keyword suffixCputs
+arg probeIsCputsCall keywordLength suffixCputsLength
+run probeIsCputsCall
+bindOk probeIsCputs Bool probeIsCputsCall
+branchIf probeIsCputs emitCputsRun
+branch probeMemcpy
+
+label probeMemcpy
+call probeIsMemcpyCall lineStartsWithKeyword
+arg probeIsMemcpyCall linePointer methodSuffixPointer
+arg probeIsMemcpyCall keyword suffixMemcpy
+arg probeIsMemcpyCall keywordLength suffixMemcpyLength
+run probeIsMemcpyCall
+bindOk probeIsMemcpy Bool probeIsMemcpyCall
+branchIf probeIsMemcpy emitMemcpyRun
+branch probeMemset
+
+label probeMemset
+call probeIsMemsetCall lineStartsWithKeyword
+arg probeIsMemsetCall linePointer methodSuffixPointer
+arg probeIsMemsetCall keyword suffixMemset
+arg probeIsMemsetCall keywordLength suffixMemsetLength
+run probeIsMemsetCall
+bindOk probeIsMemset Bool probeIsMemsetCall
+branchIf probeIsMemset emitMemsetRun
+branch probeMemcmp
+
+label probeMemcmp
+call probeIsMemcmpCall lineStartsWithKeyword
+arg probeIsMemcmpCall linePointer methodSuffixPointer
+arg probeIsMemcmpCall keyword suffixMemcmp
+arg probeIsMemcmpCall keywordLength suffixMemcmpLength
+run probeIsMemcmpCall
+bindOk probeIsMemcmp Bool probeIsMemcmpCall
+branchIf probeIsMemcmp emitMemcmpRun
+branch probeFgets
+
+label probeFgets
+call probeIsFgetsCall lineStartsWithKeyword
+arg probeIsFgetsCall linePointer methodSuffixPointer
+arg probeIsFgetsCall keyword suffixFgets
+arg probeIsFgetsCall keywordLength suffixFgetsLength
+run probeIsFgetsCall
+bindOk probeIsFgets Bool probeIsFgetsCall
+branchIf probeIsFgets emitFgetsRun
+branch probeCprintf
+
+label probeCprintf
+call probeIsCprintfCall lineStartsWithKeyword
+arg probeIsCprintfCall linePointer methodSuffixPointer
+arg probeIsCprintfCall keyword suffixCprintf
+arg probeIsCprintfCall keywordLength suffixCprintfLength
+run probeIsCprintfCall
+bindOk probeIsCprintf Bool probeIsCprintfCall
+branchIf probeIsCprintf emitCprintfRun
+branch probeSqrt
+
+label probeSqrt
+call probeIsSqrtCall lineStartsWithKeyword
+arg probeIsSqrtCall linePointer methodSuffixPointer
+arg probeIsSqrtCall keyword suffixSqrt
+arg probeIsSqrtCall keywordLength suffixSqrtLength
+run probeIsSqrtCall
+bindOk probeIsSqrt Bool probeIsSqrtCall
+branchIf probeIsSqrt emitSqrtRun
+branch probeSin
+
+label probeSin
+call probeIsSinCall lineStartsWithKeyword
+arg probeIsSinCall linePointer methodSuffixPointer
+arg probeIsSinCall keyword suffixSin
+arg probeIsSinCall keywordLength suffixSinLength
+run probeIsSinCall
+bindOk probeIsSin Bool probeIsSinCall
+branchIf probeIsSin emitSinRun
+branch probeCos
+
+label probeCos
+call probeIsCosCall lineStartsWithKeyword
+arg probeIsCosCall linePointer methodSuffixPointer
+arg probeIsCosCall keyword suffixCos
+arg probeIsCosCall keywordLength suffixCosLength
+run probeIsCosCall
+bindOk probeIsCos Bool probeIsCosCall
+branchIf probeIsCos emitCosRun
+branch probeExp
+
+label probeExp
+call probeIsExpCall lineStartsWithKeyword
+arg probeIsExpCall linePointer methodSuffixPointer
+arg probeIsExpCall keyword suffixExp
+arg probeIsExpCall keywordLength suffixExpLength
+run probeIsExpCall
+bindOk probeIsExp Bool probeIsExpCall
+branchIf probeIsExp emitExpRun
+branch probeLog
+
+label probeLog
+call probeIsLogCall lineStartsWithKeyword
+arg probeIsLogCall linePointer methodSuffixPointer
+arg probeIsLogCall keyword suffixLog
+arg probeIsLogCall keywordLength suffixLogLength
+run probeIsLogCall
+bindOk probeIsLog Bool probeIsLogCall
+branchIf probeIsLog emitLogRun
+branch probeFabs
+
+label probeFabs
+call probeIsFabsCall lineStartsWithKeyword
+arg probeIsFabsCall linePointer methodSuffixPointer
+arg probeIsFabsCall keyword suffixFabs
+arg probeIsFabsCall keywordLength suffixFabsLength
+run probeIsFabsCall
+bindOk probeIsFabs Bool probeIsFabsCall
+branchIf probeIsFabs emitFabsRun
+branch probeIsnan
+
+label probeIsnan
+call probeIsIsnanCall lineStartsWithKeyword
+arg probeIsIsnanCall linePointer methodSuffixPointer
+arg probeIsIsnanCall keyword suffixIsnan
+arg probeIsIsnanCall keywordLength suffixIsnanLength
+run probeIsIsnanCall
+bindOk probeIsIsnan Bool probeIsIsnanCall
+branchIf probeIsIsnan emitIsnanRun
+branch probeIsinf
+
+label probeIsinf
+call probeIsIsinfCall lineStartsWithKeyword
+arg probeIsIsinfCall linePointer methodSuffixPointer
+arg probeIsIsinfCall keyword suffixIsinf
+arg probeIsIsinfCall keywordLength suffixIsinfLength
+run probeIsIsinfCall
+bindOk probeIsIsinf Bool probeIsIsinfCall
+branchIf probeIsIsinf emitIsinfRun
+branch probeIsfinite
+
+label probeIsfinite
+call probeIsIsfiniteCall lineStartsWithKeyword
+arg probeIsIsfiniteCall linePointer methodSuffixPointer
+arg probeIsIsfiniteCall keyword suffixIsfinite
+arg probeIsIsfiniteCall keywordLength suffixIsfiniteLength
+run probeIsIsfiniteCall
+bindOk probeIsIsfinite Bool probeIsIsfiniteCall
+branchIf probeIsIsfinite emitIsfiniteRun
+branch probeSignbit
+
+label probeSignbit
+call probeIsSignbitCall lineStartsWithKeyword
+arg probeIsSignbitCall linePointer methodSuffixPointer
+arg probeIsSignbitCall keyword suffixSignbit
+arg probeIsSignbitCall keywordLength suffixSignbitLength
+run probeIsSignbitCall
+bindOk probeIsSignbit Bool probeIsSignbitCall
+branchIf probeIsSignbit emitSignbitRun
+branch probeFpclassify
+
+label probeFpclassify
+call probeIsFpclassifyCall lineStartsWithKeyword
+arg probeIsFpclassifyCall linePointer methodSuffixPointer
+arg probeIsFpclassifyCall keyword suffixFpclassify
+arg probeIsFpclassifyCall keywordLength suffixFpclassifyLength
+run probeIsFpclassifyCall
+bindOk probeIsFpclassify Bool probeIsFpclassifyCall
+branchIf probeIsFpclassify emitFpclassifyRun
+branch probeCsnprintf
+
+label probeCsnprintf
+call probeIsCsnprintfCall lineStartsWithKeyword
+arg probeIsCsnprintfCall linePointer methodSuffixPointer
+arg probeIsCsnprintfCall keyword suffixCsnprintf
+arg probeIsCsnprintfCall keywordLength suffixCsnprintfLength
+run probeIsCsnprintfCall
+bindOk probeIsCsnprintf Bool probeIsCsnprintfCall
+branchIf probeIsCsnprintf emitCsnprintfRun
 branch probeGreaterThanOrEqual
 
 label probeGreaterThanOrEqual
@@ -5907,11 +7208,179 @@ arg userOpHasTwoArgsCall right userOpTwoArgsThreshold
 run userOpHasTwoArgsCall
 bind userOpHasTwoArgs Bool userOpHasTwoArgsCall
 
+# Threshold flags for slots 4-8. Each slot is "present" when the caller
+# provided at least N args.
+const userOpFourArgsThreshold CSignedInt64 4
+call userOpHasFourArgsCall math.greaterThanOrEqualI64
+arg userOpHasFourArgsCall left pendingCallArgCount
+arg userOpHasFourArgsCall right userOpFourArgsThreshold
+run userOpHasFourArgsCall
+bind userOpHasFourArgs Bool userOpHasFourArgsCall
+
+const userOpFiveArgsThreshold CSignedInt64 5
+call userOpHasFiveArgsCall math.greaterThanOrEqualI64
+arg userOpHasFiveArgsCall left pendingCallArgCount
+arg userOpHasFiveArgsCall right userOpFiveArgsThreshold
+run userOpHasFiveArgsCall
+bind userOpHasFiveArgs Bool userOpHasFiveArgsCall
+
+const userOpSixArgsThreshold CSignedInt64 6
+call userOpHasSixArgsCall math.greaterThanOrEqualI64
+arg userOpHasSixArgsCall left pendingCallArgCount
+arg userOpHasSixArgsCall right userOpSixArgsThreshold
+run userOpHasSixArgsCall
+bind userOpHasSixArgs Bool userOpHasSixArgsCall
+
+const userOpSevenArgsThreshold CSignedInt64 7
+call userOpHasSevenArgsCall math.greaterThanOrEqualI64
+arg userOpHasSevenArgsCall left pendingCallArgCount
+arg userOpHasSevenArgsCall right userOpSevenArgsThreshold
+run userOpHasSevenArgsCall
+bind userOpHasSevenArgs Bool userOpHasSevenArgsCall
+
+const userOpEightArgsThreshold CSignedInt64 8
+call userOpHasEightArgsCall math.greaterThanOrEqualI64
+arg userOpHasEightArgsCall left pendingCallArgCount
+arg userOpHasEightArgsCall right userOpEightArgsThreshold
+run userOpHasEightArgsCall
+bind userOpHasEightArgs Bool userOpHasEightArgsCall
+
+# Per-slot pointer flags for slots 4-8 (callee's Nth param type).
+const userOpFourthParamIndex CSignedInt64 3
+call userOpCalleeFourthParamIsPointerCall doesOperationNthParamResolveToPointer
+arg userOpCalleeFourthParamIsPointerCall bufferBase bufferBase
+arg userOpCalleeFourthParamIsPointerCall bufferEndOffset bufferEndOffset
+arg userOpCalleeFourthParamIsPointerCall opNamePointer runTargetPointer
+arg userOpCalleeFourthParamIsPointerCall opNameLength pendingCallTargetLength
+arg userOpCalleeFourthParamIsPointerCall paramIndex userOpFourthParamIndex
+run userOpCalleeFourthParamIsPointerCall
+bindOk userOpCalleeFourthParamIsPointer Bool userOpCalleeFourthParamIsPointerCall
+
+const userOpFifthParamIndex CSignedInt64 4
+call userOpCalleeFifthParamIsPointerCall doesOperationNthParamResolveToPointer
+arg userOpCalleeFifthParamIsPointerCall bufferBase bufferBase
+arg userOpCalleeFifthParamIsPointerCall bufferEndOffset bufferEndOffset
+arg userOpCalleeFifthParamIsPointerCall opNamePointer runTargetPointer
+arg userOpCalleeFifthParamIsPointerCall opNameLength pendingCallTargetLength
+arg userOpCalleeFifthParamIsPointerCall paramIndex userOpFifthParamIndex
+run userOpCalleeFifthParamIsPointerCall
+bindOk userOpCalleeFifthParamIsPointer Bool userOpCalleeFifthParamIsPointerCall
+
+const userOpSixthParamIndex CSignedInt64 5
+call userOpCalleeSixthParamIsPointerCall doesOperationNthParamResolveToPointer
+arg userOpCalleeSixthParamIsPointerCall bufferBase bufferBase
+arg userOpCalleeSixthParamIsPointerCall bufferEndOffset bufferEndOffset
+arg userOpCalleeSixthParamIsPointerCall opNamePointer runTargetPointer
+arg userOpCalleeSixthParamIsPointerCall opNameLength pendingCallTargetLength
+arg userOpCalleeSixthParamIsPointerCall paramIndex userOpSixthParamIndex
+run userOpCalleeSixthParamIsPointerCall
+bindOk userOpCalleeSixthParamIsPointer Bool userOpCalleeSixthParamIsPointerCall
+
+const userOpSeventhParamIndex CSignedInt64 6
+call userOpCalleeSeventhParamIsPointerCall doesOperationNthParamResolveToPointer
+arg userOpCalleeSeventhParamIsPointerCall bufferBase bufferBase
+arg userOpCalleeSeventhParamIsPointerCall bufferEndOffset bufferEndOffset
+arg userOpCalleeSeventhParamIsPointerCall opNamePointer runTargetPointer
+arg userOpCalleeSeventhParamIsPointerCall opNameLength pendingCallTargetLength
+arg userOpCalleeSeventhParamIsPointerCall paramIndex userOpSeventhParamIndex
+run userOpCalleeSeventhParamIsPointerCall
+bindOk userOpCalleeSeventhParamIsPointer Bool userOpCalleeSeventhParamIsPointerCall
+
+const userOpEighthParamIndex CSignedInt64 7
+call userOpCalleeEighthParamIsPointerCall doesOperationNthParamResolveToPointer
+arg userOpCalleeEighthParamIsPointerCall bufferBase bufferBase
+arg userOpCalleeEighthParamIsPointerCall bufferEndOffset bufferEndOffset
+arg userOpCalleeEighthParamIsPointerCall opNamePointer runTargetPointer
+arg userOpCalleeEighthParamIsPointerCall opNameLength pendingCallTargetLength
+arg userOpCalleeEighthParamIsPointerCall paramIndex userOpEighthParamIndex
+run userOpCalleeEighthParamIsPointerCall
+bindOk userOpCalleeEighthParamIsPointer Bool userOpCalleeEighthParamIsPointerCall
+
+# Compute pointers from offsets for slots 4-8 (used during operand
+# emission). Always classify so the SSA dominance is clean even when
+# the call has fewer args.
+call userOpArg4PtrCall pointer.offset
+arg userOpArg4PtrCall base bufferBase
+arg userOpArg4PtrCall offset pendingCallArg4ValueStartOffset
+run userOpArg4PtrCall
+bind userOpArg4Pointer COpaqueMemoryAddress userOpArg4PtrCall
+
+call userOpArg5PtrCall pointer.offset
+arg userOpArg5PtrCall base bufferBase
+arg userOpArg5PtrCall offset pendingCallArg5ValueStartOffset
+run userOpArg5PtrCall
+bind userOpArg5Pointer COpaqueMemoryAddress userOpArg5PtrCall
+
+call userOpArg6PtrCall pointer.offset
+arg userOpArg6PtrCall base bufferBase
+arg userOpArg6PtrCall offset pendingCallArg6ValueStartOffset
+run userOpArg6PtrCall
+bind userOpArg6Pointer COpaqueMemoryAddress userOpArg6PtrCall
+
+call userOpArg7PtrCall pointer.offset
+arg userOpArg7PtrCall base bufferBase
+arg userOpArg7PtrCall offset pendingCallArg7ValueStartOffset
+run userOpArg7PtrCall
+bind userOpArg7Pointer COpaqueMemoryAddress userOpArg7PtrCall
+
+call userOpArg8PtrCall pointer.offset
+arg userOpArg8PtrCall base bufferBase
+arg userOpArg8PtrCall offset pendingCallArg8ValueStartOffset
+run userOpArg8PtrCall
+bind userOpArg8Pointer COpaqueMemoryAddress userOpArg8PtrCall
+
+# Var classification for slots 4-8 (op-scoped).
+call userOpArg4IsVarCall isNameVarInCurrentOpBody
+arg userOpArg4IsVarCall bufferBase bufferBase
+arg userOpArg4IsVarCall bufferEndOffset bufferEndOffset
+arg userOpArg4IsVarCall bodyStartOffset operationBodyStartOffset
+arg userOpArg4IsVarCall candidateNamePointer userOpArg4Pointer
+arg userOpArg4IsVarCall candidateNameLength pendingCallArg4ValueLength
+run userOpArg4IsVarCall
+bindOk userOpArg4IsVar Bool userOpArg4IsVarCall
+
+call userOpArg5IsVarCall isNameVarInCurrentOpBody
+arg userOpArg5IsVarCall bufferBase bufferBase
+arg userOpArg5IsVarCall bufferEndOffset bufferEndOffset
+arg userOpArg5IsVarCall bodyStartOffset operationBodyStartOffset
+arg userOpArg5IsVarCall candidateNamePointer userOpArg5Pointer
+arg userOpArg5IsVarCall candidateNameLength pendingCallArg5ValueLength
+run userOpArg5IsVarCall
+bindOk userOpArg5IsVar Bool userOpArg5IsVarCall
+
+call userOpArg6IsVarCall isNameVarInCurrentOpBody
+arg userOpArg6IsVarCall bufferBase bufferBase
+arg userOpArg6IsVarCall bufferEndOffset bufferEndOffset
+arg userOpArg6IsVarCall bodyStartOffset operationBodyStartOffset
+arg userOpArg6IsVarCall candidateNamePointer userOpArg6Pointer
+arg userOpArg6IsVarCall candidateNameLength pendingCallArg6ValueLength
+run userOpArg6IsVarCall
+bindOk userOpArg6IsVar Bool userOpArg6IsVarCall
+
+call userOpArg7IsVarCall isNameVarInCurrentOpBody
+arg userOpArg7IsVarCall bufferBase bufferBase
+arg userOpArg7IsVarCall bufferEndOffset bufferEndOffset
+arg userOpArg7IsVarCall bodyStartOffset operationBodyStartOffset
+arg userOpArg7IsVarCall candidateNamePointer userOpArg7Pointer
+arg userOpArg7IsVarCall candidateNameLength pendingCallArg7ValueLength
+run userOpArg7IsVarCall
+bindOk userOpArg7IsVar Bool userOpArg7IsVarCall
+
+call userOpArg8IsVarCall isNameVarInCurrentOpBody
+arg userOpArg8IsVarCall bufferBase bufferBase
+arg userOpArg8IsVarCall bufferEndOffset bufferEndOffset
+arg userOpArg8IsVarCall bodyStartOffset operationBodyStartOffset
+arg userOpArg8IsVarCall candidateNamePointer userOpArg8Pointer
+arg userOpArg8IsVarCall candidateNameLength pendingCallArg8ValueLength
+run userOpArg8IsVarCall
+bindOk userOpArg8IsVar Bool userOpArg8IsVarCall
+
 branchIf userOpArg1IsVar emitUserOpArg1Load
 branch checkUserOpArg2LoadNeed
 
 label emitUserOpArg1Load
 branchIf userOpCalleeReturnIsFloat emitUserOpArg1LoadDouble
+branchIf userOpCalleeFirstParamIsPointer emitUserOpArg1LoadPointer
 branch emitUserOpArg1LoadInt
 
 label emitUserOpArg1LoadDouble
@@ -5923,6 +7392,19 @@ arg userOpArg1LoadDoubleCall callPtr userOpCallNamePointer
 arg userOpArg1LoadDoubleCall argLen pendingCallArg1ValueLength
 arg userOpArg1LoadDoubleCall argPtr userOpArg1Pointer
 run userOpArg1LoadDoubleCall
+branch checkUserOpArg2LoadNeed
+
+label emitUserOpArg1LoadPointer
+# Callee expects i8*; the var holds i8* (alloca i8*). Emit
+# `%X_arg1 = load i8*, i8** %var`.
+const userOpArg1LoadPtrFormat CNullTerminatedByteString "  %%%.*s_arg1 = load i8*, i8** %%%.*s\n"
+call userOpArg1LoadPtrCall c.printf
+arg userOpArg1LoadPtrCall format userOpArg1LoadPtrFormat
+arg userOpArg1LoadPtrCall callLen pendingCallNameLength
+arg userOpArg1LoadPtrCall callPtr userOpCallNamePointer
+arg userOpArg1LoadPtrCall argLen pendingCallArg1ValueLength
+arg userOpArg1LoadPtrCall argPtr userOpArg1Pointer
+run userOpArg1LoadPtrCall
 branch checkUserOpArg2LoadNeed
 
 label emitUserOpArg1LoadInt
@@ -5940,7 +7422,7 @@ label checkUserOpArg2LoadNeed
 # Only emit a load for arg2 if (a) there are two args AND (b) arg2
 # is a var.
 branchIf userOpHasTwoArgs maybeEmitUserOpArg2Load
-branch userOpEmitCallPrefix
+branch checkUserOpArg3LoadNeed
 
 label maybeEmitUserOpArg2Load
 branchIf userOpArg2IsVar emitUserOpArg2Load
@@ -5959,11 +7441,11 @@ branch checkUserOpArg3LoadNeed
 
 label checkUserOpArg3LoadNeed
 branchIf userOpHasThreeArgs maybeEmitUserOpArg3Load
-branch userOpEmitCallPrefix
+branch checkUserOpArg4LoadNeed
 
 label maybeEmitUserOpArg3Load
 branchIf userOpArg3IsVar emitUserOpArg3Load
-branch userOpEmitCallPrefix
+branch checkUserOpArg4LoadNeed
 
 label emitUserOpArg3Load
 const userOpArg3LoadFormat CNullTerminatedByteString "  %%%.*s_arg3 = load i64, i64* %%%.*s\n"
@@ -5974,6 +7456,91 @@ arg userOpArg3LoadEmissionCall callPtr userOpCallNamePointer
 arg userOpArg3LoadEmissionCall argLen pendingCallArg3ValueLength
 arg userOpArg3LoadEmissionCall argPtr userOpArg3Pointer
 run userOpArg3LoadEmissionCall
+branch checkUserOpArg4LoadNeed
+
+label checkUserOpArg4LoadNeed
+branchIf userOpHasFourArgs maybeEmitUserOpArg4Load
+branch userOpEmitCallPrefix
+label maybeEmitUserOpArg4Load
+branchIf userOpArg4IsVar emitUserOpArg4Load
+branch checkUserOpArg5LoadNeed
+label emitUserOpArg4Load
+const userOpArg4LoadFormat CNullTerminatedByteString "  %%%.*s_arg4 = load i64, i64* %%%.*s\n"
+call userOpArg4LoadEmissionCall c.printf
+arg userOpArg4LoadEmissionCall format userOpArg4LoadFormat
+arg userOpArg4LoadEmissionCall callLen pendingCallNameLength
+arg userOpArg4LoadEmissionCall callPtr userOpCallNamePointer
+arg userOpArg4LoadEmissionCall argLen pendingCallArg4ValueLength
+arg userOpArg4LoadEmissionCall argPtr userOpArg4Pointer
+run userOpArg4LoadEmissionCall
+branch checkUserOpArg5LoadNeed
+
+label checkUserOpArg5LoadNeed
+branchIf userOpHasFiveArgs maybeEmitUserOpArg5Load
+branch userOpEmitCallPrefix
+label maybeEmitUserOpArg5Load
+branchIf userOpArg5IsVar emitUserOpArg5Load
+branch checkUserOpArg6LoadNeed
+label emitUserOpArg5Load
+const userOpArg5LoadFormat CNullTerminatedByteString "  %%%.*s_arg5 = load i64, i64* %%%.*s\n"
+call userOpArg5LoadEmissionCall c.printf
+arg userOpArg5LoadEmissionCall format userOpArg5LoadFormat
+arg userOpArg5LoadEmissionCall callLen pendingCallNameLength
+arg userOpArg5LoadEmissionCall callPtr userOpCallNamePointer
+arg userOpArg5LoadEmissionCall argLen pendingCallArg5ValueLength
+arg userOpArg5LoadEmissionCall argPtr userOpArg5Pointer
+run userOpArg5LoadEmissionCall
+branch checkUserOpArg6LoadNeed
+
+label checkUserOpArg6LoadNeed
+branchIf userOpHasSixArgs maybeEmitUserOpArg6Load
+branch userOpEmitCallPrefix
+label maybeEmitUserOpArg6Load
+branchIf userOpArg6IsVar emitUserOpArg6Load
+branch checkUserOpArg7LoadNeed
+label emitUserOpArg6Load
+const userOpArg6LoadFormat CNullTerminatedByteString "  %%%.*s_arg6 = load i64, i64* %%%.*s\n"
+call userOpArg6LoadEmissionCall c.printf
+arg userOpArg6LoadEmissionCall format userOpArg6LoadFormat
+arg userOpArg6LoadEmissionCall callLen pendingCallNameLength
+arg userOpArg6LoadEmissionCall callPtr userOpCallNamePointer
+arg userOpArg6LoadEmissionCall argLen pendingCallArg6ValueLength
+arg userOpArg6LoadEmissionCall argPtr userOpArg6Pointer
+run userOpArg6LoadEmissionCall
+branch checkUserOpArg7LoadNeed
+
+label checkUserOpArg7LoadNeed
+branchIf userOpHasSevenArgs maybeEmitUserOpArg7Load
+branch userOpEmitCallPrefix
+label maybeEmitUserOpArg7Load
+branchIf userOpArg7IsVar emitUserOpArg7Load
+branch checkUserOpArg8LoadNeed
+label emitUserOpArg7Load
+const userOpArg7LoadFormat CNullTerminatedByteString "  %%%.*s_arg7 = load i64, i64* %%%.*s\n"
+call userOpArg7LoadEmissionCall c.printf
+arg userOpArg7LoadEmissionCall format userOpArg7LoadFormat
+arg userOpArg7LoadEmissionCall callLen pendingCallNameLength
+arg userOpArg7LoadEmissionCall callPtr userOpCallNamePointer
+arg userOpArg7LoadEmissionCall argLen pendingCallArg7ValueLength
+arg userOpArg7LoadEmissionCall argPtr userOpArg7Pointer
+run userOpArg7LoadEmissionCall
+branch checkUserOpArg8LoadNeed
+
+label checkUserOpArg8LoadNeed
+branchIf userOpHasEightArgs maybeEmitUserOpArg8Load
+branch userOpEmitCallPrefix
+label maybeEmitUserOpArg8Load
+branchIf userOpArg8IsVar emitUserOpArg8Load
+branch userOpEmitCallPrefix
+label emitUserOpArg8Load
+const userOpArg8LoadFormat CNullTerminatedByteString "  %%%.*s_arg8 = load i64, i64* %%%.*s\n"
+call userOpArg8LoadEmissionCall c.printf
+arg userOpArg8LoadEmissionCall format userOpArg8LoadFormat
+arg userOpArg8LoadEmissionCall callLen pendingCallNameLength
+arg userOpArg8LoadEmissionCall callPtr userOpCallNamePointer
+arg userOpArg8LoadEmissionCall argLen pendingCallArg8ValueLength
+arg userOpArg8LoadEmissionCall argPtr userOpArg8Pointer
+run userOpArg8LoadEmissionCall
 branch userOpEmitCallPrefix
 
 label userOpEmitCallPrefix
@@ -6057,7 +7624,19 @@ run userOpArg1IsStringConstCall
 bind userOpArg1IsStringConst Bool userOpArg1IsStringConstCall
 
 branchIf userOpArg1IsStringConst emitUserOpArg1OperandPointerStringConst
+branchIf userOpArg1IsVar emitUserOpArg1OperandPointerVar
 branch emitUserOpArg1OperandPointerBind
+
+label emitUserOpArg1OperandPointerVar
+# Var holds i8*; the pre-call load placed it into %X_arg1 (the var-load
+# pointer path). Operand simply references that loaded SSA.
+const userOpArg1OperandPtrVarFormat CNullTerminatedByteString "i8* %%%.*s_arg1"
+call emitUserOpArg1PtrVarCall c.printf
+arg emitUserOpArg1PtrVarCall format userOpArg1OperandPtrVarFormat
+arg emitUserOpArg1PtrVarCall callLen pendingCallNameLength
+arg emitUserOpArg1PtrVarCall callPtr userOpCallNamePointer
+run emitUserOpArg1PtrVarCall
+branch checkUserOpArg2Operand
 
 label emitUserOpArg1OperandPointerStringConst
 const userOpArg1PointerStringConstFormat CNullTerminatedByteString "i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0)"
@@ -6382,7 +7961,7 @@ arg emitUserOpArg3PtrBindCall format userOpArg3PointerBindFormat
 arg emitUserOpArg3PtrBindCall argLen pendingCallArg3ValueLength
 arg emitUserOpArg3PtrBindCall argPtr userOpArg3Pointer
 run emitUserOpArg3PtrBindCall
-branch emitUserOpCallSuffix
+branch checkUserOpArg4Operand
 
 label emitUserOpArg3OperandVar
 const userOpArg3OperandVarFormat CNullTerminatedByteString "i64 %%%.*s_arg3"
@@ -6391,7 +7970,7 @@ arg userOpArg3OperandVarEmissionCall format userOpArg3OperandVarFormat
 arg userOpArg3OperandVarEmissionCall callLen pendingCallNameLength
 arg userOpArg3OperandVarEmissionCall callPtr userOpCallNamePointer
 run userOpArg3OperandVarEmissionCall
-branch emitUserOpCallSuffix
+branch checkUserOpArg4Operand
 
 label emitUserOpArg3OperandConst
 call resolveUserOpArg3ConstCall findConstIntegerValueByNameAfterOffset
@@ -6407,7 +7986,7 @@ call userOpArg3OperandConstEmissionCall c.printf
 arg userOpArg3OperandConstEmissionCall format userOpArg3OperandConstFormat
 arg userOpArg3OperandConstEmissionCall val userOpArg3ConstValue
 run userOpArg3OperandConstEmissionCall
-branch emitUserOpCallSuffix
+branch checkUserOpArg4Operand
 
 label emitUserOpArg3OperandBind
 const userOpArg3OperandBindFormat CNullTerminatedByteString "i64 %%%.*s"
@@ -6416,6 +7995,441 @@ arg userOpArg3OperandBindEmissionCall format userOpArg3OperandBindFormat
 arg userOpArg3OperandBindEmissionCall argLen pendingCallArg3ValueLength
 arg userOpArg3OperandBindEmissionCall argPtr userOpArg3Pointer
 run userOpArg3OperandBindEmissionCall
+branch checkUserOpArg4Operand
+
+# ---- slots 4-8: simplified emission (bind/const detection, pointer
+# typing per callee param type). Var arg support is omitted at these
+# slots — programs that need it are rare and we'll revisit. Const is
+# detected via isNameDeclaredAsKind; everything else falls through
+# to the bind path. ----
+
+label checkUserOpArg4Operand
+branchIf userOpHasFourArgs emitUserOpArg4Comma
+branch checkUserOpArg5Operand
+
+label emitUserOpArg4Comma
+const userOpArg4CommaText CNullTerminatedByteString ", "
+call userOpArg4CommaCall c.printf
+arg userOpArg4CommaCall format userOpArg4CommaText
+run userOpArg4CommaCall
+call userOpArg4IsConstCall isNameDeclaredAsKind
+arg userOpArg4IsConstCall bufferBase bufferBase
+arg userOpArg4IsConstCall bufferEndOffset bufferEndOffset
+arg userOpArg4IsConstCall targetNamePointer userOpArg4Pointer
+arg userOpArg4IsConstCall targetNameLength pendingCallArg4ValueLength
+arg userOpArg4IsConstCall declarationVerb userOpConstDeclVerb
+arg userOpArg4IsConstCall declarationVerbLength userOpConstDeclVerbLength
+run userOpArg4IsConstCall
+bindOk userOpArg4IsConst Bool userOpArg4IsConstCall
+branchIf userOpCalleeFourthParamIsPointer emitUserOpArg4OperandPointer
+branchIf userOpArg4IsVar emitUserOpArg4OperandVar
+branchIf userOpArg4IsConst emitUserOpArg4OperandConst
+branch emitUserOpArg4OperandBind
+
+label emitUserOpArg4OperandVar
+const userOpArg4OperandVarFormat CNullTerminatedByteString "i64 %%%.*s_arg4"
+call userOpArg4OperandVarCall c.printf
+arg userOpArg4OperandVarCall format userOpArg4OperandVarFormat
+arg userOpArg4OperandVarCall callLen pendingCallNameLength
+arg userOpArg4OperandVarCall callPtr userOpCallNamePointer
+run userOpArg4OperandVarCall
+branch checkUserOpArg5Operand
+
+label emitUserOpArg4OperandPointer
+call userOpArg4SlotCall findStringConstSlotByName
+arg userOpArg4SlotCall bufferBase bufferBase
+arg userOpArg4SlotCall bufferEndOffset bufferEndOffset
+arg userOpArg4SlotCall targetNamePointer userOpArg4Pointer
+arg userOpArg4SlotCall targetNameLength pendingCallArg4ValueLength
+run userOpArg4SlotCall
+bindOk userOpArg4Slot CSignedInt64 userOpArg4SlotCall
+call userOpArg4SizeCall findStringConstByteLengthByName
+arg userOpArg4SizeCall bufferBase bufferBase
+arg userOpArg4SizeCall bufferEndOffset bufferEndOffset
+arg userOpArg4SizeCall targetNamePointer userOpArg4Pointer
+arg userOpArg4SizeCall targetNameLength pendingCallArg4ValueLength
+run userOpArg4SizeCall
+bindOk userOpArg4Size CSignedInt64 userOpArg4SizeCall
+call userOpArg4PtrIsConstCall math.greaterThanOrEqualI64
+arg userOpArg4PtrIsConstCall left userOpArg4Slot
+arg userOpArg4PtrIsConstCall right zeroVerbStep
+run userOpArg4PtrIsConstCall
+bind userOpArg4PtrIsStrConst Bool userOpArg4PtrIsConstCall
+branchIf userOpArg4PtrIsStrConst emitUserOpArg4PtrStringConst
+branch emitUserOpArg4PtrBind
+
+label emitUserOpArg4PtrStringConst
+const userOpArg4PtrStrConstFormat CNullTerminatedByteString "i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0)"
+call emitUserOpArg4PtrStrConstCall c.printf
+arg emitUserOpArg4PtrStrConstCall format userOpArg4PtrStrConstFormat
+arg emitUserOpArg4PtrStrConstCall a1 userOpArg4Size
+arg emitUserOpArg4PtrStrConstCall a2 userOpArg4Size
+arg emitUserOpArg4PtrStrConstCall s userOpArg4Slot
+run emitUserOpArg4PtrStrConstCall
+branch checkUserOpArg5Operand
+
+label emitUserOpArg4PtrBind
+const userOpArg4PointerBindFormat CNullTerminatedByteString "i8* %%%.*s"
+call emitUserOpArg4PtrBindCall c.printf
+arg emitUserOpArg4PtrBindCall format userOpArg4PointerBindFormat
+arg emitUserOpArg4PtrBindCall argLen pendingCallArg4ValueLength
+arg emitUserOpArg4PtrBindCall argPtr userOpArg4Pointer
+run emitUserOpArg4PtrBindCall
+branch checkUserOpArg5Operand
+
+label emitUserOpArg4OperandConst
+call resolveUserOpArg4ConstCall findConstIntegerValueByNameAfterOffset
+arg resolveUserOpArg4ConstCall bufferBase bufferBase
+arg resolveUserOpArg4ConstCall bufferEndOffset bufferEndOffset
+arg resolveUserOpArg4ConstCall searchStartOffset operationBodyStartOffset
+arg resolveUserOpArg4ConstCall targetNamePointer userOpArg4Pointer
+arg resolveUserOpArg4ConstCall targetNameLength pendingCallArg4ValueLength
+run resolveUserOpArg4ConstCall
+bindOk userOpArg4ConstValue CSignedInt64 resolveUserOpArg4ConstCall
+const userOpArg4OperandConstFormat CNullTerminatedByteString "i64 %lld"
+call userOpArg4OperandConstEmissionCall c.printf
+arg userOpArg4OperandConstEmissionCall format userOpArg4OperandConstFormat
+arg userOpArg4OperandConstEmissionCall val userOpArg4ConstValue
+run userOpArg4OperandConstEmissionCall
+branch checkUserOpArg5Operand
+
+label emitUserOpArg4OperandBind
+const userOpArg4OperandBindFormat CNullTerminatedByteString "i64 %%%.*s"
+call userOpArg4OperandBindEmissionCall c.printf
+arg userOpArg4OperandBindEmissionCall format userOpArg4OperandBindFormat
+arg userOpArg4OperandBindEmissionCall argLen pendingCallArg4ValueLength
+arg userOpArg4OperandBindEmissionCall argPtr userOpArg4Pointer
+run userOpArg4OperandBindEmissionCall
+branch checkUserOpArg5Operand
+
+label checkUserOpArg5Operand
+branchIf userOpHasFiveArgs emitUserOpArg5Comma
+branch checkUserOpArg6Operand
+
+label emitUserOpArg5Comma
+const userOpArg5CommaText CNullTerminatedByteString ", "
+call userOpArg5CommaCall c.printf
+arg userOpArg5CommaCall format userOpArg5CommaText
+run userOpArg5CommaCall
+call userOpArg5IsConstCall isNameDeclaredAsKind
+arg userOpArg5IsConstCall bufferBase bufferBase
+arg userOpArg5IsConstCall bufferEndOffset bufferEndOffset
+arg userOpArg5IsConstCall targetNamePointer userOpArg5Pointer
+arg userOpArg5IsConstCall targetNameLength pendingCallArg5ValueLength
+arg userOpArg5IsConstCall declarationVerb userOpConstDeclVerb
+arg userOpArg5IsConstCall declarationVerbLength userOpConstDeclVerbLength
+run userOpArg5IsConstCall
+bindOk userOpArg5IsConst Bool userOpArg5IsConstCall
+branchIf userOpCalleeFifthParamIsPointer emitUserOpArg5OperandPointer
+branchIf userOpArg5IsVar emitUserOpArg5OperandVar
+branchIf userOpArg5IsConst emitUserOpArg5OperandConst
+branch emitUserOpArg5OperandBind
+
+label emitUserOpArg5OperandVar
+const userOpArg5OperandVarFormat CNullTerminatedByteString "i64 %%%.*s_arg5"
+call userOpArg5OperandVarCall c.printf
+arg userOpArg5OperandVarCall format userOpArg5OperandVarFormat
+arg userOpArg5OperandVarCall callLen pendingCallNameLength
+arg userOpArg5OperandVarCall callPtr userOpCallNamePointer
+run userOpArg5OperandVarCall
+branch checkUserOpArg6Operand
+
+label emitUserOpArg5OperandPointer
+call userOpArg5SlotCall findStringConstSlotByName
+arg userOpArg5SlotCall bufferBase bufferBase
+arg userOpArg5SlotCall bufferEndOffset bufferEndOffset
+arg userOpArg5SlotCall targetNamePointer userOpArg5Pointer
+arg userOpArg5SlotCall targetNameLength pendingCallArg5ValueLength
+run userOpArg5SlotCall
+bindOk userOpArg5Slot CSignedInt64 userOpArg5SlotCall
+call userOpArg5SizeCall findStringConstByteLengthByName
+arg userOpArg5SizeCall bufferBase bufferBase
+arg userOpArg5SizeCall bufferEndOffset bufferEndOffset
+arg userOpArg5SizeCall targetNamePointer userOpArg5Pointer
+arg userOpArg5SizeCall targetNameLength pendingCallArg5ValueLength
+run userOpArg5SizeCall
+bindOk userOpArg5Size CSignedInt64 userOpArg5SizeCall
+call userOpArg5PtrIsConstCall math.greaterThanOrEqualI64
+arg userOpArg5PtrIsConstCall left userOpArg5Slot
+arg userOpArg5PtrIsConstCall right zeroVerbStep
+run userOpArg5PtrIsConstCall
+bind userOpArg5PtrIsStrConst Bool userOpArg5PtrIsConstCall
+branchIf userOpArg5PtrIsStrConst emitUserOpArg5PtrStringConst
+branch emitUserOpArg5PtrBind
+
+label emitUserOpArg5PtrStringConst
+const userOpArg5PtrStrConstFormat CNullTerminatedByteString "i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0)"
+call emitUserOpArg5PtrStrConstCall c.printf
+arg emitUserOpArg5PtrStrConstCall format userOpArg5PtrStrConstFormat
+arg emitUserOpArg5PtrStrConstCall a1 userOpArg5Size
+arg emitUserOpArg5PtrStrConstCall a2 userOpArg5Size
+arg emitUserOpArg5PtrStrConstCall s userOpArg5Slot
+run emitUserOpArg5PtrStrConstCall
+branch checkUserOpArg6Operand
+
+label emitUserOpArg5PtrBind
+const userOpArg5PointerBindFormat CNullTerminatedByteString "i8* %%%.*s"
+call emitUserOpArg5PtrBindCall c.printf
+arg emitUserOpArg5PtrBindCall format userOpArg5PointerBindFormat
+arg emitUserOpArg5PtrBindCall argLen pendingCallArg5ValueLength
+arg emitUserOpArg5PtrBindCall argPtr userOpArg5Pointer
+run emitUserOpArg5PtrBindCall
+branch checkUserOpArg6Operand
+
+label emitUserOpArg5OperandConst
+call resolveUserOpArg5ConstCall findConstIntegerValueByNameAfterOffset
+arg resolveUserOpArg5ConstCall bufferBase bufferBase
+arg resolveUserOpArg5ConstCall bufferEndOffset bufferEndOffset
+arg resolveUserOpArg5ConstCall searchStartOffset operationBodyStartOffset
+arg resolveUserOpArg5ConstCall targetNamePointer userOpArg5Pointer
+arg resolveUserOpArg5ConstCall targetNameLength pendingCallArg5ValueLength
+run resolveUserOpArg5ConstCall
+bindOk userOpArg5ConstValue CSignedInt64 resolveUserOpArg5ConstCall
+const userOpArg5OperandConstFormat CNullTerminatedByteString "i64 %lld"
+call userOpArg5OperandConstEmissionCall c.printf
+arg userOpArg5OperandConstEmissionCall format userOpArg5OperandConstFormat
+arg userOpArg5OperandConstEmissionCall val userOpArg5ConstValue
+run userOpArg5OperandConstEmissionCall
+branch checkUserOpArg6Operand
+
+label emitUserOpArg5OperandBind
+const userOpArg5OperandBindFormat CNullTerminatedByteString "i64 %%%.*s"
+call userOpArg5OperandBindEmissionCall c.printf
+arg userOpArg5OperandBindEmissionCall format userOpArg5OperandBindFormat
+arg userOpArg5OperandBindEmissionCall argLen pendingCallArg5ValueLength
+arg userOpArg5OperandBindEmissionCall argPtr userOpArg5Pointer
+run userOpArg5OperandBindEmissionCall
+branch checkUserOpArg6Operand
+
+label checkUserOpArg6Operand
+branchIf userOpHasSixArgs emitUserOpArg6Comma
+branch checkUserOpArg7Operand
+
+label emitUserOpArg6Comma
+const userOpArg6CommaText CNullTerminatedByteString ", "
+call userOpArg6CommaCall c.printf
+arg userOpArg6CommaCall format userOpArg6CommaText
+run userOpArg6CommaCall
+call userOpArg6IsConstCall isNameDeclaredAsKind
+arg userOpArg6IsConstCall bufferBase bufferBase
+arg userOpArg6IsConstCall bufferEndOffset bufferEndOffset
+arg userOpArg6IsConstCall targetNamePointer userOpArg6Pointer
+arg userOpArg6IsConstCall targetNameLength pendingCallArg6ValueLength
+arg userOpArg6IsConstCall declarationVerb userOpConstDeclVerb
+arg userOpArg6IsConstCall declarationVerbLength userOpConstDeclVerbLength
+run userOpArg6IsConstCall
+bindOk userOpArg6IsConst Bool userOpArg6IsConstCall
+branchIf userOpCalleeSixthParamIsPointer emitUserOpArg6OperandPointer
+branchIf userOpArg6IsVar emitUserOpArg6OperandVar
+branchIf userOpArg6IsConst emitUserOpArg6OperandConst
+branch emitUserOpArg6OperandBind
+
+label emitUserOpArg6OperandVar
+const userOpArg6OperandVarFormat CNullTerminatedByteString "i64 %%%.*s_arg6"
+call userOpArg6OperandVarCall c.printf
+arg userOpArg6OperandVarCall format userOpArg6OperandVarFormat
+arg userOpArg6OperandVarCall callLen pendingCallNameLength
+arg userOpArg6OperandVarCall callPtr userOpCallNamePointer
+run userOpArg6OperandVarCall
+branch checkUserOpArg7Operand
+
+label emitUserOpArg6OperandPointer
+call userOpArg6SlotCall findStringConstSlotByName
+arg userOpArg6SlotCall bufferBase bufferBase
+arg userOpArg6SlotCall bufferEndOffset bufferEndOffset
+arg userOpArg6SlotCall targetNamePointer userOpArg6Pointer
+arg userOpArg6SlotCall targetNameLength pendingCallArg6ValueLength
+run userOpArg6SlotCall
+bindOk userOpArg6Slot CSignedInt64 userOpArg6SlotCall
+call userOpArg6SizeCall findStringConstByteLengthByName
+arg userOpArg6SizeCall bufferBase bufferBase
+arg userOpArg6SizeCall bufferEndOffset bufferEndOffset
+arg userOpArg6SizeCall targetNamePointer userOpArg6Pointer
+arg userOpArg6SizeCall targetNameLength pendingCallArg6ValueLength
+run userOpArg6SizeCall
+bindOk userOpArg6Size CSignedInt64 userOpArg6SizeCall
+call userOpArg6PtrIsConstCall math.greaterThanOrEqualI64
+arg userOpArg6PtrIsConstCall left userOpArg6Slot
+arg userOpArg6PtrIsConstCall right zeroVerbStep
+run userOpArg6PtrIsConstCall
+bind userOpArg6PtrIsStrConst Bool userOpArg6PtrIsConstCall
+branchIf userOpArg6PtrIsStrConst emitUserOpArg6PtrStringConst
+branch emitUserOpArg6PtrBind
+
+label emitUserOpArg6PtrStringConst
+const userOpArg6PtrStrConstFormat CNullTerminatedByteString "i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0)"
+call emitUserOpArg6PtrStrConstCall c.printf
+arg emitUserOpArg6PtrStrConstCall format userOpArg6PtrStrConstFormat
+arg emitUserOpArg6PtrStrConstCall a1 userOpArg6Size
+arg emitUserOpArg6PtrStrConstCall a2 userOpArg6Size
+arg emitUserOpArg6PtrStrConstCall s userOpArg6Slot
+run emitUserOpArg6PtrStrConstCall
+branch checkUserOpArg7Operand
+
+label emitUserOpArg6PtrBind
+const userOpArg6PointerBindFormat CNullTerminatedByteString "i8* %%%.*s"
+call emitUserOpArg6PtrBindCall c.printf
+arg emitUserOpArg6PtrBindCall format userOpArg6PointerBindFormat
+arg emitUserOpArg6PtrBindCall argLen pendingCallArg6ValueLength
+arg emitUserOpArg6PtrBindCall argPtr userOpArg6Pointer
+run emitUserOpArg6PtrBindCall
+branch checkUserOpArg7Operand
+
+label emitUserOpArg6OperandConst
+call resolveUserOpArg6ConstCall findConstIntegerValueByNameAfterOffset
+arg resolveUserOpArg6ConstCall bufferBase bufferBase
+arg resolveUserOpArg6ConstCall bufferEndOffset bufferEndOffset
+arg resolveUserOpArg6ConstCall searchStartOffset operationBodyStartOffset
+arg resolveUserOpArg6ConstCall targetNamePointer userOpArg6Pointer
+arg resolveUserOpArg6ConstCall targetNameLength pendingCallArg6ValueLength
+run resolveUserOpArg6ConstCall
+bindOk userOpArg6ConstValue CSignedInt64 resolveUserOpArg6ConstCall
+const userOpArg6OperandConstFormat CNullTerminatedByteString "i64 %lld"
+call userOpArg6OperandConstEmissionCall c.printf
+arg userOpArg6OperandConstEmissionCall format userOpArg6OperandConstFormat
+arg userOpArg6OperandConstEmissionCall val userOpArg6ConstValue
+run userOpArg6OperandConstEmissionCall
+branch checkUserOpArg7Operand
+
+label emitUserOpArg6OperandBind
+const userOpArg6OperandBindFormat CNullTerminatedByteString "i64 %%%.*s"
+call userOpArg6OperandBindEmissionCall c.printf
+arg userOpArg6OperandBindEmissionCall format userOpArg6OperandBindFormat
+arg userOpArg6OperandBindEmissionCall argLen pendingCallArg6ValueLength
+arg userOpArg6OperandBindEmissionCall argPtr userOpArg6Pointer
+run userOpArg6OperandBindEmissionCall
+branch checkUserOpArg7Operand
+
+label checkUserOpArg7Operand
+branchIf userOpHasSevenArgs emitUserOpArg7Comma
+branch checkUserOpArg8Operand
+
+label emitUserOpArg7Comma
+const userOpArg7CommaText CNullTerminatedByteString ", "
+call userOpArg7CommaCall c.printf
+arg userOpArg7CommaCall format userOpArg7CommaText
+run userOpArg7CommaCall
+call userOpArg7IsConstCall isNameDeclaredAsKind
+arg userOpArg7IsConstCall bufferBase bufferBase
+arg userOpArg7IsConstCall bufferEndOffset bufferEndOffset
+arg userOpArg7IsConstCall targetNamePointer userOpArg7Pointer
+arg userOpArg7IsConstCall targetNameLength pendingCallArg7ValueLength
+arg userOpArg7IsConstCall declarationVerb userOpConstDeclVerb
+arg userOpArg7IsConstCall declarationVerbLength userOpConstDeclVerbLength
+run userOpArg7IsConstCall
+bindOk userOpArg7IsConst Bool userOpArg7IsConstCall
+branchIf userOpCalleeSeventhParamIsPointer emitUserOpArg7OperandPointer
+branchIf userOpArg7IsVar emitUserOpArg7OperandVar
+branchIf userOpArg7IsConst emitUserOpArg7OperandConst
+branch emitUserOpArg7OperandBind
+
+label emitUserOpArg7OperandVar
+const userOpArg7OperandVarFormat CNullTerminatedByteString "i64 %%%.*s_arg7"
+call userOpArg7OperandVarCall c.printf
+arg userOpArg7OperandVarCall format userOpArg7OperandVarFormat
+arg userOpArg7OperandVarCall callLen pendingCallNameLength
+arg userOpArg7OperandVarCall callPtr userOpCallNamePointer
+run userOpArg7OperandVarCall
+branch checkUserOpArg8Operand
+
+label emitUserOpArg7OperandPointer
+const userOpArg7PointerBindFormat CNullTerminatedByteString "i8* %%%.*s"
+call emitUserOpArg7PtrBindCall c.printf
+arg emitUserOpArg7PtrBindCall format userOpArg7PointerBindFormat
+arg emitUserOpArg7PtrBindCall argLen pendingCallArg7ValueLength
+arg emitUserOpArg7PtrBindCall argPtr userOpArg7Pointer
+run emitUserOpArg7PtrBindCall
+branch checkUserOpArg8Operand
+
+label emitUserOpArg7OperandConst
+call resolveUserOpArg7ConstCall findConstIntegerValueByNameAfterOffset
+arg resolveUserOpArg7ConstCall bufferBase bufferBase
+arg resolveUserOpArg7ConstCall bufferEndOffset bufferEndOffset
+arg resolveUserOpArg7ConstCall searchStartOffset operationBodyStartOffset
+arg resolveUserOpArg7ConstCall targetNamePointer userOpArg7Pointer
+arg resolveUserOpArg7ConstCall targetNameLength pendingCallArg7ValueLength
+run resolveUserOpArg7ConstCall
+bindOk userOpArg7ConstValue CSignedInt64 resolveUserOpArg7ConstCall
+const userOpArg7OperandConstFormat CNullTerminatedByteString "i64 %lld"
+call userOpArg7OperandConstEmissionCall c.printf
+arg userOpArg7OperandConstEmissionCall format userOpArg7OperandConstFormat
+arg userOpArg7OperandConstEmissionCall val userOpArg7ConstValue
+run userOpArg7OperandConstEmissionCall
+branch checkUserOpArg8Operand
+
+label emitUserOpArg7OperandBind
+const userOpArg7OperandBindFormat CNullTerminatedByteString "i64 %%%.*s"
+call userOpArg7OperandBindEmissionCall c.printf
+arg userOpArg7OperandBindEmissionCall format userOpArg7OperandBindFormat
+arg userOpArg7OperandBindEmissionCall argLen pendingCallArg7ValueLength
+arg userOpArg7OperandBindEmissionCall argPtr userOpArg7Pointer
+run userOpArg7OperandBindEmissionCall
+branch checkUserOpArg8Operand
+
+label checkUserOpArg8Operand
+branchIf userOpHasEightArgs emitUserOpArg8Comma
+branch emitUserOpCallSuffix
+
+label emitUserOpArg8Comma
+const userOpArg8CommaText CNullTerminatedByteString ", "
+call userOpArg8CommaCall c.printf
+arg userOpArg8CommaCall format userOpArg8CommaText
+run userOpArg8CommaCall
+call userOpArg8IsConstCall isNameDeclaredAsKind
+arg userOpArg8IsConstCall bufferBase bufferBase
+arg userOpArg8IsConstCall bufferEndOffset bufferEndOffset
+arg userOpArg8IsConstCall targetNamePointer userOpArg8Pointer
+arg userOpArg8IsConstCall targetNameLength pendingCallArg8ValueLength
+arg userOpArg8IsConstCall declarationVerb userOpConstDeclVerb
+arg userOpArg8IsConstCall declarationVerbLength userOpConstDeclVerbLength
+run userOpArg8IsConstCall
+bindOk userOpArg8IsConst Bool userOpArg8IsConstCall
+branchIf userOpCalleeEighthParamIsPointer emitUserOpArg8OperandPointer
+branchIf userOpArg8IsVar emitUserOpArg8OperandVar
+branchIf userOpArg8IsConst emitUserOpArg8OperandConst
+branch emitUserOpArg8OperandBind
+
+label emitUserOpArg8OperandVar
+const userOpArg8OperandVarFormat CNullTerminatedByteString "i64 %%%.*s_arg8"
+call userOpArg8OperandVarCall c.printf
+arg userOpArg8OperandVarCall format userOpArg8OperandVarFormat
+arg userOpArg8OperandVarCall callLen pendingCallNameLength
+arg userOpArg8OperandVarCall callPtr userOpCallNamePointer
+run userOpArg8OperandVarCall
+branch emitUserOpCallSuffix
+
+label emitUserOpArg8OperandPointer
+const userOpArg8PointerBindFormat CNullTerminatedByteString "i8* %%%.*s"
+call emitUserOpArg8PtrBindCall c.printf
+arg emitUserOpArg8PtrBindCall format userOpArg8PointerBindFormat
+arg emitUserOpArg8PtrBindCall argLen pendingCallArg8ValueLength
+arg emitUserOpArg8PtrBindCall argPtr userOpArg8Pointer
+run emitUserOpArg8PtrBindCall
+branch emitUserOpCallSuffix
+
+label emitUserOpArg8OperandConst
+call resolveUserOpArg8ConstCall findConstIntegerValueByNameAfterOffset
+arg resolveUserOpArg8ConstCall bufferBase bufferBase
+arg resolveUserOpArg8ConstCall bufferEndOffset bufferEndOffset
+arg resolveUserOpArg8ConstCall searchStartOffset operationBodyStartOffset
+arg resolveUserOpArg8ConstCall targetNamePointer userOpArg8Pointer
+arg resolveUserOpArg8ConstCall targetNameLength pendingCallArg8ValueLength
+run resolveUserOpArg8ConstCall
+bindOk userOpArg8ConstValue CSignedInt64 resolveUserOpArg8ConstCall
+const userOpArg8OperandConstFormat CNullTerminatedByteString "i64 %lld"
+call userOpArg8OperandConstEmissionCall c.printf
+arg userOpArg8OperandConstEmissionCall format userOpArg8OperandConstFormat
+arg userOpArg8OperandConstEmissionCall val userOpArg8ConstValue
+run userOpArg8OperandConstEmissionCall
+branch emitUserOpCallSuffix
+
+label emitUserOpArg8OperandBind
+const userOpArg8OperandBindFormat CNullTerminatedByteString "i64 %%%.*s"
+call userOpArg8OperandBindEmissionCall c.printf
+arg userOpArg8OperandBindEmissionCall format userOpArg8OperandBindFormat
+arg userOpArg8OperandBindEmissionCall argLen pendingCallArg8ValueLength
+arg userOpArg8OperandBindEmissionCall argPtr userOpArg8Pointer
+run userOpArg8OperandBindEmissionCall
 branch emitUserOpCallSuffix
 
 label emitUserOpCallSuffix
@@ -6474,18 +8488,26 @@ branchIf wIlArg1IsVar wIlEmitLoadAndPrintf
 branch wIlEmitPrintfDirect
 
 label wIlEmitLoadAndPrintf
-const wIlLoadFormat CNullTerminatedByteString "  %%%.*s_arg1 = load i64, i64* %%%.*s\n  %%%.*s_res = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([6 x i8], [6 x i8]* @.fmt_int, i32 0, i32 0), i64 %%%.*s_arg1)\n"
-call emitWIlLoadAndPrintfCall c.printf
-arg emitWIlLoadAndPrintfCall format wIlLoadFormat
-arg emitWIlLoadAndPrintfCall callLen1 pendingCallNameLength
-arg emitWIlLoadAndPrintfCall callPtr1 wIlCallNamePointer
-arg emitWIlLoadAndPrintfCall varLen pendingCallArg1ValueLength
-arg emitWIlLoadAndPrintfCall varPtr wIlArg1Pointer
-arg emitWIlLoadAndPrintfCall callLen2 pendingCallNameLength
-arg emitWIlLoadAndPrintfCall callPtr2 wIlCallNamePointer
-arg emitWIlLoadAndPrintfCall callLen3 pendingCallNameLength
-arg emitWIlLoadAndPrintfCall callPtr3 wIlCallNamePointer
-run emitWIlLoadAndPrintfCall
+# Split a 9-arg c.printf into two 5-arg calls so the bootstrap can compile
+# itself: the bootstrap's c.printf dispatch handles only up to 5 args.
+# Piece 1: `  %<callName>_arg1 = load i64, i64* %<varName>\n` (4 trailing args)
+const wIlLoadFormatA CNullTerminatedByteString "  %%%.*s_arg1 = load i64, i64* %%%.*s\n"
+call emitWIlLoadAndPrintfCallA c.printf
+arg emitWIlLoadAndPrintfCallA format wIlLoadFormatA
+arg emitWIlLoadAndPrintfCallA callLen1 pendingCallNameLength
+arg emitWIlLoadAndPrintfCallA callPtr1 wIlCallNamePointer
+arg emitWIlLoadAndPrintfCallA varLen pendingCallArg1ValueLength
+arg emitWIlLoadAndPrintfCallA varPtr wIlArg1Pointer
+run emitWIlLoadAndPrintfCallA
+# Piece 2: `  %<callName>_res = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([6 x i8], [6 x i8]* @.fmt_int, i32 0, i32 0), i64 %<callName>_arg1)\n` (4 trailing args)
+const wIlLoadFormatB CNullTerminatedByteString "  %%%.*s_res = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([6 x i8], [6 x i8]* @.fmt_int, i32 0, i32 0), i64 %%%.*s_arg1)\n"
+call emitWIlLoadAndPrintfCallB c.printf
+arg emitWIlLoadAndPrintfCallB format wIlLoadFormatB
+arg emitWIlLoadAndPrintfCallB callLen2 pendingCallNameLength
+arg emitWIlLoadAndPrintfCallB callPtr2 wIlCallNamePointer
+arg emitWIlLoadAndPrintfCallB callLen3 pendingCallNameLength
+arg emitWIlLoadAndPrintfCallB callPtr3 wIlCallNamePointer
+run emitWIlLoadAndPrintfCallB
 set blockNeedsTerminator oneFlagValue
 branch advanceVerbWalkerCursor
 
@@ -6634,6 +8656,15 @@ arg wLByteLengthCall targetNameLength pendingCallArg1ValueLength
 run wLByteLengthCall
 bindOk wLStringArraySize CSignedInt64 wLByteLengthCall
 
+call wLArgIsStringConstCall math.greaterThanOrEqualI64
+arg wLArgIsStringConstCall left wLStringSlotIndex
+arg wLArgIsStringConstCall right zeroVerbStep
+run wLArgIsStringConstCall
+bind wLArgIsStringConst Bool wLArgIsStringConstCall
+branchIf wLArgIsStringConst emitWriteLineStringConst
+branch emitWriteLineFromBindOrVar
+
+label emitWriteLineStringConst
 const wLEmitFormat CNullTerminatedByteString "  %%%.*s_res = call i32 @puts(i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0))\n"
 call emitWriteLinePutsCall c.printf
 arg emitWriteLinePutsCall format wLEmitFormat
@@ -6643,6 +8674,49 @@ arg emitWriteLinePutsCall arraySize1 wLStringArraySize
 arg emitWriteLinePutsCall arraySize2 wLStringArraySize
 arg emitWriteLinePutsCall slotIdx wLStringSlotIndex
 run emitWriteLinePutsCall
+set blockNeedsTerminator oneFlagValue
+branch advanceVerbWalkerCursor
+
+label emitWriteLineFromBindOrVar
+# Determine whether the arg is a pointer-typed VAR (alloca i8*) in
+# the current operation body. Var → load i8* first. Bind/param → use
+# `i8* %name` directly.
+call wLArgIsPointerVarCall isNameDeclaredAsKindPointerVar
+arg wLArgIsPointerVarCall bufferBase bufferBase
+arg wLArgIsPointerVarCall bufferEndOffset bufferEndOffset
+arg wLArgIsPointerVarCall bodyStartOffset operationBodyStartOffset
+arg wLArgIsPointerVarCall candidateNamePointer wLArg1Pointer
+arg wLArgIsPointerVarCall candidateNameLength pendingCallArg1ValueLength
+run wLArgIsPointerVarCall
+bindOk wLArgIsPointerVar Bool wLArgIsPointerVarCall
+branchIf wLArgIsPointerVar emitWriteLineFromPointerVar
+branch emitWriteLineFromBindArg
+
+label emitWriteLineFromPointerVar
+const wLPtrVarFormat CNullTerminatedByteString "  %%%.*s_arg = load i8*, i8** %%%.*s\n  %%%.*s_res = call i32 @puts(i8* %%%.*s_arg)\n"
+call emitWriteLinePtrVarCall c.printf
+arg emitWriteLinePtrVarCall format wLPtrVarFormat
+arg emitWriteLinePtrVarCall n1 pendingCallNameLength
+arg emitWriteLinePtrVarCall p1 wLCallNamePointer
+arg emitWriteLinePtrVarCall an1 pendingCallArg1ValueLength
+arg emitWriteLinePtrVarCall ap1 wLArg1Pointer
+arg emitWriteLinePtrVarCall n2 pendingCallNameLength
+arg emitWriteLinePtrVarCall p2 wLCallNamePointer
+arg emitWriteLinePtrVarCall n3 pendingCallNameLength
+arg emitWriteLinePtrVarCall p3 wLCallNamePointer
+run emitWriteLinePtrVarCall
+set blockNeedsTerminator oneFlagValue
+branch advanceVerbWalkerCursor
+
+label emitWriteLineFromBindArg
+const wLBindFormat CNullTerminatedByteString "  %%%.*s_res = call i32 @puts(i8* %%%.*s)\n"
+call emitWriteLineBindCall c.printf
+arg emitWriteLineBindCall format wLBindFormat
+arg emitWriteLineBindCall callLen pendingCallNameLength
+arg emitWriteLineBindCall callPtr wLCallNamePointer
+arg emitWriteLineBindCall argLen pendingCallArg1ValueLength
+arg emitWriteLineBindCall argPtr wLArg1Pointer
+run emitWriteLineBindCall
 set blockNeedsTerminator oneFlagValue
 branch advanceVerbWalkerCursor
 
@@ -7767,7 +9841,3453 @@ run emitExitBindCall
 set blockNeedsTerminator zeroVerbStep
 branch advanceVerbWalkerCursor
 
+# c.strstr(haystack, needle): emit
+#   `%X_res = call i8* @strstr(i8* %haystack, i8* %needle)`
+# Both args may be string-consts (GEP into @.sN) or bind/var pointers.
+label emitStrstrRun
+call strstrCallNamePtrCall pointer.offset
+arg strstrCallNamePtrCall base bufferBase
+arg strstrCallNamePtrCall offset pendingCallNameStartOffset
+run strstrCallNamePtrCall
+bind strstrCallNamePointer COpaqueMemoryAddress strstrCallNamePtrCall
+
+call strstrHaystackPtrCall pointer.offset
+arg strstrHaystackPtrCall base bufferBase
+arg strstrHaystackPtrCall offset pendingCallArg1ValueStartOffset
+run strstrHaystackPtrCall
+bind strstrHaystackArgPointer COpaqueMemoryAddress strstrHaystackPtrCall
+
+call strstrNeedlePtrCall pointer.offset
+arg strstrNeedlePtrCall base bufferBase
+arg strstrNeedlePtrCall offset pendingCallArg2ValueStartOffset
+run strstrNeedlePtrCall
+bind strstrNeedleArgPointer COpaqueMemoryAddress strstrNeedlePtrCall
+
+call strstrHaySlotCall findStringConstSlotByName
+arg strstrHaySlotCall bufferBase bufferBase
+arg strstrHaySlotCall bufferEndOffset bufferEndOffset
+arg strstrHaySlotCall targetNamePointer strstrHaystackArgPointer
+arg strstrHaySlotCall targetNameLength pendingCallArg1ValueLength
+run strstrHaySlotCall
+bindOk strstrHaySlot CSignedInt64 strstrHaySlotCall
+
+call strstrHaySizeCall findStringConstByteLengthByName
+arg strstrHaySizeCall bufferBase bufferBase
+arg strstrHaySizeCall bufferEndOffset bufferEndOffset
+arg strstrHaySizeCall targetNamePointer strstrHaystackArgPointer
+arg strstrHaySizeCall targetNameLength pendingCallArg1ValueLength
+run strstrHaySizeCall
+bindOk strstrHaySize CSignedInt64 strstrHaySizeCall
+
+call strstrHayIsConstCall math.greaterThanOrEqualI64
+arg strstrHayIsConstCall left strstrHaySlot
+arg strstrHayIsConstCall right zeroVerbStep
+run strstrHayIsConstCall
+bind strstrHayIsConst Bool strstrHayIsConstCall
+
+call strstrNeedleSlotCall findStringConstSlotByName
+arg strstrNeedleSlotCall bufferBase bufferBase
+arg strstrNeedleSlotCall bufferEndOffset bufferEndOffset
+arg strstrNeedleSlotCall targetNamePointer strstrNeedleArgPointer
+arg strstrNeedleSlotCall targetNameLength pendingCallArg2ValueLength
+run strstrNeedleSlotCall
+bindOk strstrNeedleSlot CSignedInt64 strstrNeedleSlotCall
+
+call strstrNeedleSizeCall findStringConstByteLengthByName
+arg strstrNeedleSizeCall bufferBase bufferBase
+arg strstrNeedleSizeCall bufferEndOffset bufferEndOffset
+arg strstrNeedleSizeCall targetNamePointer strstrNeedleArgPointer
+arg strstrNeedleSizeCall targetNameLength pendingCallArg2ValueLength
+run strstrNeedleSizeCall
+bindOk strstrNeedleSize CSignedInt64 strstrNeedleSizeCall
+
+call strstrNeedleIsConstCall math.greaterThanOrEqualI64
+arg strstrNeedleIsConstCall left strstrNeedleSlot
+arg strstrNeedleIsConstCall right zeroVerbStep
+run strstrNeedleIsConstCall
+bind strstrNeedleIsConst Bool strstrNeedleIsConstCall
+
+branchIf strstrHayIsConst maybeBothConst
+branch emitStrstrBothBindHaystack
+
+label maybeBothConst
+branchIf strstrNeedleIsConst emitStrstrBothConst
+branch emitStrstrHayConstNeedleBind
+
+label emitStrstrBothConst
+const strstrBothConstFormat CNullTerminatedByteString "  %%%.*s_res = call i8* @strstr(i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0), i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0))\n"
+call emitStrstrBothConstCall c.printf
+arg emitStrstrBothConstCall format strstrBothConstFormat
+arg emitStrstrBothConstCall n1 pendingCallNameLength
+arg emitStrstrBothConstCall p1 strstrCallNamePointer
+arg emitStrstrBothConstCall h1 strstrHaySize
+arg emitStrstrBothConstCall h2 strstrHaySize
+arg emitStrstrBothConstCall hs strstrHaySlot
+arg emitStrstrBothConstCall n3 strstrNeedleSize
+arg emitStrstrBothConstCall n4 strstrNeedleSize
+arg emitStrstrBothConstCall ns strstrNeedleSlot
+run emitStrstrBothConstCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitStrstrHayConstNeedleBind
+const strstrHayConstFormat CNullTerminatedByteString "  %%%.*s_res = call i8* @strstr(i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0), i8* %%%.*s)\n"
+call emitStrstrHayConstCall c.printf
+arg emitStrstrHayConstCall format strstrHayConstFormat
+arg emitStrstrHayConstCall n1 pendingCallNameLength
+arg emitStrstrHayConstCall p1 strstrCallNamePointer
+arg emitStrstrHayConstCall h1 strstrHaySize
+arg emitStrstrHayConstCall h2 strstrHaySize
+arg emitStrstrHayConstCall hs strstrHaySlot
+arg emitStrstrHayConstCall nLen pendingCallArg2ValueLength
+arg emitStrstrHayConstCall nPtr strstrNeedleArgPointer
+run emitStrstrHayConstCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitStrstrBothBindHaystack
+branchIf strstrNeedleIsConst emitStrstrHayBindNeedleConst
+branch emitStrstrBothBind
+
+label emitStrstrHayBindNeedleConst
+const strstrNeedleConstFormat CNullTerminatedByteString "  %%%.*s_res = call i8* @strstr(i8* %%%.*s, i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0))\n"
+call emitStrstrNeedleConstCall c.printf
+arg emitStrstrNeedleConstCall format strstrNeedleConstFormat
+arg emitStrstrNeedleConstCall n1 pendingCallNameLength
+arg emitStrstrNeedleConstCall p1 strstrCallNamePointer
+arg emitStrstrNeedleConstCall hLen pendingCallArg1ValueLength
+arg emitStrstrNeedleConstCall hPtr strstrHaystackArgPointer
+arg emitStrstrNeedleConstCall nSz1 strstrNeedleSize
+arg emitStrstrNeedleConstCall nSz2 strstrNeedleSize
+arg emitStrstrNeedleConstCall ns strstrNeedleSlot
+run emitStrstrNeedleConstCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitStrstrBothBind
+const strstrBothBindFormat CNullTerminatedByteString "  %%%.*s_res = call i8* @strstr(i8* %%%.*s, i8* %%%.*s)\n"
+call emitStrstrBothBindCall c.printf
+arg emitStrstrBothBindCall format strstrBothBindFormat
+arg emitStrstrBothBindCall n1 pendingCallNameLength
+arg emitStrstrBothBindCall p1 strstrCallNamePointer
+arg emitStrstrBothBindCall hLen pendingCallArg1ValueLength
+arg emitStrstrBothBindCall hPtr strstrHaystackArgPointer
+arg emitStrstrBothBindCall nLen pendingCallArg2ValueLength
+arg emitStrstrBothBindCall nPtr strstrNeedleArgPointer
+run emitStrstrBothBindCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
 # c.atoi(s): emit `%X_res32 = call i32 @atoi(i8* %s)` then sext to i64.
+# `s` may be a string-const (GEP into @.sN) or a bind/var pointer.
+# c.fopen(path, mode): emit `%X_res = call i8* @fopen(i8* %path, i8* %mode)`.
+# Path and mode may each be a string-const (GEP) or a bind/var pointer.
+# This is a minimal implementation: assumes BOTH args resolve to either
+# a string-const or a pointer-typed bind/param. Mixed cases use a
+# unified `_pathRef` / `_modeRef` alias.
+label emitFopenRun
+call fopenCallNamePtrCall pointer.offset
+arg fopenCallNamePtrCall base bufferBase
+arg fopenCallNamePtrCall offset pendingCallNameStartOffset
+run fopenCallNamePtrCall
+bind fopenCallNamePointer COpaqueMemoryAddress fopenCallNamePtrCall
+
+call fopenPathPtrCall pointer.offset
+arg fopenPathPtrCall base bufferBase
+arg fopenPathPtrCall offset pendingCallArg1ValueStartOffset
+run fopenPathPtrCall
+bind fopenPathArgPointer COpaqueMemoryAddress fopenPathPtrCall
+
+call fopenModePtrCall pointer.offset
+arg fopenModePtrCall base bufferBase
+arg fopenModePtrCall offset pendingCallArg2ValueStartOffset
+run fopenModePtrCall
+bind fopenModeArgPointer COpaqueMemoryAddress fopenModePtrCall
+
+# Resolve path to %X_pathRef (i8*).
+call fopenPathSlotCall findStringConstSlotByName
+arg fopenPathSlotCall bufferBase bufferBase
+arg fopenPathSlotCall bufferEndOffset bufferEndOffset
+arg fopenPathSlotCall targetNamePointer fopenPathArgPointer
+arg fopenPathSlotCall targetNameLength pendingCallArg1ValueLength
+run fopenPathSlotCall
+bindOk fopenPathSlot CSignedInt64 fopenPathSlotCall
+call fopenPathSizeCall findStringConstByteLengthByName
+arg fopenPathSizeCall bufferBase bufferBase
+arg fopenPathSizeCall bufferEndOffset bufferEndOffset
+arg fopenPathSizeCall targetNamePointer fopenPathArgPointer
+arg fopenPathSizeCall targetNameLength pendingCallArg1ValueLength
+run fopenPathSizeCall
+bindOk fopenPathSize CSignedInt64 fopenPathSizeCall
+call fopenPathIsConstCall math.greaterThanOrEqualI64
+arg fopenPathIsConstCall left fopenPathSlot
+arg fopenPathIsConstCall right zeroVerbStep
+run fopenPathIsConstCall
+bind fopenPathIsStrConst Bool fopenPathIsConstCall
+
+# `findStringConstSlotByName` matches a var by its INITIAL string value,
+# but the var may have been reassigned. Detect pointer-typed var first
+# and route to the load path before the string-const fast path.
+call fopenPathPreVarCheckCall isNameDeclaredAsKindPointerVar
+arg fopenPathPreVarCheckCall bufferBase bufferBase
+arg fopenPathPreVarCheckCall bufferEndOffset bufferEndOffset
+arg fopenPathPreVarCheckCall bodyStartOffset operationBodyStartOffset
+arg fopenPathPreVarCheckCall candidateNamePointer fopenPathArgPointer
+arg fopenPathPreVarCheckCall candidateNameLength pendingCallArg1ValueLength
+run fopenPathPreVarCheckCall
+bindOk fopenPathPreIsVar Bool fopenPathPreVarCheckCall
+branchIf fopenPathPreIsVar emitFopenPathFromVar
+branchIf fopenPathIsStrConst emitFopenPathFromStrConst
+branch emitFopenPathFromBind
+
+label emitFopenPathFromStrConst
+const fopenPathStrFmt CNullTerminatedByteString "  %%%.*s_pathRef = getelementptr inbounds [%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0\n"
+call emitFopenPathStrCall c.printf
+arg emitFopenPathStrCall format fopenPathStrFmt
+arg emitFopenPathStrCall n1 pendingCallNameLength
+arg emitFopenPathStrCall p1 fopenCallNamePointer
+arg emitFopenPathStrCall a1 fopenPathSize
+arg emitFopenPathStrCall a2 fopenPathSize
+arg emitFopenPathStrCall s fopenPathSlot
+run emitFopenPathStrCall
+branch fopenResolveMode
+
+label emitFopenPathFromBind
+# Check if path is a pointer-typed VAR. If so, load i8* first.
+call fopenPathIsVarCall isNameDeclaredAsKindPointerVar
+arg fopenPathIsVarCall bufferBase bufferBase
+arg fopenPathIsVarCall bufferEndOffset bufferEndOffset
+arg fopenPathIsVarCall bodyStartOffset operationBodyStartOffset
+arg fopenPathIsVarCall candidateNamePointer fopenPathArgPointer
+arg fopenPathIsVarCall candidateNameLength pendingCallArg1ValueLength
+run fopenPathIsVarCall
+bindOk fopenPathIsVar Bool fopenPathIsVarCall
+branchIf fopenPathIsVar emitFopenPathFromVar
+branch emitFopenPathFromBindDirect
+
+label emitFopenPathFromVar
+const fopenPathVarFmt CNullTerminatedByteString "  %%%.*s_pathRef = load i8*, i8** %%%.*s\n"
+call emitFopenPathVarCall c.printf
+arg emitFopenPathVarCall format fopenPathVarFmt
+arg emitFopenPathVarCall n1 pendingCallNameLength
+arg emitFopenPathVarCall p1 fopenCallNamePointer
+arg emitFopenPathVarCall n2 pendingCallArg1ValueLength
+arg emitFopenPathVarCall p2 fopenPathArgPointer
+run emitFopenPathVarCall
+branch fopenResolveMode
+
+label emitFopenPathFromBindDirect
+const fopenPathBindFmt CNullTerminatedByteString "  %%%.*s_pathRef = getelementptr i8, i8* %%%.*s, i64 0\n"
+call emitFopenPathBindCall c.printf
+arg emitFopenPathBindCall format fopenPathBindFmt
+arg emitFopenPathBindCall n1 pendingCallNameLength
+arg emitFopenPathBindCall p1 fopenCallNamePointer
+arg emitFopenPathBindCall n2 pendingCallArg1ValueLength
+arg emitFopenPathBindCall p2 fopenPathArgPointer
+run emitFopenPathBindCall
+branch fopenResolveMode
+
+label fopenResolveMode
+call fopenModeSlotCall findStringConstSlotByName
+arg fopenModeSlotCall bufferBase bufferBase
+arg fopenModeSlotCall bufferEndOffset bufferEndOffset
+arg fopenModeSlotCall targetNamePointer fopenModeArgPointer
+arg fopenModeSlotCall targetNameLength pendingCallArg2ValueLength
+run fopenModeSlotCall
+bindOk fopenModeSlot CSignedInt64 fopenModeSlotCall
+call fopenModeSizeCall findStringConstByteLengthByName
+arg fopenModeSizeCall bufferBase bufferBase
+arg fopenModeSizeCall bufferEndOffset bufferEndOffset
+arg fopenModeSizeCall targetNamePointer fopenModeArgPointer
+arg fopenModeSizeCall targetNameLength pendingCallArg2ValueLength
+run fopenModeSizeCall
+bindOk fopenModeSize CSignedInt64 fopenModeSizeCall
+call fopenModeIsConstCall math.greaterThanOrEqualI64
+arg fopenModeIsConstCall left fopenModeSlot
+arg fopenModeIsConstCall right zeroVerbStep
+run fopenModeIsConstCall
+bind fopenModeIsStrConst Bool fopenModeIsConstCall
+branchIf fopenModeIsStrConst emitFopenModeFromStrConst
+branch emitFopenModeFromBindDirect
+
+label emitFopenModeFromStrConst
+const fopenModeStrFmt CNullTerminatedByteString "  %%%.*s_modeRef = getelementptr inbounds [%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0\n"
+call emitFopenModeStrCall c.printf
+arg emitFopenModeStrCall format fopenModeStrFmt
+arg emitFopenModeStrCall n1 pendingCallNameLength
+arg emitFopenModeStrCall p1 fopenCallNamePointer
+arg emitFopenModeStrCall a1 fopenModeSize
+arg emitFopenModeStrCall a2 fopenModeSize
+arg emitFopenModeStrCall s fopenModeSlot
+run emitFopenModeStrCall
+branch emitFopenCallBody
+
+label emitFopenModeFromBindDirect
+const fopenModeBindFmt CNullTerminatedByteString "  %%%.*s_modeRef = getelementptr i8, i8* %%%.*s, i64 0\n"
+call emitFopenModeBindCall c.printf
+arg emitFopenModeBindCall format fopenModeBindFmt
+arg emitFopenModeBindCall n1 pendingCallNameLength
+arg emitFopenModeBindCall p1 fopenCallNamePointer
+arg emitFopenModeBindCall n2 pendingCallArg2ValueLength
+arg emitFopenModeBindCall p2 fopenModeArgPointer
+run emitFopenModeBindCall
+branch emitFopenCallBody
+
+label emitFopenCallBody
+const fopenCallFmt CNullTerminatedByteString "  %%%.*s_res = call i8* @fopen(i8* %%%.*s_pathRef, i8* %%%.*s_modeRef)\n"
+call emitFopenCallBodyCall c.printf
+arg emitFopenCallBodyCall format fopenCallFmt
+arg emitFopenCallBodyCall n1 pendingCallNameLength
+arg emitFopenCallBodyCall p1 fopenCallNamePointer
+arg emitFopenCallBodyCall n2 pendingCallNameLength
+arg emitFopenCallBodyCall p2 fopenCallNamePointer
+arg emitFopenCallBodyCall n3 pendingCallNameLength
+arg emitFopenCallBodyCall p3 fopenCallNamePointer
+run emitFopenCallBodyCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+# c.fclose(stream): emit `%X_res32 = call i32 @fclose(i8* %stream)`
+# then sext to i64. Single pointer arg.
+label emitFcloseRun
+call fcloseCallNamePtrCall pointer.offset
+arg fcloseCallNamePtrCall base bufferBase
+arg fcloseCallNamePtrCall offset pendingCallNameStartOffset
+run fcloseCallNamePtrCall
+bind fcloseCallNamePointer COpaqueMemoryAddress fcloseCallNamePtrCall
+
+call fcloseArg1PtrCall pointer.offset
+arg fcloseArg1PtrCall base bufferBase
+arg fcloseArg1PtrCall offset pendingCallArg1ValueStartOffset
+run fcloseArg1PtrCall
+bind fcloseArg1Pointer COpaqueMemoryAddress fcloseArg1PtrCall
+
+const fcloseFmt CNullTerminatedByteString "  %%%.*s_res32 = call i32 @fclose(i8* %%%.*s)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitFcloseCall c.printf
+arg emitFcloseCall format fcloseFmt
+arg emitFcloseCall n1 pendingCallNameLength
+arg emitFcloseCall p1 fcloseCallNamePointer
+arg emitFcloseCall an1 pendingCallArg1ValueLength
+arg emitFcloseCall ap1 fcloseArg1Pointer
+arg emitFcloseCall n2 pendingCallNameLength
+arg emitFcloseCall p2 fcloseCallNamePointer
+arg emitFcloseCall n3 pendingCallNameLength
+arg emitFcloseCall p3 fcloseCallNamePointer
+run emitFcloseCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+# c.fread(buffer, size, count, stream): emit
+#   `%X_res = call i64 @fread(i8* %buffer, i64 %size, i64 %count, i8* %stream)`
+# Returns the number of items actually read. Args 1 and 4 are i8*; 2
+# and 3 are i64 (often consts).
+label emitFreadRun
+call freadCallNamePtrCall pointer.offset
+arg freadCallNamePtrCall base bufferBase
+arg freadCallNamePtrCall offset pendingCallNameStartOffset
+run freadCallNamePtrCall
+bind freadCallNamePointer COpaqueMemoryAddress freadCallNamePtrCall
+
+call freadArg1PtrCall pointer.offset
+arg freadArg1PtrCall base bufferBase
+arg freadArg1PtrCall offset pendingCallArg1ValueStartOffset
+run freadArg1PtrCall
+bind freadArg1Pointer COpaqueMemoryAddress freadArg1PtrCall
+
+call freadArg4PtrCall pointer.offset
+arg freadArg4PtrCall base bufferBase
+arg freadArg4PtrCall offset pendingCallArg4ValueStartOffset
+run freadArg4PtrCall
+bind freadArg4Pointer COpaqueMemoryAddress freadArg4PtrCall
+
+# size and count: classify as var/const/bind. To keep emission simple,
+# emit each arg into a `_sN` SSA temp via a no-op alias load/cast.
+call freadArg2PtrCall pointer.offset
+arg freadArg2PtrCall base bufferBase
+arg freadArg2PtrCall offset pendingCallArg2ValueStartOffset
+run freadArg2PtrCall
+bind freadArg2Pointer COpaqueMemoryAddress freadArg2PtrCall
+
+call freadArg3PtrCall pointer.offset
+arg freadArg3PtrCall base bufferBase
+arg freadArg3PtrCall offset pendingCallArg3ValueStartOffset
+run freadArg3PtrCall
+bind freadArg3Pointer COpaqueMemoryAddress freadArg3PtrCall
+
+const freadConstDeclVerb CNullTerminatedByteString "const "
+const freadConstDeclVerbLength CByteCount 6
+
+call freadSizeIsConstCall isNameDeclaredAsKind
+arg freadSizeIsConstCall bufferBase bufferBase
+arg freadSizeIsConstCall bufferEndOffset bufferEndOffset
+arg freadSizeIsConstCall targetNamePointer freadArg2Pointer
+arg freadSizeIsConstCall targetNameLength pendingCallArg2ValueLength
+arg freadSizeIsConstCall declarationVerb freadConstDeclVerb
+arg freadSizeIsConstCall declarationVerbLength freadConstDeclVerbLength
+run freadSizeIsConstCall
+bindOk freadSizeIsConst Bool freadSizeIsConstCall
+
+call freadCountIsConstCall isNameDeclaredAsKind
+arg freadCountIsConstCall bufferBase bufferBase
+arg freadCountIsConstCall bufferEndOffset bufferEndOffset
+arg freadCountIsConstCall targetNamePointer freadArg3Pointer
+arg freadCountIsConstCall targetNameLength pendingCallArg3ValueLength
+arg freadCountIsConstCall declarationVerb freadConstDeclVerb
+arg freadCountIsConstCall declarationVerbLength freadConstDeclVerbLength
+run freadCountIsConstCall
+bindOk freadCountIsConst Bool freadCountIsConstCall
+
+# 4 combinations of (size, count) const/bind. Emit one of them.
+branchIf freadSizeIsConst freadSizeIsConstPath
+branch freadSizeIsBindPath
+
+label freadSizeIsConstPath
+call freadSizeConstValCall findConstIntegerValueByNameAfterOffset
+arg freadSizeConstValCall bufferBase bufferBase
+arg freadSizeConstValCall bufferEndOffset bufferEndOffset
+arg freadSizeConstValCall searchStartOffset operationBodyStartOffset
+arg freadSizeConstValCall targetNamePointer freadArg2Pointer
+arg freadSizeConstValCall targetNameLength pendingCallArg2ValueLength
+run freadSizeConstValCall
+bindOk freadSizeConstVal CSignedInt64 freadSizeConstValCall
+branchIf freadCountIsConst freadEmitSC_CC
+branch freadEmitSC_CB
+
+label freadSizeIsBindPath
+branchIf freadCountIsConst freadEmitSC_BC
+branch freadEmitSC_BB
+
+label freadEmitSC_CC
+call freadCountConstValCC findConstIntegerValueByNameAfterOffset
+arg freadCountConstValCC bufferBase bufferBase
+arg freadCountConstValCC bufferEndOffset bufferEndOffset
+arg freadCountConstValCC searchStartOffset operationBodyStartOffset
+arg freadCountConstValCC targetNamePointer freadArg3Pointer
+arg freadCountConstValCC targetNameLength pendingCallArg3ValueLength
+run freadCountConstValCC
+bindOk freadCountConstValCCResult CSignedInt64 freadCountConstValCC
+const freadCCFmt CNullTerminatedByteString "  %%%.*s_res = call i64 @fread(i8* %%%.*s, i64 %lld, i64 %lld, i8* %%%.*s)\n"
+call emitFreadCC c.printf
+arg emitFreadCC format freadCCFmt
+arg emitFreadCC n1 pendingCallNameLength
+arg emitFreadCC p1 freadCallNamePointer
+arg emitFreadCC an1 pendingCallArg1ValueLength
+arg emitFreadCC ap1 freadArg1Pointer
+arg emitFreadCC sv freadSizeConstVal
+arg emitFreadCC cv freadCountConstValCCResult
+arg emitFreadCC an2 pendingCallArg4ValueLength
+arg emitFreadCC ap2 freadArg4Pointer
+run emitFreadCC
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label freadEmitSC_CB
+const freadCBFmt CNullTerminatedByteString "  %%%.*s_res = call i64 @fread(i8* %%%.*s, i64 %lld, i64 %%%.*s, i8* %%%.*s)\n"
+call emitFreadCB c.printf
+arg emitFreadCB format freadCBFmt
+arg emitFreadCB n1 pendingCallNameLength
+arg emitFreadCB p1 freadCallNamePointer
+arg emitFreadCB an1 pendingCallArg1ValueLength
+arg emitFreadCB ap1 freadArg1Pointer
+arg emitFreadCB sv freadSizeConstVal
+arg emitFreadCB an2 pendingCallArg3ValueLength
+arg emitFreadCB ap2 freadArg3Pointer
+arg emitFreadCB an3 pendingCallArg4ValueLength
+arg emitFreadCB ap3 freadArg4Pointer
+run emitFreadCB
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label freadEmitSC_BC
+call freadCountConstValBC findConstIntegerValueByNameAfterOffset
+arg freadCountConstValBC bufferBase bufferBase
+arg freadCountConstValBC bufferEndOffset bufferEndOffset
+arg freadCountConstValBC searchStartOffset operationBodyStartOffset
+arg freadCountConstValBC targetNamePointer freadArg3Pointer
+arg freadCountConstValBC targetNameLength pendingCallArg3ValueLength
+run freadCountConstValBC
+bindOk freadCountConstValBCResult CSignedInt64 freadCountConstValBC
+const freadBCFmt CNullTerminatedByteString "  %%%.*s_res = call i64 @fread(i8* %%%.*s, i64 %%%.*s, i64 %lld, i8* %%%.*s)\n"
+call emitFreadBC c.printf
+arg emitFreadBC format freadBCFmt
+arg emitFreadBC n1 pendingCallNameLength
+arg emitFreadBC p1 freadCallNamePointer
+arg emitFreadBC an1 pendingCallArg1ValueLength
+arg emitFreadBC ap1 freadArg1Pointer
+arg emitFreadBC an2 pendingCallArg2ValueLength
+arg emitFreadBC ap2 freadArg2Pointer
+arg emitFreadBC cv freadCountConstValBCResult
+arg emitFreadBC an3 pendingCallArg4ValueLength
+arg emitFreadBC ap3 freadArg4Pointer
+run emitFreadBC
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label freadEmitSC_BB
+const freadBBFmt CNullTerminatedByteString "  %%%.*s_res = call i64 @fread(i8* %%%.*s, i64 %%%.*s, i64 %%%.*s, i8* %%%.*s)\n"
+call emitFreadBB c.printf
+arg emitFreadBB format freadBBFmt
+arg emitFreadBB n1 pendingCallNameLength
+arg emitFreadBB p1 freadCallNamePointer
+arg emitFreadBB an1 pendingCallArg1ValueLength
+arg emitFreadBB ap1 freadArg1Pointer
+arg emitFreadBB an2 pendingCallArg2ValueLength
+arg emitFreadBB ap2 freadArg2Pointer
+arg emitFreadBB an3 pendingCallArg3ValueLength
+arg emitFreadBB ap3 freadArg3Pointer
+arg emitFreadBB an4 pendingCallArg4ValueLength
+arg emitFreadBB ap4 freadArg4Pointer
+run emitFreadBB
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+# c.puts(text): emit `%X_res32 = call i32 @puts(i8* %text)` then sext.
+# Text may be a string-const or a pointer-typed var/bind.
+label emitCputsRun
+call cputsCallNamePtrCall pointer.offset
+arg cputsCallNamePtrCall base bufferBase
+arg cputsCallNamePtrCall offset pendingCallNameStartOffset
+run cputsCallNamePtrCall
+bind cputsCallNamePointer COpaqueMemoryAddress cputsCallNamePtrCall
+
+call cputsArg1PtrCall pointer.offset
+arg cputsArg1PtrCall base bufferBase
+arg cputsArg1PtrCall offset pendingCallArg1ValueStartOffset
+run cputsArg1PtrCall
+bind cputsArg1Pointer COpaqueMemoryAddress cputsArg1PtrCall
+
+call cputsSlotCall findStringConstSlotByName
+arg cputsSlotCall bufferBase bufferBase
+arg cputsSlotCall bufferEndOffset bufferEndOffset
+arg cputsSlotCall targetNamePointer cputsArg1Pointer
+arg cputsSlotCall targetNameLength pendingCallArg1ValueLength
+run cputsSlotCall
+bindOk cputsSlot CSignedInt64 cputsSlotCall
+call cputsSizeCall findStringConstByteLengthByName
+arg cputsSizeCall bufferBase bufferBase
+arg cputsSizeCall bufferEndOffset bufferEndOffset
+arg cputsSizeCall targetNamePointer cputsArg1Pointer
+arg cputsSizeCall targetNameLength pendingCallArg1ValueLength
+run cputsSizeCall
+bindOk cputsSize CSignedInt64 cputsSizeCall
+call cputsIsConstCall math.greaterThanOrEqualI64
+arg cputsIsConstCall left cputsSlot
+arg cputsIsConstCall right zeroVerbStep
+run cputsIsConstCall
+bind cputsIsStrConst Bool cputsIsConstCall
+
+call cputsIsVarCall isNameDeclaredAsKindPointerVar
+arg cputsIsVarCall bufferBase bufferBase
+arg cputsIsVarCall bufferEndOffset bufferEndOffset
+arg cputsIsVarCall bodyStartOffset operationBodyStartOffset
+arg cputsIsVarCall candidateNamePointer cputsArg1Pointer
+arg cputsIsVarCall candidateNameLength pendingCallArg1ValueLength
+run cputsIsVarCall
+bindOk cputsIsPointerVar Bool cputsIsVarCall
+
+branchIf cputsIsStrConst emitCputsStrConst
+branchIf cputsIsPointerVar emitCputsPointerVar
+branch emitCputsBindArg
+
+label emitCputsStrConst
+const cputsStrFmt CNullTerminatedByteString "  %%%.*s_res32 = call i32 @puts(i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0))\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitCputsStrCall c.printf
+arg emitCputsStrCall format cputsStrFmt
+arg emitCputsStrCall n1 pendingCallNameLength
+arg emitCputsStrCall p1 cputsCallNamePointer
+arg emitCputsStrCall a1 cputsSize
+arg emitCputsStrCall a2 cputsSize
+arg emitCputsStrCall s cputsSlot
+arg emitCputsStrCall n2 pendingCallNameLength
+arg emitCputsStrCall p2 cputsCallNamePointer
+arg emitCputsStrCall n3 pendingCallNameLength
+arg emitCputsStrCall p3 cputsCallNamePointer
+run emitCputsStrCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitCputsPointerVar
+const cputsPtrVarFmt CNullTerminatedByteString "  %%%.*s_arg = load i8*, i8** %%%.*s\n  %%%.*s_res32 = call i32 @puts(i8* %%%.*s_arg)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitCputsPtrVarCall c.printf
+arg emitCputsPtrVarCall format cputsPtrVarFmt
+arg emitCputsPtrVarCall n1 pendingCallNameLength
+arg emitCputsPtrVarCall p1 cputsCallNamePointer
+arg emitCputsPtrVarCall an1 pendingCallArg1ValueLength
+arg emitCputsPtrVarCall ap1 cputsArg1Pointer
+arg emitCputsPtrVarCall n2 pendingCallNameLength
+arg emitCputsPtrVarCall p2 cputsCallNamePointer
+arg emitCputsPtrVarCall n3 pendingCallNameLength
+arg emitCputsPtrVarCall p3 cputsCallNamePointer
+arg emitCputsPtrVarCall n4 pendingCallNameLength
+arg emitCputsPtrVarCall p4 cputsCallNamePointer
+arg emitCputsPtrVarCall n5 pendingCallNameLength
+arg emitCputsPtrVarCall p5 cputsCallNamePointer
+run emitCputsPtrVarCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitCputsBindArg
+const cputsBindFmt CNullTerminatedByteString "  %%%.*s_res32 = call i32 @puts(i8* %%%.*s)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitCputsBindCall c.printf
+arg emitCputsBindCall format cputsBindFmt
+arg emitCputsBindCall n1 pendingCallNameLength
+arg emitCputsBindCall p1 cputsCallNamePointer
+arg emitCputsBindCall an1 pendingCallArg1ValueLength
+arg emitCputsBindCall ap1 cputsArg1Pointer
+arg emitCputsBindCall n2 pendingCallNameLength
+arg emitCputsBindCall p2 cputsCallNamePointer
+arg emitCputsBindCall n3 pendingCallNameLength
+arg emitCputsBindCall p3 cputsCallNamePointer
+run emitCputsBindCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+# c.memcpy(dst, src, n): emit `%X_res = call i8* @memcpy(i8* %dst, i8* %src, i64 %n)`.
+# dst and src are pointer args; n is i64. Returns the dst pointer.
+label emitMemcpyRun
+call mcpyCallNamePtrCall pointer.offset
+arg mcpyCallNamePtrCall base bufferBase
+arg mcpyCallNamePtrCall offset pendingCallNameStartOffset
+run mcpyCallNamePtrCall
+bind mcpyCallNamePointer COpaqueMemoryAddress mcpyCallNamePtrCall
+
+call mcpyArg1PtrCall pointer.offset
+arg mcpyArg1PtrCall base bufferBase
+arg mcpyArg1PtrCall offset pendingCallArg1ValueStartOffset
+run mcpyArg1PtrCall
+bind mcpyArg1Pointer COpaqueMemoryAddress mcpyArg1PtrCall
+
+call mcpyArg2PtrCall pointer.offset
+arg mcpyArg2PtrCall base bufferBase
+arg mcpyArg2PtrCall offset pendingCallArg2ValueStartOffset
+run mcpyArg2PtrCall
+bind mcpyArg2Pointer COpaqueMemoryAddress mcpyArg2PtrCall
+
+call mcpyArg3PtrCall pointer.offset
+arg mcpyArg3PtrCall base bufferBase
+arg mcpyArg3PtrCall offset pendingCallArg3ValueStartOffset
+run mcpyArg3PtrCall
+bind mcpyArg3Pointer COpaqueMemoryAddress mcpyArg3PtrCall
+
+# Classify size arg (arg3): const → literal, bind/var → use as-is.
+# (src arg2 is assumed pointer bind; string-const not yet supported here.)
+const mcpyConstDeclVerb CNullTerminatedByteString "const "
+const mcpyConstDeclVerbLength CByteCount 6
+call mcpySizeIsConstCall isNameDeclaredAsKind
+arg mcpySizeIsConstCall bufferBase bufferBase
+arg mcpySizeIsConstCall bufferEndOffset bufferEndOffset
+arg mcpySizeIsConstCall targetNamePointer mcpyArg3Pointer
+arg mcpySizeIsConstCall targetNameLength pendingCallArg3ValueLength
+arg mcpySizeIsConstCall declarationVerb mcpyConstDeclVerb
+arg mcpySizeIsConstCall declarationVerbLength mcpyConstDeclVerbLength
+run mcpySizeIsConstCall
+bindOk mcpySizeIsConst Bool mcpySizeIsConstCall
+branchIf mcpySizeIsConst emitMemcpyConstSize
+branch emitMemcpyBindSize
+
+label emitMemcpyConstSize
+call mcpyConstSizeCall findConstIntegerValueByNameAfterOffset
+arg mcpyConstSizeCall bufferBase bufferBase
+arg mcpyConstSizeCall bufferEndOffset bufferEndOffset
+arg mcpyConstSizeCall searchStartOffset operationBodyStartOffset
+arg mcpyConstSizeCall targetNamePointer mcpyArg3Pointer
+arg mcpyConstSizeCall targetNameLength pendingCallArg3ValueLength
+run mcpyConstSizeCall
+bindOk mcpyConstSizeValue CSignedInt64 mcpyConstSizeCall
+const mcpyConstSizeFmt CNullTerminatedByteString "  %%%.*s_res = call i8* @memcpy(i8* %%%.*s, i8* %%%.*s, i64 %lld)\n"
+call emitMcpyConstSizeCall c.printf
+arg emitMcpyConstSizeCall format mcpyConstSizeFmt
+arg emitMcpyConstSizeCall n1 pendingCallNameLength
+arg emitMcpyConstSizeCall p1 mcpyCallNamePointer
+arg emitMcpyConstSizeCall an1 pendingCallArg1ValueLength
+arg emitMcpyConstSizeCall ap1 mcpyArg1Pointer
+arg emitMcpyConstSizeCall an2 pendingCallArg2ValueLength
+arg emitMcpyConstSizeCall ap2 mcpyArg2Pointer
+arg emitMcpyConstSizeCall sz mcpyConstSizeValue
+run emitMcpyConstSizeCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitMemcpyBindSize
+const mcpyFmt CNullTerminatedByteString "  %%%.*s_res = call i8* @memcpy(i8* %%%.*s, i8* %%%.*s, i64 %%%.*s)\n"
+call emitMemcpyCall c.printf
+arg emitMemcpyCall format mcpyFmt
+arg emitMemcpyCall n1 pendingCallNameLength
+arg emitMemcpyCall p1 mcpyCallNamePointer
+arg emitMemcpyCall an1 pendingCallArg1ValueLength
+arg emitMemcpyCall ap1 mcpyArg1Pointer
+arg emitMemcpyCall an2 pendingCallArg2ValueLength
+arg emitMemcpyCall ap2 mcpyArg2Pointer
+arg emitMemcpyCall an3 pendingCallArg3ValueLength
+arg emitMemcpyCall ap3 mcpyArg3Pointer
+run emitMemcpyCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+# c.memset(dst, byteValue, n): emit `%X_res = call i8* @memset(i8* %dst, i32 %byteValue, i64 %n)`.
+label emitMemsetRun
+call msetCallNamePtrCall pointer.offset
+arg msetCallNamePtrCall base bufferBase
+arg msetCallNamePtrCall offset pendingCallNameStartOffset
+run msetCallNamePtrCall
+bind msetCallNamePointer COpaqueMemoryAddress msetCallNamePtrCall
+
+call msetArg1PtrCall pointer.offset
+arg msetArg1PtrCall base bufferBase
+arg msetArg1PtrCall offset pendingCallArg1ValueStartOffset
+run msetArg1PtrCall
+bind msetArg1Pointer COpaqueMemoryAddress msetArg1PtrCall
+
+call msetArg2PtrCall pointer.offset
+arg msetArg2PtrCall base bufferBase
+arg msetArg2PtrCall offset pendingCallArg2ValueStartOffset
+run msetArg2PtrCall
+bind msetArg2Pointer COpaqueMemoryAddress msetArg2PtrCall
+
+call msetArg3PtrCall pointer.offset
+arg msetArg3PtrCall base bufferBase
+arg msetArg3PtrCall offset pendingCallArg3ValueStartOffset
+run msetArg3PtrCall
+bind msetArg3Pointer COpaqueMemoryAddress msetArg3PtrCall
+
+# Classify byteValue (arg2) and n (arg3) as const or bind.
+const msetConstDeclVerb CNullTerminatedByteString "const "
+const msetConstDeclVerbLength CByteCount 6
+call msetByteValueIsConstCall isNameDeclaredAsKind
+arg msetByteValueIsConstCall bufferBase bufferBase
+arg msetByteValueIsConstCall bufferEndOffset bufferEndOffset
+arg msetByteValueIsConstCall targetNamePointer msetArg2Pointer
+arg msetByteValueIsConstCall targetNameLength pendingCallArg2ValueLength
+arg msetByteValueIsConstCall declarationVerb msetConstDeclVerb
+arg msetByteValueIsConstCall declarationVerbLength msetConstDeclVerbLength
+run msetByteValueIsConstCall
+bindOk msetByteValueIsConst Bool msetByteValueIsConstCall
+
+call msetSizeIsConstCall isNameDeclaredAsKind
+arg msetSizeIsConstCall bufferBase bufferBase
+arg msetSizeIsConstCall bufferEndOffset bufferEndOffset
+arg msetSizeIsConstCall targetNamePointer msetArg3Pointer
+arg msetSizeIsConstCall targetNameLength pendingCallArg3ValueLength
+arg msetSizeIsConstCall declarationVerb msetConstDeclVerb
+arg msetSizeIsConstCall declarationVerbLength msetConstDeclVerbLength
+run msetSizeIsConstCall
+bindOk msetSizeIsConst Bool msetSizeIsConstCall
+
+# Always resolve const values; harmless when not used. Fallback 0 if
+# the name lookup fails.
+call msetByteConstVal findConstIntegerValueByNameAfterOffset
+arg msetByteConstVal bufferBase bufferBase
+arg msetByteConstVal bufferEndOffset bufferEndOffset
+arg msetByteConstVal searchStartOffset operationBodyStartOffset
+arg msetByteConstVal targetNamePointer msetArg2Pointer
+arg msetByteConstVal targetNameLength pendingCallArg2ValueLength
+run msetByteConstVal
+bindOk msetByteValueConstValue CSignedInt64 msetByteConstVal
+
+call msetSizeConstVal findConstIntegerValueByNameAfterOffset
+arg msetSizeConstVal bufferBase bufferBase
+arg msetSizeConstVal bufferEndOffset bufferEndOffset
+arg msetSizeConstVal searchStartOffset operationBodyStartOffset
+arg msetSizeConstVal targetNamePointer msetArg3Pointer
+arg msetSizeConstVal targetNameLength pendingCallArg3ValueLength
+run msetSizeConstVal
+bindOk msetSizeConstValue CSignedInt64 msetSizeConstVal
+
+branchIf msetByteValueIsConst msetByteConst
+branch msetByteBind
+
+label msetByteConst
+branchIf msetSizeIsConst msetEmitCC
+branch msetEmitCB
+
+label msetByteBind
+branchIf msetSizeIsConst msetEmitBC
+branch msetEmitBB
+
+label msetEmitCC
+const msetCCFmt CNullTerminatedByteString "  %%%.*s_res = call i8* @memset(i8* %%%.*s, i32 %lld, i64 %lld)\n"
+call emitMsetCC c.printf
+arg emitMsetCC format msetCCFmt
+arg emitMsetCC n1 pendingCallNameLength
+arg emitMsetCC p1 msetCallNamePointer
+arg emitMsetCC an1 pendingCallArg1ValueLength
+arg emitMsetCC ap1 msetArg1Pointer
+arg emitMsetCC bv msetByteValueConstValue
+arg emitMsetCC sv msetSizeConstValue
+run emitMsetCC
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label msetEmitCB
+const msetCBFmt CNullTerminatedByteString "  %%%.*s_res = call i8* @memset(i8* %%%.*s, i32 %lld, i64 %%%.*s)\n"
+call emitMsetCB c.printf
+arg emitMsetCB format msetCBFmt
+arg emitMsetCB n1 pendingCallNameLength
+arg emitMsetCB p1 msetCallNamePointer
+arg emitMsetCB an1 pendingCallArg1ValueLength
+arg emitMsetCB ap1 msetArg1Pointer
+arg emitMsetCB bv msetByteValueConstValue
+arg emitMsetCB an3 pendingCallArg3ValueLength
+arg emitMsetCB ap3 msetArg3Pointer
+run emitMsetCB
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label msetEmitBC
+const msetBCFmt CNullTerminatedByteString "  %%%.*s_v32 = trunc i64 %%%.*s to i32\n  %%%.*s_res = call i8* @memset(i8* %%%.*s, i32 %%%.*s_v32, i64 %lld)\n"
+call emitMsetBC c.printf
+arg emitMsetBC format msetBCFmt
+arg emitMsetBC n1 pendingCallNameLength
+arg emitMsetBC p1 msetCallNamePointer
+arg emitMsetBC an1 pendingCallArg2ValueLength
+arg emitMsetBC ap1 msetArg2Pointer
+arg emitMsetBC n2 pendingCallNameLength
+arg emitMsetBC p2 msetCallNamePointer
+arg emitMsetBC an2 pendingCallArg1ValueLength
+arg emitMsetBC ap2 msetArg1Pointer
+arg emitMsetBC n3 pendingCallNameLength
+arg emitMsetBC p3 msetCallNamePointer
+arg emitMsetBC sv msetSizeConstValue
+run emitMsetBC
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label msetEmitBB
+const msetFmt CNullTerminatedByteString "  %%%.*s_v32 = trunc i64 %%%.*s to i32\n  %%%.*s_res = call i8* @memset(i8* %%%.*s, i32 %%%.*s_v32, i64 %%%.*s)\n"
+call emitMemsetCall c.printf
+arg emitMemsetCall format msetFmt
+arg emitMemsetCall n1 pendingCallNameLength
+arg emitMemsetCall p1 msetCallNamePointer
+arg emitMemsetCall an1 pendingCallArg2ValueLength
+arg emitMemsetCall ap1 msetArg2Pointer
+arg emitMemsetCall n2 pendingCallNameLength
+arg emitMemsetCall p2 msetCallNamePointer
+arg emitMemsetCall an2 pendingCallArg1ValueLength
+arg emitMemsetCall ap2 msetArg1Pointer
+arg emitMemsetCall n3 pendingCallNameLength
+arg emitMemsetCall p3 msetCallNamePointer
+arg emitMemsetCall an3 pendingCallArg3ValueLength
+arg emitMemsetCall ap3 msetArg3Pointer
+run emitMemsetCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+# c.memcmp(a, b, n): emit `%X_res32 = call i32 @memcmp(i8* %a, i8* %b, i64 %n)` then sext.
+label emitMemcmpRun
+call mcmpCallNamePtrCall pointer.offset
+arg mcmpCallNamePtrCall base bufferBase
+arg mcmpCallNamePtrCall offset pendingCallNameStartOffset
+run mcmpCallNamePtrCall
+bind mcmpCallNamePointer COpaqueMemoryAddress mcmpCallNamePtrCall
+
+call mcmpArg1PtrCall pointer.offset
+arg mcmpArg1PtrCall base bufferBase
+arg mcmpArg1PtrCall offset pendingCallArg1ValueStartOffset
+run mcmpArg1PtrCall
+bind mcmpArg1Pointer COpaqueMemoryAddress mcmpArg1PtrCall
+
+call mcmpArg2PtrCall pointer.offset
+arg mcmpArg2PtrCall base bufferBase
+arg mcmpArg2PtrCall offset pendingCallArg2ValueStartOffset
+run mcmpArg2PtrCall
+bind mcmpArg2Pointer COpaqueMemoryAddress mcmpArg2PtrCall
+
+call mcmpArg3PtrCall pointer.offset
+arg mcmpArg3PtrCall base bufferBase
+arg mcmpArg3PtrCall offset pendingCallArg3ValueStartOffset
+run mcmpArg3PtrCall
+bind mcmpArg3Pointer COpaqueMemoryAddress mcmpArg3PtrCall
+
+const mcmpConstDeclVerb CNullTerminatedByteString "const "
+const mcmpConstDeclVerbLength CByteCount 6
+call mcmpSizeIsConstCall isNameDeclaredAsKind
+arg mcmpSizeIsConstCall bufferBase bufferBase
+arg mcmpSizeIsConstCall bufferEndOffset bufferEndOffset
+arg mcmpSizeIsConstCall targetNamePointer mcmpArg3Pointer
+arg mcmpSizeIsConstCall targetNameLength pendingCallArg3ValueLength
+arg mcmpSizeIsConstCall declarationVerb mcmpConstDeclVerb
+arg mcmpSizeIsConstCall declarationVerbLength mcmpConstDeclVerbLength
+run mcmpSizeIsConstCall
+bindOk mcmpSizeIsConst Bool mcmpSizeIsConstCall
+branchIf mcmpSizeIsConst emitMemcmpConstSize
+branch emitMemcmpBindSize
+
+label emitMemcmpConstSize
+call mcmpConstSizeCall findConstIntegerValueByNameAfterOffset
+arg mcmpConstSizeCall bufferBase bufferBase
+arg mcmpConstSizeCall bufferEndOffset bufferEndOffset
+arg mcmpConstSizeCall searchStartOffset operationBodyStartOffset
+arg mcmpConstSizeCall targetNamePointer mcmpArg3Pointer
+arg mcmpConstSizeCall targetNameLength pendingCallArg3ValueLength
+run mcmpConstSizeCall
+bindOk mcmpConstSizeValue CSignedInt64 mcmpConstSizeCall
+const mcmpConstSizeFmt CNullTerminatedByteString "  %%%.*s_res32 = call i32 @memcmp(i8* %%%.*s, i8* %%%.*s, i64 %lld)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitMcmpConstSizeCall c.printf
+arg emitMcmpConstSizeCall format mcmpConstSizeFmt
+arg emitMcmpConstSizeCall n1 pendingCallNameLength
+arg emitMcmpConstSizeCall p1 mcmpCallNamePointer
+arg emitMcmpConstSizeCall an1 pendingCallArg1ValueLength
+arg emitMcmpConstSizeCall ap1 mcmpArg1Pointer
+arg emitMcmpConstSizeCall an2 pendingCallArg2ValueLength
+arg emitMcmpConstSizeCall ap2 mcmpArg2Pointer
+arg emitMcmpConstSizeCall sz mcmpConstSizeValue
+arg emitMcmpConstSizeCall n2 pendingCallNameLength
+arg emitMcmpConstSizeCall p2 mcmpCallNamePointer
+arg emitMcmpConstSizeCall n3 pendingCallNameLength
+arg emitMcmpConstSizeCall p3 mcmpCallNamePointer
+run emitMcmpConstSizeCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitMemcmpBindSize
+const mcmpFmt CNullTerminatedByteString "  %%%.*s_res32 = call i32 @memcmp(i8* %%%.*s, i8* %%%.*s, i64 %%%.*s)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitMemcmpCall c.printf
+arg emitMemcmpCall format mcmpFmt
+arg emitMemcmpCall n1 pendingCallNameLength
+arg emitMemcmpCall p1 mcmpCallNamePointer
+arg emitMemcmpCall an1 pendingCallArg1ValueLength
+arg emitMemcmpCall ap1 mcmpArg1Pointer
+arg emitMemcmpCall an2 pendingCallArg2ValueLength
+arg emitMemcmpCall ap2 mcmpArg2Pointer
+arg emitMemcmpCall an3 pendingCallArg3ValueLength
+arg emitMemcmpCall ap3 mcmpArg3Pointer
+arg emitMemcmpCall n2 pendingCallNameLength
+arg emitMemcmpCall p2 mcmpCallNamePointer
+arg emitMemcmpCall n3 pendingCallNameLength
+arg emitMemcmpCall p3 mcmpCallNamePointer
+run emitMemcmpCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+# c.printf(format, ...): minimal variadic support for 1-2 trailing args
+# (e.g., `printf("%d\n", x)` or `printf("%s = %d\n", name, value)`).
+# Format must be a string-const. Trailing args may be const integer,
+# pointer-typed bind (string-const or i8* bind), or i64 bind/var.
+label emitCprintfRun
+call cprintfCallNamePtrCall pointer.offset
+arg cprintfCallNamePtrCall base bufferBase
+arg cprintfCallNamePtrCall offset pendingCallNameStartOffset
+run cprintfCallNamePtrCall
+bind cprintfCallNamePointer COpaqueMemoryAddress cprintfCallNamePtrCall
+
+call cprintfFmtPtrCall pointer.offset
+arg cprintfFmtPtrCall base bufferBase
+arg cprintfFmtPtrCall offset pendingCallArg1ValueStartOffset
+run cprintfFmtPtrCall
+bind cprintfFmtArgPointer COpaqueMemoryAddress cprintfFmtPtrCall
+
+# Format must be a string const → look up slot.
+call cprintfFmtSlotCall findStringConstSlotByName
+arg cprintfFmtSlotCall bufferBase bufferBase
+arg cprintfFmtSlotCall bufferEndOffset bufferEndOffset
+arg cprintfFmtSlotCall targetNamePointer cprintfFmtArgPointer
+arg cprintfFmtSlotCall targetNameLength pendingCallArg1ValueLength
+run cprintfFmtSlotCall
+bindOk cprintfFmtSlot CSignedInt64 cprintfFmtSlotCall
+call cprintfFmtSizeCall findStringConstByteLengthByName
+arg cprintfFmtSizeCall bufferBase bufferBase
+arg cprintfFmtSizeCall bufferEndOffset bufferEndOffset
+arg cprintfFmtSizeCall targetNamePointer cprintfFmtArgPointer
+arg cprintfFmtSizeCall targetNameLength pendingCallArg1ValueLength
+run cprintfFmtSizeCall
+bindOk cprintfFmtSize CSignedInt64 cprintfFmtSizeCall
+
+const cprintfOneArgs CSignedInt64 1
+const cprintfTwoArgs CSignedInt64 2
+const cprintfThreeArgs CSignedInt64 3
+call cprintfArgCountEqOneCall math.equalI64
+arg cprintfArgCountEqOneCall left pendingCallArgCount
+arg cprintfArgCountEqOneCall right cprintfOneArgs
+run cprintfArgCountEqOneCall
+bind cprintfArgCountEqOne Bool cprintfArgCountEqOneCall
+
+call cprintfArgCountEqTwoCall math.equalI64
+arg cprintfArgCountEqTwoCall left pendingCallArgCount
+arg cprintfArgCountEqTwoCall right cprintfTwoArgs
+run cprintfArgCountEqTwoCall
+bind cprintfArgCountEqTwo Bool cprintfArgCountEqTwoCall
+
+call cprintfArgCountEqThreeCall math.equalI64
+arg cprintfArgCountEqThreeCall left pendingCallArgCount
+arg cprintfArgCountEqThreeCall right cprintfThreeArgs
+run cprintfArgCountEqThreeCall
+bind cprintfArgCountEqThree Bool cprintfArgCountEqThreeCall
+
+const cprintfFourArgs CSignedInt64 4
+call cprintfArgCountEqFourCall math.equalI64
+arg cprintfArgCountEqFourCall left pendingCallArgCount
+arg cprintfArgCountEqFourCall right cprintfFourArgs
+run cprintfArgCountEqFourCall
+bind cprintfArgCountEqFour Bool cprintfArgCountEqFourCall
+
+const cprintfFiveArgs CSignedInt64 5
+call cprintfArgCountEqFiveCall math.equalI64
+arg cprintfArgCountEqFiveCall left pendingCallArgCount
+arg cprintfArgCountEqFiveCall right cprintfFiveArgs
+run cprintfArgCountEqFiveCall
+bind cprintfArgCountEqFive Bool cprintfArgCountEqFiveCall
+
+branchIf cprintfArgCountEqOne emitCprintfFmtOnly
+branchIf cprintfArgCountEqTwo emitCprintfFmtPlusOne
+branchIf cprintfArgCountEqThree emitCprintfFmtPlusTwo
+branchIf cprintfArgCountEqFour emitCprintfFmtPlusThree
+branchIf cprintfArgCountEqFive emitCprintfFmtPlusFour
+branch emitCprintfFmtUnhandled
+
+# Safe fallback for c.printf with 6+ trailing args: emit an IR comment and
+# a stub SSA so emitBindRenameForCall has something to alias. Better to
+# emit a missing-call comment than a malformed @printf with wrong-arity
+# operands (which causes runtime crashes when the format-string substitution
+# count > supplied-arg count). This is hit by bootstrap's own large-arity
+# c.printf calls during self-host.
+label emitCprintfFmtUnhandled
+const cprintfUnhandledFmt CNullTerminatedByteString "  ; UNHANDLED c.printf with 6+ args (%lld trailing slots)\n  %%%.*s_res = add i64 0, 0\n"
+call emitCprintfUnhandledCall c.printf
+arg emitCprintfUnhandledCall format cprintfUnhandledFmt
+arg emitCprintfUnhandledCall n pendingCallArgCount
+arg emitCprintfUnhandledCall nlen pendingCallNameLength
+arg emitCprintfUnhandledCall nptr cprintfCallNamePointer
+run emitCprintfUnhandledCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitCprintfFmtOnly
+const cprintfFmtOnlyFormat CNullTerminatedByteString "  %%%.*s_res32 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0))\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitCprintfFmtOnlyCall c.printf
+arg emitCprintfFmtOnlyCall format cprintfFmtOnlyFormat
+arg emitCprintfFmtOnlyCall n1 pendingCallNameLength
+arg emitCprintfFmtOnlyCall p1 cprintfCallNamePointer
+arg emitCprintfFmtOnlyCall a1 cprintfFmtSize
+arg emitCprintfFmtOnlyCall a2 cprintfFmtSize
+arg emitCprintfFmtOnlyCall s cprintfFmtSlot
+arg emitCprintfFmtOnlyCall n2 pendingCallNameLength
+arg emitCprintfFmtOnlyCall p2 cprintfCallNamePointer
+arg emitCprintfFmtOnlyCall n3 pendingCallNameLength
+arg emitCprintfFmtOnlyCall p3 cprintfCallNamePointer
+run emitCprintfFmtOnlyCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitCprintfFmtPlusOne
+call cprintfArg2PtrCall pointer.offset
+arg cprintfArg2PtrCall base bufferBase
+arg cprintfArg2PtrCall offset pendingCallArg2ValueStartOffset
+run cprintfArg2PtrCall
+bind cprintfArg2ArgPointer COpaqueMemoryAddress cprintfArg2PtrCall
+
+# Detect whether arg2 is a const integer.
+const cprintfConstVerb CNullTerminatedByteString "const "
+const cprintfConstVerbLength CByteCount 6
+call cprintfArg2IsConstCall isNameDeclaredAsKind
+arg cprintfArg2IsConstCall bufferBase bufferBase
+arg cprintfArg2IsConstCall bufferEndOffset bufferEndOffset
+arg cprintfArg2IsConstCall targetNamePointer cprintfArg2ArgPointer
+arg cprintfArg2IsConstCall targetNameLength pendingCallArg2ValueLength
+arg cprintfArg2IsConstCall declarationVerb cprintfConstVerb
+arg cprintfArg2IsConstCall declarationVerbLength cprintfConstVerbLength
+run cprintfArg2IsConstCall
+bindOk cprintfArg2IsConst Bool cprintfArg2IsConstCall
+
+# Detect whether arg2 is a string-const (e.g. `printf("%s", name)`).
+call cprintfArg2SlotCall findStringConstSlotByName
+arg cprintfArg2SlotCall bufferBase bufferBase
+arg cprintfArg2SlotCall bufferEndOffset bufferEndOffset
+arg cprintfArg2SlotCall targetNamePointer cprintfArg2ArgPointer
+arg cprintfArg2SlotCall targetNameLength pendingCallArg2ValueLength
+run cprintfArg2SlotCall
+bindOk cprintfArg2Slot CSignedInt64 cprintfArg2SlotCall
+call cprintfArg2SizeCall findStringConstByteLengthByName
+arg cprintfArg2SizeCall bufferBase bufferBase
+arg cprintfArg2SizeCall bufferEndOffset bufferEndOffset
+arg cprintfArg2SizeCall targetNamePointer cprintfArg2ArgPointer
+arg cprintfArg2SizeCall targetNameLength pendingCallArg2ValueLength
+run cprintfArg2SizeCall
+bindOk cprintfArg2Size CSignedInt64 cprintfArg2SizeCall
+call cprintfArg2IsStrConstCall math.greaterThanOrEqualI64
+arg cprintfArg2IsStrConstCall left cprintfArg2Slot
+arg cprintfArg2IsStrConstCall right zeroVerbStep
+run cprintfArg2IsStrConstCall
+bind cprintfArg2IsStrConst Bool cprintfArg2IsStrConstCall
+
+branchIf cprintfArg2IsStrConst emitCprintfPlusStrConst
+branchIf cprintfArg2IsConst emitCprintfPlusIntConst
+branch emitCprintfPlusBind
+
+label emitCprintfPlusStrConst
+const cprintfPlusStrFmt CNullTerminatedByteString "  %%%.*s_res32 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0), i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0))\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitCprintfPlusStrCall c.printf
+arg emitCprintfPlusStrCall format cprintfPlusStrFmt
+arg emitCprintfPlusStrCall n1 pendingCallNameLength
+arg emitCprintfPlusStrCall p1 cprintfCallNamePointer
+arg emitCprintfPlusStrCall fa1 cprintfFmtSize
+arg emitCprintfPlusStrCall fa2 cprintfFmtSize
+arg emitCprintfPlusStrCall fs cprintfFmtSlot
+arg emitCprintfPlusStrCall ba1 cprintfArg2Size
+arg emitCprintfPlusStrCall ba2 cprintfArg2Size
+arg emitCprintfPlusStrCall bs cprintfArg2Slot
+arg emitCprintfPlusStrCall n2 pendingCallNameLength
+arg emitCprintfPlusStrCall p2 cprintfCallNamePointer
+arg emitCprintfPlusStrCall n3 pendingCallNameLength
+arg emitCprintfPlusStrCall p3 cprintfCallNamePointer
+run emitCprintfPlusStrCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitCprintfPlusIntConst
+call cprintfIntConstCall findConstIntegerValueByNameAfterOffset
+arg cprintfIntConstCall bufferBase bufferBase
+arg cprintfIntConstCall bufferEndOffset bufferEndOffset
+arg cprintfIntConstCall searchStartOffset operationBodyStartOffset
+arg cprintfIntConstCall targetNamePointer cprintfArg2ArgPointer
+arg cprintfIntConstCall targetNameLength pendingCallArg2ValueLength
+run cprintfIntConstCall
+bindOk cprintfIntConstVal CSignedInt64 cprintfIntConstCall
+const cprintfPlusIntConstFmt CNullTerminatedByteString "  %%%.*s_res32 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0), i64 %lld)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitCprintfPlusIntConstCall c.printf
+arg emitCprintfPlusIntConstCall format cprintfPlusIntConstFmt
+arg emitCprintfPlusIntConstCall n1 pendingCallNameLength
+arg emitCprintfPlusIntConstCall p1 cprintfCallNamePointer
+arg emitCprintfPlusIntConstCall fa1 cprintfFmtSize
+arg emitCprintfPlusIntConstCall fa2 cprintfFmtSize
+arg emitCprintfPlusIntConstCall fs cprintfFmtSlot
+arg emitCprintfPlusIntConstCall v cprintfIntConstVal
+arg emitCprintfPlusIntConstCall n2 pendingCallNameLength
+arg emitCprintfPlusIntConstCall p2 cprintfCallNamePointer
+arg emitCprintfPlusIntConstCall n3 pendingCallNameLength
+arg emitCprintfPlusIntConstCall p3 cprintfCallNamePointer
+run emitCprintfPlusIntConstCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitCprintfPlusBind
+# Classify arg2 as var / pointer-bind / int-bind. Var needs a `load` prefix.
+const cprintfPlusBindVarVerb CNullTerminatedByteString "var "
+const cprintfPlusBindVarVerbLength CByteCount 4
+call cprintfPlusBindArg2IsVarCall isNameDeclaredAsKind
+arg cprintfPlusBindArg2IsVarCall bufferBase bufferBase
+arg cprintfPlusBindArg2IsVarCall bufferEndOffset bufferEndOffset
+arg cprintfPlusBindArg2IsVarCall targetNamePointer cprintfArg2ArgPointer
+arg cprintfPlusBindArg2IsVarCall targetNameLength pendingCallArg2ValueLength
+arg cprintfPlusBindArg2IsVarCall declarationVerb cprintfPlusBindVarVerb
+arg cprintfPlusBindArg2IsVarCall declarationVerbLength cprintfPlusBindVarVerbLength
+run cprintfPlusBindArg2IsVarCall
+bindOk cprintfPlusBindArg2IsVar Bool cprintfPlusBindArg2IsVarCall
+
+call cprintfPlusBindArg2IsPtrCall isNamePointerBindInBody
+arg cprintfPlusBindArg2IsPtrCall bufferBase bufferBase
+arg cprintfPlusBindArg2IsPtrCall bufferEndOffset bufferEndOffset
+arg cprintfPlusBindArg2IsPtrCall bodyStartOffset operationBodyStartOffset
+arg cprintfPlusBindArg2IsPtrCall candidateNamePointer cprintfArg2ArgPointer
+arg cprintfPlusBindArg2IsPtrCall candidateNameLength pendingCallArg2ValueLength
+run cprintfPlusBindArg2IsPtrCall
+bindOk cprintfPlusBindArg2IsPtr Bool cprintfPlusBindArg2IsPtrCall
+branchIf cprintfPlusBindArg2IsVar emitCprintfPlusVarPiecewise
+branchIf cprintfPlusBindArg2IsPtr emitCprintfPlusPtrBind
+branch emitCprintfPlusIntBind
+
+# Piecewise emit for 2-arg printf where arg2 is a var (alloca).
+# Emits: load i64, i64* %<name>  ;  then call printf(..., i64 %_arg2_val)
+label emitCprintfPlusVarPiecewise
+const cprintfPlusVarArgIdx CSignedInt64 2
+const cprintfPlusVarLoadAFmt CNullTerminatedByteString "  %%%.*s_arg%lld_val = "
+call emitCprintfPlusVarLoadA c.printf
+arg emitCprintfPlusVarLoadA format cprintfPlusVarLoadAFmt
+arg emitCprintfPlusVarLoadA nlen pendingCallNameLength
+arg emitCprintfPlusVarLoadA nptr cprintfCallNamePointer
+arg emitCprintfPlusVarLoadA idx cprintfPlusVarArgIdx
+run emitCprintfPlusVarLoadA
+const cprintfPlusVarLoadBFmt CNullTerminatedByteString "load i64, i64* %%%.*s\n"
+call emitCprintfPlusVarLoadB c.printf
+arg emitCprintfPlusVarLoadB format cprintfPlusVarLoadBFmt
+arg emitCprintfPlusVarLoadB vlen pendingCallArg2ValueLength
+arg emitCprintfPlusVarLoadB vptr cprintfArg2ArgPointer
+run emitCprintfPlusVarLoadB
+
+const cprintfPlusVarPrefixA CNullTerminatedByteString "  %%%.*s_res32 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds (["
+call emitCprintfPlusVarPrefixA c.printf
+arg emitCprintfPlusVarPrefixA format cprintfPlusVarPrefixA
+arg emitCprintfPlusVarPrefixA n pendingCallNameLength
+arg emitCprintfPlusVarPrefixA p cprintfCallNamePointer
+run emitCprintfPlusVarPrefixA
+
+const cprintfPlusVarPrefixB CNullTerminatedByteString "%lld x i8], ["
+call emitCprintfPlusVarPrefixB c.printf
+arg emitCprintfPlusVarPrefixB format cprintfPlusVarPrefixB
+arg emitCprintfPlusVarPrefixB s cprintfFmtSize
+run emitCprintfPlusVarPrefixB
+
+const cprintfPlusVarPrefixC CNullTerminatedByteString "%lld x i8]* @.s%lld, i32 0, i32 0)"
+call emitCprintfPlusVarPrefixC c.printf
+arg emitCprintfPlusVarPrefixC format cprintfPlusVarPrefixC
+arg emitCprintfPlusVarPrefixC s cprintfFmtSize
+arg emitCprintfPlusVarPrefixC slot cprintfFmtSlot
+run emitCprintfPlusVarPrefixC
+
+const cprintfPlusVarOpFmt CNullTerminatedByteString ", i64 %%%.*s_arg%lld_val"
+call emitCprintfPlusVarOp c.printf
+arg emitCprintfPlusVarOp format cprintfPlusVarOpFmt
+arg emitCprintfPlusVarOp nlen pendingCallNameLength
+arg emitCprintfPlusVarOp nptr cprintfCallNamePointer
+arg emitCprintfPlusVarOp idx cprintfPlusVarArgIdx
+run emitCprintfPlusVarOp
+
+const cprintfPlusVarSuffix CNullTerminatedByteString ")\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitCprintfPlusVarSuffixCall c.printf
+arg emitCprintfPlusVarSuffixCall format cprintfPlusVarSuffix
+arg emitCprintfPlusVarSuffixCall n2 pendingCallNameLength
+arg emitCprintfPlusVarSuffixCall p2 cprintfCallNamePointer
+arg emitCprintfPlusVarSuffixCall n3 pendingCallNameLength
+arg emitCprintfPlusVarSuffixCall p3 cprintfCallNamePointer
+run emitCprintfPlusVarSuffixCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitCprintfPlusIntBind
+const cprintfPlusBindFmt CNullTerminatedByteString "  %%%.*s_res32 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0), i64 %%%.*s)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitCprintfPlusBindCall c.printf
+arg emitCprintfPlusBindCall format cprintfPlusBindFmt
+arg emitCprintfPlusBindCall n1 pendingCallNameLength
+arg emitCprintfPlusBindCall p1 cprintfCallNamePointer
+arg emitCprintfPlusBindCall fa1 cprintfFmtSize
+arg emitCprintfPlusBindCall fa2 cprintfFmtSize
+arg emitCprintfPlusBindCall fs cprintfFmtSlot
+arg emitCprintfPlusBindCall an1 pendingCallArg2ValueLength
+arg emitCprintfPlusBindCall ap1 cprintfArg2ArgPointer
+arg emitCprintfPlusBindCall n2 pendingCallNameLength
+arg emitCprintfPlusBindCall p2 cprintfCallNamePointer
+arg emitCprintfPlusBindCall n3 pendingCallNameLength
+arg emitCprintfPlusBindCall p3 cprintfCallNamePointer
+run emitCprintfPlusBindCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitCprintfPlusPtrBind
+const cprintfPlusPtrBindFmt CNullTerminatedByteString "  %%%.*s_res32 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0), i8* %%%.*s)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitCprintfPlusPtrBindCall c.printf
+arg emitCprintfPlusPtrBindCall format cprintfPlusPtrBindFmt
+arg emitCprintfPlusPtrBindCall n1 pendingCallNameLength
+arg emitCprintfPlusPtrBindCall p1 cprintfCallNamePointer
+arg emitCprintfPlusPtrBindCall fa1 cprintfFmtSize
+arg emitCprintfPlusPtrBindCall fa2 cprintfFmtSize
+arg emitCprintfPlusPtrBindCall fs cprintfFmtSlot
+arg emitCprintfPlusPtrBindCall an1 pendingCallArg2ValueLength
+arg emitCprintfPlusPtrBindCall ap1 cprintfArg2ArgPointer
+arg emitCprintfPlusPtrBindCall n2 pendingCallNameLength
+arg emitCprintfPlusPtrBindCall p2 cprintfCallNamePointer
+arg emitCprintfPlusPtrBindCall n3 pendingCallNameLength
+arg emitCprintfPlusPtrBindCall p3 cprintfCallNamePointer
+run emitCprintfPlusPtrBindCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitCprintfFmtPlusTwo
+# 3-arg printf: `printf(fmt, a, b)`. Each of a, b can be a const int,
+# string-const, or bind/param i64/i8*. We dispatch by classifying both
+# args, then emit a format string with literal/GEP/bind references.
+call cprintfArg2PtrCallB pointer.offset
+arg cprintfArg2PtrCallB base bufferBase
+arg cprintfArg2PtrCallB offset pendingCallArg2ValueStartOffset
+run cprintfArg2PtrCallB
+bind cprintfArg2ArgPointerB COpaqueMemoryAddress cprintfArg2PtrCallB
+
+call cprintfArg3PtrCallB pointer.offset
+arg cprintfArg3PtrCallB base bufferBase
+arg cprintfArg3PtrCallB offset pendingCallArg3ValueStartOffset
+run cprintfArg3PtrCallB
+bind cprintfArg3ArgPointer COpaqueMemoryAddress cprintfArg3PtrCallB
+
+# Classify arg2 and arg3 as const-int or bind.
+const cprintf3ConstVerb CNullTerminatedByteString "const "
+const cprintf3ConstVerbLength CByteCount 6
+call cprintf3Arg2IsConstCall isNameDeclaredAsKind
+arg cprintf3Arg2IsConstCall bufferBase bufferBase
+arg cprintf3Arg2IsConstCall bufferEndOffset bufferEndOffset
+arg cprintf3Arg2IsConstCall targetNamePointer cprintfArg2ArgPointerB
+arg cprintf3Arg2IsConstCall targetNameLength pendingCallArg2ValueLength
+arg cprintf3Arg2IsConstCall declarationVerb cprintf3ConstVerb
+arg cprintf3Arg2IsConstCall declarationVerbLength cprintf3ConstVerbLength
+run cprintf3Arg2IsConstCall
+bindOk cprintf3Arg2IsConst Bool cprintf3Arg2IsConstCall
+
+call cprintf3Arg3IsConstCall isNameDeclaredAsKind
+arg cprintf3Arg3IsConstCall bufferBase bufferBase
+arg cprintf3Arg3IsConstCall bufferEndOffset bufferEndOffset
+arg cprintf3Arg3IsConstCall targetNamePointer cprintfArg3ArgPointer
+arg cprintf3Arg3IsConstCall targetNameLength pendingCallArg3ValueLength
+arg cprintf3Arg3IsConstCall declarationVerb cprintf3ConstVerb
+arg cprintf3Arg3IsConstCall declarationVerbLength cprintf3ConstVerbLength
+run cprintf3Arg3IsConstCall
+bindOk cprintf3Arg3IsConst Bool cprintf3Arg3IsConstCall
+
+# Resolve const integer values up-front (harmless when unused).
+call cprintf3Arg2ConstVal findConstIntegerValueByNameAfterOffset
+arg cprintf3Arg2ConstVal bufferBase bufferBase
+arg cprintf3Arg2ConstVal bufferEndOffset bufferEndOffset
+arg cprintf3Arg2ConstVal searchStartOffset operationBodyStartOffset
+arg cprintf3Arg2ConstVal targetNamePointer cprintfArg2ArgPointerB
+arg cprintf3Arg2ConstVal targetNameLength pendingCallArg2ValueLength
+run cprintf3Arg2ConstVal
+bindOk cprintf3Arg2Val CSignedInt64 cprintf3Arg2ConstVal
+
+call cprintf3Arg3ConstVal findConstIntegerValueByNameAfterOffset
+arg cprintf3Arg3ConstVal bufferBase bufferBase
+arg cprintf3Arg3ConstVal bufferEndOffset bufferEndOffset
+arg cprintf3Arg3ConstVal searchStartOffset operationBodyStartOffset
+arg cprintf3Arg3ConstVal targetNamePointer cprintfArg3ArgPointer
+arg cprintf3Arg3ConstVal targetNameLength pendingCallArg3ValueLength
+run cprintf3Arg3ConstVal
+bindOk cprintf3Arg3Val CSignedInt64 cprintf3Arg3ConstVal
+
+# Classify whether arg2/arg3 are pointer-typed binds (i8*). Result is unused
+# if the arg is a const but the call is cheap and safe (won't match).
+call cprintf3Arg2IsPtrCall isNamePointerBindInBody
+arg cprintf3Arg2IsPtrCall bufferBase bufferBase
+arg cprintf3Arg2IsPtrCall bufferEndOffset bufferEndOffset
+arg cprintf3Arg2IsPtrCall bodyStartOffset operationBodyStartOffset
+arg cprintf3Arg2IsPtrCall candidateNamePointer cprintfArg2ArgPointerB
+arg cprintf3Arg2IsPtrCall candidateNameLength pendingCallArg2ValueLength
+run cprintf3Arg2IsPtrCall
+bindOk cprintf3Arg2IsPtr Bool cprintf3Arg2IsPtrCall
+
+call cprintf3Arg3IsPtrCall isNamePointerBindInBody
+arg cprintf3Arg3IsPtrCall bufferBase bufferBase
+arg cprintf3Arg3IsPtrCall bufferEndOffset bufferEndOffset
+arg cprintf3Arg3IsPtrCall bodyStartOffset operationBodyStartOffset
+arg cprintf3Arg3IsPtrCall candidateNamePointer cprintfArg3ArgPointer
+arg cprintf3Arg3IsPtrCall candidateNameLength pendingCallArg3ValueLength
+run cprintf3Arg3IsPtrCall
+bindOk cprintf3Arg3IsPtr Bool cprintf3Arg3IsPtrCall
+
+# Classify arg2/arg3 as var (alloca). If either is a var, route to the
+# piecewise emitter that emits a `load` prefix per var arg, then references
+# the loaded SSA name in the operand list.
+const cprintf3VarVerb CNullTerminatedByteString "var "
+const cprintf3VarVerbLength CByteCount 4
+call cprintf3Arg2IsVarCall isNameDeclaredAsKind
+arg cprintf3Arg2IsVarCall bufferBase bufferBase
+arg cprintf3Arg2IsVarCall bufferEndOffset bufferEndOffset
+arg cprintf3Arg2IsVarCall targetNamePointer cprintfArg2ArgPointerB
+arg cprintf3Arg2IsVarCall targetNameLength pendingCallArg2ValueLength
+arg cprintf3Arg2IsVarCall declarationVerb cprintf3VarVerb
+arg cprintf3Arg2IsVarCall declarationVerbLength cprintf3VarVerbLength
+run cprintf3Arg2IsVarCall
+bindOk cprintf3Arg2IsVar Bool cprintf3Arg2IsVarCall
+
+call cprintf3Arg3IsVarCall isNameDeclaredAsKind
+arg cprintf3Arg3IsVarCall bufferBase bufferBase
+arg cprintf3Arg3IsVarCall bufferEndOffset bufferEndOffset
+arg cprintf3Arg3IsVarCall targetNamePointer cprintfArg3ArgPointer
+arg cprintf3Arg3IsVarCall targetNameLength pendingCallArg3ValueLength
+arg cprintf3Arg3IsVarCall declarationVerb cprintf3VarVerb
+arg cprintf3Arg3IsVarCall declarationVerbLength cprintf3VarVerbLength
+run cprintf3Arg3IsVarCall
+bindOk cprintf3Arg3IsVar Bool cprintf3Arg3IsVarCall
+
+branchIf cprintf3Arg2IsVar cprintf3EmitPiecewise
+branchIf cprintf3Arg3IsVar cprintf3EmitPiecewise
+branchIf cprintf3Arg2IsConst cprintf3Arg2Const
+branch cprintf3Arg2Bind
+
+label cprintf3Arg2Const
+branchIf cprintf3Arg3IsConst cprintf3EmitCC
+branch cprintf3Arg2ConstArg3Bind
+
+label cprintf3Arg2ConstArg3Bind
+branchIf cprintf3Arg3IsPtr cprintf3EmitCBp
+branch cprintf3EmitCB
+
+label cprintf3Arg2Bind
+branchIf cprintf3Arg3IsConst cprintf3Arg2BindArg3Const
+branch cprintf3Arg2BindArg3Bind
+
+label cprintf3Arg2BindArg3Const
+branchIf cprintf3Arg2IsPtr cprintf3EmitBpC
+branch cprintf3EmitBC
+
+label cprintf3Arg2BindArg3Bind
+branchIf cprintf3Arg2IsPtr cprintf3Arg2PtrArg3Bind
+branch cprintf3Arg2IntArg3Bind
+
+label cprintf3Arg2IntArg3Bind
+branchIf cprintf3Arg3IsPtr cprintf3EmitBBip
+branch cprintf3EmitBB
+
+label cprintf3Arg2PtrArg3Bind
+branchIf cprintf3Arg3IsPtr cprintf3EmitBBpp
+branch cprintf3EmitBBpi
+
+label cprintf3EmitCC
+const cprintf3CCFmt CNullTerminatedByteString "  %%%.*s_res32 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0), i64 %lld, i64 %lld)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitCprintf3CC c.printf
+arg emitCprintf3CC format cprintf3CCFmt
+arg emitCprintf3CC n1 pendingCallNameLength
+arg emitCprintf3CC p1 cprintfCallNamePointer
+arg emitCprintf3CC fa1 cprintfFmtSize
+arg emitCprintf3CC fa2 cprintfFmtSize
+arg emitCprintf3CC fs cprintfFmtSlot
+arg emitCprintf3CC v1 cprintf3Arg2Val
+arg emitCprintf3CC v2 cprintf3Arg3Val
+arg emitCprintf3CC n2 pendingCallNameLength
+arg emitCprintf3CC p2 cprintfCallNamePointer
+arg emitCprintf3CC n3 pendingCallNameLength
+arg emitCprintf3CC p3 cprintfCallNamePointer
+run emitCprintf3CC
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label cprintf3EmitCB
+const cprintf3CBFmt CNullTerminatedByteString "  %%%.*s_res32 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0), i64 %lld, i64 %%%.*s)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitCprintf3CB c.printf
+arg emitCprintf3CB format cprintf3CBFmt
+arg emitCprintf3CB n1 pendingCallNameLength
+arg emitCprintf3CB p1 cprintfCallNamePointer
+arg emitCprintf3CB fa1 cprintfFmtSize
+arg emitCprintf3CB fa2 cprintfFmtSize
+arg emitCprintf3CB fs cprintfFmtSlot
+arg emitCprintf3CB v1 cprintf3Arg2Val
+arg emitCprintf3CB an3 pendingCallArg3ValueLength
+arg emitCprintf3CB ap3 cprintfArg3ArgPointer
+arg emitCprintf3CB n2 pendingCallNameLength
+arg emitCprintf3CB p2 cprintfCallNamePointer
+arg emitCprintf3CB n3 pendingCallNameLength
+arg emitCprintf3CB p3 cprintfCallNamePointer
+run emitCprintf3CB
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label cprintf3EmitBC
+const cprintf3BCFmt CNullTerminatedByteString "  %%%.*s_res32 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0), i64 %%%.*s, i64 %lld)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitCprintf3BC c.printf
+arg emitCprintf3BC format cprintf3BCFmt
+arg emitCprintf3BC n1 pendingCallNameLength
+arg emitCprintf3BC p1 cprintfCallNamePointer
+arg emitCprintf3BC fa1 cprintfFmtSize
+arg emitCprintf3BC fa2 cprintfFmtSize
+arg emitCprintf3BC fs cprintfFmtSlot
+arg emitCprintf3BC an2 pendingCallArg2ValueLength
+arg emitCprintf3BC ap2 cprintfArg2ArgPointerB
+arg emitCprintf3BC v2 cprintf3Arg3Val
+arg emitCprintf3BC n2 pendingCallNameLength
+arg emitCprintf3BC p2 cprintfCallNamePointer
+arg emitCprintf3BC n3 pendingCallNameLength
+arg emitCprintf3BC p3 cprintfCallNamePointer
+run emitCprintf3BC
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label cprintf3EmitBB
+const cprintf3BBFmt CNullTerminatedByteString "  %%%.*s_res32 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0), i64 %%%.*s, i64 %%%.*s)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitCprintf3BB c.printf
+arg emitCprintf3BB format cprintf3BBFmt
+arg emitCprintf3BB n1 pendingCallNameLength
+arg emitCprintf3BB p1 cprintfCallNamePointer
+arg emitCprintf3BB fa1 cprintfFmtSize
+arg emitCprintf3BB fa2 cprintfFmtSize
+arg emitCprintf3BB fs cprintfFmtSlot
+arg emitCprintf3BB an2 pendingCallArg2ValueLength
+arg emitCprintf3BB ap2 cprintfArg2ArgPointerB
+arg emitCprintf3BB an3 pendingCallArg3ValueLength
+arg emitCprintf3BB ap3 cprintfArg3ArgPointer
+arg emitCprintf3BB n2 pendingCallNameLength
+arg emitCprintf3BB p2 cprintfCallNamePointer
+arg emitCprintf3BB n3 pendingCallNameLength
+arg emitCprintf3BB p3 cprintfCallNamePointer
+run emitCprintf3BB
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+# arg2 const, arg3 pointer-bind  (e.g., printf("...%lld...%s\n", 1, ptr))
+label cprintf3EmitCBp
+const cprintf3CBpFmt CNullTerminatedByteString "  %%%.*s_res32 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0), i64 %lld, i8* %%%.*s)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitCprintf3CBp c.printf
+arg emitCprintf3CBp format cprintf3CBpFmt
+arg emitCprintf3CBp n1 pendingCallNameLength
+arg emitCprintf3CBp p1 cprintfCallNamePointer
+arg emitCprintf3CBp fa1 cprintfFmtSize
+arg emitCprintf3CBp fa2 cprintfFmtSize
+arg emitCprintf3CBp fs cprintfFmtSlot
+arg emitCprintf3CBp v1 cprintf3Arg2Val
+arg emitCprintf3CBp an3 pendingCallArg3ValueLength
+arg emitCprintf3CBp ap3 cprintfArg3ArgPointer
+arg emitCprintf3CBp n2 pendingCallNameLength
+arg emitCprintf3CBp p2 cprintfCallNamePointer
+arg emitCprintf3CBp n3 pendingCallNameLength
+arg emitCprintf3CBp p3 cprintfCallNamePointer
+run emitCprintf3CBp
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+# arg2 pointer-bind, arg3 const
+label cprintf3EmitBpC
+const cprintf3BpCFmt CNullTerminatedByteString "  %%%.*s_res32 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0), i8* %%%.*s, i64 %lld)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitCprintf3BpC c.printf
+arg emitCprintf3BpC format cprintf3BpCFmt
+arg emitCprintf3BpC n1 pendingCallNameLength
+arg emitCprintf3BpC p1 cprintfCallNamePointer
+arg emitCprintf3BpC fa1 cprintfFmtSize
+arg emitCprintf3BpC fa2 cprintfFmtSize
+arg emitCprintf3BpC fs cprintfFmtSlot
+arg emitCprintf3BpC an2 pendingCallArg2ValueLength
+arg emitCprintf3BpC ap2 cprintfArg2ArgPointerB
+arg emitCprintf3BpC v2 cprintf3Arg3Val
+arg emitCprintf3BpC n2 pendingCallNameLength
+arg emitCprintf3BpC p2 cprintfCallNamePointer
+arg emitCprintf3BpC n3 pendingCallNameLength
+arg emitCprintf3BpC p3 cprintfCallNamePointer
+run emitCprintf3BpC
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+# arg2 int-bind, arg3 pointer-bind  (the %.*s case: length, pointer)
+label cprintf3EmitBBip
+const cprintf3BBipFmt CNullTerminatedByteString "  %%%.*s_res32 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0), i64 %%%.*s, i8* %%%.*s)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitCprintf3BBip c.printf
+arg emitCprintf3BBip format cprintf3BBipFmt
+arg emitCprintf3BBip n1 pendingCallNameLength
+arg emitCprintf3BBip p1 cprintfCallNamePointer
+arg emitCprintf3BBip fa1 cprintfFmtSize
+arg emitCprintf3BBip fa2 cprintfFmtSize
+arg emitCprintf3BBip fs cprintfFmtSlot
+arg emitCprintf3BBip an2 pendingCallArg2ValueLength
+arg emitCprintf3BBip ap2 cprintfArg2ArgPointerB
+arg emitCprintf3BBip an3 pendingCallArg3ValueLength
+arg emitCprintf3BBip ap3 cprintfArg3ArgPointer
+arg emitCprintf3BBip n2 pendingCallNameLength
+arg emitCprintf3BBip p2 cprintfCallNamePointer
+arg emitCprintf3BBip n3 pendingCallNameLength
+arg emitCprintf3BBip p3 cprintfCallNamePointer
+run emitCprintf3BBip
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+# arg2 pointer-bind, arg3 int-bind
+label cprintf3EmitBBpi
+const cprintf3BBpiFmt CNullTerminatedByteString "  %%%.*s_res32 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0), i8* %%%.*s, i64 %%%.*s)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitCprintf3BBpi c.printf
+arg emitCprintf3BBpi format cprintf3BBpiFmt
+arg emitCprintf3BBpi n1 pendingCallNameLength
+arg emitCprintf3BBpi p1 cprintfCallNamePointer
+arg emitCprintf3BBpi fa1 cprintfFmtSize
+arg emitCprintf3BBpi fa2 cprintfFmtSize
+arg emitCprintf3BBpi fs cprintfFmtSlot
+arg emitCprintf3BBpi an2 pendingCallArg2ValueLength
+arg emitCprintf3BBpi ap2 cprintfArg2ArgPointerB
+arg emitCprintf3BBpi an3 pendingCallArg3ValueLength
+arg emitCprintf3BBpi ap3 cprintfArg3ArgPointer
+arg emitCprintf3BBpi n2 pendingCallNameLength
+arg emitCprintf3BBpi p2 cprintfCallNamePointer
+arg emitCprintf3BBpi n3 pendingCallNameLength
+arg emitCprintf3BBpi p3 cprintfCallNamePointer
+run emitCprintf3BBpi
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+# 4-arg c.printf: format + 3 trailing args. Same piecewise structure as
+# the 5-arg (PlusFour) path but with only arg2/arg3/arg4 operand pieces.
+label emitCprintfFmtPlusThree
+call cprintf3pPlusArg2PtrCall pointer.offset
+arg cprintf3pPlusArg2PtrCall base bufferBase
+arg cprintf3pPlusArg2PtrCall offset pendingCallArg2ValueStartOffset
+run cprintf3pPlusArg2PtrCall
+bind cprintf3pPlusArg2Pointer COpaqueMemoryAddress cprintf3pPlusArg2PtrCall
+
+call cprintf3pPlusArg3PtrCall pointer.offset
+arg cprintf3pPlusArg3PtrCall base bufferBase
+arg cprintf3pPlusArg3PtrCall offset pendingCallArg3ValueStartOffset
+run cprintf3pPlusArg3PtrCall
+bind cprintf3pPlusArg3Pointer COpaqueMemoryAddress cprintf3pPlusArg3PtrCall
+
+call cprintf3pPlusArg4PtrCall pointer.offset
+arg cprintf3pPlusArg4PtrCall base bufferBase
+arg cprintf3pPlusArg4PtrCall offset pendingCallArg4ValueStartOffset
+run cprintf3pPlusArg4PtrCall
+bind cprintf3pPlusArg4Pointer COpaqueMemoryAddress cprintf3pPlusArg4PtrCall
+
+const cprintf3pPlusVarVerb CNullTerminatedByteString "var "
+const cprintf3pPlusVarVerbLength CByteCount 4
+call cprintf3pPlusArg2IsVarCall isNameDeclaredAsKind
+arg cprintf3pPlusArg2IsVarCall bufferBase bufferBase
+arg cprintf3pPlusArg2IsVarCall bufferEndOffset bufferEndOffset
+arg cprintf3pPlusArg2IsVarCall targetNamePointer cprintf3pPlusArg2Pointer
+arg cprintf3pPlusArg2IsVarCall targetNameLength pendingCallArg2ValueLength
+arg cprintf3pPlusArg2IsVarCall declarationVerb cprintf3pPlusVarVerb
+arg cprintf3pPlusArg2IsVarCall declarationVerbLength cprintf3pPlusVarVerbLength
+run cprintf3pPlusArg2IsVarCall
+bindOk cprintf3pPlusArg2IsVar Bool cprintf3pPlusArg2IsVarCall
+
+call cprintf3pPlusArg3IsVarCall isNameDeclaredAsKind
+arg cprintf3pPlusArg3IsVarCall bufferBase bufferBase
+arg cprintf3pPlusArg3IsVarCall bufferEndOffset bufferEndOffset
+arg cprintf3pPlusArg3IsVarCall targetNamePointer cprintf3pPlusArg3Pointer
+arg cprintf3pPlusArg3IsVarCall targetNameLength pendingCallArg3ValueLength
+arg cprintf3pPlusArg3IsVarCall declarationVerb cprintf3pPlusVarVerb
+arg cprintf3pPlusArg3IsVarCall declarationVerbLength cprintf3pPlusVarVerbLength
+run cprintf3pPlusArg3IsVarCall
+bindOk cprintf3pPlusArg3IsVar Bool cprintf3pPlusArg3IsVarCall
+
+call cprintf3pPlusArg4IsVarCall isNameDeclaredAsKind
+arg cprintf3pPlusArg4IsVarCall bufferBase bufferBase
+arg cprintf3pPlusArg4IsVarCall bufferEndOffset bufferEndOffset
+arg cprintf3pPlusArg4IsVarCall targetNamePointer cprintf3pPlusArg4Pointer
+arg cprintf3pPlusArg4IsVarCall targetNameLength pendingCallArg4ValueLength
+arg cprintf3pPlusArg4IsVarCall declarationVerb cprintf3pPlusVarVerb
+arg cprintf3pPlusArg4IsVarCall declarationVerbLength cprintf3pPlusVarVerbLength
+run cprintf3pPlusArg4IsVarCall
+bindOk cprintf3pPlusArg4IsVar Bool cprintf3pPlusArg4IsVarCall
+
+call cprintf3pPlusArg2IsPtrCall isNamePointerBindInBody
+arg cprintf3pPlusArg2IsPtrCall bufferBase bufferBase
+arg cprintf3pPlusArg2IsPtrCall bufferEndOffset bufferEndOffset
+arg cprintf3pPlusArg2IsPtrCall bodyStartOffset operationBodyStartOffset
+arg cprintf3pPlusArg2IsPtrCall candidateNamePointer cprintf3pPlusArg2Pointer
+arg cprintf3pPlusArg2IsPtrCall candidateNameLength pendingCallArg2ValueLength
+run cprintf3pPlusArg2IsPtrCall
+bindOk cprintf3pPlusArg2IsPtr Bool cprintf3pPlusArg2IsPtrCall
+
+call cprintf3pPlusArg3IsPtrCall isNamePointerBindInBody
+arg cprintf3pPlusArg3IsPtrCall bufferBase bufferBase
+arg cprintf3pPlusArg3IsPtrCall bufferEndOffset bufferEndOffset
+arg cprintf3pPlusArg3IsPtrCall bodyStartOffset operationBodyStartOffset
+arg cprintf3pPlusArg3IsPtrCall candidateNamePointer cprintf3pPlusArg3Pointer
+arg cprintf3pPlusArg3IsPtrCall candidateNameLength pendingCallArg3ValueLength
+run cprintf3pPlusArg3IsPtrCall
+bindOk cprintf3pPlusArg3IsPtr Bool cprintf3pPlusArg3IsPtrCall
+
+call cprintf3pPlusArg4IsPtrCall isNamePointerBindInBody
+arg cprintf3pPlusArg4IsPtrCall bufferBase bufferBase
+arg cprintf3pPlusArg4IsPtrCall bufferEndOffset bufferEndOffset
+arg cprintf3pPlusArg4IsPtrCall bodyStartOffset operationBodyStartOffset
+arg cprintf3pPlusArg4IsPtrCall candidateNamePointer cprintf3pPlusArg4Pointer
+arg cprintf3pPlusArg4IsPtrCall candidateNameLength pendingCallArg4ValueLength
+run cprintf3pPlusArg4IsPtrCall
+bindOk cprintf3pPlusArg4IsPtr Bool cprintf3pPlusArg4IsPtrCall
+
+const cprintf3pPlusConstVerb CNullTerminatedByteString "const "
+const cprintf3pPlusConstVerbLength CByteCount 6
+call cprintf3pPlusArg2IsConstCall isNameDeclaredAsKind
+arg cprintf3pPlusArg2IsConstCall bufferBase bufferBase
+arg cprintf3pPlusArg2IsConstCall bufferEndOffset bufferEndOffset
+arg cprintf3pPlusArg2IsConstCall targetNamePointer cprintf3pPlusArg2Pointer
+arg cprintf3pPlusArg2IsConstCall targetNameLength pendingCallArg2ValueLength
+arg cprintf3pPlusArg2IsConstCall declarationVerb cprintf3pPlusConstVerb
+arg cprintf3pPlusArg2IsConstCall declarationVerbLength cprintf3pPlusConstVerbLength
+run cprintf3pPlusArg2IsConstCall
+bindOk cprintf3pPlusArg2IsConst Bool cprintf3pPlusArg2IsConstCall
+
+call cprintf3pPlusArg3IsConstCall isNameDeclaredAsKind
+arg cprintf3pPlusArg3IsConstCall bufferBase bufferBase
+arg cprintf3pPlusArg3IsConstCall bufferEndOffset bufferEndOffset
+arg cprintf3pPlusArg3IsConstCall targetNamePointer cprintf3pPlusArg3Pointer
+arg cprintf3pPlusArg3IsConstCall targetNameLength pendingCallArg3ValueLength
+arg cprintf3pPlusArg3IsConstCall declarationVerb cprintf3pPlusConstVerb
+arg cprintf3pPlusArg3IsConstCall declarationVerbLength cprintf3pPlusConstVerbLength
+run cprintf3pPlusArg3IsConstCall
+bindOk cprintf3pPlusArg3IsConst Bool cprintf3pPlusArg3IsConstCall
+
+call cprintf3pPlusArg4IsConstCall isNameDeclaredAsKind
+arg cprintf3pPlusArg4IsConstCall bufferBase bufferBase
+arg cprintf3pPlusArg4IsConstCall bufferEndOffset bufferEndOffset
+arg cprintf3pPlusArg4IsConstCall targetNamePointer cprintf3pPlusArg4Pointer
+arg cprintf3pPlusArg4IsConstCall targetNameLength pendingCallArg4ValueLength
+arg cprintf3pPlusArg4IsConstCall declarationVerb cprintf3pPlusConstVerb
+arg cprintf3pPlusArg4IsConstCall declarationVerbLength cprintf3pPlusConstVerbLength
+run cprintf3pPlusArg4IsConstCall
+bindOk cprintf3pPlusArg4IsConst Bool cprintf3pPlusArg4IsConstCall
+
+call cprintf3pPlusArg2ConstVal findConstIntegerValueByNameAfterOffset
+arg cprintf3pPlusArg2ConstVal bufferBase bufferBase
+arg cprintf3pPlusArg2ConstVal bufferEndOffset bufferEndOffset
+arg cprintf3pPlusArg2ConstVal searchStartOffset operationBodyStartOffset
+arg cprintf3pPlusArg2ConstVal targetNamePointer cprintf3pPlusArg2Pointer
+arg cprintf3pPlusArg2ConstVal targetNameLength pendingCallArg2ValueLength
+run cprintf3pPlusArg2ConstVal
+bindOk cprintf3pPlusArg2Val CSignedInt64 cprintf3pPlusArg2ConstVal
+
+call cprintf3pPlusArg3ConstVal findConstIntegerValueByNameAfterOffset
+arg cprintf3pPlusArg3ConstVal bufferBase bufferBase
+arg cprintf3pPlusArg3ConstVal bufferEndOffset bufferEndOffset
+arg cprintf3pPlusArg3ConstVal searchStartOffset operationBodyStartOffset
+arg cprintf3pPlusArg3ConstVal targetNamePointer cprintf3pPlusArg3Pointer
+arg cprintf3pPlusArg3ConstVal targetNameLength pendingCallArg3ValueLength
+run cprintf3pPlusArg3ConstVal
+bindOk cprintf3pPlusArg3Val CSignedInt64 cprintf3pPlusArg3ConstVal
+
+call cprintf3pPlusArg4ConstVal findConstIntegerValueByNameAfterOffset
+arg cprintf3pPlusArg4ConstVal bufferBase bufferBase
+arg cprintf3pPlusArg4ConstVal bufferEndOffset bufferEndOffset
+arg cprintf3pPlusArg4ConstVal searchStartOffset operationBodyStartOffset
+arg cprintf3pPlusArg4ConstVal targetNamePointer cprintf3pPlusArg4Pointer
+arg cprintf3pPlusArg4ConstVal targetNameLength pendingCallArg4ValueLength
+run cprintf3pPlusArg4ConstVal
+bindOk cprintf3pPlusArg4Val CSignedInt64 cprintf3pPlusArg4ConstVal
+
+const cprintf3pPlusArgIdx2 CSignedInt64 2
+const cprintf3pPlusArgIdx3 CSignedInt64 3
+const cprintf3pPlusArgIdx4 CSignedInt64 4
+const cprintf3pPlusLoadAFmt CNullTerminatedByteString "  %%%.*s_arg%lld_val = "
+const cprintf3pPlusLoadBFmt CNullTerminatedByteString "load i64, i64* %%%.*s\n"
+
+branchIf cprintf3pPlusArg2IsVar cprintf3pPlusArg2Load
+branch cprintf3pPlusArg2LoadDone
+label cprintf3pPlusArg2Load
+call emitCprintf3pPlusLoadA2 c.printf
+arg emitCprintf3pPlusLoadA2 format cprintf3pPlusLoadAFmt
+arg emitCprintf3pPlusLoadA2 nlen pendingCallNameLength
+arg emitCprintf3pPlusLoadA2 nptr cprintfCallNamePointer
+arg emitCprintf3pPlusLoadA2 idx cprintf3pPlusArgIdx2
+run emitCprintf3pPlusLoadA2
+call emitCprintf3pPlusLoadB2 c.printf
+arg emitCprintf3pPlusLoadB2 format cprintf3pPlusLoadBFmt
+arg emitCprintf3pPlusLoadB2 vlen pendingCallArg2ValueLength
+arg emitCprintf3pPlusLoadB2 vptr cprintf3pPlusArg2Pointer
+run emitCprintf3pPlusLoadB2
+branch cprintf3pPlusArg2LoadDone
+label cprintf3pPlusArg2LoadDone
+
+branchIf cprintf3pPlusArg3IsVar cprintf3pPlusArg3Load
+branch cprintf3pPlusArg3LoadDone
+label cprintf3pPlusArg3Load
+call emitCprintf3pPlusLoadA3 c.printf
+arg emitCprintf3pPlusLoadA3 format cprintf3pPlusLoadAFmt
+arg emitCprintf3pPlusLoadA3 nlen pendingCallNameLength
+arg emitCprintf3pPlusLoadA3 nptr cprintfCallNamePointer
+arg emitCprintf3pPlusLoadA3 idx cprintf3pPlusArgIdx3
+run emitCprintf3pPlusLoadA3
+call emitCprintf3pPlusLoadB3 c.printf
+arg emitCprintf3pPlusLoadB3 format cprintf3pPlusLoadBFmt
+arg emitCprintf3pPlusLoadB3 vlen pendingCallArg3ValueLength
+arg emitCprintf3pPlusLoadB3 vptr cprintf3pPlusArg3Pointer
+run emitCprintf3pPlusLoadB3
+branch cprintf3pPlusArg3LoadDone
+label cprintf3pPlusArg3LoadDone
+
+branchIf cprintf3pPlusArg4IsVar cprintf3pPlusArg4Load
+branch cprintf3pPlusArg4LoadDone
+label cprintf3pPlusArg4Load
+call emitCprintf3pPlusLoadA4 c.printf
+arg emitCprintf3pPlusLoadA4 format cprintf3pPlusLoadAFmt
+arg emitCprintf3pPlusLoadA4 nlen pendingCallNameLength
+arg emitCprintf3pPlusLoadA4 nptr cprintfCallNamePointer
+arg emitCprintf3pPlusLoadA4 idx cprintf3pPlusArgIdx4
+run emitCprintf3pPlusLoadA4
+call emitCprintf3pPlusLoadB4 c.printf
+arg emitCprintf3pPlusLoadB4 format cprintf3pPlusLoadBFmt
+arg emitCprintf3pPlusLoadB4 vlen pendingCallArg4ValueLength
+arg emitCprintf3pPlusLoadB4 vptr cprintf3pPlusArg4Pointer
+run emitCprintf3pPlusLoadB4
+branch cprintf3pPlusArg4LoadDone
+label cprintf3pPlusArg4LoadDone
+
+const cprintf3pPlusPrefixA CNullTerminatedByteString "  %%%.*s_res32 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds (["
+call emitCprintf3pPlusPrefixA c.printf
+arg emitCprintf3pPlusPrefixA format cprintf3pPlusPrefixA
+arg emitCprintf3pPlusPrefixA n pendingCallNameLength
+arg emitCprintf3pPlusPrefixA p cprintfCallNamePointer
+run emitCprintf3pPlusPrefixA
+
+const cprintf3pPlusPrefixB CNullTerminatedByteString "%lld x i8], ["
+call emitCprintf3pPlusPrefixB c.printf
+arg emitCprintf3pPlusPrefixB format cprintf3pPlusPrefixB
+arg emitCprintf3pPlusPrefixB s cprintfFmtSize
+run emitCprintf3pPlusPrefixB
+
+const cprintf3pPlusPrefixC CNullTerminatedByteString "%lld x i8]* @.s%lld, i32 0, i32 0)"
+call emitCprintf3pPlusPrefixC c.printf
+arg emitCprintf3pPlusPrefixC format cprintf3pPlusPrefixC
+arg emitCprintf3pPlusPrefixC s cprintfFmtSize
+arg emitCprintf3pPlusPrefixC slot cprintfFmtSlot
+run emitCprintf3pPlusPrefixC
+
+const cprintf3pPlusBindOpFmt CNullTerminatedByteString ", i64 %%%.*s"
+const cprintf3pPlusPtrOpFmt CNullTerminatedByteString ", i8* %%%.*s"
+const cprintf3pPlusVarOpFmt CNullTerminatedByteString ", i64 %%%.*s_arg%lld_val"
+const cprintf3pPlusConstOpFmt CNullTerminatedByteString ", i64 %lld"
+
+branchIf cprintf3pPlusArg2IsConst cprintf3pPlusOp2Const
+branchIf cprintf3pPlusArg2IsVar cprintf3pPlusOp2Var
+branchIf cprintf3pPlusArg2IsPtr cprintf3pPlusOp2Ptr
+branch cprintf3pPlusOp2Bind
+label cprintf3pPlusOp2Const
+call emitCprintf3pPlusOp2C c.printf
+arg emitCprintf3pPlusOp2C format cprintf3pPlusConstOpFmt
+arg emitCprintf3pPlusOp2C v cprintf3pPlusArg2Val
+run emitCprintf3pPlusOp2C
+branch cprintf3pPlusOp2Done
+label cprintf3pPlusOp2Var
+call emitCprintf3pPlusOp2V c.printf
+arg emitCprintf3pPlusOp2V format cprintf3pPlusVarOpFmt
+arg emitCprintf3pPlusOp2V nlen pendingCallNameLength
+arg emitCprintf3pPlusOp2V nptr cprintfCallNamePointer
+arg emitCprintf3pPlusOp2V idx cprintf3pPlusArgIdx2
+run emitCprintf3pPlusOp2V
+branch cprintf3pPlusOp2Done
+label cprintf3pPlusOp2Ptr
+call emitCprintf3pPlusOp2P c.printf
+arg emitCprintf3pPlusOp2P format cprintf3pPlusPtrOpFmt
+arg emitCprintf3pPlusOp2P nlen pendingCallArg2ValueLength
+arg emitCprintf3pPlusOp2P nptr cprintf3pPlusArg2Pointer
+run emitCprintf3pPlusOp2P
+branch cprintf3pPlusOp2Done
+label cprintf3pPlusOp2Bind
+call emitCprintf3pPlusOp2B c.printf
+arg emitCprintf3pPlusOp2B format cprintf3pPlusBindOpFmt
+arg emitCprintf3pPlusOp2B nlen pendingCallArg2ValueLength
+arg emitCprintf3pPlusOp2B nptr cprintf3pPlusArg2Pointer
+run emitCprintf3pPlusOp2B
+branch cprintf3pPlusOp2Done
+label cprintf3pPlusOp2Done
+
+branchIf cprintf3pPlusArg3IsConst cprintf3pPlusOp3Const
+branchIf cprintf3pPlusArg3IsVar cprintf3pPlusOp3Var
+branchIf cprintf3pPlusArg3IsPtr cprintf3pPlusOp3Ptr
+branch cprintf3pPlusOp3Bind
+label cprintf3pPlusOp3Const
+call emitCprintf3pPlusOp3C c.printf
+arg emitCprintf3pPlusOp3C format cprintf3pPlusConstOpFmt
+arg emitCprintf3pPlusOp3C v cprintf3pPlusArg3Val
+run emitCprintf3pPlusOp3C
+branch cprintf3pPlusOp3Done
+label cprintf3pPlusOp3Var
+call emitCprintf3pPlusOp3V c.printf
+arg emitCprintf3pPlusOp3V format cprintf3pPlusVarOpFmt
+arg emitCprintf3pPlusOp3V nlen pendingCallNameLength
+arg emitCprintf3pPlusOp3V nptr cprintfCallNamePointer
+arg emitCprintf3pPlusOp3V idx cprintf3pPlusArgIdx3
+run emitCprintf3pPlusOp3V
+branch cprintf3pPlusOp3Done
+label cprintf3pPlusOp3Ptr
+call emitCprintf3pPlusOp3P c.printf
+arg emitCprintf3pPlusOp3P format cprintf3pPlusPtrOpFmt
+arg emitCprintf3pPlusOp3P nlen pendingCallArg3ValueLength
+arg emitCprintf3pPlusOp3P nptr cprintf3pPlusArg3Pointer
+run emitCprintf3pPlusOp3P
+branch cprintf3pPlusOp3Done
+label cprintf3pPlusOp3Bind
+call emitCprintf3pPlusOp3B c.printf
+arg emitCprintf3pPlusOp3B format cprintf3pPlusBindOpFmt
+arg emitCprintf3pPlusOp3B nlen pendingCallArg3ValueLength
+arg emitCprintf3pPlusOp3B nptr cprintf3pPlusArg3Pointer
+run emitCprintf3pPlusOp3B
+branch cprintf3pPlusOp3Done
+label cprintf3pPlusOp3Done
+
+branchIf cprintf3pPlusArg4IsConst cprintf3pPlusOp4Const
+branchIf cprintf3pPlusArg4IsVar cprintf3pPlusOp4Var
+branchIf cprintf3pPlusArg4IsPtr cprintf3pPlusOp4Ptr
+branch cprintf3pPlusOp4Bind
+label cprintf3pPlusOp4Const
+call emitCprintf3pPlusOp4C c.printf
+arg emitCprintf3pPlusOp4C format cprintf3pPlusConstOpFmt
+arg emitCprintf3pPlusOp4C v cprintf3pPlusArg4Val
+run emitCprintf3pPlusOp4C
+branch cprintf3pPlusOp4Done
+label cprintf3pPlusOp4Var
+call emitCprintf3pPlusOp4V c.printf
+arg emitCprintf3pPlusOp4V format cprintf3pPlusVarOpFmt
+arg emitCprintf3pPlusOp4V nlen pendingCallNameLength
+arg emitCprintf3pPlusOp4V nptr cprintfCallNamePointer
+arg emitCprintf3pPlusOp4V idx cprintf3pPlusArgIdx4
+run emitCprintf3pPlusOp4V
+branch cprintf3pPlusOp4Done
+label cprintf3pPlusOp4Ptr
+call emitCprintf3pPlusOp4P c.printf
+arg emitCprintf3pPlusOp4P format cprintf3pPlusPtrOpFmt
+arg emitCprintf3pPlusOp4P nlen pendingCallArg4ValueLength
+arg emitCprintf3pPlusOp4P nptr cprintf3pPlusArg4Pointer
+run emitCprintf3pPlusOp4P
+branch cprintf3pPlusOp4Done
+label cprintf3pPlusOp4Bind
+call emitCprintf3pPlusOp4B c.printf
+arg emitCprintf3pPlusOp4B format cprintf3pPlusBindOpFmt
+arg emitCprintf3pPlusOp4B nlen pendingCallArg4ValueLength
+arg emitCprintf3pPlusOp4B nptr cprintf3pPlusArg4Pointer
+run emitCprintf3pPlusOp4B
+branch cprintf3pPlusOp4Done
+label cprintf3pPlusOp4Done
+
+const cprintf3pPlusSuffixFmt CNullTerminatedByteString ")\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitCprintf3pPlusSuffix c.printf
+arg emitCprintf3pPlusSuffix format cprintf3pPlusSuffixFmt
+arg emitCprintf3pPlusSuffix n2 pendingCallNameLength
+arg emitCprintf3pPlusSuffix p2 cprintfCallNamePointer
+arg emitCprintf3pPlusSuffix n3 pendingCallNameLength
+arg emitCprintf3pPlusSuffix p3 cprintfCallNamePointer
+run emitCprintf3pPlusSuffix
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+# 5-arg c.printf: format + 4 trailing args. Each trailing arg dispatches
+# var / ptr-bind / int-bind (const is not yet handled here). Decomposed into
+# load prefixes + 3-piece header + 4 operand calls + suffix — each ≤3 args.
+label emitCprintfFmtPlusFour
+call cprintf4Arg2PtrCall pointer.offset
+arg cprintf4Arg2PtrCall base bufferBase
+arg cprintf4Arg2PtrCall offset pendingCallArg2ValueStartOffset
+run cprintf4Arg2PtrCall
+bind cprintf4Arg2Pointer COpaqueMemoryAddress cprintf4Arg2PtrCall
+
+call cprintf4Arg3PtrCall pointer.offset
+arg cprintf4Arg3PtrCall base bufferBase
+arg cprintf4Arg3PtrCall offset pendingCallArg3ValueStartOffset
+run cprintf4Arg3PtrCall
+bind cprintf4Arg3Pointer COpaqueMemoryAddress cprintf4Arg3PtrCall
+
+call cprintf4Arg4PtrCall pointer.offset
+arg cprintf4Arg4PtrCall base bufferBase
+arg cprintf4Arg4PtrCall offset pendingCallArg4ValueStartOffset
+run cprintf4Arg4PtrCall
+bind cprintf4Arg4Pointer COpaqueMemoryAddress cprintf4Arg4PtrCall
+
+call cprintf4Arg5PtrCall pointer.offset
+arg cprintf4Arg5PtrCall base bufferBase
+arg cprintf4Arg5PtrCall offset pendingCallArg5ValueStartOffset
+run cprintf4Arg5PtrCall
+bind cprintf4Arg5Pointer COpaqueMemoryAddress cprintf4Arg5PtrCall
+
+# Classify each trailing arg as a var (alloca). For a var, we must emit a
+# `load` instruction before the call and reference the loaded SSA name in
+# the operand list. For a bind, we reference the name directly.
+const cprintf4VarVerb CNullTerminatedByteString "var "
+const cprintf4VarVerbLength CByteCount 4
+
+call cprintf4Arg2IsVarCall isNameDeclaredAsKind
+arg cprintf4Arg2IsVarCall bufferBase bufferBase
+arg cprintf4Arg2IsVarCall bufferEndOffset bufferEndOffset
+arg cprintf4Arg2IsVarCall targetNamePointer cprintf4Arg2Pointer
+arg cprintf4Arg2IsVarCall targetNameLength pendingCallArg2ValueLength
+arg cprintf4Arg2IsVarCall declarationVerb cprintf4VarVerb
+arg cprintf4Arg2IsVarCall declarationVerbLength cprintf4VarVerbLength
+run cprintf4Arg2IsVarCall
+bindOk cprintf4Arg2IsVar Bool cprintf4Arg2IsVarCall
+
+call cprintf4Arg3IsVarCall isNameDeclaredAsKind
+arg cprintf4Arg3IsVarCall bufferBase bufferBase
+arg cprintf4Arg3IsVarCall bufferEndOffset bufferEndOffset
+arg cprintf4Arg3IsVarCall targetNamePointer cprintf4Arg3Pointer
+arg cprintf4Arg3IsVarCall targetNameLength pendingCallArg3ValueLength
+arg cprintf4Arg3IsVarCall declarationVerb cprintf4VarVerb
+arg cprintf4Arg3IsVarCall declarationVerbLength cprintf4VarVerbLength
+run cprintf4Arg3IsVarCall
+bindOk cprintf4Arg3IsVar Bool cprintf4Arg3IsVarCall
+
+call cprintf4Arg4IsVarCall isNameDeclaredAsKind
+arg cprintf4Arg4IsVarCall bufferBase bufferBase
+arg cprintf4Arg4IsVarCall bufferEndOffset bufferEndOffset
+arg cprintf4Arg4IsVarCall targetNamePointer cprintf4Arg4Pointer
+arg cprintf4Arg4IsVarCall targetNameLength pendingCallArg4ValueLength
+arg cprintf4Arg4IsVarCall declarationVerb cprintf4VarVerb
+arg cprintf4Arg4IsVarCall declarationVerbLength cprintf4VarVerbLength
+run cprintf4Arg4IsVarCall
+bindOk cprintf4Arg4IsVar Bool cprintf4Arg4IsVarCall
+
+call cprintf4Arg5IsVarCall isNameDeclaredAsKind
+arg cprintf4Arg5IsVarCall bufferBase bufferBase
+arg cprintf4Arg5IsVarCall bufferEndOffset bufferEndOffset
+arg cprintf4Arg5IsVarCall targetNamePointer cprintf4Arg5Pointer
+arg cprintf4Arg5IsVarCall targetNameLength pendingCallArg5ValueLength
+arg cprintf4Arg5IsVarCall declarationVerb cprintf4VarVerb
+arg cprintf4Arg5IsVarCall declarationVerbLength cprintf4VarVerbLength
+run cprintf4Arg5IsVarCall
+bindOk cprintf4Arg5IsVar Bool cprintf4Arg5IsVarCall
+
+# Classify each trailing arg as pointer-bind (i8*). Pointer-typed binds need
+# `i8* %name` in the operand list instead of `i64 %name`. The two flags
+# (isVar, isPtr) are mutually exclusive in normal code.
+call cprintf4Arg2IsPtrCall isNamePointerBindInBody
+arg cprintf4Arg2IsPtrCall bufferBase bufferBase
+arg cprintf4Arg2IsPtrCall bufferEndOffset bufferEndOffset
+arg cprintf4Arg2IsPtrCall bodyStartOffset operationBodyStartOffset
+arg cprintf4Arg2IsPtrCall candidateNamePointer cprintf4Arg2Pointer
+arg cprintf4Arg2IsPtrCall candidateNameLength pendingCallArg2ValueLength
+run cprintf4Arg2IsPtrCall
+bindOk cprintf4Arg2IsPtr Bool cprintf4Arg2IsPtrCall
+
+call cprintf4Arg3IsPtrCall isNamePointerBindInBody
+arg cprintf4Arg3IsPtrCall bufferBase bufferBase
+arg cprintf4Arg3IsPtrCall bufferEndOffset bufferEndOffset
+arg cprintf4Arg3IsPtrCall bodyStartOffset operationBodyStartOffset
+arg cprintf4Arg3IsPtrCall candidateNamePointer cprintf4Arg3Pointer
+arg cprintf4Arg3IsPtrCall candidateNameLength pendingCallArg3ValueLength
+run cprintf4Arg3IsPtrCall
+bindOk cprintf4Arg3IsPtr Bool cprintf4Arg3IsPtrCall
+
+call cprintf4Arg4IsPtrCall isNamePointerBindInBody
+arg cprintf4Arg4IsPtrCall bufferBase bufferBase
+arg cprintf4Arg4IsPtrCall bufferEndOffset bufferEndOffset
+arg cprintf4Arg4IsPtrCall bodyStartOffset operationBodyStartOffset
+arg cprintf4Arg4IsPtrCall candidateNamePointer cprintf4Arg4Pointer
+arg cprintf4Arg4IsPtrCall candidateNameLength pendingCallArg4ValueLength
+run cprintf4Arg4IsPtrCall
+bindOk cprintf4Arg4IsPtr Bool cprintf4Arg4IsPtrCall
+
+call cprintf4Arg5IsPtrCall isNamePointerBindInBody
+arg cprintf4Arg5IsPtrCall bufferBase bufferBase
+arg cprintf4Arg5IsPtrCall bufferEndOffset bufferEndOffset
+arg cprintf4Arg5IsPtrCall bodyStartOffset operationBodyStartOffset
+arg cprintf4Arg5IsPtrCall candidateNamePointer cprintf4Arg5Pointer
+arg cprintf4Arg5IsPtrCall candidateNameLength pendingCallArg5ValueLength
+run cprintf4Arg5IsPtrCall
+bindOk cprintf4Arg5IsPtr Bool cprintf4Arg5IsPtrCall
+
+const cprintf4ArgIdx2 CSignedInt64 2
+const cprintf4ArgIdx3 CSignedInt64 3
+const cprintf4ArgIdx4 CSignedInt64 4
+const cprintf4ArgIdx5 CSignedInt64 5
+
+# Conditionally emit a `load` for each var arg.
+branchIf cprintf4Arg2IsVar cprintf4Arg2EmitLoad
+branch cprintf4Arg2LoadDone
+label cprintf4Arg2EmitLoad
+const cprintf4LoadAFmt CNullTerminatedByteString "  %%%.*s_arg%lld_val = "
+call emitCprintf4LoadA2 c.printf
+arg emitCprintf4LoadA2 format cprintf4LoadAFmt
+arg emitCprintf4LoadA2 nlen pendingCallNameLength
+arg emitCprintf4LoadA2 nptr cprintfCallNamePointer
+arg emitCprintf4LoadA2 idx cprintf4ArgIdx2
+run emitCprintf4LoadA2
+const cprintf4LoadBFmt CNullTerminatedByteString "load i64, i64* %%%.*s\n"
+call emitCprintf4LoadB2 c.printf
+arg emitCprintf4LoadB2 format cprintf4LoadBFmt
+arg emitCprintf4LoadB2 vlen pendingCallArg2ValueLength
+arg emitCprintf4LoadB2 vptr cprintf4Arg2Pointer
+run emitCprintf4LoadB2
+branch cprintf4Arg2LoadDone
+label cprintf4Arg2LoadDone
+
+branchIf cprintf4Arg3IsVar cprintf4Arg3EmitLoad
+branch cprintf4Arg3LoadDone
+label cprintf4Arg3EmitLoad
+call emitCprintf4LoadA3 c.printf
+arg emitCprintf4LoadA3 format cprintf4LoadAFmt
+arg emitCprintf4LoadA3 nlen pendingCallNameLength
+arg emitCprintf4LoadA3 nptr cprintfCallNamePointer
+arg emitCprintf4LoadA3 idx cprintf4ArgIdx3
+run emitCprintf4LoadA3
+call emitCprintf4LoadB3 c.printf
+arg emitCprintf4LoadB3 format cprintf4LoadBFmt
+arg emitCprintf4LoadB3 vlen pendingCallArg3ValueLength
+arg emitCprintf4LoadB3 vptr cprintf4Arg3Pointer
+run emitCprintf4LoadB3
+branch cprintf4Arg3LoadDone
+label cprintf4Arg3LoadDone
+
+branchIf cprintf4Arg4IsVar cprintf4Arg4EmitLoad
+branch cprintf4Arg4LoadDone
+label cprintf4Arg4EmitLoad
+call emitCprintf4LoadA4 c.printf
+arg emitCprintf4LoadA4 format cprintf4LoadAFmt
+arg emitCprintf4LoadA4 nlen pendingCallNameLength
+arg emitCprintf4LoadA4 nptr cprintfCallNamePointer
+arg emitCprintf4LoadA4 idx cprintf4ArgIdx4
+run emitCprintf4LoadA4
+call emitCprintf4LoadB4 c.printf
+arg emitCprintf4LoadB4 format cprintf4LoadBFmt
+arg emitCprintf4LoadB4 vlen pendingCallArg4ValueLength
+arg emitCprintf4LoadB4 vptr cprintf4Arg4Pointer
+run emitCprintf4LoadB4
+branch cprintf4Arg4LoadDone
+label cprintf4Arg4LoadDone
+
+branchIf cprintf4Arg5IsVar cprintf4Arg5EmitLoad
+branch cprintf4Arg5LoadDone
+label cprintf4Arg5EmitLoad
+call emitCprintf4LoadA5 c.printf
+arg emitCprintf4LoadA5 format cprintf4LoadAFmt
+arg emitCprintf4LoadA5 nlen pendingCallNameLength
+arg emitCprintf4LoadA5 nptr cprintfCallNamePointer
+arg emitCprintf4LoadA5 idx cprintf4ArgIdx5
+run emitCprintf4LoadA5
+call emitCprintf4LoadB5 c.printf
+arg emitCprintf4LoadB5 format cprintf4LoadBFmt
+arg emitCprintf4LoadB5 vlen pendingCallArg5ValueLength
+arg emitCprintf4LoadB5 vptr cprintf4Arg5Pointer
+run emitCprintf4LoadB5
+branch cprintf4Arg5LoadDone
+label cprintf4Arg5LoadDone
+
+# Emit the prefix in multiple ≤3-arg pieces:
+# Part A: "  %<call>_res32 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds (["
+const cprintf4PrefixA CNullTerminatedByteString "  %%%.*s_res32 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds (["
+call emitCprintf4PrefixA c.printf
+arg emitCprintf4PrefixA format cprintf4PrefixA
+arg emitCprintf4PrefixA n pendingCallNameLength
+arg emitCprintf4PrefixA p cprintfCallNamePointer
+run emitCprintf4PrefixA
+
+# Part B: "<size> x i8], ["
+const cprintf4PrefixB CNullTerminatedByteString "%lld x i8], ["
+call emitCprintf4PrefixB c.printf
+arg emitCprintf4PrefixB format cprintf4PrefixB
+arg emitCprintf4PrefixB s cprintfFmtSize
+run emitCprintf4PrefixB
+
+# Part C: "<size> x i8]* @.s<slot>, i32 0, i32 0)"
+const cprintf4PrefixC CNullTerminatedByteString "%lld x i8]* @.s%lld, i32 0, i32 0)"
+call emitCprintf4PrefixC c.printf
+arg emitCprintf4PrefixC format cprintf4PrefixC
+arg emitCprintf4PrefixC s cprintfFmtSize
+arg emitCprintf4PrefixC slot cprintfFmtSlot
+run emitCprintf4PrefixC
+
+# Per-arg operand emission: 3-way dispatch on isVar / isPtr / isBind.
+#   var path:   ", i64 %<callName>_argN_val"  (loaded above)
+#   ptr path:   ", i8* %<name>"
+#   bind path:  ", i64 %<name>"  (default)
+const cprintf4BindOpFmt CNullTerminatedByteString ", i64 %%%.*s"
+const cprintf4PtrOpFmt CNullTerminatedByteString ", i8* %%%.*s"
+const cprintf4VarOpFmt CNullTerminatedByteString ", i64 %%%.*s_arg%lld_val"
+
+branchIf cprintf4Arg2IsVar cprintf4Op2Var
+branchIf cprintf4Arg2IsPtr cprintf4Op2Ptr
+branch cprintf4Op2Bind
+label cprintf4Op2Var
+call emitCprintf4Op2V c.printf
+arg emitCprintf4Op2V format cprintf4VarOpFmt
+arg emitCprintf4Op2V nlen pendingCallNameLength
+arg emitCprintf4Op2V nptr cprintfCallNamePointer
+arg emitCprintf4Op2V idx cprintf4ArgIdx2
+run emitCprintf4Op2V
+branch cprintf4Op2Done
+label cprintf4Op2Ptr
+call emitCprintf4Op2P c.printf
+arg emitCprintf4Op2P format cprintf4PtrOpFmt
+arg emitCprintf4Op2P nlen pendingCallArg2ValueLength
+arg emitCprintf4Op2P nptr cprintf4Arg2Pointer
+run emitCprintf4Op2P
+branch cprintf4Op2Done
+label cprintf4Op2Bind
+call emitCprintf4Op2B c.printf
+arg emitCprintf4Op2B format cprintf4BindOpFmt
+arg emitCprintf4Op2B nlen pendingCallArg2ValueLength
+arg emitCprintf4Op2B nptr cprintf4Arg2Pointer
+run emitCprintf4Op2B
+branch cprintf4Op2Done
+label cprintf4Op2Done
+
+branchIf cprintf4Arg3IsVar cprintf4Op3Var
+branchIf cprintf4Arg3IsPtr cprintf4Op3Ptr
+branch cprintf4Op3Bind
+label cprintf4Op3Var
+call emitCprintf4Op3V c.printf
+arg emitCprintf4Op3V format cprintf4VarOpFmt
+arg emitCprintf4Op3V nlen pendingCallNameLength
+arg emitCprintf4Op3V nptr cprintfCallNamePointer
+arg emitCprintf4Op3V idx cprintf4ArgIdx3
+run emitCprintf4Op3V
+branch cprintf4Op3Done
+label cprintf4Op3Ptr
+call emitCprintf4Op3P c.printf
+arg emitCprintf4Op3P format cprintf4PtrOpFmt
+arg emitCprintf4Op3P nlen pendingCallArg3ValueLength
+arg emitCprintf4Op3P nptr cprintf4Arg3Pointer
+run emitCprintf4Op3P
+branch cprintf4Op3Done
+label cprintf4Op3Bind
+call emitCprintf4Op3B c.printf
+arg emitCprintf4Op3B format cprintf4BindOpFmt
+arg emitCprintf4Op3B nlen pendingCallArg3ValueLength
+arg emitCprintf4Op3B nptr cprintf4Arg3Pointer
+run emitCprintf4Op3B
+branch cprintf4Op3Done
+label cprintf4Op3Done
+
+branchIf cprintf4Arg4IsVar cprintf4Op4Var
+branchIf cprintf4Arg4IsPtr cprintf4Op4Ptr
+branch cprintf4Op4Bind
+label cprintf4Op4Var
+call emitCprintf4Op4V c.printf
+arg emitCprintf4Op4V format cprintf4VarOpFmt
+arg emitCprintf4Op4V nlen pendingCallNameLength
+arg emitCprintf4Op4V nptr cprintfCallNamePointer
+arg emitCprintf4Op4V idx cprintf4ArgIdx4
+run emitCprintf4Op4V
+branch cprintf4Op4Done
+label cprintf4Op4Ptr
+call emitCprintf4Op4P c.printf
+arg emitCprintf4Op4P format cprintf4PtrOpFmt
+arg emitCprintf4Op4P nlen pendingCallArg4ValueLength
+arg emitCprintf4Op4P nptr cprintf4Arg4Pointer
+run emitCprintf4Op4P
+branch cprintf4Op4Done
+label cprintf4Op4Bind
+call emitCprintf4Op4B c.printf
+arg emitCprintf4Op4B format cprintf4BindOpFmt
+arg emitCprintf4Op4B nlen pendingCallArg4ValueLength
+arg emitCprintf4Op4B nptr cprintf4Arg4Pointer
+run emitCprintf4Op4B
+branch cprintf4Op4Done
+label cprintf4Op4Done
+
+branchIf cprintf4Arg5IsVar cprintf4Op5Var
+branchIf cprintf4Arg5IsPtr cprintf4Op5Ptr
+branch cprintf4Op5Bind
+label cprintf4Op5Var
+call emitCprintf4Op5V c.printf
+arg emitCprintf4Op5V format cprintf4VarOpFmt
+arg emitCprintf4Op5V nlen pendingCallNameLength
+arg emitCprintf4Op5V nptr cprintfCallNamePointer
+arg emitCprintf4Op5V idx cprintf4ArgIdx5
+run emitCprintf4Op5V
+branch cprintf4Op5Done
+label cprintf4Op5Ptr
+call emitCprintf4Op5P c.printf
+arg emitCprintf4Op5P format cprintf4PtrOpFmt
+arg emitCprintf4Op5P nlen pendingCallArg5ValueLength
+arg emitCprintf4Op5P nptr cprintf4Arg5Pointer
+run emitCprintf4Op5P
+branch cprintf4Op5Done
+label cprintf4Op5Bind
+call emitCprintf4Op5B c.printf
+arg emitCprintf4Op5B format cprintf4BindOpFmt
+arg emitCprintf4Op5B nlen pendingCallArg5ValueLength
+arg emitCprintf4Op5B nptr cprintf4Arg5Pointer
+run emitCprintf4Op5B
+branch cprintf4Op5Done
+label cprintf4Op5Done
+
+# Suffix: ")\n  %<call>_res = sext i32 %<call>_res32 to i64\n"
+const cprintf4SuffixFmt CNullTerminatedByteString ")\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitCprintf4Suffix c.printf
+arg emitCprintf4Suffix format cprintf4SuffixFmt
+arg emitCprintf4Suffix n2 pendingCallNameLength
+arg emitCprintf4Suffix p2 cprintfCallNamePointer
+arg emitCprintf4Suffix n3 pendingCallNameLength
+arg emitCprintf4Suffix p3 cprintfCallNamePointer
+run emitCprintf4Suffix
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+# Piecewise 3-arg emitter: handles var args via per-arg load prefixes, then
+# emits prefix + operand-per-arg + suffix. Each piece is ≤3 bootstrap args.
+# Used when at least one of arg2/arg3 is a var; non-var cases use the fixed
+# variants above.
+label cprintf3EmitPiecewise
+const cprintf3pwArgIdx2 CSignedInt64 2
+const cprintf3pwArgIdx3 CSignedInt64 3
+const cprintf3pwLoadAFmt CNullTerminatedByteString "  %%%.*s_arg%lld_val = "
+const cprintf3pwLoadBFmt CNullTerminatedByteString "load i64, i64* %%%.*s\n"
+
+branchIf cprintf3Arg2IsVar cprintf3pwArg2Load
+branch cprintf3pwArg2LoadDone
+label cprintf3pwArg2Load
+call emitCprintf3pwLoadA2 c.printf
+arg emitCprintf3pwLoadA2 format cprintf3pwLoadAFmt
+arg emitCprintf3pwLoadA2 nlen pendingCallNameLength
+arg emitCprintf3pwLoadA2 nptr cprintfCallNamePointer
+arg emitCprintf3pwLoadA2 idx cprintf3pwArgIdx2
+run emitCprintf3pwLoadA2
+call emitCprintf3pwLoadB2 c.printf
+arg emitCprintf3pwLoadB2 format cprintf3pwLoadBFmt
+arg emitCprintf3pwLoadB2 vlen pendingCallArg2ValueLength
+arg emitCprintf3pwLoadB2 vptr cprintfArg2ArgPointerB
+run emitCprintf3pwLoadB2
+branch cprintf3pwArg2LoadDone
+label cprintf3pwArg2LoadDone
+
+branchIf cprintf3Arg3IsVar cprintf3pwArg3Load
+branch cprintf3pwArg3LoadDone
+label cprintf3pwArg3Load
+call emitCprintf3pwLoadA3 c.printf
+arg emitCprintf3pwLoadA3 format cprintf3pwLoadAFmt
+arg emitCprintf3pwLoadA3 nlen pendingCallNameLength
+arg emitCprintf3pwLoadA3 nptr cprintfCallNamePointer
+arg emitCprintf3pwLoadA3 idx cprintf3pwArgIdx3
+run emitCprintf3pwLoadA3
+call emitCprintf3pwLoadB3 c.printf
+arg emitCprintf3pwLoadB3 format cprintf3pwLoadBFmt
+arg emitCprintf3pwLoadB3 vlen pendingCallArg3ValueLength
+arg emitCprintf3pwLoadB3 vptr cprintfArg3ArgPointer
+run emitCprintf3pwLoadB3
+branch cprintf3pwArg3LoadDone
+label cprintf3pwArg3LoadDone
+
+# Prefix in 3 pieces.
+const cprintf3pwPrefixA CNullTerminatedByteString "  %%%.*s_res32 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds (["
+call emitCprintf3pwPrefixA c.printf
+arg emitCprintf3pwPrefixA format cprintf3pwPrefixA
+arg emitCprintf3pwPrefixA n pendingCallNameLength
+arg emitCprintf3pwPrefixA p cprintfCallNamePointer
+run emitCprintf3pwPrefixA
+
+const cprintf3pwPrefixB CNullTerminatedByteString "%lld x i8], ["
+call emitCprintf3pwPrefixB c.printf
+arg emitCprintf3pwPrefixB format cprintf3pwPrefixB
+arg emitCprintf3pwPrefixB s cprintfFmtSize
+run emitCprintf3pwPrefixB
+
+const cprintf3pwPrefixC CNullTerminatedByteString "%lld x i8]* @.s%lld, i32 0, i32 0)"
+call emitCprintf3pwPrefixC c.printf
+arg emitCprintf3pwPrefixC format cprintf3pwPrefixC
+arg emitCprintf3pwPrefixC s cprintfFmtSize
+arg emitCprintf3pwPrefixC slot cprintfFmtSlot
+run emitCprintf3pwPrefixC
+
+# Operand for arg2: 4-way dispatch (const, var, ptr-bind, int-bind).
+const cprintf3pwBindOpFmt CNullTerminatedByteString ", i64 %%%.*s"
+const cprintf3pwPtrOpFmt CNullTerminatedByteString ", i8* %%%.*s"
+const cprintf3pwVarOpFmt CNullTerminatedByteString ", i64 %%%.*s_arg%lld_val"
+const cprintf3pwConstOpFmt CNullTerminatedByteString ", i64 %lld"
+
+branchIf cprintf3Arg2IsConst cprintf3pwOp2Const
+branchIf cprintf3Arg2IsVar cprintf3pwOp2Var
+branchIf cprintf3Arg2IsPtr cprintf3pwOp2Ptr
+branch cprintf3pwOp2Bind
+label cprintf3pwOp2Const
+call emitCprintf3pwOp2C c.printf
+arg emitCprintf3pwOp2C format cprintf3pwConstOpFmt
+arg emitCprintf3pwOp2C v cprintf3Arg2Val
+run emitCprintf3pwOp2C
+branch cprintf3pwOp2Done
+label cprintf3pwOp2Var
+call emitCprintf3pwOp2V c.printf
+arg emitCprintf3pwOp2V format cprintf3pwVarOpFmt
+arg emitCprintf3pwOp2V nlen pendingCallNameLength
+arg emitCprintf3pwOp2V nptr cprintfCallNamePointer
+arg emitCprintf3pwOp2V idx cprintf3pwArgIdx2
+run emitCprintf3pwOp2V
+branch cprintf3pwOp2Done
+label cprintf3pwOp2Ptr
+call emitCprintf3pwOp2P c.printf
+arg emitCprintf3pwOp2P format cprintf3pwPtrOpFmt
+arg emitCprintf3pwOp2P nlen pendingCallArg2ValueLength
+arg emitCprintf3pwOp2P nptr cprintfArg2ArgPointerB
+run emitCprintf3pwOp2P
+branch cprintf3pwOp2Done
+label cprintf3pwOp2Bind
+call emitCprintf3pwOp2B c.printf
+arg emitCprintf3pwOp2B format cprintf3pwBindOpFmt
+arg emitCprintf3pwOp2B nlen pendingCallArg2ValueLength
+arg emitCprintf3pwOp2B nptr cprintfArg2ArgPointerB
+run emitCprintf3pwOp2B
+branch cprintf3pwOp2Done
+label cprintf3pwOp2Done
+
+branchIf cprintf3Arg3IsConst cprintf3pwOp3Const
+branchIf cprintf3Arg3IsVar cprintf3pwOp3Var
+branchIf cprintf3Arg3IsPtr cprintf3pwOp3Ptr
+branch cprintf3pwOp3Bind
+label cprintf3pwOp3Const
+call emitCprintf3pwOp3C c.printf
+arg emitCprintf3pwOp3C format cprintf3pwConstOpFmt
+arg emitCprintf3pwOp3C v cprintf3Arg3Val
+run emitCprintf3pwOp3C
+branch cprintf3pwOp3Done
+label cprintf3pwOp3Var
+call emitCprintf3pwOp3V c.printf
+arg emitCprintf3pwOp3V format cprintf3pwVarOpFmt
+arg emitCprintf3pwOp3V nlen pendingCallNameLength
+arg emitCprintf3pwOp3V nptr cprintfCallNamePointer
+arg emitCprintf3pwOp3V idx cprintf3pwArgIdx3
+run emitCprintf3pwOp3V
+branch cprintf3pwOp3Done
+label cprintf3pwOp3Ptr
+call emitCprintf3pwOp3P c.printf
+arg emitCprintf3pwOp3P format cprintf3pwPtrOpFmt
+arg emitCprintf3pwOp3P nlen pendingCallArg3ValueLength
+arg emitCprintf3pwOp3P nptr cprintfArg3ArgPointer
+run emitCprintf3pwOp3P
+branch cprintf3pwOp3Done
+label cprintf3pwOp3Bind
+call emitCprintf3pwOp3B c.printf
+arg emitCprintf3pwOp3B format cprintf3pwBindOpFmt
+arg emitCprintf3pwOp3B nlen pendingCallArg3ValueLength
+arg emitCprintf3pwOp3B nptr cprintfArg3ArgPointer
+run emitCprintf3pwOp3B
+branch cprintf3pwOp3Done
+label cprintf3pwOp3Done
+
+const cprintf3pwSuffixFmt CNullTerminatedByteString ")\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitCprintf3pwSuffix c.printf
+arg emitCprintf3pwSuffix format cprintf3pwSuffixFmt
+arg emitCprintf3pwSuffix n2 pendingCallNameLength
+arg emitCprintf3pwSuffix p2 cprintfCallNamePointer
+arg emitCprintf3pwSuffix n3 pendingCallNameLength
+arg emitCprintf3pwSuffix p3 cprintfCallNamePointer
+run emitCprintf3pwSuffix
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+# arg2 pointer-bind, arg3 pointer-bind
+label cprintf3EmitBBpp
+const cprintf3BBppFmt CNullTerminatedByteString "  %%%.*s_res32 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0), i8* %%%.*s, i8* %%%.*s)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitCprintf3BBpp c.printf
+arg emitCprintf3BBpp format cprintf3BBppFmt
+arg emitCprintf3BBpp n1 pendingCallNameLength
+arg emitCprintf3BBpp p1 cprintfCallNamePointer
+arg emitCprintf3BBpp fa1 cprintfFmtSize
+arg emitCprintf3BBpp fa2 cprintfFmtSize
+arg emitCprintf3BBpp fs cprintfFmtSlot
+arg emitCprintf3BBpp an2 pendingCallArg2ValueLength
+arg emitCprintf3BBpp ap2 cprintfArg2ArgPointerB
+arg emitCprintf3BBpp an3 pendingCallArg3ValueLength
+arg emitCprintf3BBpp ap3 cprintfArg3ArgPointer
+arg emitCprintf3BBpp n2 pendingCallNameLength
+arg emitCprintf3BBpp p2 cprintfCallNamePointer
+arg emitCprintf3BBpp n3 pendingCallNameLength
+arg emitCprintf3BBpp p3 cprintfCallNamePointer
+run emitCprintf3BBpp
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+# c.fgets(buffer, size, stream): emit
+#   `%X_res = call i8* @fgets(i8* %buffer, i32 <size>, i8* %stream)`
+# buffer and stream are i8*; size is i32 (can be const or bind/var).
+label emitFgetsRun
+call fgetsCallNamePtrCall pointer.offset
+arg fgetsCallNamePtrCall base bufferBase
+arg fgetsCallNamePtrCall offset pendingCallNameStartOffset
+run fgetsCallNamePtrCall
+bind fgetsCallNamePointer COpaqueMemoryAddress fgetsCallNamePtrCall
+
+call fgetsArg1PtrCall pointer.offset
+arg fgetsArg1PtrCall base bufferBase
+arg fgetsArg1PtrCall offset pendingCallArg1ValueStartOffset
+run fgetsArg1PtrCall
+bind fgetsArg1Pointer COpaqueMemoryAddress fgetsArg1PtrCall
+
+call fgetsArg2PtrCall pointer.offset
+arg fgetsArg2PtrCall base bufferBase
+arg fgetsArg2PtrCall offset pendingCallArg2ValueStartOffset
+run fgetsArg2PtrCall
+bind fgetsArg2Pointer COpaqueMemoryAddress fgetsArg2PtrCall
+
+call fgetsArg3PtrCall pointer.offset
+arg fgetsArg3PtrCall base bufferBase
+arg fgetsArg3PtrCall offset pendingCallArg3ValueStartOffset
+run fgetsArg3PtrCall
+bind fgetsArg3Pointer COpaqueMemoryAddress fgetsArg3PtrCall
+
+# Classify size arg (arg2): const → literal i32, bind → trunc i64 to i32.
+const fgetsConstDeclVerb CNullTerminatedByteString "const "
+const fgetsConstDeclVerbLength CByteCount 6
+call fgetsSizeIsConstCall isNameDeclaredAsKind
+arg fgetsSizeIsConstCall bufferBase bufferBase
+arg fgetsSizeIsConstCall bufferEndOffset bufferEndOffset
+arg fgetsSizeIsConstCall targetNamePointer fgetsArg2Pointer
+arg fgetsSizeIsConstCall targetNameLength pendingCallArg2ValueLength
+arg fgetsSizeIsConstCall declarationVerb fgetsConstDeclVerb
+arg fgetsSizeIsConstCall declarationVerbLength fgetsConstDeclVerbLength
+run fgetsSizeIsConstCall
+bindOk fgetsSizeIsConst Bool fgetsSizeIsConstCall
+branchIf fgetsSizeIsConst emitFgetsConstSize
+branch emitFgetsBindSize
+
+label emitFgetsConstSize
+call fgetsConstSizeCall findConstIntegerValueByNameAfterOffset
+arg fgetsConstSizeCall bufferBase bufferBase
+arg fgetsConstSizeCall bufferEndOffset bufferEndOffset
+arg fgetsConstSizeCall searchStartOffset operationBodyStartOffset
+arg fgetsConstSizeCall targetNamePointer fgetsArg2Pointer
+arg fgetsConstSizeCall targetNameLength pendingCallArg2ValueLength
+run fgetsConstSizeCall
+bindOk fgetsConstSizeValue CSignedInt64 fgetsConstSizeCall
+const fgetsConstSizeFmt CNullTerminatedByteString "  %%%.*s_res = call i8* @fgets(i8* %%%.*s, i32 %lld, i8* %%%.*s)\n"
+call emitFgetsConstSizeCall c.printf
+arg emitFgetsConstSizeCall format fgetsConstSizeFmt
+arg emitFgetsConstSizeCall n1 pendingCallNameLength
+arg emitFgetsConstSizeCall p1 fgetsCallNamePointer
+arg emitFgetsConstSizeCall an1 pendingCallArg1ValueLength
+arg emitFgetsConstSizeCall ap1 fgetsArg1Pointer
+arg emitFgetsConstSizeCall sz fgetsConstSizeValue
+arg emitFgetsConstSizeCall an3 pendingCallArg3ValueLength
+arg emitFgetsConstSizeCall ap3 fgetsArg3Pointer
+run emitFgetsConstSizeCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitFgetsBindSize
+const fgetsBindSizeFmt CNullTerminatedByteString "  %%%.*s_sz32 = trunc i64 %%%.*s to i32\n  %%%.*s_res = call i8* @fgets(i8* %%%.*s, i32 %%%.*s_sz32, i8* %%%.*s)\n"
+call emitFgetsBindSizeCall c.printf
+arg emitFgetsBindSizeCall format fgetsBindSizeFmt
+arg emitFgetsBindSizeCall n1 pendingCallNameLength
+arg emitFgetsBindSizeCall p1 fgetsCallNamePointer
+arg emitFgetsBindSizeCall an1 pendingCallArg2ValueLength
+arg emitFgetsBindSizeCall ap1 fgetsArg2Pointer
+arg emitFgetsBindSizeCall n2 pendingCallNameLength
+arg emitFgetsBindSizeCall p2 fgetsCallNamePointer
+arg emitFgetsBindSizeCall an2 pendingCallArg1ValueLength
+arg emitFgetsBindSizeCall ap2 fgetsArg1Pointer
+arg emitFgetsBindSizeCall n3 pendingCallNameLength
+arg emitFgetsBindSizeCall p3 fgetsCallNamePointer
+arg emitFgetsBindSizeCall an3 pendingCallArg3ValueLength
+arg emitFgetsBindSizeCall ap3 fgetsArg3Pointer
+run emitFgetsBindSizeCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+# c.snprintf(buffer, size, format, ...): minimal support for 3-arg
+# (buffer, size, format) and 4-arg (buffer, size, format, i64 value).
+# Buffer is i8* bind; size is i64 const or bind; format is string-const;
+# 4th arg (if present) is i64 const or bind.
+label emitCsnprintfRun
+call snprCallNamePtrCall pointer.offset
+arg snprCallNamePtrCall base bufferBase
+arg snprCallNamePtrCall offset pendingCallNameStartOffset
+run snprCallNamePtrCall
+bind snprCallNamePointer COpaqueMemoryAddress snprCallNamePtrCall
+
+call snprArg1PtrCall pointer.offset
+arg snprArg1PtrCall base bufferBase
+arg snprArg1PtrCall offset pendingCallArg1ValueStartOffset
+run snprArg1PtrCall
+bind snprArg1Pointer COpaqueMemoryAddress snprArg1PtrCall
+
+call snprArg2PtrCall pointer.offset
+arg snprArg2PtrCall base bufferBase
+arg snprArg2PtrCall offset pendingCallArg2ValueStartOffset
+run snprArg2PtrCall
+bind snprArg2Pointer COpaqueMemoryAddress snprArg2PtrCall
+
+call snprArg3PtrCall pointer.offset
+arg snprArg3PtrCall base bufferBase
+arg snprArg3PtrCall offset pendingCallArg3ValueStartOffset
+run snprArg3PtrCall
+bind snprArg3Pointer COpaqueMemoryAddress snprArg3PtrCall
+
+# format must resolve to a string-const slot.
+call snprFmtSlotCall findStringConstSlotByName
+arg snprFmtSlotCall bufferBase bufferBase
+arg snprFmtSlotCall bufferEndOffset bufferEndOffset
+arg snprFmtSlotCall targetNamePointer snprArg3Pointer
+arg snprFmtSlotCall targetNameLength pendingCallArg3ValueLength
+run snprFmtSlotCall
+bindOk snprFmtSlot CSignedInt64 snprFmtSlotCall
+call snprFmtSizeCall findStringConstByteLengthByName
+arg snprFmtSizeCall bufferBase bufferBase
+arg snprFmtSizeCall bufferEndOffset bufferEndOffset
+arg snprFmtSizeCall targetNamePointer snprArg3Pointer
+arg snprFmtSizeCall targetNameLength pendingCallArg3ValueLength
+run snprFmtSizeCall
+bindOk snprFmtSize CSignedInt64 snprFmtSizeCall
+
+# size arg: const → literal, bind/var → use as-is.
+const snprConstVerb CNullTerminatedByteString "const "
+const snprConstVerbLength CByteCount 6
+call snprSizeIsConstCall isNameDeclaredAsKind
+arg snprSizeIsConstCall bufferBase bufferBase
+arg snprSizeIsConstCall bufferEndOffset bufferEndOffset
+arg snprSizeIsConstCall targetNamePointer snprArg2Pointer
+arg snprSizeIsConstCall targetNameLength pendingCallArg2ValueLength
+arg snprSizeIsConstCall declarationVerb snprConstVerb
+arg snprSizeIsConstCall declarationVerbLength snprConstVerbLength
+run snprSizeIsConstCall
+bindOk snprSizeIsConst Bool snprSizeIsConstCall
+
+call snprSizeConstVal findConstIntegerValueByNameAfterOffset
+arg snprSizeConstVal bufferBase bufferBase
+arg snprSizeConstVal bufferEndOffset bufferEndOffset
+arg snprSizeConstVal searchStartOffset operationBodyStartOffset
+arg snprSizeConstVal targetNamePointer snprArg2Pointer
+arg snprSizeConstVal targetNameLength pendingCallArg2ValueLength
+run snprSizeConstVal
+bindOk snprSizeConstValue CSignedInt64 snprSizeConstVal
+
+# Dispatch by arg count: 3 args (no value), 4 args (one value).
+const snprThreeArgsK CSignedInt64 3
+call snprIsThreeArgsCall math.equalI64
+arg snprIsThreeArgsCall left pendingCallArgCount
+arg snprIsThreeArgsCall right snprThreeArgsK
+run snprIsThreeArgsCall
+bind snprIsThreeArgs Bool snprIsThreeArgsCall
+branchIf snprIsThreeArgs emitSnprintfThreeArgs
+branch emitSnprintfFourArgs
+
+label emitSnprintfThreeArgs
+branchIf snprSizeIsConst snprThreeConstSize
+branch snprThreeBindSize
+
+label snprThreeConstSize
+const snprThreeCFmt CNullTerminatedByteString "  %%%.*s_res32 = call i32 (i8*, i64, i8*, ...) @snprintf(i8* %%%.*s, i64 %lld, i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0))\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitSnprThreeC c.printf
+arg emitSnprThreeC format snprThreeCFmt
+arg emitSnprThreeC n1 pendingCallNameLength
+arg emitSnprThreeC p1 snprCallNamePointer
+arg emitSnprThreeC an1 pendingCallArg1ValueLength
+arg emitSnprThreeC ap1 snprArg1Pointer
+arg emitSnprThreeC sv snprSizeConstValue
+arg emitSnprThreeC fa1 snprFmtSize
+arg emitSnprThreeC fa2 snprFmtSize
+arg emitSnprThreeC fs snprFmtSlot
+arg emitSnprThreeC n2 pendingCallNameLength
+arg emitSnprThreeC p2 snprCallNamePointer
+arg emitSnprThreeC n3 pendingCallNameLength
+arg emitSnprThreeC p3 snprCallNamePointer
+run emitSnprThreeC
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label snprThreeBindSize
+const snprThreeBFmt CNullTerminatedByteString "  %%%.*s_res32 = call i32 (i8*, i64, i8*, ...) @snprintf(i8* %%%.*s, i64 %%%.*s, i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0))\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitSnprThreeB c.printf
+arg emitSnprThreeB format snprThreeBFmt
+arg emitSnprThreeB n1 pendingCallNameLength
+arg emitSnprThreeB p1 snprCallNamePointer
+arg emitSnprThreeB an1 pendingCallArg1ValueLength
+arg emitSnprThreeB ap1 snprArg1Pointer
+arg emitSnprThreeB an2 pendingCallArg2ValueLength
+arg emitSnprThreeB ap2 snprArg2Pointer
+arg emitSnprThreeB fa1 snprFmtSize
+arg emitSnprThreeB fa2 snprFmtSize
+arg emitSnprThreeB fs snprFmtSlot
+arg emitSnprThreeB n2 pendingCallNameLength
+arg emitSnprThreeB p2 snprCallNamePointer
+arg emitSnprThreeB n3 pendingCallNameLength
+arg emitSnprThreeB p3 snprCallNamePointer
+run emitSnprThreeB
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitSnprintfFourArgs
+# 4-arg: snprintf(buf, size, fmt, value). Classify size (const|bind)
+# and value (const|bind) → 4 combinations.
+call snprArg4PtrCall pointer.offset
+arg snprArg4PtrCall base bufferBase
+arg snprArg4PtrCall offset pendingCallArg4ValueStartOffset
+run snprArg4PtrCall
+bind snprArg4Pointer COpaqueMemoryAddress snprArg4PtrCall
+
+call snprValueIsConstCall isNameDeclaredAsKind
+arg snprValueIsConstCall bufferBase bufferBase
+arg snprValueIsConstCall bufferEndOffset bufferEndOffset
+arg snprValueIsConstCall targetNamePointer snprArg4Pointer
+arg snprValueIsConstCall targetNameLength pendingCallArg4ValueLength
+arg snprValueIsConstCall declarationVerb snprConstVerb
+arg snprValueIsConstCall declarationVerbLength snprConstVerbLength
+run snprValueIsConstCall
+bindOk snprValueIsConst Bool snprValueIsConstCall
+
+call snprValueConstVal findConstIntegerValueByNameAfterOffset
+arg snprValueConstVal bufferBase bufferBase
+arg snprValueConstVal bufferEndOffset bufferEndOffset
+arg snprValueConstVal searchStartOffset operationBodyStartOffset
+arg snprValueConstVal targetNamePointer snprArg4Pointer
+arg snprValueConstVal targetNameLength pendingCallArg4ValueLength
+run snprValueConstVal
+bindOk snprValueConstValue CSignedInt64 snprValueConstVal
+
+branchIf snprSizeIsConst snprFourSizeConst
+branch snprFourSizeBind
+
+label snprFourSizeConst
+branchIf snprValueIsConst snprFourCC
+branch snprFourCB
+
+label snprFourSizeBind
+branchIf snprValueIsConst snprFourBC
+branch snprFourBB
+
+label snprFourCC
+const snprFourCCFmt CNullTerminatedByteString "  %%%.*s_res32 = call i32 (i8*, i64, i8*, ...) @snprintf(i8* %%%.*s, i64 %lld, i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0), i64 %lld)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitSnprFourCC c.printf
+arg emitSnprFourCC format snprFourCCFmt
+arg emitSnprFourCC n1 pendingCallNameLength
+arg emitSnprFourCC p1 snprCallNamePointer
+arg emitSnprFourCC an1 pendingCallArg1ValueLength
+arg emitSnprFourCC ap1 snprArg1Pointer
+arg emitSnprFourCC sv snprSizeConstValue
+arg emitSnprFourCC fa1 snprFmtSize
+arg emitSnprFourCC fa2 snprFmtSize
+arg emitSnprFourCC fs snprFmtSlot
+arg emitSnprFourCC vv snprValueConstValue
+arg emitSnprFourCC n2 pendingCallNameLength
+arg emitSnprFourCC p2 snprCallNamePointer
+arg emitSnprFourCC n3 pendingCallNameLength
+arg emitSnprFourCC p3 snprCallNamePointer
+run emitSnprFourCC
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label snprFourCB
+const snprFourCBFmt CNullTerminatedByteString "  %%%.*s_res32 = call i32 (i8*, i64, i8*, ...) @snprintf(i8* %%%.*s, i64 %lld, i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0), i64 %%%.*s)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitSnprFourCB c.printf
+arg emitSnprFourCB format snprFourCBFmt
+arg emitSnprFourCB n1 pendingCallNameLength
+arg emitSnprFourCB p1 snprCallNamePointer
+arg emitSnprFourCB an1 pendingCallArg1ValueLength
+arg emitSnprFourCB ap1 snprArg1Pointer
+arg emitSnprFourCB sv snprSizeConstValue
+arg emitSnprFourCB fa1 snprFmtSize
+arg emitSnprFourCB fa2 snprFmtSize
+arg emitSnprFourCB fs snprFmtSlot
+arg emitSnprFourCB an4 pendingCallArg4ValueLength
+arg emitSnprFourCB ap4 snprArg4Pointer
+arg emitSnprFourCB n2 pendingCallNameLength
+arg emitSnprFourCB p2 snprCallNamePointer
+arg emitSnprFourCB n3 pendingCallNameLength
+arg emitSnprFourCB p3 snprCallNamePointer
+run emitSnprFourCB
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label snprFourBC
+const snprFourBCFmt CNullTerminatedByteString "  %%%.*s_res32 = call i32 (i8*, i64, i8*, ...) @snprintf(i8* %%%.*s, i64 %%%.*s, i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0), i64 %lld)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitSnprFourBC c.printf
+arg emitSnprFourBC format snprFourBCFmt
+arg emitSnprFourBC n1 pendingCallNameLength
+arg emitSnprFourBC p1 snprCallNamePointer
+arg emitSnprFourBC an1 pendingCallArg1ValueLength
+arg emitSnprFourBC ap1 snprArg1Pointer
+arg emitSnprFourBC an2 pendingCallArg2ValueLength
+arg emitSnprFourBC ap2 snprArg2Pointer
+arg emitSnprFourBC fa1 snprFmtSize
+arg emitSnprFourBC fa2 snprFmtSize
+arg emitSnprFourBC fs snprFmtSlot
+arg emitSnprFourBC vv snprValueConstValue
+arg emitSnprFourBC n2 pendingCallNameLength
+arg emitSnprFourBC p2 snprCallNamePointer
+arg emitSnprFourBC n3 pendingCallNameLength
+arg emitSnprFourBC p3 snprCallNamePointer
+run emitSnprFourBC
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label snprFourBB
+const snprFourBBFmt CNullTerminatedByteString "  %%%.*s_res32 = call i32 (i8*, i64, i8*, ...) @snprintf(i8* %%%.*s, i64 %%%.*s, i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0), i64 %%%.*s)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitSnprFourBB c.printf
+arg emitSnprFourBB format snprFourBBFmt
+arg emitSnprFourBB n1 pendingCallNameLength
+arg emitSnprFourBB p1 snprCallNamePointer
+arg emitSnprFourBB an1 pendingCallArg1ValueLength
+arg emitSnprFourBB ap1 snprArg1Pointer
+arg emitSnprFourBB an2 pendingCallArg2ValueLength
+arg emitSnprFourBB ap2 snprArg2Pointer
+arg emitSnprFourBB fa1 snprFmtSize
+arg emitSnprFourBB fa2 snprFmtSize
+arg emitSnprFourBB fs snprFmtSlot
+arg emitSnprFourBB an4 pendingCallArg4ValueLength
+arg emitSnprFourBB ap4 snprArg4Pointer
+arg emitSnprFourBB n2 pendingCallNameLength
+arg emitSnprFourBB p2 snprCallNamePointer
+arg emitSnprFourBB n3 pendingCallNameLength
+arg emitSnprFourBB p3 snprCallNamePointer
+run emitSnprFourBB
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+# Math libcs (sqrt, sin, cos, exp, log, fabs) — all 1-arg double→double.
+# Arg is a CFloat64 const, bind, or pointer-typed value. For simplicity,
+# we route through a generic emitter that handles the common case where
+# the arg is a CFloat64 bind/param (the most common usage). Const float
+# args fall back to literal emission via the standard pattern.
+
+# FP classification helpers — implemented as inline LLVM operations
+# rather than libc calls. This avoids platform-specific linkage issues
+# (e.g. MSVCRT uses `_isnan` while glibc uses `__isnanf64`). Each
+# produces an i64 result (0/1) suitable for `bind X Bool resCall` via
+# the user-op-result trunc path.
+
+# c.isnan(x): `fcmp uno x, x` is true iff x is NaN.
+# Each FP classifier emits a uniform `%X_dArg = ...` SSA double, then
+# uses it in the main inline ops. This lets const/var/bind args share
+# the same main emission path.
+label emitIsnanRun
+call isnanCallNamePtrCall pointer.offset
+arg isnanCallNamePtrCall base bufferBase
+arg isnanCallNamePtrCall offset pendingCallNameStartOffset
+run isnanCallNamePtrCall
+bind isnanCallNamePointer COpaqueMemoryAddress isnanCallNamePtrCall
+call isnanArg1PtrCall pointer.offset
+arg isnanArg1PtrCall base bufferBase
+arg isnanArg1PtrCall offset pendingCallArg1ValueStartOffset
+run isnanArg1PtrCall
+bind isnanArg1Pointer COpaqueMemoryAddress isnanArg1PtrCall
+
+# Resolve arg to %{call}_dArg of type double.
+const fpcArgConstVerb CNullTerminatedByteString "const "
+const fpcArgConstVerbLength CByteCount 6
+const fpcArgVarVerb CNullTerminatedByteString "var "
+const fpcArgVarVerbLength CByteCount 4
+call isnanArgIsConstCall isNameDeclaredAsKind
+arg isnanArgIsConstCall bufferBase bufferBase
+arg isnanArgIsConstCall bufferEndOffset bufferEndOffset
+arg isnanArgIsConstCall targetNamePointer isnanArg1Pointer
+arg isnanArgIsConstCall targetNameLength pendingCallArg1ValueLength
+arg isnanArgIsConstCall declarationVerb fpcArgConstVerb
+arg isnanArgIsConstCall declarationVerbLength fpcArgConstVerbLength
+run isnanArgIsConstCall
+bindOk isnanArgIsConst Bool isnanArgIsConstCall
+
+call isnanArgIsVarCall isNameDeclaredAsKind
+arg isnanArgIsVarCall bufferBase bufferBase
+arg isnanArgIsVarCall bufferEndOffset bufferEndOffset
+arg isnanArgIsVarCall targetNamePointer isnanArg1Pointer
+arg isnanArgIsVarCall targetNameLength pendingCallArg1ValueLength
+arg isnanArgIsVarCall declarationVerb fpcArgVarVerb
+arg isnanArgIsVarCall declarationVerbLength fpcArgVarVerbLength
+run isnanArgIsVarCall
+bindOk isnanArgIsVar Bool isnanArgIsVarCall
+
+branchIf isnanArgIsConst isnanResolveFromConst
+branchIf isnanArgIsVar isnanResolveFromVar
+branch isnanResolveFromBind
+
+label isnanResolveFromConst
+call isnanConstRawTextCall findConstValueRawTextOffset
+arg isnanConstRawTextCall bufferBase bufferBase
+arg isnanConstRawTextCall bufferEndOffset bufferEndOffset
+arg isnanConstRawTextCall targetNamePointer isnanArg1Pointer
+arg isnanConstRawTextCall targetNameLength pendingCallArg1ValueLength
+run isnanConstRawTextCall
+bindOk isnanConstRawTextOffset CSignedInt64 isnanConstRawTextCall
+call isnanConstTextPtrCall pointer.offset
+arg isnanConstTextPtrCall base bufferBase
+arg isnanConstTextPtrCall offset isnanConstRawTextOffset
+run isnanConstTextPtrCall
+bind isnanConstTextPointer COpaqueMemoryAddress isnanConstTextPtrCall
+call isnanConstTextLenCall extractTokenLength
+arg isnanConstTextLenCall tokenStartPointer isnanConstTextPointer
+run isnanConstTextLenCall
+bindOk isnanConstTextLength CSignedInt64 isnanConstTextLenCall
+const isnanConstResolveFmt CNullTerminatedByteString "  %%%.*s_dArg = fadd double 0.0, %.*s\n"
+call emitIsnanConstResolve c.printf
+arg emitIsnanConstResolve format isnanConstResolveFmt
+arg emitIsnanConstResolve n1 pendingCallNameLength
+arg emitIsnanConstResolve p1 isnanCallNamePointer
+arg emitIsnanConstResolve tl isnanConstTextLength
+arg emitIsnanConstResolve tp isnanConstTextPointer
+run emitIsnanConstResolve
+branch isnanMainOps
+
+label isnanResolveFromVar
+const isnanVarResolveFmt CNullTerminatedByteString "  %%%.*s_dArg = load double, double* %%%.*s\n"
+call emitIsnanVarResolve c.printf
+arg emitIsnanVarResolve format isnanVarResolveFmt
+arg emitIsnanVarResolve n1 pendingCallNameLength
+arg emitIsnanVarResolve p1 isnanCallNamePointer
+arg emitIsnanVarResolve an1 pendingCallArg1ValueLength
+arg emitIsnanVarResolve ap1 isnanArg1Pointer
+run emitIsnanVarResolve
+branch isnanMainOps
+
+label isnanResolveFromBind
+const isnanBindResolveFmt CNullTerminatedByteString "  %%%.*s_dArg = fadd double %%%.*s, 0.0\n"
+call emitIsnanBindResolve c.printf
+arg emitIsnanBindResolve format isnanBindResolveFmt
+arg emitIsnanBindResolve n1 pendingCallNameLength
+arg emitIsnanBindResolve p1 isnanCallNamePointer
+arg emitIsnanBindResolve an1 pendingCallArg1ValueLength
+arg emitIsnanBindResolve ap1 isnanArg1Pointer
+run emitIsnanBindResolve
+branch isnanMainOps
+
+label isnanMainOps
+const isnanFmt CNullTerminatedByteString "  %%%.*s_i1 = fcmp uno double %%%.*s_dArg, %%%.*s_dArg\n  %%%.*s_res = zext i1 %%%.*s_i1 to i64\n"
+call emitIsnanCall c.printf
+arg emitIsnanCall format isnanFmt
+arg emitIsnanCall n1 pendingCallNameLength
+arg emitIsnanCall p1 isnanCallNamePointer
+arg emitIsnanCall n2 pendingCallNameLength
+arg emitIsnanCall p2 isnanCallNamePointer
+arg emitIsnanCall n3 pendingCallNameLength
+arg emitIsnanCall p3 isnanCallNamePointer
+arg emitIsnanCall n4 pendingCallNameLength
+arg emitIsnanCall p4 isnanCallNamePointer
+arg emitIsnanCall n5 pendingCallNameLength
+arg emitIsnanCall p5 isnanCallNamePointer
+run emitIsnanCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+# c.isinf(x): true iff |x| == positive infinity. Uses the unified
+# %X_dArg arg-resolution prefix (const/var/bind) like c.isnan.
+label emitIsinfRun
+call isinfCallNamePtrCall pointer.offset
+arg isinfCallNamePtrCall base bufferBase
+arg isinfCallNamePtrCall offset pendingCallNameStartOffset
+run isinfCallNamePtrCall
+bind isinfCallNamePointer COpaqueMemoryAddress isinfCallNamePtrCall
+call isinfArg1PtrCall pointer.offset
+arg isinfArg1PtrCall base bufferBase
+arg isinfArg1PtrCall offset pendingCallArg1ValueStartOffset
+run isinfArg1PtrCall
+bind isinfArg1Pointer COpaqueMemoryAddress isinfArg1PtrCall
+
+call isinfArgIsConstCall isNameDeclaredAsKind
+arg isinfArgIsConstCall bufferBase bufferBase
+arg isinfArgIsConstCall bufferEndOffset bufferEndOffset
+arg isinfArgIsConstCall targetNamePointer isinfArg1Pointer
+arg isinfArgIsConstCall targetNameLength pendingCallArg1ValueLength
+arg isinfArgIsConstCall declarationVerb fpcArgConstVerb
+arg isinfArgIsConstCall declarationVerbLength fpcArgConstVerbLength
+run isinfArgIsConstCall
+bindOk isinfArgIsConst Bool isinfArgIsConstCall
+
+call isinfArgIsVarCall isNameDeclaredAsKind
+arg isinfArgIsVarCall bufferBase bufferBase
+arg isinfArgIsVarCall bufferEndOffset bufferEndOffset
+arg isinfArgIsVarCall targetNamePointer isinfArg1Pointer
+arg isinfArgIsVarCall targetNameLength pendingCallArg1ValueLength
+arg isinfArgIsVarCall declarationVerb fpcArgVarVerb
+arg isinfArgIsVarCall declarationVerbLength fpcArgVarVerbLength
+run isinfArgIsVarCall
+bindOk isinfArgIsVar Bool isinfArgIsVarCall
+
+branchIf isinfArgIsConst isinfResolveFromConst
+branchIf isinfArgIsVar isinfResolveFromVar
+branch isinfResolveFromBind
+
+label isinfResolveFromConst
+call isinfConstRawTextCall findConstValueRawTextOffset
+arg isinfConstRawTextCall bufferBase bufferBase
+arg isinfConstRawTextCall bufferEndOffset bufferEndOffset
+arg isinfConstRawTextCall targetNamePointer isinfArg1Pointer
+arg isinfConstRawTextCall targetNameLength pendingCallArg1ValueLength
+run isinfConstRawTextCall
+bindOk isinfConstRawTextOffset CSignedInt64 isinfConstRawTextCall
+call isinfConstTextPtrCall pointer.offset
+arg isinfConstTextPtrCall base bufferBase
+arg isinfConstTextPtrCall offset isinfConstRawTextOffset
+run isinfConstTextPtrCall
+bind isinfConstTextPointer COpaqueMemoryAddress isinfConstTextPtrCall
+call isinfConstTextLenCall extractTokenLength
+arg isinfConstTextLenCall tokenStartPointer isinfConstTextPointer
+run isinfConstTextLenCall
+bindOk isinfConstTextLength CSignedInt64 isinfConstTextLenCall
+const isinfConstResolveFmt CNullTerminatedByteString "  %%%.*s_dArg = fadd double 0.0, %.*s\n"
+call emitIsinfConstResolve c.printf
+arg emitIsinfConstResolve format isinfConstResolveFmt
+arg emitIsinfConstResolve n1 pendingCallNameLength
+arg emitIsinfConstResolve p1 isinfCallNamePointer
+arg emitIsinfConstResolve tl isinfConstTextLength
+arg emitIsinfConstResolve tp isinfConstTextPointer
+run emitIsinfConstResolve
+branch isinfMainOps
+
+label isinfResolveFromVar
+const isinfVarResolveFmt CNullTerminatedByteString "  %%%.*s_dArg = load double, double* %%%.*s\n"
+call emitIsinfVarResolve c.printf
+arg emitIsinfVarResolve format isinfVarResolveFmt
+arg emitIsinfVarResolve n1 pendingCallNameLength
+arg emitIsinfVarResolve p1 isinfCallNamePointer
+arg emitIsinfVarResolve an1 pendingCallArg1ValueLength
+arg emitIsinfVarResolve ap1 isinfArg1Pointer
+run emitIsinfVarResolve
+branch isinfMainOps
+
+label isinfResolveFromBind
+const isinfBindResolveFmt CNullTerminatedByteString "  %%%.*s_dArg = fadd double %%%.*s, 0.0\n"
+call emitIsinfBindResolve c.printf
+arg emitIsinfBindResolve format isinfBindResolveFmt
+arg emitIsinfBindResolve n1 pendingCallNameLength
+arg emitIsinfBindResolve p1 isinfCallNamePointer
+arg emitIsinfBindResolve an1 pendingCallArg1ValueLength
+arg emitIsinfBindResolve ap1 isinfArg1Pointer
+run emitIsinfBindResolve
+branch isinfMainOps
+
+label isinfMainOps
+const isinfFmt CNullTerminatedByteString "  %%%.*s_bits = bitcast double %%%.*s_dArg to i64\n  %%%.*s_abs = and i64 %%%.*s_bits, 9223372036854775807\n  %%%.*s_i1 = icmp eq i64 %%%.*s_abs, 9218868437227405312\n  %%%.*s_res = zext i1 %%%.*s_i1 to i64\n"
+call emitIsinfCall c.printf
+arg emitIsinfCall format isinfFmt
+arg emitIsinfCall n1 pendingCallNameLength
+arg emitIsinfCall p1 isinfCallNamePointer
+arg emitIsinfCall n2 pendingCallNameLength
+arg emitIsinfCall p2 isinfCallNamePointer
+arg emitIsinfCall n3 pendingCallNameLength
+arg emitIsinfCall p3 isinfCallNamePointer
+arg emitIsinfCall n4 pendingCallNameLength
+arg emitIsinfCall p4 isinfCallNamePointer
+arg emitIsinfCall n5 pendingCallNameLength
+arg emitIsinfCall p5 isinfCallNamePointer
+arg emitIsinfCall n6 pendingCallNameLength
+arg emitIsinfCall p6 isinfCallNamePointer
+arg emitIsinfCall n7 pendingCallNameLength
+arg emitIsinfCall p7 isinfCallNamePointer
+arg emitIsinfCall n8 pendingCallNameLength
+arg emitIsinfCall p8 isinfCallNamePointer
+run emitIsinfCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+# c.isfinite(x): true iff x is neither NaN nor infinity.
+label emitIsfiniteRun
+call isfiniteCallNamePtrCall pointer.offset
+arg isfiniteCallNamePtrCall base bufferBase
+arg isfiniteCallNamePtrCall offset pendingCallNameStartOffset
+run isfiniteCallNamePtrCall
+bind isfiniteCallNamePointer COpaqueMemoryAddress isfiniteCallNamePtrCall
+call isfiniteArg1PtrCall pointer.offset
+arg isfiniteArg1PtrCall base bufferBase
+arg isfiniteArg1PtrCall offset pendingCallArg1ValueStartOffset
+run isfiniteArg1PtrCall
+bind isfiniteArg1Pointer COpaqueMemoryAddress isfiniteArg1PtrCall
+
+call isfiniteArgIsConstCall isNameDeclaredAsKind
+arg isfiniteArgIsConstCall bufferBase bufferBase
+arg isfiniteArgIsConstCall bufferEndOffset bufferEndOffset
+arg isfiniteArgIsConstCall targetNamePointer isfiniteArg1Pointer
+arg isfiniteArgIsConstCall targetNameLength pendingCallArg1ValueLength
+arg isfiniteArgIsConstCall declarationVerb fpcArgConstVerb
+arg isfiniteArgIsConstCall declarationVerbLength fpcArgConstVerbLength
+run isfiniteArgIsConstCall
+bindOk isfiniteArgIsConst Bool isfiniteArgIsConstCall
+
+call isfiniteArgIsVarCall isNameDeclaredAsKind
+arg isfiniteArgIsVarCall bufferBase bufferBase
+arg isfiniteArgIsVarCall bufferEndOffset bufferEndOffset
+arg isfiniteArgIsVarCall targetNamePointer isfiniteArg1Pointer
+arg isfiniteArgIsVarCall targetNameLength pendingCallArg1ValueLength
+arg isfiniteArgIsVarCall declarationVerb fpcArgVarVerb
+arg isfiniteArgIsVarCall declarationVerbLength fpcArgVarVerbLength
+run isfiniteArgIsVarCall
+bindOk isfiniteArgIsVar Bool isfiniteArgIsVarCall
+
+branchIf isfiniteArgIsConst isfiniteResolveFromConst
+branchIf isfiniteArgIsVar isfiniteResolveFromVar
+branch isfiniteResolveFromBind
+
+label isfiniteResolveFromConst
+call isfiniteConstRawTextCall findConstValueRawTextOffset
+arg isfiniteConstRawTextCall bufferBase bufferBase
+arg isfiniteConstRawTextCall bufferEndOffset bufferEndOffset
+arg isfiniteConstRawTextCall targetNamePointer isfiniteArg1Pointer
+arg isfiniteConstRawTextCall targetNameLength pendingCallArg1ValueLength
+run isfiniteConstRawTextCall
+bindOk isfiniteConstRawTextOffset CSignedInt64 isfiniteConstRawTextCall
+call isfiniteConstTextPtrCall pointer.offset
+arg isfiniteConstTextPtrCall base bufferBase
+arg isfiniteConstTextPtrCall offset isfiniteConstRawTextOffset
+run isfiniteConstTextPtrCall
+bind isfiniteConstTextPointer COpaqueMemoryAddress isfiniteConstTextPtrCall
+call isfiniteConstTextLenCall extractTokenLength
+arg isfiniteConstTextLenCall tokenStartPointer isfiniteConstTextPointer
+run isfiniteConstTextLenCall
+bindOk isfiniteConstTextLength CSignedInt64 isfiniteConstTextLenCall
+const isfiniteConstResolveFmt CNullTerminatedByteString "  %%%.*s_dArg = fadd double 0.0, %.*s\n"
+call emitIsfiniteConstResolve c.printf
+arg emitIsfiniteConstResolve format isfiniteConstResolveFmt
+arg emitIsfiniteConstResolve n1 pendingCallNameLength
+arg emitIsfiniteConstResolve p1 isfiniteCallNamePointer
+arg emitIsfiniteConstResolve tl isfiniteConstTextLength
+arg emitIsfiniteConstResolve tp isfiniteConstTextPointer
+run emitIsfiniteConstResolve
+branch isfiniteMainOps
+
+label isfiniteResolveFromVar
+const isfiniteVarResolveFmt CNullTerminatedByteString "  %%%.*s_dArg = load double, double* %%%.*s\n"
+call emitIsfiniteVarResolve c.printf
+arg emitIsfiniteVarResolve format isfiniteVarResolveFmt
+arg emitIsfiniteVarResolve n1 pendingCallNameLength
+arg emitIsfiniteVarResolve p1 isfiniteCallNamePointer
+arg emitIsfiniteVarResolve an1 pendingCallArg1ValueLength
+arg emitIsfiniteVarResolve ap1 isfiniteArg1Pointer
+run emitIsfiniteVarResolve
+branch isfiniteMainOps
+
+label isfiniteResolveFromBind
+const isfiniteBindResolveFmt CNullTerminatedByteString "  %%%.*s_dArg = fadd double %%%.*s, 0.0\n"
+call emitIsfiniteBindResolve c.printf
+arg emitIsfiniteBindResolve format isfiniteBindResolveFmt
+arg emitIsfiniteBindResolve n1 pendingCallNameLength
+arg emitIsfiniteBindResolve p1 isfiniteCallNamePointer
+arg emitIsfiniteBindResolve an1 pendingCallArg1ValueLength
+arg emitIsfiniteBindResolve ap1 isfiniteArg1Pointer
+run emitIsfiniteBindResolve
+branch isfiniteMainOps
+
+label isfiniteMainOps
+const isfiniteFmt CNullTerminatedByteString "  %%%.*s_bits = bitcast double %%%.*s_dArg to i64\n  %%%.*s_abs = and i64 %%%.*s_bits, 9223372036854775807\n  %%%.*s_i1 = icmp ult i64 %%%.*s_abs, 9218868437227405312\n  %%%.*s_res = zext i1 %%%.*s_i1 to i64\n"
+call emitIsfiniteCall c.printf
+arg emitIsfiniteCall format isfiniteFmt
+arg emitIsfiniteCall n1 pendingCallNameLength
+arg emitIsfiniteCall p1 isfiniteCallNamePointer
+arg emitIsfiniteCall n2 pendingCallNameLength
+arg emitIsfiniteCall p2 isfiniteCallNamePointer
+arg emitIsfiniteCall n3 pendingCallNameLength
+arg emitIsfiniteCall p3 isfiniteCallNamePointer
+arg emitIsfiniteCall n4 pendingCallNameLength
+arg emitIsfiniteCall p4 isfiniteCallNamePointer
+arg emitIsfiniteCall n5 pendingCallNameLength
+arg emitIsfiniteCall p5 isfiniteCallNamePointer
+arg emitIsfiniteCall n6 pendingCallNameLength
+arg emitIsfiniteCall p6 isfiniteCallNamePointer
+arg emitIsfiniteCall n7 pendingCallNameLength
+arg emitIsfiniteCall p7 isfiniteCallNamePointer
+arg emitIsfiniteCall n8 pendingCallNameLength
+arg emitIsfiniteCall p8 isfiniteCallNamePointer
+run emitIsfiniteCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+# c.signbit(x): true iff sign bit is set.
+label emitSignbitRun
+call signbitCallNamePtrCall pointer.offset
+arg signbitCallNamePtrCall base bufferBase
+arg signbitCallNamePtrCall offset pendingCallNameStartOffset
+run signbitCallNamePtrCall
+bind signbitCallNamePointer COpaqueMemoryAddress signbitCallNamePtrCall
+call signbitArg1PtrCall pointer.offset
+arg signbitArg1PtrCall base bufferBase
+arg signbitArg1PtrCall offset pendingCallArg1ValueStartOffset
+run signbitArg1PtrCall
+bind signbitArg1Pointer COpaqueMemoryAddress signbitArg1PtrCall
+
+call signbitArgIsConstCall isNameDeclaredAsKind
+arg signbitArgIsConstCall bufferBase bufferBase
+arg signbitArgIsConstCall bufferEndOffset bufferEndOffset
+arg signbitArgIsConstCall targetNamePointer signbitArg1Pointer
+arg signbitArgIsConstCall targetNameLength pendingCallArg1ValueLength
+arg signbitArgIsConstCall declarationVerb fpcArgConstVerb
+arg signbitArgIsConstCall declarationVerbLength fpcArgConstVerbLength
+run signbitArgIsConstCall
+bindOk signbitArgIsConst Bool signbitArgIsConstCall
+
+call signbitArgIsVarCall isNameDeclaredAsKind
+arg signbitArgIsVarCall bufferBase bufferBase
+arg signbitArgIsVarCall bufferEndOffset bufferEndOffset
+arg signbitArgIsVarCall targetNamePointer signbitArg1Pointer
+arg signbitArgIsVarCall targetNameLength pendingCallArg1ValueLength
+arg signbitArgIsVarCall declarationVerb fpcArgVarVerb
+arg signbitArgIsVarCall declarationVerbLength fpcArgVarVerbLength
+run signbitArgIsVarCall
+bindOk signbitArgIsVar Bool signbitArgIsVarCall
+
+branchIf signbitArgIsConst signbitResolveFromConst
+branchIf signbitArgIsVar signbitResolveFromVar
+branch signbitResolveFromBind
+
+label signbitResolveFromConst
+call signbitConstRawTextCall findConstValueRawTextOffset
+arg signbitConstRawTextCall bufferBase bufferBase
+arg signbitConstRawTextCall bufferEndOffset bufferEndOffset
+arg signbitConstRawTextCall targetNamePointer signbitArg1Pointer
+arg signbitConstRawTextCall targetNameLength pendingCallArg1ValueLength
+run signbitConstRawTextCall
+bindOk signbitConstRawTextOffset CSignedInt64 signbitConstRawTextCall
+call signbitConstTextPtrCall pointer.offset
+arg signbitConstTextPtrCall base bufferBase
+arg signbitConstTextPtrCall offset signbitConstRawTextOffset
+run signbitConstTextPtrCall
+bind signbitConstTextPointer COpaqueMemoryAddress signbitConstTextPtrCall
+call signbitConstTextLenCall extractTokenLength
+arg signbitConstTextLenCall tokenStartPointer signbitConstTextPointer
+run signbitConstTextLenCall
+bindOk signbitConstTextLength CSignedInt64 signbitConstTextLenCall
+const signbitConstResolveFmt CNullTerminatedByteString "  %%%.*s_dArg = fadd double 0.0, %.*s\n"
+call emitSignbitConstResolve c.printf
+arg emitSignbitConstResolve format signbitConstResolveFmt
+arg emitSignbitConstResolve n1 pendingCallNameLength
+arg emitSignbitConstResolve p1 signbitCallNamePointer
+arg emitSignbitConstResolve tl signbitConstTextLength
+arg emitSignbitConstResolve tp signbitConstTextPointer
+run emitSignbitConstResolve
+branch signbitMainOps
+
+label signbitResolveFromVar
+const signbitVarResolveFmt CNullTerminatedByteString "  %%%.*s_dArg = load double, double* %%%.*s\n"
+call emitSignbitVarResolve c.printf
+arg emitSignbitVarResolve format signbitVarResolveFmt
+arg emitSignbitVarResolve n1 pendingCallNameLength
+arg emitSignbitVarResolve p1 signbitCallNamePointer
+arg emitSignbitVarResolve an1 pendingCallArg1ValueLength
+arg emitSignbitVarResolve ap1 signbitArg1Pointer
+run emitSignbitVarResolve
+branch signbitMainOps
+
+label signbitResolveFromBind
+const signbitBindResolveFmt CNullTerminatedByteString "  %%%.*s_dArg = fadd double %%%.*s, 0.0\n"
+call emitSignbitBindResolve c.printf
+arg emitSignbitBindResolve format signbitBindResolveFmt
+arg emitSignbitBindResolve n1 pendingCallNameLength
+arg emitSignbitBindResolve p1 signbitCallNamePointer
+arg emitSignbitBindResolve an1 pendingCallArg1ValueLength
+arg emitSignbitBindResolve ap1 signbitArg1Pointer
+run emitSignbitBindResolve
+branch signbitMainOps
+
+label signbitMainOps
+const signbitFmt CNullTerminatedByteString "  %%%.*s_bits = bitcast double %%%.*s_dArg to i64\n  %%%.*s_shift = lshr i64 %%%.*s_bits, 63\n  %%%.*s_res = and i64 %%%.*s_shift, 1\n"
+call emitSignbitCall c.printf
+arg emitSignbitCall format signbitFmt
+arg emitSignbitCall n1 pendingCallNameLength
+arg emitSignbitCall p1 signbitCallNamePointer
+arg emitSignbitCall n2 pendingCallNameLength
+arg emitSignbitCall p2 signbitCallNamePointer
+arg emitSignbitCall n3 pendingCallNameLength
+arg emitSignbitCall p3 signbitCallNamePointer
+arg emitSignbitCall n4 pendingCallNameLength
+arg emitSignbitCall p4 signbitCallNamePointer
+arg emitSignbitCall n5 pendingCallNameLength
+arg emitSignbitCall p5 signbitCallNamePointer
+arg emitSignbitCall n6 pendingCallNameLength
+arg emitSignbitCall p6 signbitCallNamePointer
+run emitSignbitCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+# c.fpclassify(x): returns FP_NAN=0, FP_INFINITE=1, FP_ZERO=2,
+# FP_NORMAL=4 (FP_SUBNORMAL=3 treated as normal for simplicity).
+# Uses the unified %X_dArg resolution prefix like other FP classifiers.
+label emitFpclassifyRun
+call fpcCallNamePtrCall pointer.offset
+arg fpcCallNamePtrCall base bufferBase
+arg fpcCallNamePtrCall offset pendingCallNameStartOffset
+run fpcCallNamePtrCall
+bind fpcCallNamePointer COpaqueMemoryAddress fpcCallNamePtrCall
+call fpcArg1PtrCall pointer.offset
+arg fpcArg1PtrCall base bufferBase
+arg fpcArg1PtrCall offset pendingCallArg1ValueStartOffset
+run fpcArg1PtrCall
+bind fpcArg1Pointer COpaqueMemoryAddress fpcArg1PtrCall
+
+call fpcArgIsConstCall isNameDeclaredAsKind
+arg fpcArgIsConstCall bufferBase bufferBase
+arg fpcArgIsConstCall bufferEndOffset bufferEndOffset
+arg fpcArgIsConstCall targetNamePointer fpcArg1Pointer
+arg fpcArgIsConstCall targetNameLength pendingCallArg1ValueLength
+arg fpcArgIsConstCall declarationVerb fpcArgConstVerb
+arg fpcArgIsConstCall declarationVerbLength fpcArgConstVerbLength
+run fpcArgIsConstCall
+bindOk fpcArgIsConst Bool fpcArgIsConstCall
+
+call fpcArgIsVarCall isNameDeclaredAsKind
+arg fpcArgIsVarCall bufferBase bufferBase
+arg fpcArgIsVarCall bufferEndOffset bufferEndOffset
+arg fpcArgIsVarCall targetNamePointer fpcArg1Pointer
+arg fpcArgIsVarCall targetNameLength pendingCallArg1ValueLength
+arg fpcArgIsVarCall declarationVerb fpcArgVarVerb
+arg fpcArgIsVarCall declarationVerbLength fpcArgVarVerbLength
+run fpcArgIsVarCall
+bindOk fpcArgIsVar Bool fpcArgIsVarCall
+
+branchIf fpcArgIsConst fpcResolveFromConst
+branchIf fpcArgIsVar fpcResolveFromVar
+branch fpcResolveFromBind
+
+label fpcResolveFromConst
+call fpcConstRawTextCall findConstValueRawTextOffset
+arg fpcConstRawTextCall bufferBase bufferBase
+arg fpcConstRawTextCall bufferEndOffset bufferEndOffset
+arg fpcConstRawTextCall targetNamePointer fpcArg1Pointer
+arg fpcConstRawTextCall targetNameLength pendingCallArg1ValueLength
+run fpcConstRawTextCall
+bindOk fpcConstRawTextOffset CSignedInt64 fpcConstRawTextCall
+call fpcConstTextPtrCall pointer.offset
+arg fpcConstTextPtrCall base bufferBase
+arg fpcConstTextPtrCall offset fpcConstRawTextOffset
+run fpcConstTextPtrCall
+bind fpcConstTextPointer COpaqueMemoryAddress fpcConstTextPtrCall
+call fpcConstTextLenCall extractTokenLength
+arg fpcConstTextLenCall tokenStartPointer fpcConstTextPointer
+run fpcConstTextLenCall
+bindOk fpcConstTextLength CSignedInt64 fpcConstTextLenCall
+const fpcConstResolveFmt CNullTerminatedByteString "  %%%.*s_dArg = fadd double 0.0, %.*s\n"
+call emitFpcConstResolve c.printf
+arg emitFpcConstResolve format fpcConstResolveFmt
+arg emitFpcConstResolve n1 pendingCallNameLength
+arg emitFpcConstResolve p1 fpcCallNamePointer
+arg emitFpcConstResolve tl fpcConstTextLength
+arg emitFpcConstResolve tp fpcConstTextPointer
+run emitFpcConstResolve
+branch fpcMainOps
+
+label fpcResolveFromVar
+const fpcVarResolveFmt CNullTerminatedByteString "  %%%.*s_dArg = load double, double* %%%.*s\n"
+call emitFpcVarResolve c.printf
+arg emitFpcVarResolve format fpcVarResolveFmt
+arg emitFpcVarResolve n1 pendingCallNameLength
+arg emitFpcVarResolve p1 fpcCallNamePointer
+arg emitFpcVarResolve an1 pendingCallArg1ValueLength
+arg emitFpcVarResolve ap1 fpcArg1Pointer
+run emitFpcVarResolve
+branch fpcMainOps
+
+label fpcResolveFromBind
+const fpcBindResolveFmt CNullTerminatedByteString "  %%%.*s_dArg = fadd double %%%.*s, 0.0\n"
+call emitFpcBindResolve c.printf
+arg emitFpcBindResolve format fpcBindResolveFmt
+arg emitFpcBindResolve n1 pendingCallNameLength
+arg emitFpcBindResolve p1 fpcCallNamePointer
+arg emitFpcBindResolve an1 pendingCallArg1ValueLength
+arg emitFpcBindResolve ap1 fpcArg1Pointer
+run emitFpcBindResolve
+branch fpcMainOps
+
+label fpcMainOps
+# Compute isnan, isinf, iszero via fcmp/icmp on %X_dArg, then nested
+# selects to produce the i64 class code.
+const fpcFmt CNullTerminatedByteString "  %%%.*s_isn = fcmp uno double %%%.*s_dArg, %%%.*s_dArg\n  %%%.*s_bits = bitcast double %%%.*s_dArg to i64\n  %%%.*s_abs = and i64 %%%.*s_bits, 9223372036854775807\n  %%%.*s_iif = icmp eq i64 %%%.*s_abs, 9218868437227405312\n  %%%.*s_isz = icmp eq i64 %%%.*s_abs, 0\n  %%%.*s_p1 = select i1 %%%.*s_isz, i64 2, i64 4\n  %%%.*s_p2 = select i1 %%%.*s_iif, i64 1, i64 %%%.*s_p1\n  %%%.*s_res = select i1 %%%.*s_isn, i64 0, i64 %%%.*s_p2\n"
+call emitFpcCall c.printf
+arg emitFpcCall format fpcFmt
+arg emitFpcCall n1 pendingCallNameLength
+arg emitFpcCall p1 fpcCallNamePointer
+arg emitFpcCall n2 pendingCallNameLength
+arg emitFpcCall p2 fpcCallNamePointer
+arg emitFpcCall n3 pendingCallNameLength
+arg emitFpcCall p3 fpcCallNamePointer
+arg emitFpcCall n4 pendingCallNameLength
+arg emitFpcCall p4 fpcCallNamePointer
+arg emitFpcCall n5 pendingCallNameLength
+arg emitFpcCall p5 fpcCallNamePointer
+arg emitFpcCall n6 pendingCallNameLength
+arg emitFpcCall p6 fpcCallNamePointer
+arg emitFpcCall n7 pendingCallNameLength
+arg emitFpcCall p7 fpcCallNamePointer
+arg emitFpcCall n8 pendingCallNameLength
+arg emitFpcCall p8 fpcCallNamePointer
+arg emitFpcCall n9 pendingCallNameLength
+arg emitFpcCall p9 fpcCallNamePointer
+arg emitFpcCall n10 pendingCallNameLength
+arg emitFpcCall p10 fpcCallNamePointer
+arg emitFpcCall n11 pendingCallNameLength
+arg emitFpcCall p11 fpcCallNamePointer
+arg emitFpcCall n12 pendingCallNameLength
+arg emitFpcCall p12 fpcCallNamePointer
+arg emitFpcCall n13 pendingCallNameLength
+arg emitFpcCall p13 fpcCallNamePointer
+arg emitFpcCall n14 pendingCallNameLength
+arg emitFpcCall p14 fpcCallNamePointer
+arg emitFpcCall n15 pendingCallNameLength
+arg emitFpcCall p15 fpcCallNamePointer
+arg emitFpcCall n16 pendingCallNameLength
+arg emitFpcCall p16 fpcCallNamePointer
+arg emitFpcCall n17 pendingCallNameLength
+arg emitFpcCall p17 fpcCallNamePointer
+arg emitFpcCall n18 pendingCallNameLength
+arg emitFpcCall p18 fpcCallNamePointer
+arg emitFpcCall n19 pendingCallNameLength
+arg emitFpcCall p19 fpcCallNamePointer
+run emitFpcCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitSqrtRun
+var libcMathName CNullTerminatedByteString "sqrt"
+var libcMathNameLength CByteCount 4
+set libcMathName suffixSqrt
+set libcMathNameLength suffixSqrtLength
+branch emitLibcMathCommon
+
+label emitSinRun
+set libcMathName suffixSin
+set libcMathNameLength suffixSinLength
+branch emitLibcMathCommon
+
+label emitCosRun
+set libcMathName suffixCos
+set libcMathNameLength suffixCosLength
+branch emitLibcMathCommon
+
+label emitExpRun
+set libcMathName suffixExp
+set libcMathNameLength suffixExpLength
+branch emitLibcMathCommon
+
+label emitLogRun
+set libcMathName suffixLog
+set libcMathNameLength suffixLogLength
+branch emitLibcMathCommon
+
+label emitFabsRun
+set libcMathName suffixFabs
+set libcMathNameLength suffixFabsLength
+branch emitLibcMathCommon
+
+label emitLibcMathCommon
+# Emit `%X_res = call double @<fn>(double %arg)`.
+call libcMathCallNamePtrCall pointer.offset
+arg libcMathCallNamePtrCall base bufferBase
+arg libcMathCallNamePtrCall offset pendingCallNameStartOffset
+run libcMathCallNamePtrCall
+bind libcMathCallNamePointer COpaqueMemoryAddress libcMathCallNamePtrCall
+
+call libcMathArg1PtrCall pointer.offset
+arg libcMathArg1PtrCall base bufferBase
+arg libcMathArg1PtrCall offset pendingCallArg1ValueStartOffset
+run libcMathArg1PtrCall
+bind libcMathArg1Pointer COpaqueMemoryAddress libcMathArg1PtrCall
+
+# Classify arg: const → literal, var → load + ref, bind/param → ref.
+const libcMathConstVerb CNullTerminatedByteString "const "
+const libcMathConstVerbLength CByteCount 6
+const libcMathVarVerb CNullTerminatedByteString "var "
+const libcMathVarVerbLength CByteCount 4
+call libcMathArgIsConstCall isNameDeclaredAsKind
+arg libcMathArgIsConstCall bufferBase bufferBase
+arg libcMathArgIsConstCall bufferEndOffset bufferEndOffset
+arg libcMathArgIsConstCall targetNamePointer libcMathArg1Pointer
+arg libcMathArgIsConstCall targetNameLength pendingCallArg1ValueLength
+arg libcMathArgIsConstCall declarationVerb libcMathConstVerb
+arg libcMathArgIsConstCall declarationVerbLength libcMathConstVerbLength
+run libcMathArgIsConstCall
+bindOk libcMathArgIsConst Bool libcMathArgIsConstCall
+
+call libcMathArgIsVarCall isNameDeclaredAsKind
+arg libcMathArgIsVarCall bufferBase bufferBase
+arg libcMathArgIsVarCall bufferEndOffset bufferEndOffset
+arg libcMathArgIsVarCall targetNamePointer libcMathArg1Pointer
+arg libcMathArgIsVarCall targetNameLength pendingCallArg1ValueLength
+arg libcMathArgIsVarCall declarationVerb libcMathVarVerb
+arg libcMathArgIsVarCall declarationVerbLength libcMathVarVerbLength
+run libcMathArgIsVarCall
+bindOk libcMathArgIsVar Bool libcMathArgIsVarCall
+
+branchIf libcMathArgIsConst emitLibcMathFromConst
+branchIf libcMathArgIsVar emitLibcMathFromVar
+branch emitLibcMathFromBind
+
+label emitLibcMathFromConst
+call libcMathConstRawTextCall findConstValueRawTextOffset
+arg libcMathConstRawTextCall bufferBase bufferBase
+arg libcMathConstRawTextCall bufferEndOffset bufferEndOffset
+arg libcMathConstRawTextCall targetNamePointer libcMathArg1Pointer
+arg libcMathConstRawTextCall targetNameLength pendingCallArg1ValueLength
+run libcMathConstRawTextCall
+bindOk libcMathConstRawTextOffset CSignedInt64 libcMathConstRawTextCall
+call libcMathConstTextPtrCall pointer.offset
+arg libcMathConstTextPtrCall base bufferBase
+arg libcMathConstTextPtrCall offset libcMathConstRawTextOffset
+run libcMathConstTextPtrCall
+bind libcMathConstTextPointer COpaqueMemoryAddress libcMathConstTextPtrCall
+call libcMathConstTextLenCall extractTokenLength
+arg libcMathConstTextLenCall tokenStartPointer libcMathConstTextPointer
+run libcMathConstTextLenCall
+bindOk libcMathConstTextLength CSignedInt64 libcMathConstTextLenCall
+const libcMathConstFmt CNullTerminatedByteString "  %%%.*s_res = call double @%.*s(double %.*s)\n"
+call emitLibcMathConstCall c.printf
+arg emitLibcMathConstCall format libcMathConstFmt
+arg emitLibcMathConstCall n1 pendingCallNameLength
+arg emitLibcMathConstCall p1 libcMathCallNamePointer
+arg emitLibcMathConstCall fn1 libcMathNameLength
+arg emitLibcMathConstCall fnPtr libcMathName
+arg emitLibcMathConstCall tl libcMathConstTextLength
+arg emitLibcMathConstCall tp libcMathConstTextPointer
+run emitLibcMathConstCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitLibcMathFromVar
+const libcMathVarFmt CNullTerminatedByteString "  %%%.*s_arg = load double, double* %%%.*s\n  %%%.*s_res = call double @%.*s(double %%%.*s_arg)\n"
+call emitLibcMathVarCall c.printf
+arg emitLibcMathVarCall format libcMathVarFmt
+arg emitLibcMathVarCall n1 pendingCallNameLength
+arg emitLibcMathVarCall p1 libcMathCallNamePointer
+arg emitLibcMathVarCall an1 pendingCallArg1ValueLength
+arg emitLibcMathVarCall ap1 libcMathArg1Pointer
+arg emitLibcMathVarCall n2 pendingCallNameLength
+arg emitLibcMathVarCall p2 libcMathCallNamePointer
+arg emitLibcMathVarCall fn1 libcMathNameLength
+arg emitLibcMathVarCall fnPtr libcMathName
+arg emitLibcMathVarCall n3 pendingCallNameLength
+arg emitLibcMathVarCall p3 libcMathCallNamePointer
+run emitLibcMathVarCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitLibcMathFromBind
+const libcMathBindFmt CNullTerminatedByteString "  %%%.*s_res = call double @%.*s(double %%%.*s)\n"
+call emitLibcMathBindCall c.printf
+arg emitLibcMathBindCall format libcMathBindFmt
+arg emitLibcMathBindCall n1 pendingCallNameLength
+arg emitLibcMathBindCall p1 libcMathCallNamePointer
+arg emitLibcMathBindCall fn1 libcMathNameLength
+arg emitLibcMathBindCall fnPtr libcMathName
+arg emitLibcMathBindCall an1 pendingCallArg1ValueLength
+arg emitLibcMathBindCall ap1 libcMathArg1Pointer
+run emitLibcMathBindCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
 label emitAtoiRun
 call atoiCallNamePtrCall pointer.offset
 arg atoiCallNamePtrCall base bufferBase
@@ -7781,18 +13301,61 @@ arg atoiArg1PtrCall offset pendingCallArg1ValueStartOffset
 run atoiArg1PtrCall
 bind atoiArg1Pointer COpaqueMemoryAddress atoiArg1PtrCall
 
-const atoiEmitFormat CNullTerminatedByteString "  %%%.*s_res32 = call i32 @atoi(i8* %%%.*s)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
-call emitAtoiCall c.printf
-arg emitAtoiCall format atoiEmitFormat
-arg emitAtoiCall n1 pendingCallNameLength
-arg emitAtoiCall p1 atoiCallNamePointer
-arg emitAtoiCall an1 pendingCallArg1ValueLength
-arg emitAtoiCall ap1 atoiArg1Pointer
-arg emitAtoiCall n2 pendingCallNameLength
-arg emitAtoiCall p2 atoiCallNamePointer
-arg emitAtoiCall n3 pendingCallNameLength
-arg emitAtoiCall p3 atoiCallNamePointer
-run emitAtoiCall
+call atoiSlotCall findStringConstSlotByName
+arg atoiSlotCall bufferBase bufferBase
+arg atoiSlotCall bufferEndOffset bufferEndOffset
+arg atoiSlotCall targetNamePointer atoiArg1Pointer
+arg atoiSlotCall targetNameLength pendingCallArg1ValueLength
+run atoiSlotCall
+bindOk atoiSlotIndex CSignedInt64 atoiSlotCall
+
+call atoiArraySizeCall findStringConstByteLengthByName
+arg atoiArraySizeCall bufferBase bufferBase
+arg atoiArraySizeCall bufferEndOffset bufferEndOffset
+arg atoiArraySizeCall targetNamePointer atoiArg1Pointer
+arg atoiArraySizeCall targetNameLength pendingCallArg1ValueLength
+run atoiArraySizeCall
+bindOk atoiArraySize CSignedInt64 atoiArraySizeCall
+
+call atoiIsStringConstCall math.greaterThanOrEqualI64
+arg atoiIsStringConstCall left atoiSlotIndex
+arg atoiIsStringConstCall right zeroVerbStep
+run atoiIsStringConstCall
+bind atoiIsStringConst Bool atoiIsStringConstCall
+
+branchIf atoiIsStringConst emitAtoiFromStringConst
+branch emitAtoiFromBindArg
+
+label emitAtoiFromStringConst
+const atoiStringConstFormat CNullTerminatedByteString "  %%%.*s_res32 = call i32 @atoi(i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0))\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitAtoiStringConstCall c.printf
+arg emitAtoiStringConstCall format atoiStringConstFormat
+arg emitAtoiStringConstCall n1 pendingCallNameLength
+arg emitAtoiStringConstCall p1 atoiCallNamePointer
+arg emitAtoiStringConstCall arr1 atoiArraySize
+arg emitAtoiStringConstCall arr2 atoiArraySize
+arg emitAtoiStringConstCall slot atoiSlotIndex
+arg emitAtoiStringConstCall n2 pendingCallNameLength
+arg emitAtoiStringConstCall p2 atoiCallNamePointer
+arg emitAtoiStringConstCall n3 pendingCallNameLength
+arg emitAtoiStringConstCall p3 atoiCallNamePointer
+run emitAtoiStringConstCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitAtoiFromBindArg
+const atoiBindFormat CNullTerminatedByteString "  %%%.*s_res32 = call i32 @atoi(i8* %%%.*s)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitAtoiBindCall c.printf
+arg emitAtoiBindCall format atoiBindFormat
+arg emitAtoiBindCall n1 pendingCallNameLength
+arg emitAtoiBindCall p1 atoiCallNamePointer
+arg emitAtoiBindCall an1 pendingCallArg1ValueLength
+arg emitAtoiBindCall ap1 atoiArg1Pointer
+arg emitAtoiBindCall n2 pendingCallNameLength
+arg emitAtoiBindCall p2 atoiCallNamePointer
+arg emitAtoiBindCall n3 pendingCallNameLength
+arg emitAtoiBindCall p3 atoiCallNamePointer
+run emitAtoiBindCall
 set blockNeedsTerminator oneFlagValue
 branch emitBindRenameForCall
 
@@ -7825,19 +13388,197 @@ arg sncmpArg3PtrCall offset pendingCallArg3ValueStartOffset
 run sncmpArg3PtrCall
 bind sncmpArg3Pointer COpaqueMemoryAddress sncmpArg3PtrCall
 
-# For simplicity, emit args as bind references (most common case in
-# stdlib_as where buffers are parameters and count is a parameter
-# const). String-const buffers and non-bind args fall through to a
-# minimum-viable variant: emit `%<argName>` regardless.
-const strncmpEmitFormat CNullTerminatedByteString "  %%%.*s_res32 = call i32 @strncmp(i8* %%%.*s, i8* %%%.*s, i64 %%%.*s)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+# If left or right is a string-const, we need to emit a GEP into @.sN
+# rather than `i8* %X`. Pre-emit those into temp i8* SSA values, then
+# the main strncmp emission can uniformly use `i8* %<temp>`.
+
+call sncmpLeftSlotCall findStringConstSlotByName
+arg sncmpLeftSlotCall bufferBase bufferBase
+arg sncmpLeftSlotCall bufferEndOffset bufferEndOffset
+arg sncmpLeftSlotCall targetNamePointer sncmpArg1Pointer
+arg sncmpLeftSlotCall targetNameLength pendingCallArg1ValueLength
+run sncmpLeftSlotCall
+bindOk sncmpLeftSlot CSignedInt64 sncmpLeftSlotCall
+
+call sncmpLeftSizeCall findStringConstByteLengthByName
+arg sncmpLeftSizeCall bufferBase bufferBase
+arg sncmpLeftSizeCall bufferEndOffset bufferEndOffset
+arg sncmpLeftSizeCall targetNamePointer sncmpArg1Pointer
+arg sncmpLeftSizeCall targetNameLength pendingCallArg1ValueLength
+run sncmpLeftSizeCall
+bindOk sncmpLeftSize CSignedInt64 sncmpLeftSizeCall
+
+call sncmpLeftIsConstCall math.greaterThanOrEqualI64
+arg sncmpLeftIsConstCall left sncmpLeftSlot
+arg sncmpLeftIsConstCall right zeroVerbStep
+run sncmpLeftIsConstCall
+bind sncmpLeftIsStringConst Bool sncmpLeftIsConstCall
+branchIf sncmpLeftIsStringConst emitSncmpLeftStringConstGEP
+branch emitSncmpLeftBindAlias
+
+label emitSncmpLeftStringConstGEP
+const sncmpLeftStrGepFormat CNullTerminatedByteString "  %%%.*s_lhs = getelementptr inbounds [%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0\n"
+call emitSncmpLeftStrGepCall c.printf
+arg emitSncmpLeftStrGepCall format sncmpLeftStrGepFormat
+arg emitSncmpLeftStrGepCall n1 pendingCallNameLength
+arg emitSncmpLeftStrGepCall p1 sncmpCallNamePointer
+arg emitSncmpLeftStrGepCall a1 sncmpLeftSize
+arg emitSncmpLeftStrGepCall a2 sncmpLeftSize
+arg emitSncmpLeftStrGepCall s sncmpLeftSlot
+run emitSncmpLeftStrGepCall
+branch sncmpLeftDoneCheck
+
+label emitSncmpLeftBindAlias
+# Non-string-const: alias the bind/param pointer into %X_lhs.
+const sncmpLeftBindAliasFormat CNullTerminatedByteString "  %%%.*s_lhs = getelementptr i8, i8* %%%.*s, i64 0\n"
+call emitSncmpLeftBindAliasCall c.printf
+arg emitSncmpLeftBindAliasCall format sncmpLeftBindAliasFormat
+arg emitSncmpLeftBindAliasCall n1 pendingCallNameLength
+arg emitSncmpLeftBindAliasCall p1 sncmpCallNamePointer
+arg emitSncmpLeftBindAliasCall n2 pendingCallArg1ValueLength
+arg emitSncmpLeftBindAliasCall p2 sncmpArg1Pointer
+run emitSncmpLeftBindAliasCall
+branch sncmpLeftDoneCheck
+
+label sncmpLeftDoneCheck
+
+call sncmpRightSlotCall findStringConstSlotByName
+arg sncmpRightSlotCall bufferBase bufferBase
+arg sncmpRightSlotCall bufferEndOffset bufferEndOffset
+arg sncmpRightSlotCall targetNamePointer sncmpArg2Pointer
+arg sncmpRightSlotCall targetNameLength pendingCallArg2ValueLength
+run sncmpRightSlotCall
+bindOk sncmpRightSlot CSignedInt64 sncmpRightSlotCall
+
+call sncmpRightSizeCall findStringConstByteLengthByName
+arg sncmpRightSizeCall bufferBase bufferBase
+arg sncmpRightSizeCall bufferEndOffset bufferEndOffset
+arg sncmpRightSizeCall targetNamePointer sncmpArg2Pointer
+arg sncmpRightSizeCall targetNameLength pendingCallArg2ValueLength
+run sncmpRightSizeCall
+bindOk sncmpRightSize CSignedInt64 sncmpRightSizeCall
+
+call sncmpRightIsConstCall math.greaterThanOrEqualI64
+arg sncmpRightIsConstCall left sncmpRightSlot
+arg sncmpRightIsConstCall right zeroVerbStep
+run sncmpRightIsConstCall
+bind sncmpRightIsStringConst Bool sncmpRightIsConstCall
+branchIf sncmpRightIsStringConst emitSncmpRightStringConstGEP
+branch emitSncmpRightBindAlias
+
+label emitSncmpRightStringConstGEP
+const sncmpRightStrGepFormat CNullTerminatedByteString "  %%%.*s_rhs = getelementptr inbounds [%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0\n"
+call emitSncmpRightStrGepCall c.printf
+arg emitSncmpRightStrGepCall format sncmpRightStrGepFormat
+arg emitSncmpRightStrGepCall n1 pendingCallNameLength
+arg emitSncmpRightStrGepCall p1 sncmpCallNamePointer
+arg emitSncmpRightStrGepCall a1 sncmpRightSize
+arg emitSncmpRightStrGepCall a2 sncmpRightSize
+arg emitSncmpRightStrGepCall s sncmpRightSlot
+run emitSncmpRightStrGepCall
+branch sncmpClassifyCount
+
+label emitSncmpRightBindAlias
+const sncmpRightBindAliasFormat CNullTerminatedByteString "  %%%.*s_rhs = getelementptr i8, i8* %%%.*s, i64 0\n"
+call emitSncmpRightBindAliasCall c.printf
+arg emitSncmpRightBindAliasCall format sncmpRightBindAliasFormat
+arg emitSncmpRightBindAliasCall n1 pendingCallNameLength
+arg emitSncmpRightBindAliasCall p1 sncmpCallNamePointer
+arg emitSncmpRightBindAliasCall n2 pendingCallArg2ValueLength
+arg emitSncmpRightBindAliasCall p2 sncmpArg2Pointer
+run emitSncmpRightBindAliasCall
+branch sncmpClassifyCount
+
+label sncmpClassifyCount
+
+# Classify count arg (arg3). var → emit load; const → emit literal;
+# bind/param → use directly.
+call sncmpCountIsVarCall isNameVarInCurrentOpBody
+arg sncmpCountIsVarCall bufferBase bufferBase
+arg sncmpCountIsVarCall bufferEndOffset bufferEndOffset
+arg sncmpCountIsVarCall bodyStartOffset operationBodyStartOffset
+arg sncmpCountIsVarCall candidateNamePointer sncmpArg3Pointer
+arg sncmpCountIsVarCall candidateNameLength pendingCallArg3ValueLength
+run sncmpCountIsVarCall
+bindOk sncmpCountIsVar Bool sncmpCountIsVarCall
+
+const sncmpCountConstVerb CNullTerminatedByteString "const "
+const sncmpCountConstVerbLength CByteCount 6
+call sncmpCountIsConstCall isNameDeclaredAsKind
+arg sncmpCountIsConstCall bufferBase bufferBase
+arg sncmpCountIsConstCall bufferEndOffset bufferEndOffset
+arg sncmpCountIsConstCall targetNamePointer sncmpArg3Pointer
+arg sncmpCountIsConstCall targetNameLength pendingCallArg3ValueLength
+arg sncmpCountIsConstCall declarationVerb sncmpCountConstVerb
+arg sncmpCountIsConstCall declarationVerbLength sncmpCountConstVerbLength
+run sncmpCountIsConstCall
+bindOk sncmpCountIsConst Bool sncmpCountIsConstCall
+
+branchIf sncmpCountIsVar emitStrncmpWithCountLoad
+branchIf sncmpCountIsConst emitStrncmpWithCountConst
+branch emitStrncmpWithoutCountLoad
+
+label emitStrncmpWithCountConst
+call resolveSncmpCountCall findConstIntegerValueByNameAfterOffset
+arg resolveSncmpCountCall bufferBase bufferBase
+arg resolveSncmpCountCall bufferEndOffset bufferEndOffset
+arg resolveSncmpCountCall searchStartOffset operationBodyStartOffset
+arg resolveSncmpCountCall targetNamePointer sncmpArg3Pointer
+arg resolveSncmpCountCall targetNameLength pendingCallArg3ValueLength
+run resolveSncmpCountCall
+bindOk sncmpCountConstValue CSignedInt64 resolveSncmpCountCall
+const strncmpCountConstFormat CNullTerminatedByteString "  %%%.*s_res32 = call i32 @strncmp(i8* %%%.*s_lhs, i8* %%%.*s_rhs, i64 %lld)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitStrncmpCountConstCall c.printf
+arg emitStrncmpCountConstCall format strncmpCountConstFormat
+arg emitStrncmpCountConstCall n1 pendingCallNameLength
+arg emitStrncmpCountConstCall p1 sncmpCallNamePointer
+arg emitStrncmpCountConstCall n2 pendingCallNameLength
+arg emitStrncmpCountConstCall p2 sncmpCallNamePointer
+arg emitStrncmpCountConstCall n3 pendingCallNameLength
+arg emitStrncmpCountConstCall p3 sncmpCallNamePointer
+arg emitStrncmpCountConstCall v sncmpCountConstValue
+arg emitStrncmpCountConstCall n4 pendingCallNameLength
+arg emitStrncmpCountConstCall p4 sncmpCallNamePointer
+arg emitStrncmpCountConstCall n5 pendingCallNameLength
+arg emitStrncmpCountConstCall p5 sncmpCallNamePointer
+run emitStrncmpCountConstCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitStrncmpWithCountLoad
+const strncmpCountLoadFormat CNullTerminatedByteString "  %%%.*s_count = load i64, i64* %%%.*s\n  %%%.*s_res32 = call i32 @strncmp(i8* %%%.*s_lhs, i8* %%%.*s_rhs, i64 %%%.*s_count)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
+call emitStrncmpCountLoadCall c.printf
+arg emitStrncmpCountLoadCall format strncmpCountLoadFormat
+arg emitStrncmpCountLoadCall n1 pendingCallNameLength
+arg emitStrncmpCountLoadCall p1 sncmpCallNamePointer
+arg emitStrncmpCountLoadCall cLen pendingCallArg3ValueLength
+arg emitStrncmpCountLoadCall cPtr sncmpArg3Pointer
+arg emitStrncmpCountLoadCall n2 pendingCallNameLength
+arg emitStrncmpCountLoadCall p2 sncmpCallNamePointer
+arg emitStrncmpCountLoadCall n3 pendingCallNameLength
+arg emitStrncmpCountLoadCall p3 sncmpCallNamePointer
+arg emitStrncmpCountLoadCall n4 pendingCallNameLength
+arg emitStrncmpCountLoadCall p4 sncmpCallNamePointer
+arg emitStrncmpCountLoadCall n5 pendingCallNameLength
+arg emitStrncmpCountLoadCall p5 sncmpCallNamePointer
+arg emitStrncmpCountLoadCall n6 pendingCallNameLength
+arg emitStrncmpCountLoadCall p6 sncmpCallNamePointer
+arg emitStrncmpCountLoadCall n7 pendingCallNameLength
+arg emitStrncmpCountLoadCall p7 sncmpCallNamePointer
+run emitStrncmpCountLoadCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitStrncmpWithoutCountLoad
+const strncmpEmitFormat CNullTerminatedByteString "  %%%.*s_res32 = call i32 @strncmp(i8* %%%.*s_lhs, i8* %%%.*s_rhs, i64 %%%.*s)\n  %%%.*s_res = sext i32 %%%.*s_res32 to i64\n"
 call emitStrncmpRunCall c.printf
 arg emitStrncmpRunCall format strncmpEmitFormat
 arg emitStrncmpRunCall callLen pendingCallNameLength
 arg emitStrncmpRunCall callPtr sncmpCallNamePointer
-arg emitStrncmpRunCall lLen pendingCallArg1ValueLength
-arg emitStrncmpRunCall lPtr sncmpArg1Pointer
-arg emitStrncmpRunCall rLen pendingCallArg2ValueLength
-arg emitStrncmpRunCall rPtr sncmpArg2Pointer
+arg emitStrncmpRunCall lLen pendingCallNameLength
+arg emitStrncmpRunCall lPtr sncmpCallNamePointer
+arg emitStrncmpRunCall rLen pendingCallNameLength
+arg emitStrncmpRunCall rPtr sncmpCallNamePointer
 arg emitStrncmpRunCall cLen pendingCallArg3ValueLength
 arg emitStrncmpRunCall cPtr sncmpArg3Pointer
 arg emitStrncmpRunCall callLen2 pendingCallNameLength
@@ -9116,6 +14857,21 @@ arg bindCallNameLengthCall tokenStartPointer bindCallNamePointerForBool
 run bindCallNameLengthCall
 bindOk bindCallNameTokenLength CSignedInt64 bindCallNameLengthCall
 
+# Detect whether the bound call's target is a user op (which returns
+# i64 even for Bool) vs a built-in like icmp/fcmp (which returns i1).
+# User-op result must be `trunc i64 → i1`; built-in result is already i1.
+call bindBoolSrcIsUserOpCall isCallTargetUserOp
+arg bindBoolSrcIsUserOpCall bufferBase bufferBase
+arg bindBoolSrcIsUserOpCall bufferEndOffset bufferEndOffset
+arg bindBoolSrcIsUserOpCall bodyStartOffset operationBodyStartOffset
+arg bindBoolSrcIsUserOpCall callNamePointer bindCallNamePointerForBool
+arg bindBoolSrcIsUserOpCall callNameLength bindCallNameTokenLength
+run bindBoolSrcIsUserOpCall
+bindOk bindBoolSrcIsUserOp Bool bindBoolSrcIsUserOpCall
+branchIf bindBoolSrcIsUserOp emitBindRenameBoolFromUserOp
+branch emitBindRenameBoolFromI1
+
+label emitBindRenameBoolFromI1
 const bindRenameBoolFormat CNullTerminatedByteString "  %%%.*s = or i1 %%%.*s_res, false\n"
 call emitBindRenameBoolCall c.printf
 arg emitBindRenameBoolCall format bindRenameBoolFormat
@@ -9124,6 +14880,18 @@ arg emitBindRenameBoolCall resPtr bindResultNamePointer
 arg emitBindRenameBoolCall callLen bindCallNameTokenLength
 arg emitBindRenameBoolCall callPtr bindCallNamePointerForBool
 run emitBindRenameBoolCall
+set blockNeedsTerminator oneFlagValue
+branch advanceVerbWalkerCursor
+
+label emitBindRenameBoolFromUserOp
+const bindRenameBoolFromUserOpFormat CNullTerminatedByteString "  %%%.*s = trunc i64 %%%.*s_res to i1\n"
+call emitBindRenameBoolFromUserOpCall c.printf
+arg emitBindRenameBoolFromUserOpCall format bindRenameBoolFromUserOpFormat
+arg emitBindRenameBoolFromUserOpCall resLen bindResultNameTokenLength
+arg emitBindRenameBoolFromUserOpCall resPtr bindResultNamePointer
+arg emitBindRenameBoolFromUserOpCall callLen bindCallNameTokenLength
+arg emitBindRenameBoolFromUserOpCall callPtr bindCallNamePointerForBool
+run emitBindRenameBoolFromUserOpCall
 set blockNeedsTerminator oneFlagValue
 branch advanceVerbWalkerCursor
 
@@ -9251,26 +15019,93 @@ arg bIfLabelLengthCall tokenStartPointer bIfLabelPointer
 run bIfLabelLengthCall
 bindOk bIfLabelLength CSignedInt64 bIfLabelLengthCall
 
+# If condition is a VAR (alloca i64) we must load+trunc to i1 first.
+# Otherwise (Bool bind from icmp/fcmp/user op) it's already i1.
+call bIfCondIsVarCall isNameVarInCurrentOpBody
+arg bIfCondIsVarCall bufferBase bufferBase
+arg bIfCondIsVarCall bufferEndOffset bufferEndOffset
+arg bIfCondIsVarCall bodyStartOffset operationBodyStartOffset
+arg bIfCondIsVarCall candidateNamePointer bIfCondPointer
+arg bIfCondIsVarCall candidateNameLength bIfCondLength
+run bIfCondIsVarCall
+bindOk bIfCondIsVar Bool bIfCondIsVarCall
+branchIf bIfCondIsVar emitBranchIfFromVar
+branch emitBranchIfFromI1
+
+label emitBranchIfFromVar
+# Load the i64 stored in the var, truncate to i1, then branch.
+# Suffix temp SSA names with the source-line cursor so multiple
+# branchIfs on the same Bool var don't collide.
+const branchIfVarFmt CNullTerminatedByteString "  %%%.*s_loaded_%lld = load i64, i64* %%%.*s\n  %%%.*s_i1_%lld = trunc i64 %%%.*s_loaded_%lld to i1\n  br i1 %%%.*s_i1_%lld, label %%%.*s, label %%branchIf_%.*s_%lld_continue\nbranchIf_%.*s_%lld_continue:\n"
+call emitBranchIfVarCall c.printf
+arg emitBranchIfVarCall format branchIfVarFmt
+arg emitBranchIfVarCall condLen0 bIfCondLength
+arg emitBranchIfVarCall condPtr0 bIfCondPointer
+arg emitBranchIfVarCall curA verbWalkerCursor
+arg emitBranchIfVarCall condLen1 bIfCondLength
+arg emitBranchIfVarCall condPtr1 bIfCondPointer
+arg emitBranchIfVarCall condLen2 bIfCondLength
+arg emitBranchIfVarCall condPtr2 bIfCondPointer
+arg emitBranchIfVarCall curB verbWalkerCursor
+arg emitBranchIfVarCall condLen3 bIfCondLength
+arg emitBranchIfVarCall condPtr3 bIfCondPointer
+arg emitBranchIfVarCall curC verbWalkerCursor
+arg emitBranchIfVarCall condLen4 bIfCondLength
+arg emitBranchIfVarCall condPtr4 bIfCondPointer
+arg emitBranchIfVarCall curD verbWalkerCursor
+arg emitBranchIfVarCall labelLen bIfLabelLength
+arg emitBranchIfVarCall labelPtr bIfLabelPointer
+arg emitBranchIfVarCall condLen5 bIfCondLength
+arg emitBranchIfVarCall condPtr5 bIfCondPointer
+arg emitBranchIfVarCall curE verbWalkerCursor
+arg emitBranchIfVarCall condLen6 bIfCondLength
+arg emitBranchIfVarCall condPtr6 bIfCondPointer
+arg emitBranchIfVarCall curF verbWalkerCursor
+run emitBranchIfVarCall
+branch advanceVerbWalkerCursorBranchIf
+
+label emitBranchIfFromI1
 # Emit `br i1 %COND, label %LABEL, label %branchIf_<cond>_continue`
 # Then emit the continuation label immediately after, so the next
 # line of source IR has somewhere to go.
 # Include the source-line cursor as a uniqueness suffix so that two
 # `branchIf X` lines against the same condition variable don't collide
 # on the LLVM continuation label (LLVM rejects duplicate labels).
-const branchIfFormat CNullTerminatedByteString "  br i1 %%%.*s, label %%%.*s, label %%branchIf_%.*s_%lld_continue\nbranchIf_%.*s_%lld_continue:\n"
-call emitBranchIfCall c.printf
-arg emitBranchIfCall format branchIfFormat
-arg emitBranchIfCall condLen bIfCondLength
-arg emitBranchIfCall condPtr bIfCondPointer
-arg emitBranchIfCall labelLen bIfLabelLength
-arg emitBranchIfCall labelPtr bIfLabelPointer
-arg emitBranchIfCall condLen2 bIfCondLength
-arg emitBranchIfCall condPtr2 bIfCondPointer
-arg emitBranchIfCall cur1 verbWalkerCursor
-arg emitBranchIfCall condLen3 bIfCondLength
-arg emitBranchIfCall condPtr3 bIfCondPointer
-arg emitBranchIfCall cur2 verbWalkerCursor
-run emitBranchIfCall
+#
+# This used to be a single 11-arg c.printf call. Split into 4 pieces of
+# ≤5 args each so the bootstrap can compile itself (the bootstrap's
+# own c.printf dispatch handles only up to 5 args).
+
+# Piece 1: `  br i1 %<cond>, label %<label>` (4 trailing args: condLen, condPtr, labelLen, labelPtr)
+const branchIfFormatA CNullTerminatedByteString "  br i1 %%%.*s, label %%%.*s"
+call emitBranchIfCallA c.printf
+arg emitBranchIfCallA format branchIfFormatA
+arg emitBranchIfCallA condLen bIfCondLength
+arg emitBranchIfCallA condPtr bIfCondPointer
+arg emitBranchIfCallA labelLen bIfLabelLength
+arg emitBranchIfCallA labelPtr bIfLabelPointer
+run emitBranchIfCallA
+
+# Piece 2: `, label %branchIf_<cond>_<cursor>_continue\n` (3 trailing args)
+const branchIfFormatB CNullTerminatedByteString ", label %%branchIf_%.*s_%lld_continue\n"
+call emitBranchIfCallB c.printf
+arg emitBranchIfCallB format branchIfFormatB
+arg emitBranchIfCallB condLen2 bIfCondLength
+arg emitBranchIfCallB condPtr2 bIfCondPointer
+arg emitBranchIfCallB cur1 verbWalkerCursor
+run emitBranchIfCallB
+
+# Piece 3: `branchIf_<cond>_<cursor>_continue:\n` (3 trailing args)
+const branchIfFormatC CNullTerminatedByteString "branchIf_%.*s_%lld_continue:\n"
+call emitBranchIfCallC c.printf
+arg emitBranchIfCallC format branchIfFormatC
+arg emitBranchIfCallC condLen3 bIfCondLength
+arg emitBranchIfCallC condPtr3 bIfCondPointer
+arg emitBranchIfCallC cur2 verbWalkerCursor
+run emitBranchIfCallC
+branch advanceVerbWalkerCursorBranchIf
+
+label advanceVerbWalkerCursorBranchIf
 # branchIf emits a terminator + a fresh continuation label, so the
 # next instruction belongs to that new (empty) block.
 set blockNeedsTerminator zeroVerbStep
@@ -9512,12 +15347,40 @@ branchIf retOkUserReturnIsPointer emitRetOkUserBindPointer
 branch emitRetOkUserBindInt
 
 label emitRetOkUserBindInt
+# If the bind is i1 (Bool), zext to i64 before ret i64. Otherwise emit
+# `ret i64 %<bind>` directly.
+call retOkUserBindIsBoolCall isNameBoolBindInBody
+arg retOkUserBindIsBoolCall bufferBase bufferBase
+arg retOkUserBindIsBoolCall bufferEndOffset bufferEndOffset
+arg retOkUserBindIsBoolCall bodyStartOffset operationBodyStartOffset
+arg retOkUserBindIsBoolCall candidateNamePointer retOkNamePointer
+arg retOkUserBindIsBoolCall candidateNameLength retOkNameLength
+run retOkUserBindIsBoolCall
+bindOk retOkUserBindIsBool Bool retOkUserBindIsBoolCall
+branchIf retOkUserBindIsBool emitRetOkUserBindBoolWidened
+branch emitRetOkUserBindIntDirect
+
+label emitRetOkUserBindIntDirect
 const retOkUserBindFormat CNullTerminatedByteString "  ret i64 %%%.*s\n"
 call emitRetOkUserBindEmissionCall c.printf
 arg emitRetOkUserBindEmissionCall format retOkUserBindFormat
 arg emitRetOkUserBindEmissionCall nameLen retOkNameLength
 arg emitRetOkUserBindEmissionCall namePtr retOkNamePointer
 run emitRetOkUserBindEmissionCall
+set blockNeedsTerminator zeroVerbStep
+branch advanceVerbWalkerCursor
+
+label emitRetOkUserBindBoolWidened
+const retOkUserBindBoolFormat CNullTerminatedByteString "  %%%.*s_w64 = zext i1 %%%.*s to i64\n  ret i64 %%%.*s_w64\n"
+call emitRetOkUserBindBoolCall c.printf
+arg emitRetOkUserBindBoolCall format retOkUserBindBoolFormat
+arg emitRetOkUserBindBoolCall n1 retOkNameLength
+arg emitRetOkUserBindBoolCall p1 retOkNamePointer
+arg emitRetOkUserBindBoolCall n2 retOkNameLength
+arg emitRetOkUserBindBoolCall p2 retOkNamePointer
+arg emitRetOkUserBindBoolCall n3 retOkNameLength
+arg emitRetOkUserBindBoolCall p3 retOkNamePointer
+run emitRetOkUserBindBoolCall
 set blockNeedsTerminator zeroVerbStep
 branch advanceVerbWalkerCursor
 
@@ -9683,8 +15546,8 @@ label startMain
 const inputEnvVar CNullTerminatedByteString "AS_INPUT"
 const defaultInputPath CNullTerminatedByteString "C:/Users/Cam/Desktop/AgentScript/AgentScript/as/hello.as"
 const readMode CNullTerminatedByteString "r"
-const bufferCapacity CByteCount 65536
-const readChunkCapacity CByteCount 65535
+const bufferCapacity CByteCount 2097152
+const readChunkCapacity CByteCount 2097151
 const oneByte CByteCount 1
 const zeroByteOffset CByteCount 0
 const zeroByteValue CSignedInt32 0
@@ -9726,7 +15589,7 @@ call inputOpenCall c.fopen
 arg inputOpenCall path chosenInputPath
 arg inputOpenCall mode readMode
 run inputOpenCall
-bind inputFileHandle CFileHandle inputOpenCall
+bind inputFileHandle COpaqueMemoryAddress inputOpenCall
 
 call inputOpenNullCheckCall pointer.isNull
 arg inputOpenNullCheckCall pointer inputFileHandle
@@ -9812,12 +15675,31 @@ arg detectPutcharCall needleText putcharMarker
 run detectPutcharCall
 bindOk hasPutcharMarker Bool detectPutcharCall
 
+# `c.malloc` is only emitted properly by the walker (the legacy
+# string-replay path can't allocate heap buffers). Programs that call
+# `c.malloc` must go through the walker even if they have no other
+# walker-only markers.
+const mallocMarker CNullTerminatedByteString "c.malloc"
+call detectMallocCall bufferContainsKeyword
+arg detectMallocCall bufferStart readBuffer
+arg detectMallocCall needleText mallocMarker
+run detectMallocCall
+bindOk hasMallocMarker Bool detectMallocCall
+
+# c.printf is intentionally NOT a walker-mode trigger — many existing
+# AS programs use c.printf alongside unsupported math libcs
+# (c.sqrt, c.sin, c.fpclassify), and routing them through the walker
+# would surface their unsupported-libc gaps as link errors instead of
+# silently producing empty output. Programs that need c.printf must
+# trigger walker mode via another primitive (e.g. c.malloc, branchIf).
+
 const falseModeInitial CSignedInt64 0
 var programIsIntegerOutputMode Bool falseModeInitial
 set programIsIntegerOutputMode hasWriteIntegerLineMarker
 branchIf hasComputedBranchIfMarker forceWalkerModeForControlFlow
 branchIf hasWriteFloatLineMarker forceWalkerModeForFloatOutput
 branchIf hasPutcharMarker forceWalkerModeForPutchar
+branchIf hasMallocMarker forceWalkerModeForMalloc
 branch finalizeModeDetection
 
 label forceWalkerModeForControlFlow
@@ -9830,6 +15712,10 @@ branch finalizeModeDetection
 
 label forceWalkerModeForPutchar
 set programIsIntegerOutputMode hasPutcharMarker
+branch finalizeModeDetection
+
+label forceWalkerModeForMalloc
+set programIsIntegerOutputMode hasMallocMarker
 branch finalizeModeDetection
 
 label finalizeModeDetection
@@ -9974,6 +15860,89 @@ call writeIrExternAtoiCall c.puts
 arg writeIrExternAtoiCall text irExternAtoi
 run writeIrExternAtoiCall
 
+const userOpStrstrMarker CNullTerminatedByteString "operation strstr\n"
+call hasUserStrstrCall bufferContainsKeyword
+arg hasUserStrstrCall bufferStart readBuffer
+arg hasUserStrstrCall needleText userOpStrstrMarker
+run hasUserStrstrCall
+bindOk hasUserStrstr Bool hasUserStrstrCall
+branchIf hasUserStrstr skipLibcStrstrDeclare
+const irExternStrstr CNullTerminatedByteString "declare i8* @strstr(i8*, i8*)"
+call writeIrExternStrstrCall c.puts
+arg writeIrExternStrstrCall text irExternStrstr
+run writeIrExternStrstrCall
+label skipLibcStrstrDeclare
+
+const irExternFopen CNullTerminatedByteString "declare i8* @fopen(i8*, i8*)"
+call writeIrExternFopenCall c.puts
+arg writeIrExternFopenCall text irExternFopen
+run writeIrExternFopenCall
+
+const irExternFclose CNullTerminatedByteString "declare i32 @fclose(i8*)"
+call writeIrExternFcloseCall c.puts
+arg writeIrExternFcloseCall text irExternFclose
+run writeIrExternFcloseCall
+
+const irExternFread CNullTerminatedByteString "declare i64 @fread(i8*, i64, i64, i8*)"
+call writeIrExternFreadCall c.puts
+arg writeIrExternFreadCall text irExternFread
+run writeIrExternFreadCall
+
+const irExternMemcpy CNullTerminatedByteString "declare i8* @memcpy(i8*, i8*, i64)"
+call writeIrExternMemcpyCall c.puts
+arg writeIrExternMemcpyCall text irExternMemcpy
+run writeIrExternMemcpyCall
+
+const irExternMemset CNullTerminatedByteString "declare i8* @memset(i8*, i32, i64)"
+call writeIrExternMemsetCall c.puts
+arg writeIrExternMemsetCall text irExternMemset
+run writeIrExternMemsetCall
+
+const irExternMemcmp CNullTerminatedByteString "declare i32 @memcmp(i8*, i8*, i64)"
+call writeIrExternMemcmpCall c.puts
+arg writeIrExternMemcmpCall text irExternMemcmp
+run writeIrExternMemcmpCall
+
+const irExternFgets CNullTerminatedByteString "declare i8* @fgets(i8*, i32, i8*)"
+call writeIrExternFgetsCall c.puts
+arg writeIrExternFgetsCall text irExternFgets
+run writeIrExternFgetsCall
+
+const irExternSqrt CNullTerminatedByteString "declare double @sqrt(double)"
+call writeIrExternSqrtCall c.puts
+arg writeIrExternSqrtCall text irExternSqrt
+run writeIrExternSqrtCall
+
+const irExternSin CNullTerminatedByteString "declare double @sin(double)"
+call writeIrExternSinCall c.puts
+arg writeIrExternSinCall text irExternSin
+run writeIrExternSinCall
+
+const irExternCos CNullTerminatedByteString "declare double @cos(double)"
+call writeIrExternCosCall c.puts
+arg writeIrExternCosCall text irExternCos
+run writeIrExternCosCall
+
+const irExternExp CNullTerminatedByteString "declare double @exp(double)"
+call writeIrExternExpCall c.puts
+arg writeIrExternExpCall text irExternExp
+run writeIrExternExpCall
+
+const irExternLog CNullTerminatedByteString "declare double @log(double)"
+call writeIrExternLogCall c.puts
+arg writeIrExternLogCall text irExternLog
+run writeIrExternLogCall
+
+const irExternFabs CNullTerminatedByteString "declare double @fabs(double)"
+call writeIrExternFabsCall c.puts
+arg writeIrExternFabsCall text irExternFabs
+run writeIrExternFabsCall
+
+const irExternSnprintf CNullTerminatedByteString "declare i32 @snprintf(i8*, i64, i8*, ...)"
+call writeIrExternSnprintfCall c.puts
+arg writeIrExternSnprintfCall text irExternSnprintf
+run writeIrExternSnprintfCall
+
 branch skipIntegerProgramPreamble
 
 label skipIntegerProgramPreamble
@@ -10072,6 +16041,8 @@ label pass1ProcessLine
 # check needs.
 const constPrefix CNullTerminatedByteString "const "
 const constPrefixLen CByteCount 6
+const varPrefix CNullTerminatedByteString "var "
+const varPrefixLen CByteCount 4
 call pass1IsConstLineCall lineStartsWithKeyword
 arg pass1IsConstLineCall linePointer pass1LineStartPtr
 arg pass1IsConstLineCall keyword constPrefix
@@ -10079,18 +16050,39 @@ arg pass1IsConstLineCall keywordLength constPrefixLen
 run pass1IsConstLineCall
 bindOk pass1IsConst Bool pass1IsConstLineCall
 branchIf pass1IsConst pass1HandleConst
+
+# Pass1 also handles `var NAME TYPE "literal"` so that pointer-typed
+# vars with literal-string inits get their own @.sN slot. Detect var
+# lines and reuse the same handler with a different prefix length.
+call pass1IsVarLineCall lineStartsWithKeyword
+arg pass1IsVarLineCall linePointer pass1LineStartPtr
+arg pass1IsVarLineCall keyword varPrefix
+arg pass1IsVarLineCall keywordLength varPrefixLen
+run pass1IsVarLineCall
+bindOk pass1IsVar Bool pass1IsVarLineCall
+branchIf pass1IsVar pass1HandleVar
 branch pass1AdvanceLine
 
-label pass1HandleConst
-# Layout we expect: "const NAME TYPE VALUE..."
-# After "const " (6 bytes) is NAME. Find the next space after NAME.
-# Then TYPE follows; find next space after TYPE. Then look for an
-# opening quote — if found, it's a string constant and we emit.
+label pass1HandleVar
+# Reuse the const-emit path; offset past "var " (4 bytes) instead.
+var pass1HeaderPrefixLen CByteCount 6
+set pass1HeaderPrefixLen varPrefixLen
+branch pass1ParsedHeader
 
-# Get pointer just past "const ".
+label pass1HandleConst
+set pass1HeaderPrefixLen constPrefixLen
+branch pass1ParsedHeader
+
+label pass1ParsedHeader
+# Layout we expect: "<verb> NAME TYPE VALUE..."
+# After verb (4 or 6 bytes) is NAME. Find the next space after NAME.
+# Then TYPE follows; find next space after TYPE. Then look for an
+# opening quote — if found, it's a string literal and we emit.
+
+# Get pointer just past the verb.
 call pass1NamePtrCall pointer.offset
 arg pass1NamePtrCall base pass1LineStartPtr
-arg pass1NamePtrCall offset constPrefixLen
+arg pass1NamePtrCall offset pass1HeaderPrefixLen
 run pass1NamePtrCall
 bind pass1NamePtr COpaqueMemoryAddress pass1NamePtrCall
 

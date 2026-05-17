@@ -1,0 +1,69 @@
+# expect.stdout: ipt\n
+# expect.exit: 0
+project PointerReturningRecursion
+target console
+runtime AgentRuntime 0.1
+entry console main
+error MainError
+errorCase MainError Placeholder CSignedInt32
+
+operation advanceBy
+input advanceBy buffer CNullTerminatedByteString
+input advanceBy steps CSignedInt64
+output advanceBy Result CNullTerminatedByteString Void
+memory advanceBy heap no
+async advanceBy no
+purpose advanceBy "Recursively return a pointer offset `steps` bytes past `buffer`. Exercises a recursive user op that returns a pointer (CNullTerminatedByteString)."
+invariant advanceBy "Each level peels off one step; base case (steps == 0) returns the buffer unchanged."
+label startAdvanceBy
+const zeroSteps CSignedInt64 0
+const oneStep CSignedInt64 1
+call doneCheckCall math.equalI64
+arg doneCheckCall left steps
+arg doneCheckCall right zeroSteps
+run doneCheckCall
+bind isDone Bool doneCheckCall
+branchIf isDone abReturnAsIs
+call shiftCall pointer.offset
+arg shiftCall base buffer
+arg shiftCall offset oneStep
+run shiftCall
+bind shiftedBuffer COpaqueMemoryAddress shiftCall
+call decStepsCall math.subtractI64
+arg decStepsCall left steps
+arg decStepsCall right oneStep
+run decStepsCall
+bind nextSteps CSignedInt64 decStepsCall
+call recurseCall advanceBy
+arg recurseCall buffer shiftedBuffer
+arg recurseCall steps nextSteps
+run recurseCall
+bindOk recursiveResult CNullTerminatedByteString recurseCall
+returnOk recursiveResult
+label abReturnAsIs
+returnOk buffer
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main read memory.buffer
+effect main write console.stdout
+memory main heap no
+async main no
+purpose main "advanceBy('agentscript', 8) should return a pointer to 'ipt' (offset 8 is 'i'). Then writeLine prints 'ipt'."
+invariant main "Verifies pointer-returning recursive user op + bind of its result + console.writeLine over a bind pointer."
+label startMain
+const phrase CNullTerminatedByteString "agentscript"
+const skipCount CSignedInt64 8
+call advanceCall advanceBy
+arg advanceCall buffer phrase
+arg advanceCall steps skipCount
+run advanceCall
+bindOk shiftedPointer CNullTerminatedByteString advanceCall
+call writeCall console.writeLine
+arg writeCall console console
+arg writeCall text shiftedPointer
+run writeCall
+ignoreOk writeCall Void
+const successfulExitCode ExitCode 0
+returnOk successfulExitCode
