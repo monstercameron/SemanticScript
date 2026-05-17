@@ -1,0 +1,68 @@
+# expect.stdout: 0\n1\n
+# expect.exit: 0
+project PointerIsNull
+target console
+runtime AgentRuntime 0.1
+entry console main
+error MainError
+errorCase MainError Placeholder CSignedInt32
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main read memory.buffer
+effect main write console.stdout
+memory main heap auto
+async main no
+purpose main "Test pointer.isNull primitive against a malloc'd pointer (not null) and a fresh c.malloc(0) followed by reset to null-like usage."
+invariant main "Exercises icmp eq i8* X, null path."
+label startMain
+const fourBytes I64 4
+const oneVal I64 1
+const zeroVal I64 0
+call mallocCall c.malloc
+arg mallocCall size fourBytes
+run mallocCall
+bind allocatedBuffer COpaqueMemoryAddress mallocCall
+call notNullCheckCall pointer.isNull
+arg notNullCheckCall p allocatedBuffer
+run notNullCheckCall
+bind allocatedIsNull Bool notNullCheckCall
+var firstNumeric I64 0
+branchIf allocatedIsNull markFirstOne
+branch printFirst
+label markFirstOne
+set firstNumeric oneVal
+branch printFirst
+label printFirst
+call writeFirstCall console.writeIntegerLine
+arg writeFirstCall console console
+arg writeFirstCall value firstNumeric
+run writeFirstCall
+ignoreOk writeFirstCall Void
+call freeCall c.free
+arg freeCall ptr allocatedBuffer
+run freeCall
+# Now build a "null" by calling getenv on a name we know is unset.
+const definitelyUnsetName CNullTerminatedByteString "AGENTSCRIPT_DEFINITELY_NOT_SET_X"
+call envCall c.getenv
+arg envCall name definitelyUnsetName
+run envCall
+bind envPointer COpaqueMemoryAddress envCall
+call envIsNullCall pointer.isNull
+arg envIsNullCall p envPointer
+run envIsNullCall
+bind envIsNull Bool envIsNullCall
+var secondNumeric I64 0
+branchIf envIsNull markSecondOne
+branch printSecond
+label markSecondOne
+set secondNumeric oneVal
+branch printSecond
+label printSecond
+call writeSecondCall console.writeIntegerLine
+arg writeSecondCall console console
+arg writeSecondCall value secondNumeric
+run writeSecondCall
+ignoreOk writeSecondCall Void
+const successfulExitCode ExitCode 0
+returnOk successfulExitCode

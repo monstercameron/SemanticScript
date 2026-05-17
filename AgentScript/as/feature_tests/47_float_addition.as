@@ -1,0 +1,25 @@
+# expect.stdout: 5.000000\n
+# expect.exit: 0
+project FloatPrintConst
+target console
+runtime AgentRuntime 0.1
+entry console main
+error MainError
+errorCase MainError Placeholder CSignedInt32
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+async main no
+purpose main "Print a CFloat64 const via console.writeFloatLine."
+invariant main "Minimal float-print test."
+label startMain
+const fiveFloat CFloat64 5.0
+call writeCall console.writeFloatLine
+arg writeCall console console
+arg writeCall value fiveFloat
+run writeCall
+ignoreOk writeCall Void
+const successfulExitCode ExitCode 0
+returnOk successfulExitCode
