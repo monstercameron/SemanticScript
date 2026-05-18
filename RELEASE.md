@@ -6,9 +6,8 @@ candidates. Repository-state and artifact policies live in
 
 ## Release Blockers
 
-- Confirm the release license posture. The current root `LICENSE` is a
-  no-license notice; public artifact publishing still requires an explicit
-  release-owner decision.
+- Confirm the root `LICENSE` remains MIT and package metadata that declares a
+  license also uses `MIT`.
 - Confirm the VS Code publisher target. `semanticscript-local` is valid only for
   local VSIX packaging.
 - CI must pass on the release commit.
@@ -40,7 +39,7 @@ These commands mirror the lightweight CI workflow:
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 python -m compileall -q SemanticScript python samples
-python -m unittest SemanticScript/linter/test_semlint2.py -v
+python -m unittest SemanticScript/linter/test_semlint.py -v
 python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sscript --parse-only
 python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sem --parse-only
 python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sscript --fail-on none --summary
@@ -85,6 +84,7 @@ Before tagging, confirm the release hygiene policies:
 - `.sem` files directly under `SemanticScript/sem/` are intentionally tracked
   alias fixtures, not generated outputs.
 - `vscode-semanticscript/package.json` version matches the release tag.
+- `vscode-semanticscript/package.json` license remains `MIT`.
 - `vscode-semanticscript/package.json` publisher is changed away from
   `semanticscript-local` before any Marketplace publish.
 

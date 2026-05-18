@@ -1,27 +1,25 @@
 # Release Hygiene Policy
 
 Release hygiene covers repository state, generated artifacts, local package
-metadata, and intentionally duplicated fixtures. It does not choose an
-open-source license or a public marketplace identity.
+metadata, and intentionally duplicated fixtures. It records the chosen project
+license but does not choose a public marketplace identity.
 
 ## License Posture
 
-The root `LICENSE` file is a no-license notice for the 1.0 release candidate.
-It reserves rights and does not grant open-source reuse permission.
+The root `LICENSE` file grants the MIT License for first-party SemanticScript
+source, documentation, samples, and tooling.
 
-Public publishing is blocked until the release owner either:
+Third-party code under `third_party/` keeps its upstream license terms. Preserve
+those notices when packaging or redistributing artifacts that include
+third-party code.
 
-- accepts private/source-available distribution under the current no-license
-  notice; or
-- replaces `LICENSE` and all package metadata with the chosen license.
-
-The VS Code extension keeps `"license": "UNLICENSED"` while the root notice is
-in force.
+Package metadata that declares a license must use `MIT` unless a release owner
+explicitly chooses a different license for that package.
 
 ## VS Code Extension Metadata
 
-`vscode-semanticscript/package.json` uses version `1.0.0` for the SemanticScript
-1.0 local VSIX build.
+`vscode-semanticscript/package.json` uses version `1.0.1` for the current
+SemanticScript local VSIX build.
 
 The publisher remains `semanticscript-local`. That value is for local packaging
 and development-host installs only. Do not publish to the VS Code Marketplace

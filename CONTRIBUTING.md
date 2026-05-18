@@ -26,7 +26,7 @@ Run these before sending a narrow tooling or docs change:
 
 ```powershell
 python -m compileall -q SemanticScript python samples
-python -m unittest SemanticScript/linter/test_semlint2.py -v
+python -m unittest SemanticScript/linter/test_semlint.py -v
 python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sscript --parse-only
 python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sem --parse-only
 python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sscript --fail-on none --summary
@@ -55,11 +55,10 @@ toolchain. Set `SEMSC_CLANG` if clang is not discoverable on PATH.
 - Do not commit generated outputs such as `.exe`, `.ll`, `.pyc`, build folders,
   packaged `.vsix` files, or `__pycache__/`.
 - Do not introduce public `.as` source-extension support.
-- Do not change the project license posture without a release-owner decision.
+- Do not change the project license without a release-owner decision.
 
 ## License
 
-The root `LICENSE` is currently a no-license notice. It does not grant
-open-source reuse permission. Public artifact publishing requires either an
-explicit decision to distribute under that notice or a replacement license chosen
-by the release owner.
+SemanticScript is distributed under the MIT License. See the root `LICENSE` file
+for the full license text. Third-party code under `third_party/` keeps its own
+upstream license terms.

@@ -25,5 +25,6 @@ Python dependencies are declared in `requirements.txt`. Keep the dependency set
 small and review changes to compiler/runtime packages carefully because CI and
 release validation install from this file.
 
-Do not publish public release artifacts until the release owner confirms the
-current no-license posture or replaces it with a public distribution license.
+Before publishing release artifacts, confirm the root `LICENSE` and package
+metadata still identify the intended MIT distribution terms, and preserve
+third-party notices for bundled dependencies.
