@@ -257,7 +257,7 @@ items in this section, and leave integration notes for the final coordinator.
 Owned scope: `build.sem` grammar, project-root discovery, build configuration
 validation, and compiler project-mode entry.
 
-- [ ] Define and implement the build-tape parser surface.
+- [x] Define and implement the build-tape parser surface.
   - [x] Add parser support for `buildProject`.
   - [x] Add parser support for `modulePath`.
   - [x] Add parser support for `languageVersion`.
@@ -267,7 +267,7 @@ validation, and compiler project-mode entry.
   - [x] Add parser support for `mainFile`.
   - [x] Add parser support for `mainOperation`.
   - [x] Add parser support for `testPattern`.
-  - [ ] Add parser support for `dependency`.
+  - [x] Add parser support for `dependency`.
   - [x] Add parser support for `dependencySource`.
   - [x] Add parser support for `dependencyIntegrity`.
   - [x] Add parser support for `buildProfile`.
@@ -278,10 +278,10 @@ validation, and compiler project-mode entry.
   - [x] Add parser support for `targetRuntime`.
   - [x] Reserve but do not execute `comptimeOperation`.
 - [ ] Implement build project discovery.
-  - [ ] Search current directory and ancestors for `build.sem`.
-  - [ ] Support single-file mode when no `build.sem` exists.
+  - [x] Search current directory and ancestors for `build.sem`.
+  - [x] Support single-file mode when no `build.sem` exists.
   - [ ] Reject ambiguous nested project roots with a source-located diagnostic.
-  - [ ] Preserve source locations for every build-tape row.
+  - [x] Preserve source locations for every build-tape row.
 - [ ] Implement build-tape validation.
   - [x] Require one active `buildProject`.
   - [x] Validate singleton rows.
@@ -292,13 +292,13 @@ validation, and compiler project-mode entry.
   - [ ] Validate release builds do not use floating dependency refs without a
         lock.
 - [ ] Wire project mode into compiler/build flow.
-  - [ ] Add compiler project-mode entrypoint.
+  - [x] Add compiler project-mode entrypoint.
   - [x] Pass build profile from `build.sem` into existing compiler options.
   - [x] Pass runtime checks from `build.sem` into existing compiler options.
   - [x] Pass LLVM IR persistence from `build.sem` into existing compiler
         options.
   - [x] Resolve native output from `build.sem`.
-  - [ ] Add focused tests for valid and invalid build tapes.
+  - [x] Add focused tests for valid and invalid build tapes.
 - [ ] Agent 1 handoff notes.
   - [ ] Document public parser/validation helpers for Agent 2 and Agent 6.
   - [ ] List any build verbs intentionally parser-only for 1.x.
@@ -547,12 +547,12 @@ workstreams.
   - [ ] Add singular import sample.
   - [ ] Add dependency sample using a local path dependency.
   - [ ] Add colocated test sample.
-- [ ] Update VS Code extension.
+- [x] Update VS Code extension.
   - [x] Highlight build-tape verbs.
   - [x] Highlight module metadata verbs.
   - [x] Highlight export/import verbs.
   - [x] Add hover text for new verbs.
-  - [ ] Add completions for new verbs.
+  - [x] Add completions for new verbs.
   - [x] Add document symbols for `buildProject`, `module`, exports, and
         imports.
   - [x] Add linter/diagnostic support when new diagnostics exist.
@@ -596,8 +596,8 @@ workstreams.
   - [ ] Show a multi-module library tree.
   - [ ] Show colocated `*.test.sem` files beside the modules they test.
 - [ ] Add a project layout section to `docs/language/program-structure.md`.
-  - [ ] Explain how root source files differ from folder modules.
-  - [ ] Explain how `main.sem` and `build.sem` interact.
+  - [x] Explain how root source files differ from folder modules.
+  - [x] Explain how `main.sem` and `build.sem` interact.
   - [ ] Explain how tests are discovered from `*.test.sem`.
   - [ ] Explain how generated artifacts stay outside source control.
 - [ ] Add examples under `samples/` or `app/`.
@@ -609,7 +609,7 @@ workstreams.
 
 ### `build.sem` Build Tape
 
-- [ ] Define the `build.sem` grammar as SemanticScript source, not a sidecar
+- [x] Define the `build.sem` grammar as SemanticScript source, not a sidecar
       config format.
   - [x] Add `buildProject PROJECT_NAME`.
   - [x] Add `modulePath PROJECT_NAME MODULE_PATH`.
@@ -620,7 +620,7 @@ workstreams.
   - [x] Add `mainFile PROJECT_NAME PATH_TEXT`.
   - [x] Add `mainOperation PROJECT_NAME OPERATION_NAME`.
   - [x] Add `testPattern PROJECT_NAME GLOB_TEXT`.
-  - [ ] Add `dependency PROJECT_NAME ALIAS MODULE_PATH VERSION_OR_REF`.
+  - [x] Add `dependency PROJECT_NAME ALIAS MODULE_PATH VERSION_OR_REF`.
   - [x] Add `dependencySource PROJECT_NAME ALIAS SOURCE_KIND SOURCE_TEXT`.
   - [x] Add `dependencyIntegrity PROJECT_NAME ALIAS INTEGRITY_TEXT`.
   - [x] Add `buildProfile PROJECT_NAME dev|prod`.
@@ -630,23 +630,23 @@ workstreams.
   - [x] Add `nativeOutput PROJECT_NAME PATH_TEXT`.
   - [x] Add `targetRuntime PROJECT_NAME nativeExe|webServer|library`.
   - [x] Reserve `comptimeOperation PROJECT_NAME OPERATION_NAME` for 2.0.
-- [ ] Decide whether `build.sem` accepts only build verbs or the full language.
-  - [ ] If restricted, reject executable body rows in `build.sem`.
+- [x] Decide whether `build.sem` accepts only build verbs or the full language.
+  - [x] If restricted, reject executable body rows in `build.sem`.
   - [ ] If full language, define which rows execute at compile time.
   - [x] Document that 1.x treats `build.sem` as declarative build tape.
   - [x] Document that 2.0 can widen this into comptime execution.
 - [ ] Implement `build.sem` discovery.
-  - [ ] Search current directory and ancestors for `build.sem`.
+  - [x] Search current directory and ancestors for `build.sem`.
   - [ ] Stop at repository root if detectable.
   - [ ] Emit a clear diagnostic when multiple candidate project roots compete.
-  - [ ] Support single-file mode when no `build.sem` exists.
-  - [ ] Never silently create `build.sem`.
+  - [x] Support single-file mode when no `build.sem` exists.
+  - [x] Never silently create `build.sem`.
 - [ ] Implement `build.sem` parsing.
   - [x] Add parser rows for every current build-tape verb.
-  - [ ] Preserve source locations for build diagnostics.
+  - [x] Preserve source locations for build diagnostics.
   - [ ] Reject unknown build-tape verbs with a suggestion.
-  - [ ] Reject missing project names.
-  - [ ] Reject duplicate `buildProject` names in one build file.
+  - [x] Reject missing project names.
+  - [x] Reject duplicate `buildProject` names in one build file.
   - [x] Reject duplicate singleton rows such as `modulePath`, `mainFile`, and
         `mainOperation` unless overriding is explicitly designed.
   - [x] Validate paths without requiring referenced files to exist until the
@@ -663,22 +663,22 @@ workstreams.
   - [ ] Require dependency versions/refs to be pinned for release builds.
   - [ ] Reject network dependency refs in prod/release builds unless locked.
 - [ ] Integrate `build.sem` with `semsc.py`.
-  - [ ] Add `semsc.py build.sem --project-build` or equivalent project mode.
+  - [x] Add `semsc.py build.sem --project-build` or equivalent project mode.
   - [x] Make `sem build` call compiler project mode once the `sem` driver
         exists.
-  - [ ] Resolve all source roots before parsing application modules.
+  - [x] Resolve all source roots before parsing application modules.
   - [x] Resolve build profile from `build.sem`.
   - [x] Resolve runtime checks from `build.sem`.
   - [x] Resolve LLVM IR persistence from `build.sem`.
   - [x] Resolve native output path from `build.sem`.
-  - [ ] Emit diagnostics in terms of `build.sem` rows when build config fails.
+  - [x] Emit diagnostics in terms of `build.sem` rows when build config fails.
 - [ ] Add build-tape tests.
-  - [ ] Minimal valid `build.sem`.
-  - [ ] Missing `modulePath`.
+  - [x] Minimal valid `build.sem`.
+  - [x] Missing `modulePath`.
   - [ ] Duplicate `mainFile`.
   - [ ] Invalid dependency alias.
   - [ ] Invalid module path.
-  - [ ] Missing `main.sem`.
+  - [x] Missing `main.sem`.
   - [ ] Missing `operation main`.
   - [ ] Webserver target with route handlers.
   - [ ] Library target with no `main.sem`.
@@ -1047,55 +1047,55 @@ order.
 
 ### `semfmt` Formatter
 
-- [ ] Create a formatter entrypoint named `semfmt`.
-  - [ ] Decide whether `semfmt` lives under `SemanticScript/tools/`,
+- [x] Create a formatter entrypoint named `semfmt`.
+  - [x] Decide whether `semfmt` lives under `SemanticScript/tools/`,
         `SemanticScript/formatter/`, or as a `sem fmt` subcommand wrapper.
   - [ ] Add command help with examples for `.sscript` and `.sem` files.
-  - [ ] Support formatting one file.
-  - [ ] Support formatting multiple explicit files.
-  - [ ] Support recursive project formatting with include/exclude globs.
-  - [ ] Add `--check` mode for CI that exits non-zero on formatting drift.
-  - [ ] Add `--diff` mode that prints a unified diff without writing files.
-  - [ ] Add `--stdin-file-name` support for editor integrations.
+  - [x] Support formatting one file.
+  - [x] Support formatting multiple explicit files.
+  - [x] Support recursive project formatting with include/exclude globs.
+  - [x] Add `--check` mode for CI that exits non-zero on formatting drift.
+  - [x] Add `--diff` mode that prints a unified diff without writing files.
+  - [x] Add `--stdin-file-name` support for editor integrations.
 - [ ] Make formatting parser-aware instead of regex-only.
   - [ ] Reuse the compiler/linter tokenizer or extract a shared tokenizer.
   - [ ] Preserve comments exactly unless indentation is intentionally adjusted.
-  - [ ] Preserve blank lines where they separate logical sections.
-  - [ ] Preserve quoted strings and escape sequences byte-for-byte.
-  - [ ] Preserve unknown/proposed verbs instead of deleting or rewriting them.
+  - [x] Preserve blank lines where they separate logical sections.
+  - [x] Preserve quoted strings and escape sequences byte-for-byte.
+  - [x] Preserve unknown/proposed verbs instead of deleting or rewriting them.
 - [ ] Define canonical row layout rules.
-  - [ ] Canonicalize one space between tokens.
-  - [ ] Trim trailing whitespace.
-  - [ ] Keep comments after code separated by at least two spaces if inline
+  - [x] Canonicalize one space between tokens.
+  - [x] Trim trailing whitespace.
+  - [x] Keep comments after code separated by at least two spaces if inline
         comments are allowed.
-  - [ ] Keep top-level declaration rows unindented.
-  - [ ] Decide whether operation body rows remain unindented or gain logical
+  - [x] Keep top-level declaration rows unindented.
+  - [x] Decide whether operation body rows remain unindented or gain logical
         indentation in formatted output.
   - [ ] Define maximum line length and whether long strings are never wrapped.
   - [ ] Define how long metadata strings should be wrapped, if at all.
 - [ ] Define canonical ordering rules where safe.
-  - [ ] Decide whether formatter may reorder metadata rows.
+  - [x] Decide whether formatter may reorder metadata rows.
   - [ ] If reordering is allowed, order operation metadata as
         `purpose`, `input`, `output`, `effect`, `useCapability`, warnings, then
         invariants.
-  - [ ] Never reorder executable body rows unless a proof exists that behavior
+  - [x] Never reorder executable body rows unless a proof exists that behavior
         is unchanged.
-  - [ ] Never reorder route rows unless route precedence rules make ordering
+  - [x] Never reorder route rows unless route precedence rules make ordering
         irrelevant.
 - [ ] Add formatter configuration.
-  - [ ] Define formatter settings in `build.sem` or a future SemanticScript
+  - [x] Define formatter settings in `build.sem` or a future SemanticScript
         settings tape, not TOML.
   - [ ] Support line width.
   - [ ] Support newline mode.
-  - [ ] Support quote-preservation only, not quote-style rewrites.
+  - [x] Support quote-preservation only, not quote-style rewrites.
   - [ ] Document defaults as the canonical project style.
 - [ ] Add formatter tests.
-  - [ ] Golden-format tests for small syntax examples.
+  - [x] Golden-format tests for small syntax examples.
   - [ ] Golden-format tests for webserver apps.
-  - [ ] Golden-format tests for comments and blank lines.
-  - [ ] Golden-format tests for quoted strings with escaped characters.
-  - [ ] Idempotence tests: formatting twice produces byte-identical output.
-  - [ ] Safety tests: formatted source parses to the same high-level semantic
+  - [x] Golden-format tests for comments and blank lines.
+  - [x] Golden-format tests for quoted strings with escaped characters.
+  - [x] Idempotence tests: formatting twice produces byte-identical output.
+  - [x] Safety tests: formatted source parses to the same high-level semantic
         tape as the original.
   - [ ] Fuzz tests for tokenizer/formatter round-tripping.
 - [ ] Integrate formatter into editors and CI.
@@ -1106,23 +1106,23 @@ order.
 
 ### `sem` Project Command Driver
 
-- [ ] Create a single daily-use command named `sem`.
-  - [ ] Decide implementation language for the first driver.
-  - [ ] Make the driver work from PowerShell on Windows.
-  - [ ] Make the driver work from POSIX shells.
-  - [ ] Add `sem --version`.
-  - [ ] Add `sem --help`.
-  - [ ] Add useful non-zero exit codes for scripting.
+- [x] Create a single daily-use command named `sem`.
+  - [x] Decide implementation language for the first driver.
+  - [x] Make the driver work from PowerShell on Windows.
+  - [x] Make the driver work from POSIX shells.
+  - [x] Add `sem --version`.
+  - [x] Add `sem --help`.
+  - [x] Add useful non-zero exit codes for scripting.
 - [ ] Wrap compiler commands.
 - [x] Add `sem build`.
-  - [ ] Add `sem run`.
-  - [ ] Add `sem check` for parse, lint, and type/codegen validation.
+  - [x] Add `sem run`.
+  - [x] Add `sem check` for parse, lint, and type/codegen validation.
   - [ ] Add `sem emit-ir`.
   - [ ] Add `sem clean` for ignored local build artifacts.
-  - [ ] Pass through `--build-profile dev|prod`.
-  - [ ] Pass through `--runtime-checks off|traps|panic`.
-  - [ ] Pass through `--persist-llvm-ir auto|yes|no`.
-  - [ ] Pass through `--opt-level`.
+  - [x] Pass through `--build-profile dev|prod`.
+  - [x] Pass through `--runtime-checks off|traps|panic`.
+  - [x] Pass through `--persist-llvm-ir auto|yes|no`.
+  - [x] Pass through `--opt-level`.
 - [ ] Wrap quality tools.
   - [ ] Add `sem lint`.
   - [ ] Add `sem lint --engine semlint`.
@@ -1134,13 +1134,13 @@ order.
   - [ ] Add `sem explain`.
   - [ ] Add `sem bench`.
   - [ ] Add `sem doctor`.
-- [ ] Add project discovery.
-  - [ ] Discover the nearest `build.sem`.
-  - [ ] Fall back to single-file mode when no build tape exists.
-  - [ ] Resolve source roots from `build.sem`.
-  - [ ] Resolve build output directories from `build.sem`.
-  - [ ] Resolve default entrypoints from `build.sem`.
-  - [ ] Resolve target runtime settings from `build.sem`.
+- [x] Add project discovery.
+  - [x] Discover the nearest `build.sem`.
+  - [x] Fall back to single-file mode when no build tape exists.
+  - [x] Resolve source roots from `build.sem`.
+  - [x] Resolve build output directories from `build.sem`.
+  - [x] Resolve default entrypoints from `build.sem`.
+  - [x] Resolve target runtime settings from `build.sem`.
 - [ ] Add project templates.
   - [ ] Add `sem new console`.
   - [ ] Add `sem new web`.
@@ -1157,7 +1157,7 @@ order.
 - [ ] Add driver tests.
   - [ ] Unit-test argument parsing.
   - [ ] Test single-file build.
-  - [ ] Test build-tape-based build.
+  - [x] Test build-tape-based build.
   - [ ] Test `sem check` failure reporting.
   - [ ] Test PowerShell examples.
   - [ ] Test POSIX examples in CI if a POSIX runner is available.
