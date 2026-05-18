@@ -86,11 +86,19 @@ def main():
     slowest_name = None
     slowest_elapsed = 0.0
     for name in OK_PROGRAMS:
-        ok, elapsed, within_budget = run(STDLIB_DIR / name, "OK\n")
+        # Library-only modules carry no `operation main` of their own;
+        # the smoke lives in a companion `<module>.test.as` file in the
+        # same directory. Prefer that when present so the smoke matches
+        # the module's actual public surface (the .as file is just
+        # exported operations the .test.as importModule's).
+        stem = name[: -len(".as")]
+        companion_test = STDLIB_DIR / f"{stem}.test.as"
+        target = companion_test if companion_test.exists() else STDLIB_DIR / name
+        ok, elapsed, within_budget = run(target, "OK\n")
         total_elapsed += elapsed
         if elapsed > slowest_elapsed:
             slowest_elapsed = elapsed
-            slowest_name = name
+            slowest_name = target.name
         if not ok:
             failures += 1
         if not within_budget:
