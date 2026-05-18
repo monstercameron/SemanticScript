@@ -1,0 +1,388 @@
+# ============================================================
+# SEMANTICSCRIPT STDLIB TESTS: stdlib
+# ============================================================
+#
+# Companion smoke + extended unit tests for stdlib_sem/stdlib.sscript.
+# Imports the stdlib module and asserts every exported numeric
+# helper (parseDecimal / parseHex / abs / min / max / power / gcd /
+# clamp) plus boundary cases.
+#
+# Pattern: stdlib_sem/foo.sscript ships pure-module operations only;
+# stdlib_sem/foo.test.sscript carries every smoke / unit test for it.
+
+project StdStdlibTest
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+importModule stdlib
+
+error MainError
+errorCase MainError StdlibSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+# section capability
+# rationale: smoke-test main writes a single OK line to stdout.
+capability stdoutWriteCapability console.stdout write
+
+# ============================================================
+# Smoke test
+# ============================================================
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+effect main write console.stdout
+memoryHeap main no
+async main no
+purpose main "Smoke-test the stdlib numeric ops."
+
+label startMain
+
+# parseDecimalCStringToSignedInt64("12345") == 12345
+const decimalSampleText CNullTerminatedByteString "12345"
+const expectedDecimalSample CSignedInt64 12345
+call assertParseDecimalCall parseDecimalCStringToSignedInt64
+arg assertParseDecimalCall inputText decimalSampleText
+run assertParseDecimalCall
+bind decimalParseResult CSignedInt64 assertParseDecimalCall
+call checkParseDecimalCall math.equalI64
+arg checkParseDecimalCall left decimalParseResult
+arg checkParseDecimalCall right expectedDecimalSample
+run checkParseDecimalCall
+bind parseDecimalOk Bool checkParseDecimalCall
+branchIf parseDecimalOk parseDecimalHolds
+branch smokeAssertionFailed
+label parseDecimalHolds
+
+# parseDecimalCStringToSignedInt64("  -42") == -42
+const decimalNegativeSampleText CNullTerminatedByteString "  -42"
+const expectedDecimalNegativeSample CSignedInt64 -42
+call assertParseDecimalNegativeCall parseDecimalCStringToSignedInt64
+arg assertParseDecimalNegativeCall inputText decimalNegativeSampleText
+run assertParseDecimalNegativeCall
+bind decimalNegativeParseResult CSignedInt64 assertParseDecimalNegativeCall
+call checkParseDecimalNegativeCall math.equalI64
+arg checkParseDecimalNegativeCall left decimalNegativeParseResult
+arg checkParseDecimalNegativeCall right expectedDecimalNegativeSample
+run checkParseDecimalNegativeCall
+bind parseDecimalNegativeOk Bool checkParseDecimalNegativeCall
+branchIf parseDecimalNegativeOk parseDecimalNegativeHolds
+branch smokeAssertionFailed
+label parseDecimalNegativeHolds
+
+# parseHexCStringToSignedInt64("0x1F") == 31
+const hexSampleText CNullTerminatedByteString "0x1F"
+const expectedHexSample CSignedInt64 31
+call assertParseHexCall parseHexCStringToSignedInt64
+arg assertParseHexCall inputText hexSampleText
+run assertParseHexCall
+bind hexParseResult CSignedInt64 assertParseHexCall
+call checkParseHexCall math.equalI64
+arg checkParseHexCall left hexParseResult
+arg checkParseHexCall right expectedHexSample
+run checkParseHexCall
+bind parseHexOk Bool checkParseHexCall
+branchIf parseHexOk parseHexHolds
+branch smokeAssertionFailed
+label parseHexHolds
+
+# absoluteSignedInt64(-99) == 99
+const negativeNinetyNine CSignedInt64 -99
+const ninetyNine CSignedInt64 99
+call assertAbsoluteCall absoluteSignedInt64
+arg assertAbsoluteCall inputValue negativeNinetyNine
+run assertAbsoluteCall
+bind absoluteResult CSignedInt64 assertAbsoluteCall
+call checkAbsoluteCall math.equalI64
+arg checkAbsoluteCall left absoluteResult
+arg checkAbsoluteCall right ninetyNine
+run checkAbsoluteCall
+bind absoluteOk Bool checkAbsoluteCall
+branchIf absoluteOk absoluteHolds
+branch smokeAssertionFailed
+label absoluteHolds
+
+# minimumSignedInt64(7, 3) == 3
+const sevenInt CSignedInt64 7
+const threeInt CSignedInt64 3
+call assertMinimumCall minimumSignedInt64
+arg assertMinimumCall leftValue sevenInt
+arg assertMinimumCall rightValue threeInt
+run assertMinimumCall
+bind minimumResult CSignedInt64 assertMinimumCall
+call checkMinimumCall math.equalI64
+arg checkMinimumCall left minimumResult
+arg checkMinimumCall right threeInt
+run checkMinimumCall
+bind minimumOk Bool checkMinimumCall
+branchIf minimumOk minimumHolds
+branch smokeAssertionFailed
+label minimumHolds
+
+# maximumSignedInt64(7, 3) == 7
+call assertMaximumCall maximumSignedInt64
+arg assertMaximumCall leftValue sevenInt
+arg assertMaximumCall rightValue threeInt
+run assertMaximumCall
+bind maximumResult CSignedInt64 assertMaximumCall
+call checkMaximumCall math.equalI64
+arg checkMaximumCall left maximumResult
+arg checkMaximumCall right sevenInt
+run checkMaximumCall
+bind maximumOk Bool checkMaximumCall
+branchIf maximumOk maximumHolds
+branch smokeAssertionFailed
+label maximumHolds
+
+# powerSignedInt64(2, 10) == 1024
+const twoBaseValue CSignedInt64 2
+const tenExponentValue CSignedInt64 10
+const expectedTenTwentyFour CSignedInt64 1024
+call assertPowerCall powerSignedInt64
+arg assertPowerCall baseValue twoBaseValue
+arg assertPowerCall exponentValue tenExponentValue
+run assertPowerCall
+bindOk powerResult CSignedInt64 assertPowerCall
+call checkPowerCall math.equalI64
+arg checkPowerCall left powerResult
+arg checkPowerCall right expectedTenTwentyFour
+run checkPowerCall
+bind powerOk Bool checkPowerCall
+branchIf powerOk powerHolds
+branch smokeAssertionFailed
+label powerHolds
+
+# greatestCommonDivisorSignedInt64(54, 24) == 6
+const fiftyFourValue CSignedInt64 54
+const twentyFourValue CSignedInt64 24
+const expectedGcdSix CSignedInt64 6
+call assertGcdCall greatestCommonDivisorSignedInt64
+arg assertGcdCall leftValue fiftyFourValue
+arg assertGcdCall rightValue twentyFourValue
+run assertGcdCall
+bind gcdResult CSignedInt64 assertGcdCall
+call checkGcdCall math.equalI64
+arg checkGcdCall left gcdResult
+arg checkGcdCall right expectedGcdSix
+run checkGcdCall
+bind gcdOk Bool checkGcdCall
+branchIf gcdOk gcdHolds
+branch smokeAssertionFailed
+label gcdHolds
+
+# clampSignedInt64ToInclusiveRange(50, 0, 10) == 10
+const fiftyValueForClamp CSignedInt64 50
+const zeroLowerBoundForClamp CSignedInt64 0
+const tenUpperBoundForClamp CSignedInt64 10
+call assertClampCall clampSignedInt64ToInclusiveRange
+arg assertClampCall inputValue fiftyValueForClamp
+arg assertClampCall lowerBound zeroLowerBoundForClamp
+arg assertClampCall upperBound tenUpperBoundForClamp
+run assertClampCall
+bind clampResult CSignedInt64 assertClampCall
+call checkClampCall math.equalI64
+arg checkClampCall left clampResult
+arg checkClampCall right tenUpperBoundForClamp
+run checkClampCall
+bind clampOk Bool checkClampCall
+branchIf clampOk clampHolds
+branch smokeAssertionFailed
+label clampHolds
+
+# ============================================================
+# Extended unit tests: boundary cases for each existing op.
+# ============================================================
+
+const zeroSignedSm CSignedInt64 0
+const oneSignedSm CSignedInt64 1
+const negFiveSignedSm CSignedInt64 -5
+const fiveSignedSm CSignedInt64 5
+const zeroStr CNullTerminatedByteString "0"
+const hexZeroStr CNullTerminatedByteString "0x0"
+const oneHundredSm CSignedInt64 100
+
+# parseDecimal("0") == 0
+call parseZeroCall parseDecimalCStringToSignedInt64
+arg parseZeroCall inputText zeroStr
+run parseZeroCall
+bind parseZeroResult CSignedInt64 parseZeroCall
+call checkParseZeroCall math.equalI64
+arg checkParseZeroCall left parseZeroResult
+arg checkParseZeroCall right zeroSignedSm
+run checkParseZeroCall
+bind parseZeroOk Bool checkParseZeroCall
+branchIf parseZeroOk parseZeroHolds
+branch smokeAssertionFailed
+label parseZeroHolds
+
+# parseHex("0x0") == 0
+call parseHexZeroCall parseHexCStringToSignedInt64
+arg parseHexZeroCall inputText hexZeroStr
+run parseHexZeroCall
+bind parseHexZeroResult CSignedInt64 parseHexZeroCall
+call checkParseHexZeroCall math.equalI64
+arg checkParseHexZeroCall left parseHexZeroResult
+arg checkParseHexZeroCall right zeroSignedSm
+run checkParseHexZeroCall
+bind parseHexZeroOk Bool checkParseHexZeroCall
+branchIf parseHexZeroOk parseHexZeroHolds
+branch smokeAssertionFailed
+label parseHexZeroHolds
+
+# absoluteSignedInt64(0) == 0
+call absZeroCall absoluteSignedInt64
+arg absZeroCall inputValue zeroSignedSm
+run absZeroCall
+bind absZeroResult CSignedInt64 absZeroCall
+call checkAbsZeroCall math.equalI64
+arg checkAbsZeroCall left absZeroResult
+arg checkAbsZeroCall right zeroSignedSm
+run checkAbsZeroCall
+bind absZeroOk Bool checkAbsZeroCall
+branchIf absZeroOk absZeroHolds
+branch smokeAssertionFailed
+label absZeroHolds
+
+# absoluteSignedInt64(99) == 99 (positive identity)
+call absPositiveCall absoluteSignedInt64
+arg absPositiveCall inputValue ninetyNine
+run absPositiveCall
+bind absPositiveResult CSignedInt64 absPositiveCall
+call checkAbsPositiveCall math.equalI64
+arg checkAbsPositiveCall left absPositiveResult
+arg checkAbsPositiveCall right ninetyNine
+run checkAbsPositiveCall
+bind absPositiveOk Bool checkAbsPositiveCall
+branchIf absPositiveOk absPositiveHolds
+branch smokeAssertionFailed
+label absPositiveHolds
+
+# minimum(5, 5) == 5 (reflexive)
+call minSameCall minimumSignedInt64
+arg minSameCall leftValue fiveSignedSm
+arg minSameCall rightValue fiveSignedSm
+run minSameCall
+bind minSameResult CSignedInt64 minSameCall
+call checkMinSameCall math.equalI64
+arg checkMinSameCall left minSameResult
+arg checkMinSameCall right fiveSignedSm
+run checkMinSameCall
+bind minSameOk Bool checkMinSameCall
+branchIf minSameOk minSameHolds
+branch smokeAssertionFailed
+label minSameHolds
+
+# maximum(-5, 5) == 5 (negative vs positive)
+call maxSignCall maximumSignedInt64
+arg maxSignCall leftValue negFiveSignedSm
+arg maxSignCall rightValue fiveSignedSm
+run maxSignCall
+bind maxSignResult CSignedInt64 maxSignCall
+call checkMaxSignCall math.equalI64
+arg checkMaxSignCall left maxSignResult
+arg checkMaxSignCall right fiveSignedSm
+run checkMaxSignCall
+bind maxSignOk Bool checkMaxSignCall
+branchIf maxSignOk maxSignHolds
+branch smokeAssertionFailed
+label maxSignHolds
+
+# power(2, 0) == 1 (zero exponent)
+call powZeroExpCall powerSignedInt64
+arg powZeroExpCall baseValue twoBaseValue
+arg powZeroExpCall exponentValue zeroSignedSm
+run powZeroExpCall
+bindOk powZeroExpResult CSignedInt64 powZeroExpCall
+call checkPowZeroExpCall math.equalI64
+arg checkPowZeroExpCall left powZeroExpResult
+arg checkPowZeroExpCall right oneSignedSm
+run checkPowZeroExpCall
+bind powZeroExpOk Bool checkPowZeroExpCall
+branchIf powZeroExpOk powZeroExpHolds
+branch smokeAssertionFailed
+label powZeroExpHolds
+
+# power(1, 100) == 1 (one to any power)
+call powOneBaseCall powerSignedInt64
+arg powOneBaseCall baseValue oneSignedSm
+arg powOneBaseCall exponentValue oneHundredSm
+run powOneBaseCall
+bindOk powOneBaseResult CSignedInt64 powOneBaseCall
+call checkPowOneBaseCall math.equalI64
+arg checkPowOneBaseCall left powOneBaseResult
+arg checkPowOneBaseCall right oneSignedSm
+run checkPowOneBaseCall
+bind powOneBaseOk Bool checkPowOneBaseCall
+branchIf powOneBaseOk powOneBaseHolds
+branch smokeAssertionFailed
+label powOneBaseHolds
+
+# gcd(7, 5) == 1 (coprime)
+call gcdCoprimeCall greatestCommonDivisorSignedInt64
+arg gcdCoprimeCall leftValue sevenInt
+arg gcdCoprimeCall rightValue fiveSignedSm
+run gcdCoprimeCall
+bind gcdCoprimeResult CSignedInt64 gcdCoprimeCall
+call checkGcdCoprimeCall math.equalI64
+arg checkGcdCoprimeCall left gcdCoprimeResult
+arg checkGcdCoprimeCall right oneSignedSm
+run checkGcdCoprimeCall
+bind gcdCoprimeOk Bool checkGcdCoprimeCall
+branchIf gcdCoprimeOk gcdCoprimeHolds
+branch smokeAssertionFailed
+label gcdCoprimeHolds
+
+# clamp(5, 0, 10) == 5 (already in range)
+call clampInRangeCall clampSignedInt64ToInclusiveRange
+arg clampInRangeCall inputValue fiveSignedSm
+arg clampInRangeCall lowerBound zeroLowerBoundForClamp
+arg clampInRangeCall upperBound tenUpperBoundForClamp
+run clampInRangeCall
+bind clampInRangeResult CSignedInt64 clampInRangeCall
+call checkClampInRangeCall math.equalI64
+arg checkClampInRangeCall left clampInRangeResult
+arg checkClampInRangeCall right fiveSignedSm
+run checkClampInRangeCall
+bind clampInRangeOk Bool checkClampInRangeCall
+branchIf clampInRangeOk clampInRangeHolds
+branch smokeAssertionFailed
+label clampInRangeHolds
+
+# clamp(-5, 0, 10) == 0 (clamped to lower bound)
+call clampBelowCall clampSignedInt64ToInclusiveRange
+arg clampBelowCall inputValue negFiveSignedSm
+arg clampBelowCall lowerBound zeroLowerBoundForClamp
+arg clampBelowCall upperBound tenUpperBoundForClamp
+run clampBelowCall
+bind clampBelowResult CSignedInt64 clampBelowCall
+call checkClampBelowCall math.equalI64
+arg checkClampBelowCall left clampBelowResult
+arg checkClampBelowCall right zeroLowerBoundForClamp
+run checkClampBelowCall
+bind clampBelowOk Bool checkClampBelowCall
+branchIf clampBelowOk clampBelowHolds
+branch smokeAssertionFailed
+label clampBelowHolds
+
+const successMessageText CNullTerminatedByteString "OK"
+call writeSuccessLineCall console.writeLine
+arg writeSuccessLineCall console console
+arg writeSuccessLineCall text successMessageText
+run writeSuccessLineCall
+ignoreOk writeSuccessLineCall CSignedInt32
+bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branchIfError writeSuccessLineCall consoleWriteFailedHandler
+const exitOkCode ExitCode 0
+returnOk exitOkCode
+
+# Failure leg: surface the raw negative CSignedInt32 from
+# console.writeLine as the cause attached to the typed
+# MainError.ConsoleWriteFailed variant.
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
+returnError consoleWriteFailedFailure
+label smokeAssertionFailed
+makeError stdlibSmokeFailure MainError.StdlibSmokeAssertionFailed
+returnError stdlibSmokeFailure

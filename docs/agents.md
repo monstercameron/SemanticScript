@@ -1,10 +1,10 @@
-# AgentScript agents.md
+# SemanticScript agents.md
 
-Dense agent context. ASCII only. Truth: SYNTAX.md, ascc.py, aslint2.py,
-vscode-agentscript/extension.js. Editor support != compiler support.
+Dense agent context. ASCII only. Truth: SYNTAX.md, semsc.py, semlint2.py,
+vscode-semanticscript/extension.js. Editor support != compiler support.
 
 == core ==
-AgentScript = flat semantic tape. One line = one record. First token = verb.
+SemanticScript = flat semantic tape. One line = one record. First token = verb.
 No expressions, infix ops, parens calls, commas, braces, semicolons, generic
 angles, indentation blocks, exceptions, implicit async, dynamic object/array
 literals. Context is source data: names, effects, failures, memory, time,
@@ -313,7 +313,7 @@ c.*:
   run allocateCall
   bind allocatedBuffer COpaqueMemoryAddress allocateCall
 
-c.* signatures: compiler/libc_registry.py. Prefer AS camelCase aliases for C
+c.* signatures: compiler/libc_registry.py. Prefer SemanticScript camelCase aliases for C
 names with underscores.
 
 Heap edge: avoid c.malloc/c.free in demo apps unless the user asks for heap.
@@ -322,8 +322,8 @@ memoryAllocationSource OP ALLOC_CALL, capabilities for heap allocate/free, and
 handle c.malloc as fallible with bindError + branchIfError. Add linter-required
 `defer NAME c.free allocatedPointer`; current compiler treats non-user-op defer
 targets as cleanup metadata, so do not claim this proves runtime leak freedom.
-There is no general stdlib free wrapper today; stdlib_as/README explicitly says
-c.free is one of the host C calls with no useful pure-AS substitute. Prefer a
+There is no general stdlib free wrapper today; stdlib_sem/README explicitly says
+c.free is one of the host C calls with no useful pure-SemanticScript substitute. Prefer a
 domain-specific stdlib release op when the matching allocator provides one
 (example: createDeterministicRandomState -> releaseDeterministicRandomState).
 For generic heap buffers or duplicateCStringIntoOwnedMemory output, current
@@ -446,7 +446,7 @@ locks/select/interval no-op/fallthrough.
 Selected names lower directly. Unknown runtime binding => normal body.
 
 == linter ==
-aslint2 checks: unknown verbs; vague names; missing op metadata; hidden
+semlint2 checks: unknown verbs; vague names; missing op metadata; hidden
 failures; effects without capability; unresolved refs; arg arity/type; dead
 stores; unused calls/labels/consts/inputs/binds/caps/error cases/storage;
 allocation in loop; heap contradiction; missing allocation source; unpaired
@@ -456,20 +456,20 @@ without cleanup; duplicate decls; metadata drift; circular type aliases.
 T0/T1/T2 correctness. T3 design debt. T4 style.
 
 == commands ==
-  python AgentScript/compiler/ascc.py file.as --parse-only
-  python AgentScript/compiler/ascc.py file.as --run
-  python AgentScript/compiler/ascc.py file.as --emit-ir out.ll
-  python AgentScript/compiler/ascc.py file.as --emit-exe out.exe
-  python AgentScript/linter/aslint.py file.as --format json --fail-on none
-  python AgentScript/linter/aslint2.py file.as --format human
-  python AgentScript/linter/aslint2.py file.as --format json
-  python AgentScript/linter/aslint2.py file.as --tier T3 --code AS0101
+  python SemanticScript/compiler/semsc.py file.sscript --parse-only
+  python SemanticScript/compiler/semsc.py file.sscript --run
+  python SemanticScript/compiler/semsc.py file.sscript --emit-ir out.ll
+  python SemanticScript/compiler/semsc.py file.sscript --emit-exe out.exe
+  python SemanticScript/linter/semlint.py file.sscript --format json --fail-on none
+  python SemanticScript/linter/semlint2.py file.sscript --format human
+  python SemanticScript/linter/semlint2.py file.sscript --format json
+  python SemanticScript/linter/semlint2.py file.sscript --tier T3 --code SS0101
 
 == change protocol ==
   1 SYNTAX.md schema/status
-  2 ascc.py parser + lowering or metadata/sync behavior
+  2 semsc.py parser + lowering or metadata/sync behavior
   3 feature_tests minimal executable case
-  4 aslint2 known verbs/checks; aslint if needed
+  4 semlint2 known verbs/checks; semlint if needed
   5 vscode grammar + semantic roles + hover + symbol index
   6 docs narrow topic + docs/agents.md if relevant
   7 run compiler/linter/editor checks

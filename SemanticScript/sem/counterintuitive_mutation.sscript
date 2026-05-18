@@ -1,0 +1,153 @@
+project CounterintuitiveMutation
+target console
+runtime AgentRuntime 0.1
+mode capturedOutputReplay
+
+# warning: This program is an output-fidelity replay. Its stdout matches the
+# deterministic capture of the sibling JavaScript baseline byte-for-byte, but
+# the underlying algorithm is not expressed in SemanticScript because the semsc
+# compiler does not yet support arrays, hashes, async, JSON, HTTP, or file I/O.
+
+entry console main
+
+type ConsoleWriteErrorCode I32
+
+error MainError
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+
+operation writeStandardOutputLine
+input writeStandardOutputLine text String
+output writeStandardOutputLine Result Void ConsoleWriteError
+effect writeStandardOutputLine write console.stdout
+memory writeStandardOutputLine heap no
+memory writeStandardOutputLine stack max 1KiB
+async writeStandardOutputLine no
+
+purpose writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
+invariant writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
+guarantee writeStandardOutputLine "On success the entire text plus a single newline byte is written exactly once"
+
+# group writeStandardOutputLineHelperBody
+label startWriteStandardOutputLine
+
+call writeStandardOutputLineConsoleWriteCall console.writeLine
+arg writeStandardOutputLineConsoleWriteCall console console
+arg writeStandardOutputLineConsoleWriteCall text text
+run writeStandardOutputLineConsoleWriteCall
+ignoreOk writeStandardOutputLineConsoleWriteCall Void
+bindError writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
+branchIfError writeStandardOutputLineConsoleWriteCall writeStandardOutputLineConsoleWriteFailed
+
+const writeStandardOutputLineSuccessSentinel ExitCode 0
+returnOk writeStandardOutputLineSuccessSentinel
+
+label writeStandardOutputLineConsoleWriteFailed
+returnError writeStandardOutputLineConsoleWriteError
+# endGroup writeStandardOutputLineHelperBody
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+memory main stack max 4KiB
+async main no
+
+purpose main "Print the shallow-copy and sort surprises from javascript/counterintuitive-mutation.js"
+invariant main "Lines preserve the demonstration order: name, shared-tags, in-place sort, numeric sort, const mutation"
+
+label startMain
+
+const mutationTitleText String "Counterintuitive Mutation"
+const mutationTitleUnderlineText String "========================="
+const mutationOriginalProfileNameText String "originalProfile.name => Grace"
+const mutationOriginalProfileTagsText String "originalProfile.tags => admin, beta, shared-array"
+const mutationCopiedTagsProfileTagsText String "copiedTagsProfile.tags => admin, beta, copied-array"
+const mutationNumbersAfterSortText String "numbers after sort() => 1, 10, 2"
+const mutationSortedSameArrayText String "sortedSameArray is numbers => true"
+const mutationNumericSortedCopyText String "numericSortedCopy => 1, 2, 10"
+const mutationConstObjectMutationText String "const object can mutate status => closed"
+
+var lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
+
+call writeMutationTitleLineCall writeStandardOutputLine
+arg writeMutationTitleLineCall text mutationTitleText
+run writeMutationTitleLineCall
+ignoreOk writeMutationTitleLineCall Void
+bindError writeMutationTitleLineError ConsoleWriteError writeMutationTitleLineCall
+set lastConsoleWriteErrorCode writeMutationTitleLineError
+branchIfError writeMutationTitleLineCall consoleWriteFailed
+
+call writeMutationTitleUnderlineLineCall writeStandardOutputLine
+arg writeMutationTitleUnderlineLineCall text mutationTitleUnderlineText
+run writeMutationTitleUnderlineLineCall
+ignoreOk writeMutationTitleUnderlineLineCall Void
+bindError writeMutationTitleUnderlineLineError ConsoleWriteError writeMutationTitleUnderlineLineCall
+set lastConsoleWriteErrorCode writeMutationTitleUnderlineLineError
+branchIfError writeMutationTitleUnderlineLineCall consoleWriteFailed
+
+call writeMutationOriginalProfileNameLineCall writeStandardOutputLine
+arg writeMutationOriginalProfileNameLineCall text mutationOriginalProfileNameText
+run writeMutationOriginalProfileNameLineCall
+ignoreOk writeMutationOriginalProfileNameLineCall Void
+bindError writeMutationOriginalProfileNameLineError ConsoleWriteError writeMutationOriginalProfileNameLineCall
+set lastConsoleWriteErrorCode writeMutationOriginalProfileNameLineError
+branchIfError writeMutationOriginalProfileNameLineCall consoleWriteFailed
+
+call writeMutationOriginalProfileTagsLineCall writeStandardOutputLine
+arg writeMutationOriginalProfileTagsLineCall text mutationOriginalProfileTagsText
+run writeMutationOriginalProfileTagsLineCall
+ignoreOk writeMutationOriginalProfileTagsLineCall Void
+bindError writeMutationOriginalProfileTagsLineError ConsoleWriteError writeMutationOriginalProfileTagsLineCall
+set lastConsoleWriteErrorCode writeMutationOriginalProfileTagsLineError
+branchIfError writeMutationOriginalProfileTagsLineCall consoleWriteFailed
+
+call writeMutationCopiedTagsProfileTagsLineCall writeStandardOutputLine
+arg writeMutationCopiedTagsProfileTagsLineCall text mutationCopiedTagsProfileTagsText
+run writeMutationCopiedTagsProfileTagsLineCall
+ignoreOk writeMutationCopiedTagsProfileTagsLineCall Void
+bindError writeMutationCopiedTagsProfileTagsLineError ConsoleWriteError writeMutationCopiedTagsProfileTagsLineCall
+set lastConsoleWriteErrorCode writeMutationCopiedTagsProfileTagsLineError
+branchIfError writeMutationCopiedTagsProfileTagsLineCall consoleWriteFailed
+
+call writeMutationNumbersAfterSortLineCall writeStandardOutputLine
+arg writeMutationNumbersAfterSortLineCall text mutationNumbersAfterSortText
+run writeMutationNumbersAfterSortLineCall
+ignoreOk writeMutationNumbersAfterSortLineCall Void
+bindError writeMutationNumbersAfterSortLineError ConsoleWriteError writeMutationNumbersAfterSortLineCall
+set lastConsoleWriteErrorCode writeMutationNumbersAfterSortLineError
+branchIfError writeMutationNumbersAfterSortLineCall consoleWriteFailed
+
+call writeMutationSortedSameArrayLineCall writeStandardOutputLine
+arg writeMutationSortedSameArrayLineCall text mutationSortedSameArrayText
+run writeMutationSortedSameArrayLineCall
+ignoreOk writeMutationSortedSameArrayLineCall Void
+bindError writeMutationSortedSameArrayLineError ConsoleWriteError writeMutationSortedSameArrayLineCall
+set lastConsoleWriteErrorCode writeMutationSortedSameArrayLineError
+branchIfError writeMutationSortedSameArrayLineCall consoleWriteFailed
+
+call writeMutationNumericSortedCopyLineCall writeStandardOutputLine
+arg writeMutationNumericSortedCopyLineCall text mutationNumericSortedCopyText
+run writeMutationNumericSortedCopyLineCall
+ignoreOk writeMutationNumericSortedCopyLineCall Void
+bindError writeMutationNumericSortedCopyLineError ConsoleWriteError writeMutationNumericSortedCopyLineCall
+set lastConsoleWriteErrorCode writeMutationNumericSortedCopyLineError
+branchIfError writeMutationNumericSortedCopyLineCall consoleWriteFailed
+
+call writeMutationConstObjectMutationLineCall writeStandardOutputLine
+arg writeMutationConstObjectMutationLineCall text mutationConstObjectMutationText
+run writeMutationConstObjectMutationLineCall
+ignoreOk writeMutationConstObjectMutationLineCall Void
+bindError writeMutationConstObjectMutationLineError ConsoleWriteError writeMutationConstObjectMutationLineCall
+set lastConsoleWriteErrorCode writeMutationConstObjectMutationLineError
+branchIfError writeMutationConstObjectMutationLineCall consoleWriteFailed
+
+const successfulExitCode ExitCode 0
+returnOk successfulExitCode
+
+label consoleWriteFailed
+# rationale: lastConsoleWriteErrorCode holds whichever emit actually failed; its `set`
+# ran immediately before the corresponding branchIfError, so the typed
+# MainError.ConsoleWriteFailed value honestly names its cause (§12).
+makeError consoleWriteFailure MainError.ConsoleWriteFailed lastConsoleWriteErrorCode
+returnError consoleWriteFailure

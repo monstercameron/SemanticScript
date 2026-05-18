@@ -1,0 +1,28 @@
+# expect.stdout: 42\n
+# expect.exit: 0
+# expect.xfail: feature_coverage.py runs through bootstrap_general.sscript which still treats `send`/`receive` as a no-op and a zero bind. Direct semsc.py compilation works correctly (`python compiler/semsc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints `42\n` because the single-thread channel slot carries the value from send to receive). Closing means teaching bootstrap_general to alloca one i64 slot per channel and route send/receive through store/load.
+project ChannelSendReceive
+target console
+runtime AgentRuntime 0.1
+entry console main
+error MainError
+errorCase MainError Placeholder CSignedInt32
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+async main no
+purpose main "Single-thread channel: send writes into the channel slot; receive reads it back."
+invariant main "Output is the value that was sent (42), not the zero default."
+label startMain
+const valueToSend I64 42
+send messageBus valueToSend
+receive deliveredValue I64 messageBus
+call printDeliveredCall console.writeIntegerLine
+arg printDeliveredCall console console
+arg printDeliveredCall value deliveredValue
+run printDeliveredCall
+ignoreOk printDeliveredCall Void
+const successfulExitCode ExitCode 0
+returnOk successfulExitCode

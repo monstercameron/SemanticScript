@@ -1,7 +1,7 @@
 'use strict';
 
 // Text analysis baseline with normalization, counting, and simple ranking.
-const paragraph = 'AgentScript favors explicit context. Context helps agents patch code. Explicit names reduce guessing.';
+const paragraph = 'SemanticScript favors explicit context. Context helps agents patch code. Explicit names reduce guessing.';
 
 const normalizeWord = (word) => word.toLowerCase().replace(/[^a-z]/g, '');
 

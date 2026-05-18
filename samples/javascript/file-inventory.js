@@ -5,6 +5,7 @@ const path = require('path');
 
 // Uses only built-in modules to summarize the JavaScript benchmark folder.
 const currentDirectory = __dirname;
+const displayDirectory = 'SemanticScript/samples/javascript';
 
 const files = fs.readdirSync(currentDirectory)
   .filter((fileName) => fileName.endsWith('.js'))
@@ -33,7 +34,7 @@ const fileSummaries = files.map((fileName) => {
 
 console.log('JavaScript Folder Inventory');
 console.log('===========================');
-console.log(`directory: ${currentDirectory}`);
+console.log(`directory: ${displayDirectory}`);
 console.log(`scriptCount: ${fileSummaries.length}`);
 
 fileSummaries.forEach((summary) => {

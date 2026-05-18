@@ -1,0 +1,37 @@
+# expect.stdout: 7\n
+# expect.exit: 0
+# expect.xfail: feature_coverage.py runs through bootstrap_general.sscript which does not yet recognize `start`/`await` body verbs that flow through `useRetry`/sharedState mutation. Direct semsc.py compilation is correct: `python compiler/semsc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints `7` because the synchronous `start` lowering runs the helper and the helper writes 7 into shared state before `await`. Closing means teaching bootstrap_general to alias start→run and await→no-op.
+project StartAwaitSyncLowering
+target console
+runtime AgentRuntime 0.1
+entry console main
+error MainError
+errorCase MainError Placeholder CSignedInt32
+const zeroInitial I64 0
+const sevenValue I64 7
+sharedState process mutable backgroundJobResultValue I64 zeroInitial
+operation backgroundJobWritesShared
+input backgroundJobWritesShared trigger I64
+output backgroundJobWritesShared I64
+set sharedState backgroundJobResultValue sevenValue
+returnValue sevenValue
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+async main no
+purpose main "start runs the helper; await is a no-op; the helper's sharedState mutation must be visible after await."
+invariant main "Output is 7 (set by the helper), not 0 (the initial). If start were a true no-op, this would print 0."
+label startMain
+call backgroundJobCall backgroundJobWritesShared
+arg backgroundJobCall trigger zeroInitial
+start backgroundJobCall
+await backgroundJobCall
+call writeFinalCall console.writeIntegerLine
+arg writeFinalCall console console
+arg writeFinalCall value backgroundJobResultValue
+run writeFinalCall
+ignoreOk writeFinalCall Void
+const successfulExitCode ExitCode 0
+returnOk successfulExitCode

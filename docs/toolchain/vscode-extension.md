@@ -1,7 +1,7 @@
 # VS Code Extension
 
-The extension lives in `vscode-agentscript/`. It is editor tooling, not a
-compiler. It recognizes both executable AgentScript and refined syntax so the
+The extension lives in `vscode-semanticscript/`. It is editor tooling, not a
+compiler. It recognizes both executable SemanticScript and refined syntax so the
 source remains inspectable while the runtime catches up.
 
 ## Responsibilities
@@ -9,7 +9,7 @@ source remains inspectable while the runtime catches up.
 The extension should provide:
 
 ```text
-language registration for .as and .agentscript
+language registration for .sscript and .sscript
 TextMate highlighting
 semantic token roles
 whole-line segment coloring
@@ -60,30 +60,30 @@ Mutable: local var
 Current use: argument value passed to scanByteCall.offset
 ```
 
-Avoid generic wording like "AgentScript verb: const" when the line schema gives
+Avoid generic wording like "SemanticScript verb: const" when the line schema gives
 the actual semantic object.
 
 ## Settings
 
 ```json
 {
-  "agentScript.segmentColors.enabled": true,
-  "agentScript.segmentColors.colorMode": "background",
-  "agentScript.linter.enabled": true,
-  "agentScript.linter.engine": "aslint",
-  "agentScript.linter.run": "onSave",
-  "agentScript.linter.pythonPath": "python",
-  "agentScript.linter.path": "",
-  "agentScript.linter.skipFutureSyntax": true
+  "semanticScript.segmentColors.enabled": true,
+  "semanticScript.segmentColors.colorMode": "background",
+  "semanticScript.linter.enabled": true,
+  "semanticScript.linter.engine": "semlint",
+  "semanticScript.linter.run": "onSave",
+  "semanticScript.linter.pythonPath": "python",
+  "semanticScript.linter.path": "",
+  "semanticScript.linter.skipFutureSyntax": true
 }
 ```
 
 Accepted values:
 
 ```text
-agentScript.segmentColors.colorMode: background | overview | both
-agentScript.linter.engine: aslint | aslint2
-agentScript.linter.run: onSave | onType | manual
+semanticScript.segmentColors.colorMode: background | overview | both
+semanticScript.linter.engine: semlint | semlint2
+semanticScript.linter.run: onSave | onType | manual
 ```
 
 ## Local Development
@@ -91,28 +91,28 @@ agentScript.linter.run: onSave | onType | manual
 Run the syntax check:
 
 ```powershell
-cd vscode-agentscript
+cd vscode-semanticscript
 npm run check
 ```
 
 Launch an extension host:
 
 ```text
-Open vscode-agentscript in VS Code, then press F5.
+Open vscode-semanticscript in VS Code, then press F5.
 ```
 
 Open representative files:
 
 ```text
-../AgentScript/as/countdown.as
-../AgentScript/as/feature_tests/147_worker_pool_submit_work_runs.as
-../experiments/refined_syntax_example.as
+../SemanticScript/sem/countdown.sscript
+../SemanticScript/sem/feature_tests/147_worker_pool_submit_work_runs.sscript
+../experiments/refined_syntax_example.sscript
 ```
 
 ## Packaging
 
 ```powershell
-cd vscode-agentscript
+cd vscode-semanticscript
 npm run check
 npx --yes @vscode/vsce package
 ```
@@ -124,7 +124,7 @@ Code or restart the extension host before checking hovers.
 
 When adding a language verb:
 
-1. Add TextMate coverage in `syntaxes/agentscript.tmLanguage.json`.
+1. Add TextMate coverage in `syntaxes/semanticscript.tmLanguage.json`.
 2. Add semantic classification in `extension.js`.
 3. Add context-aware hover text for the concrete line schema.
 4. Add identifier indexing if the verb declares or references a symbol.

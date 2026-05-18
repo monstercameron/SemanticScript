@@ -1,12 +1,12 @@
 # Errors, Effects, and Capabilities
 
-AgentScript treats failure and side effects as visible dataflow. A call that can
+SemanticScript treats failure and side effects as visible dataflow. A call that can
 fail should expose a named error value and a branch decision. An operation that
 touches the outside world should declare its effects.
 
 ## Error Domains
 
-```agentscript
+```semanticscript
 error ConsoleWriteError
 errorCase ConsoleWriteError ConsoleWriteFailed CSignedInt32
 ```
@@ -17,7 +17,7 @@ runtime value or failure category.
 
 ## Result-Shaped Outputs
 
-```agentscript
+```semanticscript
 operation writeStandardOutputLine
 input writeStandardOutputLine text String
 output writeStandardOutputLine Result Void ConsoleWriteError
@@ -32,7 +32,7 @@ source.
 
 ## Fallible Call Pattern
 
-```agentscript
+```semanticscript
 call writeLineCall console.writeLine
 arg writeLineCall text outputText
 run writeLineCall
@@ -54,12 +54,12 @@ bindError ERROR_VALUE ERROR_TYPE CALL
 branchIfError CALL LABEL
 ```
 
-`aslint2.py` checks hidden-failure patterns for known fallible targets such as
+`semlint2.py` checks hidden-failure patterns for known fallible targets such as
 `console.writeLine`, heap allocation calls, and selected libc calls.
 
 ## Constructing Domain Failures
 
-```agentscript
+```semanticscript
 makeError validationFailure RequestError.InvalidJson rawDecodeError
 returnError validationFailure
 ```
@@ -76,7 +76,7 @@ named failure value for later return or grouping.
 
 ## Effects
 
-```agentscript
+```semanticscript
 effect writeStandardOutputLine write console.stdout
 effect loadConfigFile read filesystem.config
 effect updateAccount write database.account
@@ -94,7 +94,7 @@ calls against declared effects. Current checks cover console writes and a set of
 
 ## Capabilities and Authority
 
-```agentscript
+```semanticscript
 capability consoleStdoutWriter console.stdout write
 useCapability writeStandardOutputLine consoleStdoutWriter
 
@@ -111,12 +111,12 @@ authority TARGET EFFECT_PATH ACCESS
 
 Capabilities name grants. `useCapability` attaches a grant to an operation or
 use site. `authority` is an inline grant form. The current compiler preserves
-these as metadata; `aslint2.py` checks for effect sites without capability
+these as metadata; `semlint2.py` checks for effect sites without capability
 coverage.
 
 ## Dependency Contracts
 
-```agentscript
+```semanticscript
 dependency postgresClient kind externalService
 dependencyEffect postgresClient read database.account
 dependencyExports postgresClient accountLookup

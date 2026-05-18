@@ -1,0 +1,169 @@
+# esoteric_church_encoding_refined.sscript
+#
+# Migration of sem/esoteric_church_encoding.sscript to refined syntax. Same
+# behavior — print the Church-encoded arithmetic and pair-projection
+# parity table from the JS baseline.
+
+section program.esotericChurchEncodingRefined
+
+project EsotericChurchEncodingRefined
+target console
+runtime AgentRuntime 0.1
+mode capturedOutputReplay
+entry console main
+
+section program.esotericChurchEncodingRefined.types
+
+type ConsoleWriteErrorCode I32
+
+section program.esotericChurchEncodingRefined.errors
+
+error MainError
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+
+section program.esotericChurchEncodingRefined.literals
+
+domainLiteral churchTitleText String "Esoteric Church Encoding"
+domainLiteral churchTitleUnderlineText String "========================"
+domainLiteral churchTwoText String "two: 2"
+domainLiteral churchThreeText String "three: 3"
+domainLiteral churchTwoPlusThreeText String "twoPlusThree: 5"
+domainLiteral churchTwoTimesThreeText String "twoTimesThree: 6"
+domainLiteral churchFirstPairText String "first(pair): 5"
+domainLiteral churchSecondPairText String "second(pair): 6"
+domainLiteral churchIfTrueText String "ifTrue: true"
+domainLiteral churchIfFalseText String "ifFalse: false"
+storage module immutable successfulExitCode ExitCode 0
+storage module immutable writeStandardOutputLineSuccessSentinel ExitCode 0
+
+section program.esotericChurchEncodingRefined.operations
+
+operation writeStandardOutputLine
+input writeStandardOutputLine text String
+output writeStandardOutputLine Result Void ConsoleWriteError
+effect writeStandardOutputLine write console.stdout
+memoryHeap writeStandardOutputLine no
+memoryStackLimit writeStandardOutputLine 1KiB
+async writeStandardOutputLine no
+operationBody writeStandardOutputLine sourceTape
+
+purpose writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
+invariant writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
+guarantee writeStandardOutputLine "On success the entire text plus a single newline byte is written exactly once"
+
+label startWriteStandardOutputLine
+
+call writeStandardOutputLineConsoleWriteCall console.writeLine
+arg writeStandardOutputLineConsoleWriteCall console console
+arg writeStandardOutputLineConsoleWriteCall text text
+run writeStandardOutputLineConsoleWriteCall
+ignoreOk writeStandardOutputLineConsoleWriteCall Void
+bindError writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
+branchIfError writeStandardOutputLineConsoleWriteCall writeStandardOutputLineConsoleWriteFailed
+
+returnOk writeStandardOutputLineSuccessSentinel
+
+label writeStandardOutputLineConsoleWriteFailed
+returnError writeStandardOutputLineConsoleWriteError
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memoryHeap main no
+memoryStackLimit main 4KiB
+async main no
+operationBody main sourceTape
+
+purpose main "Print the Church-encoded arithmetic and pair-projection parity table from javascript/esoteric-church-encoding.js"
+invariant main "Rows print in declared order: title, underline, two, three, sum, product, first(pair), second(pair), ifTrue, ifFalse"
+
+label startMain
+
+var lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
+
+call writeChurchTitleLineCall writeStandardOutputLine
+arg writeChurchTitleLineCall text churchTitleText
+run writeChurchTitleLineCall
+ignoreOk writeChurchTitleLineCall Void
+bindError writeChurchTitleLineError ConsoleWriteError writeChurchTitleLineCall
+set lastConsoleWriteErrorCode writeChurchTitleLineError
+branchIfError writeChurchTitleLineCall consoleWriteFailed
+
+call writeChurchTitleUnderlineLineCall writeStandardOutputLine
+arg writeChurchTitleUnderlineLineCall text churchTitleUnderlineText
+run writeChurchTitleUnderlineLineCall
+ignoreOk writeChurchTitleUnderlineLineCall Void
+bindError writeChurchTitleUnderlineLineError ConsoleWriteError writeChurchTitleUnderlineLineCall
+set lastConsoleWriteErrorCode writeChurchTitleUnderlineLineError
+branchIfError writeChurchTitleUnderlineLineCall consoleWriteFailed
+
+call writeChurchTwoLineCall writeStandardOutputLine
+arg writeChurchTwoLineCall text churchTwoText
+run writeChurchTwoLineCall
+ignoreOk writeChurchTwoLineCall Void
+bindError writeChurchTwoLineError ConsoleWriteError writeChurchTwoLineCall
+set lastConsoleWriteErrorCode writeChurchTwoLineError
+branchIfError writeChurchTwoLineCall consoleWriteFailed
+
+call writeChurchThreeLineCall writeStandardOutputLine
+arg writeChurchThreeLineCall text churchThreeText
+run writeChurchThreeLineCall
+ignoreOk writeChurchThreeLineCall Void
+bindError writeChurchThreeLineError ConsoleWriteError writeChurchThreeLineCall
+set lastConsoleWriteErrorCode writeChurchThreeLineError
+branchIfError writeChurchThreeLineCall consoleWriteFailed
+
+call writeChurchTwoPlusThreeLineCall writeStandardOutputLine
+arg writeChurchTwoPlusThreeLineCall text churchTwoPlusThreeText
+run writeChurchTwoPlusThreeLineCall
+ignoreOk writeChurchTwoPlusThreeLineCall Void
+bindError writeChurchTwoPlusThreeLineError ConsoleWriteError writeChurchTwoPlusThreeLineCall
+set lastConsoleWriteErrorCode writeChurchTwoPlusThreeLineError
+branchIfError writeChurchTwoPlusThreeLineCall consoleWriteFailed
+
+call writeChurchTwoTimesThreeLineCall writeStandardOutputLine
+arg writeChurchTwoTimesThreeLineCall text churchTwoTimesThreeText
+run writeChurchTwoTimesThreeLineCall
+ignoreOk writeChurchTwoTimesThreeLineCall Void
+bindError writeChurchTwoTimesThreeLineError ConsoleWriteError writeChurchTwoTimesThreeLineCall
+set lastConsoleWriteErrorCode writeChurchTwoTimesThreeLineError
+branchIfError writeChurchTwoTimesThreeLineCall consoleWriteFailed
+
+call writeChurchFirstPairLineCall writeStandardOutputLine
+arg writeChurchFirstPairLineCall text churchFirstPairText
+run writeChurchFirstPairLineCall
+ignoreOk writeChurchFirstPairLineCall Void
+bindError writeChurchFirstPairLineError ConsoleWriteError writeChurchFirstPairLineCall
+set lastConsoleWriteErrorCode writeChurchFirstPairLineError
+branchIfError writeChurchFirstPairLineCall consoleWriteFailed
+
+call writeChurchSecondPairLineCall writeStandardOutputLine
+arg writeChurchSecondPairLineCall text churchSecondPairText
+run writeChurchSecondPairLineCall
+ignoreOk writeChurchSecondPairLineCall Void
+bindError writeChurchSecondPairLineError ConsoleWriteError writeChurchSecondPairLineCall
+set lastConsoleWriteErrorCode writeChurchSecondPairLineError
+branchIfError writeChurchSecondPairLineCall consoleWriteFailed
+
+call writeChurchIfTrueLineCall writeStandardOutputLine
+arg writeChurchIfTrueLineCall text churchIfTrueText
+run writeChurchIfTrueLineCall
+ignoreOk writeChurchIfTrueLineCall Void
+bindError writeChurchIfTrueLineError ConsoleWriteError writeChurchIfTrueLineCall
+set lastConsoleWriteErrorCode writeChurchIfTrueLineError
+branchIfError writeChurchIfTrueLineCall consoleWriteFailed
+
+call writeChurchIfFalseLineCall writeStandardOutputLine
+arg writeChurchIfFalseLineCall text churchIfFalseText
+run writeChurchIfFalseLineCall
+ignoreOk writeChurchIfFalseLineCall Void
+bindError writeChurchIfFalseLineError ConsoleWriteError writeChurchIfFalseLineCall
+set lastConsoleWriteErrorCode writeChurchIfFalseLineError
+branchIfError writeChurchIfFalseLineCall consoleWriteFailed
+
+returnOk successfulExitCode
+
+label consoleWriteFailed
+makeError consoleWriteFailure MainError.ConsoleWriteFailed lastConsoleWriteErrorCode
+returnError consoleWriteFailure

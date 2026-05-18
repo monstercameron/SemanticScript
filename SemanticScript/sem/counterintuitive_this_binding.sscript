@@ -1,0 +1,135 @@
+project CounterintuitiveThisBinding
+target console
+runtime AgentRuntime 0.1
+mode capturedOutputReplay
+
+# warning: This program is an output-fidelity replay. Its stdout matches the
+# deterministic capture of the sibling JavaScript baseline byte-for-byte, but
+# the underlying algorithm is not expressed in SemanticScript because the semsc
+# compiler does not yet support arrays, hashes, async, JSON, HTTP, or file I/O.
+
+entry console main
+
+type ConsoleWriteErrorCode I32
+
+error MainError
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+
+operation writeStandardOutputLine
+input writeStandardOutputLine text String
+output writeStandardOutputLine Result Void ConsoleWriteError
+effect writeStandardOutputLine write console.stdout
+memory writeStandardOutputLine heap no
+memory writeStandardOutputLine stack max 1KiB
+async writeStandardOutputLine no
+
+purpose writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
+invariant writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
+guarantee writeStandardOutputLine "On success the entire text plus a single newline byte is written exactly once"
+
+# group writeStandardOutputLineHelperBody
+label startWriteStandardOutputLine
+
+call writeStandardOutputLineConsoleWriteCall console.writeLine
+arg writeStandardOutputLineConsoleWriteCall console console
+arg writeStandardOutputLineConsoleWriteCall text text
+run writeStandardOutputLineConsoleWriteCall
+ignoreOk writeStandardOutputLineConsoleWriteCall Void
+bindError writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
+branchIfError writeStandardOutputLineConsoleWriteCall writeStandardOutputLineConsoleWriteFailed
+
+const writeStandardOutputLineSuccessSentinel ExitCode 0
+returnOk writeStandardOutputLineSuccessSentinel
+
+label writeStandardOutputLineConsoleWriteFailed
+returnError writeStandardOutputLineConsoleWriteError
+# endGroup writeStandardOutputLineHelperBody
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+memory main stack max 4KiB
+async main no
+
+purpose main "Print the JavaScript this-binding surprises from javascript/counterintuitive-this-binding.js"
+invariant main "Detached method invocation reports TypeError; arrow functions ignore explicit .call"
+
+label startMain
+
+const thisBindingTitleText String "Counterintuitive This Binding"
+const thisBindingTitleUnderlineText String "============================="
+const thisBindingCounterReadText String "counter.readCount() => 3"
+const thisBindingDetachedTypeErrorText String "detachedReadCount() => TypeError"
+const thisBindingBoundReadText String "boundReadCount() => 3"
+const thisBindingOtherReadText String "otherCounter.readCount() => 99"
+const thisBindingArrowCallText String "arrowReadCount.call({ count: 42 }) => 3"
+
+var lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
+
+call writeThisBindingTitleLineCall writeStandardOutputLine
+arg writeThisBindingTitleLineCall text thisBindingTitleText
+run writeThisBindingTitleLineCall
+ignoreOk writeThisBindingTitleLineCall Void
+bindError writeThisBindingTitleLineError ConsoleWriteError writeThisBindingTitleLineCall
+set lastConsoleWriteErrorCode writeThisBindingTitleLineError
+branchIfError writeThisBindingTitleLineCall consoleWriteFailed
+
+call writeThisBindingTitleUnderlineLineCall writeStandardOutputLine
+arg writeThisBindingTitleUnderlineLineCall text thisBindingTitleUnderlineText
+run writeThisBindingTitleUnderlineLineCall
+ignoreOk writeThisBindingTitleUnderlineLineCall Void
+bindError writeThisBindingTitleUnderlineLineError ConsoleWriteError writeThisBindingTitleUnderlineLineCall
+set lastConsoleWriteErrorCode writeThisBindingTitleUnderlineLineError
+branchIfError writeThisBindingTitleUnderlineLineCall consoleWriteFailed
+
+call writeThisBindingCounterReadLineCall writeStandardOutputLine
+arg writeThisBindingCounterReadLineCall text thisBindingCounterReadText
+run writeThisBindingCounterReadLineCall
+ignoreOk writeThisBindingCounterReadLineCall Void
+bindError writeThisBindingCounterReadLineError ConsoleWriteError writeThisBindingCounterReadLineCall
+set lastConsoleWriteErrorCode writeThisBindingCounterReadLineError
+branchIfError writeThisBindingCounterReadLineCall consoleWriteFailed
+
+call writeThisBindingDetachedTypeErrorLineCall writeStandardOutputLine
+arg writeThisBindingDetachedTypeErrorLineCall text thisBindingDetachedTypeErrorText
+run writeThisBindingDetachedTypeErrorLineCall
+ignoreOk writeThisBindingDetachedTypeErrorLineCall Void
+bindError writeThisBindingDetachedTypeLineError ConsoleWriteError writeThisBindingDetachedTypeErrorLineCall
+set lastConsoleWriteErrorCode writeThisBindingDetachedTypeLineError
+branchIfError writeThisBindingDetachedTypeErrorLineCall consoleWriteFailed
+
+call writeThisBindingBoundReadLineCall writeStandardOutputLine
+arg writeThisBindingBoundReadLineCall text thisBindingBoundReadText
+run writeThisBindingBoundReadLineCall
+ignoreOk writeThisBindingBoundReadLineCall Void
+bindError writeThisBindingBoundReadLineError ConsoleWriteError writeThisBindingBoundReadLineCall
+set lastConsoleWriteErrorCode writeThisBindingBoundReadLineError
+branchIfError writeThisBindingBoundReadLineCall consoleWriteFailed
+
+call writeThisBindingOtherReadLineCall writeStandardOutputLine
+arg writeThisBindingOtherReadLineCall text thisBindingOtherReadText
+run writeThisBindingOtherReadLineCall
+ignoreOk writeThisBindingOtherReadLineCall Void
+bindError writeThisBindingOtherReadLineError ConsoleWriteError writeThisBindingOtherReadLineCall
+set lastConsoleWriteErrorCode writeThisBindingOtherReadLineError
+branchIfError writeThisBindingOtherReadLineCall consoleWriteFailed
+
+call writeThisBindingArrowCallLineCall writeStandardOutputLine
+arg writeThisBindingArrowCallLineCall text thisBindingArrowCallText
+run writeThisBindingArrowCallLineCall
+ignoreOk writeThisBindingArrowCallLineCall Void
+bindError writeThisBindingArrowCallLineError ConsoleWriteError writeThisBindingArrowCallLineCall
+set lastConsoleWriteErrorCode writeThisBindingArrowCallLineError
+branchIfError writeThisBindingArrowCallLineCall consoleWriteFailed
+
+const successfulExitCode ExitCode 0
+returnOk successfulExitCode
+
+label consoleWriteFailed
+# rationale: lastConsoleWriteErrorCode holds whichever emit actually failed; its `set`
+# ran immediately before the corresponding branchIfError, so the typed
+# MainError.ConsoleWriteFailed value honestly names its cause (§12).
+makeError consoleWriteFailure MainError.ConsoleWriteFailed lastConsoleWriteErrorCode
+returnError consoleWriteFailure

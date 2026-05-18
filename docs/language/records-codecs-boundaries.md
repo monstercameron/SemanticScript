@@ -6,7 +6,7 @@ many refined forms are metadata that linters and editor hovers can inspect.
 
 ## Records
 
-```agentscript
+```semanticscript
 record Task
 recordLayout Task packed
 recordAlign Task 8
@@ -25,11 +25,11 @@ recordAlign RECORD N
 ```
 
 `field` currently requires the record to have been declared first.
-`recordAlign` should be a power of two; `aslint2.py` checks that rule.
+`recordAlign` should be a power of two; `semlint2.py` checks that rule.
 
 ## Field Operations
 
-```agentscript
+```semanticscript
 new taskValue Task
 fieldSet taskValue title validatedTaskTitle
 fieldSet taskValue completed false
@@ -51,7 +51,7 @@ record-typed params, field reads can alias flattened parameter SSA values.
 
 Builders keep large record construction explicit and named.
 
-```agentscript
+```semanticscript
 recordBuilder taskBuilder Task
 recordSet taskBuilder title validatedTaskTitle
 recordSet taskBuilder completed false
@@ -73,7 +73,7 @@ patterns stay consistent with normal call flow.
 
 ## JSON Codecs
 
-```agentscript
+```semanticscript
 jsonCodec taskJsonCodec
 jsonCodecStrict taskJsonCodec yes
 jsonCodecUnknownFields taskJsonCodec reject
@@ -91,11 +91,11 @@ as `json.encode.Bool`, `json.decode.Bool`, and selected scalar codec targets
 have direct compiler support. Record-level generated codecs are still primarily
 metadata unless a backing operation/runtime binding is present.
 
-`aslint2.py` checks incomplete JSON codecs.
+`semlint2.py` checks incomplete JSON codecs.
 
 ## Generic Codecs
 
-```agentscript
+```semanticscript
 codec taskBinaryCodec binary
 schema taskBinaryCodec Task
 unknownFields taskBinaryCodec reject
@@ -106,7 +106,7 @@ backend is not part of the source yet.
 
 ## Validators, Mappers, Adapters, Boundaries
 
-```agentscript
+```semanticscript
 validator taskTitleValidator
 mapper taskRowToResponseMapper
 adapter postgresTaskRowAdapter
@@ -118,7 +118,7 @@ input, output, failure, and trust metadata so they are not empty labels.
 
 ## Trust Boundaries
 
-```agentscript
+```semanticscript
 trustBoundary ValidatedText
 trustBoundaryKind ValidatedText rawUtf8ToValidatedText
 trustBoundaryInput ValidatedText RawText
@@ -134,7 +134,7 @@ Trust-boundary declarations should answer:
 - Which validator proves the transition?
 - Which source is permitted?
 
-`aslint2.py` checks partial trust boundaries. Treat that diagnostic as design
+`semlint2.py` checks partial trust boundaries. Treat that diagnostic as design
 pressure: a partial boundary is usually worse than no boundary because it
 implies safety without enough evidence.
 

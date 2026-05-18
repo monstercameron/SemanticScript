@@ -13,7 +13,7 @@ generated targets, domain methods, and `c.*` C standard-library functions.
 
 Example:
 
-```agentscript
+```semanticscript
 const greetingText String "hello"
 call writeGreetingCall console.writeLine
 arg writeGreetingCall text greetingText
@@ -23,7 +23,7 @@ ignoreOk writeGreetingCall Void
 
 Declare the effect:
 
-```agentscript
+```semanticscript
 effect main write console.stdout
 ```
 
@@ -52,7 +52,7 @@ and `math.ltI64` are normalized to canonical targets.
 `math.checkedMultiplyI64` returns a product plus an overflow predicate
 internally. Handle it like a fallible call:
 
-```agentscript
+```semanticscript
 call multiplyCall math.checkedMultiplyI64
 arg multiplyCall left leftValue
 arg multiplyCall right rightValue
@@ -123,7 +123,7 @@ arithmetic/check operations.
 A target of the shape `TypeName.methodName` can lower to a primitive operation
 when `TypeName` aliases an integer or floating type.
 
-```agentscript
+```semanticscript
 type CountdownValue I64
 
 call decrementCall CountdownValue.subtractPositiveStep
@@ -149,7 +149,7 @@ Floating aliases support the core arithmetic and comparison methods.
 When `TARGET` matches an `operation NAME` in the same program, the compiler
 emits a direct LLVM call.
 
-```agentscript
+```semanticscript
 call helperCall writeStandardOutputLine
 arg helperCall text outputText
 run helperCall
@@ -162,9 +162,9 @@ maintainable source. The current compiler dispatches by callee input order.
 
 ## C Standard Library
 
-`c.<function>` routes through `AgentScript/compiler/libc_registry.py`.
+`c.<function>` routes through `SemanticScript/compiler/libc_registry.py`.
 
-```agentscript
+```semanticscript
 const byteCount CByteCount 64
 call allocateBufferCall c.malloc
 arg allocateBufferCall size byteCount
@@ -176,7 +176,7 @@ The registry covers hosted C library functions across headers such as
 `stdio.h`, `stdlib.h`, `string.h`, `math.h`, `ctype.h`, `time.h`, `wchar.h`,
 `fenv.h`, `complex.h`, `uchar.h`, and `threads.h`.
 
-C functions with underscores are exposed through AgentScript-legal camelCase
+C functions with underscores are exposed through SemanticScript-legal camelCase
 aliases where needed:
 
 ```text

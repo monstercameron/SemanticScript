@@ -1,0 +1,102 @@
+# countdown_refined.sscript
+#
+# Migration of sem/countdown.sscript to refined syntax. Same behavior — print
+# 5, 4, 3, 2, 1 each on their own line — but rewritten to use the
+# transformer-friendly verb forms from experiments/refined_syntax_example.sscript.
+#
+# Changes from the V0 source:
+#   - `section …` anchors for retrieval / attention.
+#   - `domainLiteral` for typed literal values instead of `const` at module scope.
+#   - `storage module immutable …` for shared step/limit values.
+#   - `memoryHeap` / `memoryStackLimit` instead of two-token `memory main …` lines.
+#   - `operationBody main sourceTape` declares the body kind explicitly.
+#
+# Verify identical behavior to sem/countdown.sscript via:
+#   python compiler/semsc.py sem/countdown_refined.sscript --emit-ir /tmp/c.ll
+#   clang /tmp/c.ll -o /tmp/c.exe && /tmp/c.exe   # prints 5\n4\n3\n2\n1\n
+
+section program.countdownRefined
+
+project CountdownRefined
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+section program.countdownRefined.types
+
+type CountdownValue I64
+type PositiveCountdownStep I64
+
+section program.countdownRefined.errors
+
+error MainError
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+
+section program.countdownRefined.literals
+
+domainLiteral countdownStartValue CountdownValue 5
+domainLiteral countdownEndValue CountdownValue 1
+storage module immutable countdownStepValue PositiveCountdownStep 1
+storage module immutable successfulExitCode ExitCode 0
+
+section program.countdownRefined.operations
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memoryHeap main no
+memoryStackLimit main 16KiB
+async main no
+operationBody main sourceTape
+
+purpose main "Print countdown values from countdownStartValue down to countdownEndValue, one value per output line"
+invariant main "The loop terminates because currentCountdownValue decreases by countdownStepValue every iteration"
+invariant main "The loop body runs only while currentCountdownValue is greater than or equal to countdownEndValue"
+invariant main "countdownStepValue is strictly greater than zero"
+
+label startMain
+
+var currentCountdownValue CountdownValue countdownStartValue
+
+label countdownLoopHead
+
+# rationale: Continue while currentCountdownValue is greater than or equal to countdownEndValue.
+call countdownRangeCheckCall CountdownValue.greaterThanOrEqual
+arg countdownRangeCheckCall left currentCountdownValue
+arg countdownRangeCheckCall right countdownEndValue
+run countdownRangeCheckCall
+bind countdownShouldContinue Bool countdownRangeCheckCall
+
+branchIf countdownShouldContinue countdownLoopBody
+branch countdownFinished
+
+label countdownLoopBody
+
+# rationale: Print the current countdown value with a newline; pass console explicitly.
+call printCurrentCountdownValueCall console.writeIntegerLine
+arg printCurrentCountdownValueCall console console
+arg printCurrentCountdownValueCall value currentCountdownValue
+run printCurrentCountdownValueCall
+ignoreOk printCurrentCountdownValueCall Void
+bindError printCurrentCountdownValueError ConsoleWriteError printCurrentCountdownValueCall
+branchIfError printCurrentCountdownValueCall consoleWriteFailed
+
+# rationale: Decrement after successful printing so failed output does not advance progress.
+call countdownValueDecrementCall CountdownValue.subtractPositiveStep
+arg countdownValueDecrementCall value currentCountdownValue
+arg countdownValueDecrementCall step countdownStepValue
+run countdownValueDecrementCall
+bind nextCountdownValue CountdownValue countdownValueDecrementCall
+
+set currentCountdownValue nextCountdownValue
+branch countdownLoopHead
+
+label countdownFinished
+returnOk successfulExitCode
+
+label consoleWriteFailed
+# failure: Convert the raw ConsoleWriteError into a typed MainError variant so the
+# operation output contract Result ExitCode MainError is satisfied.
+makeError consoleWriteFailure MainError.ConsoleWriteFailed printCurrentCountdownValueError
+returnError consoleWriteFailure

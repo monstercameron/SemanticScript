@@ -1,0 +1,96 @@
+project SmokeCMath
+target console
+runtime AgentRuntime 0.1
+
+entry console main
+
+error MainError
+errorCase MainError ConsoleWriteFailed CSignedInt32
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+memory main stack max 4KiB
+async main no
+
+purpose main "Exercise c.sqrt, c.pow, c.sin, c.cos against printf so the F64 ABI round-trip is observable"
+invariant main "Each c.* math call lowers to a direct extern call with no SemanticScript-side wrapping"
+
+label startMain
+
+const formatSquareRootText CNullTerminatedByteString "sqrt(%g) = %g\n"
+const formatPowText CNullTerminatedByteString "pow(%g, %g) = %g\n"
+const formatSinCosText CNullTerminatedByteString "sin(%g) = %g; cos(%g) = %g\n"
+
+const inputSquareRootValue CFloat64 2.0
+const inputPowBase CFloat64 2.0
+const inputPowExponent CFloat64 10.0
+const inputAngleRadians CFloat64 1.5707963267948966
+
+call sqrtCall c.sqrt
+arg sqrtCall x inputSquareRootValue
+run sqrtCall
+bind sqrtResult CFloat64 sqrtCall
+
+call printSqrtCall c.printf
+arg printSqrtCall format formatSquareRootText
+arg printSqrtCall input inputSquareRootValue
+arg printSqrtCall result sqrtResult
+run printSqrtCall
+ignoreOk printSqrtCall Void
+bindError printSqrtError CSignedInt32 printSqrtCall
+branchIfError printSqrtCall sqrtWriteFailed
+
+call powCall c.pow
+arg powCall base inputPowBase
+arg powCall exponent inputPowExponent
+run powCall
+bind powResult CFloat64 powCall
+
+call printPowCall c.printf
+arg printPowCall format formatPowText
+arg printPowCall base inputPowBase
+arg printPowCall exponent inputPowExponent
+arg printPowCall result powResult
+run printPowCall
+ignoreOk printPowCall Void
+bindError printPowError CSignedInt32 printPowCall
+branchIfError printPowCall powWriteFailed
+
+call sinCall c.sin
+arg sinCall x inputAngleRadians
+run sinCall
+bind sinResult CFloat64 sinCall
+
+call cosCall c.cos
+arg cosCall x inputAngleRadians
+run cosCall
+bind cosResult CFloat64 cosCall
+
+call printSinCosCall c.printf
+arg printSinCosCall format formatSinCosText
+arg printSinCosCall angleSin inputAngleRadians
+arg printSinCosCall valueSin sinResult
+arg printSinCosCall angleCos inputAngleRadians
+arg printSinCosCall valueCos cosResult
+run printSinCosCall
+ignoreOk printSinCosCall Void
+bindError printSinCosError CSignedInt32 printSinCosCall
+branchIfError printSinCosCall sinCosWriteFailed
+
+const successfulExitCode ExitCode 0
+returnOk successfulExitCode
+
+label sqrtWriteFailed
+makeError sqrtWriteFailure MainError.ConsoleWriteFailed printSqrtError
+returnError sqrtWriteFailure
+
+label powWriteFailed
+makeError powWriteFailure MainError.ConsoleWriteFailed printPowError
+returnError powWriteFailure
+
+label sinCosWriteFailed
+makeError sinCosWriteFailure MainError.ConsoleWriteFailed printSinCosError
+returnError sinCosWriteFailure

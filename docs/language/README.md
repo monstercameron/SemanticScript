@@ -1,6 +1,6 @@
 # Language Guide
 
-AgentScript is a flat, line-oriented program tape. Every non-empty source line
+SemanticScript is a flat, line-oriented semantic tape. Every non-empty source line
 starts with a verb, then a fixed schema of whitespace-separated tokens. There
 is no expression tree, statement nesting, implicit call syntax, or block
 syntax. The language spends source text to preserve context that compilers,
@@ -8,9 +8,9 @@ linters, editors, and agents can recover locally.
 
 The current repository has two related surfaces:
 
-- Executable AgentScript: accepted by `AgentScript/compiler/ascc.py` and used
-  by `AgentScript/as/` and `AgentScript/as/feature_tests/`.
-- Refined AgentScript: accepted as parseable metadata or synchronous fallback
+- Executable SemanticScript: accepted by `SemanticScript/compiler/semsc.py` and used
+  by `SemanticScript/sem/` and `SemanticScript/sem/feature_tests/`.
+- Refined SemanticScript: accepted as parseable metadata or synchronous fallback
   by the reference compiler/linter/editor, but not always backed by a runtime
   service yet. `SYNTAX.md` is the status inventory.
 
@@ -20,7 +20,7 @@ authority for executable lowering.
 
 ## Minimal Executable Program
 
-```agentscript
+```semanticscript
 project HelloProgram
 target console
 runtime native 1
@@ -31,7 +31,7 @@ output main ExitCode
 effect main write console.stdout
 purpose main "Print one greeting and exit successfully"
 
-const greetingText String "hello from AgentScript"
+const greetingText String "hello from SemanticScript"
 call writeGreetingCall console.writeLine
 arg writeGreetingCall text greetingText
 run writeGreetingCall
@@ -52,7 +52,7 @@ The important details:
 
 ## Design Invariants
 
-AgentScript source should remain:
+SemanticScript source should remain:
 
 - atomic: one semantic record per line;
 - explicit: effects, failures, memory behavior, time, and cleanup are visible;

@@ -1,0 +1,52 @@
+# hello_via_c_printf_refined.sscript
+#
+# Migration of sem/hello_via_c_printf.sscript to refined syntax. Same behavior —
+# single c.printf call writes "Hello from c.printf! arg=42\n".
+
+section program.helloViaCPrintfRefined
+
+project HelloViaCPrintfRefined
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+section program.helloViaCPrintfRefined.errors
+
+error MainError
+errorCase MainError ConsoleWriteFailed CSignedInt32
+
+section program.helloViaCPrintfRefined.literals
+
+domainLiteral helloFormatText CNullTerminatedByteString "Hello from c.printf! arg=%d\n"
+domainLiteral greetingArgument CSignedInt32 42
+storage module immutable successfulExitCode ExitCode 0
+
+section program.helloViaCPrintfRefined.operations
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memoryHeap main no
+memoryStackLimit main 4KiB
+async main no
+operationBody main sourceTape
+
+purpose main "Smoke-test the c.printf call target end-to-end through the SemanticScript LLVM backend"
+invariant main "A single c.printf call writes the greeting plus a newline and returns the byte count"
+
+label startMain
+
+call helloPrintfCall c.printf
+arg helloPrintfCall format helloFormatText
+arg helloPrintfCall value greetingArgument
+run helloPrintfCall
+bindOk bytesWrittenByPrintf CSignedInt32 helloPrintfCall
+bindError helloPrintfError CSignedInt32 helloPrintfCall
+branchIfError helloPrintfCall helloPrintfFailed
+
+returnOk successfulExitCode
+
+label helloPrintfFailed
+makeError helloPrintfFailure MainError.ConsoleWriteFailed helloPrintfError
+returnError helloPrintfFailure

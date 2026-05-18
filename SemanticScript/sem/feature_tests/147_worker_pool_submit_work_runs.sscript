@@ -1,0 +1,38 @@
+# expect.stdout: 77\n
+# expect.exit: 0
+# expect.xfail: feature_coverage.py runs through bootstrap_general.sscript which does not yet emit a real call for `submitWork`. Direct semsc.py compilation is correct: the work item runs the helper which writes 77 to shared state; awaitWork is no-op since the synchronous lowering ran the work inline. `python compiler/semsc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints `77`.
+project WorkerPoolSubmitWorkRuns
+target console
+runtime AgentRuntime 0.1
+entry console main
+error MainError
+errorCase MainError Placeholder CSignedInt32
+const zeroInitial I64 0
+const seventySevenValue I64 77
+sharedState process mutable workerOutputCounter I64 zeroInitial
+operation workerWritesSeventySeven
+input workerWritesSeventySeven incomingArg I64
+output workerWritesSeventySeven I64
+set sharedState workerOutputCounter seventySevenValue
+returnValue seventySevenValue
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+async main no
+purpose main "submitWork must dispatch to the work's target op under synchronous lowering."
+invariant main "workerOutputCounter holds 77 after awaitWork because the helper actually ran."
+label startMain
+workerPool sharedWorkerPool maxWorkers 4
+work workItemForJob target workerWritesSeventySeven
+workArg workItemForJob incomingArg zeroInitial
+submitWork workItemForJob sharedWorkerPool
+awaitWork workItemForJob
+call writeWorkerResultCall console.writeIntegerLine
+arg writeWorkerResultCall console console
+arg writeWorkerResultCall value workerOutputCounter
+run writeWorkerResultCall
+ignoreOk writeWorkerResultCall Void
+const successfulExitCode ExitCode 0
+returnOk successfulExitCode

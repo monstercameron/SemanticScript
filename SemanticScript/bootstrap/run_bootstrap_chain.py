@@ -1,0 +1,254 @@
+"""
+run_bootstrap_chain.py -- end-to-end verification of the SemanticScript
+self-hosting bootstrap.
+
+This script demonstrates that SemanticScript can compile SemanticScript by
+walking the full chain. The bootstrap ladder grows the parser one rung
+at a time; each stage's output executable is produced by code written
+entirely in SemanticScript.
+
+    Stage 1 (bootstrap.sscript):   Python `semsc.py` compiles `bootstrap.sscript`
+                              into native `bootstrap.exe`. The .sscript file
+                              hand-emits the LLVM IR for `Hello, World!`
+                              line by line.
+
+    Stage 2 (bootstrap2.sscript):  Reads `input.sscript`, finds its first quoted
+                              greeting, emits LLVM IR that prints those
+                              exact bytes when compiled.
+
+    Stage 3 (bootstrap3.sscript):  Reads `input3.sscript`, finds the first
+                              `ExitCode <N>` declaration whose value is
+                              a decimal-digit literal, and emits LLVM IR
+                              for a program that returns N from main().
+
+    Stage 4 (bootstrap4.sscript):  Reads `input4.sscript`, finds both a greeting
+                              string and an `ExitCode` integer, and
+                              emits a complete LLVM module that prints
+                              the greeting with puts and exits with the
+                              integer.
+
+    Stage 5 (bootstrap5.sscript):  Reads `input5.sscript`, finds the
+                              `CountdownValue <N>` start and the
+                              `ExitCode <M>` return code, and emits LLVM
+                              IR with real basic-block control flow
+                              (entry / loopHead / loopBody / loopExit
+                              joined by a conditional branch). The
+                              resulting executable prints N..1 one per
+                              line, then exits M.
+
+    Stage 6 (bootstrap6.sscript):  First SemanticScript-written compiler whose output IR
+                              size scales with the input. Finds every
+                              `CNullTerminatedByteString "..."` literal
+                              in `input6.sscript` and emits one @.s<i> string
+                              constant plus one @print<i> helper per
+                              literal, then a main() that calls each
+                              helper in source order before exiting with
+                              the parsed `ExitCode`. Adding a writeLine
+                              line to the input produces a measurably
+                              different output exe with no compiler
+                              edit.
+
+The script fails (exit 1) if any stage produces unexpected output.
+"""
+
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+SEMSC = HERE.parent / "compiler" / "semsc.py"
+CLANG = os.environ.get("SEMSC_CLANG") or shutil.which("clang") or r"C:/Program Files/LLVM/bin/clang.exe"
+
+if not Path(CLANG).exists():
+    print(f"clang not found at {CLANG}; set SEMSC_CLANG", file=sys.stderr)
+    sys.exit(1)
+
+
+def step(title: str):
+    print()
+    print(f"=== {title} ===")
+
+
+def run(cmd, allow_nonzero=False, **kwargs):
+    proc = subprocess.run(cmd, capture_output=True, text=True, **kwargs)
+    if proc.returncode != 0 and not allow_nonzero:
+        print(f"FAIL: {' '.join(str(c) for c in cmd)}", file=sys.stderr)
+        if proc.stdout:
+            print("--- stdout ---", file=sys.stderr)
+            print(proc.stdout, file=sys.stderr)
+        if proc.stderr:
+            print("--- stderr ---", file=sys.stderr)
+            print(proc.stderr, file=sys.stderr)
+        sys.exit(1)
+    return proc
+
+
+def assert_output(actual: str, expected: str, label: str):
+    actual_norm = actual.replace("\r\n", "\n").rstrip("\n")
+    if actual_norm != expected:
+        print(f"FAIL ({label}):\n  expected: {expected!r}\n  got:      {actual_norm!r}",
+              file=sys.stderr)
+        sys.exit(1)
+    print(f"  matched expected: {expected!r}")
+
+
+def assert_exit(actual: int, expected: int, label: str):
+    if actual != expected:
+        print(f"FAIL ({label}): expected exit {expected}, got {actual}", file=sys.stderr)
+        sys.exit(1)
+    print(f"  matched expected exit code: {expected}")
+
+
+def compile_sem(source: str, exe_name: str):
+    run([sys.executable, str(SEMSC), str(HERE / source),
+         "--emit-exe", str(HERE / exe_name)])
+    print(f"  built: {HERE / exe_name}")
+
+
+def emit_ir(exe_name: str, ll_name: str) -> str:
+    result = run([str(HERE / exe_name)])
+    out = result.stdout
+    (HERE / ll_name).write_text(out, newline="\n")
+    print(f"  emitted: {HERE / ll_name} ({len(out)} bytes)")
+    return out
+
+
+def clang_build(ll_name: str, exe_name: str):
+    run([CLANG, "-O2", "-o", str(HERE / exe_name), str(HERE / ll_name)])
+    print(f"  built: {HERE / exe_name}")
+
+
+# ---------------------------------------------------------------- Stage 1
+step("Stage 1 -- Python semsc.py compiles bootstrap.sscript -> bootstrap.exe")
+compile_sem("bootstrap.sscript", "bootstrap.exe")
+
+step("Stage 2 -- bootstrap.exe emits LLVM IR for hello-world")
+emit_ir("bootstrap.exe", "hello_self.ll")
+
+step("Stage 3 -- clang compiles the SemanticScript-emitted IR -> hello_self.exe")
+clang_build("hello_self.ll", "hello_self.exe")
+
+step("Stage 4 -- hello_self.exe runs (SemanticScript program compiled by SemanticScript)")
+result = run([str(HERE / "hello_self.exe")])
+print(f"  output: {result.stdout!r}")
+assert_output(result.stdout, "Hello, World!", "stage 1-4")
+
+# ---------------------------------------------------------------- Stage 2
+step("Stage 5 -- Python semsc.py compiles bootstrap2.sscript -> bootstrap2.exe")
+compile_sem("bootstrap2.sscript", "bootstrap2.exe")
+
+step("Stage 6 -- bootstrap2.exe reads input.sscript, extracts its first quoted greeting, emits IR")
+emit_ir("bootstrap2.exe", "stage2_hello.ll")
+
+step("Stage 7 -- clang compiles bootstrap2-emitted IR -> stage2_hello.exe")
+clang_build("stage2_hello.ll", "stage2_hello.exe")
+
+step("Stage 8 -- stage2_hello.exe runs (SemanticScript greeting parsed from .sscript source)")
+result = run([str(HERE / "stage2_hello.exe")])
+print(f"  output: {result.stdout!r}")
+input_text = (HERE / "input.sscript").read_text(encoding="utf-8")
+first_quote = input_text.index('"')
+second_quote = input_text.index('"', first_quote + 1)
+expected_greeting = input_text[first_quote + 1:second_quote]
+assert_output(result.stdout, expected_greeting, "stage 5-8")
+
+# ---------------------------------------------------------------- Stage 3
+step("Stage 9 -- Python semsc.py compiles bootstrap3.sscript -> bootstrap3.exe")
+compile_sem("bootstrap3.sscript", "bootstrap3.exe")
+
+step("Stage 10 -- bootstrap3.exe parses input3.sscript's ExitCode literal, emits IR")
+emit_ir("bootstrap3.exe", "stage3.ll")
+
+step("Stage 11 -- clang compiles bootstrap3-emitted IR -> stage3_const.exe")
+clang_build("stage3.ll", "stage3_const.exe")
+
+step("Stage 12 -- stage3_const.exe exits with the parsed integer")
+result = run([str(HERE / "stage3_const.exe")], allow_nonzero=True)
+print(f"  exit code: {result.returncode}")
+input3_text = (HERE / "input3.sscript").read_text(encoding="utf-8")
+# Mirror bootstrap3's parser: find first 'ExitCode ' followed by a digit.
+import re as _re
+match = _re.search(r"ExitCode (\d+)", input3_text)
+expected_exit = int(match.group(1))
+assert_exit(result.returncode, expected_exit, "stage 9-12")
+
+# ---------------------------------------------------------------- Stage 4
+step("Stage 13 -- Python semsc.py compiles bootstrap4.sscript -> bootstrap4.exe")
+compile_sem("bootstrap4.sscript", "bootstrap4.exe")
+
+step("Stage 14 -- bootstrap4.exe parses greeting + ExitCode from input4.sscript, emits IR")
+emit_ir("bootstrap4.exe", "stage4.ll")
+
+step("Stage 15 -- clang compiles bootstrap4-emitted IR -> stage4_greet.exe")
+clang_build("stage4.ll", "stage4_greet.exe")
+
+step("Stage 16 -- stage4_greet.exe prints greeting and exits with parsed code")
+result = run([str(HERE / "stage4_greet.exe")], allow_nonzero=True)
+print(f"  output: {result.stdout!r}  exit: {result.returncode}")
+input4_text = (HERE / "input4.sscript").read_text(encoding="utf-8")
+# Find the first `CNullTerminatedByteString "..."` declaration
+marker = 'CNullTerminatedByteString "'
+idx = input4_text.find(marker)
+greet_start = idx + len(marker)
+greet_end = input4_text.index('"', greet_start)
+expected_greeting4 = input4_text[greet_start:greet_end]
+match4 = _re.search(r"ExitCode (\d+)", input4_text)
+expected_exit4 = int(match4.group(1))
+assert_output(result.stdout, expected_greeting4, "stage 13-16 greeting")
+assert_exit(result.returncode, expected_exit4, "stage 13-16 exit")
+
+# ---------------------------------------------------------------- Stage 5
+step("Stage 17 -- Python semsc.py compiles bootstrap5.sscript -> bootstrap5.exe")
+compile_sem("bootstrap5.sscript", "bootstrap5.exe")
+
+step("Stage 18 -- bootstrap5.exe parses CountdownValue + ExitCode from input5.sscript, emits IR")
+emit_ir("bootstrap5.exe", "stage5.ll")
+
+step("Stage 19 -- clang compiles bootstrap5-emitted IR -> stage5_countdown.exe")
+clang_build("stage5.ll", "stage5_countdown.exe")
+
+step("Stage 20 -- stage5_countdown.exe runs the countdown loop")
+result = run([str(HERE / "stage5_countdown.exe")], allow_nonzero=True)
+print(f"  output: {result.stdout!r}  exit: {result.returncode}")
+input5_text = (HERE / "input5.sscript").read_text(encoding="utf-8")
+match_count = _re.search(r"CountdownValue (\d+)", input5_text)
+expected_start = int(match_count.group(1))
+match_exit = _re.search(r"ExitCode (\d+)", input5_text)
+expected_exit5 = int(match_exit.group(1))
+expected_output5 = "\n".join(str(i) for i in range(expected_start, 0, -1))
+assert_output(result.stdout, expected_output5, "stage 17-20 countdown")
+assert_exit(result.returncode, expected_exit5, "stage 17-20 exit")
+
+# ---------------------------------------------------------------- Stage 6
+step("Stage 21 -- Python semsc.py compiles bootstrap6.sscript -> bootstrap6.exe")
+compile_sem("bootstrap6.sscript", "bootstrap6.exe")
+
+step("Stage 22 -- bootstrap6.exe scans every CNullTerminatedByteString in input6.sscript, emits IR")
+emit_ir("bootstrap6.exe", "stage6.ll")
+
+step("Stage 23 -- clang compiles bootstrap6-emitted IR -> stage6_multi.exe")
+clang_build("stage6.ll", "stage6_multi.exe")
+
+step("Stage 24 -- stage6_multi.exe prints every greeting in source order")
+result = run([str(HERE / "stage6_multi.exe")], allow_nonzero=True)
+print(f"  output: {result.stdout!r}  exit: {result.returncode}")
+input6_text = (HERE / "input6.sscript").read_text(encoding="utf-8")
+# Mirror bootstrap6's parser: collect every CNullTerminatedByteString literal.
+expected_greetings6 = _re.findall(
+    r'CNullTerminatedByteString "([^"]*)"', input6_text)
+match_exit6 = _re.search(r"ExitCode (\d+)", input6_text)
+expected_exit6 = int(match_exit6.group(1))
+expected_output6 = "\n".join(expected_greetings6)
+assert_output(result.stdout, expected_output6, "stage 21-24 greetings")
+assert_exit(result.returncode, expected_exit6, "stage 21-24 exit")
+print(f"  emitted {len(expected_greetings6)} string constant(s) and helper(s)")
+
+print()
+print("=" * 60)
+print("ALL STAGES OK -- SemanticScript has compiled SemanticScript end-to-end.")
+print("Bootstrap chain: hello -> parsed-greeting -> constant-return ->")
+print("                 greeting+exit -> countdown-with-branches ->")
+print("                 input-scaled multi-greeting compiler")
+print("=" * 60)

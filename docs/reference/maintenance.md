@@ -1,6 +1,6 @@
 # Documentation and Language Maintenance
 
-AgentScript has multiple moving parts. Keep them in lockstep or the language
+SemanticScript has multiple moving parts. Keep them in lockstep or the language
 will drift: compiler, syntax inventory, linter, editor, examples, docs.
 
 ## Change Protocol
@@ -8,13 +8,13 @@ will drift: compiler, syntax inventory, linter, editor, examples, docs.
 For a new verb or changed schema:
 
 1. Update `SYNTAX.md` with the exact schema and implementation status.
-2. Update `AgentScript/compiler/ascc.py` parser handling.
+2. Update `SemanticScript/compiler/semsc.py` parser handling.
 3. Add or update lowering if the verb affects runtime behavior.
-4. Add a focused file in `AgentScript/as/feature_tests/`.
-5. Update `AgentScript/linter/aslint2.py` known verbs and checks.
-6. Update `AgentScript/linter/aslint.py` if the current linter should enforce
+4. Add a focused file in `SemanticScript/sem/feature_tests/`.
+5. Update `SemanticScript/linter/semlint2.py` known verbs and checks.
+6. Update `SemanticScript/linter/semlint.py` if the current linter should enforce
    the behavior.
-7. Update `vscode-agentscript` syntax, semantic roles, hovers, and symbol
+7. Update `vscode-semanticscript` syntax, semantic roles, hovers, and symbol
    indexing.
 8. Update the narrow docs file in `docs/language/`, `docs/toolchain/`, or
    `docs/reference/`.
@@ -45,7 +45,7 @@ lowering. If an example is metadata or future-runtime syntax, say so directly.
 
 Good:
 
-```agentscript
+```semanticscript
 call sumCall math.addI64
 arg sumCall left leftValue
 arg sumCall right rightValue
@@ -55,11 +55,11 @@ bind sumValue I64 sumCall
 
 Bad:
 
-```agentscript
+```semanticscript
 sumValue = leftValue + rightValue
 ```
 
-The bad example is not AgentScript and teaches the wrong mental model.
+The bad example is not SemanticScript and teaches the wrong mental model.
 
 ## Naming Standards
 
@@ -112,18 +112,18 @@ Use this ownership map:
 Before considering a language-doc update done:
 
 ```powershell
-python AgentScript/compiler/ascc.py AgentScript/as/feature_tests/<case>.as --parse-only
-python AgentScript/linter/aslint2.py AgentScript/as/feature_tests/<case>.as --format human
-cd vscode-agentscript
+python SemanticScript/compiler/semsc.py SemanticScript/sem/feature_tests/<case>.sscript --parse-only
+python SemanticScript/linter/semlint2.py SemanticScript/sem/feature_tests/<case>.sscript --format human
+cd vscode-semanticscript
 npm run check
 ```
 
 Run broader compiler tests when lowering changed:
 
 ```powershell
-cd AgentScript
+cd SemanticScript
 python tests/test_compiler.py
-python tests/as_compiler_parity.py
+python tests/sem_compiler_parity.py
 python tests/test_stdlib.py
 ```
 

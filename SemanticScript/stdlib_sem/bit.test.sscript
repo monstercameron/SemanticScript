@@ -1,0 +1,163 @@
+# ============================================================
+# SEMANTICSCRIPT STANDARD LIBRARY TESTS: bitwise operations
+# ============================================================
+#
+# # rationale: companion test file for stdlib_sem/bit.sscript. Imports
+#   the bit module and exercises every operation it exports —
+#   shift / set / clear / toggle / predicate — with multiple cases
+#   per op (identity, boundary, inverse, round-trip, property).
+#
+# # invariant: success prints "OK\n" and exits 0; any failed
+#   assertion surfaces MainError.BitSmokeAssertionFailed.
+#
+# # pattern: this is the canonical foo.test.sscript form — same
+#   directory as foo.sscript, importModule foo, project block local
+#   to the test, entry console main. The implementation file
+#   stdlib_sem/bit.sscript carries no smoke main itself.
+
+project StdBitTest
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+importModule bit
+
+error MainError
+errorCase MainError BitSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+# section capability
+# rationale: smoke-test main writes a single OK line to stdout.
+capability stdoutWriteCapability console.stdout write
+
+# ============================================================
+# Smoke test
+# ============================================================
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+effect main write console.stdout
+memoryHeap main no
+async main no
+purpose main "Smoke-test the bit operations end-to-end."
+invariant main "shift / set / clear / toggle / predicate all produce the expected values."
+
+label startMain
+const threeValue CSignedInt64 3
+const fourValue CSignedInt64 4
+const fortyEightValue CSignedInt64 48
+const zeroValue CSignedInt64 0
+const eightValue CSignedInt64 8
+const fifteenValue CSignedInt64 15
+const oneValue CSignedInt64 1
+const thirteenValue CSignedInt64 13
+const fiveValue CSignedInt64 5
+const sevenValue CSignedInt64 7
+
+# shiftSignedInt64BitsLeft(3, 4) == 48
+call assertShiftLeftCall shiftSignedInt64BitsLeft
+arg assertShiftLeftCall inputValue threeValue
+arg assertShiftLeftCall bitIndex fourValue
+run assertShiftLeftCall
+bind shiftLeftResult CSignedInt64 assertShiftLeftCall
+call checkShiftLeftCall math.equalI64
+arg checkShiftLeftCall left shiftLeftResult
+arg checkShiftLeftCall right fortyEightValue
+run checkShiftLeftCall
+bind shiftLeftOk Bool checkShiftLeftCall
+branchIf shiftLeftOk shiftLeftHolds
+branch smokeAssertionFailed
+label shiftLeftHolds
+
+# shiftSignedInt64BitsRight(48, 4) == 3
+call assertShiftRightCall shiftSignedInt64BitsRight
+arg assertShiftRightCall inputValue fortyEightValue
+arg assertShiftRightCall bitIndex fourValue
+run assertShiftRightCall
+bind shiftRightResult CSignedInt64 assertShiftRightCall
+call checkShiftRightCall math.equalI64
+arg checkShiftRightCall left shiftRightResult
+arg checkShiftRightCall right threeValue
+run checkShiftRightCall
+bind shiftRightOk Bool checkShiftRightCall
+branchIf shiftRightOk shiftRightHolds
+branch smokeAssertionFailed
+label shiftRightHolds
+
+# isSignedInt64BitSet(48, 4) == true (48 == 0b110000, bit 4 is set)
+call assertBitSetCall isSignedInt64BitSet
+arg assertBitSetCall inputValue fortyEightValue
+arg assertBitSetCall bitIndex fourValue
+run assertBitSetCall
+bind bitSetResult Bool assertBitSetCall
+branchIf bitSetResult bitSetHolds
+branch smokeAssertionFailed
+label bitSetHolds
+
+# setSignedInt64Bit(0, 3) == 8
+call assertSetBitCall setSignedInt64Bit
+arg assertSetBitCall inputValue zeroValue
+arg assertSetBitCall bitIndex threeValue
+run assertSetBitCall
+bind setBitResult CSignedInt64 assertSetBitCall
+call checkSetBitCall math.equalI64
+arg checkSetBitCall left setBitResult
+arg checkSetBitCall right eightValue
+run checkSetBitCall
+bind setBitOk Bool checkSetBitCall
+branchIf setBitOk setBitHolds
+branch smokeAssertionFailed
+label setBitHolds
+
+# clearSignedInt64Bit(15, 1) == 13
+call assertClearBitCall clearSignedInt64Bit
+arg assertClearBitCall inputValue fifteenValue
+arg assertClearBitCall bitIndex oneValue
+run assertClearBitCall
+bind clearBitResult CSignedInt64 assertClearBitCall
+call checkClearBitCall math.equalI64
+arg checkClearBitCall left clearBitResult
+arg checkClearBitCall right thirteenValue
+run checkClearBitCall
+bind clearBitOk Bool checkClearBitCall
+branchIf clearBitOk clearBitHolds
+branch smokeAssertionFailed
+label clearBitHolds
+
+# toggleSignedInt64Bit(5, 1) == 7
+call assertToggleBitCall toggleSignedInt64Bit
+arg assertToggleBitCall inputValue fiveValue
+arg assertToggleBitCall bitIndex oneValue
+run assertToggleBitCall
+bind toggleBitResult CSignedInt64 assertToggleBitCall
+call checkToggleBitCall math.equalI64
+arg checkToggleBitCall left toggleBitResult
+arg checkToggleBitCall right sevenValue
+run checkToggleBitCall
+bind toggleBitOk Bool checkToggleBitCall
+branchIf toggleBitOk toggleBitHolds
+branch smokeAssertionFailed
+label toggleBitHolds
+
+const successMessageText CNullTerminatedByteString "OK"
+call writeSuccessLineCall console.writeLine
+arg writeSuccessLineCall console console
+arg writeSuccessLineCall text successMessageText
+run writeSuccessLineCall
+ignoreOk writeSuccessLineCall CSignedInt32
+bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branchIfError writeSuccessLineCall consoleWriteFailedHandler
+const exitOkCode ExitCode 0
+returnOk exitOkCode
+
+# Failure leg: surface the raw negative CSignedInt32 from
+# console.writeLine as the cause attached to the typed
+# MainError.ConsoleWriteFailed variant.
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
+returnError consoleWriteFailedFailure
+label smokeAssertionFailed
+makeError bitSmokeFailure MainError.BitSmokeAssertionFailed
+returnError bitSmokeFailure

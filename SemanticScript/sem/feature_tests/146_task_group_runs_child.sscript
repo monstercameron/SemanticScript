@@ -1,0 +1,38 @@
+# expect.stdout: 100\n
+# expect.exit: 0
+# expect.xfail: feature_coverage.py runs through bootstrap_general.sscript which does not yet emit a real call for `startInGroup` under synchronous taskGroup lowering. Direct semsc.py compilation is correct: the child op runs and writes 100 to shared state. `python compiler/semsc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints `100`.
+project TaskGroupRunsChild
+target console
+runtime AgentRuntime 0.1
+entry console main
+error MainError
+errorCase MainError Placeholder CSignedInt32
+const zeroInitial I64 0
+const hundredValue I64 100
+sharedState process mutable groupSharedCounter I64 zeroInitial
+operation childOpWritesHundred
+input childOpWritesHundred trigger I64
+output childOpWritesHundred I64
+set sharedState groupSharedCounter hundredValue
+returnValue hundredValue
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+async main no
+purpose main "startInGroup under synchronous taskGroup lowering must call the child op."
+invariant main "groupSharedCounter is 100 after awaitGroup — proving the child actually ran."
+label startMain
+taskGroup mainBackgroundGroup
+call childWorkCall childOpWritesHundred
+arg childWorkCall trigger zeroInitial
+startInGroup childWorkCall mainBackgroundGroup
+awaitGroup mainBackgroundGroup
+call writeFinalCall console.writeIntegerLine
+arg writeFinalCall console console
+arg writeFinalCall value groupSharedCounter
+run writeFinalCall
+ignoreOk writeFinalCall Void
+const successfulExitCode ExitCode 0
+returnOk successfulExitCode

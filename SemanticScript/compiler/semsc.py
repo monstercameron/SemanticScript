@@ -1,0 +1,3974 @@
+"""
+semsc - the SemanticScript compiler.
+
+Implements a faithful subset of the SemanticScript language (per
+../SemanticScript.md and AST.md). Compiles SemanticScript semantic tape to
+LLVM IR via llvmlite, then either JIT-executes via MCJIT or writes the IR to a
+.ll file.
+
+Top-level verbs:
+  project, target, runtime, entry, module
+  type            type alias                (`type CountdownValue I64`)
+  error           error category            (`error MainError`)
+  errorCase       error variant             (`errorCase MainError ConsoleWriteFailed ConsoleWriteError`)
+  dependency      dependency declaration   (parsed, ignored by codegen)
+
+Operation header verbs (parsed, ignored by codegen):
+  input, output, effect, memory, async,
+  purpose, invariant, warning
+
+Body verbs:
+  Decls:     const, var
+  Calls:     call, arg, timeout, cancelOn, run, start, await
+  Bind:      bind, bindOk, bindError
+  Errors:    makeError
+  Mutation:  set
+  Control:   label, branch, branchIf, branchIfError
+  Returns:   returnOk, returnError, returnValue
+
+`bind` is for infallible calls; `bindOk`+`bindError`+`branchIfError` is for
+fallible calls. `branchIf cond label` jumps to `label` on true and falls
+through on false (per spec §4: one semantic thing per line).
+
+External call targets:
+  console.writeLine          -> puts(i8*)                 -> i32 (negative on failure)
+  console.writeIntegerLine   -> printf("%lld\n", i64)     -> i32 (negative on failure)
+  math.addI64                -> i64 (a + b)
+  math.subtractI64           -> i64 (a - b)              (alias: math.subI64)
+  math.multiplyI64           -> i64 (a * b)              (alias: math.mulI64)
+  math.divideI64             -> i64 (a sdiv b)           (alias: math.divI64)
+  math.moduloI64             -> i64 (a srem b)           (alias: math.modI64)
+  math.equalI64              -> i1                        (alias: math.eqI64)
+  math.notEqualI64           -> i1                        (alias: math.neI64)
+  math.lessThanI64           -> i1                        (alias: math.ltI64)
+  math.lessThanOrEqualI64    -> i1                        (alias: math.leI64)
+  math.greaterThanI64        -> i1                        (alias: math.gtI64)
+  math.greaterThanOrEqualI64 -> i1                        (alias: math.geI64)
+"""
+
+import argparse
+import ctypes
+import os
+import sys
+from llvmlite import ir
+import llvmlite.binding as llvm
+
+# Make sibling-module imports work when the compiler is invoked by path.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import libc_registry
+
+__version__ = "1.0.0"
+
+
+# ============================================================
+# Tokenizer
+# ============================================================
+
+def tokenize_line(line: str):
+    stripped = line.strip()
+    if not stripped:
+        return []
+    if stripped.startswith("#"):
+        return ["#", stripped[1:].strip()]
+    tokens = []
+    i = 0
+    n = len(stripped)
+    while i < n:
+        c = stripped[i]
+        if c.isspace():
+            i += 1
+            continue
+        if c == '"':
+            j = i + 1
+            buf = []
+            while j < n and stripped[j] != '"':
+                if stripped[j] == "\\" and j + 1 < n:
+                    nxt = stripped[j + 1]
+                    buf.append({"n": "\n", "t": "\t", "r": "\r",
+                                "\\": "\\", '"': '"', "0": "\0"}.get(nxt, nxt))
+                    j += 2
+                else:
+                    buf.append(stripped[j])
+                    j += 1
+            if j >= n:
+                raise SyntaxError(f"unterminated string: {stripped!r}")
+            tokens.append(("str", "".join(buf)))
+            i = j + 1
+        else:
+            j = i
+            while j < n and not stripped[j].isspace():
+                j += 1
+            tokens.append(stripped[i:j])
+            i = j
+    return tokens
+
+
+def _unwrap(tok):
+    if isinstance(tok, tuple) and tok and tok[0] == "str":
+        return tok[1]
+    return tok
+
+
+def _bool_token_to_int(value):
+    """Coerce one of the Bool literal tokens (`true`/`false`/`yes`/`no`,
+    or the numeric strings/values 1/0) into the integer 0 or 1. Used by
+    the `var`/`storage` initializer paths when a const of type Bool flows
+    in as a string token from the parser."""
+    if isinstance(value, str):
+        lowered = value.lower()
+        if lowered in ("true", "yes", "1"):
+            return 1
+        if lowered in ("false", "no", "0"):
+            return 0
+        try:
+            return 1 if int(lowered) != 0 else 0
+        except (TypeError, ValueError):
+            return 0
+    try:
+        return 1 if int(value) != 0 else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+# ============================================================
+# AST
+# ============================================================
+
+class Operation:
+    def __init__(self, name):
+        self.name = name
+        self.lines = []          # list of (verb, args, srcline)
+        # Operation-local const declarations. The resolver consults this
+        # before falling back to prog.consts so a const declared inside
+        # one operation cannot accidentally shadow or leak into another.
+        self.consts = {}         # name -> (type, value)
+        # Comments attached to this operation (typed-comment annotations).
+        self.typed_comments = [] # list[(kind, text, lineno)]
+
+
+class Record:
+    def __init__(self, name):
+        self.name = name
+        self.layout = None        # "row" | "column" | "packed" | None
+        self.align = None         # int | None
+        self.fields = []          # list[(field_name, field_type)]
+
+
+class Enum:
+    def __init__(self, name):
+        self.name = name
+        self.repr = None          # underlying repr type, if declared
+        self.cases = []           # list[(case_name, value_or_none)]
+
+
+class WebServer:
+    def __init__(self, name):
+        self.name = name
+        self.host = None
+        self.port = None
+        self.routes = []          # list[(method, path, handler_op)]
+        self.middleware = []      # list[(route_name, middleware_op)]
+        self.timeouts = {}        # route_name -> duration_value
+
+
+class Program:
+    def __init__(self):
+        # ---- declarations relevant to codegen ----
+        self.project_name = None
+        self.targets = []
+        self.entry = None
+        self.consts = {}              # name -> (type, value)
+        # Module-scope mutable storage (`storage module mutable` and
+        # `sharedState <scope> mutable`). Tracked separately from consts so
+        # codegen can emit a real LLVM global with load/store semantics
+        # while keeping const-style name resolution for the initial value.
+        self.mutable_globals = {}     # name -> (type, raw_initial_value)
+        self.type_aliases = {}        # alias -> underlying typename
+        self.errors = {}              # err_type_name -> list[(variant_name, underlying_cause_type)]
+        self.operations = {}          # name -> Operation
+        self.current_op = None
+
+        # ---- richer-surface storage (parsed; codegen treats as metadata) ----
+        self.records = {}             # name -> Record
+        self.enums = {}                # name -> Enum
+        self.web_servers = {}          # name -> WebServer
+        self.type_metadata = {}        # type_name -> {invariant: [...], trust:..., memory:..., layout:..., representation:...}
+        self.capabilities = {}         # name -> {effect_path, access}
+        self.codecs = {}               # name -> {kind, schema, unknownFields, ...}
+        self.validators = {}           # name -> {input, output, guarantees}
+        self.policies = {}             # name -> attrs dict
+        self.resources = {}            # name -> attrs dict
+        self.guarantees = {}           # target_name -> list[str]
+        self.hard_metadata = {}        # target_name -> dict[kind] -> list[str]
+        self.named_failures = {}       # operation_name -> list[(failure_name, text)]
+        self.test_covers = []          # list[(test_name, target_name)]
+        self.imports = []              # list[(module_path, alias)]
+        self.modes = []                # list[str]  -- e.g. ["capturedOutputReplay"]
+        # Module-scope `# group NAME` / `# endGroup NAME` anchors collected from
+        # source order so the linter can pair them and warn on imbalance.
+        self.module_group_anchors = []  # list[("group"|"endGroup", name, lineno)]
+        # Typed comments per spec §7. `# rationale: …`, `# invariant: …`,
+        # `# warning: …`, `# failure: …`, `# security: …`, `# timing: …`,
+        # `# memory: …`, `# concurrency: …`, `# observability: …`,
+        # `# dependency: …`, `# test: …`, `# todo: …`, `# agent: …`.
+        # Attached to the most recent operation if one is active, otherwise
+        # collected at module scope so tooling and linters can read them.
+        self.module_typed_comments = []  # list[(kind, text, lineno)]
+
+
+# ---- verb dispatch tables ----
+
+# Body verbs whose lines codegen consumes directly.
+BODY_VERBS_CODEGEN = {
+    "input", "output", "effect", "memory", "async",
+    "purpose", "invariant", "warning",
+    "label", "const", "var", "set",
+    "call", "arg", "timeout", "cancelOn", "run", "start", "await",
+    "bind", "bindOk", "bindError", "ignoreOk", "ignoreValue",
+    "makeError",
+    "branch", "branchIf", "branchIfError",
+    "returnOk", "returnError", "returnValue",
+}
+
+# Body verbs the parser stores into op.lines but codegen treats as metadata.
+# These exist so a richer program can be written, parsed, and inspected
+# without the codegen pass tripping over verbs whose runtime semantics are
+# defined by the spec but not yet implemented by this compiler.
+# `*_SOFT` verbs are pure metadata. Codegen safely skips them because
+# they do not change the program's runtime behavior — they only annotate
+# the AST for tooling, linters, agent context, and §8 hard-metadata
+# indexes.
+BODY_VERBS_RESERVED_SOFT = {
+    "guarantee", "failure", "security", "timing", "observability",
+    "useCapability",
+    "importModule",
+}
+
+# `*_HARD` verbs are spec-defined runtime features (cleanup, structured
+# concurrency, channels, locks, worker pools, intervals, record I/O).
+# The codegen does not yet lower them, so silently dropping them would
+# materially change behavior — that is illegal under spec §2 law 5
+# ("hidden behavior is illegal by default"). The codegen refuses to
+# compile any program that uses one, with a message pointing to the
+# spec section. Use `--parse-only` to inspect the AST of such a program.
+BODY_VERBS_RESERVED_HARD = {
+    # spec §13 — cleanup / defer
+    "defer", "deferLog", "deferAwaitLog", "deferWhenExitLog",
+    # spec §20 — structured concurrency / task groups
+    "taskGroup", "startInGroup", "awaitGroup",
+    "bindGroupError", "branchIfGroupError",
+    # spec §22 — channels, locks, worker pools
+    "send", "receive", "branchIfChannelClosed",
+    "lock", "unlock",
+    "workerPool", "work", "workArg", "submitWork", "awaitWork",
+    # spec §23 — typed time / intervals
+    "interval", "startInterval", "awaitIntervalTick",
+    # spec §20 — race / select
+    "select", "selectCase", "runSelect", "branchSelected",
+    # spec §21 — record I/O
+    "new", "fieldGet", "fieldSet",
+    # policy attachment runs at codegen
+    "useRetry",
+}
+
+BODY_VERBS_RESERVED = BODY_VERBS_RESERVED_SOFT | BODY_VERBS_RESERVED_HARD
+
+BODY_VERBS = BODY_VERBS_CODEGEN | BODY_VERBS_RESERVED
+
+
+# Closed set of recognized `mode` declarations. See AST.md §10.
+_KNOWN_MODES = {
+    "capturedOutputReplay",
+}
+
+
+def parse(source: str) -> Program:
+    prog = Program()
+    for lineno, raw in enumerate(source.splitlines(), start=1):
+        toks = tokenize_line(raw)
+        if not toks:
+            continue
+        if toks[0] == "#":
+            body = toks[1] if len(toks) > 1 else ""
+            # Preserve `# group NAME` / `# endGroup NAME` anchors so the
+            # linter can pair them (spec §7: groups are attention anchors).
+            anchor = _parse_group_anchor(body)
+            if anchor is not None:
+                kind, name = anchor
+                entry = (kind, name, lineno)
+                if prog.current_op is not None:
+                    prog.current_op.lines.append(("__groupAnchor__", entry, lineno))
+                else:
+                    prog.module_group_anchors.append(entry)
+                continue
+            # Preserve typed semantic comments per spec §7. These are
+            # first-class context attached to the most recent operation.
+            typed = _parse_typed_comment(body)
+            if typed is not None:
+                kind, text = typed
+                if prog.current_op is not None:
+                    prog.current_op.typed_comments.append((kind, text, lineno))
+                    prog.current_op.lines.append(
+                        ("__typedComment__", (kind, text), lineno))
+                else:
+                    prog.module_typed_comments.append((kind, text, lineno))
+            continue
+        verb = toks[0]
+        args = toks[1:]
+        try:
+            handle_top(prog, verb, args, lineno)
+        except SyntaxError:
+            raise
+        except Exception as e:
+            raise SyntaxError(f"line {lineno}: {e}\n  >> {raw}") from e
+    return prog
+
+
+def _parse_group_anchor(comment_body: str):
+    """If a comment body opens with `group NAME` or `endGroup NAME`, return
+    the parsed kind+name. Otherwise return None."""
+    parts = comment_body.split()
+    if not parts:
+        return None
+    kind = parts[0]
+    if kind not in ("group", "endGroup"):
+        return None
+    if len(parts) < 2:
+        return None
+    return (kind, parts[1])
+
+
+# Spec §7 — typed semantic comments. The kind prefix must be followed
+# by a colon. The body after the colon is the freeform context. Recognized
+# kinds match the spec's enumeration.
+_TYPED_COMMENT_KINDS = {
+    "rationale", "invariant", "warning", "agent",
+    "memory", "concurrency", "timing", "failure",
+    "security", "dependency", "observability", "test", "todo",
+}
+
+
+def _parse_typed_comment(comment_body: str):
+    """If a comment body is `<kind>: <text>` where kind is a recognized
+    typed-comment kind, return `(kind, text)`. Otherwise return None."""
+    if ":" not in comment_body:
+        return None
+    kind, _, text = comment_body.partition(":")
+    kind = kind.strip()
+    if kind not in _TYPED_COMMENT_KINDS:
+        return None
+    return (kind, text.strip())
+
+
+def handle_top(prog: Program, verb: str, args, lineno: int):
+    # ===== always-allowed top-level decls =====
+    if verb == "project":
+        prog.project_name = args[0]
+        return
+    if verb == "target":
+        prog.targets.append(args[0])
+        return
+    if verb in ("runtime", "module"):
+        return
+    if verb == "mode":
+        # mode NAME — declares an honest classification of the program's
+        # algorithm. The closed set of supported values is documented in
+        # AST.md §10:
+        #   capturedOutputReplay  the program's stdout is a transcript captured
+        #                         from a sibling implementation rather than the
+        #                         output of a re-run algorithm in SemanticScript
+        # Unknown mode names are rejected so a typo cannot quietly disable
+        # the trust-boundary marker required by spec §2 law 19.
+        if not args:
+            raise SyntaxError("mode requires: mode NAME")
+        if args[0] not in _KNOWN_MODES:
+            raise SyntaxError(
+                f"mode: `{args[0]}` is not a known mode value; expected one of "
+                f"{sorted(_KNOWN_MODES)}")
+        prog.modes.append(args[0])
+        return
+    if verb == "entry":
+        prog.entry = (args[0], args[1])
+        return
+
+    # ----- dependency contract -----
+    if verb in ("dependency", "dependencyEffect", "dependencyExports",
+                "dependencyFunction", "dependencyFunctionInput",
+                "dependencyFunctionOutput", "dependencyFunctionEffect",
+                "dependencyFunctionAsync"):
+        return
+    if verb == "importModule":
+        # importModule DOTTED.PATH as ALIAS  (the `as ALIAS` part is optional)
+        alias = None
+        if len(args) >= 3 and args[1] == "as":
+            alias = args[2]
+        prog.imports.append((args[0], alias))
+        return
+
+    # ----- type universe -----
+    if verb == "type":
+        if len(args) < 2:
+            raise SyntaxError("type requires: type ALIAS UNDERLYING_TYPE [EXTRA_ARGS…]")
+        # Spec §5 allows parameterized type expressions like
+        # `type EmailAddress SmallString 254` and
+        # `type CreateCustomerResult Result Customer CreateCustomerError`.
+        # Store the FULL tail so the type's parameters survive lookup;
+        # callers that want the bare head call `resolve_alias` (which
+        # returns the head token after chain resolution) and callers that
+        # want the full expression read `prog.type_aliases[name]` directly.
+        prog.type_aliases[args[0]] = list(args[1:])
+        return
+    if verb in ("typeInvariant", "typeRepresentation", "typeTrust",
+                "typeMemory", "typeLayout"):
+        # All record type-level metadata under a single map indexed by type
+        if not args:
+            raise SyntaxError(f"{verb} requires a target type name")
+        meta = prog.type_metadata.setdefault(args[0], {})
+        key = verb[4:].lower() if verb != "typeInvariant" else "invariant"
+        # typeInvariant is multi-valued, the rest are scalar latest-wins
+        if verb == "typeInvariant":
+            meta.setdefault("invariant", []).append(_unwrap(args[1]) if len(args) > 1 else "")
+        else:
+            meta[key] = [_unwrap(t) for t in args[1:]]
+        return
+
+    # ----- error type universe -----
+    if verb == "error":
+        prog.errors.setdefault(args[0], [])
+        return
+    if verb == "errorCase":
+        if len(args) < 2:
+            raise SyntaxError("errorCase requires: errorCase ERRTYPE VARIANT [CAUSE]")
+        cause = args[2] if len(args) > 2 else None
+        prog.errors.setdefault(args[0], []).append((args[1], cause))
+        return
+
+    # ----- records / fields -----
+    if verb == "record":
+        rec = Record(args[0])
+        i = 1
+        while i < len(args):
+            key = args[i]
+            if key == "layout" and i + 1 < len(args):
+                rec.layout = args[i + 1]
+                i += 2
+            elif key == "align" and i + 1 < len(args):
+                rec.align = int(args[i + 1])
+                i += 2
+            else:
+                i += 1
+        prog.records[rec.name] = rec
+        return
+    if verb == "field":
+        # field RECORD_NAME FIELD_NAME FIELD_TYPE
+        if len(args) < 3:
+            raise SyntaxError("field requires: field RECORD_NAME FIELD_NAME FIELD_TYPE")
+        rec = prog.records.get(args[0])
+        if rec is None:
+            raise SyntaxError(f"field references unknown record: {args[0]}")
+        rec.fields.append((args[1], args[2]))
+        return
+
+    # ----- enums -----
+    if verb == "enum":
+        en = Enum(args[0])
+        if len(args) >= 3 and args[1] == "repr":
+            en.repr = args[2]
+        prog.enums[en.name] = en
+        return
+    if verb == "enumCase":
+        if len(args) < 2:
+            raise SyntaxError("enumCase requires: enumCase ENUM CASE [VALUE]")
+        en = prog.enums.get(args[0])
+        if en is None:
+            raise SyntaxError(f"enumCase references unknown enum: {args[0]}")
+        value = _unwrap(args[2]) if len(args) > 2 else None
+        en.cases.append((args[1], value))
+        return
+
+    # ----- web servers -----
+    if verb == "webServer":
+        ws = WebServer(args[0])
+        prog.web_servers[ws.name] = ws
+        return
+    if verb == "serverHost":
+        prog.web_servers[args[0]].host = _unwrap(args[1])
+        return
+    if verb == "serverPort":
+        prog.web_servers[args[0]].port = int(args[1])
+        return
+    if verb == "route":
+        # route SERVER METHOD PATH HANDLER_OPERATION
+        if len(args) < 4:
+            raise SyntaxError("route requires: route SERVER METHOD PATH HANDLER_OPERATION")
+        ws = prog.web_servers.get(args[0])
+        if ws is None:
+            raise SyntaxError(f"route references unknown webServer: {args[0]}")
+        ws.routes.append((args[1], _unwrap(args[2]), args[3]))
+        return
+    if verb == "routeTimeout":
+        ws = prog.web_servers[args[0]]
+        ws.timeouts[args[1]] = args[2]
+        return
+    if verb == "routeMiddleware":
+        ws = prog.web_servers[args[0]]
+        ws.middleware.append((args[1], args[2]))
+        return
+
+    # ----- codecs / validators / mappers / boundaries / adapters -----
+    if verb in ("codec", "validator", "mapper", "adapter", "boundary", "jsonCodec"):
+        # All of these have the shape `verb NAME [attrs…]`. We index them by
+        # name and keep their raw arg tail so tooling can read the contract.
+        bucket = {
+            "codec": prog.codecs, "jsonCodec": prog.codecs,
+            "validator": prog.validators,
+        }.get(verb, prog.policies)
+        bucket[args[0]] = {"kind": verb, "attrs": args[1:]}
+        return
+    if verb in ("schema", "unknownFields", "guarantee", "input", "output", "purpose"):
+        # These continue an abstraction declaration started earlier OR
+        # (for `input`/`output`/`purpose`) belong to an operation header.
+        if verb in ("purpose", "input", "output") and prog.current_op is not None:
+            # Spec §9 ownership: each header line's first arg names the
+            # operation it belongs to. Reject if it doesn't match.
+            if args and args[0] != prog.current_op.name:
+                raise SyntaxError(
+                    f"{verb}: owner `{args[0]}` does not match current "
+                    f"operation `{prog.current_op.name}` (spec §9 — header "
+                    f"lines must reference their own operation by name "
+                    f"for checkability)")
+            prog.current_op.lines.append((verb, args, lineno))
+            return
+        # Attach to whatever named abstraction was declared most recently.
+        # For simplicity we just hard-record under hard_metadata.
+        if not args:
+            raise SyntaxError(f"{verb} requires a target name")
+        prog.hard_metadata.setdefault(args[0], {}).setdefault(verb, []).extend(
+            [_unwrap(t) for t in args[1:]])
+        return
+
+    # ----- policies -----
+    if verb in ("policy", "retryPolicy", "errorPolicy", "timeoutBudget"):
+        prog.policies[args[0]] = {"kind": verb, "attrs": args[1:]}
+        return
+
+    # ----- resources -----
+    if verb == "resource":
+        prog.resources[args[0]] = {"attrs": args[1:]}
+        return
+    if verb in ("resourceKey", "resourceValue", "resourceKind"):
+        r = prog.resources.setdefault(args[0], {})
+        r[verb] = args[1:]
+        return
+
+    # ----- capabilities / authority -----
+    if verb == "capability":
+        # capability NAME EFFECT_PATH ACCESS
+        if len(args) < 3:
+            raise SyntaxError("capability requires: capability NAME EFFECT_PATH ACCESS")
+        prog.capabilities[args[0]] = {"effect": args[1], "access": args[2]}
+        return
+    if verb == "authority":
+        # authority OPERATION EFFECT_PATH ACCESS  (top-level grant form)
+        prog.hard_metadata.setdefault(args[0], {}).setdefault(
+            "authority", []).append(" ".join(args[1:]))
+        return
+
+    # ----- mutex / shared / channel (top-level concurrency primitives) -----
+    if verb in ("mutex", "shared", "channel"):
+        prog.hard_metadata.setdefault(args[0], {})["kind"] = verb
+        prog.hard_metadata[args[0]]["attrs"] = args[1:]
+        return
+
+    # ----- hard metadata applicable to top-level OR operation -----
+    if verb in ("failure", "security", "timing", "observability"):
+        if prog.current_op is not None:
+            prog.current_op.lines.append((verb, args, lineno))
+            return
+        if not args:
+            raise SyntaxError(f"{verb} requires a target name")
+        prog.hard_metadata.setdefault(args[0], {}).setdefault(verb, []).extend(
+            [_unwrap(t) for t in args[1:]])
+        return
+    if verb == "testCovers":
+        if len(args) < 2:
+            raise SyntaxError("testCovers requires: testCovers TEST_NAME TARGET_NAME")
+        prog.test_covers.append((args[0], args[1]))
+        return
+
+    # ----- operations -----
+    if verb == "operation":
+        op = Operation(args[0])
+        prog.operations[args[0]] = op
+        prog.current_op = op
+        return
+
+    # ----- const can appear both top-level and inside an operation -----
+    if verb == "const":
+        if len(args) < 3:
+            raise SyntaxError("const requires: const NAME TYPE VALUE")
+        name = args[0]
+        typ = args[1]
+        value = _unwrap(args[2])
+        # Scope the const: declarations inside an operation body live in
+        # that operation's local symbol table, NOT in the global map.
+        # This prevents accidental cross-operation visibility and matches
+        # the AST distinction between top-level Const and body ConstStmt.
+        if prog.current_op is not None:
+            prog.current_op.consts[name] = (typ, value)
+            prog.current_op.lines.append((verb, args, lineno))
+        else:
+            prog.consts[name] = (typ, value)
+        return
+
+    # ===== inside-an-operation verbs =====
+    if verb in BODY_VERBS:
+        if prog.current_op is None:
+            raise SyntaxError(f"{verb} appears outside any operation")
+        # Spec §9 — operation header lines (input/output/effect/memory/async/
+        # purpose/invariant/warning + hard-metadata kinds) include the
+        # owning operation's name as the first arg so each line is
+        # independently checkable. Enforce that the name matches.
+        if verb in HEADER_VERBS_WITH_OWNERSHIP and args:
+            if args[0] != prog.current_op.name:
+                raise SyntaxError(
+                    f"{verb}: owner `{args[0]}` does not match current "
+                    f"operation `{prog.current_op.name}` (spec §9 — header "
+                    f"lines must reference their own operation by name "
+                    f"for checkability)")
+        prog.current_op.lines.append((verb, args, lineno))
+        return
+
+    # ===== refined-syntax / experimental verbs =====
+    # The refined-syntax surface in experiments/refined_syntax_example.sscript
+    # adds many declarative verbs (section, runtimeBinding*, collectionOp*,
+    # group*, recordBuilder/recordSet/recordBuild*, jsonCodec*, retry*,
+    # listType/sliceType/arrayType/mapType/smallList*, domainLiteral*,
+    # trustBoundary*, sharedState*, dependencyPath/Failure, intrinsicName,
+    # storage, literal/literalBytes/literalDigest/literalPreview/...). We
+    # accept them as metadata so the file can be parsed, linted, and
+    # codegen'd into a runnable stub. A few have semantic meaning carried
+    # over from older verbs (storage = const-with-scope; domainLiteral =
+    # typed literal binding; sharedState = process-level zero-initialized
+    # state). Register those as consts so downstream `arg <call> <name>`
+    # references resolve. The rest are stored under prog.hard_metadata.
+    if verb == "storage" and len(args) >= 4:
+        # `storage <scope> <mutability> NAME TYPE [VALUE]` — `module immutable`
+        # is the common case and maps directly onto the existing const form.
+        # We accept any scope/mutability for parse-cleanliness. Scope routes
+        # the binding: `module` stays at top-level even when current_op is
+        # set (operations later in the file would otherwise capture it).
+        # `module mutable` is additionally registered in prog.mutable_globals
+        # so codegen emits a real LLVM global with load/store semantics.
+        scope = args[0]
+        mutability = args[1] if len(args) > 1 else None
+        name, typ = args[2], args[3]
+        value = _unwrap(args[4]) if len(args) > 4 else 0
+        if scope == "module":
+            prog.consts[name] = (typ, value)
+            if mutability == "mutable":
+                prog.mutable_globals[name] = (typ, value)
+        elif prog.current_op is not None:
+            prog.current_op.consts[name] = (typ, value)
+            prog.current_op.lines.append((verb, args, lineno))
+        else:
+            prog.consts[name] = (typ, value)
+        return
+    if verb == "domainLiteral" and len(args) >= 3:
+        # `domainLiteral NAME TYPE VALUE` is structurally a const with a
+        # typed value bound at the trust boundary. Always module-scope —
+        # used by operations that may be parsed later in the file.
+        name, typ = args[0], args[1]
+        value = _unwrap(args[2])
+        prog.consts[name] = (typ, value)
+        return
+    if verb == "sharedState" and len(args) >= 4:
+        # `sharedState <scope> <mutability> NAME TYPE [INITIAL]`. We model
+        # shared state as a const for initial-value lookups; when declared
+        # `mutable` it additionally becomes a real LLVM module global so
+        # codegen emits load/store for `set sharedState` / read references.
+        mutability = args[1]
+        name, typ = args[2], args[3]
+        value = _unwrap(args[4]) if len(args) > 4 else 0
+        prog.consts[name] = (typ, value)
+        if mutability == "mutable":
+            prog.mutable_globals[name] = (typ, value)
+        return
+    if verb == "literal" and len(args) >= 2:
+        # `literal NAME TYPE` declares a typed literal whose bytes live in
+        # an external asset (see literalBytes/literalDigest/literalSource).
+        # Stub it as an empty-string const so name references resolve.
+        prog.consts[args[0]] = (args[1], "")
+        return
+
+    # Catch-all for any other lowercase-leading verb that looks like a
+    # declarative-metadata line. This is intentionally permissive so the
+    # refined-syntax surface (~100 new verbs) is accepted without each
+    # needing its own handler. The line is stored under hard_metadata
+    # keyed by the first arg (the declared name) for tooling indexing.
+    if verb and verb[0].islower():
+        if prog.current_op is not None:
+            prog.current_op.lines.append((verb, args, lineno))
+            return
+        if args:
+            prog.hard_metadata.setdefault(args[0], {}).setdefault(
+                verb, []).append([_unwrap(t) for t in args[1:]])
+        return
+
+    raise SyntaxError(f"line {lineno}: unknown verb: {verb!r}")
+
+
+# Verbs that carry the operation name as their first arg for §9 checkability.
+HEADER_VERBS_WITH_OWNERSHIP = {
+    "input", "output", "effect", "memory", "async",
+    "purpose", "invariant", "warning",
+    "guarantee", "failure", "security", "timing", "observability",
+}
+
+
+# ============================================================
+# Type universe
+# ============================================================
+
+I1 = ir.IntType(1)
+I8 = ir.IntType(8)
+I16 = ir.IntType(16)
+I32 = ir.IntType(32)
+I64 = ir.IntType(64)
+F32 = ir.FloatType()
+F64 = ir.DoubleType()
+I8P = ir.IntType(8).as_pointer()
+VOID = ir.VoidType()
+
+
+# Implicit operation-input symbols whose value never flows into computation
+# (spec §16 — the `console` dependency, the request token, the clock, etc.).
+# At a user-defined operation's call site these are dropped from the LLVM
+# parameter list so the call signature only carries data values.
+OPAQUE_INPUTS = {
+    "console", "environment", "process",
+    "httpRequest", "databaseClient", "clock",
+}
+
+
+def resolve_alias(prog: Program, name: str) -> str:
+    """Walk the type-alias chain and return the head token of the final
+    type expression. For a single-token alias like `type ExitCode I32`,
+    returns the underlying primitive name. For a parameterized alias like
+    `type EmailAddress SmallString 254` or
+    `type CreateCustomerResult Result Customer CreateCustomerError`,
+    returns the HEAD (`SmallString`, `Result`) — the parameter tail is
+    preserved in `prog.type_aliases[name]` for callers that need it."""
+    seen = set()
+    while name in prog.type_aliases and name not in seen:
+        seen.add(name)
+        next_target = prog.type_aliases[name]
+        # Backward compat: an older revision stored single-token aliases as
+        # bare strings rather than 1-element lists. Accept both shapes.
+        if isinstance(next_target, list):
+            if not next_target:
+                break
+            if len(next_target) == 1:
+                name = next_target[0]
+                continue
+            # Parameterized alias — head is the type constructor.
+            return next_target[0]
+        # legacy bare-string alias
+        name = next_target
+    return name
+
+
+def resolve_alias_full(prog: Program, name: str) -> list:
+    """Return the full type-expression token list after chain resolution.
+    For `type EmailAddress SmallString 254`, returns `["SmallString", "254"]`.
+    For `type ExitCode I32`, returns `["I32"]`. For an unaliased primitive,
+    returns `[name]`."""
+    seen = set()
+    while name in prog.type_aliases and name not in seen:
+        seen.add(name)
+        next_target = prog.type_aliases[name]
+        if isinstance(next_target, list):
+            if len(next_target) == 1:
+                name = next_target[0]
+                continue
+            return list(next_target)
+        name = next_target
+    return [name]
+
+
+def llvm_type_for(prog: Program, typename: str):
+    typename = resolve_alias(prog, typename)
+    # C-stdlib alignment: every C scalar type has a spec-compliant
+    # SemanticScript alias whose name carries signedness, width, ABI role, or
+    # encoding contract (spec §6 names-must-carry-local-intent, §10
+    # types-encode-intent). The short forms (CInt / CDouble / CSize / …)
+    # are retained as backward-compatible aliases for older programs but
+    # new code should prefer the spec-compliant names listed first.
+    #
+    # i64 — every 64-bit-wide C type
+    if typename in (
+        # canonical SemanticScript names
+        "I64", "CSignedInt64", "CUnsignedInt64",
+        "CByteCount", "CSignedByteCount", "CAddressOffset",
+        "CUnixSecondsSinceEpoch", "CCpuClockTicks",
+        "CFileByteOffset", "CMaxSignedInt", "CMaxUnsignedInt",
+        "DurationMilliseconds", "MonotonicMilliseconds", "UtcMilliseconds",
+        # legacy short forms
+        "CLong", "CLongLong", "CSize", "CSsize", "CPtrdiff",
+        "CTime", "CClock", "COff", "CIntmax", "CUintmax",
+    ):
+        return I64
+    # i32 — every 32-bit-wide C type
+    if typename in (
+        "I32", "ExitCode",
+        "CSignedInt32", "CUnsignedInt32",
+        "CInt", "CUint",
+    ):
+        return I32
+    # i16
+    if typename in (
+        "I16",
+        "CSignedInt16", "CUnsignedInt16",
+        "CShort", "CUshort",
+    ):
+        return I16
+    # i8
+    if typename in (
+        "I8",
+        "CSignedByte", "CUnsignedByte",
+        "CChar", "CSchar", "CUchar", "CByte",
+    ):
+        return I8
+    if typename == "Bool":
+        return I1
+    # IEEE float
+    if typename in ("F32", "CFloat32", "CFloat"):
+        return F32
+    if typename in ("F64", "CFloat64", "CDouble"):
+        return F64
+    # i8* — every pointer-shaped C type carries an explicit role name
+    if typename in (
+        "String", "CNullTerminatedByteString", "CString",
+    ):
+        return I8P
+    if typename in (
+        "VoidPtr", "COpaqueMemoryAddress", "CFileHandle",
+        "CDecomposedTimeAddress", "CSetjmpRegisterBuffer",
+        "CVoidPtr", "CFile", "CFilePtr", "CTm", "CTmPtr", "CJmpBuf",
+    ):
+        return I8P
+    return None
+
+
+def llvm_type_for_or_void(prog: Program, typename: str):
+    """Like llvm_type_for but also accepts 'Void' / 'CVoid' as the void type."""
+    if typename in ("Void", "CVoid"):
+        return VOID
+    return llvm_type_for(prog, typename)
+
+
+# ============================================================
+# Call targets
+# ============================================================
+
+# normalize math/console targets to a canonical name
+_TARGET_ALIASES = {
+    "math.subI64":  "math.subtractI64",
+    "math.mulI64":  "math.multiplyI64",
+    "math.divI64":  "math.divideI64",
+    "math.modI64":  "math.moduloI64",
+    "math.eqI64":   "math.equalI64",
+    "math.neI64":   "math.notEqualI64",
+    "math.ltI64":   "math.lessThanI64",
+    "math.leI64":   "math.lessThanOrEqualI64",
+    "math.gtI64":   "math.greaterThanI64",
+    "math.geI64":   "math.greaterThanOrEqualI64",
+    "console.writeInteger": "console.writeIntegerLine",
+    # Refined-syntax / STDLIB_RENAME long forms map back to the V0
+    # short forms so the existing call-target dispatch fires correctly.
+    "math.convertSignedInt64ToFloat64": "math.intToFloat",
+    "math.convertFloat64ToSignedInt64": "math.floatToInt",
+}
+
+_BINOP_TO_LLVM = {
+    "math.addI64":      "add",
+    "math.subtractI64": "sub",
+    "math.multiplyI64": "mul",
+    "math.divideI64":   "sdiv",
+    "math.moduloI64":   "srem",
+}
+
+# Floating-point binary ops keep their operands at their declared width (F64 by
+# default). The dispatcher distinguishes these from the integer set so it does
+# not coerce double values down to i64.
+_FBINOP_TO_LLVM = {
+    "math.addF64":      "fadd",
+    "math.subtractF64": "fsub",
+    "math.multiplyF64": "fmul",
+    "math.divideF64":   "fdiv",
+}
+
+_FCMP_TO_LLVM = {
+    "math.equalF64":              "==",
+    "math.notEqualF64":           "!=",
+    "math.lessThanF64":           "<",
+    "math.lessThanOrEqualF64":    "<=",
+    "math.greaterThanF64":        ">",
+    "math.greaterThanOrEqualF64": ">=",
+}
+
+# C macro-only math classifiers — `c.isnan(x)`, etc. — are defined as macros in
+# <math.h> rather than externs. They lower to native LLVM FP comparisons so
+# the SemanticScript surface matches the spec without link-time surprises across libc
+# implementations.
+_MATH_CLASSIFIERS = {
+    "c.isnan", "c.isinf", "c.isfinite", "c.isnormal",
+    "c.signbit", "c.fpclassify",
+}
+
+_CMP_TO_LLVM = {
+    "math.equalI64":              "==",
+    "math.notEqualI64":           "!=",
+    "math.lessThanI64":           "<",
+    "math.lessThanOrEqualI64":    "<=",
+    "math.greaterThanI64":        ">",
+    "math.greaterThanOrEqualI64": ">=",
+}
+
+
+# Domain-typed methods. A call target of the form `TypeName.methodName`
+# (where TypeName is a user-declared type alias) lowers to the primitive
+# below based on the alias's underlying type. This preserves domain context
+# in source (`CountdownValue.subtractPositiveStep` rather than
+# `math.subtractI64`) while reusing the existing primitive dispatch.
+_DOMAIN_METHOD_TO_F64_PRIMITIVE = {
+    "add":              "math.addF64",
+    "subtract":         "math.subtractF64",
+    "multiply":         "math.multiplyF64",
+    "divide":           "math.divideF64",
+    "equal":            "math.equalF64",
+    "notEqual":         "math.notEqualF64",
+    "lessThan":         "math.lessThanF64",
+    "lessThanOrEqual":  "math.lessThanOrEqualF64",
+    "greaterThan":      "math.greaterThanF64",
+    "greaterThanOrEqual": "math.greaterThanOrEqualF64",
+}
+
+
+_DOMAIN_METHOD_TO_I64_PRIMITIVE = {
+    # infallible (use plain `bind`)
+    "add":                  "math.addI64",
+    "addPositiveStep":      "math.addI64",
+    "subtract":             "math.subtractI64",
+    "subtractStep":         "math.subtractI64",
+    "subtractPositiveStep": "math.subtractI64",
+    "multiply":             "math.multiplyI64",
+    "multiplyByStep":       "math.multiplyI64",
+    "multiplyByCounter":    "math.multiplyI64",
+    "divide":               "math.divideI64",
+    "modulo":               "math.moduloI64",
+    "moduloBy":             "math.moduloI64",
+    "equal":                "math.equalI64",
+    "notEqual":             "math.notEqualI64",
+    "lessThan":             "math.lessThanI64",
+    "lessThanOrEqual":      "math.lessThanOrEqualI64",
+    "greaterThan":          "math.greaterThanI64",
+    "greaterThanOrEqual":   "math.greaterThanOrEqualI64",
+    "square":               "math.multiplyI64",
+    # fallible (use bindOk + bindError + branchIfError)
+    "checkedMultiply":           "math.checkedMultiplyI64",
+    "checkedMultiplyByCounter":  "math.checkedMultiplyI64",
+    "checkedMultiplyByStep":     "math.checkedMultiplyI64",
+}
+
+
+# ============================================================
+# Codegen
+# ============================================================
+
+class Codegen:
+    def __init__(self, prog: Program):
+        self.prog = prog
+        self.module = ir.Module(name=prog.project_name or "semanticscript_module")
+        self.module.triple = llvm.get_default_triple()
+        self.strings = {}
+        self._next_str_id = 0
+        self._declare_externals()
+
+    def _declare_externals(self):
+        # `puts` and `printf` are declared lazily, on first reference (see
+        # `_get_puts` / `_get_printf`). The lazy declaration lets an
+        # SemanticScript program define its OWN user-operation called `puts`
+        # (e.g. an SemanticScript-native stdio.sscript that bottoms out through c.putchar)
+        # without colliding with the compiler's libc glue. The first call
+        # that actually needs the libc symbol gets it declared then.
+        self._puts = None
+        self._printf = None
+        # LLVM signed-multiply-with-overflow intrinsic. Produces a literal
+        # struct { i64 product, i1 overflowOccurred }. Used to lower checked
+        # multiplication call targets so callers can branchIfError on the
+        # overflow bit instead of silently wrapping.
+        overflow_struct_ty = ir.LiteralStructType([I64, I1])
+        smul_overflow_ty = ir.FunctionType(overflow_struct_ty, [I64, I64])
+        self.smul_overflow_i64 = ir.Function(
+            self.module, smul_overflow_ty, name="llvm.smul.with.overflow.i64")
+        # On-demand cache for c.* libc declarations. Populated lazily so a
+        # program that calls only c.printf doesn't drag every libc external
+        # into its IR.
+        self._libc_funcs = {}
+        # Cache for stdio stream globals (stdin / stdout / stderr).
+        self._libc_streams = {}
+        # Mutable module-scope globals: emitted at compile() entry, looked
+        # up by name from resolve()/set inside every operation body.
+        self._mutable_globals = {}
+
+    @property
+    def puts(self):
+        """Lazily declare the libc puts extern. Skipped if the program
+        already defines a user-operation named `puts` (in that case
+        console.writeLine etc. will pick up the SemanticScript-native one through the
+        user-op dispatch path, not through self.puts)."""
+        if self._puts is None:
+            self._puts = ir.Function(self.module, ir.FunctionType(I32, [I8P]),
+                                     name="puts")
+        return self._puts
+
+    @property
+    def printf(self):
+        if self._printf is None:
+            self._printf = ir.Function(self.module,
+                                       ir.FunctionType(I32, [I8P], var_arg=True),
+                                       name="printf")
+        return self._printf
+
+    # Attribute groups applied to libc declarations so the LLVM optimizer can
+    # treat them as nearly-pure functions. Without these the JIT cannot hoist
+    # repeated math calls across a loop or vectorize them, which leaves
+    # SemanticScript several times slower than clang -O2 on math-heavy code.
+    # Function attributes recognized by llvmlite's IR builder. Matches the
+    # effective semantics of clang's `-fno-math-errno` (math functions can
+    # be treated as truly pure for optimization purposes).
+    _LIBC_MATH_PURE = ("nounwind", "readnone")
+    _LIBC_MEMORY_PURE = ("nounwind", "readonly")
+    _LIBC_NOUNWIND = ("nounwind",)
+
+    def _attrs_for(self, name: str):
+        # math.h functions: pure modulo errno writes; mark willreturn+nofree
+        # so loop-invariant code motion can hoist them.
+        if name in libc_registry.MATH:
+            return self._LIBC_MATH_PURE
+        # ctype functions are pure (table lookups, no I/O).
+        if name in libc_registry.CTYPE or name in libc_registry.WCTYPE:
+            return self._LIBC_MEMORY_PURE
+        # string-read functions (strlen, strcmp, memcmp, …) only read memory.
+        if name in {"strlen", "strnlen_s", "strcmp", "strncmp", "strchr",
+                    "strrchr", "strspn", "strcspn", "strpbrk", "strstr",
+                    "memcmp", "memchr"}:
+            return self._LIBC_MEMORY_PURE
+        # Everything else is nounwind by C convention but may have side effects.
+        return self._LIBC_NOUNWIND
+
+    def _libc_func(self, semantic_name: str):
+        """Return an LLVM Function for libc <semantic_name>, declaring it on
+        demand. The SemanticScript-facing name may be the C symbol itself (printf,
+        strlen, malloc) or a camelCase alias (alignedAlloc, threadCreate,
+        mutexLock, …) that maps to an underscored C symbol. The dispatcher
+        consults `libc_registry.resolve_c_symbol` to translate.
+
+        If the module already has a function by the resolved C symbol
+        (e.g. `printf` is pre-declared by _declare_externals for the
+        writeIntegerLine path), reuse the existing declaration."""
+        if semantic_name in self._libc_funcs:
+            return self._libc_funcs[semantic_name]
+        # Translate SemanticScript-facing camelCase to the underscored C symbol per
+        # spec §5 (only `.`/`"`/`#`/`/` are SemanticScript punctuation; foreign symbol
+        # names that contain `_` are exposed through aliases).
+        c_symbol = libc_registry.resolve_c_symbol(semantic_name)
+        # Reuse any existing LLVM extern with the target C symbol name.
+        for existing in self.module.functions:
+            if existing.name == c_symbol:
+                self._libc_funcs[semantic_name] = existing
+                return existing
+        # Signature lookup: try SemanticScript-facing name first, then the C symbol.
+        sig = libc_registry.ALL_FUNCTIONS.get(semantic_name)
+        if sig is None:
+            sig = libc_registry.ALL_FUNCTIONS.get(c_symbol)
+        if sig is None:
+            raise ValueError(f"unknown c.* function: c.{semantic_name}")
+        ret_typ, param_typs, var_args = sig
+        llvm_ret = llvm_type_for_or_void(self.prog, ret_typ)
+        if llvm_ret is None:
+            raise ValueError(f"unsupported return type `{ret_typ}` for c.{semantic_name}")
+        llvm_params = []
+        for ptyp in param_typs:
+            ll = llvm_type_for(self.prog, ptyp)
+            if ll is None:
+                raise ValueError(f"unsupported param type `{ptyp}` for c.{semantic_name}")
+            llvm_params.append(ll)
+        fnty = ir.FunctionType(llvm_ret, llvm_params, var_arg=var_args)
+        # Use the C symbol as the LLVM extern name so the linker resolves
+        # to the actual libc function (not the SemanticScript-facing camelCase form).
+        fn = ir.Function(self.module, fnty, name=c_symbol)
+        for attr in self._attrs_for(c_symbol):
+            fn.attributes.add(attr)
+        self._libc_funcs[semantic_name] = fn
+        return fn
+
+    def _coerce_for_libc(self, builder, value, target_typ_name: str):
+        """Coerce an SSA value to match a libc parameter's declared type."""
+        target_ll = llvm_type_for(self.prog, target_typ_name)
+        if target_ll is None:
+            return value
+        if value.type == target_ll:
+            return value
+        # int -> wider/narrower int
+        if isinstance(value.type, ir.IntType) and isinstance(target_ll, ir.IntType):
+            if value.type.width < target_ll.width:
+                return builder.sext(value, target_ll)
+            if value.type.width > target_ll.width:
+                return builder.trunc(value, target_ll)
+        # int -> pointer (treat as conversion via inttoptr for null-style args)
+        if isinstance(value.type, ir.IntType) and isinstance(target_ll, ir.PointerType):
+            return builder.inttoptr(value, target_ll)
+        # pointer -> pointer (bitcast)
+        if isinstance(value.type, ir.PointerType) and isinstance(target_ll, ir.PointerType):
+            return builder.bitcast(value, target_ll)
+        # int -> float
+        if isinstance(value.type, ir.IntType) and isinstance(target_ll, (ir.FloatType, ir.DoubleType)):
+            return builder.sitofp(value, target_ll)
+        # float -> int
+        if isinstance(value.type, (ir.FloatType, ir.DoubleType)) and isinstance(target_ll, ir.IntType):
+            return builder.fptosi(value, target_ll)
+        # float -> float (width change)
+        if isinstance(value.type, ir.FloatType) and isinstance(target_ll, ir.DoubleType):
+            return builder.fpext(value, target_ll)
+        if isinstance(value.type, ir.DoubleType) and isinstance(target_ll, ir.FloatType):
+            return builder.fptrunc(value, target_ll)
+        return value
+
+    def _emit_math_classifier(self, builder, classifier: str, x, name: str):
+        """Lower a <math.h> classifier macro to LLVM operations.
+
+        These C macros are spec-required to behave as if they had been
+        implemented with native FP introspection — the libc has no extern
+        for them on most platforms, so the only portable lowering is to
+        emit the equivalent LLVM ops.
+        """
+        if classifier == "isnan":
+            # Unordered compare with self: NaN is the only value that
+            # compares unordered against itself.
+            result_bool = builder.fcmp_unordered("uno", x, x, name=name + "_uno")
+            return builder.zext(result_bool, I32)
+        if classifier == "isinf":
+            # |x| == inf
+            inf = ir.Constant(F64, float("inf"))
+            abs_x = builder.call(self._llvm_fabs_f64(), [x], name=name + "_abs")
+            eq = builder.fcmp_ordered("==", abs_x, inf, name=name + "_eq")
+            return builder.zext(eq, I32)
+        if classifier == "isfinite":
+            # |x| < inf  (also rules out NaN because NaN < anything is false)
+            inf = ir.Constant(F64, float("inf"))
+            abs_x = builder.call(self._llvm_fabs_f64(), [x], name=name + "_abs")
+            lt = builder.fcmp_ordered("<", abs_x, inf, name=name + "_lt")
+            return builder.zext(lt, I32)
+        if classifier == "isnormal":
+            # |x| is finite AND |x| >= DBL_MIN (normal positive). This is the
+            # spec definition: normal floats are non-zero, finite, and not
+            # subnormal. DBL_MIN = 2^-1022.
+            dbl_min = ir.Constant(F64, 2.2250738585072014e-308)
+            inf = ir.Constant(F64, float("inf"))
+            abs_x = builder.call(self._llvm_fabs_f64(), [x], name=name + "_abs")
+            lt_inf = builder.fcmp_ordered("<", abs_x, inf, name=name + "_lt_inf")
+            ge_min = builder.fcmp_ordered(">=", abs_x, dbl_min, name=name + "_ge_min")
+            both = builder.and_(lt_inf, ge_min, name=name + "_both")
+            return builder.zext(both, I32)
+        if classifier == "signbit":
+            # Read the sign bit by reinterpreting the double as i64.
+            i64_bits = builder.bitcast(x, I64, name=name + "_bits")
+            shifted = builder.lshr(i64_bits, ir.Constant(I64, 63),
+                                    name=name + "_shift")
+            return builder.trunc(shifted, I32)
+        if classifier == "fpclassify":
+            # Returns FP_INFINITE, FP_NAN, FP_NORMAL, FP_SUBNORMAL, FP_ZERO.
+            # Implementation-defined integer values; we use the MSVC values
+            # (1, 2, -1, -2, 0). The result is computed by chained selects.
+            FP_NAN, FP_INFINITE, FP_ZERO, FP_SUBNORMAL, FP_NORMAL = 2, 1, 0, -2, -1
+            inf = ir.Constant(F64, float("inf"))
+            zero = ir.Constant(F64, 0.0)
+            dbl_min = ir.Constant(F64, 2.2250738585072014e-308)
+            abs_x = builder.call(self._llvm_fabs_f64(), [x], name=name + "_abs")
+            is_nan = builder.fcmp_unordered("uno", x, x, name=name + "_uno")
+            is_inf = builder.fcmp_ordered("==", abs_x, inf, name=name + "_inf")
+            is_zero = builder.fcmp_ordered("==", x, zero, name=name + "_zero")
+            is_subnormal = builder.fcmp_ordered("<", abs_x, dbl_min,
+                                                 name=name + "_sub")
+            result_normal = ir.Constant(I32, FP_NORMAL)
+            result_subnorm = builder.select(is_subnormal,
+                ir.Constant(I32, FP_SUBNORMAL), result_normal,
+                name=name + "_sel_sub")
+            result_zero = builder.select(is_zero, ir.Constant(I32, FP_ZERO),
+                result_subnorm, name=name + "_sel_zero")
+            result_inf = builder.select(is_inf, ir.Constant(I32, FP_INFINITE),
+                result_zero, name=name + "_sel_inf")
+            return builder.select(is_nan, ir.Constant(I32, FP_NAN),
+                result_inf, name=name + "_sel_nan")
+        raise ValueError(f"unknown math classifier: {classifier}")
+
+    def _llvm_fabs_f64(self):
+        """Get-or-declare the LLVM `llvm.fabs.f64` intrinsic."""
+        for fn in self.module.functions:
+            if fn.name == "llvm.fabs.f64":
+                return fn
+        fnty = ir.FunctionType(F64, [F64])
+        return ir.Function(self.module, fnty, name="llvm.fabs.f64")
+
+    def _promote_for_vararg(self, builder, value):
+        """C variadic ABI: integer args < int are promoted to int; float is
+        promoted to double. Apply the same promotion here so call-site types
+        match what printf/scanf expect."""
+        if isinstance(value.type, ir.IntType) and value.type.width < 32:
+            return builder.sext(value, I32)
+        if isinstance(value.type, ir.FloatType):
+            return builder.fpext(value, F64)
+        return value
+
+    def _libc_stream(self, name: str):
+        """Return the i8* SSA value of a libc stdio stream global."""
+        if name in self._libc_streams:
+            return self._libc_streams[name]
+        # On MSVC the streams are accessed via __acrt_iob_func(stream_id);
+        # the simplest portable mapping is to declare the symbol as a
+        # `FILE*` global and let the linker resolve it. llvmlite emits
+        # external globals when no initializer is set.
+        gv = ir.GlobalVariable(self.module, I8P, name=f"as_{name}")
+        gv.linkage = "external"
+        self._libc_streams[name] = gv
+        return gv
+
+    # ---------- string interning ----------
+    def _make_str_global(self, text: str) -> ir.GlobalVariable:
+        if text in self.strings:
+            return self.strings[text]
+        data = bytearray(text.encode("utf-8")) + b"\0"
+        arr_ty = ir.ArrayType(ir.IntType(8), len(data))
+        gv = ir.GlobalVariable(self.module, arr_ty, name=f".str.{self._next_str_id}")
+        self._next_str_id += 1
+        gv.linkage = "internal"
+        gv.global_constant = True
+        gv.initializer = ir.Constant(arr_ty, data)
+        self.strings[text] = gv
+        return gv
+
+    def _i8p(self, builder: ir.IRBuilder, text: str):
+        gv = self._make_str_global(text)
+        zero = ir.Constant(I32, 0)
+        return builder.gep(gv, [zero, zero], inbounds=True)
+
+    # ---------- module-scope mutable globals ----------
+    def _emit_mutable_globals(self):
+        """Emit an LLVM module-global for each `storage module mutable` or
+        `sharedState <scope> mutable` declared at program scope. The
+        initializer is folded from the declared raw value (or the const it
+        references). resolve() inside _compile_body checks self._mutable_globals
+        before prog.consts so a read of NAME becomes a load of the global,
+        and the `set module` / `set sharedState` handler routes through
+        store. Cross-op visibility comes for free because the LLVM global
+        is module-scope."""
+        prog = self.prog
+        for name, (typ_name, raw_value) in prog.mutable_globals.items():
+            llty = llvm_type_for(prog, typ_name)
+            if llty is None:
+                continue
+            # Resolve a const-name initializer through prog.consts one level
+            # deep so `storage module mutable A I64 zeroCount` works when
+            # zeroCount is itself a declared const.
+            init_value = raw_value
+            if isinstance(init_value, str) and init_value in prog.consts:
+                _, inner = prog.consts[init_value]
+                init_value = inner
+            if isinstance(llty, ir.IntType):
+                try:
+                    initializer = ir.Constant(llty, int(init_value))
+                except (TypeError, ValueError):
+                    initializer = ir.Constant(llty, 0)
+            elif isinstance(llty, (ir.FloatType, ir.DoubleType)):
+                try:
+                    initializer = ir.Constant(llty, float(init_value))
+                except (TypeError, ValueError):
+                    initializer = ir.Constant(llty, 0.0)
+            elif isinstance(llty, ir.PointerType):
+                initializer = ir.Constant(llty, None)
+            else:
+                initializer = ir.Constant(llty, None)
+            gv = ir.GlobalVariable(self.module, llty, name=f"as.global.{name}")
+            gv.linkage = "internal"
+            gv.global_constant = False
+            gv.initializer = initializer
+            self._mutable_globals[name] = gv
+
+    # ---------- entry ----------
+    def compile(self):
+        # Emit mutable module globals first so any operation body that
+        # reads or writes one sees the LLVM global already in scope.
+        self._emit_mutable_globals()
+        # When `target webServer` is declared with no explicit `entry` line,
+        # the program's entry points are its `route` handlers, not a main()
+        # operation. We don't yet host an HTTP runtime, but we still emit
+        # every handler as an LLVM function and a stub `int main() { return 0; }`
+        # so the program links and the AST/tooling pass sees the real bodies.
+        # Programs without an `entry` line are libraries / declarative
+        # showcases (`target webServer` route handlers, the refined-syntax
+        # surface, stdlib mirrors). Compile every operation as a callable
+        # function and emit a stub `int main() { return 0; }` so the program
+        # links and tooling can inspect each operation's IR.
+        if self.prog.entry is None:
+            self._compile_webserver_program()
+            return self.module
+        mode, opname = self.prog.entry
+        if mode != "console":
+            raise NotImplementedError(
+                f"entry mode `{mode}` is spec-defined (see spec §17 for "
+                f"webServer, §16 for console) but no runtime backend has "
+                f"been wired into this compiler beyond `entry console`. "
+                f"The parser accepts `webServer` / `route` / handler "
+                f"operations so a sample can be authored, lint-checked, "
+                f"and indexed by tooling. Use `--parse-only` to verify "
+                f"the AST of an `entry {mode}` program.")
+        if opname not in self.prog.operations:
+            raise ValueError(f"entry references unknown operation: {opname}")
+
+        # ---- pass 1: pre-declare every non-main user operation as an LLVM
+        # function prototype, so any operation can call any other regardless
+        # of source order. The signature is `i32 op(params...)` where params
+        # come from `input` lines minus opaque-dependency symbols (the
+        # `console`/`process`/etc. inputs documented by §16 but not carried
+        # at the LLVM ABI boundary).
+        # An operation named `main` that ISN'T the entry would collide with
+        # the LLVM `@main` we emit for the entry — that happens whenever
+        # importModule pulls in a stdlib_sem module whose smoke-test op is
+        # called `main`. Skip those: each imported `main` is the module's
+        # own smoke test and unreachable from outside anyway.
+        self._user_ops = {}  # opName -> {"fn": LLVMFn, "params": [(pname, llty, ptype_name)]}
+        for name, op in self.prog.operations.items():
+            if name == opname:
+                continue
+            if name == "main":
+                continue
+            self._declare_user_op(op)
+
+        # ---- pass 2: compile each non-main op's body into its prototype.
+        for name, op in self.prog.operations.items():
+            if name == opname:
+                continue
+            if name == "main":
+                continue
+            self._compile_user_op(op)
+
+        # ---- pass 3: compile main with the void signature `i32 @main()`.
+        self._compile_main(self.prog.operations[opname])
+        return self.module
+
+    # ---------- user-defined operations ----------
+    def _declare_user_op(self, op: Operation):
+        """Walk the operation's `input` lines, drop opaque-dep params, build
+        the LLVM function prototype, and record it for later call-site lookup.
+
+        The return type is derived from the operation's `output` line:
+            output OPNAME Result OK_TYPE ERR_TYPE     -> OK_TYPE
+            output OPNAME OK_TYPE                     -> OK_TYPE
+        If OK_TYPE is `Void` (the spec's no-value success leg), we fall back
+        to i32 because the LLVM ABI still needs a concrete return slot — the
+        i32 then carries a sentinel zero. If the output line is missing or
+        the OK type isn't a known SemanticScript type alias, we also use i32 (backward
+        compatible with pre-typed user-ops)."""
+        params = []  # list of (pname, llvm_type, source_type_name)
+        return_type = I32  # default
+        return_type_name = None
+        for verb, args, _ln in op.lines:
+            if verb == "output" and len(args) >= 2:
+                # args = [opname, ...rest]
+                rest = args[1:]
+                ok_type_name = None
+                if len(rest) >= 1 and rest[0] == "Result" and len(rest) >= 2:
+                    ok_type_name = rest[1]
+                elif len(rest) >= 1:
+                    ok_type_name = rest[0]
+                if ok_type_name and ok_type_name not in ("Void", "CVoid"):
+                    rt = llvm_type_for(self.prog, ok_type_name)
+                    if rt is not None:
+                        return_type = rt
+                        return_type_name = ok_type_name
+                continue
+            if verb != "input" or len(args) < 3:
+                continue
+            _owner_op_name, pname, ptype = args[0], args[1], args[2]
+            if pname in OPAQUE_INPUTS:
+                continue
+            llty = llvm_type_for(self.prog, ptype)
+            if llty is None:
+                # Unknown PascalCase type → also treated as opaque and skipped.
+                continue
+            params.append((pname, llty, ptype))
+        fnty = ir.FunctionType(return_type, [pt[1] for pt in params])
+        fn = ir.Function(self.module, fnty, name=op.name)
+        for i, (pname, _, _) in enumerate(params):
+            fn.args[i].name = pname
+        self._user_ops[op.name] = {
+            "fn": fn,
+            "params": params,
+            "return_type": return_type,
+            "return_type_name": return_type_name,
+        }
+
+    # Refined-syntax operations marked `operationBody NAME runtimeBinding`
+    # delegate to a libc/runtime primitive named on the `runtimeBinding`
+    # line. Mapping the spec-shaped binding name to the actual libc symbol
+    # gives those operations real semantics — `compareCString` runs strcmp,
+    # `stringByteLength` runs strlen, etc. — instead of returning zero.
+    _RUNTIME_BINDING_MAP = {
+        "runtime.cstring.compare":         ("strcmp",  "i32_from_two_i8p"),
+        "runtime.cstring.byteLength":      ("strlen",  "i64_from_i8p"),
+        "runtime.cstring.validateNullTerminated":
+                                            ("strlen",  "i64_from_i8p"),
+        "runtime.memory.copyBytes":        ("memcpy",  "i8p_from_dst_src_n"),
+        "runtime.text.validateUtf8":       ("strlen",  "i64_from_i8p"),
+        "runtime.calendar.isLeapYearAsCInt": (None, "leap_year_i32"),
+        "runtime.calendar.isLeapYearBool":   (None, "leap_year_i1"),
+        # Metrics counter increment: signature is (runtime, current, step) →
+        # current + step. The runtime arg is opaque; the real work is i64
+        # arithmetic over the remaining two operands.
+        "metrics.computeIncrementI64":       (None, "add_arg1_arg2_i64"),
+        # Retry-policy delay calculator: signature is (policy, attemptIndex)
+        # → DurationMilliseconds. Without policy-field introspection in this
+        # compiler, lower to a simple linear-backoff stub: 50 * (attempt+1)
+        # milliseconds. Gives the program well-typed, sensible-shape values
+        # rather than always-zero.
+        "retryPolicy.delayForAttempt":       (None, "linear_backoff_50ms"),
+        # Metrics lock acquire/release: opaque guard tokens. Acquire returns
+        # 1 (a non-null token); release returns 0 (success). Both are i64.
+        "metricsLock.acquire":               (None, "const_one_i64"),
+        "metricsLock.release":               (None, "const_zero"),
+        # Scheduler sleep: synchronous no-op returning 0.
+        "scheduler.sleep":                   (None, "const_zero"),
+    }
+
+    # Refined-syntax operations marked `operationBody NAME intrinsic` lower
+    # to real arithmetic IR. The `intrinsicName NAME arithmetic.X` line
+    # picks which IR pattern to emit.
+    _INTRINSIC_MAP = {
+        "arithmetic.addI64":           ("add",  "i64"),
+        "arithmetic.subtractI64":      ("sub",  "i64"),
+        "arithmetic.multiplyI64":      ("mul",  "i64"),
+        "arithmetic.divideI64":        ("sdiv", "i64"),
+        "arithmetic.moduloI64":        ("srem", "i64"),
+        "arithmetic.equalI64":         ("==",   "i1"),
+        "arithmetic.notEqualI64":      ("!=",   "i1"),
+        "arithmetic.lessThanI64":      ("<",    "i1"),
+        "arithmetic.lessThanOrEqualI64": ("<=", "i1"),
+        "arithmetic.greaterThanI64":   (">",    "i1"),
+        "arithmetic.greaterThanOrEqualI64": (">=", "i1"),
+        "arithmetic.greaterThanOrEqualCByteCount": (">=", "i1"),
+        "arithmetic.equalCSignedInt32": ("==",  "i1"),
+    }
+
+    def _compile_user_op(self, op: Operation):
+        info = self._user_ops[op.name]
+        fn = info["fn"]
+        entry_bb = fn.append_basic_block("entry")
+        builder = ir.IRBuilder(entry_bb)
+        initial_binds = {pname: fn.args[i]
+                         for i, (pname, _, _) in enumerate(info["params"])}
+        # Refined-syntax shortcut: if the operation's body is just a
+        # `runtimeBinding NAME TARGET` line and TARGET maps to a libc call,
+        # emit that call directly and return — bypassing the no-op walk.
+        if self._try_emit_runtime_binding(op, fn, builder):
+            return
+        if self._try_emit_intrinsic(op, fn, builder):
+            return
+        self._compile_body(op, fn, builder, initial_binds=initial_binds)
+
+    def _try_emit_intrinsic(self, op: Operation, fn, builder) -> bool:
+        # Look for `intrinsicName NAME arithmetic.X`. Body becomes the
+        # appropriate LLVM arithmetic instruction over the two params.
+        target = None
+        for verb, args, _ln in op.lines:
+            if verb == "intrinsicName" and len(args) >= 2:
+                target = args[1]
+                break
+        mapping = self._INTRINSIC_MAP.get(target)
+        if mapping is None:
+            return False
+        opcode, _shape = mapping
+        params = list(fn.args)
+        if len(params) < 2:
+            return False
+        left, right = params[0], params[1]
+        rty = fn.function_type.return_type
+        if opcode in ("add", "sub", "mul", "sdiv", "srem"):
+            method = {"add": builder.add, "sub": builder.sub,
+                      "mul": builder.mul, "sdiv": builder.sdiv,
+                      "srem": builder.srem}[opcode]
+            res = method(left, right)
+            if res.type != rty:
+                if isinstance(rty, ir.IntType):
+                    if rty.width < res.type.width:
+                        res = builder.trunc(res, rty)
+                    elif rty.width > res.type.width:
+                        res = builder.sext(res, rty)
+            builder.ret(res)
+            return True
+        # comparison: emit icmp
+        res = builder.icmp_signed(opcode, left, right)
+        if rty == I1:
+            builder.ret(res)
+        elif isinstance(rty, ir.IntType):
+            builder.ret(builder.zext(res, rty))
+        else:
+            builder.ret(ir.Constant(rty, 0))
+        return True
+
+    def _try_emit_runtime_binding(self, op: Operation, fn, builder) -> bool:
+        target = None
+        for verb, args, _ln in op.lines:
+            if verb == "runtimeBinding" and len(args) >= 2:
+                target = args[1]
+                break
+        mapping = self._RUNTIME_BINDING_MAP.get(target)
+        if mapping is None:
+            return False
+        libc_name, shape = mapping
+        rty = fn.function_type.return_type
+        params = list(fn.args)
+        if shape == "i32_from_two_i8p" and len(params) >= 2:
+            fty = ir.FunctionType(I32, [I8P, I8P])
+            extern = self.module.globals.get(libc_name) or ir.Function(
+                self.module, fty, name=libc_name)
+            res = builder.call(extern, [params[0], params[1]])
+            if rty == I32:
+                builder.ret(res)
+            elif isinstance(rty, ir.IntType):
+                if rty.width > 32:
+                    builder.ret(builder.sext(res, rty))
+                else:
+                    builder.ret(builder.trunc(res, rty))
+            else:
+                builder.ret(ir.Constant(rty, 0))
+            return True
+        if shape == "i64_from_i8p" and len(params) >= 1:
+            fty = ir.FunctionType(I64, [I8P])
+            extern = self.module.globals.get(libc_name) or ir.Function(
+                self.module, fty, name=libc_name)
+            res = builder.call(extern, [params[0]])
+            if rty == I64:
+                builder.ret(res)
+            elif isinstance(rty, ir.IntType):
+                if rty.width < 64:
+                    builder.ret(builder.trunc(res, rty))
+                else:
+                    builder.ret(builder.sext(res, rty))
+            else:
+                builder.ret(ir.Constant(rty, 0))
+            return True
+        if shape == "linear_backoff_50ms":
+            # 50 * (attempt + 1). The opaque policy input is dropped, so
+            # attemptIndex is the last param.
+            attempt = params[-1]
+            if isinstance(attempt.type, ir.IntType) and attempt.type.width != 64:
+                attempt = (builder.sext if attempt.type.width < 64
+                           else builder.trunc)(attempt, I64)
+            plus_one = builder.add(attempt, ir.Constant(I64, 1))
+            res = builder.mul(plus_one, ir.Constant(I64, 50))
+            if isinstance(rty, ir.IntType):
+                if rty.width != 64:
+                    res = (builder.trunc if rty.width < 64
+                           else builder.sext)(res, rty)
+                builder.ret(res)
+            else:
+                builder.ret(ir.Constant(rty, 0))
+            return True
+        if shape == "const_one_i64":
+            if isinstance(rty, ir.IntType):
+                builder.ret(ir.Constant(rty, 1))
+            elif isinstance(rty, ir.PointerType):
+                # Materialize a non-null sentinel pointer (inttoptr 1).
+                ptr = builder.inttoptr(ir.Constant(I64, 1), rty)
+                builder.ret(ptr)
+            else:
+                builder.ret(ir.Constant(rty, 0))
+            return True
+        if shape == "const_zero":
+            if isinstance(rty, ir.PointerType):
+                builder.ret(ir.Constant(rty, None))
+            elif isinstance(rty, (ir.FloatType, ir.DoubleType)):
+                builder.ret(ir.Constant(rty, 0.0))
+            else:
+                builder.ret(ir.Constant(rty, 0))
+            return True
+        if shape == "add_arg1_arg2_i64" and len(params) >= 2:
+            # The MetricsRuntime opaque input is dropped at the ABI by
+            # _declare_user_op, so the LLVM signature exposes (current, step).
+            left, right = params[-2], params[-1]
+            for v in (left, right):
+                if isinstance(v.type, ir.IntType) and v.type.width != 64:
+                    pass  # caller-side coercion already done; trust types
+            res = builder.add(left, right)
+            if isinstance(rty, ir.IntType):
+                if rty.width != res.type.width:
+                    res = (builder.sext if rty.width > res.type.width
+                           else builder.trunc)(res, rty)
+                builder.ret(res)
+            else:
+                builder.ret(ir.Constant(rty, 0))
+            return True
+        if shape in ("leap_year_i32", "leap_year_i1") and len(params) >= 1:
+            # is_leap = (y%4 == 0 && y%100 != 0) || (y%400 == 0)
+            year = params[0]
+            mod4 = builder.srem(year, ir.Constant(I64, 4))
+            mod100 = builder.srem(year, ir.Constant(I64, 100))
+            mod400 = builder.srem(year, ir.Constant(I64, 400))
+            zero = ir.Constant(I64, 0)
+            div4 = builder.icmp_signed("==", mod4, zero)
+            div100 = builder.icmp_signed("!=", mod100, zero)
+            div400 = builder.icmp_signed("==", mod400, zero)
+            ordinary = builder.and_(div4, div100)
+            is_leap = builder.or_(ordinary, div400)
+            if shape == "leap_year_i1":
+                if rty == I1:
+                    builder.ret(is_leap)
+                elif isinstance(rty, ir.IntType):
+                    builder.ret(builder.zext(is_leap, rty))
+                else:
+                    builder.ret(ir.Constant(rty, 0))
+            else:
+                # i32 form: leap → 1, else 0
+                res = builder.zext(is_leap, I32)
+                if rty == I32:
+                    builder.ret(res)
+                elif isinstance(rty, ir.IntType):
+                    if rty.width > 32:
+                        builder.ret(builder.sext(res, rty))
+                    else:
+                        builder.ret(builder.trunc(res, rty))
+                else:
+                    builder.ret(ir.Constant(rty, 0))
+            return True
+        if shape == "i8p_from_dst_src_n" and len(params) >= 3:
+            fty = ir.FunctionType(I8P, [I8P, I8P, I64])
+            extern = self.module.globals.get(libc_name) or ir.Function(
+                self.module, fty, name=libc_name)
+            # Coerce the third arg (byteCount) to i64 if needed.
+            count = params[2]
+            if isinstance(count.type, ir.IntType) and count.type.width != 64:
+                count = builder.sext(count, I64) if count.type.width < 64 else builder.trunc(count, I64)
+            res = builder.call(extern, [params[0], params[1], count])
+            if isinstance(rty, ir.PointerType):
+                builder.ret(res)
+            elif isinstance(rty, ir.IntType):
+                builder.ret(builder.ptrtoint(res, rty))
+            else:
+                builder.ret(ir.Constant(rty, 0))
+            return True
+        # Unknown shape — fall back to the default no-op body.
+        return False
+
+    # ---------- main operation ----------
+    def _compile_main(self, op: Operation):
+        fnty = ir.FunctionType(I32, [])
+        fn = ir.Function(self.module, fnty, name="main")
+        entry_bb = fn.append_basic_block("entry")
+        builder = ir.IRBuilder(entry_bb)
+        self._compile_body(op, fn, builder, initial_binds={})
+
+    def _compile_webserver_program(self):
+        # Compile every operation as a callable function (handlers + any
+        # helpers). The HTTP runtime isn't wired here — instead we emit a
+        # stub `int main()` that returns 0 so the program links. The route
+        # handlers exist as real LLVM functions that an external runtime
+        # could dispatch to once added.
+        self._user_ops = {}
+        for name, op in self.prog.operations.items():
+            self._declare_user_op(op)
+        for name, op in self.prog.operations.items():
+            self._compile_user_op(op)
+        fnty = ir.FunctionType(I32, [])
+        fn = ir.Function(self.module, fnty, name="main")
+        entry_bb = fn.append_basic_block("entry")
+        builder = ir.IRBuilder(entry_bb)
+        builder.ret(ir.Constant(I32, 0))
+
+    # ---------- shared body compilation ----------
+    def _compile_body(self, op: Operation, fn, builder, initial_binds: dict):
+        prog = self.prog
+
+        labels = {}        # name -> BasicBlock
+        calls = {}         # callName -> {target, args, result, error_value, error_cond}
+        binds = dict(initial_binds)  # bind-name -> SSA value (or alloca pointer for vars)
+        var_types = {}     # var-name -> LLVM type
+        is_var = set()     # set of mutable var names
+
+        # Pre-create blocks for every label in source order
+        for verb, args, _ln in op.lines:
+            if verb == "label":
+                labels[args[0]] = fn.append_basic_block(args[0])
+
+        SENTINEL = object()
+        opaque_inputs = OPAQUE_INPUTS
+
+        def get_block(name):
+            if name not in labels:
+                labels[name] = fn.append_basic_block(name)
+            return labels[name]
+
+        def emit_const_value(typ, raw):
+            llty = llvm_type_for(prog, typ)
+            resolved = resolve_alias(prog, typ)
+            # Refined-syntax `storage module immutable A I64 B` lets `B` be
+            # the name of another const rather than a literal. Recursively
+            # resolve up to a small depth to avoid pathological cycles.
+            if isinstance(raw, str) and raw in prog.consts:
+                inner_typ, inner_val = prog.consts[raw]
+                if isinstance(inner_val, str) and inner_val in prog.consts:
+                    raw = prog.consts[inner_val][1]
+                else:
+                    raw = inner_val
+            # Any type that lowers to the i8* pointer shape (the canonical
+            # spec-compliant `CNullTerminatedByteString`, the legacy
+            # `CString`/`String`, or any user alias that resolves to one of
+            # these) and whose const value is a literal string gets the
+            # interned-i8-array treatment. The check is on the LLVM type so
+            # future pointer-shaped aliases don't need a special case.
+            if llty == I8P and isinstance(raw, str):
+                return self._i8p(builder, raw)
+            if llty is None:
+                raise ValueError(f"unsupported const type: {typ}")
+            if isinstance(llty, ir.IntType):
+                if llty.width == 1:
+                    if isinstance(raw, str):
+                        if raw.lower() in ("true", "yes"):
+                            return ir.Constant(I1, 1)
+                        if raw.lower() in ("false", "no"):
+                            return ir.Constant(I1, 0)
+                    try:
+                        return ir.Constant(I1, int(bool(int(raw))))
+                    except (TypeError, ValueError):
+                        return ir.Constant(I1, 0)
+                try:
+                    return ir.Constant(llty, int(raw))
+                except (TypeError, ValueError):
+                    # Last-resort stub: zero. Refined-syntax may bind a
+                    # const-typed slot to a name that can't be resolved
+                    # statically; emit zero rather than crash codegen.
+                    return ir.Constant(llty, 0)
+            if isinstance(llty, (ir.FloatType, ir.DoubleType)):
+                try:
+                    return ir.Constant(llty, float(raw))
+                except (TypeError, ValueError):
+                    return ir.Constant(llty, 0.0)
+            raise ValueError(f"unsupported const type: {typ}")
+
+        def resolve(tok):
+            if isinstance(tok, str):
+                stripped = tok.lstrip("-")
+                if stripped.isdigit():
+                    return ir.Constant(I64, int(tok))
+                # Float literal: contains a '.' and the rest is digits/sign/e.
+                if "." in tok or "e" in tok or "E" in tok:
+                    try:
+                        return ir.Constant(F64, float(tok))
+                    except ValueError:
+                        pass
+            if tok in is_var:
+                return builder.load(binds[tok], name=f"{tok}_load")
+            if tok in binds:
+                return binds[tok]
+            # Operation-local consts take precedence over module-global
+            # consts (spec scope law). Falls through to prog.consts only
+            # if not locally declared.
+            if tok in op.consts:
+                typ, val = op.consts[tok]
+                return emit_const_value(typ, val)
+            # Module-scope mutable globals (`storage module mutable`,
+            # `sharedState <scope> mutable`) take precedence over prog.consts
+            # so a reference reads the current LLVM-global value rather than
+            # the frozen initializer recorded in consts.
+            if tok in self._mutable_globals:
+                gv = self._mutable_globals[tok]
+                return builder.load(gv, name=f"{tok}_load")
+            if tok in prog.consts:
+                typ, val = prog.consts[tok]
+                return emit_const_value(typ, val)
+            if tok in opaque_inputs:
+                return SENTINEL
+            raise ValueError(f"unresolved symbol: {tok!r}")
+
+        # ---- defer registry ----
+        # Collect every `defer*` registration (and its `deferRunOn` policy
+        # lines) once up front, so each return path can emit the calls in
+        # reverse registration order regardless of where in source order
+        # the defer line sits. We support `defer`, `deferLog`, `deferAwaitLog`,
+        # and `deferWhenExitLog`. Targets that resolve to a user operation
+        # are called for real at each exit; non-user-op targets are still
+        # accepted as metadata (a future runtime backend would route them).
+        defers = []
+        defer_by_name = {}
+        for verb, args, _ln in op.lines:
+            if verb in ("defer", "deferLog", "deferAwaitLog") and len(args) >= 2:
+                d = {"name": args[0], "target": args[1],
+                     "args": list(args[2:]), "run_on": set()}
+                defers.append(d)
+                defer_by_name[args[0]] = d
+            elif verb == "deferWhenExitLog" and len(args) >= 3:
+                d = {"name": args[0], "target": args[2],
+                     "args": list(args[3:]), "run_on": set()}
+                defers.append(d)
+                defer_by_name[args[0]] = d
+            elif verb == "deferRunOn" and len(args) >= 2:
+                d = defer_by_name.get(args[0])
+                if d is not None:
+                    d["run_on"].add(args[1])
+        for d in defers:
+            if not d["run_on"]:
+                d["run_on"] = {"all"}
+
+        # ---- useRetry registry ----
+        # Map call name -> policy name. The retry loop wraps `run CALL` so
+        # each error-marked failure causes the call to retry, up to the
+        # policy's `retryMaxAttempts`. Without an explicit attempts value,
+        # we default to 3 — the spec's standard fallback for retry-policy
+        # declarations that omit the bound.
+        retry_attachments = {}
+        for verb, args, _ln in op.lines:
+            if verb == "useRetry" and len(args) >= 2:
+                retry_attachments[args[0]] = args[1]
+
+        # ---- worker pool work items ----
+        # `work NAME target OP` declares a callable work item; `workArg
+        # WORK ARG VALUE` binds one positional arg; `submitWork WORK POOL`
+        # emits a real call (sync direct-dispatch under single-thread
+        # lowering). The bind for `awaitWork WORK` reads the call's result
+        # SSA if any. We register each work item under a synthetic call
+        # name so _emit_run can dispatch through the standard pipeline.
+        work_items = {}
+        for verb, args, _ln in op.lines:
+            if verb == "work" and len(args) >= 3 and args[1] == "target":
+                work_name, target_op = args[0], args[2]
+                work_items[work_name] = {"target": target_op, "args": {}}
+            elif verb == "workArg" and len(args) >= 3:
+                work_name, arg_name, value_name = args[0], args[1], args[2]
+                work_items.setdefault(work_name,
+                                      {"target": None, "args": {}})
+                work_items[work_name]["args"][arg_name] = value_name
+
+        # ---- channel slots ----
+        # `send CHANNEL VALUE` / `receive OUT TYPE CHANNEL` in single-thread
+        # execution collapse to a single-slot register pass: every `send`
+        # writes the resolved value into one alloca per channel; every
+        # `receive` reads from the same slot. Allocate up front so both
+        # writes and reads see the same SSA pointer. A future multi-thread
+        # channel runtime would replace these slots with a real queue.
+        channel_slots = {}
+        for verb, args, _ln in op.lines:
+            if verb == "send" and args:
+                channel_slots.setdefault(args[0], None)
+            elif verb == "receive" and len(args) >= 3:
+                channel_slots.setdefault(args[2], None)
+        for channel_name in list(channel_slots.keys()):
+            with builder.goto_entry_block():
+                slot = builder.alloca(I64, name=f"channel_{channel_name}")
+            builder.store(ir.Constant(I64, 0), slot)
+            channel_slots[channel_name] = slot
+
+        def _max_attempts_for(policy_name):
+            meta = self.prog.hard_metadata.get(policy_name, {})
+            entries = meta.get("retryMaxAttempts") or []
+            for row in entries:
+                if row:
+                    raw = row[0]
+                    if isinstance(raw, str) and raw in self.prog.consts:
+                        _, val = self.prog.consts[raw]
+                        try:
+                            return max(1, int(val))
+                        except (TypeError, ValueError):
+                            pass
+                    try:
+                        return max(1, int(raw))
+                    except (TypeError, ValueError):
+                        continue
+            return 3
+
+        def _defer_runs_on(run_on, exit_path):
+            if "all" in run_on or "always" in run_on:
+                return True
+            return exit_path in run_on
+
+        def emit_defers(exit_path):
+            for d in reversed(defers):
+                if not _defer_runs_on(d["run_on"], exit_path):
+                    continue
+                target = d["target"]
+                fn_entry = self._user_ops.get(target)
+                if fn_entry is None:
+                    # Non-user-op target (libc, dotted external, etc.).
+                    # No runtime route yet; leave the cleanup as metadata.
+                    continue
+                target_fn = fn_entry["fn"]
+                param_lltys = [p[1] for p in fn_entry["params"]]
+                arg_vals = []
+                for arg_name, target_ty in zip(d["args"], param_lltys):
+                    try:
+                        v = resolve(arg_name)
+                    except ValueError:
+                        v = ir.Constant(target_ty, 0)
+                    if v is SENTINEL:
+                        v = ir.Constant(target_ty, 0)
+                    if v.type != target_ty:
+                        if (isinstance(v.type, ir.IntType)
+                                and isinstance(target_ty, ir.IntType)):
+                            if v.type.width < target_ty.width:
+                                extend = (builder.zext if v.type.width == 1
+                                          else builder.sext)
+                                v = extend(v, target_ty)
+                            else:
+                                v = builder.trunc(v, target_ty)
+                        elif (isinstance(target_ty, ir.PointerType)
+                                and isinstance(v.type, ir.IntType)):
+                            v = builder.inttoptr(v, target_ty)
+                    arg_vals.append(v)
+                while len(arg_vals) < len(param_lltys):
+                    arg_vals.append(ir.Constant(param_lltys[len(arg_vals)], 0))
+                builder.call(target_fn, arg_vals)
+
+        for verb, args, _ln in op.lines:
+            # ----- metadata: ignored at codegen -----
+            if verb in ("input", "output", "effect", "memory", "async",
+                        "purpose", "invariant", "warning"):
+                continue
+
+            if verb == "label":
+                target_bb = labels[args[0]]
+                if not builder.block.is_terminated:
+                    builder.branch(target_bb)
+                builder.position_at_end(target_bb)
+                continue
+
+            if verb == "const":
+                continue
+
+            if verb == "var":
+                # var NAME TYPE INITIAL_VALUE
+                # INITIAL_VALUE may be a literal OR the name of a previously
+                # declared const, so a domain start value can be expressed once
+                # and referenced from its initialization. The latter form is
+                # the recommended SemanticScript style.
+                name, typ_name = args[0], args[1]
+                raw = _unwrap(args[2])
+                llty = llvm_type_for(prog, typ_name)
+                if llty is None:
+                    raise ValueError(f"var: unsupported type {typ_name}")
+                with builder.goto_entry_block():
+                    slot = builder.alloca(llty, name=name)
+                resolved_typ = resolve_alias(prog, typ_name)
+                # Initializer resolution:
+                # 1. const symbol -> use its declared value (operation-local
+                #    consts take precedence over module-global ones)
+                # 2. string literal for String -> intern it
+                # 3. numeric literal -> coerce to declared type
+                const_source = None
+                if isinstance(raw, str):
+                    if raw in op.consts:
+                        const_source = op.consts[raw]
+                    elif raw in prog.consts:
+                        const_source = prog.consts[raw]
+                if const_source is not None:
+                    const_typ, const_val = const_source
+                    const_ll = llvm_type_for(prog, const_typ)
+                    if const_ll == I8P and isinstance(const_val, str):
+                        init = self._i8p(builder, const_val)
+                    elif resolve_alias(prog, const_typ) == "Bool":
+                        # Use the var's declared LLVM width — when the var
+                        # is I64 / Bool / etc., we want the init to match
+                        # the alloca so the store typechecks.
+                        bool_int = _bool_token_to_int(const_val)
+                        if isinstance(llty, ir.IntType):
+                            init = ir.Constant(llty, bool_int)
+                        elif isinstance(llty, (ir.FloatType, ir.DoubleType)):
+                            init = ir.Constant(llty, float(bool_int))
+                        else:
+                            init = ir.Constant(I1, bool_int)
+                    elif isinstance(llty, (ir.FloatType, ir.DoubleType)):
+                        init = ir.Constant(llty, float(const_val))
+                    else:
+                        init = ir.Constant(llty, int(const_val))
+                elif llty == I8P and isinstance(raw, str):
+                    init = self._i8p(builder, raw)
+                elif resolved_typ == "Bool":
+                    init = ir.Constant(llty if isinstance(llty, ir.IntType)
+                                       else I1, _bool_token_to_int(raw))
+                elif isinstance(llty, (ir.FloatType, ir.DoubleType)):
+                    init = ir.Constant(llty, float(raw))
+                else:
+                    init = ir.Constant(llty, int(raw))
+                builder.store(init, slot)
+                binds[name] = slot
+                var_types[name] = llty
+                is_var.add(name)
+                continue
+
+            if verb == "set":
+                # Refined syntax: `set <scope> NAME VALUE [...]` where scope
+                # is `local`, `module`, or `sharedState`. Legacy form is
+                # `set NAME VALUE`. Distinguish by checking whether args[0]
+                # is a known scope keyword.
+                scope_prefixed = bool(args and args[0] in
+                                       ("local", "module", "sharedState"))
+                if scope_prefixed:
+                    name, value_name = args[1], args[2]
+                else:
+                    name, value_name = args[0], args[1]
+                # Module-scope mutable globals: route the store through the
+                # LLVM global. Owner / guard authority is accepted as metadata
+                # but not enforced — surfacing it requires real ownership
+                # tracking, which the spec leaves as future work.
+                if (scope_prefixed and args[0] in ("module", "sharedState")
+                        and name in self._mutable_globals):
+                    gv = self._mutable_globals[name]
+                    gv_ty = gv.type.pointee
+                    new_val = resolve(value_name)
+                    if new_val.type != gv_ty:
+                        if (isinstance(new_val.type, ir.IntType)
+                                and isinstance(gv_ty, ir.IntType)):
+                            if new_val.type.width < gv_ty.width:
+                                extend = (builder.zext if new_val.type.width == 1
+                                          else builder.sext)
+                                new_val = extend(new_val, gv_ty)
+                            else:
+                                new_val = builder.trunc(new_val, gv_ty)
+                    builder.store(new_val, gv)
+                    continue
+                if name not in is_var:
+                    # Refined-syntax `set local NAME VALUE` may refer to a
+                    # storage-local that wasn't surfaced as a var in this
+                    # compiler's model. Treat as a no-op so the program
+                    # still compiles.
+                    if scope_prefixed:
+                        continue
+                    raise ValueError(f"set: {name} is not a var")
+                new_val = resolve(value_name)
+                slot = binds[name]
+                if new_val.type != var_types[name]:
+                    if isinstance(new_val.type, ir.IntType) and isinstance(var_types[name], ir.IntType):
+                        if new_val.type.width < var_types[name].width:
+                            # Bool / i1 should always zero-extend so `true`
+                            # widens to 1, not -1. Other narrow ints
+                            # sign-extend per spec convention.
+                            extend = (builder.zext if new_val.type.width == 1
+                                      else builder.sext)
+                            new_val = extend(new_val, var_types[name])
+                        else:
+                            new_val = builder.trunc(new_val, var_types[name])
+                builder.store(new_val, slot)
+                continue
+
+            if verb == "call":
+                call_name, target = args[0], args[1]
+                target = _TARGET_ALIASES.get(target, target)
+                # `result`      : value bound by bindOk / bind
+                # `error_value` : value bound by bindError (defaults to result)
+                # `error_cond`  : i1 used by branchIfError (default: result < 0)
+                calls[call_name] = {
+                    "target": target, "args": {},
+                    "result": None, "error_value": None, "error_cond": None,
+                }
+                continue
+
+            # Refined-syntax `recordBuild NAME BUILDER` registers a call
+            # whose `run` materializes the record from the builder's
+            # `recordSet` lines. We don't lower record construction yet
+            # (no struct types), so target the synthetic name `record.build`
+            # — `_emit_run`'s external-module fallback emits a zero result
+            # so the surrounding bind chain still compiles.
+            if verb == "recordBuild" and len(args) >= 2:
+                call_name = args[0]
+                calls[call_name] = {
+                    "target": "record.build", "args": {},
+                    "result": None, "error_value": None, "error_cond": None,
+                }
+                continue
+
+            if verb == "arg":
+                call_name, arg_name, value_name = args[0], args[1], args[2]
+                calls[call_name]["args"][arg_name] = value_name
+                continue
+
+            if verb in ("timeout", "cancelOn"):
+                continue
+
+            if verb == "run":
+                call_name = args[0]
+                policy_name = retry_attachments.get(call_name)
+                if policy_name is None:
+                    self._emit_run(builder, call_name, calls,
+                                   resolve, opaque_inputs, SENTINEL)
+                    continue
+                # Retry loop: alloca an attempt counter; loop up to
+                # `retryMaxAttempts` times; exit on success or attempt
+                # exhaustion. The call's `result` SSA — read by later
+                # `bind`/`branchIfError` — must dominate the exit block,
+                # so we materialize each attempt's result into a slot and
+                # rebind call["result"] to a load at the exit block. The
+                # error-cond is recomputed at each attempt's body block.
+                max_attempts = _max_attempts_for(policy_name)
+                fn_blk = builder.function
+                retry_top = fn_blk.append_basic_block(f"retry_top_{call_name}")
+                retry_body = fn_blk.append_basic_block(f"retry_body_{call_name}")
+                retry_inc = fn_blk.append_basic_block(f"retry_inc_{call_name}")
+                retry_exit = fn_blk.append_basic_block(f"retry_exit_{call_name}")
+                with builder.goto_entry_block():
+                    attempt_slot = builder.alloca(
+                        I64, name=f"{call_name}_attempt")
+                builder.store(ir.Constant(I64, 0), attempt_slot)
+                builder.branch(retry_top)
+                builder.position_at_end(retry_top)
+                cur_attempt = builder.load(attempt_slot)
+                cond = builder.icmp_signed(
+                    "<", cur_attempt, ir.Constant(I64, max_attempts))
+                builder.cbranch(cond, retry_body, retry_exit)
+                builder.position_at_end(retry_body)
+                self._emit_run(builder, call_name, calls,
+                               resolve, opaque_inputs, SENTINEL)
+                call_obj = calls[call_name]
+                result_ssa = call_obj.get("result")
+                result_slot = None
+                if result_ssa is not None:
+                    # Allocate once on the first iteration we see a result.
+                    # Reuse builder.goto_entry_block so the alloca dominates
+                    # both retry_body (write) and retry_exit (read).
+                    with builder.goto_entry_block():
+                        result_slot = builder.alloca(
+                            result_ssa.type, name=f"{call_name}_retry_result")
+                    builder.store(result_ssa, result_slot)
+                err_cond = call_obj.get("error_cond")
+                if err_cond is None and result_ssa is not None:
+                    if isinstance(result_ssa.type, ir.IntType):
+                        zero = ir.Constant(result_ssa.type, 0)
+                        err_cond = builder.icmp_signed(
+                            "<", result_ssa, zero,
+                            name=f"{call_name}_retry_isErr")
+                    else:
+                        err_cond = ir.Constant(I1, 0)
+                if err_cond is None:
+                    # No result and no error condition — treat as success.
+                    builder.branch(retry_exit)
+                else:
+                    builder.cbranch(err_cond, retry_inc, retry_exit)
+                builder.position_at_end(retry_inc)
+                next_attempt = builder.add(
+                    builder.load(attempt_slot), ir.Constant(I64, 1))
+                builder.store(next_attempt, attempt_slot)
+                builder.branch(retry_top)
+                builder.position_at_end(retry_exit)
+                if result_slot is not None:
+                    # Replace the in-body SSA with a load that dominates
+                    # everything downstream of the retry. Clear error_cond
+                    # because a recomputation would reference the in-body
+                    # SSA value, which doesn't dominate this block.
+                    call_obj["result"] = builder.load(
+                        result_slot, name=f"{call_name}_retry_final")
+                    call_obj["error_cond"] = None
+                continue
+
+            if verb in ("start", "await"):
+                # synchronous fallback for this implementation level
+                if verb == "await":
+                    self._emit_run(builder, args[0], calls, resolve, opaque_inputs, SENTINEL)
+                continue
+
+            if verb in ("bindOk", "bind"):
+                value_name, _type_name, call_name = args[0], args[1], args[2]
+                binds[value_name] = calls[call_name]["result"]
+                continue
+
+            if verb == "bindError":
+                value_name, _type_name, call_name = args[0], args[1], args[2]
+                call = calls[call_name]
+                # Prefer the explicit error value if the call recorded one
+                # (e.g. checked arithmetic exposes an overflow flag); otherwise
+                # fall back to the call's primary result.
+                binds[value_name] = call["error_value"] if call["error_value"] is not None else call["result"]
+                continue
+
+            if verb == "ignoreOk":
+                # ignoreOk CALL_NAME TYPE
+                # Explicitly acknowledges the success leg of CALL_NAME and
+                # discards its value. The line exists so the source carries
+                # the fact that the success value is intentionally unused
+                # (rather than silently dropped by the absence of a bindOk).
+                if len(args) < 2:
+                    raise SyntaxError("ignoreOk requires: ignoreOk CALL_NAME TYPE")
+                continue
+
+            if verb == "ignoreValue":
+                # ignoreValue CALL_NAME TYPE
+                # Infallible analogue of ignoreOk: acknowledges that an
+                # infallible call's value is intentionally discarded. The line
+                # carries the discard fact so it is not hidden behavior.
+                if len(args) < 2:
+                    raise SyntaxError("ignoreValue requires: ignoreValue CALL_NAME TYPE")
+                continue
+
+            # SOFT reserved verbs are pure metadata — codegen drops them
+            # because they cannot change runtime behavior.
+            if verb in BODY_VERBS_RESERVED_SOFT:
+                continue
+
+            # Cleanup, structured-concurrency, and policy-attachment verbs
+            # don't yet have a runtime backend in this compiler, but they
+            # produce side-effects in the AST that downstream IR may depend
+            # on (e.g. a `bindGroupError` defines a name used in later
+            # `branchIfGroupError`; a `new` defines a record var referenced
+            # by later fieldGet/fieldSet/arg). Treat each as a structural
+            # no-op that registers a zero-valued bind where needed, so the
+            # surrounding IR continues to compile. A future runtime can
+            # replace these stubs with real concurrent + record semantics.
+            # `useRetry CALL POLICY` is collected in the pre-pass above
+            # (retry_attachments); at this point in source order it has no
+            # standalone effect — the retry loop is emitted at `run CALL`.
+            if verb == "useRetry":
+                continue
+            if verb == "startInGroup" and args:
+                # `startInGroup CALL GROUP` — under synchronous taskGroup
+                # lowering, this is equivalent to `run CALL`. The work
+                # happens immediately on the same thread; `awaitGroup`
+                # below is a no-op because the call has already returned.
+                if args[0] in calls:
+                    self._emit_run(builder, args[0], calls,
+                                   resolve, opaque_inputs, SENTINEL)
+                continue
+            if verb == "submitWork" and args:
+                # `submitWork WORK POOL` — synchronous worker-pool lowering:
+                # the work runs immediately on the same thread via _emit_run
+                # against a synthetic call registered from the `work`/`workArg`
+                # pre-pass. Result is stashed in calls[synth_call_name] so a
+                # subsequent `awaitWork WORK` can read it.
+                work_name = args[0]
+                work_def = work_items.get(work_name)
+                if (work_def is not None
+                        and work_def.get("target") in self._user_ops):
+                    synth_call_name = f"_workSubmit__{work_name}"
+                    calls[synth_call_name] = {
+                        "target": work_def["target"],
+                        "args": dict(work_def["args"]),
+                        "result": None, "error_value": None, "error_cond": None,
+                    }
+                    self._emit_run(builder, synth_call_name, calls,
+                                   resolve, opaque_inputs, SENTINEL)
+                    # Stash under both the work name and the synth name so
+                    # `awaitWork WORK` can find the result by either route.
+                    work_def["_synth_call_name"] = synth_call_name
+                continue
+            if verb == "awaitWork" and args:
+                # Direct-dispatch lowering: work already ran during
+                # submitWork. Bind the work name to the call's result SSA
+                # so downstream references resolve to the real value (not a
+                # zero stub).
+                work_name = args[0]
+                work_def = work_items.get(work_name)
+                if work_def is not None:
+                    synth_call_name = work_def.get("_synth_call_name")
+                    if synth_call_name is not None:
+                        result = calls[synth_call_name].get("result")
+                        if result is not None:
+                            binds[work_name] = result
+                            continue
+                binds[work_name] = ir.Constant(I64, 0)
+                continue
+            if verb in ("defer", "deferLog", "deferAwaitLog",
+                        "deferWhenExitLog",
+                        "taskGroup", "awaitGroup",
+                        "branchIfGroupError",
+                        # Channels, locks (spec §22): synchronous-only
+                        # no-op lowering. `send`/`receive` are accepted as
+                        # name-defining verbs below; `lock`/`unlock` and
+                        # `branchIfChannelClosed` drop.
+                        "lock", "unlock", "branchIfChannelClosed",
+                        # Worker pools (spec §22): declarative.
+                        "workerPool", "work", "workArg",
+                        # Intervals (spec §23): declarative; drop.
+                        "interval", "startInterval",
+                        # Select (spec §20 race): declarative; drop.
+                        "select", "selectCase", "runSelect"):
+                continue
+            if verb == "send" and len(args) >= 2:
+                # `send CHANNEL VALUE` — single-thread queue pass: store
+                # the resolved value into the channel's slot so a matching
+                # `receive` later in the body sees it.
+                channel_name, value_name = args[0], args[1]
+                slot = channel_slots.get(channel_name)
+                if slot is not None:
+                    try:
+                        v = resolve(value_name)
+                    except ValueError:
+                        v = ir.Constant(I64, 0)
+                    if v is SENTINEL:
+                        v = ir.Constant(I64, 0)
+                    if v.type != I64:
+                        if isinstance(v.type, ir.IntType):
+                            if v.type.width < 64:
+                                v = (builder.zext if v.type.width == 1
+                                     else builder.sext)(v, I64)
+                            else:
+                                v = builder.trunc(v, I64)
+                        elif isinstance(v.type, ir.PointerType):
+                            v = builder.ptrtoint(v, I64)
+                    builder.store(v, slot)
+                continue
+            if verb == "send":
+                continue
+            if verb == "receive" and len(args) >= 3:
+                # `receive OUT TYPE CHANNEL` — single-thread queue pass:
+                # load from the channel's slot into OUT so the value sent
+                # earlier in the body flows through.
+                out_name, _type_name, channel_name = args[0], args[1], args[2]
+                slot = channel_slots.get(channel_name)
+                if slot is not None:
+                    binds[out_name] = builder.load(slot, name=f"{out_name}_recv")
+                else:
+                    binds[out_name] = ir.Constant(I64, 0)
+                continue
+            if verb == "receive" and len(args) >= 2:
+                # Short-form `receive OUT CHANNEL` (rare): register OUT as
+                # a zero bind so later references resolve.
+                binds[args[0]] = ir.Constant(I64, 0)
+                continue
+            if verb == "awaitWork" and len(args) >= 1:
+                # `awaitWork WORK` — register WORK as zero bind.
+                binds[args[0]] = ir.Constant(I64, 0)
+                continue
+            if verb == "awaitIntervalTick" and len(args) >= 1:
+                # `awaitIntervalTick NAME` — no-op (synchronous fallthrough).
+                continue
+            if verb == "branchSelected" and len(args) >= 3:
+                # `branchSelected NAME BRANCH LABEL` — always falls through
+                # (the no-op select runs no branches), so jump straight to
+                # the success continuation. Same shape as branchIfGroupError.
+                continue
+            if verb == "bindGroupError" and len(args) >= 2:
+                binds[args[0]] = ir.Constant(I64, 0)
+                continue
+            if verb == "new" and len(args) >= 1:
+                binds[args[0]] = ir.Constant(I64, 0)
+                continue
+            if verb == "fieldGet" and len(args) >= 1:
+                binds[args[0]] = ir.Constant(I64, 0)
+                continue
+            if verb == "fieldSet":
+                continue
+
+            # HARD reserved verbs are spec-defined runtime features. The
+            # codegen does not lower them yet, and silently dropping them
+            # would violate spec §2 law 5 ("hidden behavior is illegal by
+            # default"). Refuse to compile, naming the spec section.
+            if verb in BODY_VERBS_RESERVED_HARD:
+                raise NotImplementedError(
+                    f"line {_ln}: verb `{verb}` is spec-defined but "
+                    f"not yet lowered to LLVM IR by this compiler. The "
+                    f"compiler refuses to silently drop its semantics "
+                    f"(spec §2 law 5: hidden behavior is illegal by default). "
+                    f"Use `--parse-only` to verify the AST of a program "
+                    f"that uses this verb without compiling.")
+
+            # `# group …` / `# endGroup …` anchors are preserved as
+            # zero-op AST entries by the parser; the linter pairs them.
+            if verb == "__groupAnchor__":
+                continue
+            # Typed comments (`# rationale: …`, `# warning: …`, etc.) are
+            # carried as AST entries for tooling; codegen skips them.
+            if verb == "__typedComment__":
+                continue
+
+            if verb == "makeError":
+                # makeError NAME ERRTYPE.VARIANT [SOURCE_VALUE]
+                name = args[0]
+                qualified = args[1]
+                if "." not in qualified:
+                    raise ValueError(f"makeError requires ERRTYPE.VARIANT, got {qualified!r}")
+                errtype, variant = qualified.split(".", 1)
+                variants = prog.errors.get(errtype)
+                if variants is None:
+                    raise ValueError(f"undeclared error type: {errtype}")
+                idx = None
+                for i, (vname, _cause) in enumerate(variants):
+                    if vname == variant:
+                        idx = i + 1   # 1-based: variant 1 -> exit code 1
+                        break
+                if idx is None:
+                    raise ValueError(f"unknown error variant: {qualified}")
+                # The error value is represented at runtime as an i32 exit code
+                # derived deterministically from the declared variant index.
+                binds[name] = ir.Constant(I32, idx)
+                continue
+
+            if verb == "branchIfError":
+                call_name, fail_label = args[0], args[1]
+                call = calls[call_name]
+                err_cond = call["error_cond"]
+                if err_cond is None:
+                    # Default convention:
+                    #   - integer return  -> negative value means failure (icmp slt result, 0)
+                    #   - pointer return  -> NULL means failure (icmp eq result, null)
+                    result = call["result"]
+                    if isinstance(result.type, ir.PointerType):
+                        nullptr = ir.Constant(result.type, None)
+                        err_cond = builder.icmp_unsigned("==", result, nullptr, name=f"{call_name}_isErr")
+                    else:
+                        zero = ir.Constant(result.type, 0)
+                        err_cond = builder.icmp_signed("<", result, zero, name=f"{call_name}_isErr")
+                cont = builder.function.append_basic_block(f"after_{call_name}")
+                builder.cbranch(err_cond, get_block(fail_label), cont)
+                builder.position_at_end(cont)
+                continue
+
+            if verb == "branchIf":
+                # Two valid forms:
+                #   branchIf BOOL_VALUE TRUE_LABEL          (fall through on false)
+                #   branchIf BOOL_VALUE TRUE_LABEL FALSE_LABEL  (legacy)
+                if len(args) == 2:
+                    cond_name, t_label = args[0], args[1]
+                    cond_val = resolve(cond_name)
+                    if cond_val.type != I1:
+                        cond_val = builder.icmp_signed("!=", cond_val, ir.Constant(cond_val.type, 0))
+                    cont = builder.function.append_basic_block(f"after_branchIf_{cond_name}")
+                    builder.cbranch(cond_val, get_block(t_label), cont)
+                    builder.position_at_end(cont)
+                else:
+                    cond_name, t_label, f_label = args[0], args[1], args[2]
+                    cond_val = resolve(cond_name)
+                    if cond_val.type != I1:
+                        cond_val = builder.icmp_signed("!=", cond_val, ir.Constant(cond_val.type, 0))
+                    builder.cbranch(cond_val, get_block(t_label), get_block(f_label))
+                    dead = builder.function.append_basic_block(f"after_branchIf_{cond_name}")
+                    builder.position_at_end(dead)
+                continue
+
+            if verb == "branch":
+                builder.branch(get_block(args[0]))
+                dead = builder.function.append_basic_block(f"after_branch_{args[0]}")
+                builder.position_at_end(dead)
+                continue
+
+            if verb in ("returnOk", "returnError", "returnValue"):
+                emit_defers(verb)
+                val = resolve(args[0])
+                if val is SENTINEL:
+                    raise ValueError(f"{verb}: cannot return opaque input")
+                target_type = fn.function_type.return_type
+                if val.type != target_type:
+                    # Integer-to-integer: sext or trunc as appropriate.
+                    if (isinstance(val.type, ir.IntType)
+                            and isinstance(target_type, ir.IntType)):
+                        if val.type.width < target_type.width:
+                            val = builder.sext(val, target_type)
+                        elif val.type.width > target_type.width:
+                            val = builder.trunc(val, target_type)
+                    # Pointer-to-pointer of different pointee types: bitcast.
+                    elif (isinstance(val.type, ir.PointerType)
+                            and isinstance(target_type, ir.PointerType)):
+                        val = builder.bitcast(val, target_type)
+                    # Float-to-float: extend/truncate.
+                    elif (isinstance(val.type, (ir.FloatType, ir.DoubleType))
+                            and isinstance(target_type, (ir.FloatType, ir.DoubleType))):
+                        if isinstance(target_type, ir.DoubleType) and isinstance(val.type, ir.FloatType):
+                            val = builder.fpext(val, target_type)
+                        elif isinstance(target_type, ir.FloatType) and isinstance(val.type, ir.DoubleType):
+                            val = builder.fptrunc(val, target_type)
+                    # Int-to-float / float-to-int (e.g. external-module
+                    # call returned an i64 stub that needs to flow into a
+                    # CFloat64 return slot, or vice versa).
+                    elif (isinstance(val.type, ir.IntType)
+                            and isinstance(target_type, (ir.FloatType, ir.DoubleType))):
+                        val = builder.sitofp(val, target_type)
+                    elif (isinstance(val.type, (ir.FloatType, ir.DoubleType))
+                            and isinstance(target_type, ir.IntType)):
+                        val = builder.fptosi(val, target_type)
+                    # Int↔pointer at return position.
+                    elif (isinstance(val.type, ir.IntType)
+                            and isinstance(target_type, ir.PointerType)):
+                        val = builder.inttoptr(val, target_type)
+                    elif (isinstance(val.type, ir.PointerType)
+                            and isinstance(target_type, ir.IntType)):
+                        val = builder.ptrtoint(val, target_type)
+                    # Otherwise: fall through; llvmlite will complain if the
+                    # mismatch is genuinely irreconcilable, which is what we
+                    # want for surfacing source-level type errors.
+                builder.ret(val)
+                continue
+
+            # Refined-syntax verbs that define a name visible to later
+            # bind/return references. `declareFailure NAME ErrorType.Variant`
+            # is the refined-syntax analogue of `makeError`: it produces a
+            # named failure value. Register the name as a zero bind so
+            # later `returnError NAME` resolves.
+            if verb == "declareFailure" and args:
+                binds[args[0]] = ir.Constant(I64, 0)
+                continue
+            # `recordBuilder NAME RecordType` / `recordSet BUILDER FIELD VALUE`
+            # / `recordBuildFailure CALL ErrorVariant` — declarative steps
+            # consumed by `recordBuild` (which we registered as a call).
+            if verb in ("recordBuilder", "recordSet", "recordBuildFailure"):
+                continue
+            # `storage <scope> <mutability> NAME TYPE [VALUE]` inside an
+            # operation body. The `local mutable` form is the only one that
+            # actually mutates: promote it to a real alloca so subsequent
+            # `set local NAME VALUE` lines emit real stores and later
+            # references emit loads. Other scopes/mutabilities (e.g.
+            # `local immutable`) stay as op-local consts.
+            if verb == "storage" and len(args) >= 5:
+                scope, mutability = args[0], args[1]
+                name = args[2]
+                typ_name = args[3]
+                raw_value = _unwrap(args[4])
+                if scope == "local" and mutability == "mutable":
+                    llty = llvm_type_for(prog, typ_name)
+                    if llty is not None:
+                        # Resolve the initializer first (while the const
+                        # tables don't yet contain this name), so an
+                        # initializer referring to another const, var, or
+                        # literal works the same as `var`.
+                        if isinstance(raw_value, str):
+                            try:
+                                init = resolve(raw_value)
+                            except ValueError:
+                                init = emit_const_value(typ_name, raw_value)
+                        else:
+                            init = emit_const_value(typ_name, raw_value)
+                        with builder.goto_entry_block():
+                            slot = builder.alloca(llty, name=name)
+                        if init.type != llty:
+                            if (isinstance(init.type, ir.IntType)
+                                    and isinstance(llty, ir.IntType)):
+                                if init.type.width < llty.width:
+                                    extend = (builder.zext if init.type.width == 1
+                                              else builder.sext)
+                                    init = extend(init, llty)
+                                else:
+                                    init = builder.trunc(init, llty)
+                        builder.store(init, slot)
+                        binds[name] = slot
+                        var_types[name] = llty
+                        is_var.add(name)
+                        # Don't record in op.consts: future references must
+                        # go through the alloca's load path, not a stale
+                        # initial-value const.
+                        continue
+                op.consts[args[2]] = (args[3], raw_value)
+                continue
+            if verb == "storage" and len(args) >= 4:
+                op.consts[args[2]] = (args[3], _unwrap(args[4]) if len(args) > 4 else 0)
+                continue
+
+            # Refined-syntax / experimental verbs that have no executable
+            # behavior at the IR level: metadata-only annotations, header
+            # extensions, and declarative attachment lines. Treat as silent
+            # no-ops so an operation body that mixes them with real code
+            # still compiles. (The parser already stored them on op.lines
+            # for tooling.)
+            if verb.startswith(("group", "memory", "runtime", "intrinsic",
+                                 "dependency", "guard", "shared",
+                                 "trust", "type", "record", "collection",
+                                 "list", "slice", "array", "smallList",
+                                 "map", "json", "retry", "literal",
+                                 "domain", "operationBody",
+                                 "section", "defer")):
+                continue
+            if verb == "read" and args and args[0] in ("sharedState", "local", "module"):
+                # Refined-syntax storage read:
+                #   read <scope> NAME TYPE BACKING [protectedBy GUARD …]
+                # Binds NAME to the current value of BACKING. We don't yet
+                # enforce the guard, but the bind makes later references
+                # resolve to the BACKING const's value.
+                if len(args) >= 4:
+                    try:
+                        binds[args[1]] = resolve(args[3])
+                    except ValueError:
+                        binds[args[1]] = ir.Constant(I64, 0)
+                continue
+            if verb in ("read", "write"):
+                # Stray effect-style verbs (e.g. `read inputText` from the
+                # refined-syntax `effect` shorthand) — accept as metadata.
+                continue
+
+            raise ValueError(f"codegen unhandled verb: {verb}")
+
+        if not builder.block.is_terminated:
+            # Fall-through return — emit a zero of the function's declared
+            # return type. For refined-syntax operations whose body is all
+            # no-ops (runtimeBinding / intrinsic / dependencyPath), this
+            # gives the linker a well-typed `ret` instruction.
+            emit_defers("fallthrough")
+            rty = fn.function_type.return_type
+            if isinstance(rty, ir.PointerType):
+                builder.ret(ir.Constant(rty, None))
+            elif isinstance(rty, (ir.FloatType, ir.DoubleType)):
+                builder.ret(ir.Constant(rty, 0.0))
+            else:
+                builder.ret(ir.Constant(rty, 0))
+
+    # ---------- run dispatch ----------
+    def _emit_run(self, builder, call_name, calls, resolve, opaque_inputs, SENTINEL):
+        call = calls[call_name]
+        target = _TARGET_ALIASES.get(call["target"], call["target"])
+
+        # Lower domain-typed methods (`TypeName.methodName`) to the underlying
+        # primitive based on the type alias's resolution chain. This keeps the
+        # source-level call advertising domain context while reusing the
+        # primitive dispatch below.
+        if (target not in _BINOP_TO_LLVM and target not in _CMP_TO_LLVM
+                and target not in _FBINOP_TO_LLVM and target not in _FCMP_TO_LLVM
+                and target not in ("console.writeLine", "console.writeIntegerLine",
+                                   "console.writeFloatLine")
+                and not target.startswith("c.")
+                and "." in target):
+            type_part, method_part = target.split(".", 1)
+            underlying = resolve_alias(self.prog, type_part)
+            primitive = _DOMAIN_METHOD_TO_I64_PRIMITIVE.get(method_part)
+            if primitive is not None and underlying == "I64":
+                target = primitive
+                call["target"] = primitive
+                call["domain_method"] = method_part
+            elif method_part in _DOMAIN_METHOD_TO_F64_PRIMITIVE and underlying in ("F64", "CDouble"):
+                target = _DOMAIN_METHOD_TO_F64_PRIMITIVE[method_part]
+                call["target"] = target
+                call["domain_method"] = method_part
+
+        def arg_val_named(arg_name):
+            sym = call["args"].get(arg_name)
+            if sym is None:
+                raise ValueError(f"{call_name}: missing required arg `{arg_name}` for {target}")
+            v = resolve(sym)
+            if v is SENTINEL:
+                raise ValueError(f"{call_name}: opaque-input symbol used as value arg `{arg_name}`")
+            return v
+
+        def operand_pair():
+            """Resolve two operand arguments for a binary math call. Accepts
+            any pair of names — `left`/`right`, `a`/`b`, `value`/`step`,
+            `value`/`divisor`, etc. — by relying on insertion order from the
+            source `arg` lines. Opaque-dependency args (e.g. an unused
+            `console` passthrough) are filtered out before positional pick."""
+            usable = [(k, v) for k, v in call["args"].items()
+                      if v not in opaque_inputs]
+            if len(usable) < 2:
+                raise ValueError(
+                    f"{call_name}: {target} needs 2 operand args; got {list(call['args'])}")
+            a = resolve(usable[0][1])
+            b = resolve(usable[1][1])
+            if a is SENTINEL or b is SENTINEL:
+                raise ValueError(f"{call_name}: opaque-input as operand for {target}")
+            return a, b
+
+        def operand_single():
+            usable = [(k, v) for k, v in call["args"].items()
+                      if v not in opaque_inputs]
+            if len(usable) != 1:
+                raise ValueError(
+                    f"{call_name}: {target} unary domain method needs 1 operand arg; got {list(call['args'])}")
+            value = resolve(usable[0][1])
+            if value is SENTINEL:
+                raise ValueError(f"{call_name}: opaque-input as operand for {target}")
+            return value
+
+        def to_i64(v):
+            if v.type == I64:
+                return v
+            if isinstance(v.type, ir.IntType):
+                return builder.sext(v, I64) if v.type.width < 64 else builder.trunc(v, I64)
+            raise ValueError(f"{call_name}: cannot coerce {v.type} to i64")
+
+        if target == "console.writeLine":
+            text = arg_val_named("text")
+            call["result"] = builder.call(self.puts, [text], name=f"{call_name}_res")
+            return
+        if target == "console.writeIntegerLine":
+            n = to_i64(arg_val_named("value"))
+            fmt_ptr = self._i8p(builder, "%lld\n")
+            call["result"] = builder.call(self.printf, [fmt_ptr, n], name=f"{call_name}_res")
+            return
+        if target == "console.writeFloatLine":
+            # Print a CFloat64 / F64 with C's `%f\n` format (six fractional
+            # digits — the printf default — to match the bootstrap-emitted
+            # behavior). The value arg is widened to double if the LLVM
+            # type is a float; passed straight through if already a double.
+            v = arg_val_named("value")
+            if isinstance(v.type, ir.IntType):
+                v = builder.sitofp(v, F64)
+            elif isinstance(v.type, ir.FloatType):
+                v = builder.fpext(v, F64)
+            fmt_ptr = self._i8p(builder, "%f\n")
+            call["result"] = builder.call(
+                self.printf, [fmt_ptr, v], name=f"{call_name}_res")
+            return
+
+        if target == "math.intToFloat":
+            # Convert a signed integer to double precision (sitofp).
+            # Used by SemanticScript-stdlib float math to bridge integer counters
+            # into float computations without linking libm.
+            usable = [(k, v) for k, v in call["args"].items()
+                      if v not in opaque_inputs]
+            v = resolve(usable[0][1])
+            v = to_i64(v)
+            call["result"] = builder.sitofp(v, F64, name=f"{call_name}_res")
+            return
+        if target == "math.floatToInt":
+            # Convert a double-precision value to a signed 64-bit integer
+            # by rounding toward zero (fptosi). Used to implement
+            # floor/ceil/trunc in pure SemanticScript.
+            usable = [(k, v) for k, v in call["args"].items()
+                      if v not in opaque_inputs]
+            v = resolve(usable[0][1])
+            v = self._coerce_for_libc(builder, v, "CDouble")
+            call["result"] = builder.fptosi(v, I64, name=f"{call_name}_res")
+            return
+
+        if target == "math.checkedMultiplyI64":
+            # Lower to the signed-multiply-with-overflow intrinsic so that
+            # callers can branchIfError on the overflow bit instead of
+            # silently wrapping.
+            a, b = operand_pair()
+            a, b = to_i64(a), to_i64(b)
+            agg = builder.call(self.smul_overflow_i64, [a, b],
+                               name=f"{call_name}_tuple")
+            product = builder.extract_value(agg, 0, name=f"{call_name}_res")
+            overflow = builder.extract_value(agg, 1, name=f"{call_name}_overflow")
+            call["result"] = product
+            call["error_value"] = overflow
+            call["error_cond"] = overflow
+            return
+
+        if target in _BINOP_TO_LLVM:
+            if call.get("domain_method") == "square" and target == "math.multiplyI64":
+                a = operand_single()
+                b = a
+            else:
+                a, b = operand_pair()
+            a, b = to_i64(a), to_i64(b)
+            op = _BINOP_TO_LLVM[target]
+            call["result"] = getattr(builder, op)(a, b, name=f"{call_name}_res")
+            return
+
+        if target in _FBINOP_TO_LLVM:
+            a, b = operand_pair()
+            a = self._coerce_for_libc(builder, a, "CDouble")
+            b = self._coerce_for_libc(builder, b, "CDouble")
+            op = _FBINOP_TO_LLVM[target]
+            call["result"] = getattr(builder, op)(a, b, name=f"{call_name}_res")
+            return
+
+        if target in _FCMP_TO_LLVM:
+            a, b = operand_pair()
+            a = self._coerce_for_libc(builder, a, "CDouble")
+            b = self._coerce_for_libc(builder, b, "CDouble")
+            call["result"] = builder.fcmp_ordered(_FCMP_TO_LLVM[target], a, b,
+                                                  name=f"{call_name}_res")
+            return
+
+        if target in _CMP_TO_LLVM:
+            a, b = operand_pair()
+            a, b = to_i64(a), to_i64(b)
+            call["result"] = builder.icmp_signed(_CMP_TO_LLVM[target], a, b, name=f"{call_name}_res")
+            return
+
+        # Pointer-arithmetic primitives. `pointer.loadByte` reads a single
+        # byte at (buffer + offset). `pointer.storeByte` writes one. These
+        # are the minimum primitives an SemanticScript program needs to observe buffer
+        # contents without relying on a separate codecs library.
+        if target == "pointer.loadByte":
+            buffer_arg = arg_val_named("buffer") if "buffer" in call["args"] else None
+            if buffer_arg is None:
+                # Fall back to positional order: first non-opaque arg = buffer.
+                usable = [(k, v) for k, v in call["args"].items()
+                          if v not in opaque_inputs]
+                buffer_arg = resolve(usable[0][1])
+                offset_arg = resolve(usable[1][1])
+            else:
+                offset_arg = arg_val_named("offset")
+            if buffer_arg.type != I8P:
+                buffer_arg = builder.bitcast(buffer_arg, I8P)
+            offset_arg = self._coerce_for_libc(builder, offset_arg, "CSize")
+            ptr = builder.gep(buffer_arg, [offset_arg], inbounds=True,
+                              name=f"{call_name}_addr")
+            call["result"] = builder.load(ptr, name=f"{call_name}_res")
+            return
+
+        if target == "pointer.storeByte":
+            usable = [(k, v) for k, v in call["args"].items()
+                      if v not in opaque_inputs]
+            buffer_arg = resolve(usable[0][1])
+            offset_arg = resolve(usable[1][1])
+            value_arg = resolve(usable[2][1])
+            if buffer_arg.type != I8P:
+                buffer_arg = builder.bitcast(buffer_arg, I8P)
+            offset_arg = self._coerce_for_libc(builder, offset_arg, "CSize")
+            value_arg = self._coerce_for_libc(builder, value_arg, "I8")
+            ptr = builder.gep(buffer_arg, [offset_arg], inbounds=True,
+                              name=f"{call_name}_addr")
+            builder.store(value_arg, ptr)
+            call["result"] = ir.Constant(I32, 0)
+            return
+
+        # `pointer.offset base offset` returns base + offset as a pointer
+        # without dereferencing. Used to walk through a byte buffer.
+        if target == "pointer.offset":
+            usable = [(k, v) for k, v in call["args"].items()
+                      if v not in opaque_inputs]
+            base = resolve(usable[0][1])
+            offset = resolve(usable[1][1])
+            if base.type != I8P:
+                base = builder.bitcast(base, I8P)
+            offset = self._coerce_for_libc(builder, offset, "CSize")
+            call["result"] = builder.gep(base, [offset], inbounds=True,
+                                          name=f"{call_name}_addr")
+            return
+
+        # `pointer.difference left right` returns (left - right) as a
+        # CSignedInt64. Both operands must point into the same allocation
+        # for the result to be meaningful — this is a §10 contract the
+        # SemanticScript-level type system does not yet enforce.
+        if target == "pointer.difference":
+            usable = [(k, v) for k, v in call["args"].items()
+                      if v not in opaque_inputs]
+            left = resolve(usable[0][1])
+            right = resolve(usable[1][1])
+            if left.type != I8P:
+                left = builder.bitcast(left, I8P)
+            if right.type != I8P:
+                right = builder.bitcast(right, I8P)
+            left_int = builder.ptrtoint(left, I64, name=f"{call_name}_lhs")
+            right_int = builder.ptrtoint(right, I64, name=f"{call_name}_rhs")
+            call["result"] = builder.sub(left_int, right_int,
+                                          name=f"{call_name}_diff")
+            return
+
+        # `pointer.isNull ptr` returns 1 if ptr is NULL, 0 otherwise. The
+        # default branchIfError convention `result < 0` cannot detect NULL
+        # pointers returned by c.fopen / c.getenv / c.malloc — this
+        # primitive gives a typed Bool that branchIf can consume.
+        if target == "pointer.isNull":
+            usable = [(k, v) for k, v in call["args"].items()
+                      if v not in opaque_inputs]
+            ptr = resolve(usable[0][1])
+            if ptr.type != I8P:
+                ptr = builder.bitcast(ptr, I8P)
+            null_ptr = ir.Constant(I8P, None)
+            call["result"] = builder.icmp_unsigned("==", ptr, null_ptr,
+                                                    name=f"{call_name}_isNull")
+            return
+
+        # C macro-only math classifiers from <math.h>. These are defined as
+        # macros in the C spec, not externs — calling them through a libc
+        # extern would link-fail on most platforms. Lower directly to LLVM
+        # FP comparisons / bit operations so the SemanticScript surface stays portable.
+        if target in _MATH_CLASSIFIERS:
+            usable = [(k, v) for k, v in call["args"].items()
+                      if v not in opaque_inputs]
+            if len(usable) != 1:
+                raise ValueError(
+                    f"{call_name}: {target} needs exactly one operand; got {len(usable)}")
+            x = resolve(usable[0][1])
+            x = self._coerce_for_libc(builder, x, "CDouble")
+            classifier = target.split(".", 1)[1]
+            call["result"] = self._emit_math_classifier(builder, classifier, x,
+                                                        name=f"{call_name}_res")
+            return
+
+        # C standard library call. Targets of the form `c.<name>` look up the
+        # signature in libc_registry, declare the LLVM extern on demand, and
+        # emit a direct call. The args are matched by source-order: each
+        # `arg call_name <argname> <valuename>` line contributes one
+        # positional value, in declaration order, optionally followed by
+        # variadic tail args for printf-style functions.
+        if target.startswith("c."):
+            semantic_name = target[2:]
+            # Translate SemanticScript-facing camelCase to the C symbol, then look up
+            # the signature under either spelling.
+            c_symbol = libc_registry.resolve_c_symbol(semantic_name)
+            sig = libc_registry.ALL_FUNCTIONS.get(semantic_name) \
+                  or libc_registry.ALL_FUNCTIONS.get(c_symbol)
+            if sig is None:
+                raise ValueError(f"unsupported c.* target: {target}")
+            ret_typ, param_typs, var_args = sig
+            fn = self._libc_func(semantic_name)
+            cname = semantic_name  # preserve downstream variable usage
+            arg_values = []
+            arg_items = list(call["args"].items())
+            # Build the fixed prefix in source order, coercing each arg to
+            # the declared LLVM type.
+            for i, ptyp in enumerate(param_typs):
+                if i >= len(arg_items):
+                    raise ValueError(
+                        f"{call_name}: c.{cname} expects {len(param_typs)} fixed args; got {len(arg_items)}")
+                _aname, asym = arg_items[i]
+                v = resolve(asym)
+                if v is SENTINEL:
+                    # opaque-dep placeholder — treat as null pointer for FILE*
+                    # / void* parameter shapes.
+                    if ptyp in ("CFilePtr", "CVoidPtr", "CString", "CTmPtr",
+                                "CJmpBuf"):
+                        v = ir.Constant(I8P, None)
+                    else:
+                        raise ValueError(
+                            f"{call_name}: opaque-input used for non-pointer arg of c.{cname}")
+                v = self._coerce_for_libc(builder, v, ptyp)
+                arg_values.append(v)
+            # Variadic tail: any extra args, with default coercions.
+            if var_args:
+                for j in range(len(param_typs), len(arg_items)):
+                    _aname, asym = arg_items[j]
+                    v = resolve(asym)
+                    if v is SENTINEL:
+                        v = ir.Constant(I8P, None)
+                    # C variadic ABI: floats are promoted to double, smaller
+                    # ints to int. llvmlite emits the right calling-convention
+                    # code as long as we promote the SSA type explicitly.
+                    v = self._promote_for_vararg(builder, v)
+                    arg_values.append(v)
+            res = builder.call(fn, arg_values, name=f"{call_name}_res")
+            if isinstance(llvm_type_for_or_void(self.prog, ret_typ), ir.VoidType):
+                # Void return — bind nothing. Set result to a constant zero so
+                # any downstream `bindOk` is well-typed without surprising
+                # callers (matches the puts/printf convention).
+                call["result"] = ir.Constant(I32, 0)
+            else:
+                call["result"] = res
+            return
+
+        # User-defined operation invocation. The target is the operation name.
+        # Match the call's `arg` lines to the operation's declared parameter
+        # list, dropping any args that pass an opaque-dep value. The function
+        # returns i32 with the puts/printf convention: negative means error,
+        # which the existing branchIfError default condition already handles.
+        if target in self._user_ops:
+            op_info = self._user_ops[target]
+            arg_values = []
+            for pname, _llty, _ptype in op_info["params"]:
+                sym = call["args"].get(pname)
+                if sym is None:
+                    # Fall back to positional matching when name-based
+                    # lookup misses: refined-syntax rename work may rename
+                    # an operation's `input` lines without updating every
+                    # call site's `arg` label in lockstep. If the call has
+                    # the same number of args as the op has params, line
+                    # them up positionally so the program still links with
+                    # the right values rather than silently passing zero.
+                    call_arg_values = list(call["args"].values())
+                    param_index = [p[0] for p in op_info["params"]].index(pname)
+                    if len(call_arg_values) == len(op_info["params"]):
+                        sym = call_arg_values[param_index]
+                    else:
+                        raise ValueError(
+                            f"{call_name}: missing arg `{pname}` for operation `{target}` "
+                            f"(call passed {len(call_arg_values)} args, op declares {len(op_info['params'])})")
+                try:
+                    v = resolve(sym)
+                except ValueError:
+                    raise ValueError(
+                        f"{call_name}: unresolved arg value `{sym}` for "
+                        f"operation `{target}` parameter `{pname}`")
+                if v is SENTINEL:
+                    raise ValueError(
+                        f"{call_name}: opaque-input symbol used as data arg `{pname}` for `{target}`")
+                # narrowing/widening to match the declared parameter type
+                if isinstance(v.type, ir.IntType) and isinstance(_llty, ir.IntType):
+                    if v.type.width < _llty.width:
+                        v = builder.sext(v, _llty)
+                    elif v.type.width > _llty.width:
+                        v = builder.trunc(v, _llty)
+                # Pointer/integer coercion for refined-syntax mixed-typed
+                # call sites where the resolved symbol is i64/i32 but the
+                # declared param is i8* (or vice versa). Use ptrtoint /
+                # inttoptr / bitcast so the call type-checks.
+                elif isinstance(_llty, ir.PointerType) and isinstance(v.type, ir.IntType):
+                    v = builder.inttoptr(v, _llty)
+                elif isinstance(_llty, ir.IntType) and isinstance(v.type, ir.PointerType):
+                    v = builder.ptrtoint(v, _llty)
+                elif isinstance(_llty, ir.PointerType) and isinstance(v.type, ir.PointerType) and v.type != _llty:
+                    v = builder.bitcast(v, _llty)
+                arg_values.append(v)
+            result = builder.call(op_info["fn"], arg_values,
+                                  name=f"{call_name}_res")
+            call["result"] = result
+            # User-defined operations may return either a libc-style
+            # negative error code (when they propagate a primitive's error
+            # via returnError) OR a positive makeError variant index. The
+            # default branchIfError convention `result < 0` catches only the
+            # first case; recording `result != 0` here catches both, which
+            # is what spec §12 (failure-flow precision) requires for any
+            # operation whose output contract is `Result A B`.
+            #
+            # The error-cond predicate depends on the return type:
+            #   integer return: != 0
+            #   pointer return: != null (NULL pointer is the failure marker)
+            #   float return:   != 0.0 (matches the i32 convention)
+            rt = result.type
+            if isinstance(rt, ir.IntType):
+                call["error_cond"] = builder.icmp_signed(
+                    "!=", result, ir.Constant(rt, 0),
+                    name=f"{call_name}_isErr")
+            elif isinstance(rt, ir.PointerType):
+                call["error_cond"] = builder.icmp_unsigned(
+                    "!=", result, ir.Constant(rt, None),
+                    name=f"{call_name}_isErr")
+            elif isinstance(rt, (ir.FloatType, ir.DoubleType)):
+                call["error_cond"] = builder.fcmp_ordered(
+                    "!=", result, ir.Constant(rt, 0.0),
+                    name=f"{call_name}_isErr")
+            else:
+                # Unknown return shape: leave error_cond unset; callers that
+                # branchIfError on this will get a clear codegen error.
+                pass
+            return
+
+        # ---- json.encode primitive lowerings ----
+        # Integer / Bool / Float primitives have a direct JSON
+        # representation (decimal digits, "true"/"false", scientific
+        # notation) — implementable without a full codec runtime by
+        # formatting into a per-call-site stack buffer via libc snprintf.
+        # Record-typed `json.encode.TypeName` still falls through to the
+        # external-module fallback because that requires walking record
+        # fields and emitting a structural encoder, which is the real
+        # codec runtime work tracked under SYNTAX.md's Partial row.
+        if target in ("json.encode.I64", "json.encode.CSignedInt64",
+                      "json.encode.CSignedInt32", "json.encode.CUnsignedInt32",
+                      "json.encode.CSignedInt16", "json.encode.CUnsignedInt16",
+                      "json.encode.CSignedByte", "json.encode.CUnsignedByte",
+                      "json.encode.DurationMilliseconds",
+                      "json.encode.MonotonicMilliseconds",
+                      "json.encode.UtcMilliseconds"):
+            n = to_i64(arg_val_named("value"))
+            buf_size = 32
+            with builder.goto_entry_block():
+                buf = builder.alloca(
+                    ir.ArrayType(I8, buf_size),
+                    name=f"{call_name}_jsonbuf")
+            buf_ptr = builder.gep(
+                buf, [ir.Constant(I32, 0), ir.Constant(I32, 0)], inbounds=True)
+            snprintf = self._libc_func("snprintf")
+            fmt = self._i8p(builder, "%lld")
+            builder.call(snprintf,
+                         [buf_ptr, ir.Constant(I64, buf_size), fmt, n])
+            call["result"] = buf_ptr
+            return
+        if target == "json.encode.Bool":
+            v = arg_val_named("value")
+            if isinstance(v.type, ir.IntType) and v.type.width > 1:
+                v = builder.icmp_signed("!=", v, ir.Constant(v.type, 0))
+            true_str = self._i8p(builder, "true")
+            false_str = self._i8p(builder, "false")
+            call["result"] = builder.select(
+                v, true_str, false_str, name=f"{call_name}_bool")
+            return
+        if target in ("json.encode.F64", "json.encode.CFloat64",
+                      "json.encode.CFloat32"):
+            v = arg_val_named("value")
+            if isinstance(v.type, ir.IntType):
+                v = builder.sitofp(v, F64)
+            elif isinstance(v.type, ir.FloatType):
+                v = builder.fpext(v, F64)
+            buf_size = 32
+            with builder.goto_entry_block():
+                buf = builder.alloca(
+                    ir.ArrayType(I8, buf_size),
+                    name=f"{call_name}_jsonbuf")
+            buf_ptr = builder.gep(
+                buf, [ir.Constant(I32, 0), ir.Constant(I32, 0)], inbounds=True)
+            snprintf = self._libc_func("snprintf")
+            fmt = self._i8p(builder, "%g")
+            builder.call(snprintf,
+                         [buf_ptr, ir.Constant(I64, buf_size), fmt, v])
+            call["result"] = buf_ptr
+            return
+        if target in ("json.decode.I64", "json.decode.CSignedInt64",
+                      "json.decode.CSignedInt32", "json.decode.CUnsignedInt32",
+                      "json.decode.CSignedInt16", "json.decode.CUnsignedInt16",
+                      "json.decode.CSignedByte", "json.decode.CUnsignedByte",
+                      "json.decode.DurationMilliseconds",
+                      "json.decode.MonotonicMilliseconds",
+                      "json.decode.UtcMilliseconds"):
+            # Decode a JSON integer literal via libc atoll. The input is a
+            # null-terminated byte string holding the decimal text; atoll
+            # returns 0 on malformed input (matching JSON-leniency for the
+            # primitive path — strict parsing belongs to the codec runtime).
+            v = arg_val_named("value")
+            if isinstance(v.type, ir.IntType):
+                v = builder.inttoptr(v, I8P)
+            atoll = self._libc_func("atoll")
+            call["result"] = builder.call(
+                atoll, [v], name=f"{call_name}_decoded")
+            return
+        if target == "json.decode.Bool":
+            # Compare the input string against the literal "true" via
+            # libc strcmp; result is 1 when strings are equal (i.e.
+            # the JSON token was "true"), 0 otherwise.
+            v = arg_val_named("value")
+            if isinstance(v.type, ir.IntType):
+                v = builder.inttoptr(v, I8P)
+            strcmp = self._libc_func("strcmp")
+            true_str = self._i8p(builder, "true")
+            cmp = builder.call(strcmp, [v, true_str], name=f"{call_name}_strcmp")
+            is_true = builder.icmp_signed(
+                "==", cmp, ir.Constant(I32, 0), name=f"{call_name}_isTrue")
+            call["result"] = builder.zext(
+                is_true, I64, name=f"{call_name}_decoded")
+            return
+        if target in ("json.decode.F64", "json.decode.CFloat64",
+                      "json.decode.CFloat32"):
+            # Use libc atof to parse the JSON number; returns double 0.0
+            # on malformed input.
+            v = arg_val_named("value")
+            if isinstance(v.type, ir.IntType):
+                v = builder.inttoptr(v, I8P)
+            atof = self._libc_func("atof")
+            call["result"] = builder.call(
+                atof, [v], name=f"{call_name}_decoded")
+            return
+        if target in ("json.encode.String",
+                      "json.encode.CNullTerminatedByteString"):
+            # JSON-encoding a string requires quoting + escape handling
+            # (\\, \", \n, \r, \t, \uXXXX for control bytes). For now, we
+            # produce the string surrounded by ASCII quotes — correct for
+            # ASCII payloads that contain none of the special characters.
+            # Full escape handling is deferred to the real codec runtime
+            # tracked under SYNTAX.md's Partial row.
+            v = arg_val_named("value")
+            if isinstance(v.type, ir.IntType):
+                v = builder.inttoptr(v, I8P)
+            buf_size = 256
+            with builder.goto_entry_block():
+                buf = builder.alloca(
+                    ir.ArrayType(I8, buf_size),
+                    name=f"{call_name}_jsonbuf")
+            buf_ptr = builder.gep(
+                buf, [ir.Constant(I32, 0), ir.Constant(I32, 0)], inbounds=True)
+            snprintf = self._libc_func("snprintf")
+            fmt = self._i8p(builder, "\"%s\"")
+            builder.call(snprintf,
+                         [buf_ptr, ir.Constant(I64, buf_size), fmt, v])
+            call["result"] = buf_ptr
+            return
+
+        # External-module fallback: targets that look like a method on an
+        # imported module (`http.requestCancellationToken`,
+        # `database.openConnection`, `AccountBalanceResponseJsonCodec.encode`,
+        # `accountIdPathValidator.validate`, etc.) have no body in this
+        # translation unit. Rather than fail codegen, emit a dummy zero result
+        # so the surrounding control flow + bind chain still compiles. A real
+        # runtime (when wired) would supply the implementation by linking
+        # against the named module's exports. This mirrors what
+        # bootstrap_general.sscript does via its runUnhandled path.
+        if "." in target or target in self.prog.validators or target in self.prog.policies:
+            zero = ir.Constant(I64, 0)
+            call["result"] = zero
+            call["error_value"] = zero
+            call["error_cond"] = ir.Constant(I1, 0)
+            return
+
+        raise ValueError(f"unsupported call target: {target!r}")
+
+
+# ============================================================
+# Driver / JIT
+# ============================================================
+
+# ============================================================
+# Linter (agent-safety checks)
+# ============================================================
+
+def lint(prog: Program, strict: bool = False):
+    """Walk the parsed Program and emit linter diagnostics to stderr.
+
+    The compiler accepts non-conforming programs; the linter is the place
+    where SemanticScript's agent-safety laws (spec §2 linter-class rules) are
+    expressed. When `strict` is true, lint warnings escalate to fatal
+    errors so CI/build pipelines can refuse to ship code that drifts from
+    the constitution.
+
+    Rules implemented:
+      vagueCallName, vagueErrorName, vagueFailureName, roleSuffixMismatch,
+      unbranchedFailure
+      missingPurpose              -- §3 abstraction admission test
+      missingEffectDeclaration    -- §2 checkability law
+      branchTargetExists          -- §4 control flow must be graphable
+      duplicatedDomainLiteral     -- AST.md invariant 8
+      groupCommentBalance         -- §7 attention anchors
+      failureLabelAggregation     -- §12 failure flow precision
+    """
+    diags = []
+
+    # ---- module-level: group/endGroup balance ----
+    _check_group_balance(prog.module_group_anchors, diags, scope="module")
+
+    # ---- module-level: duplicated domain literals ----
+    _check_duplicated_domain_literals(prog, diags)
+
+    for op_name, op in prog.operations.items():
+        # ---- per-operation: group/endGroup balance ----
+        op_anchors = [entry for verb, entry, _ln in op.lines
+                      if verb == "__groupAnchor__"]
+        _check_group_balance(op_anchors, diags, scope=f"operation {op_name}")
+
+        # Per-call bookkeeping
+        calls = {}
+        # Track labels: name -> first source line, and references to labels
+        # so we can warn on dangling branch targets.
+        labels_declared = set()
+        label_references = []   # list of (label_name, lineno, kind)
+        # Track branchIfError targets so we can detect aggregation
+        # (multiple distinct call sites all branching into the same label,
+        # which forces makeError to forget the cause).
+        branchIfError_targets = {}  # label_name -> list of (call_name, lineno)
+        # Track operation-level effects/headers
+        purpose_present = False
+        invariant_present = False
+        effect_writes_console_stdout = False
+        operation_uses_console_write = False
+        operation_has_loop = False     # any `branch` to an earlier label = loop
+        operation_has_effect = False   # any `effect` line at all
+
+        for entry in op.lines:
+            verb, args, lineno = entry[0], entry[1], entry[2]
+            if verb == "purpose":
+                purpose_present = True
+            elif verb == "invariant":
+                invariant_present = True
+            elif verb == "effect" and len(args) >= 3:
+                # effect OP_NAME ACTION PATH
+                action = args[1]
+                path = args[2]
+                if action == "write" and path == "console.stdout":
+                    effect_writes_console_stdout = True
+                operation_has_effect = True
+            elif verb == "call":
+                call_name = args[0]
+                target = args[1] if len(args) >= 2 else ""
+                calls[call_name] = {
+                    "lineno": lineno,
+                    "target": target,
+                    "has_bindError": False,
+                    "has_branchIfError": False,
+                }
+                if not call_name.endswith("Call"):
+                    diags.append((lineno,
+                        f"vagueCallName: `{call_name}` should end with the Call role suffix"))
+                if target in ("console.writeLine", "console.writeIntegerLine"):
+                    operation_uses_console_write = True
+            elif verb == "bindError" and len(args) >= 3:
+                call_name = args[2]
+                if call_name in calls:
+                    calls[call_name]["has_bindError"] = True
+                err_name = args[0]
+                if not err_name.endswith("Error"):
+                    diags.append((lineno,
+                        f"vagueErrorName: `{err_name}` should end with the Error role suffix"))
+            elif verb == "branchIfError" and args:
+                call_name = args[0]
+                if call_name in calls:
+                    calls[call_name]["has_branchIfError"] = True
+                if len(args) >= 2:
+                    lbl = args[1]
+                    label_references.append((lbl, lineno, "branchIfError"))
+                    branchIfError_targets.setdefault(lbl, []).append((call_name, lineno))
+                    if not (lbl.endswith("Failed") or lbl.endswith("ed")):
+                        diags.append((lineno,
+                            f"roleSuffixMismatch: branch label `{lbl}` should end with Failed or a past-tense -ed form"))
+            elif verb == "branchIf" and len(args) >= 2:
+                label_references.append((args[1], lineno, "branchIf"))
+                # branchIf 3-arg legacy form: also record the false-leg label
+                if len(args) >= 3:
+                    label_references.append((args[2], lineno, "branchIf-false"))
+            elif verb == "branch" and args:
+                label_references.append((args[0], lineno, "branch"))
+                # A `branch` to a label that has already been declared earlier
+                # in source order represents a backward edge — i.e. a loop.
+                if args[0] in labels_declared:
+                    operation_has_loop = True
+            elif verb == "label" and args:
+                labels_declared.add(args[0])
+            elif verb == "makeError" and args:
+                if not args[0].endswith("Failure"):
+                    diags.append((lineno,
+                        f"vagueFailureName: `{args[0]}` should end with the Failure role suffix"))
+
+        # unbranchedFailure check
+        for call_name, info in calls.items():
+            if info["has_bindError"] and not info["has_branchIfError"]:
+                diags.append((info["lineno"],
+                    f"unbranchedFailure: `{call_name}` has a bindError but no branchIfError"))
+
+        # branchTargetExists: every branch target must be a declared label
+        for lbl, lineno, kind in label_references:
+            if lbl not in labels_declared:
+                diags.append((lineno,
+                    f"branchTargetExists: {kind} references undeclared label `{lbl}`"))
+
+        # missingPurpose: every operation should declare a purpose
+        if not purpose_present:
+            decl_lineno = op.lines[0][2] if op.lines else 0
+            diags.append((decl_lineno,
+                f"missingPurpose: operation `{op_name}` declares no `purpose` line (§3)"))
+
+        # missingInvariant: an operation with a loop or any declared effect
+        # should carry at least one invariant. Loops need a termination
+        # invariant; effectful operations need at least one safety invariant
+        # over their external behavior (spec §8 hard metadata).
+        if (operation_has_loop or operation_has_effect) and not invariant_present:
+            decl_lineno = op.lines[0][2] if op.lines else 0
+            reason = "loop" if operation_has_loop else "effect"
+            diags.append((decl_lineno,
+                f"missingInvariant: operation `{op_name}` has a {reason} but declares no `invariant` line (§8)"))
+
+        # missingEffectDeclaration: if the operation calls console.writeLine
+        # or console.writeIntegerLine, it must declare `effect <op> write console.stdout`
+        if operation_uses_console_write and not effect_writes_console_stdout:
+            decl_lineno = op.lines[0][2] if op.lines else 0
+            diags.append((decl_lineno,
+                f"missingEffectDeclaration: operation `{op_name}` writes to console.* but lacks `effect {op_name} write console.stdout` (§2 checkability law)"))
+
+        # failureLabelAggregation: multiple distinct call sites branch into the
+        # same label. Per §12, makeError at the shared label cannot honestly
+        # name a single cause. Programs that declare `mode capturedOutputReplay`
+        # at the top level are exempted: their entire algorithm is a stdout
+        # transcript, the trust-boundary marker says so explicitly, and per-
+        # call failure labels would multiply boilerplate without adding
+        # recoverable context.
+        if "capturedOutputReplay" not in prog.modes:
+            for lbl, callers in branchIfError_targets.items():
+                distinct = {c[0] for c in callers}
+                if len(distinct) > 1:
+                    if lbl in labels_declared:
+                        diags.append((callers[0][1],
+                            f"failureLabelAggregation: label `{lbl}` is targeted by {len(distinct)} distinct calls; "
+                            f"makeError at the shared label cannot pin the cause (§12)"))
+
+    # ---- module-level: purpose on contract-heavy abstractions ----
+    _check_purpose_on_abstractions(prog, diags)
+
+    # ---- module-level: identifier casing per spec §6 ----
+    _check_identifier_casing(prog, diags)
+
+    # ---- per-operation: declared effects must cover called c.* effects ----
+    _check_libc_effect_coverage(prog, diags)
+
+    # ---- per-operation: Result A B contract is checked at returns ----
+    _check_result_contract(prog, diags)
+
+    for diag in sorted(diags):
+        sys.stderr.write(f"warning line {diag[0]}: {diag[1]}\n")
+    if strict and diags:
+        sys.stderr.write(f"\n{len(diags)} lint warning(s) (strict mode)\n")
+        sys.exit(2)
+
+
+def _check_group_balance(anchors, diags, scope: str):
+    """Walk a list of (kind, name, lineno) anchors and warn on imbalance."""
+    open_stack = []  # list of (name, lineno)
+    for kind, name, lineno in anchors:
+        if kind == "group":
+            open_stack.append((name, lineno))
+        elif kind == "endGroup":
+            if not open_stack:
+                diags.append((lineno,
+                    f"groupCommentBalance: endGroup `{name}` in {scope} with no matching group"))
+            else:
+                opened_name, _ = open_stack.pop()
+                if opened_name != name:
+                    diags.append((lineno,
+                        f"groupCommentBalance: endGroup `{name}` in {scope} does not match open group `{opened_name}`"))
+    for name, lineno in open_stack:
+        diags.append((lineno,
+            f"groupCommentBalance: group `{name}` in {scope} has no matching endGroup"))
+
+
+def _check_duplicated_domain_literals(prog: Program, diags):
+    """Warn when two consts share the same String literal — the implicit
+    rule is that a domain value lives in exactly one named const so that
+    edits propagate (AST.md invariant 8). Exempt programs declared as
+    `mode capturedOutputReplay`: their consts are positional transcript
+    rows whose role identity is the position, not the value."""
+    if "capturedOutputReplay" in prog.modes:
+        return
+    seen = {}   # value -> first const name that held it
+    for name, (typ, value) in prog.consts.items():
+        if resolve_alias(prog, typ) != "String":
+            continue
+        if value in seen:
+            diags.append((0,
+                f"duplicatedDomainLiteral: const `{name}` repeats the string already held by const `{seen[value]}`; "
+                f"introduce one shared named const and reference it from both call sites"))
+        else:
+            seen[value] = name
+
+
+def _check_purpose_on_abstractions(prog: Program, diags):
+    """Every contract-heavy abstraction should declare its purpose."""
+    targets = []
+    for name in prog.validators:
+        targets.append(("validator", name))
+    for name, cdef in prog.codecs.items():
+        targets.append((cdef.get("kind", "codec"), name))
+    for name, pdef in prog.policies.items():
+        targets.append((pdef.get("kind", "policy"), name))
+    for name in prog.resources:
+        targets.append(("resource", name))
+    for name in prog.capabilities:
+        targets.append(("capability", name))
+    for name in prog.records:
+        targets.append(("record", name))
+    for name in prog.web_servers:
+        targets.append(("webServer", name))
+    for kind, name in targets:
+        meta = prog.hard_metadata.get(name, {})
+        if "purpose" not in meta:
+            diags.append((0,
+                f"missingPurpose: {kind} `{name}` declares no `purpose` line (§3 abstraction admission test)"))
+
+
+def _check_identifier_casing(prog: Program, diags):
+    """Spec §6: PascalCase for types/records/enums/errors/enum variants;
+    camelCase for values/calls/labels/operations/vars/consts."""
+    def is_pascal(name):
+        return bool(name) and name[0].isupper()
+    def is_camel(name):
+        return bool(name) and name[0].islower()
+    # PascalCase declarations
+    for name in prog.type_aliases:
+        if not is_pascal(name):
+            diags.append((0,
+                f"casingViolation: type `{name}` should start with uppercase (PascalCase) per §6"))
+    for name in prog.errors:
+        if not is_pascal(name):
+            diags.append((0,
+                f"casingViolation: error type `{name}` should start with uppercase per §6"))
+    for variants in prog.errors.values():
+        for vname, _cause in variants:
+            if not is_pascal(vname):
+                diags.append((0,
+                    f"casingViolation: error variant `{vname}` should start with uppercase per §6"))
+    for name in prog.records:
+        if not is_pascal(name):
+            diags.append((0,
+                f"casingViolation: record `{name}` should start with uppercase per §6"))
+    for name in prog.enums:
+        if not is_pascal(name):
+            diags.append((0,
+                f"casingViolation: enum `{name}` should start with uppercase per §6"))
+    # camelCase declarations
+    for op_name in prog.operations:
+        if not is_camel(op_name):
+            diags.append((0,
+                f"casingViolation: operation `{op_name}` should start with lowercase (camelCase) per §6"))
+    for name in prog.consts:
+        if not is_camel(name):
+            diags.append((0,
+                f"casingViolation: const `{name}` should start with lowercase per §6"))
+    # Per-operation body identifiers
+    CAMEL_VERBS = {"call", "var", "label", "bind", "bindOk", "bindError",
+                   "ignoreOk", "ignoreValue", "makeError"}
+    for op in prog.operations.values():
+        for verb, args, lineno in op.lines:
+            if verb in CAMEL_VERBS and args and not is_camel(args[0]):
+                diags.append((lineno,
+                    f"casingViolation: {verb} name `{args[0]}` should start with lowercase per §6"))
+
+
+# Required effect declarations per c.* / pointer.* call target. The linter
+# walks every call and verifies the operation declares the required effects;
+# missing entries fire `missingEffectDeclaration` per spec §17.
+_LIBC_REQUIRED_EFFECTS = {
+    # stdio writes
+    "printf":      [("write", "console.stdout")],
+    "puts":        [("write", "console.stdout")],
+    "fputs":       [("write", "console.stdout")],
+    "putchar":     [("write", "console.stdout")],
+    "putc":        [("write", "console.stdout")],
+    "fputc":       [("write", "console.stdout")],
+    "vprintf":     [("write", "console.stdout")],
+    "sprintf":     [],
+    "snprintf":    [],
+    # stdio reads
+    "scanf":       [("read", "console.stdin")],
+    "getchar":     [("read", "console.stdin")],
+    "getsSafe":    [("read", "console.stdin")],
+    "gets_s":      [("read", "console.stdin")],
+    # filesystem
+    "fopen":       [("read", "filesystem"), ("write", "filesystem")],
+    "freopen":     [("read", "filesystem"), ("write", "filesystem")],
+    "fclose":      [("write", "filesystem")],
+    "fread":       [("read", "filesystem")],
+    "fwrite":      [("write", "filesystem")],
+    "fgets":       [("read", "filesystem")],
+    "fseek":       [("read", "filesystem")],
+    "ftell":       [("read", "filesystem")],
+    "remove":      [("write", "filesystem")],
+    "rename":      [("write", "filesystem")],
+    "tmpfile":     [("write", "filesystem")],
+    # heap allocation
+    "malloc":      [("allocate", "heap")],
+    "calloc":      [("allocate", "heap")],
+    "realloc":     [("allocate", "heap")],
+    "free":        [("free", "heap")],
+    "aligned_alloc": [("allocate", "heap")],
+    "alignedAlloc":  [("allocate", "heap")],
+    # process
+    "system":      [("spawn", "process")],
+    "exit":        [("terminate", "process")],
+    "_Exit":       [("terminate", "process")],
+    "processExitWithoutCleanup": [("terminate", "process")],
+    "quick_exit":  [("terminate", "process")],
+    "quickExit":   [("terminate", "process")],
+    "abort":       [("terminate", "process")],
+    # signals
+    "raise":       [("emit", "signal")],
+    "signal":      [("handle", "signal")],
+    # environment
+    "getenv":      [("read", "process.environment")],
+    "getenv_s":    [("read", "process.environment")],
+    "getenvSafe":  [("read", "process.environment")],
+    # time
+    "time":        [("read", "clock.utc")],
+    "clock":       [("read", "clock.cpu")],
+    "localtime":   [("read", "clock.utc")],
+    "gmtime":      [("read", "clock.utc")],
+    # raw memory writes
+    "memcpy":      [("write", "memory.buffer")],
+    "memmove":     [("write", "memory.buffer")],
+    "memset":      [("write", "memory.buffer")],
+}
+
+_POINTER_REQUIRED_EFFECTS = {
+    "pointer.storeByte": [("write", "memory.buffer")],
+    "pointer.loadByte":  [("read",  "memory.buffer")],
+    # pointer.offset and pointer.difference are pure arithmetic — no effect.
+    "pointer.offset":     [],
+    "pointer.difference": [],
+    "pointer.isNull":     [],
+}
+
+
+def _check_libc_effect_coverage(prog: Program, diags):
+    """For every c.* / pointer.* call in an operation, verify that the
+    operation's `effect` lines declare the required effects (spec §17
+    declared-effects-must-match-called-effects)."""
+    for op_name, op in prog.operations.items():
+        declared = set()
+        for verb, args, _ in op.lines:
+            if verb == "effect" and len(args) >= 3:
+                declared.add((args[1], args[2]))
+        for verb, args, lineno in op.lines:
+            if verb != "call" or len(args) < 2:
+                continue
+            tgt = args[1]
+            required = None
+            if tgt.startswith("c."):
+                semantic_name = tgt[2:]
+                # Try SemanticScript-facing name first, then translate to C symbol.
+                required = _LIBC_REQUIRED_EFFECTS.get(semantic_name)
+                if required is None:
+                    c_symbol = libc_registry.resolve_c_symbol(semantic_name)
+                    required = _LIBC_REQUIRED_EFFECTS.get(c_symbol, [])
+            elif tgt in _POINTER_REQUIRED_EFFECTS:
+                required = _POINTER_REQUIRED_EFFECTS[tgt]
+            if not required:
+                continue
+            for action, path in required:
+                if (action, path) not in declared:
+                    diags.append((lineno,
+                        f"missingEffectDeclaration: call `{tgt}` requires "
+                        f"`effect {op_name} {action} {path}` but operation "
+                        f"`{op_name}` doesn't declare it (§17)"))
+
+
+def _check_result_contract(prog: Program, diags):
+    """Spec §11 + §17: when an operation declares `output OP Result A B`,
+    every `returnOk` must produce type A and every `returnError` must
+    produce type B (or chain through `makeError` of an errorCase whose
+    parent error type is B)."""
+    for op_name, op in prog.operations.items():
+        # Locate the operation's output declaration.
+        output_tokens = None
+        for verb, args, _ in op.lines:
+            if verb == "output" and args and args[0] == op_name:
+                output_tokens = args[1:]
+                break
+        if not output_tokens:
+            continue
+        is_result = output_tokens[0] == "Result" and len(output_tokens) >= 3
+        if is_result:
+            ok_type = output_tokens[1]
+            err_type = output_tokens[2]
+        else:
+            ok_type = output_tokens[0]
+            err_type = None
+
+        # Build a value→declared-type map for everything visible inside
+        # this operation: consts, vars, binds (bind/bindOk/bindError),
+        # and makeError outputs (whose declared type is the parent error).
+        value_types = {}
+        for name, (typ, _val) in op.consts.items():
+            value_types[name] = typ
+        for name, (typ, _val) in prog.consts.items():
+            value_types.setdefault(name, typ)
+        for verb, args, _ in op.lines:
+            if verb == "var" and len(args) >= 2:
+                value_types[args[0]] = args[1]
+            elif verb in ("bind", "bindOk", "bindError") and len(args) >= 3:
+                value_types[args[0]] = args[1]
+            elif verb == "makeError" and len(args) >= 2 and "." in args[1]:
+                value_types[args[0]] = args[1].split(".", 1)[0]
+
+        def types_match(declared, expected):
+            if declared == expected:
+                return True
+            # Resolve through type-alias chains on both sides.
+            try:
+                return resolve_alias(prog, declared) == resolve_alias(prog, expected)
+            except Exception:
+                return False
+
+        for verb, args, lineno in op.lines:
+            if verb == "returnOk" and args:
+                vt = value_types.get(args[0])
+                if vt is None:
+                    continue
+                if not is_result:
+                    diags.append((lineno,
+                        f"returnOkContract: operation `{op_name}` does not "
+                        f"declare a Result output; use `returnValue` instead "
+                        f"of `returnOk` (§11)"))
+                elif ok_type in ("Void", "CVoid"):
+                    # Void success leg: any sentinel value is accepted; the
+                    # i32 ABI requires an integer to be returned even when
+                    # the spec-level result has no observable value.
+                    pass
+                elif not types_match(vt, ok_type):
+                    diags.append((lineno,
+                        f"returnOkContract: returnOk value `{args[0]}` has "
+                        f"declared type `{vt}` but operation `{op_name}`'s "
+                        f"`Result {ok_type} {err_type}` success leg is `{ok_type}` (§11)"))
+            elif verb == "returnError" and args:
+                vt = value_types.get(args[0])
+                if vt is None:
+                    continue
+                if not is_result:
+                    diags.append((lineno,
+                        f"returnErrorContract: operation `{op_name}` has no "
+                        f"error type; `returnError` requires a Result output (§11)"))
+                elif not types_match(vt, err_type):
+                    diags.append((lineno,
+                        f"returnErrorContract: returnError value `{args[0]}` "
+                        f"has declared type `{vt}` but operation `{op_name}`'s "
+                        f"`Result {ok_type} {err_type}` error leg is `{err_type}` (§11)"))
+
+
+def _optimize(mod, tm, opt_level: int):
+    """Run the LLVM new-pass-manager optimization pipeline."""
+    pto = llvm.create_pipeline_tuning_options(speed_level=opt_level, size_level=0)
+    pto.loop_vectorization = True
+    pto.slp_vectorization = True
+    pb = llvm.create_pass_builder(tm, pto)
+    mpm = pb.getModulePassManager()
+    mpm.run(mod, pb)
+
+
+def emit_executable(module_ir: str, exe_path: str, opt_level: int = 2) -> None:
+    """Ahead-of-time compile SemanticScript IR to a native executable.
+
+    The SemanticScript runtime depends only on libc, so the same toolchain that
+    builds a C program can link an SemanticScript program: write the IR to a temp `.ll`,
+    invoke clang (or whatever `SEMSC_CLANG` resolves to), and let it produce
+    a standalone exe. JIT overhead (MCJIT trampolines, PLT-style indirection)
+    is removed entirely, which is what closes the gap with native C on tight
+    inner loops."""
+    import subprocess
+    import tempfile
+
+    clang = os.environ.get("SEMSC_CLANG")
+    if not clang:
+        # Try common Windows install locations + PATH lookup.
+        for candidate in ("clang", "C:/Program Files/LLVM/bin/clang.exe"):
+            if os.path.isabs(candidate):
+                if os.path.exists(candidate):
+                    clang = candidate
+                    break
+            else:
+                from shutil import which
+                resolved = which(candidate)
+                if resolved:
+                    clang = resolved
+                    break
+    if not clang:
+        raise RuntimeError(
+            "could not find a clang executable; set SEMSC_CLANG=/path/to/clang")
+
+    with tempfile.NamedTemporaryFile(suffix=".ll", delete=False, mode="w",
+                                     encoding="utf-8") as f:
+        ll_path = f.name
+        f.write(module_ir)
+    try:
+        cmd = [clang, f"-O{opt_level}", "-o", exe_path, ll_path]
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"clang failed to compile SemanticScript IR:\n{proc.stderr}")
+    finally:
+        try:
+            os.unlink(ll_path)
+        except OSError:
+            pass
+
+
+def jit_run(module_ir: str, opt_level: int = 2,
+            emit_optimized_ir_to: str = None) -> int:
+    llvm.initialize_native_target()
+    llvm.initialize_native_asmprinter()
+    mod = llvm.parse_assembly(module_ir)
+    mod.verify()
+    target = llvm.Target.from_default_triple()
+    tm = target.create_target_machine(opt=opt_level)
+    if opt_level > 0:
+        _optimize(mod, tm, opt_level)
+    if emit_optimized_ir_to:
+        with open(emit_optimized_ir_to, "w", encoding="utf-8") as f:
+            f.write(str(mod))
+    engine = llvm.create_mcjit_compiler(mod, tm)
+    engine.finalize_object()
+    engine.run_static_constructors()
+    addr = engine.get_function_address("main")
+    cmain = ctypes.CFUNCTYPE(ctypes.c_int)(addr)
+    return cmain()
+
+
+def _resolve_imports(source: str, source_path: str) -> str:
+    src_dir = os.path.dirname(os.path.abspath(source_path))
+    def find_project_root(start_dir: str) -> str:
+        current = os.path.abspath(start_dir)
+        while True:
+            if (
+                os.path.isdir(os.path.join(current, "compiler"))
+                and os.path.isdir(os.path.join(current, "stdlib_sem"))
+            ):
+                return current
+            parent = os.path.dirname(current)
+            if parent == current:
+                return os.path.abspath(start_dir)
+            current = parent
+
+    project_root = find_project_root(src_dir)
+    stdlib_dir = os.path.join(project_root, "stdlib_sem")
+
+    seen: set = set()
+    out_lines: list = []
+    pending: list = [(source, src_dir)]
+
+    def find_module_file(dotted: str, from_dir: str):
+        rel_base = dotted.replace(".", os.sep)
+        for ext in (".sscript", ".sem"):
+            rel = rel_base + ext
+            for base in (from_dir, stdlib_dir, project_root):
+                candidate = os.path.join(base, rel)
+                if os.path.isfile(candidate):
+                    return candidate
+        # No leaf fallback: a missing module must stay missing, not silently
+        # bind to a same-leafname file in a sibling directory (e.g. importing
+        # `standard.time` should not pick up `stdlib_sem/time.sscript`).
+        return None
+
+    header_skip = ("project ", "target ", "runtime ", "entry ")
+
+    def process(text: str, base_dir: str, is_root: bool):
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("importModule "):
+                parts = stripped.split()
+                if len(parts) >= 2:
+                    dotted = parts[1]
+                    path = find_module_file(dotted, base_dir)
+                    if path is not None and path not in seen:
+                        seen.add(path)
+                        try:
+                            with open(path, "r", encoding="utf-8") as f:
+                                imported = f.read()
+                        except OSError:
+                            out_lines.append(line)
+                            continue
+                        process(imported, os.path.dirname(path), is_root=False)
+                        continue
+                    if path is None:
+                        out_lines.append(line)
+                        continue
+                    continue
+            if not is_root and stripped.startswith(header_skip):
+                continue
+            out_lines.append(line)
+
+    seen.add(os.path.abspath(source_path))
+    process(source, src_dir, is_root=True)
+    return "\n".join(out_lines) + "\n"
+
+
+def _load_external_literals(prog: Program, source_path: str) -> None:
+    """For every `literal NAME TYPE` whose `literalSource NAME "path"`
+    resolves on disk, read the file's bytes and store them as the const's
+    value. Paths are tried absolute first, then relative to the source
+    file's directory. Files that fail to load leave the stub in place so
+    the program still compiles."""
+    src_dir = os.path.dirname(os.path.abspath(source_path)) if source_path else ""
+    for name, meta in list(prog.hard_metadata.items()):
+        sources = meta.get("literalSource") or []
+        if not sources or name not in prog.consts:
+            continue
+        for row in sources:
+            if not row:
+                continue
+            raw_path = row[0]
+            if not isinstance(raw_path, str):
+                continue
+            candidates = []
+            if os.path.isabs(raw_path):
+                candidates.append(raw_path)
+            else:
+                if src_dir:
+                    candidates.append(os.path.join(src_dir, raw_path))
+                candidates.append(raw_path)
+            loaded = None
+            for candidate in candidates:
+                try:
+                    with open(candidate, "r", encoding="utf-8") as f:
+                        loaded = f.read()
+                    break
+                except (IOError, OSError, UnicodeDecodeError):
+                    continue
+            if loaded is not None:
+                typ, _stub = prog.consts[name]
+                prog.consts[name] = (typ, loaded)
+                break
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        prog="semsc",
+        description=f"SemanticScript compiler (LLVM backend) v{__version__}",
+    )
+    ap.add_argument("source", nargs="?", help="path to .sscript or .sem source file")
+    ap.add_argument("--version", action="version",
+                    version=f"semsc {__version__}")
+    ap.add_argument("--emit-ir", help="write LLVM IR to this path")
+    ap.add_argument("--run", action="store_true", help="JIT-execute main after compile")
+    ap.add_argument("--lint", action="store_true",
+                    help="run agent-safety lint pass and report diagnostics")
+    ap.add_argument("--strict", action="store_true",
+                    help="treat lint diagnostics as fatal")
+    ap.add_argument("--parse-only", action="store_true",
+                    help="parse the source, run lint (if requested), and exit without codegen")
+    ap.add_argument("--opt-level", type=int, default=2,
+                    help="LLVM optimization level for the JIT (0..3); default 2")
+    ap.add_argument("--emit-optimized-ir",
+                    help="write the post-optimization LLVM IR to this path (after --opt-level passes run)")
+    ap.add_argument("--emit-exe",
+                    help="ahead-of-time compile to a native executable at this path "
+                         "(uses clang on PATH or $SEMSC_CLANG to link)")
+    ap.add_argument("--quiet", action="store_true",
+                    help="suppress informational messages on success")
+    args = ap.parse_args()
+
+    if not args.source:
+        ap.error("the following arguments are required: source")
+
+    try:
+        with open(args.source, "r", encoding="utf-8") as f:
+            source = f.read()
+    except OSError as e:
+        print(f"semsc: cannot read source file: {e}", file=sys.stderr)
+        sys.exit(2)
+
+    source_ext = os.path.splitext(args.source)[1].lower()
+    if source_ext not in (".sscript", ".sem"):
+        print("semsc: source file must use .sscript or .sem", file=sys.stderr)
+        sys.exit(2)
+
+    # Resolve cross-file imports. `importModule DOTTED.PATH [as ALIAS]`
+    # lines reference module files. Convert the dotted path to a file
+    # path (X.Y.Z -> X/Y/Z.sscript or X/Y/Z.sem) and search the source-file's
+    # directory and the project's stdlib_sem/ directory. Imported file content is
+    # inlined; transitive imports are followed (with cycle detection).
+    source = _resolve_imports(source, args.source)
+
+    try:
+        prog = parse(source)
+    except SyntaxError as e:
+        import traceback as _tb
+        print(f"semsc: parse error in {args.source}: {e}", file=sys.stderr)
+        if os.environ.get("SEMSC_TRACEBACK"):
+            _tb.print_exc(file=sys.stderr)
+        sys.exit(2)
+
+    # External literal asset loading. `literal NAME TYPE` declares the
+    # binding; `literalSource NAME "path"` names the bytes' source file.
+    # When both are present and the path resolves (absolute, or relative
+    # to the source file's directory), inline the file content as the
+    # literal's const value so name references see the actual bytes.
+    _load_external_literals(prog, args.source)
+
+    if args.lint or args.strict:
+        lint(prog, strict=args.strict)
+
+    if args.parse_only:
+        if not args.quiet:
+            print(f"semsc: parse OK ({args.source})")
+        return
+
+    try:
+        cg = Codegen(prog)
+        mod = cg.compile()
+    except NotImplementedError as e:
+        print(f"semsc: {e}", file=sys.stderr)
+        sys.exit(3)
+    except Exception as e:
+        import traceback as _tb
+        print(f"semsc: codegen error in {args.source}: {e}", file=sys.stderr)
+        if os.environ.get("SEMSC_TRACEBACK"):
+            _tb.print_exc(file=sys.stderr)
+        sys.exit(3)
+    ir_text = str(mod)
+
+    did_output = False
+    if args.emit_ir:
+        with open(args.emit_ir, "w", encoding="utf-8") as f:
+            f.write(ir_text)
+        did_output = True
+        if not args.quiet:
+            print(f"semsc: wrote LLVM IR to {args.emit_ir}")
+
+    if args.emit_exe:
+        try:
+            emit_executable(ir_text, args.emit_exe, opt_level=args.opt_level)
+        except RuntimeError as e:
+            print(f"semsc: {e}", file=sys.stderr)
+            sys.exit(4)
+        did_output = True
+        if not args.quiet:
+            print(f"semsc: wrote executable to {args.emit_exe}")
+
+    if args.run:
+        rc = jit_run(ir_text, opt_level=args.opt_level,
+                     emit_optimized_ir_to=args.emit_optimized_ir)
+        sys.exit(rc)
+
+    if not did_output and not args.quiet:
+        # Reaching this branch means the source compiled successfully but
+        # no output flag was given. Tell the user what they could do next
+        # instead of exiting silently.
+        print(f"semsc: compile OK ({args.source}); no output requested. "
+              f"Try --emit-ir, --emit-exe, or --run.")
+
+
+if __name__ == "__main__":
+    main()

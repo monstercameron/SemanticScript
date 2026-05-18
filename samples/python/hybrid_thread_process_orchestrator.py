@@ -103,7 +103,7 @@ def run_orchestrator():
         {"document_id": 2, "text": "Threads parse text while processes compute scores."},
         {"document_id": 3, "text": "Hybrid orchestration is powerful but difficult to debug."},
         {"document_id": 4, "text": "Deterministic summaries make concurrent systems reviewable."},
-        {"document_id": 5, "text": "AgentScript tries to make all hidden flow visible."},
+        {"document_id": 5, "text": "SemanticScript tries to make all hidden flow visible."},
     ]
 
     parser_count = 2

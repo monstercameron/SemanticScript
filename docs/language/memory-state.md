@@ -1,12 +1,12 @@
 # Memory, Storage, and State
 
-AgentScript makes mutation and memory behavior visible. Use immutable values by
+SemanticScript makes mutation and memory behavior visible. Use immutable values by
 default; declare mutable state only when mutation is part of the program
 contract.
 
 ## Storage
 
-```agentscript
+```semanticscript
 storage module immutable zeroCount I64 0
 storage module mutable lastRevision I64 zeroCount
 
@@ -32,7 +32,7 @@ Current compiler behavior:
 
 ## Mutation
 
-```agentscript
+```semanticscript
 set local currentRevision nextRevision
 set module lastRevision nextRevision ownedBy moduleStateOwner
 set sharedState failureCount nextFailureCount protectedBy failureCountGuardToken
@@ -52,7 +52,7 @@ is known.
 
 ## Shared State
 
-```agentscript
+```semanticscript
 sharedState process mutable accountLookupFailureCount I64 zeroCount
 sharedStateOwner accountLookupFailureCount accountLookupRuntime
 sharedStateGuard accountLookupFailureCount accountLookupGuardToken
@@ -75,7 +75,7 @@ runtime work.
 
 ## Guard Tokens
 
-```agentscript
+```semanticscript
 guardTokenSource accountLookupGuardToken acquireMetricsLockCall
 guardTokenOwner accountLookupGuardToken accountLookupRuntime
 guardTokenProtects accountLookupGuardToken accountLookupFailureCount
@@ -83,12 +83,12 @@ guardTokenRelease accountLookupGuardToken releaseMetricsLock
 ```
 
 Guard-token lines describe authority around shared resources. They are metadata
-for current codegen and active input for linter checks. `aslint2.py` checks for
+for current codegen and active input for linter checks. `semlint2.py` checks for
 guard-token sources without releases and shared-state access without protection.
 
 ## Operation Memory Metadata
 
-```agentscript
+```semanticscript
 memory appendAndReadTask noHeapAllocation
 memoryHeap appendAndReadTask no
 memoryArena appendAndReadTask arena.request
@@ -97,13 +97,13 @@ memoryStackLimit appendAndReadTask 4096
 ```
 
 These lines declare memory behavior for review and checking. They do not
-replace actual allocation checks. `aslint2.py` can flag contradictions such as
+replace actual allocation checks. `semlint2.py` can flag contradictions such as
 declaring no heap while allocating, missing allocation source metadata, and
 stack-limit overruns based on primitive size estimates.
 
 ## Pointer Primitives
 
-```agentscript
+```semanticscript
 call loadByteCall pointer.loadByte
 arg loadByteCall buffer sourceBuffer
 arg loadByteCall offset currentOffset

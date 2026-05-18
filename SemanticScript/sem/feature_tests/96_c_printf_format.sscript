@@ -1,0 +1,41 @@
+# expect.stdout: value = 42\nname = hello\n
+# expect.exit: 0
+project CPrintfFormatTest
+target console
+runtime AgentRuntime 0.1
+entry console main
+error MainError
+errorCase MainError Placeholder CSignedInt32
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+async main no
+purpose main "Exercise c.printf with an integer arg (const + bind paths) and a string arg. Uses %lld for i64 and %s for i8*. Triggers walker mode via a no-op c.malloc since c.printf alone isn't a walker trigger (existing SemanticScript programs use c.printf alongside unsupported math libcs)."
+invariant main "Output is 'value = 42\\nname = hello\\n'."
+label startMain
+const intFormat CNullTerminatedByteString "value = %lld\n"
+const stringFormat CNullTerminatedByteString "name = %s\n"
+const fortyTwo CSignedInt64 42
+const helloLabel CNullTerminatedByteString "hello"
+const oneByteForTrigger CByteCount 1
+call walkerTriggerCall c.malloc
+arg walkerTriggerCall size oneByteForTrigger
+run walkerTriggerCall
+bind walkerTriggerBuffer COpaqueMemoryAddress walkerTriggerCall
+call walkerTriggerFreeCall c.free
+arg walkerTriggerFreeCall ptr walkerTriggerBuffer
+run walkerTriggerFreeCall
+call printIntCall c.printf
+arg printIntCall format intFormat
+arg printIntCall value fortyTwo
+run printIntCall
+ignoreOk printIntCall CSignedInt32
+call printStringCall c.printf
+arg printStringCall format stringFormat
+arg printStringCall value helloLabel
+run printStringCall
+ignoreOk printStringCall CSignedInt32
+const successfulExitCode ExitCode 0
+returnOk successfulExitCode

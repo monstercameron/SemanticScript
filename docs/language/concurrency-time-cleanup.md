@@ -7,7 +7,7 @@ not a license to omit the contract lines; future runtimes depend on them.
 
 ## Start and Await
 
-```agentscript
+```semanticscript
 call fetchAccountCall fetchAccount
 arg fetchAccountCall accountId requestedAccountId
 start fetchAccountCall
@@ -22,7 +22,7 @@ fallback when no scheduler runtime is bound.
 
 ## Retry
 
-```agentscript
+```semanticscript
 retryPolicy accountLookupRetryPolicy
 retryMaxAttempts accountLookupRetryPolicy 3
 retryInitialDelay accountLookupRetryPolicy 50ms
@@ -39,7 +39,7 @@ attempt count. Delay and jitter metadata are preserved for runtime integration.
 
 ## Defer and Cleanup
 
-```agentscript
+```semanticscript
 defer metricsLockReleaseDefer releaseMetricsLock accountLookupGuardToken
 deferRunOn metricsLockReleaseDefer all
 deferOrder metricsLockReleaseDefer reverseRegistration
@@ -63,7 +63,7 @@ targets are accepted as metadata.
 
 ## Task Groups
 
-```agentscript
+```semanticscript
 taskGroup accountLookupChildren
 startInGroup fetchAccountCall accountLookupChildren
 awaitGroup accountLookupChildren
@@ -77,7 +77,7 @@ falls through unless individual calls expose errors.
 
 ## Channels
 
-```agentscript
+```semanticscript
 channel taskChannel Task bounded 1
 send taskChannel builtTask
 receive receivedTask Task taskChannel
@@ -90,7 +90,7 @@ contract.
 
 ## Locks
 
-```agentscript
+```semanticscript
 mutex metricsLock
 lock metricsLock
 # critical section
@@ -98,11 +98,11 @@ unlock metricsLock
 ```
 
 Current lowering: lock and unlock are no-ops in single-thread execution.
-`aslint2.py` checks for lock acquisition without cleanup.
+`semlint2.py` checks for lock acquisition without cleanup.
 
 ## Select
 
-```agentscript
+```semanticscript
 select nextEventSelect
 selectCase nextEventSelect taskReady taskReadyBranch
 selectCase nextEventSelect timeoutElapsed timeoutBranch
@@ -111,12 +111,12 @@ branchSelected nextEventSelect taskReadyBranch handleTaskReady
 ```
 
 Current lowering: selection metadata is preserved and the single-thread
-execution path falls through. `aslint2.py` checks selects without cases and
+execution path falls through. `semlint2.py` checks selects without cases and
 cases that reference unknown selects.
 
 ## Intervals
 
-```agentscript
+```semanticscript
 interval heartbeatInterval every 1000ms
 startInterval heartbeatInterval
 awaitIntervalTick heartbeatInterval
@@ -127,7 +127,7 @@ no-ops without a timer runtime.
 
 ## Worker Pools
 
-```agentscript
+```semanticscript
 workerPool hashWorkerPool size 4
 work hashFileWork target hashFile
 workArg hashFileWork path inputFilePath

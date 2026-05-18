@@ -1,0 +1,141 @@
+# counterintuitive_closure_capture_refined.sscript
+#
+# Migration of sem/counterintuitive_closure_capture.sscript to refined syntax.
+# Same behavior — print the var-vs-let closure-capture parity table.
+
+section program.counterintuitiveClosureCaptureRefined
+
+project CounterintuitiveClosureCaptureRefined
+target console
+runtime AgentRuntime 0.1
+mode capturedOutputReplay
+entry console main
+
+section program.counterintuitiveClosureCaptureRefined.types
+
+type ConsoleWriteErrorCode I32
+
+section program.counterintuitiveClosureCaptureRefined.errors
+
+error MainError
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+
+section program.counterintuitiveClosureCaptureRefined.literals
+
+domainLiteral closureCaptureTitleText String "Counterintuitive Closure Capture"
+domainLiteral closureCaptureTitleUnderlineText String "================================"
+domainLiteral closureCaptureVarCallbacksText String "var callbacks => 3, 3, 3"
+domainLiteral closureCaptureLetCallbacksText String "let callbacks => 0, 1, 2"
+domainLiteral closureCaptureFirstAliasOneText String "firstCounterAlias() => 1"
+domainLiteral closureCaptureSecondAliasTwoText String "secondCounterAlias() => 2"
+domainLiteral closureCaptureFirstAliasThreeText String "firstCounterAlias() again => 3"
+storage module immutable successfulExitCode ExitCode 0
+storage module immutable writeStandardOutputLineSuccessSentinel ExitCode 0
+
+section program.counterintuitiveClosureCaptureRefined.operations
+
+operation writeStandardOutputLine
+input writeStandardOutputLine text String
+output writeStandardOutputLine Result Void ConsoleWriteError
+effect writeStandardOutputLine write console.stdout
+memoryHeap writeStandardOutputLine no
+memoryStackLimit writeStandardOutputLine 1KiB
+async writeStandardOutputLine no
+operationBody writeStandardOutputLine sourceTape
+
+purpose writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
+invariant writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
+guarantee writeStandardOutputLine "On success the entire text plus a single newline byte is written exactly once"
+
+label startWriteStandardOutputLine
+
+call writeStandardOutputLineConsoleWriteCall console.writeLine
+arg writeStandardOutputLineConsoleWriteCall console console
+arg writeStandardOutputLineConsoleWriteCall text text
+run writeStandardOutputLineConsoleWriteCall
+ignoreOk writeStandardOutputLineConsoleWriteCall Void
+bindError writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
+branchIfError writeStandardOutputLineConsoleWriteCall writeStandardOutputLineConsoleWriteFailed
+
+returnOk writeStandardOutputLineSuccessSentinel
+
+label writeStandardOutputLineConsoleWriteFailed
+returnError writeStandardOutputLineConsoleWriteError
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memoryHeap main no
+memoryStackLimit main 4KiB
+async main no
+operationBody main sourceTape
+
+purpose main "Print the var-vs-let closure-capture parity table from javascript/counterintuitive-closure-capture.js"
+invariant main "Rows print in declared order"
+
+label startMain
+
+var lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
+
+call writeClosureCaptureTitleLineCall writeStandardOutputLine
+arg writeClosureCaptureTitleLineCall text closureCaptureTitleText
+run writeClosureCaptureTitleLineCall
+ignoreOk writeClosureCaptureTitleLineCall Void
+bindError writeClosureCaptureTitleLineError ConsoleWriteError writeClosureCaptureTitleLineCall
+set lastConsoleWriteErrorCode writeClosureCaptureTitleLineError
+branchIfError writeClosureCaptureTitleLineCall consoleWriteFailed
+
+call writeClosureCaptureTitleUnderlineLineCall writeStandardOutputLine
+arg writeClosureCaptureTitleUnderlineLineCall text closureCaptureTitleUnderlineText
+run writeClosureCaptureTitleUnderlineLineCall
+ignoreOk writeClosureCaptureTitleUnderlineLineCall Void
+bindError writeClosureCaptureTitleUnderlineLineError ConsoleWriteError writeClosureCaptureTitleUnderlineLineCall
+set lastConsoleWriteErrorCode writeClosureCaptureTitleUnderlineLineError
+branchIfError writeClosureCaptureTitleUnderlineLineCall consoleWriteFailed
+
+call writeClosureCaptureVarCallbacksLineCall writeStandardOutputLine
+arg writeClosureCaptureVarCallbacksLineCall text closureCaptureVarCallbacksText
+run writeClosureCaptureVarCallbacksLineCall
+ignoreOk writeClosureCaptureVarCallbacksLineCall Void
+bindError writeClosureCaptureVarCallbacksLineError ConsoleWriteError writeClosureCaptureVarCallbacksLineCall
+set lastConsoleWriteErrorCode writeClosureCaptureVarCallbacksLineError
+branchIfError writeClosureCaptureVarCallbacksLineCall consoleWriteFailed
+
+call writeClosureCaptureLetCallbacksLineCall writeStandardOutputLine
+arg writeClosureCaptureLetCallbacksLineCall text closureCaptureLetCallbacksText
+run writeClosureCaptureLetCallbacksLineCall
+ignoreOk writeClosureCaptureLetCallbacksLineCall Void
+bindError writeClosureCaptureLetCallbacksLineError ConsoleWriteError writeClosureCaptureLetCallbacksLineCall
+set lastConsoleWriteErrorCode writeClosureCaptureLetCallbacksLineError
+branchIfError writeClosureCaptureLetCallbacksLineCall consoleWriteFailed
+
+call writeClosureCaptureFirstAliasOneLineCall writeStandardOutputLine
+arg writeClosureCaptureFirstAliasOneLineCall text closureCaptureFirstAliasOneText
+run writeClosureCaptureFirstAliasOneLineCall
+ignoreOk writeClosureCaptureFirstAliasOneLineCall Void
+bindError writeClosureCaptureFirstAliasOneLineError ConsoleWriteError writeClosureCaptureFirstAliasOneLineCall
+set lastConsoleWriteErrorCode writeClosureCaptureFirstAliasOneLineError
+branchIfError writeClosureCaptureFirstAliasOneLineCall consoleWriteFailed
+
+call writeClosureCaptureSecondAliasTwoLineCall writeStandardOutputLine
+arg writeClosureCaptureSecondAliasTwoLineCall text closureCaptureSecondAliasTwoText
+run writeClosureCaptureSecondAliasTwoLineCall
+ignoreOk writeClosureCaptureSecondAliasTwoLineCall Void
+bindError writeClosureCaptureSecondAliasTwoLineError ConsoleWriteError writeClosureCaptureSecondAliasTwoLineCall
+set lastConsoleWriteErrorCode writeClosureCaptureSecondAliasTwoLineError
+branchIfError writeClosureCaptureSecondAliasTwoLineCall consoleWriteFailed
+
+call writeClosureCaptureFirstAliasThreeLineCall writeStandardOutputLine
+arg writeClosureCaptureFirstAliasThreeLineCall text closureCaptureFirstAliasThreeText
+run writeClosureCaptureFirstAliasThreeLineCall
+ignoreOk writeClosureCaptureFirstAliasThreeLineCall Void
+bindError writeClosureCaptureFirstAliasThreeLineError ConsoleWriteError writeClosureCaptureFirstAliasThreeLineCall
+set lastConsoleWriteErrorCode writeClosureCaptureFirstAliasThreeLineError
+branchIfError writeClosureCaptureFirstAliasThreeLineCall consoleWriteFailed
+
+returnOk successfulExitCode
+
+label consoleWriteFailed
+makeError consoleWriteFailure MainError.ConsoleWriteFailed lastConsoleWriteErrorCode
+returnError consoleWriteFailure

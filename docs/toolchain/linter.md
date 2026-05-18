@@ -1,38 +1,38 @@
 # Linters
 
-AgentScript has two linter tracks:
+SemanticScript has two linter tracks:
 
-- `AgentScript/linter/aslint.py`: current standalone source linter.
-- `AgentScript/linter/aslint2.py`: structured refinement linter with tiers,
+- `SemanticScript/linter/semlint.py`: current standalone source linter.
+- `SemanticScript/linter/semlint2.py`: structured refinement linter with tiers,
   citations, fix candidates, and agent-oriented output.
 
-The compiler also has an internal lint pass behind `ascc.py --lint`, but editor
+The compiler also has an internal lint pass behind `semsc.py --lint`, but editor
 and CI integrations should prefer the standalone linter entry points.
 
-## aslint.py
+## semlint.py
 
 Run one file:
 
 ```powershell
-python AgentScript/linter/aslint.py AgentScript/as/fizzbuzz.as
+python SemanticScript/linter/semlint.py SemanticScript/sem/fizzbuzz.sscript
 ```
 
 Run a directory:
 
 ```powershell
-python AgentScript/linter/aslint.py AgentScript/as --summary
+python SemanticScript/linter/semlint.py SemanticScript/as --summary
 ```
 
 JSON output for editor integration:
 
 ```powershell
-python AgentScript/linter/aslint.py AgentScript/as/fizzbuzz.as --format json --fail-on none
+python SemanticScript/linter/semlint.py SemanticScript/sem/fizzbuzz.sscript --format json --fail-on none
 ```
 
 Strict CI:
 
 ```powershell
-python AgentScript/linter/aslint.py AgentScript/as --strict
+python SemanticScript/linter/semlint.py SemanticScript/as --strict
 ```
 
 Rule families include:
@@ -53,39 +53,39 @@ duplicate domain literals
 semantic comment prefix checks
 ```
 
-## aslint2.py
+## semlint2.py
 
 Run one file:
 
 ```powershell
-python AgentScript/linter/aslint2.py AgentScript/as/fizzbuzz.as
+python SemanticScript/linter/semlint2.py SemanticScript/sem/fizzbuzz.sscript
 ```
 
 Structured JSON:
 
 ```powershell
-python AgentScript/linter/aslint2.py AgentScript/as/fizzbuzz.as --format json
+python SemanticScript/linter/semlint2.py SemanticScript/sem/fizzbuzz.sscript --format json
 ```
 
 Agent-oriented output:
 
 ```powershell
-python AgentScript/linter/aslint2.py AgentScript/as/fizzbuzz.as --format agent
+python SemanticScript/linter/semlint2.py SemanticScript/sem/fizzbuzz.sscript --format agent
 ```
 
-Emit diagnostics as AgentScript-shaped records:
+Emit diagnostics as SemanticScript-shaped records:
 
 ```powershell
-python AgentScript/linter/aslint2.py AgentScript/as/fizzbuzz.as --format as-record
+python SemanticScript/linter/semlint2.py SemanticScript/sem/fizzbuzz.sscript --format as-record
 ```
 
 Filter:
 
 ```powershell
-python AgentScript/linter/aslint2.py AgentScript/as --tier T3 --code AS0101
+python SemanticScript/linter/semlint2.py SemanticScript/as --tier T3 --code SS0101
 ```
 
-aslint2 tiers:
+semlint2 tiers:
 
 | Tier | Meaning | Default intent |
 |---|---|---|
@@ -113,7 +113,7 @@ effort
 blocksCompile
 ```
 
-## aslint2 Check Families
+## semlint2 Check Families
 
 The structured linter currently checks:
 
@@ -156,16 +156,16 @@ duplicate declarations
 
 ## Editor Integration
 
-The VS Code extension defaults to `aslint.py`. Set:
+The VS Code extension defaults to `semlint.py`. Set:
 
 ```json
 {
-  "agentScript.linter.engine": "aslint2"
+  "semanticScript.linter.engine": "semlint2"
 }
 ```
 
-The extension parses both legacy JSON diagnostics and aslint2 structured JSON.
-For refined future syntax, the extension can skip current `aslint.py`
+The extension parses both legacy JSON diagnostics and semlint2 structured JSON.
+For refined future syntax, the extension can skip current `semlint.py`
 diagnostics by default because the current executable linter intentionally lags
 some research syntax.
 

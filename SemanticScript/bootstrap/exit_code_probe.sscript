@@ -1,0 +1,28 @@
+project ExitCodeProbe
+target console
+runtime AgentRuntime 0.1
+
+entry console main
+
+error MainError
+errorCase MainError Placeholder CSignedInt32
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+memory main stack max 4KiB
+async main no
+purpose main "Smoke-test the SemanticScript-compiler's emission of a non-zero ret i32 from const ExitCode."
+invariant main "The emitted exe returns the integer declared in mainExitCodeValue."
+
+label startMain
+const greetingProbeText CNullTerminatedByteString "exit code probe"
+call greetingProbeWriteCall console.writeLine
+arg greetingProbeWriteCall console console
+arg greetingProbeWriteCall text greetingProbeText
+run greetingProbeWriteCall
+ignoreOk greetingProbeWriteCall Void
+const mainExitCodeValue ExitCode 42
+returnOk mainExitCodeValue

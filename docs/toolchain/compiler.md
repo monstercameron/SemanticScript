@@ -1,22 +1,22 @@
 # Reference Compiler
 
-The reference compiler is `AgentScript/compiler/ascc.py`. It parses
-line-oriented AgentScript, resolves imports and external literals, builds an
+The reference compiler is `SemanticScript/compiler/semsc.py`. It parses
+line-oriented SemanticScript, resolves imports and external literals, builds an
 AST, emits LLVM IR with `llvmlite`, can JIT-run, and can call `clang` for
 native executables.
 
 ## Commands
 
-Run from the repository's `AgentScript/` directory unless paths are explicit:
+Run from the repository's `SemanticScript/` directory unless paths are explicit:
 
 ```powershell
-python compiler/ascc.py --version
-python compiler/ascc.py as/fizzbuzz.as --parse-only
-python compiler/ascc.py as/fizzbuzz.as --lint
-python compiler/ascc.py as/fizzbuzz.as --run
-python compiler/ascc.py as/fizzbuzz.as --emit-ir fizzbuzz.ll
-python compiler/ascc.py as/fizzbuzz.as --emit-optimized-ir fizzbuzz.opt.ll --run
-python compiler/ascc.py as/fizzbuzz.as --emit-exe fizzbuzz.exe
+python compiler/semsc.py --version
+python compiler/semsc.py sem/fizzbuzz.sscript --parse-only
+python compiler/semsc.py sem/fizzbuzz.sscript --lint
+python compiler/semsc.py sem/fizzbuzz.sscript --run
+python compiler/semsc.py sem/fizzbuzz.sscript --emit-ir fizzbuzz.ll
+python compiler/semsc.py sem/fizzbuzz.sscript --emit-optimized-ir fizzbuzz.opt.ll --run
+python compiler/semsc.py sem/fizzbuzz.sscript --emit-exe fizzbuzz.exe
 ```
 
 CLI flags:
@@ -34,8 +34,8 @@ CLI flags:
 | `--opt-level N` | LLVM optimization level `0..3`, default `2`. |
 | `--quiet` | Suppress success messages. |
 
-Set `ASCC_CLANG` to override the clang executable used by `--emit-exe`.
-Set `ASCC_TRACEBACK=1` to print Python tracebacks for parse/codegen failures.
+Set `SEMSC_CLANG` to override the clang executable used by `--emit-exe`.
+Set `SEMSC_TRACEBACK=1` to print Python tracebacks for parse/codegen failures.
 
 ## Parse Pipeline
 
@@ -50,7 +50,7 @@ Set `ASCC_TRACEBACK=1` to print Python tracebacks for parse/codegen failures.
 ## Import Resolution
 
 `importModule DOTTED.PATH [as ALIAS]` is resolved before parsing. The compiler
-searches source-relative paths, `stdlib_as/`, and the project root. Imports are
+searches source-relative paths, `stdlib_sem/`, and the project root. Imports are
 inlined with cycle detection.
 
 The alias is recorded for tools; it is not currently a full namespace boundary.
@@ -121,7 +121,7 @@ Primary compiler test commands:
 
 ```powershell
 python tests/compare.py
-python tests/as_compiler_parity.py
+python tests/sem_compiler_parity.py
 python tests/test_compiler.py
 python tests/test_stdlib.py
 python bootstrap/run_bootstrap_chain.py
@@ -130,7 +130,7 @@ python bootstrap/run_bootstrap_chain.py
 Feature programs live in:
 
 ```text
-AgentScript/as/feature_tests/
+SemanticScript/sem/feature_tests/
 ```
 
 When adding or changing lowering behavior, add the smallest feature test that

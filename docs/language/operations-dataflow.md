@@ -6,7 +6,7 @@ another operation or when compiling library-style files.
 
 ## Operation Contract
 
-```agentscript
+```semanticscript
 operation addInvoiceAmounts
 input addInvoiceAmounts invoiceSubtotal I64
 input addInvoiceAmounts taxAmount I64
@@ -28,7 +28,7 @@ console environment process httpRequest databaseClient clock
 
 Every call is a named object.
 
-```agentscript
+```semanticscript
 call invoiceTotalCall math.addI64
 arg invoiceTotalCall left invoiceSubtotal
 arg invoiceTotalCall right taxAmount
@@ -50,7 +50,7 @@ branch on it.
 
 ## User Operation Calls
 
-```agentscript
+```semanticscript
 operation addTwoValues
 input addTwoValues leftValue I64
 input addTwoValues rightValue I64
@@ -87,7 +87,7 @@ For a same-file user operation call:
 
 ## Variables
 
-```agentscript
+```semanticscript
 var runningTotal I64 0
 
 call nextTotalCall math.addI64
@@ -107,7 +107,7 @@ Prefer `const` unless mutation is the real behavior being expressed.
 
 Labels are named basic blocks.
 
-```agentscript
+```semanticscript
 label loopStart
 
 call doneCheckCall math.greaterThanI64
@@ -143,7 +143,7 @@ Two-target branch syntax is legacy and should not be used.
 
 Ignoring a value is explicit:
 
-```agentscript
+```semanticscript
 ignoreOk writeGreetingCall Void
 ignoreValue metricsFlushCall I64
 ```

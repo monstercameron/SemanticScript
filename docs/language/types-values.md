@@ -1,25 +1,25 @@
 # Types and Values
 
-Types in AgentScript are names with runtime lowering rules and semantic role
+Types in SemanticScript are names with runtime lowering rules and semantic role
 information. The compiler accepts aliases, primitive scalar types, C ABI role
 types, pointer-shaped types, records, enums, and metadata-rich refined type
 declarations.
 
 ## Type Aliases
 
-```agentscript
+```semanticscript
 type ExitCode I32
 type AccountId CNullTerminatedByteString
 type AccountLookupResult Result AccountBalance AccountLookupError
 ```
 
-`ascc.py` stores the full tail of a `type` declaration. Single-token aliases
+`semsc.py` stores the full tail of a `type` declaration. Single-token aliases
 resolve to the underlying type; parameterized aliases preserve their head and
 parameters for tools.
 
 ## Primitive Lowering
 
-| AgentScript type names | LLVM shape |
+| SemanticScript type names | LLVM shape |
 |---|---|
 | `Bool` | `i1` |
 | `I8`, `CSignedByte`, `CUnsignedByte` | `i8` |
@@ -34,7 +34,7 @@ parameters for tools.
 
 C role types keep ABI intent visible at the call site:
 
-```agentscript
+```semanticscript
 const bufferByteCount CByteCount 4096
 const fileOffset CFileByteOffset 0
 const monotonicDelay DurationMilliseconds 50
@@ -42,7 +42,7 @@ const monotonicDelay DurationMilliseconds 50
 
 ## Constants
 
-```agentscript
+```semanticscript
 const retryLimit I64 3
 const newlineText String "\n"
 const useStrictJson Bool true
@@ -61,7 +61,7 @@ true false yes no 1 0
 
 Domain literals are typed constants with additional metadata edges.
 
-```agentscript
+```semanticscript
 domainLiteral signalKillNumber CSignedInt32 9
 domainLiteralSource signalKillNumber posix.SIGKILL
 domainLiteralTrust signalKillNumber trustedStaticLiteral
@@ -74,7 +74,7 @@ The metadata lines are preserved for tooling.
 
 Large literals can be declared separately from their bytes:
 
-```agentscript
+```semanticscript
 literal greetingTemplate CNullTerminatedByteString
 literalSource greetingTemplate "fixtures/greeting.txt"
 literalBytes greetingTemplate 128
@@ -90,7 +90,7 @@ still compile.
 
 ## Enums
 
-```agentscript
+```semanticscript
 enum TaskPriority repr I32
 enumCase TaskPriority TaskPriorityLow 0
 enumCase TaskPriority TaskPriorityNormal 1
@@ -103,7 +103,7 @@ through constants.
 
 ## Records
 
-```agentscript
+```semanticscript
 record AccountBalanceResponse
 recordLayout AccountBalanceResponse packed
 recordAlign AccountBalanceResponse 8
@@ -121,7 +121,7 @@ and codec metadata.
 
 Type metadata is source-level context for checkers and future runtimes:
 
-```agentscript
+```semanticscript
 typeInvariant AccountId "Non-empty stable account identifier"
 typeRepresentation AccountId CNullTerminatedByteString utf8 nullByte
 typeTrust AccountId trustedInternal

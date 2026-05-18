@@ -2,12 +2,12 @@
 
 const readline = require('readline');
 
-// Raw Node console UI for benchmarking against an AgentScript equivalent.
+// Raw Node console UI for benchmarking against an SemanticScript equivalent.
 // Data stays in memory so the program remains dependency-free and deterministic.
 const initialTodos = [
   {
     id: 1,
-    title: 'Write AgentScript baseline examples',
+    title: 'Write SemanticScript baseline examples',
     completed: false,
   },
   {

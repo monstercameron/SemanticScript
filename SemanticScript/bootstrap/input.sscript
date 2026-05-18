@@ -1,0 +1,26 @@
+# input.sscript — consumed by bootstrap2.exe. The bootstrap reads this file,
+# finds the FIRST double-quoted byte sequence, and emits LLVM IR that
+# prints those exact bytes when compiled by clang. So the next line is
+# the greeting that the resulting executable will print.
+
+const greetingText CNullTerminatedByteString "Compiled by SemanticScript, from SemanticScript, through clang."
+
+# Everything below this point is ignored by the stage-2 bootstrap because
+# its parser only consumes the first quoted byte sequence.
+
+project ParsedByBootstrap2
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+operation main
+output main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+async main no
+purpose main "The bootstrap only reads the greeting line above; this purpose is decoration the bootstrap ignores."
+
+label startMain
+
+const exitOk ExitCode 0
+returnOk exitOk

@@ -1,6 +1,6 @@
-# AgentScript Syntax Inventory
+# SemanticScript Syntax Inventory
 
-This document lists the AgentScript syntax surface in one table. The status
+This document lists the SemanticScript syntax surface in one table. The status
 column uses a small enum so current implementation, partial support, missing
 support, and proposed syntax are not blurred together.
 
@@ -11,10 +11,10 @@ Implementation status enum values:
 - `Not impl'd` means committed current syntax or runtime surface with no meaningful implementation yet.
 - `Proposed` means extracted from `experiments/` as candidate syntax, not committed to the compiler surface yet.
 
-Compiler coverage note: statuses refer to `AgentScript/compiler/ascc.py` unless
-a row explicitly says otherwise. `AgentScript/bootstrap/bootstrap_general.as` is
+Compiler coverage note: statuses refer to `SemanticScript/compiler/semsc.py` unless
+a row explicitly says otherwise. `SemanticScript/bootstrap/bootstrap_general.sscript` is
 a smaller bootstrap compiler and does not yet cover the same surface. The
-refined syntax showcase in `experiments/refined_syntax_example.as` is a syntax
+refined syntax showcase in `experiments/refined_syntax_example.sscript` is a syntax
 research and tooling target, not a fully executable program.
 
 Intentionally rejected forms are not syntax rows: infix operators, semicolons,
@@ -35,7 +35,7 @@ blocks, and dynamic object or array literals.
 | `module NAME` | Names a module boundary for organization and future namespace checks. | Impl'd |
 | `mode capturedOutputReplay` | Marks sources that replay captured output rather than fully reimplementing an algorithm. | Impl'd |
 | `entry console OPERATION` | Selects the executable console entry operation. | Impl'd |
-| `importModule DOTTED.PATH [as ALIAS]` | Replaces textual includes with explicit module imports (ascc.py resolves DOTTED.PATH → src-dir / stdlib_as / project-root, inlines content with header stripping). | Impl'd |
+| `importModule DOTTED.PATH [as ALIAS]` | Replaces textual includes with explicit module imports (semsc.py resolves DOTTED.PATH → src-dir / stdlib_sem / project-root, inlines content with header stripping). | Impl'd |
 | `section NAME` | Declares a retrieval/indexing section without creating scope. | Impl'd |
 | `group NAME` | Names a non-lexical attention/dataflow group. | Impl'd |
 | `groupPurpose GROUP "text"` | Describes the purpose of a named group. | Impl'd |
@@ -208,7 +208,7 @@ blocks, and dynamic object or array literals.
 | `awaitGroup GROUP` | Awaits all work in a task group. Under the synchronous taskGroup lowering, all work has already executed by the time the body reaches `awaitGroup`, so this is correctly a no-op. | Impl'd |
 | `bindGroupError ERROR TYPE GROUP` | Binds group failure. Under the synchronous taskGroup lowering, no group-level error can arise (every member call returns through the normal `bindError` path), so this registers a zero bind so any downstream `returnError` / `branchIfGroupError` reference resolves cleanly. | Impl'd |
 | `branchIfGroupError GROUP LABEL` | Branches on group failure. Under the synchronous taskGroup lowering, falls through (no group error in single-thread execution). | Impl'd |
-| `send CHANNEL VALUE` | Sends a value on a channel. In a single-thread program a buffered channel collapses to a single-slot register pass between matched send/receive; the AS-side accepts the verb and forwards the value into the corresponding `receive`. | Impl'd |
+| `send CHANNEL VALUE` | Sends a value on a channel. In a single-thread program a buffered channel collapses to a single-slot register pass between matched send/receive; the SemanticScript-side accepts the verb and forwards the value into the corresponding `receive`. | Impl'd |
 | `receive OUT TYPE CHANNEL` | Receives from a channel. Registers OUT as a zero bind today; the matching `send` pre-pass would route the value into the slot a multi-thread channel runtime later replaces. | Impl'd |
 | `branchIfChannelClosed CHANNEL LABEL` | Branches when receive/send sees closure. In single-thread execution channels never observe closure during the operation body, so this correctly falls through. | Impl'd |
 | `lock MUTEX` | Acquires a mutex. In a single-thread program no contention is possible — the lock is trivially acquired — so this is correctly a no-op. A multi-thread runtime would replace this with a real acquire. | Impl'd |
@@ -267,7 +267,7 @@ blocks, and dynamic object or array literals.
 | `math.equalI64`, `math.notEqualI64`, `math.lessThanI64`, `math.lessThanOrEqualI64`, `math.greaterThanI64`, `math.greaterThanOrEqualI64` | Calls named integer comparison operations. | Impl'd |
 | `math.intToFloat`, `math.floatToInt` | Performs named numeric conversions. | Impl'd |
 | `math.*F64` | Provides named floating-point arithmetic/comparisons. | Impl'd |
-| `math.equalCSignedInt32`, `math.lessThanCSignedInt32` | Calls C ABI width-specific comparison operations. The dispatch routes through the user-op compile path when the op is defined in the source (stdlib_as supplies typed-width comparisons in `math.as`); otherwise the dotted-target external-module fallback returns a typed-zero stub. Same lowering shape as `TypeName.methodName` above. | Impl'd |
+| `math.equalCSignedInt32`, `math.lessThanCSignedInt32` | Calls C ABI width-specific comparison operations. The dispatch routes through the user-op compile path when the op is defined in the source (stdlib_sem supplies typed-width comparisons in `math.sscript`); otherwise the dotted-target external-module fallback returns a typed-zero stub. Same lowering shape as `TypeName.methodName` above. | Impl'd |
 | `TypeName.methodName` | Calls a typed method through a domain alias target (positional-arg fallback resolves dotted call sites against user ops). | Impl'd |
 | `pointer.loadByte`, `pointer.storeByte`, `pointer.offset`, `pointer.difference`, `pointer.isNull` | Calls named pointer operations. | Impl'd |
 | `c.<funcName>` | Calls registered C standard-library functions through an explicit target. | Impl'd |

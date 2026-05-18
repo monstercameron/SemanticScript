@@ -1,11 +1,11 @@
-# AgentScript
+# SemanticScript
 
-AgentScript is an agent-first application language and toolchain. It is built
-around a flat, line-oriented, high-context program tape where every executable
+SemanticScript is an agent-first application language and toolchain. It is built
+around a flat, line-oriented, high-context semantic tape where every executable
 line is an atomic semantic record with a strict schema.
 
 The design goal is not short source. The design goal is source that remains
-locally understandable inside an agent attention window. AgentScript spends
+locally understandable inside an agent attention window. SemanticScript spends
 tokens on names, effects, types, failure paths, timing, cleanup, and comments so
 an agent can edit code without guessing through hidden runtime behavior.
 
@@ -16,14 +16,14 @@ space as Node, Python, Bun, Deno, Express, FastAPI, and Go services, but with a
 source format optimized for agentic maintenance rather than human terseness.
 
 The repository also contains active syntax research in `experiments/`. Those
-files explore the next AgentScript surface: fixed schemas, explicit dataflow,
+files explore the next SemanticScript surface: fixed schemas, explicit dataflow,
 typed failure edges, guarded mutation, structured async, trust-boundary
 metadata, and syntax that is easier for transformer attention to recover and
 edit.
 
 ## Technical Pitch
 
-AgentScript makes source code a checkable contract tape:
+SemanticScript makes source code a checkable contract tape:
 
 - Every line does one semantic thing.
 - Every meaningful element is name-addressable.
@@ -37,11 +37,11 @@ AgentScript makes source code a checkable contract tape:
 The spec's deepest rule is simple:
 
 ```text
-AgentScript does not minimize code.
-AgentScript maximizes recoverable context.
+SemanticScript does not minimize code.
+SemanticScript maximizes recoverable context.
 ```
 
-That means AgentScript deliberately repeats operation names, argument names,
+That means SemanticScript deliberately repeats operation names, argument names,
 types, call names, branch labels, and failure values. The compiler can remove
 redundancy from generated code; the source preserves redundancy where agents,
 linters, review tools, and humans need it.
@@ -54,12 +54,12 @@ is easiest to infer, verify, and review.
 
 There are two important surfaces in this repo:
 
-- Current executable AgentScript lives under `AgentScript/` and is documented by
-  `AgentScript/AST.md`. This is what `compiler/ascc.py`, `linter/aslint.py`,
+- Current executable SemanticScript lives under `SemanticScript/` and is documented by
+  `SemanticScript/AST.md`. This is what `compiler/semsc.py`, `linter/semlint.py`,
   tests, and bootstrap programs use today.
 - Refined future syntax lives under `experiments/`, especially
-  `experiments/refined_syntax_example.as`. This is a syntax showcase and design
-  target. It is not current executable AgentScript.
+  `experiments/refined_syntax_example.sscript`. This is a syntax showcase and design
+  target. It is not current executable SemanticScript.
 
 The VS Code extension understands both surfaces for highlighting, hovers, and
 semantic roles. The compiler should not be assumed to accept refined future
@@ -68,37 +68,37 @@ syntax until that work is explicitly implemented.
 ## Repository Layout
 
 ```text
-AgentScript.md                  Root language/specification document
+SemanticScript.md                  Root language/specification document
 CHANGELOG.md                    Repository-level changelog
 docs/                           Maintainable developer documentation
 
-AgentScript/
+SemanticScript/
   README.md                     Current implementation guide
   AST.md                        Implemented compiler syntax and codegen surface
-  compiler/ascc.py              Python reference compiler
+  compiler/semsc.py              Python reference compiler
   compiler/libc_registry.py     C standard-library signature registry
-  linter/aslint.py              Standalone linter
-  as/                           Executable AgentScript examples and smoke files
-  as/feature_tests/             Focused compiler feature programs
-  stdlib_as/                    AgentScript-shaped standard-library modules
-  bootstrap/                    AS-written compiler bootstrap stages
+  linter/semlint.py              Standalone linter
+  sem/                           Executable SemanticScript examples and smoke files
+  sem/feature_tests/             Focused compiler feature programs
+  stdlib_sem/                    SemanticScript-shaped standard-library modules
+  bootstrap/                    SemanticScript-written compiler bootstrap stages
   tests/                        Compiler, parity, bootstrap, and stdlib tests
 
 experiments/
   whatsneeded.md                Research and syntax refinement notes
-  refined_syntax_example.as     Broad refined syntax showcase
+  refined_syntax_example.sscript     Broad refined syntax showcase
   refined_syntax_graph.md       Mermaid graph of refined sample edges
 
 samples/javascript/             JavaScript comparison and oracle programs
 samples/python/                 Python comparison programs
 python/                         Earlier Python comparison programs
-vscode-agentscript/             Local VS Code extension
+vscode-semanticscript/             Local VS Code extension
 ```
 
 ## Current Implementation
 
 The Python reference compiler currently supports the implemented surface in
-`AgentScript/AST.md`, including:
+`SemanticScript/AST.md`, including:
 
 - top-level project/runtime/entry metadata;
 - operation contracts with `input`, `output`, `effect`, `memory`, `async`, and
@@ -112,28 +112,28 @@ The Python reference compiler currently supports the implemented surface in
 - direct `c.*` calls through the libc registry;
 - pointer primitives and C-compatible types.
 
-Use `AgentScript/README.md` for the exact current status, command matrix, and
+Use `SemanticScript/README.md` for the exact current status, command matrix, and
 bootstrap notes.
 
 ## Conceptual Model
 
-AgentScript is deliberately less compact than JavaScript. JavaScript optimizes
+SemanticScript is deliberately less compact than JavaScript. JavaScript optimizes
 for human authoring speed by compressing meaning into expressions, lexical
 scope, exceptions, library conventions, object shape, and event-loop behavior.
-AgentScript expands the same behavior into named records so tools and agents can
+SemanticScript expands the same behavior into named records so tools and agents can
 inspect it without reconstructing hidden context.
 
 The tradeoff is intentional:
 
 - JavaScript says "do this" with a compact expression or function body.
-- AgentScript says "declare the operation, its effects, every call object,
+- SemanticScript says "declare the operation, its effects, every call object,
   every argument edge, every result binding, and every failure branch."
 - JavaScript often discovers failure at runtime through exceptions or returned
   values.
-- AgentScript makes failure a named dataflow edge with `bindError`,
+- SemanticScript makes failure a named dataflow edge with `bindError`,
   `branchIfError`, and a labeled handler.
 - JavaScript depends on convention for side effects.
-- AgentScript declares effects and capabilities in source.
+- SemanticScript declares effects and capabilities in source.
 
 The spec frames this as a source-level data problem: context is not decoration.
 Declared effects, failures, async behavior, memory behavior, and cleanup
@@ -141,17 +141,17 @@ behavior should be checked when possible. A program is not just instructions for
 the CPU; it is also a graph of claims for compilers, linters, indexers, review
 summaries, and future agents.
 
-That gives AgentScript a different optimization target:
+That gives SemanticScript a different optimization target:
 
 ```text
 JavaScript:   compress meaning into syntax and runtime conventions.
-AgentScript: preserve meaning as explicit, line-addressable facts.
+SemanticScript: preserve meaning as explicit, line-addressable facts.
 ```
 
-This is why an AgentScript call is not `target(arg)`. It is a small dataflow
+This is why an SemanticScript call is not `target(arg)`. It is a small dataflow
 record cluster:
 
-```agentscript
+```semanticscript
 call scoreCall calculateWeightedScore
 arg scoreCall baseCount baseCount
 arg scoreCall multiplier multiplier
@@ -161,7 +161,7 @@ bind computedScore I64 scoreCall
 ```
 
 Each line can be retrieved, indexed, linted, patched, or cited independently.
-That is the top-level value proposition: AgentScript turns source into a
+That is the top-level value proposition: SemanticScript turns source into a
 machine-checkable review surface without giving up native compilation.
 
 ## Spec Notes
@@ -198,7 +198,7 @@ Those rules are technical, not aesthetic. They make specific tooling possible:
   changed, async changed, dependencies changed, and risk changed.
 
 In a conventional language, many of those facts are inferred after parsing a
-nested tree and applying framework knowledge. In AgentScript, they are intended
+nested tree and applying framework knowledge. In SemanticScript, they are intended
 to be source-level records from the start.
 
 ## Example: Hello World
@@ -210,10 +210,10 @@ console.log("hello world");
 process.exit(0);
 ```
 
-AgentScript expands the same behavior into effect, capability, call, result,
+SemanticScript expands the same behavior into effect, capability, call, result,
 and failure records:
 
-```agentscript
+```semanticscript
 project HelloWorldExplicit
 target console
 runtime native 1
@@ -274,10 +274,10 @@ console.log(computedScore);
 process.exit(0);
 ```
 
-AgentScript names the helper operation, every intermediate value, the threshold
+SemanticScript names the helper operation, every intermediate value, the threshold
 branch, and each fallible console write:
 
-```agentscript
+```semanticscript
 project ScoreThreshold
 target console
 runtime native 1
@@ -383,14 +383,14 @@ const scoreWriteFailedExitCode ExitCode 1
 returnValue scoreWriteFailedExitCode
 ```
 
-The AgentScript version is longer, but it gives the compiler, linter, editor,
+The SemanticScript version is longer, but it gives the compiler, linter, editor,
 and review tools stable hooks: `calculateWeightedScore` has no fake effect,
 `main` declares stdout access, each call has a name, each branch has a label,
 and every console failure has a distinct handler.
 
 ## Refined Syntax Direction
 
-The refined syntax work is aimed at making AgentScript easier for agents and
+The refined syntax work is aimed at making SemanticScript easier for agents and
 humans to inspect, patch, and verify. The current design direction favors:
 
 - One semantic action per line.
@@ -419,23 +419,23 @@ dataflow, recoverable context, and checkable edges.
 
 ## Quick Start
 
-Run current compiler commands from `AgentScript/`:
+Run current compiler commands from `SemanticScript/`:
 
 ```powershell
-cd AgentScript
-python compiler/ascc.py --version
-python compiler/ascc.py as/fizzbuzz.as --run
-python compiler/ascc.py as/fizzbuzz.as --emit-ir fizzbuzz.ll
-python compiler/ascc.py as/fizzbuzz.as --emit-exe fizzbuzz.exe
-python linter/aslint.py as/fizzbuzz.as --summary
+cd SemanticScript
+python compiler/semsc.py --version
+python compiler/semsc.py sem/fizzbuzz.sscript --run
+python compiler/semsc.py sem/fizzbuzz.sscript --emit-ir fizzbuzz.ll
+python compiler/semsc.py sem/fizzbuzz.sscript --emit-exe fizzbuzz.exe
+python linter/semlint.py sem/fizzbuzz.sscript --summary
 ```
 
 Run the main test groups:
 
 ```powershell
-cd AgentScript
+cd SemanticScript
 python tests/compare.py
-python tests/as_compiler_parity.py
+python tests/sem_compiler_parity.py
 python tests/test_compiler.py
 python tests/test_stdlib.py
 python bootstrap/run_bootstrap_chain.py
@@ -443,48 +443,48 @@ python bootstrap/run_bootstrap_chain.py
 
 ## VS Code Extension
 
-The local extension is in `vscode-agentscript/`. It provides:
+The local extension is in `vscode-semanticscript/`. It provides:
 
-- language registration for `.as` and `.agentscript`;
+- language registration for `.sscript` and `.sscript`;
 - TextMate and semantic highlighting for current and refined syntax;
 - context-aware hovers for concrete line schemas, same-file symbols,
   operation metadata, primitive targets, generated targets, schema values,
   primitive types, opaque inputs, call objects, and role suffixes;
 - whole-line segment coloring for declaration/context/action/control/comment
   lines and unknown verbs;
-- optional `aslint.py` or `aslint2.py` diagnostics.
+- optional `semlint.py` or `semlint2.py` diagnostics.
 
 The extension skips current-linter diagnostics for refined future syntax by
-default because `experiments/refined_syntax_example.as` is not current
-executable AgentScript.
+default because `experiments/refined_syntax_example.sscript` is not current
+executable SemanticScript.
 
 Package the extension with:
 
 ```powershell
-cd vscode-agentscript
+cd vscode-semanticscript
 npm run check
 npx --yes @vscode/vsce package
 ```
 
-The current packaged artifact is `vscode-agentscript/agentscript-vscode-0.1.9.vsix`.
+The current packaged artifact is `vscode-semanticscript/semanticscript-vscode-0.1.9.vsix`.
 
 ## Documentation Map
 
 - `docs/README.md` - maintainable developer documentation entry point.
 - `SYNTAX.md` - complete syntax inventory and implementation status table.
-- `AgentScript.md` - language specification and design intent.
-- `AgentScript/AST.md` - implemented compiler syntax and lowering behavior.
-- `AgentScript/README.md` - reference implementation guide.
-- `AgentScript/CHANGELOG.md` - toolchain release notes.
+- `SemanticScript.md` - language specification and design intent.
+- `SemanticScript/AST.md` - implemented compiler syntax and lowering behavior.
+- `SemanticScript/README.md` - reference implementation guide.
+- `SemanticScript/CHANGELOG.md` - toolchain release notes.
 - `STDLIB.md` - standard-library module and operation inventory.
 - `experiments/whatsneeded.md` - refined syntax research and recommendations.
-- `experiments/refined_syntax_example.as` - full syntax showcase.
+- `experiments/refined_syntax_example.sscript` - full syntax showcase.
 - `experiments/refined_syntax_graph.md` - graph of the showcase dataflow.
-- `vscode-agentscript/README.md` - extension-specific usage notes.
+- `vscode-semanticscript/README.md` - extension-specific usage notes.
 
 ## Development Notes
 
-- Treat `AgentScript/` as the executable implementation track.
+- Treat `SemanticScript/` as the executable implementation track.
 - Treat `experiments/` as the syntax research track.
 - Do not confuse plugin syntax recognition with compiler support.
 - Keep refined syntax lines atomic: one verb, one schema, one edge.

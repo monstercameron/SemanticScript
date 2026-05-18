@@ -1,6 +1,6 @@
 # Python Standard Library Examples
 
-Standard-library-only Python examples for benchmarking against AgentScript.
+Standard-library-only Python examples for benchmarking against SemanticScript.
 
 Run everything:
 
