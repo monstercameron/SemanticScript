@@ -3368,5 +3368,117 @@ returnValue writeStatus
         self.assertEqual(_diagnostics_with_code(diagnostics, "SS3604"), [])
 
 
+# ==========================================================================
+# SS3608  webserver.rationaleReferencesUnknownCall / rationaleMissingText
+# ==========================================================================
+
+class TestRationaleCallVerb(unittest.TestCase):
+    """`rationale CALL "text"` attaches a rationale to a specific call.
+    It must name a real call AND carry non-empty text — both are part
+    of the contract that distinguishes the verb from a `# rationale:`
+    proximity comment."""
+
+    _HANDLER_TEMPLATE = """project Test
+operation main
+output main Void
+purpose main "smoke"
+invariant main "smoke"
+label startMain
+storage local immutable okStatus CSignedInt32 0
+call ackCall console.writeLine
+arg ackCall console console
+arg ackCall text okStatus
+run ackCall
+{rationaleLines}returnValue okStatus
+"""
+
+    def test_rationale_attached_to_known_call_not_flagged(self) -> None:
+        diagnostics = _lint_source(self._HANDLER_TEMPLATE.format(
+            rationaleLines='rationale ackCall "console.writeLine here documents why we ack instead of bind"\n'
+        ))
+        self.assertNotIn("SS3608", _codes(diagnostics))
+
+    def test_rationale_attached_to_unknown_call_flagged(self) -> None:
+        diagnostics = _lint_source(self._HANDLER_TEMPLATE.format(
+            rationaleLines='rationale typedCallNameMismatch "this call name does not exist in the op"\n'
+        ))
+        self.assertIn("SS3608", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3608")[0]
+        self.assertEqual(matching.subjectName, "typedCallNameMismatch")
+        self.assertEqual(matching.kind, "webserver.rationaleReferencesUnknownCall")
+        self.assertTrue(matching.blocksCompile)
+
+    def test_rationale_with_empty_text_flagged(self) -> None:
+        diagnostics = _lint_source(self._HANDLER_TEMPLATE.format(
+            rationaleLines='rationale ackCall ""\n'
+        ))
+        self.assertIn("SS3608", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3608")[0]
+        self.assertEqual(matching.kind, "webserver.rationaleMissingText")
+
+
+# ==========================================================================
+# Capability hierarchy smoke test (P11) — proves http.request authorizes
+# http.request.method without a narrower capability declaration
+# ==========================================================================
+
+class TestCapabilityHierarchy(unittest.TestCase):
+    """A broad `capability X http.request read` must authorize narrow
+    effects like `effect OP read http.request.method` without requiring
+    a per-narrow capability declaration. If _effect_path_covers regresses
+    to literal equality, this test fires SS3101
+    `missingCapabilityUse` and fails."""
+
+    def test_broad_capability_authorizes_narrow_effect(self) -> None:
+        diagnostics = _lint_source("""project Test
+target webServer
+runtime native 1
+webServer testServer
+serverHost testServer "127.0.0.1"
+serverPort testServer 18099
+route testServer GET "/echo" methodEchoHandler
+
+capability httpRequestReader http.request read
+capability httpResponseWriter http.response write
+
+operation methodEchoHandler
+input methodEchoHandler request HttpRequest
+input methodEchoHandler response HttpResponse
+output methodEchoHandler CSignedInt32
+effect methodEchoHandler read http.request.method
+effect methodEchoHandler write http.response
+memory methodEchoHandler arena request
+async methodEchoHandler no
+useCapability methodEchoHandler httpRequestReader
+useCapability methodEchoHandler httpResponseWriter
+purpose methodEchoHandler "smoke test that http.request authorizes http.request.method"
+invariant methodEchoHandler "if missingCapabilityUse fires here, the hierarchy walk is broken"
+label startMethodEchoHandler
+storage local immutable okStatus CSignedInt32 200
+call methodReadCall http.requestMethod
+arg methodReadCall request request
+run methodReadCall
+bind requestMethod CNullTerminatedByteString methodReadCall
+call writeCall http.responseText
+arg writeCall response response
+arg writeCall status okStatus
+arg writeCall body requestMethod
+run writeCall
+bind writeStatus CSignedInt32 writeCall
+returnValue writeStatus
+""")
+        # The whole point: no missing-capability diagnostic for the narrow
+        # `read http.request.method` effect, because the broad
+        # `http.request read` capability covers it via _effect_path_covers.
+        capabilityCoverageCodes = {
+            d.code for d in diagnostics
+            if "missingCapability" in d.kind or "effectWithoutCapability" in d.kind
+        }
+        self.assertFalse(
+            capabilityCoverageCodes,
+            msg=f"capability hierarchy regression — narrow effect was not authorized by broad capability: {capabilityCoverageCodes}",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
