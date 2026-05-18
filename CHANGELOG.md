@@ -2,6 +2,10 @@
 
 ## 2026-05-18
 
+- `e19d4cb22514ed4eb502217bcf27ff9a35a42988` - `ci: run semfmt unit tests`
+  - Adds the `semfmt` unittest suite to the Python validation workflow so formatter behavior is checked on Windows and Ubuntu.
+- `641ef000e3b0aed674556e0f7b8860aee014fb0e` - `formatter: add semfmt source formatter`
+  - Adds the conservative Python `semfmt` formatter package with row-spacing normalization, string literal preservation, comment-heading cleanup, blank-line cleanup, `--check`, `--diff`, stdin support, corpus/idempotence tests, and compiler-parse compatibility coverage.
 - `844fd05cf52d4c619c524e5ad4b7bb85e1ec87c0` - `docs: document web metadata syntax`
   - Adds syntax-catalog rows for route timeout/middleware opt-outs, null-body failure-path declarations, response-body forwarders, and call-level rationale metadata.
 - `c31104f377583ca2a03a5b8730eb809aeb3162bc` - `app: attach gauntlet null-check rationale`
