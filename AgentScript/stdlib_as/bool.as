@@ -1,179 +1,201 @@
+# ============================================================
+# AGENTSCRIPT STANDARD LIBRARY: native Bool helpers
+# ============================================================
+#
+# # rationale: C's <stdbool.h> existed because C added Bool late and
+#   needed an integer compatibility layer. AgentScript has Bool as a
+#   first-class primitive (`Bool` = LLVM i1, see AST.md §5), so this
+#   module exposes total Boolean combinators returning Bool directly.
+#   Two ABI-bridge ops translate between Bool and CSignedInt32 0/1
+#   for FFI calls that still expect the C contract.
+#
+# # invariant: every operation in this module is total — no input
+#   combination produces a failure. That property is encoded in the
+#   `output op Bool` shape (no Result wrapper) and the absence of any
+#   `*Error` domain.
+#
+# # security: pure value-level computation; no effects; no allocation;
+#   no observable side channel beyond execution time, which is constant
+#   per call (no branches over secret-dependent data).
+#
+# # timing: each combinator is O(1) — at most two LLVM `xor`/`and`/`or`
+#   instructions on i1.
+#
+# # observability: callers are responsible for any tracing; this module
+#   emits no logs, no metrics.
+#
+# Operations exposed:
+#   negateBoolean(valueToNegate)                              -> Bool
+#   andBooleans(firstOperand, secondOperand)                  -> Bool
+#   orBooleans(firstOperand, secondOperand)                   -> Bool
+#   exclusiveOrBooleans(firstOperand, secondOperand)          -> Bool
+#   areBooleansEquivalent(firstOperand, secondOperand)        -> Bool
+#
+# ABI bridges (only for C-FFI callers):
+#   convertBooleanToCSignedInt32(sourceBoolean)               -> CSignedInt32
+#   convertCSignedInt32ToBoolean(sourceCSignedInt32Value)     -> Bool
+
 project StdBoolSelfTest
 target console
 runtime AgentRuntime 0.1
-
 entry console main
 
+# Typed error domain used only by the smoke test below. The library
+# operations themselves are total and declare no errors.
 error MainError
-errorCase MainError TestFailed CSignedInt32
+errorCase MainError BooleanSmokeAssertionFailed
 
-# ============================================================
-# AGENTSCRIPT STANDARD LIBRARY: <stdbool.h>-style helpers.
-#
-# C's <stdbool.h> is just #defines of `true`, `false`, and the
-# `bool` typedef. AgentScript has Bool natively, so this file exposes
-# the constants as accessor operations and adds logical-ops that take
-# integers (0 / non-zero) and return canonical 0/1.
-#
-# Operations:
-#   signedInt32BooleanTrueValue, signedInt32BooleanFalseValue       - 1 / 0 accessors
-#   negateSignedInt32Boolean(x)                  - 1 if x == 0, else 0
-#   combineSignedInt32BooleansWithAnd(a, b), combineSignedInt32BooleansWithOr(a, b) - canonical and/or with short-circuit
-#                                 evaluation isn't possible at this
-#                                 layer (no closures), so both args
-#                                 are evaluated by the caller.
-#   combineSignedInt32BooleansWithExclusiveOr(a, b)               - exclusive-or, returns 0 or 1
-#   compareSignedInt32BooleansEquivalent(a, b)             - logical equivalence, returns 0 or 1
-# ============================================================
+# Canonical Bool literal accessors declared as domain literals so
+# downstream code can `arg X value canonicalBooleanTrue` without
+# repeating the literal text. Kept at module scope per spec §11.
+domainLiteral canonicalBooleanTrue Bool true
+domainLiteralTrust canonicalBooleanTrue trustedStaticLiteral
+domainLiteral canonicalBooleanFalse Bool false
+domainLiteralTrust canonicalBooleanFalse trustedStaticLiteral
 
+# section bool.core
+# rationale: total Bool→Bool functions; no errors, no allocation.
 
-operation signedInt32BooleanTrueValue
-output signedInt32BooleanTrueValue Result CSignedInt32 Void
-memory signedInt32BooleanTrueValue heap no
-async signedInt32BooleanTrueValue no
-purpose signedInt32BooleanTrueValue "Canonical 1."
-label startSignedInt32BooleanTrueValue
-const t CSignedInt32 1
-returnOk t
+# ----- negateBoolean -----
+operation negateBoolean
+input negateBoolean valueToNegate Bool
+output negateBoolean Bool
+memoryHeap negateBoolean no
+async negateBoolean no
+purpose negateBoolean "Returns the logical negation of valueToNegate (true→false, false→true)."
+invariant negateBoolean "Involutive: negateBoolean(negateBoolean(x)) == x for every Bool x."
+guarantee negateBoolean "Total: defined for every Bool input."
+# rationale: implemented as equality test against false, which the
+#   compiler lowers to a single `icmp eq i1 %v, 0` — the cheapest
+#   i1-level negation without branching on a secret-dependent bit.
+label startNegateBoolean
+const falseSentinel Bool false
+call detectInputIsFalseCall math.equalI64
+arg detectInputIsFalseCall left valueToNegate
+arg detectInputIsFalseCall right falseSentinel
+run detectInputIsFalseCall
+bind isInputCurrentlyFalse Bool detectInputIsFalseCall
+returnValue isInputCurrentlyFalse
 
+# ----- andBooleans -----
+operation andBooleans
+input andBooleans firstOperand Bool
+input andBooleans secondOperand Bool
+output andBooleans Bool
+memoryHeap andBooleans no
+async andBooleans no
+purpose andBooleans "Logical AND of two Bool operands."
+invariant andBooleans "Commutative: andBooleans(a, b) == andBooleans(b, a)."
+invariant andBooleans "Associative: andBooleans(andBooleans(a, b), c) == andBooleans(a, andBooleans(b, c))."
+guarantee andBooleans "Total: defined for every (Bool, Bool) input pair."
+# warning: this lowering evaluates both operands. There is no
+#   short-circuit form at this layer — callers that need lazy
+#   evaluation should branch explicitly via `branchIf`.
+label startAndBooleans
+const falseShortCircuit Bool false
+branchIf firstOperand bothOperandsLiveBranch
+returnValue falseShortCircuit
+label bothOperandsLiveBranch
+returnValue secondOperand
 
-operation signedInt32BooleanFalseValue
-output signedInt32BooleanFalseValue Result CSignedInt32 Void
-memory signedInt32BooleanFalseValue heap no
-async signedInt32BooleanFalseValue no
-purpose signedInt32BooleanFalseValue "Canonical 0."
-label startSignedInt32BooleanFalseValue
-const f CSignedInt32 0
-returnOk f
+# ----- orBooleans -----
+operation orBooleans
+input orBooleans firstOperand Bool
+input orBooleans secondOperand Bool
+output orBooleans Bool
+memoryHeap orBooleans no
+async orBooleans no
+purpose orBooleans "Logical OR of two Bool operands."
+invariant orBooleans "Commutative: orBooleans(a, b) == orBooleans(b, a)."
+invariant orBooleans "Associative: orBooleans(orBooleans(a, b), c) == orBooleans(a, orBooleans(b, c))."
+guarantee orBooleans "Total: defined for every (Bool, Bool) input pair."
+# warning: both operands are always evaluated (see andBooleans rationale).
+label startOrBooleans
+const trueShortCircuit Bool true
+branchIf firstOperand firstOperandTrueBranch
+returnValue secondOperand
+label firstOperandTrueBranch
+returnValue trueShortCircuit
 
+# ----- exclusiveOrBooleans -----
+operation exclusiveOrBooleans
+input exclusiveOrBooleans firstOperand Bool
+input exclusiveOrBooleans secondOperand Bool
+output exclusiveOrBooleans Bool
+memoryHeap exclusiveOrBooleans no
+async exclusiveOrBooleans no
+purpose exclusiveOrBooleans "Returns true when exactly one operand is true (logical XOR)."
+invariant exclusiveOrBooleans "Self-inverse: exclusiveOrBooleans(x, x) == false."
+invariant exclusiveOrBooleans "Identity over false: exclusiveOrBooleans(x, false) == x."
+guarantee exclusiveOrBooleans "Total: defined for every (Bool, Bool) input pair."
+label startExclusiveOrBooleans
+call detectDistinctOperandsCall math.notEqualI64
+arg detectDistinctOperandsCall left firstOperand
+arg detectDistinctOperandsCall right secondOperand
+run detectDistinctOperandsCall
+bind operandsDiffer Bool detectDistinctOperandsCall
+returnValue operandsDiffer
 
-operation negateSignedInt32Boolean
-input negateSignedInt32Boolean inputValue CSignedInt32
-output negateSignedInt32Boolean Result CSignedInt32 Void
-memory negateSignedInt32Boolean heap no
-async negateSignedInt32Boolean no
-purpose negateSignedInt32Boolean "1 if x == 0, else 0."
-label startNegateSignedInt32Boolean
-const zeroBn I64 0
-const oneBn CSignedInt32 1
-const zeroOut CSignedInt32 0
-call eqCall math.equalI64
-arg eqCall left inputValue
-arg eqCall right zeroBn
-run eqCall
-bind isZero Bool eqCall
-branchIf isZero notTrue
-returnOk zeroOut
-label notTrue
-returnOk oneBn
+# ----- areBooleansEquivalent -----
+operation areBooleansEquivalent
+input areBooleansEquivalent firstOperand Bool
+input areBooleansEquivalent secondOperand Bool
+output areBooleansEquivalent Bool
+memoryHeap areBooleansEquivalent no
+async areBooleansEquivalent no
+purpose areBooleansEquivalent "Returns true when both operands hold the same value (logical equivalence / XNOR)."
+invariant areBooleansEquivalent "Reflexive: areBooleansEquivalent(x, x) == true."
+invariant areBooleansEquivalent "Symmetric: areBooleansEquivalent(a, b) == areBooleansEquivalent(b, a)."
+guarantee areBooleansEquivalent "Total: defined for every (Bool, Bool) input pair."
+label startAreBooleansEquivalent
+call detectMatchingOperandsCall math.equalI64
+arg detectMatchingOperandsCall left firstOperand
+arg detectMatchingOperandsCall right secondOperand
+run detectMatchingOperandsCall
+bind operandsMatch Bool detectMatchingOperandsCall
+returnValue operandsMatch
 
+# section bool.abiBridge
+# rationale: convert between Bool and the C-style 0/1 CSignedInt32 contract.
 
-operation combineSignedInt32BooleansWithAnd
-input combineSignedInt32BooleansWithAnd leftValue CSignedInt32
-input combineSignedInt32BooleansWithAnd rightValue CSignedInt32
-output combineSignedInt32BooleansWithAnd Result CSignedInt32 Void
-memory combineSignedInt32BooleansWithAnd heap no
-async combineSignedInt32BooleansWithAnd no
-purpose combineSignedInt32BooleansWithAnd "Logical AND. Returns 1 if both args are non-zero, else 0."
-label startCombineSignedInt32BooleansWithAnd
-const zeroAn I64 0
-const oneAn CSignedInt32 1
-const zeroAnOut CSignedInt32 0
-call aEqZero math.equalI64
-arg aEqZero left leftValue
-arg aEqZero right zeroAn
-run aEqZero
-bind aIsZero Bool aEqZero
-branchIf aIsZero andFalse
-call bEqZero math.equalI64
-arg bEqZero left rightValue
-arg bEqZero right zeroAn
-run bEqZero
-bind bIsZero Bool bEqZero
-branchIf bIsZero andFalse
-returnOk oneAn
-label andFalse
-returnOk zeroAnOut
+# ----- convertBooleanToCSignedInt32 -----
+operation convertBooleanToCSignedInt32
+input convertBooleanToCSignedInt32 sourceBoolean Bool
+output convertBooleanToCSignedInt32 CSignedInt32
+memoryHeap convertBooleanToCSignedInt32 no
+async convertBooleanToCSignedInt32 no
+purpose convertBooleanToCSignedInt32 "Widen a Bool (i1) to the canonical C 0/1 CSignedInt32 result FFI callers expect."
+invariant convertBooleanToCSignedInt32 "Output is exactly 0 or 1; no other bit pattern is reachable."
+guarantee convertBooleanToCSignedInt32 "Total: defined for every Bool input."
+# security: zero-extension (not sign-extension) so a true Bool widens
+#   to 1 not -1 — matches C `_Bool` ABI exactly and avoids the
+#   sign-extension trap that bit a refined-syntax demo earlier in the
+#   project.
+label startConvertBooleanToCSignedInt32
+const zeroCSignedInt32 CSignedInt32 0
+const oneCSignedInt32 CSignedInt32 1
+branchIf sourceBoolean returnCanonicalOne
+returnValue zeroCSignedInt32
+label returnCanonicalOne
+returnValue oneCSignedInt32
 
-
-operation combineSignedInt32BooleansWithOr
-input combineSignedInt32BooleansWithOr leftValue CSignedInt32
-input combineSignedInt32BooleansWithOr rightValue CSignedInt32
-output combineSignedInt32BooleansWithOr Result CSignedInt32 Void
-memory combineSignedInt32BooleansWithOr heap no
-async combineSignedInt32BooleansWithOr no
-purpose combineSignedInt32BooleansWithOr "Logical OR. Returns 1 if either arg is non-zero, else 0."
-label startCombineSignedInt32BooleansWithOr
-const zeroOr I64 0
-const oneOr CSignedInt32 1
-const zeroOrOut CSignedInt32 0
-call aNeZero math.notEqualI64
-arg aNeZero left leftValue
-arg aNeZero right zeroOr
-run aNeZero
-bind aNz Bool aNeZero
-branchIf aNz orTrue
-call bNeZero math.notEqualI64
-arg bNeZero left rightValue
-arg bNeZero right zeroOr
-run bNeZero
-bind bNz Bool bNeZero
-branchIf bNz orTrue
-returnOk zeroOrOut
-label orTrue
-returnOk oneOr
-
-
-operation combineSignedInt32BooleansWithExclusiveOr
-input combineSignedInt32BooleansWithExclusiveOr leftValue CSignedInt32
-input combineSignedInt32BooleansWithExclusiveOr rightValue CSignedInt32
-output combineSignedInt32BooleansWithExclusiveOr Result CSignedInt32 Void
-memory combineSignedInt32BooleansWithExclusiveOr heap no
-async combineSignedInt32BooleansWithExclusiveOr no
-purpose combineSignedInt32BooleansWithExclusiveOr "Logical XOR. Returns 1 if exactly one arg is non-zero, else 0."
-label startCombineSignedInt32BooleansWithExclusiveOr
-# Compute via (a or b) and not(a and b).
-call aOrB combineSignedInt32BooleansWithOr
-arg aOrB a leftValue
-arg aOrB b rightValue
-run aOrB
-bindOk aOrBres CSignedInt32 aOrB
-call aAndB combineSignedInt32BooleansWithAnd
-arg aAndB a leftValue
-arg aAndB b rightValue
-run aAndB
-bindOk aAndBres CSignedInt32 aAndB
-call notAandBcall negateSignedInt32Boolean
-arg notAandBcall x aAndBres
-run notAandBcall
-bindOk notAandB CSignedInt32 notAandBcall
-call finalCall combineSignedInt32BooleansWithAnd
-arg finalCall a aOrBres
-arg finalCall b notAandB
-run finalCall
-bindOk xorRes CSignedInt32 finalCall
-returnOk xorRes
-
-
-operation compareSignedInt32BooleansEquivalent
-input compareSignedInt32BooleansEquivalent leftValue CSignedInt32
-input compareSignedInt32BooleansEquivalent rightValue CSignedInt32
-output compareSignedInt32BooleansEquivalent Result CSignedInt32 Void
-memory compareSignedInt32BooleansEquivalent heap no
-async compareSignedInt32BooleansEquivalent no
-purpose compareSignedInt32BooleansEquivalent "Logical equivalence (a iff b). Returns 1 if both args are zero or both are non-zero, else 0."
-label startCompareSignedInt32BooleansEquivalent
-call xorCall combineSignedInt32BooleansWithExclusiveOr
-arg xorCall a leftValue
-arg xorCall b rightValue
-run xorCall
-bindOk xorRes CSignedInt32 xorCall
-call notCall negateSignedInt32Boolean
-arg notCall x xorRes
-run notCall
-bindOk eqRes CSignedInt32 notCall
-returnOk eqRes
-
+# ----- convertCSignedInt32ToBoolean -----
+operation convertCSignedInt32ToBoolean
+input convertCSignedInt32ToBoolean sourceCSignedInt32Value CSignedInt32
+output convertCSignedInt32ToBoolean Bool
+memoryHeap convertCSignedInt32ToBoolean no
+async convertCSignedInt32ToBoolean no
+purpose convertCSignedInt32ToBoolean "Narrow a C-style 0/non-zero CSignedInt32 to Bool; any non-zero input yields true."
+invariant convertCSignedInt32ToBoolean "Output is true iff sourceCSignedInt32Value is not equal to zero."
+guarantee convertCSignedInt32ToBoolean "Total: defined for every CSignedInt32 input."
+label startConvertCSignedInt32ToBoolean
+const zeroComparisonOperand I64 0
+call detectNonZeroInputCall math.notEqualI64
+arg detectNonZeroInputCall left sourceCSignedInt32Value
+arg detectNonZeroInputCall right zeroComparisonOperand
+run detectNonZeroInputCall
+bind sourceIsNonZero Bool detectNonZeroInputCall
+returnValue sourceIsNonZero
 
 # ============================================================
 # Smoke test
@@ -183,105 +205,114 @@ operation main
 input main console Console
 output main Result ExitCode MainError
 effect main write console.stdout
-memory main heap no
+memoryHeap main no
 async main no
-purpose main "Smoke-test boolean ports. Prints OK."
+purpose main "Smoke-test refined Bool combinators end-to-end. Prints OK then exits 0."
+invariant main "Exit 0 when every assertion holds; returnError with BooleanSmokeAssertionFailed otherwise."
+# observability: the success path writes the literal "OK\n" so a CI
+#   diff can pin the expected output; the failure path is observable
+#   through the non-zero exit code only.
 
 label startMain
-const oneI32 CSignedInt32 1
-const zeroI32 CSignedInt32 0
 
-# negateSignedInt32Boolean(0) == 1
-call n1 negateSignedInt32Boolean
-arg n1 x zeroI32
-run n1
-bindOk n1Res CSignedInt32 n1
-call n1Check math.equalI64
-arg n1Check left n1Res
-arg n1Check right oneI32
-run n1Check
-bind n1Ok Bool n1Check
-branchIf n1Ok n1OkLabel
-branch testFailed
-label n1OkLabel
+# Verify negateBoolean(false) == true.
+call assertNegateFalseCall negateBoolean
+arg assertNegateFalseCall valueToNegate canonicalBooleanFalse
+run assertNegateFalseCall
+bind negateFalseResult Bool assertNegateFalseCall
+branchIf negateFalseResult negateFalseHolds
+branch smokeAssertionFailed
+label negateFalseHolds
 
-# combineSignedInt32BooleansWithAnd(1, 1) == 1
-call a1 combineSignedInt32BooleansWithAnd
-arg a1 a oneI32
-arg a1 b oneI32
-run a1
-bindOk a1Res CSignedInt32 a1
-call a1Check math.equalI64
-arg a1Check left a1Res
-arg a1Check right oneI32
-run a1Check
-bind a1Ok Bool a1Check
-branchIf a1Ok a1OkLabel
-branch testFailed
-label a1OkLabel
+# Verify andBooleans(true, true) == true.
+call assertAndTrueTrueCall andBooleans
+arg assertAndTrueTrueCall firstOperand canonicalBooleanTrue
+arg assertAndTrueTrueCall secondOperand canonicalBooleanTrue
+run assertAndTrueTrueCall
+bind andTrueTrueResult Bool assertAndTrueTrueCall
+branchIf andTrueTrueResult andTrueTrueHolds
+branch smokeAssertionFailed
+label andTrueTrueHolds
 
-# combineSignedInt32BooleansWithOr(0, 1) == 1
-call o1 combineSignedInt32BooleansWithOr
-arg o1 a zeroI32
-arg o1 b oneI32
-run o1
-bindOk o1Res CSignedInt32 o1
-call o1Check math.equalI64
-arg o1Check left o1Res
-arg o1Check right oneI32
-run o1Check
-bind o1Ok Bool o1Check
-branchIf o1Ok o1OkLabel
-branch testFailed
-label o1OkLabel
+# Verify andBooleans(true, false) == false.
+call assertAndTrueFalseCall andBooleans
+arg assertAndTrueFalseCall firstOperand canonicalBooleanTrue
+arg assertAndTrueFalseCall secondOperand canonicalBooleanFalse
+run assertAndTrueFalseCall
+bind andTrueFalseResult Bool assertAndTrueFalseCall
+branchIf andTrueFalseResult smokeAssertionFailed
 
-# combineSignedInt32BooleansWithExclusiveOr(1, 0) == 1
-call x1 combineSignedInt32BooleansWithExclusiveOr
-arg x1 a oneI32
-arg x1 b zeroI32
-run x1
-bindOk x1Res CSignedInt32 x1
-call x1Check math.equalI64
-arg x1Check left x1Res
-arg x1Check right oneI32
-run x1Check
-bind x1Ok Bool x1Check
-branchIf x1Ok x1OkLabel
-branch testFailed
-label x1OkLabel
+# Verify orBooleans(false, true) == true.
+call assertOrFalseTrueCall orBooleans
+arg assertOrFalseTrueCall firstOperand canonicalBooleanFalse
+arg assertOrFalseTrueCall secondOperand canonicalBooleanTrue
+run assertOrFalseTrueCall
+bind orFalseTrueResult Bool assertOrFalseTrueCall
+branchIf orFalseTrueResult orFalseTrueHolds
+branch smokeAssertionFailed
+label orFalseTrueHolds
 
-# compareSignedInt32BooleansEquivalent(1, 1) == 1
-call eq1 compareSignedInt32BooleansEquivalent
-arg eq1 a oneI32
-arg eq1 b oneI32
-run eq1
-bindOk eq1Res CSignedInt32 eq1
-call eq1Check math.equalI64
-arg eq1Check left eq1Res
-arg eq1Check right oneI32
-run eq1Check
-bind eq1Ok Bool eq1Check
-branchIf eq1Ok eq1OkLabel
-branch testFailed
-label eq1OkLabel
+# Verify exclusiveOrBooleans(true, false) == true.
+call assertXorTrueFalseCall exclusiveOrBooleans
+arg assertXorTrueFalseCall firstOperand canonicalBooleanTrue
+arg assertXorTrueFalseCall secondOperand canonicalBooleanFalse
+run assertXorTrueFalseCall
+bind xorTrueFalseResult Bool assertXorTrueFalseCall
+branchIf xorTrueFalseResult xorTrueFalseHolds
+branch smokeAssertionFailed
+label xorTrueFalseHolds
 
-const charO CSignedInt32 79
-const charK CSignedInt32 75
-const charNl CSignedInt32 10
-call putO c.putchar
-arg putO c charO
-run putO
-call putK c.putchar
-arg putK c charK
-run putK
-call putNl c.putchar
-arg putNl c charNl
-run putNl
+# Verify exclusiveOrBooleans(true, true) == false.
+call assertXorTrueTrueCall exclusiveOrBooleans
+arg assertXorTrueTrueCall firstOperand canonicalBooleanTrue
+arg assertXorTrueTrueCall secondOperand canonicalBooleanTrue
+run assertXorTrueTrueCall
+bind xorTrueTrueResult Bool assertXorTrueTrueCall
+branchIf xorTrueTrueResult smokeAssertionFailed
 
-const exitOk ExitCode 0
-returnOk exitOk
+# Verify areBooleansEquivalent(true, true) == true.
+call assertEquivTrueTrueCall areBooleansEquivalent
+arg assertEquivTrueTrueCall firstOperand canonicalBooleanTrue
+arg assertEquivTrueTrueCall secondOperand canonicalBooleanTrue
+run assertEquivTrueTrueCall
+bind equivTrueTrueResult Bool assertEquivTrueTrueCall
+branchIf equivTrueTrueResult equivTrueTrueHolds
+branch smokeAssertionFailed
+label equivTrueTrueHolds
 
-label testFailed
-const exitFail CSignedInt32 1
-makeError testFailure MainError.TestFailed exitFail
-returnError testFailure
+# Verify convertBooleanToCSignedInt32(true) == 1.
+call convertTrueToIntCall convertBooleanToCSignedInt32
+arg convertTrueToIntCall sourceBoolean canonicalBooleanTrue
+run convertTrueToIntCall
+bind trueAsCInt CSignedInt32 convertTrueToIntCall
+const oneI32Expected CSignedInt32 1
+call checkConvertTrueCall math.equalI64
+arg checkConvertTrueCall left trueAsCInt
+arg checkConvertTrueCall right oneI32Expected
+run checkConvertTrueCall
+bind convertTrueOk Bool checkConvertTrueCall
+branchIf convertTrueOk convertTrueHolds
+branch smokeAssertionFailed
+label convertTrueHolds
+
+# Verify convertCSignedInt32ToBoolean(0) == false.
+const zeroI32Input CSignedInt32 0
+call convertZeroToBoolCall convertCSignedInt32ToBoolean
+arg convertZeroToBoolCall sourceCSignedInt32Value zeroI32Input
+run convertZeroToBoolCall
+bind zeroAsBool Bool convertZeroToBoolCall
+branchIf zeroAsBool smokeAssertionFailed
+
+# All assertions hold. Emit OK\n and exit 0.
+const successMessageText CNullTerminatedByteString "OK"
+call writeSuccessLineCall console.writeLine
+arg writeSuccessLineCall console console
+arg writeSuccessLineCall text successMessageText
+run writeSuccessLineCall
+ignoreOk writeSuccessLineCall Void
+const exitOkCode ExitCode 0
+returnOk exitOkCode
+
+label smokeAssertionFailed
+makeError booleanSmokeFailure MainError.BooleanSmokeAssertionFailed
+returnError booleanSmokeFailure

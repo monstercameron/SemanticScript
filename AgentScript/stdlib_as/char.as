@@ -1,223 +1,192 @@
+# ============================================================
+# AGENTSCRIPT STANDARD LIBRARY: canonical ASCII character codes
+# ============================================================
+#
+# # rationale: This module is pure data — names for specific ASCII
+#   byte values that programs need to spell without embedding magic
+#   integers. The pre-refined version exposed each value as a
+#   zero-argument operation returning `Result CSignedInt32 Void`,
+#   which is the spec gap "Constants modeled as operations" called
+#   out in STDLIB_RENAME_PROPOSALS.md. The refined surface uses
+#   `domainLiteral NAME TYPE VALUE` at module scope — AST §2.12.5's
+#   purpose-built verb for typed compile-time constants. Every name
+#   in this file is now constant-folded by the compiler and carries
+#   a `domainLiteralSource` pointer back to the ASCII spec for
+#   provenance.
+#
+# # invariant: every literal is in [0, 127] (true ASCII). Values
+#   outside that range belong elsewhere (Unicode codepoint modules
+#   that don't yet exist).
+#
+# # security: pure constants. No effects. No allocation. No I/O.
+#
+# # timing: zero — the LLVM optimizer inlines every reference.
+#
+# # observability: nothing to observe at runtime; consumers see only
+#   the raw CSignedInt32 value.
+
 project StdCharSelfTest
 target console
 runtime AgentRuntime 0.1
-
 entry console main
 
 error MainError
-errorCase MainError TestFailed CSignedInt32
+errorCase MainError CharSmokeAssertionFailed
+
+# section char.controlBytes
+# rationale: ASCII control-set codepoints commonly named in source code.
+
+domainLiteral asciiNullCharacterCode CSignedInt32 0
+domainLiteralSource asciiNullCharacterCode ascii.NUL
+domainLiteralTrust asciiNullCharacterCode trustedStaticLiteral
+
+domainLiteral asciiBellCharacterCode CSignedInt32 7
+domainLiteralSource asciiBellCharacterCode ascii.BEL
+domainLiteralTrust asciiBellCharacterCode trustedStaticLiteral
+
+domainLiteral asciiBackspaceCharacterCode CSignedInt32 8
+domainLiteralSource asciiBackspaceCharacterCode ascii.BS
+domainLiteralTrust asciiBackspaceCharacterCode trustedStaticLiteral
+
+domainLiteral asciiHorizontalTabCharacterCode CSignedInt32 9
+domainLiteralSource asciiHorizontalTabCharacterCode ascii.HT
+domainLiteralTrust asciiHorizontalTabCharacterCode trustedStaticLiteral
+
+domainLiteral asciiNewlineCharacterCode CSignedInt32 10
+domainLiteralSource asciiNewlineCharacterCode ascii.LF
+domainLiteralTrust asciiNewlineCharacterCode trustedStaticLiteral
+
+domainLiteral asciiCarriageReturnCharacterCode CSignedInt32 13
+domainLiteralSource asciiCarriageReturnCharacterCode ascii.CR
+domainLiteralTrust asciiCarriageReturnCharacterCode trustedStaticLiteral
+
+domainLiteral asciiEscapeCharacterCode CSignedInt32 27
+domainLiteralSource asciiEscapeCharacterCode ascii.ESC
+domainLiteralTrust asciiEscapeCharacterCode trustedStaticLiteral
+
+domainLiteral asciiDeleteCharacterCode CSignedInt32 127
+domainLiteralSource asciiDeleteCharacterCode ascii.DEL
+domainLiteralTrust asciiDeleteCharacterCode trustedStaticLiteral
+
+# section char.printableBytes
+# rationale: commonly-spelled printable punctuation bytes.
+
+domainLiteral asciiSpaceCharacterCode CSignedInt32 32
+domainLiteralSource asciiSpaceCharacterCode ascii.SP
+domainLiteralTrust asciiSpaceCharacterCode trustedStaticLiteral
+
+domainLiteral asciiDoubleQuoteCharacterCode CSignedInt32 34
+domainLiteralSource asciiDoubleQuoteCharacterCode ascii.QuotationMark
+domainLiteralTrust asciiDoubleQuoteCharacterCode trustedStaticLiteral
+
+domainLiteral asciiSingleQuoteCharacterCode CSignedInt32 39
+domainLiteralSource asciiSingleQuoteCharacterCode ascii.Apostrophe
+domainLiteralTrust asciiSingleQuoteCharacterCode trustedStaticLiteral
+
+domainLiteral asciiAsteriskCharacterCode CSignedInt32 42
+domainLiteralSource asciiAsteriskCharacterCode ascii.Asterisk
+domainLiteralTrust asciiAsteriskCharacterCode trustedStaticLiteral
+
+domainLiteral asciiCommaCharacterCode CSignedInt32 44
+domainLiteralSource asciiCommaCharacterCode ascii.Comma
+domainLiteralTrust asciiCommaCharacterCode trustedStaticLiteral
+
+domainLiteral asciiPeriodCharacterCode CSignedInt32 46
+domainLiteralSource asciiPeriodCharacterCode ascii.FullStop
+domainLiteralTrust asciiPeriodCharacterCode trustedStaticLiteral
+
+domainLiteral asciiSlashCharacterCode CSignedInt32 47
+domainLiteralSource asciiSlashCharacterCode ascii.Solidus
+domainLiteralTrust asciiSlashCharacterCode trustedStaticLiteral
+
+domainLiteral asciiColonCharacterCode CSignedInt32 58
+domainLiteralSource asciiColonCharacterCode ascii.Colon
+domainLiteralTrust asciiColonCharacterCode trustedStaticLiteral
+
+domainLiteral asciiSemicolonCharacterCode CSignedInt32 59
+domainLiteralSource asciiSemicolonCharacterCode ascii.Semicolon
+domainLiteralTrust asciiSemicolonCharacterCode trustedStaticLiteral
+
+domainLiteral asciiBackslashCharacterCode CSignedInt32 92
+domainLiteralSource asciiBackslashCharacterCode ascii.ReverseSolidus
+domainLiteralTrust asciiBackslashCharacterCode trustedStaticLiteral
 
 # ============================================================
-# AGENTSCRIPT STANDARD LIBRARY: character-value accessors.
-#
-# Each operation returns a canonical ASCII byte value, useful when AS
-# programs need to spell a control byte without embedding a literal
-# string. They're zero-cost (constant-folded by the LLVM optimizer).
-#
-# Operations:
-#   asciiNullCharacterCode, asciiHorizontalTabCharacterCode, asciiNewlineCharacterCode, asciiCarriageReturnCharacterCode, asciiSpaceCharacterCode,
-#   asciiBellCharacterCode, asciiBackspaceCharacterCode, asciiEscapeCharacterCode, asciiDeleteCharacterCode, asciiDoubleQuoteCharacterCode,
-#   asciiSingleQuoteCharacterCode, asciiBackslashCharacterCode, asciiPeriodCharacterCode, asciiCommaCharacterCode, asciiColonCharacterCode,
-#   asciiSemicolonCharacterCode, asciiSlashCharacterCode, asciiAsteriskCharacterCode.
+# Smoke test
 # ============================================================
-
-operation asciiNullCharacterCode
-output asciiNullCharacterCode Result CSignedInt32 Void
-memory asciiNullCharacterCode heap no
-async asciiNullCharacterCode no
-purpose asciiNullCharacterCode "NUL byte (0)."
-label startAsciiNullCharacterCode
-const v CSignedInt32 0
-returnOk v
-
-operation asciiHorizontalTabCharacterCode
-output asciiHorizontalTabCharacterCode Result CSignedInt32 Void
-memory asciiHorizontalTabCharacterCode heap no
-async asciiHorizontalTabCharacterCode no
-purpose asciiHorizontalTabCharacterCode "Horizontal tab (9)."
-label startAsciiHorizontalTabCharacterCode
-const v CSignedInt32 9
-returnOk v
-
-operation asciiNewlineCharacterCode
-output asciiNewlineCharacterCode Result CSignedInt32 Void
-memory asciiNewlineCharacterCode heap no
-async asciiNewlineCharacterCode no
-purpose asciiNewlineCharacterCode "Line feed (10)."
-label startAsciiNewlineCharacterCode
-const v CSignedInt32 10
-returnOk v
-
-operation asciiCarriageReturnCharacterCode
-output asciiCarriageReturnCharacterCode Result CSignedInt32 Void
-memory asciiCarriageReturnCharacterCode heap no
-async asciiCarriageReturnCharacterCode no
-purpose asciiCarriageReturnCharacterCode "Carriage return (13)."
-label startAsciiCarriageReturnCharacterCode
-const v CSignedInt32 13
-returnOk v
-
-operation asciiSpaceCharacterCode
-output asciiSpaceCharacterCode Result CSignedInt32 Void
-memory asciiSpaceCharacterCode heap no
-async asciiSpaceCharacterCode no
-purpose asciiSpaceCharacterCode "Space (32)."
-label startAsciiSpaceCharacterCode
-const v CSignedInt32 32
-returnOk v
-
-operation asciiBellCharacterCode
-output asciiBellCharacterCode Result CSignedInt32 Void
-memory asciiBellCharacterCode heap no
-async asciiBellCharacterCode no
-purpose asciiBellCharacterCode "BEL (7)."
-label startAsciiBellCharacterCode
-const v CSignedInt32 7
-returnOk v
-
-operation asciiBackspaceCharacterCode
-output asciiBackspaceCharacterCode Result CSignedInt32 Void
-memory asciiBackspaceCharacterCode heap no
-async asciiBackspaceCharacterCode no
-purpose asciiBackspaceCharacterCode "BS (8)."
-label startAsciiBackspaceCharacterCode
-const v CSignedInt32 8
-returnOk v
-
-operation asciiEscapeCharacterCode
-output asciiEscapeCharacterCode Result CSignedInt32 Void
-memory asciiEscapeCharacterCode heap no
-async asciiEscapeCharacterCode no
-purpose asciiEscapeCharacterCode "ESC (27)."
-label startAsciiEscapeCharacterCode
-const v CSignedInt32 27
-returnOk v
-
-operation asciiDeleteCharacterCode
-output asciiDeleteCharacterCode Result CSignedInt32 Void
-memory asciiDeleteCharacterCode heap no
-async asciiDeleteCharacterCode no
-purpose asciiDeleteCharacterCode "DEL (127)."
-label startAsciiDeleteCharacterCode
-const v CSignedInt32 127
-returnOk v
-
-operation asciiDoubleQuoteCharacterCode
-output asciiDoubleQuoteCharacterCode Result CSignedInt32 Void
-memory asciiDoubleQuoteCharacterCode heap no
-async asciiDoubleQuoteCharacterCode no
-purpose asciiDoubleQuoteCharacterCode "\" (34)."
-label startAsciiDoubleQuoteCharacterCode
-const v CSignedInt32 34
-returnOk v
-
-operation asciiSingleQuoteCharacterCode
-output asciiSingleQuoteCharacterCode Result CSignedInt32 Void
-memory asciiSingleQuoteCharacterCode heap no
-async asciiSingleQuoteCharacterCode no
-purpose asciiSingleQuoteCharacterCode "' (39)."
-label startAsciiSingleQuoteCharacterCode
-const v CSignedInt32 39
-returnOk v
-
-operation asciiBackslashCharacterCode
-output asciiBackslashCharacterCode Result CSignedInt32 Void
-memory asciiBackslashCharacterCode heap no
-async asciiBackslashCharacterCode no
-purpose asciiBackslashCharacterCode "\\ (92)."
-label startAsciiBackslashCharacterCode
-const v CSignedInt32 92
-returnOk v
-
-operation asciiPeriodCharacterCode
-output asciiPeriodCharacterCode Result CSignedInt32 Void
-memory asciiPeriodCharacterCode heap no
-async asciiPeriodCharacterCode no
-purpose asciiPeriodCharacterCode ". (46)."
-label startAsciiPeriodCharacterCode
-const v CSignedInt32 46
-returnOk v
-
-operation asciiCommaCharacterCode
-output asciiCommaCharacterCode Result CSignedInt32 Void
-memory asciiCommaCharacterCode heap no
-async asciiCommaCharacterCode no
-purpose asciiCommaCharacterCode ", (44)."
-label startAsciiCommaCharacterCode
-const v CSignedInt32 44
-returnOk v
-
-operation asciiColonCharacterCode
-output asciiColonCharacterCode Result CSignedInt32 Void
-memory asciiColonCharacterCode heap no
-async asciiColonCharacterCode no
-purpose asciiColonCharacterCode ": (58)."
-label startAsciiColonCharacterCode
-const v CSignedInt32 58
-returnOk v
-
-operation asciiSemicolonCharacterCode
-output asciiSemicolonCharacterCode Result CSignedInt32 Void
-memory asciiSemicolonCharacterCode heap no
-async asciiSemicolonCharacterCode no
-purpose asciiSemicolonCharacterCode "; (59)."
-label startAsciiSemicolonCharacterCode
-const v CSignedInt32 59
-returnOk v
-
-operation asciiSlashCharacterCode
-output asciiSlashCharacterCode Result CSignedInt32 Void
-memory asciiSlashCharacterCode heap no
-async asciiSlashCharacterCode no
-purpose asciiSlashCharacterCode "/ (47)."
-label startAsciiSlashCharacterCode
-const v CSignedInt32 47
-returnOk v
-
-operation asciiAsteriskCharacterCode
-output asciiAsteriskCharacterCode Result CSignedInt32 Void
-memory asciiAsteriskCharacterCode heap no
-async asciiAsteriskCharacterCode no
-purpose asciiAsteriskCharacterCode "* (42)."
-label startAsciiAsteriskCharacterCode
-const v CSignedInt32 42
-returnOk v
 
 operation main
 input main console Console
 output main Result ExitCode MainError
 effect main write console.stdout
-memory main heap no
+memoryHeap main no
 async main no
-purpose main "Smoke-test char accessors. Prints OK."
+purpose main "Verify a representative subset of the ASCII char-code constants resolves to the right values."
+invariant main "Newline is 10, NUL is 0, DEL is 127, SP is 32 — every smoke check must pass."
+
 label startMain
-call s1 asciiNewlineCharacterCode
-run s1
-bindOk s1Res CSignedInt32 s1
-const ten CSignedInt32 10
-call s1Check math.equalI64
-arg s1Check left s1Res
-arg s1Check right ten
-run s1Check
-bind s1Ok Bool s1Check
-branchIf s1Ok s1Lbl
-branch testFailed
-label s1Lbl
-const charO CSignedInt32 79
-const charK CSignedInt32 75
-const charNl CSignedInt32 10
-call putO c.putchar
-arg putO c charO
-run putO
-call putK c.putchar
-arg putK c charK
-run putK
-call putNl c.putchar
-arg putNl c charNl
-run putNl
-const exitOk ExitCode 0
-returnOk exitOk
-label testFailed
-const exitFail CSignedInt32 1
-makeError testFailure MainError.TestFailed exitFail
-returnError testFailure
+
+# Newline literal must resolve to 10.
+const tenValue CSignedInt32 10
+call checkNewlineCall math.equalI64
+arg checkNewlineCall left asciiNewlineCharacterCode
+arg checkNewlineCall right tenValue
+run checkNewlineCall
+bind newlineOk Bool checkNewlineCall
+branchIf newlineOk newlineHolds
+branch smokeAssertionFailed
+label newlineHolds
+
+# NUL literal must resolve to 0.
+const zeroValue CSignedInt32 0
+call checkNullCall math.equalI64
+arg checkNullCall left asciiNullCharacterCode
+arg checkNullCall right zeroValue
+run checkNullCall
+bind nullOk Bool checkNullCall
+branchIf nullOk nullHolds
+branch smokeAssertionFailed
+label nullHolds
+
+# DEL literal must resolve to 127.
+const oneHundredTwentySevenValue CSignedInt32 127
+call checkDeleteCall math.equalI64
+arg checkDeleteCall left asciiDeleteCharacterCode
+arg checkDeleteCall right oneHundredTwentySevenValue
+run checkDeleteCall
+bind deleteOk Bool checkDeleteCall
+branchIf deleteOk deleteHolds
+branch smokeAssertionFailed
+label deleteHolds
+
+# Space literal must resolve to 32.
+const thirtyTwoValue CSignedInt32 32
+call checkSpaceCall math.equalI64
+arg checkSpaceCall left asciiSpaceCharacterCode
+arg checkSpaceCall right thirtyTwoValue
+run checkSpaceCall
+bind spaceOk Bool checkSpaceCall
+branchIf spaceOk spaceHolds
+branch smokeAssertionFailed
+label spaceHolds
+
+# All assertions hold. Emit "OK\n" via direct putchar so we don't
+# depend on console.writeLine in this minimal module.
+const upperOLiteral CSignedInt32 79
+const upperKLiteral CSignedInt32 75
+call writeOCharacterCall c.putchar
+arg writeOCharacterCall c upperOLiteral
+run writeOCharacterCall
+call writeKCharacterCall c.putchar
+arg writeKCharacterCall c upperKLiteral
+run writeKCharacterCall
+call writeNewlineCharacterCall c.putchar
+arg writeNewlineCharacterCall c asciiNewlineCharacterCode
+run writeNewlineCharacterCall
+
+const exitOkCode ExitCode 0
+returnOk exitOkCode
+
+label smokeAssertionFailed
+makeError charSmokeFailure MainError.CharSmokeAssertionFailed
+returnError charSmokeFailure
