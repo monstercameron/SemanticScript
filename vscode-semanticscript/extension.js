@@ -15,7 +15,8 @@ const declarationVerbs = new Set([
   'dependencySource', 'dependencyIntegrity',
   'targetRuntime', 'buildProfile', 'runtimeChecks', 'optLevel', 'persistLlvmIr',
   'emitLlvmIr', 'llvmIrOutput', 'emitOptimizedLlvmIr', 'optimizedLlvmIrOutput',
-  'buildDir', 'buildRoot', 'buildFolderName', 'nativeOutput',
+  'buildDir', 'buildRoot', 'buildFolderName',
+  'cpuBaseline', 'cpuTune', 'cpuFeature', 'cpuFeatureCheck', 'nativeOutput',
   'nativeHttpHost', 'nativeHttpPort', 'formatterSetting', 'linterSetting', 'docsOutput',
   'comptimeOperation', 'moduleFolder', 'modulePurpose', 'moduleOwns',
   'moduleDoesNotOwn', 'moduleDependency', 'moduleWarning', 'moduleInvariant',
@@ -368,6 +369,10 @@ const verbHoverText = new Map([
   ['buildDir', 'Build tape exact artifact directory: buildDir PROJECT "PATH".'],
   ['buildRoot', 'Build tape artifact parent directory: buildRoot PROJECT "PATH".'],
   ['buildFolderName', 'Build tape managed artifact folder name: buildFolderName PROJECT NAME.'],
+  ['cpuBaseline', 'Build tape CPU baseline: cpuBaseline PROJECT generic|native|x86_64_v2|x86_64_v3|x86_64_v4|arm64_generic|arm64_v8_2.'],
+  ['cpuTune', 'Build tape CPU tune token: cpuTune PROJECT generic|native|CPU_NAME.'],
+  ['cpuFeature', 'Build tape CPU feature override: cpuFeature PROJECT FEATURE on|off.'],
+  ['cpuFeatureCheck', 'Build tape host CPU check policy: cpuFeatureCheck PROJECT auto|off|warn|require.'],
   ['nativeOutput', 'Build tape native executable output: nativeOutput PROJECT "PATH". Basenames use the managed build folder.'],
   ['nativeHttpHost', 'Build tape native webserver host metadata: nativeHttpHost PROJECT "HOST".'],
   ['nativeHttpPort', 'Build tape native webserver port metadata: nativeHttpPort PROJECT PORT.'],
@@ -679,6 +684,9 @@ let compilerEmitLlvmIr = false;
 let compilerBuildDir = '';
 let compilerBuildRoot = '';
 let compilerBuildFolderName = '';
+let compilerCpuBaseline = 'default';
+let compilerCpuTune = '';
+let compilerCpuFeatureCheck = 'default';
 let diagnosticCollection = null;
 let lintStatusBarItem = null;
 let compilerOutputChannel = null;
@@ -1086,7 +1094,8 @@ const namedDeclarationVerbs = new Set([
   'listLiteral', 'listType', 'arrayType', 'sliceType', 'smallListType',
   'mapType', 'collectionOperation', 'interval', 'workerPool', 'work',
   'buildProject', 'registerModule', 'modulePath', 'mainFile', 'mainOperation',
-  'targetRuntime', 'buildProfile', 'optLevel', 'nativeOutput',
+  'targetRuntime', 'buildProfile', 'optLevel', 'cpuBaseline', 'cpuTune',
+  'cpuFeature', 'cpuFeatureCheck', 'nativeOutput',
 ]);
 
 const singleCallReferenceVerbs = new Set([
@@ -2955,7 +2964,8 @@ const provideDocumentSymbols = (document) => {
     'sourceRoot', 'registerModule', 'mainFile', 'mainOperation',
     'targetRuntime', 'buildProfile', 'runtimeChecks', 'optLevel',
     'persistLlvmIr', 'emitLlvmIr', 'llvmIrOutput', 'buildDir',
-    'buildRoot', 'buildFolderName', 'nativeOutput', 'docsOutput',
+    'buildRoot', 'buildFolderName', 'cpuBaseline', 'cpuTune',
+    'cpuFeature', 'cpuFeatureCheck', 'nativeOutput', 'docsOutput',
     'exportOperation', 'exportType',
     'exportError', 'exportCapability', 'exportConstant',
     'operation', 'input', 'webServer', 'route', 'record', 'field',
@@ -3114,6 +3124,9 @@ const syncConfiguration = () => {
   compilerBuildDir = compilerConfig.get('buildDir', '');
   compilerBuildRoot = compilerConfig.get('buildRoot', '');
   compilerBuildFolderName = compilerConfig.get('buildFolderName', '');
+  compilerCpuBaseline = compilerConfig.get('cpuBaseline', 'default');
+  compilerCpuTune = compilerConfig.get('cpuTune', '');
+  compilerCpuFeatureCheck = compilerConfig.get('cpuFeatureCheck', 'default');
 };
 
 const isSemanticScriptDocument = (document) => (
@@ -3692,6 +3705,18 @@ const runCompilerForDocument = async (document) => {
 
   if (compilerEmitLlvmIr) {
     args.push('--emit-ir');
+  }
+
+  if (compilerCpuBaseline !== 'default') {
+    args.push('--cpu-baseline', compilerCpuBaseline);
+  }
+
+  if (compilerCpuTune) {
+    args.push('--cpu-tune', compilerCpuTune);
+  }
+
+  if (compilerCpuFeatureCheck !== 'default') {
+    args.push('--cpu-feature-check', compilerCpuFeatureCheck);
   }
 
   if (compilerBuildDir) {

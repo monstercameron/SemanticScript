@@ -204,6 +204,39 @@
           "type": "string",
           "default": "",
           "description": "Optional semsc.py --build-folder-name override. Must be one folder name."
+        },
+        "semanticScript.compiler.cpuBaseline": {
+          "type": "string",
+          "default": "default",
+          "enum": [
+            "default",
+            "generic",
+            "native",
+            "x86_64_v1",
+            "x86_64_v2",
+            "x86_64_v3",
+            "x86_64_v4",
+            "arm64_generic",
+            "arm64_v8_2"
+          ],
+          "description": "Optional semsc.py --cpu-baseline override. default lets build.sem choose cpuBaseline."
+        },
+        "semanticScript.compiler.cpuTune": {
+          "type": "string",
+          "default": "",
+          "description": "Optional semsc.py --cpu-tune token, such as generic, native, or a CPU name."
+        },
+        "semanticScript.compiler.cpuFeatureCheck": {
+          "type": "string",
+          "default": "default",
+          "enum": [
+            "default",
+            "auto",
+            "off",
+            "warn",
+            "require"
+          ],
+          "description": "Optional semsc.py --cpu-feature-check override for host CPU feature validation."
         }
       }
     },

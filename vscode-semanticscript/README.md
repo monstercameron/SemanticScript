@@ -232,7 +232,10 @@ Then reload VS Code.
   "semanticScript.compiler.emitLlvmIr": false,
   "semanticScript.compiler.buildDir": "",
   "semanticScript.compiler.buildRoot": "",
-  "semanticScript.compiler.buildFolderName": ""
+  "semanticScript.compiler.buildFolderName": "",
+  "semanticScript.compiler.cpuBaseline": "default",
+  "semanticScript.compiler.cpuTune": "",
+  "semanticScript.compiler.cpuFeatureCheck": "default"
 }
 ```
 
@@ -252,6 +255,17 @@ Then reload VS Code.
 
 `semanticScript.compiler.optLevel` can be `default`, `0`, `1`, `2`, or `3`.
 
+`semanticScript.compiler.cpuBaseline` can be `default`, `generic`, `native`,
+`x86_64_v1`, `x86_64_v2`, `x86_64_v3`, `x86_64_v4`, `arm64_generic`, or
+`arm64_v8_2`.
+
+`semanticScript.compiler.cpuTune` passes a non-empty value through to
+`--cpu-tune`.
+
+`semanticScript.compiler.cpuFeatureCheck` can be `default`, `auto`, `off`,
+`warn`, or `require`.
+
 When a `.sem` file is inside a project, compile and lint commands use the
 nearest `build.sem` as the project root. `buildDir`, `buildRoot`, and
 `buildFolderName` pass through the matching compiler artifact-directory flags.
+CPU settings pass through the matching compiler CPU flags.

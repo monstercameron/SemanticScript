@@ -84,6 +84,9 @@ buildProfile todoTui dev
 optLevel todoTui 2
 runtimeChecks todoTui panic
 persistLlvmIr todoTui yes
+cpuBaseline todoTui generic
+cpuTune todoTui generic
+cpuFeatureCheck todoTui auto
 nativeOutput todoTui "todo.exe"
 keepResources todoTui no
 
@@ -114,6 +117,8 @@ Current responsibilities:
   `emitLlvmIr`, `llvmIrOutput`, `emitOptimizedLlvmIr`,
   `optimizedLlvmIrOutput`, `buildDir`, `buildRoot`, `buildFolderName`,
   `nativeOutput`, and `keepResources` record build-output policy.
+- `cpuBaseline`, `cpuTune`, `cpuFeature`, and `cpuFeatureCheck` record CPU
+  lowering policy and the build-time host feature check.
 - `nativeHttpHost` and `nativeHttpPort` record the native webserver defaults.
 - `formatterSetting`, `linterSetting`, and `docsOutput` expose project tool
   settings without adding a TOML/YAML sidecar.
@@ -156,6 +161,10 @@ starts with the same `PROJECT` token declared by `buildProject PROJECT`.
 | `buildDir PROJECT "PATH"` | no | Exact artifact directory. Mutually exclusive with build root/folder CLI shape. |
 | `buildRoot PROJECT "PATH"` | no | Parent directory where the managed build folder is created. |
 | `buildFolderName PROJECT NAME` | no | Managed build folder name. Must be one folder name, not a path. |
+| `cpuBaseline PROJECT generic\|native\|x86_64_v1\|x86_64_v2\|x86_64_v3\|x86_64_v4\|arm64_generic\|arm64_v8_2` | no | CPU instruction baseline. Defaults to portable `generic`. |
+| `cpuTune PROJECT generic\|native\|CPU_NAME` | no | AOT scheduling tune token. Defaults to `generic`. |
+| `cpuFeature PROJECT FEATURE on\|off` | no | Per-feature override. Repeatable. |
+| `cpuFeatureCheck PROJECT auto\|off\|warn\|require` | no | Host CPU feature check policy. Defaults to `auto`. |
 | `nativeOutput PROJECT "PATH"` | no | Native executable output. Basenames use the build folder. |
 | `keepResources PROJECT yes\|no` | no | Keep transient Windows resource files for debugging. |
 | `resourcesDir PROJECT "PATH"` | no | Explicit resource scratch directory. Implies kept resources. |
@@ -170,6 +179,39 @@ starts with the same `PROJECT` token declared by `buildProject PROJECT`.
 Strict checks now reject multiple `buildProject` rows, project-name drift,
 malformed project rows, invalid enum values, missing required rows, and
 `buildFolderName` values that are paths.
+
+## CPU Feature Checks
+
+CPU flags are a build-tape concern, not a module-source concern. The safe
+default is portable:
+
+```semanticscript
+cpuBaseline todoTui generic
+cpuTune todoTui generic
+cpuFeatureCheck todoTui auto
+```
+
+For a local-only performance build, a project may request host-native lowering:
+
+```semanticscript
+cpuBaseline todoTui native
+cpuTune todoTui native
+cpuFeatureCheck todoTui require
+```
+
+Specific features can be required or disabled:
+
+```semanticscript
+cpuBaseline todoTui x86_64_v2
+cpuFeature todoTui avx2 off
+cpuFeatureCheck todoTui auto
+```
+
+`cpuFeatureCheck auto` inspects the build machine with LLVM before codegen and
+fails if the requested required feature set is missing. That is useful for
+local JIT/AOT builds because it prevents producing or running binaries with
+instructions this CPU cannot execute. It is not a cross-compilation proof:
+use `cpuFeatureCheck off` only when the target machine is known separately.
 
 ## Native Webserver Example
 
@@ -198,6 +240,9 @@ persistLlvmIr helloWeb yes
 emitLlvmIr helloWeb auto
 emitOptimizedLlvmIr helloWeb no
 buildFolderName helloWeb build
+cpuBaseline helloWeb generic
+cpuTune helloWeb generic
+cpuFeatureCheck helloWeb auto
 nativeOutput helloWeb "hello_web.exe"
 nativeHttpHost helloWeb "127.0.0.1"
 nativeHttpPort helloWeb 18080
@@ -231,6 +276,9 @@ persistLlvmIr todoDomain auto
 emitLlvmIr todoDomain no
 emitOptimizedLlvmIr todoDomain no
 buildFolderName todoDomain build
+cpuBaseline todoDomain generic
+cpuTune todoDomain generic
+cpuFeatureCheck todoDomain auto
 formatterSetting todoDomain lineWidth 100
 linterSetting todoDomain maxTier T4
 docsOutput todoDomain "docs"

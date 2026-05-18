@@ -36,6 +36,10 @@ CLI flags:
 | `--emit-ir [PATH]` | Write pre-optimization LLVM IR. With no path, writes to the managed build directory. |
 | `--persist-llvm-ir auto\|yes\|no` | Control LLVM IR persistence. `auto` is the default and persists only with `--emit-ir`; `yes` writes a `.ll` sidecar in the managed build directory when no explicit path is provided; `no` disables IR persistence. |
 | `--emit-optimized-ir PATH` | Write post-optimization LLVM IR during `--run`. |
+| `--cpu-baseline generic\|native\|x86_64_v1\|x86_64_v2\|x86_64_v3\|x86_64_v4\|arm64_generic\|arm64_v8_2` | Select CPU instruction baseline for LLVM/clang lowering. Defaults to `generic` unless `build.sem` provides `cpuBaseline`. |
+| `--cpu-tune CPU_NAME` | Pass an AOT clang tune token such as `generic`, `native`, or `alderlake`. |
+| `--cpu-feature FEATURE=on\|off` | Add one CPU feature override. May be repeated; `+FEATURE` and `-FEATURE` are also accepted. |
+| `--cpu-feature-check auto\|off\|warn\|require` | Control host CPU feature checks before codegen. `auto` fails local builds that request unavailable features. |
 | `--run` | JIT-execute `main` and return its exit code. |
 | `--emit-exe [PATH]` | AOT compile with clang. With no path, writes to the managed build directory. |
 | `--lint` | Run built-in compiler lint pass. |
@@ -91,6 +95,10 @@ repeatable without TOML/YAML sidecars:
 | `llvmIrOutput PROJECT "PATH"` | `--emit-ir PATH` |
 | `emitOptimizedLlvmIr PROJECT yes` | `--emit-optimized-ir <default>.opt.ll --run` |
 | `optimizedLlvmIrOutput PROJECT "PATH"` | `--emit-optimized-ir PATH --run` |
+| `cpuBaseline PROJECT VALUE` | `--cpu-baseline VALUE` |
+| `cpuTune PROJECT VALUE` | `--cpu-tune VALUE` |
+| `cpuFeature PROJECT FEATURE on\|off` | `--cpu-feature FEATURE=on\|off` |
+| `cpuFeatureCheck PROJECT auto\|off\|warn\|require` | `--cpu-feature-check auto\|off\|warn\|require` |
 
 CLI flags win over build-tape defaults for one-off invocations.
 
