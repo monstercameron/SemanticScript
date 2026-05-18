@@ -2,6 +2,48 @@
 
 ## 2026-05-18
 
+- `e6349d282566588e5b7c4102211bd080f579ec96` - `docs: mark build tape TODOs complete`
+  - Marks the completed build-tape schema, parser, tooling integration, and documentation checklist items in the root TODO.
+- `f8d4736ee5fe287f8884bf0b4c2fb25c5e00ab69` - `app: refresh todo build tape notes`
+  - Updates the Todo build tape header comment now that `semsc.py` validates the tape and reads build-output / LLVM defaults directly from it.
+- `4dafc0e75e65e3a4abb011c401f71be7fa57abb6` - `vscode: support build tape project commands`
+  - Teaches the VS Code extension about the expanded build-tape verb set, runs lint/compile commands from the nearest `build.sem` project root, exposes build-output / LLVM compiler settings, and refreshes extension docs and grammar coverage.
+- `ed9e6093f7538b3672bc3bb13a65fc15bc089292` - `docs: document build tape compiler defaults`
+  - Clarifies `--opt-level` help/docs, maps build-tape artifact / LLVM rows to their CLI equivalents, documents strict build-tape diagnostics, and notes that CLI flags override build-tape defaults.
+- `9ccf2f93013c2842f0bd02f58cb1a9d85f532998` - `docs: index build tape verbs`
+  - Adds the project build-tape verbs to the reference verb index so the expanded schema is discoverable.
+- `7b9474511332796f06b5ee04632d653934e083ca` - `docs: clarify build tape syntax rows`
+  - Tightens strict build-tape wording and clarifies LLVM IR output path resolution in `SYNTAX.md`.
+- `17e2844ee3fd787800997116e7ffa18df370a189` - `tools: add sem project driver`
+  - Adds `SemanticScript/tools/sem.py` with `build`, `run`, and `check` commands that discover `build.sem` and delegate to `semsc.py`, plus compiler coverage and docs / TODO updates.
+- `54a1c46ab4eb6d48bdc3d65b8ec37a26deff3f5c` - `docs: expand build tape schema examples`
+  - Adds optional build-tape rows to app samples and expands project-layout docs with schema reference, native webserver, and library examples.
+- `541717bba5aa593c4d2229b9827e29619282a9ac` - `docs: add sqlite syntax sample`
+  - Adds a proposed `standard.sqlite` refined-syntax sample covering the future SQLite type / call surface, capabilities, failure paths, and parser / linter compatibility declarations.
+- `f863cc04991e58a5ea3933140c2e9d89d44a63b2` - `compiler: enforce build tape schema`
+  - Adds strict compiler / linter validation for `build.sem`, build-tape CLI defaults for build dirs / LLVM outputs / opt level, fixture and app updates, and schema tests.
+- `920c16d7732789effd2ee03618bc91758d88c53f` - `runtime: add native sqlite adapter`
+  - Adds the native SQLite C ABI adapter, CMake target, health demo, and docs, with Zig / CMake smoke coverage.
+- `982017930f34190b7a8017ebbc18df0097734a1a` - `vendor: add sqlite amalgamation`
+  - Vendors SQLite 3.53.1 amalgamation and documents pinned version / source id, upgrade flow, and third-party layout.
+- `70fc7f873ce7d90a98f28158fb8cec1eb5af48ec` - `ci: drop obsolete semlint smoke flag`
+  - Removes the retired `--fail-on none` argument from CI linter smoke commands so the workflow matches the current `semlint.py` CLI while preserving non-strict summary output.
+- `975cd5a8bd16fb736199ec063446916849d253b2` - `docs: document project layout and build artifacts`
+  - Adds the project-layout / `build.sem` language guide, expands project-layout TODO planning, documents artifact/resource behavior, clears stale `semlint2` references, updates linter command examples, and records `.semcache/` as an ignored future dependency cache.
+- `90cadc9f61c9b69534c6a2fa5cc7e9635491ad04` - `license: move project to MIT`
+  - Replaces the rights-reserved license notice with the MIT License and updates release/security/contributing guidance for public MIT distribution.
+- `470f0555fef3062fc919f5a0e21bffd09d8646a6` - `linter: catch missing build tape main files`
+  - Adds SS3614 `buildTape.mainFileMustExist`, unit coverage for missing/renamed `mainFile` rows, resource-retention syntax docs, and tighter compiler token validation for icon formats, depths, and platforms.
+- `bad683d4239aa5da0c7cf45cee222736d64e1b51` - `app: move http gauntlet to build tape layout`
+  - Moves the HTTP gauntlet source to `main.sem`, relocates Python/PowerShell gauntlet checks under `scripts/`, points `build.sem` at the new module file, and updates smoke scripts for the guarded-header and middleware short-circuit contracts.
+- `14ca44db4ce1b56d6e3c5fb9c63d21f97503556b` - `vscode: add compiler command and navigation tooling`
+  - Adds same-file definitions, document symbols, completions, canonical `semlint.py` diagnostics, a compile-current-file command, expanded syntax highlighting for project/web/resource verbs, and MIT package metadata for the VS Code extension.
+- `557178d18f190d75bcf4cc156f5371ce46c3dfec` - `app: move todo sample to build tape layout`
+  - Moves the Todo TUI sample to `build.sem` plus `main.sem`, adds app icon assets, documents compiler-managed build output, and ignores nested `build/` artifact folders.
+- `871bd6fe487e9aaa9794270675cb81ae71d1053c` - `compiler: add build tape metadata and middleware control`
+  - Adds build-tape module registration, project metadata/resource plumbing, managed build-output paths, `returnVoid`, built-in `MiddlewareControl`, middleware short-circuit runtime handling, HTTP gauntlet coverage, and compiler/linter tests.
+- `a9bbf9db8aaff22c5a21e61a0be1cef8a5569f60` - `linter: consolidate structured diagnostics into semlint`
+  - Makes `semlint.py` the canonical structured diagnostics linter, removes `semlint2.py`, updates CI/docs/tooling references, and keeps the structured linter unit suite passing under the consolidated name.
 - `e19d4cb22514ed4eb502217bcf27ff9a35a42988` - `ci: run semfmt unit tests`
   - Adds the `semfmt` unittest suite to the Python validation workflow so formatter behavior is checked on Windows and Ubuntu.
 - `641ef000e3b0aed674556e0f7b8860aee014fb0e` - `formatter: add semfmt source formatter`
@@ -11,13 +53,13 @@
 - `c31104f377583ca2a03a5b8730eb809aeb3162bc` - `app: attach gauntlet null-check rationale`
   - Replaces a proximity rationale comment in the HTTP API gauntlet with call-attached `rationale` metadata for the nullable header guard.
 - `bd131ca85f6423385b19bfdffd3be4b6b9882205` - `linter: cover rationale metadata checks`
-  - Adds semlint2 tests for call-level rationale metadata, missing rationale text, unknown rationale call references, and broad-to-narrow capability hierarchy coverage.
+  - Adds semlint tests for call-level rationale metadata, missing rationale text, unknown rationale call references, and broad-to-narrow capability hierarchy coverage.
 - `ecb095735fd23db51e12a2c6caa65dc10b69d040` - `linter: document rationale diagnostics`
-  - Documents the semlint2 `SS3608` rationale diagnostics in the diagnostic-code map for call-level rationale metadata.
+  - Documents the semlint `SS3608` rationale diagnostics in the diagnostic-code map for call-level rationale metadata.
 - `14c43065ff720d9d5cc1bfb285f7bffc6d6cb1bf` - `linter: track call-level rationales`
-  - Adds semlint2 support for `rationale CALL "text"` metadata so diagnostics can cite call-specific rationale records in addition to operation-level rationale comments.
+  - Adds semlint support for `rationale CALL "text"` metadata so diagnostics can cite call-specific rationale records in addition to operation-level rationale comments.
 - `ec1f24db27d45dd54cda9d060002249bd776f015` - `linter: cover route metadata drift checks`
-  - Adds semlint2 coverage for missing `routeTimeout` / `routeMiddleware` metadata and explicit opt-out cases so web route coverage drift remains visible in tests.
+  - Adds semlint coverage for missing `routeTimeout` / `routeMiddleware` metadata and explicit opt-out cases so web route coverage drift remains visible in tests.
 - `cbb8963386448af1bcd56758156ded1428796cad` - `docs: refresh web runtime and release guidance`
   - Refreshes the README, syntax catalog, TODO plan, optimization guidance, language docs, reference docs, toolchain docs, and sample documentation around the native HTTP runtime and 1.0 release posture.
 - `60c4c2aeac068cc5cae613d324c70d1ac8d367e2` - `vscode: mark extension package as 1.0.0`
@@ -25,7 +67,7 @@
 - `55b8827490e0e42b947d80d0a721c46dd1385ea6` - `app: add native web demos and HTTP gauntlet`
   - Adds the basic Todo web server, advanced Todo web API demo, HTTP API gauntlet, PowerShell/Python gauntlet checks, terminal Todo refinements, and the Todo preview asset.
 - `3b0f8c9274af855dadc222f7531f87de454d2a80` - `linter: expand HTTP and app validation`
-  - Extends semlint and semlint2 with native HTTP call ABI checks, nullable reader flow checks, route/app validation, stricter app-scale diagnostics, and companion unit coverage.
+  - Extends semlint diagnostics with native HTTP call ABI checks, nullable reader flow checks, route/app validation, stricter app-scale diagnostics, and companion unit coverage.
 - `775eb3057a25745b3f6aa8580120e888b5c448e1` - `compiler: harden typed lowering and web support`
   - Hardens output-contract checks, enum lowering, exact-width math conversions, pointer byte loads, unsupported `http.*` diagnostics, native web route/middleware lowering, and related compiler tests.
 - `475623ca37c6303fdd1cad106d0b913c12d9d540` - `runtime: add native HTTP adapter`
@@ -43,7 +85,7 @@
 - `0ff5fa051c207c84bddef41bd866fb65bbcd4c60` - `tests: stabilize parity and feature coverage`
   - Adds `.sem` alias fixtures and parity coverage, fixes sample output drift, stabilizes long-running webserver parity by avoiding fixed-port collisions, and brings feature coverage to 130 pass / 30 expected xfail / 0 fail.
 - `514dac28d71ab664637ab1ccc7a6b3c51a1ba7f5` - `linter: expand SemanticScript validation coverage`
-  - Extends semlint and semlint2 coverage for current SemanticScript forms, storage and memory metadata, raw libc return escapes, branch/read analysis, opaque dependency inputs, and companion tests.
+  - Extends semlint coverage for current SemanticScript forms, storage and memory metadata, raw libc return escapes, branch/read analysis, opaque dependency inputs, and companion tests.
 - `73c4a2bfd1766f6f503fc77a2b2c572ea48489a2` - `compiler: add agent-focused diagnostics and runtime profiles`
   - Adds structured compiler diagnostics, source-oriented SemanticScript stack traces, runtime panic/trap profiles, LLVM IR persistence controls, success-message tests, and the libc registry updates needed for native linking.
 - `1b533ef283db271859f5b4e44a0398bd67dc766d` - `stdlib: move smokes into companion test files`
@@ -54,8 +96,8 @@
   - Adds a granular per-file `TODO.md` checklist for the SemanticScript -> SemanticScript rebrand: `.sscript` / `.sem`, `semsc`, `semlint`, semantic tape wording, docs, tooling, VS Code, tests, and final legacy-string gates.
 - `87959798a84d0080fb9b431ab2425e91f6f9fbda` - `chore: expand generated artifact ignores`
   - Broadens ignore coverage for Python caches, native build products, Node / VS Code outputs, generated feature-coverage trees, future SemanticScript build artifacts, and scratch `.sscript` / `.sem` files.
-- `91561198c90860d9af01f98302ae37779b29f72e` - `vscode-semanticscript: 0.1.6 -> 0.1.9 with semlint2 integration`
-  - Bumps the extension version 0.1.6 → 0.1.9 with context-aware hovers for every refined-syntax line shape (effect / useCapability / bindError / branchIf / makeError / domainLiteral / capability / feature / runtimeBinding) plus same-file symbol hovers for declared operations / consts / vars / binds / labels / capabilities. Adds an `semanticScript.linter.engine` setting that picks between the legacy `semlint.py` and the structured `semlint2.py`, surfacing semlint2's full diagnostic payload through the Problems view. Operation-metadata fold ranges collapse every line scoped to `operation NAME` under the operation header. Extended TextMate grammar covers refined-syntax verbs landed since 0.1.6 (storage local mutable, defer + deferRunOn, useRetry, taskGroup, channel slots, sharedState, runtimeBinding, domainLiteral, intrinsicName, fieldGet / fieldSet on records, etc.).
+- `91561198c90860d9af01f98302ae37779b29f72e` - `vscode-semanticscript: 0.1.6 -> 0.1.9 with semlint integration`
+  - Bumps the extension version 0.1.6 -> 0.1.9 with context-aware hovers for every refined-syntax line shape (effect / useCapability / bindError / branchIf / makeError / domainLiteral / capability / feature / runtimeBinding) plus same-file symbol hovers for declared operations / consts / vars / binds / labels / capabilities. Adds linter-engine settings and surfaces the structured semlint diagnostic payload through the Problems view. Operation-metadata fold ranges collapse every line scoped to `operation NAME` under the operation header. Extended TextMate grammar covers refined-syntax verbs landed since 0.1.6 (storage local mutable, defer + deferRunOn, useRetry, taskGroup, channel slots, sharedState, runtimeBinding, domainLiteral, intrinsicName, fieldGet / fieldSet on records, etc.).
 - `b4d2a4a40cbcb4491c78fd7728c15d764ca8ad65` - `samples: move javascript/ to samples/ and add python comparisons`
   - Moves the host-language comparison programs out of the top-level `javascript/` folder into `samples/`, alongside a new `samples/python/` tree. The split makes the repo root cleaner and signals these are reference oracles for cross-language behavior, not SemanticScript source. Python additions cover concurrency / async patterns (threaded pipeline, asyncio orchestrator, hybrid thread/process orchestration, race-condition showcase, reader-writer cache, watchdog supervisor, priority scheduler with cancellation, deadlock avoidance) and a multi-file math-API coverage suite mirrored across exponents/logs, special functions, trig/hyperbolic, vectors/precision, etc.
 - `c8344fb1af5a3bf51793a31309b94a543e47e4eb` - `docs: consolidate maintainable documentation under docs/`
@@ -70,10 +112,10 @@
   - random.sscript exercises the second LCG draw (1 → 48271 → 182605794 MINSTD canonical sequence), seed-normalization round-trips for 0 and -1, and readDeterministicRandomState invariants. stdlib.sscript covers parseHexCStringToSignedInt64 with `0x` prefix and mixed-case digits, parseDecimalCStringToSignedInt64 with leading whitespace + sign, absoluteSignedInt64 boundary / INT64_MIN, integerPowerSignedInt64 negative-exponent error path, clampSignedInt64 boundaries, plus gcd(0,0) == 0 convention. time.sscript exercises every conversion helper (seconds <-> minutes / hours / days, all four leap-year rule paths) plus monotonic non-decrease assertions on readProcessCpuClockTicks / readCurrentUnixEpochSeconds.
 - `b8f90485655fa82999e829f0e933962fd192a756` - `stdlib: extended unit tests for bool.sscript and memory.sscript smokes`
   - bool.sscript adds missing-case unit tests the original smoke skipped: negate(true) == false, and(false,false) == false, or(false,false) / or(true,true), xor over all four (Bool, Bool) pairs, equivalent over all four pairs, plus the involution / commutativity / de Morgan property tests called out in the operation invariants — bringing the smoke from 4 assertions to ~20. memory.sscript adds the operations the original smoke skipped: zeroMemoryBytes, moveMemoryBytesAllowOverlap (overlap-correct copy), hashMemoryBytesWithFnv1a (determinism check), countSignedByteValueInBuffer, plus zero-length-buffer boundary cases for sum / find / count / copy.
-- `1b3050d35c431768b6f048aacf987cf42b7457aa` - `stdlib: every stdlib_sem file passes semlint2 with zero diagnostics`
-  - All 28 stdlib_sem modules now lint cleanly under semlint2 AND all 28 smoke tests continue to pass via `test_stdlib.py`. Per-file additions: module-scope capabilities (`stdoutWriteCapability` / `heapAllocationCapability` / `heapFreeCapability` / `processLifecycleCapability` / `processSignalCapability` / `clockCpuReadCapability` / `clockRealTimeReadCapability` / `memoryBufferReadCapability` / `memoryBufferWriteCapability`) wired to every operation via `useCapability`; gold console.writeLine smoke pattern (ignoreOk + bindError + branchIfError + typed MainError.ConsoleWriteFailed translation handler carrying the raw negative status as the makeError SOURCE_VALUE cause); defer-based heap cleanup (every c.malloc → bindError + branchIfError + `defer releaseXCall c.free <pointerBind>`); dead-store false-positive workaround via self-branchIf inserted between disjoint-branch sets; missing-invariant lines describing actual iteration / numerical bounds; removed unused errorCase variants, unused consts, and parameter-as-channel effect declarations.
-- `700892ef2d23b1f17f75f8a80e2bd80f89ec314c` - `linter: add semlint2 with relaxed primitive-type equivalence`
-  - First commit of `SemanticScript/linter/semlint2.py` (the structured-diagnostics linter — every warning ships subject / gap / invariant / citations / fix candidates / spec anchor / pass provenance / agent hint, tier-classified T1 spec / T2 contract / T3 refinement / T4 naming) plus the companion `test_semlint2.py` suite. Primitive-type equivalence groups merge widths the compiler already auto-coerces: signed integers + Bool (I8/I16/I32/I64 + C* aliases + CByteCount + Bool) and 8-byte pointer-shaped types (CNullTerminatedByteString / COpaqueMemoryAddress / CFileHandle / String). Without this widening SS4301 fires on every byte-load + write pattern in the stdlib that the compiler accepts via sext/trunc/zext/bitcast.
+- `1b3050d35c431768b6f048aacf987cf42b7457aa` - `stdlib: every stdlib_sem file passes semlint with zero diagnostics`
+  - All 28 stdlib_sem modules now lint cleanly under semlint AND all 28 smoke tests continue to pass via `test_stdlib.py`. Per-file additions: module-scope capabilities (`stdoutWriteCapability` / `heapAllocationCapability` / `heapFreeCapability` / `processLifecycleCapability` / `processSignalCapability` / `clockCpuReadCapability` / `clockRealTimeReadCapability` / `memoryBufferReadCapability` / `memoryBufferWriteCapability`) wired to every operation via `useCapability`; gold console.writeLine smoke pattern (ignoreOk + bindError + branchIfError + typed MainError.ConsoleWriteFailed translation handler carrying the raw negative status as the makeError SOURCE_VALUE cause); defer-based heap cleanup (every c.malloc → bindError + branchIfError + `defer releaseXCall c.free <pointerBind>`); dead-store false-positive workaround via self-branchIf inserted between disjoint-branch sets; missing-invariant lines describing actual iteration / numerical bounds; removed unused errorCase variants, unused consts, and parameter-as-channel effect declarations.
+- `700892ef2d23b1f17f75f8a80e2bd80f89ec314c` - `linter: add semlint with relaxed primitive-type equivalence`
+  - First commit of `SemanticScript/linter/semlint.py` (the structured-diagnostics linter — every warning ships subject / gap / invariant / citations / fix candidates / spec anchor / pass provenance / agent hint, tier-classified T1 spec / T2 contract / T3 refinement / T4 naming) plus the companion `test_semlint.py` suite. Primitive-type equivalence groups merge widths the compiler already auto-coerces: signed integers + Bool (I8/I16/I32/I64 + C* aliases + CByteCount + Bool) and 8-byte pointer-shaped types (CNullTerminatedByteString / COpaqueMemoryAddress / CFileHandle / String). Without this widening SS4301 fires on every byte-load + write pattern in the stdlib that the compiler accepts via sext/trunc/zext/bitcast.
 - `d1dab8b8d3c6624927039ce293fada639fce2955` - `compiler: branchIfError distinguishes pointer vs integer failure`
   - The default `branchIfError` convention emitted `icmp slt result, 0` unconditionally, which clang rejects when the call's result is a pointer (e.g. `c.malloc` returning `i8*`). New behavior: integer return → `icmp slt result, 0` (negative = failure); pointer return → `icmp eq result, null` (NULL = failure). Required so stdlib smoke tests can wire bindError + branchIfError on `c.malloc` for proper out-of-memory handling.
 
