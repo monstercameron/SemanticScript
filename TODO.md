@@ -1164,35 +1164,37 @@ order.
 
 ### `build.sem` Project Build Tape
 
-- [ ] Define the project build tape schema.
-  - [ ] Project name.
-  - [ ] Project version.
-  - [ ] License field.
-  - [ ] Source roots.
-  - [ ] Default entry operation.
-  - [ ] Build profiles.
-  - [ ] Runtime target.
-  - [ ] Native HTTP settings.
-  - [ ] Test roots.
-  - [ ] Formatter settings.
-  - [ ] Linter settings.
-  - [ ] Documentation output settings.
-- [ ] Implement build-tape parsing.
-  - [ ] Add strict diagnostics for malformed project build rows.
-  - [ ] Add strict diagnostics for unknown top-level keys.
-  - [ ] Add strict diagnostics for missing required fields.
-  - [ ] Add path normalization on Windows and POSIX.
-  - [ ] Add tests for relative and absolute paths.
-- [ ] Integrate project build tapes with existing tools.
-- [x] `semsc.py` can accept a `build.sem`-driven build through `sem build`.
-  - [ ] `semlint.py` can lint a `build.sem` project.
-  - [ ] VS Code extension can discover project settings from `build.sem`.
-  - [ ] Future language server can use `build.sem` as the workspace root.
-- [ ] Document the project build tape.
+- [x] Define the project build tape schema.
+  - [x] Project name.
+  - [x] Project version.
+  - [x] License field.
+  - [x] Source roots.
+  - [x] Default entry operation.
+  - [x] Build profiles.
+  - [x] Runtime target.
+  - [x] Native HTTP settings.
+  - [x] Test roots.
+  - [x] Formatter settings.
+  - [x] Linter settings.
+  - [x] Documentation output settings.
+  - [x] LLVM build flags.
+  - [x] Compiler-managed build folder settings.
+- [x] Implement build-tape parsing.
+  - [x] Add strict diagnostics for malformed project build rows.
+  - [x] Add strict diagnostics for unknown top-level keys.
+  - [x] Add strict diagnostics for missing required fields.
+  - [x] Add path normalization on Windows and POSIX.
+  - [x] Add tests for relative and absolute paths.
+- [x] Integrate project build tapes with existing tools.
+  - [x] `semsc.py` can accept a `build.sem`-driven build through `sem build`.
+  - [x] `semlint.py` can lint a `build.sem` project.
+  - [x] VS Code extension can discover project settings from `build.sem`.
+  - [x] Future language server can use `build.sem` as the workspace root.
+- [x] Document the project build tape.
   - [x] Add a minimal console app `build.sem` example.
-  - [ ] Add a native webserver `build.sem` example.
-  - [ ] Add a library/package `build.sem` example.
-  - [ ] Add a schema reference table.
+  - [x] Add a native webserver `build.sem` example.
+  - [x] Add a library/package `build.sem` example.
+  - [x] Add a schema reference table.
 
 ### `semls` Language Server
 
