@@ -1,0 +1,30 @@
+# expect.stdout: "hello"\n
+# expect.exit: 0
+# expect.xfail: feature_coverage.py runs through bootstrap_general.as which does not yet implement json.encode.String. Direct ascc.py compilation is correct: snprintf into a 256-byte stack buffer with the format `"%s"` produces a JSON-quoted ASCII string. `python compiler/ascc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints `"hello"`. Limitation: no escape handling for special characters yet — that requires a real codec runtime.
+project JsonEncodeStringPrimitive
+target console
+runtime AgentRuntime 0.1
+entry console main
+error MainError
+errorCase MainError Placeholder CSignedInt32
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+async main no
+purpose main "json.encode.String wraps an ASCII string in JSON double-quotes."
+invariant main "Output is exactly the source string surrounded by quotes."
+label startMain
+const helloPayload CNullTerminatedByteString "hello"
+call encodeStringCall json.encode.String
+arg encodeStringCall value helloPayload
+run encodeStringCall
+bind encodedJsonString CNullTerminatedByteString encodeStringCall
+call writeEncodedCall console.writeLine
+arg writeEncodedCall console console
+arg writeEncodedCall text encodedJsonString
+run writeEncodedCall
+ignoreOk writeEncodedCall Void
+const successfulExitCode ExitCode 0
+returnOk successfulExitCode

@@ -1,0 +1,188 @@
+# expect.stdout: metadataClusterOk\n
+# expect.exit: 0
+project MetadataClusterSmoke
+target console
+runtime AgentRuntime 0.1
+module taskTrackerModule
+mode capturedOutputReplay
+entry console main
+
+# ---- type cluster ----
+type AccountId UuidV7
+type TaskId UuidV7
+typeInvariant AccountId "uuid v7 only"
+typeRepresentation AccountId bytes 16
+typeTrust AccountId trustedInternal
+typeMemory AccountId inline
+typeLayout AccountId packed
+typeLiteralEncoding AccountId base32CrockfordLower
+typeLiteralTerminator AccountId none
+type TaskLookupResult Result
+typeParameter TaskLookupResult 0 TaskId
+typeParameter TaskLookupResult 1 TaskLookupError
+
+# ---- error cluster ----
+error MainError
+errorCase MainError MetadataLookupFailed CSignedInt32
+error TaskLookupError
+errorCase TaskLookupError TaskNotFound CSignedInt32
+errorCase TaskLookupError DatabaseUnavailable CSignedInt32
+
+# ---- enum + record cluster ----
+enum TaskPriorityLevel repr CSignedInt32
+enumCase TaskPriorityLevel LowPriority 0
+enumCase TaskPriorityLevel MediumPriority 1
+enumCase TaskPriorityLevel HighPriority 2
+record TaskRecord
+field TaskRecord identifier I64
+field TaskRecord priority I64
+recordLayout TaskRecord packed
+recordAlign TaskRecord 8
+
+# ---- trust boundary cluster ----
+trustBoundary AccountId
+trustBoundaryKind AccountId raw-to-trusted
+trustBoundaryInput AccountId CNullTerminatedByteString
+trustBoundaryOutput AccountId AccountId
+trustBoundaryValidator AccountId accountIdValidator
+trustBoundarySource AccountId trustedSessionContext
+
+# ---- validators / mappers / adapters / boundaries / policies ----
+validator accountIdValidator
+mapper taskRecordMapper
+adapter externalDatabaseAdapter
+boundary externalSystemBoundary
+policy lookupAttemptPolicy
+errorPolicy lookupErrorPolicy
+timeoutBudget lookupTimeBudget 5000
+
+# ---- retry policy cluster ----
+retryPolicy taskLookupRetryPolicy
+retryMaxAttempts taskLookupRetryPolicy 3
+retryInitialDelay taskLookupRetryPolicy 100
+retryMaximumDelay taskLookupRetryPolicy 1000
+retryJitter taskLookupRetryPolicy yes
+
+# ---- dependency cluster ----
+dependency taskDatabaseDependency database/0.1
+dependencyEffect taskDatabaseDependency network.outbound
+dependencyExports taskDatabaseDependency queryTasks
+dependencyFunction taskDatabaseDependency.queryTasks
+dependencyFunctionInput queryTasks accountId AccountId
+dependencyFunctionOutput queryTasks TaskRecord
+dependencyFunctionEffect queryTasks read database.tasks
+
+# ---- capability cluster ----
+capability lookupCapability database.read trustedInternal
+authority main database.read trustedInternal
+
+# ---- resource cluster ----
+resource taskQueryHandle kind opaque
+resourceKey taskQueryHandle CSignedInt64
+resourceValue taskQueryHandle TaskRecord
+resourceKind taskQueryHandle internalHandle
+
+# ---- codec cluster ----
+codec taskRecordCodec
+schema taskRecordCodec TaskRecord
+unknownFields taskRecordCodec reject
+jsonCodec taskRecordJsonCodec
+jsonCodecStrict taskRecordJsonCodec yes
+jsonCodecUnknownFields taskRecordJsonCodec reject
+jsonCodecInput taskRecordJsonCodec CNullTerminatedByteString
+jsonCodecOutput taskRecordJsonCodec TaskRecord
+jsonCodecDecodeTarget taskRecordJsonCodec decodeTaskRecord
+jsonCodecEncodeTarget taskRecordJsonCodec encodeTaskRecord
+jsonCodecRequiredField taskRecordJsonCodec identifier
+jsonCodecDecodeFailure taskRecordJsonCodec TaskLookupError.TaskNotFound
+jsonCodecEncodeFailure taskRecordJsonCodec MainError.MetadataLookupFailed
+jsonCodecLimit taskRecordJsonCodec maxDepth 8
+
+# ---- list / array / slice / smallList / map cluster ----
+listType TaskList TaskRecord
+listAllocator TaskList heap
+arrayType FixedTaskBuffer TaskRecord
+arrayLength FixedTaskBuffer 64
+sliceType TaskListView TaskRecord
+smallListType SmallTaskList TaskRecord
+smallListInlineCapacity SmallTaskList 8
+smallListSpillAllocator SmallTaskList heap
+mapType TaskMap
+mapKey TaskMap TaskId
+mapValue TaskMap TaskRecord
+mapAllocator TaskMap heap
+
+# ---- collection operation cluster ----
+collectionOperation TaskList.append
+collectionOperationArg TaskList.append item TaskRecord
+collectionOperationOutput TaskList.append Void
+collectionOperationFailure TaskList.append TaskLookupError.DatabaseUnavailable
+collectionOperationEffect TaskList.append mutate self
+collectionOperationAllocation TaskList.append heap
+collectionOperationMutation TaskList.append inPlace
+collectionOperationIndexPolicy TaskList.append boundsChecked
+collectionOperationLengthSource TaskList.append self
+collectionOperationCapacitySource TaskList.append self
+collectionOperationBorrowSource TaskList.append item
+collectionOperationSpillAllocator TaskList.append heap
+collectionOperationSpillFailure TaskList.append TaskLookupError.DatabaseUnavailable
+
+# ---- list literal cluster ----
+listLiteral defaultPriorityList TaskList
+listLiteralLength defaultPriorityList 3
+listLiteralIndexBase defaultPriorityList 0
+listLiteralIndexPolicy defaultPriorityList denseZeroIndexed
+
+# ---- domain literal cluster ----
+domainLiteral defaultAccountIdValue CNullTerminatedByteString "00000000-0000-0000-0000-000000000000"
+domainLiteralSource defaultAccountIdValue rfc4122.NilUuid
+domainLiteralTrust defaultAccountIdValue trustedStaticLiteral
+domainLiteralValidation defaultAccountIdValue trustedUtf8Literal
+
+# ---- external literal cluster ----
+literal externalTaskMessage CNullTerminatedByteString
+literalBytes externalTaskMessage 32
+literalDigest externalTaskMessage sha256 deadbeefcafe1234
+literalPreview externalTaskMessage "task message preview"
+literalSource externalTaskMessage "_modules/external_greeting_alpha.txt"
+literalTrust externalTaskMessage trustedStaticAsset
+
+# ---- storage cluster ----
+storage module immutable maxAttemptCountConst I64 3
+storage module mutable currentAttemptIndexState I64 0
+sharedState process mutable globalTaskCounter I64 0
+sharedStateOwner globalTaskCounter taskTrackerModule
+sharedStateGuard globalTaskCounter taskCounterGuardToken
+
+# ---- group cluster ----
+group taskMetadataGroup
+groupPurpose taskMetadataGroup "Track which inputs influence task metadata."
+groupInput taskMetadataGroup defaultAccountIdValue
+groupOutput taskMetadataGroup currentAttemptIndexState
+groupTiming taskMetadataGroup taskLookupRetryPolicy
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+memoryHeap main no
+memoryStackLimit main 8192
+async main no
+purpose main "Smoke test for declarative-metadata verbs; verifies all parse cleanly and the program compiles + runs."
+invariant main "Exits 0 and prints `metadataClusterOk`."
+warning main "Many declarative rows; lint may flag style issues."
+guarantee main "All metadata verbs parse without error."
+security main "No user input; pure compile-time metadata."
+timing main "Runs synchronously to completion."
+observability main "Prints a single success line."
+
+label startMain
+const successMessage CNullTerminatedByteString "metadataClusterOk"
+call writeSuccessCall console.writeLine
+arg writeSuccessCall console console
+arg writeSuccessCall text successMessage
+run writeSuccessCall
+ignoreOk writeSuccessCall Void
+const successfulExitCode ExitCode 0
+returnOk successfulExitCode

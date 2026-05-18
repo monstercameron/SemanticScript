@@ -1,0 +1,38 @@
+# expect.stdout: 42\n
+# expect.exit: 0
+# expect.xfail: feature_coverage.py runs through bootstrap_general.as which does not yet wrap `run CALL` in a retry loop when `useRetry CALL POLICY` attaches a policy. Direct ascc.py compilation is correct: the call succeeds on the first attempt (returns 42 > 0), so the retry loop exits immediately. `python compiler/ascc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints `42`.
+project UseRetryFirstAttemptSuccess
+target console
+runtime AgentRuntime 0.1
+entry console main
+error MainError
+errorCase MainError Placeholder CSignedInt32
+const fortyTwoValue I64 42
+const zeroValue I64 0
+retryPolicy threeAttemptPolicy
+retryMaxAttempts threeAttemptPolicy 3
+operation returnFortyTwoImmediately
+input returnFortyTwoImmediately trigger I64
+output returnFortyTwoImmediately I64
+returnValue fortyTwoValue
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+async main no
+purpose main "useRetry attached, but the call succeeds on first attempt; the loop must exit immediately without retrying."
+invariant main "Output is 42 (the success value), produced after exactly one attempt — verified because the helper has no side effect that would change between attempts."
+label startMain
+useRetry firstAttemptSuccessCall threeAttemptPolicy
+call firstAttemptSuccessCall returnFortyTwoImmediately
+arg firstAttemptSuccessCall trigger zeroValue
+run firstAttemptSuccessCall
+bind successResult I64 firstAttemptSuccessCall
+call writeSuccessCall console.writeIntegerLine
+arg writeSuccessCall console console
+arg writeSuccessCall value successResult
+run writeSuccessCall
+ignoreOk writeSuccessCall Void
+const successfulExitCode ExitCode 0
+returnOk successfulExitCode

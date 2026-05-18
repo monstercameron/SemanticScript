@@ -1,0 +1,39 @@
+# expect.stdout: 10\n13\n
+# expect.exit: 0
+# expect.xfail: feature_coverage.py runs through bootstrap_general.as which does not yet recognize `storage local mutable` / `set local`. Direct ascc.py compilation works correctly (`python compiler/ascc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints `10\n13\n` and exits 0). Closing means teaching bootstrap_general to parse `storage <scope> <mutability> NAME TYPE VALUE` and emit alloca/store/load for the local-mutable form.
+project StorageLocalMutable
+target console
+runtime AgentRuntime 0.1
+entry console main
+error MainError
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+async main no
+purpose main "storage local mutable behaves like a real mutable slot."
+invariant main "First print shows initial value, second shows post-set value."
+label startMain
+const initialValueLiteral I64 10
+const incrementStepValue I64 3
+storage local mutable mutableLocalCounterValue I64 initialValueLiteral
+call writeInitialCall console.writeIntegerLine
+arg writeInitialCall console console
+arg writeInitialCall value mutableLocalCounterValue
+run writeInitialCall
+ignoreOk writeInitialCall Void
+call addStepCall math.addI64
+arg addStepCall left mutableLocalCounterValue
+arg addStepCall right incrementStepValue
+run addStepCall
+bind addStepResult I64 addStepCall
+set local mutableLocalCounterValue addStepResult
+call writeUpdatedCall console.writeIntegerLine
+arg writeUpdatedCall console console
+arg writeUpdatedCall value mutableLocalCounterValue
+run writeUpdatedCall
+ignoreOk writeUpdatedCall Void
+const successfulExitCode ExitCode 0
+returnOk successfulExitCode

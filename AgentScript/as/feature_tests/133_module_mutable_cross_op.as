@@ -1,0 +1,37 @@
+# expect.stdout: 100\n
+# expect.exit: 0
+# expect.xfail: feature_coverage.py runs through bootstrap_general.as which does not yet recognize `storage module mutable` / `set module`. Direct ascc.py compilation works correctly (`python compiler/ascc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints `100\n` and exits 0). Closing means teaching bootstrap_general to emit a module-scope global with load/store across operations.
+project ModuleMutableCrossOp
+target console
+runtime AgentRuntime 0.1
+entry console main
+error MainError
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+const zeroInitialValue I64 0
+const newValueOneHundred I64 100
+storage module mutable counterAcrossOperations I64 zeroInitialValue
+operation setValueOperation
+input setValueOperation valueToStore I64
+output setValueOperation I64
+set module counterAcrossOperations valueToStore
+returnValue valueToStore
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+async main no
+purpose main "Cross-op: set via helper, then read in main, expect updated value."
+invariant main "Helper writes 100; main reads back 100."
+label startMain
+call setHelperCall setValueOperation
+arg setHelperCall valueToStore newValueOneHundred
+run setHelperCall
+ignoreValue setHelperCall I64
+call writeUpdatedCall console.writeIntegerLine
+arg writeUpdatedCall console console
+arg writeUpdatedCall value counterAcrossOperations
+run writeUpdatedCall
+ignoreOk writeUpdatedCall Void
+const successfulExitCode ExitCode 0
+returnOk successfulExitCode
