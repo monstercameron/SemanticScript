@@ -50,6 +50,10 @@ EXPECTED_STDIO_OUTPUT = (
     "0\n"
     "255\n"
     "ff\n"
+    # writeByteToStandardOutput is exercised at the end: byte 65 ('A')
+    # followed by byte 10 (LF). This was the one stdio op the previous
+    # smoke didn't cover.
+    "A\n"
 )
 
 

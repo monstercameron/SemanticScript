@@ -673,6 +673,20 @@ arg emitHexTwoFiftyFiveCall inputValue twoFiftyFiveSampleValue
 run emitHexTwoFiftyFiveCall
 ignoreValue emitHexTwoFiftyFiveCall CByteCount
 
+# Exercise writeByteToStandardOutput by emitting 'A' (65) then '\n' (10).
+# This was the one stdio op missing from the original smoke; the
+# expected stdout in test_stdlib.py is extended by exactly "A\n".
+const capitalAByteCode CSignedInt32 65
+call emitCapitalAByteCall writeByteToStandardOutput
+arg emitCapitalAByteCall characterCode capitalAByteCode
+run emitCapitalAByteCall
+ignoreValue emitCapitalAByteCall CSignedInt32
+const lineFeedByteCode CSignedInt32 10
+call emitLineFeedByteCall writeByteToStandardOutput
+arg emitLineFeedByteCall characterCode lineFeedByteCode
+run emitLineFeedByteCall
+ignoreValue emitLineFeedByteCall CSignedInt32
+
 const exitOkCode ExitCode 0
 returnOk exitOkCode
 
