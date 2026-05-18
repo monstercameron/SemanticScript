@@ -3289,12 +3289,23 @@ class Codegen:
                     fn = self._runtime_func(symbol, ret_ty, param_tys)
                     arg_vals = []
                     for arg_name, target_ty in zip(d["args"], param_tys):
-                        try:
-                            v = resolve(arg_name)
-                        except ValueError:
-                            v = ir.Constant(target_ty, 0)
-                        if v is SENTINEL:
-                            v = ir.Constant(target_ty, 0)
+                        # Prefer re-loading from the entry-block slot the
+                        # producer dispatcher stashed via call["handle_slot"]
+                        # — the SSA value bound by bindOk lives in the
+                        # producer's local block and would not dominate the
+                        # defer site. Falling back to the SSA `resolve()`
+                        # path is kept for inputs that aren't sqlite handles.
+                        slot = bind_slots.get(arg_name)
+                        if slot is not None:
+                            v = builder.load(
+                                slot, name=f"{d['name']}_{arg_name}_reload")
+                        else:
+                            try:
+                                v = resolve(arg_name)
+                            except ValueError:
+                                v = ir.Constant(target_ty, 0)
+                            if v is SENTINEL:
+                                v = ir.Constant(target_ty, 0)
                         if (isinstance(target_ty, ir.PointerType)
                                 and isinstance(v.type, ir.IntType)):
                             v = builder.inttoptr(v, target_ty)
@@ -3313,12 +3324,17 @@ class Codegen:
                 param_lltys = [p[1] for p in fn_entry["params"]]
                 arg_vals = []
                 for arg_name, target_ty in zip(d["args"], param_lltys):
-                    try:
-                        v = resolve(arg_name)
-                    except ValueError:
-                        v = ir.Constant(target_ty, 0)
-                    if v is SENTINEL:
-                        v = ir.Constant(target_ty, 0)
+                    slot = bind_slots.get(arg_name)
+                    if slot is not None:
+                        v = builder.load(
+                            slot, name=f"{d['name']}_{arg_name}_reload")
+                    else:
+                        try:
+                            v = resolve(arg_name)
+                        except ValueError:
+                            v = ir.Constant(target_ty, 0)
+                        if v is SENTINEL:
+                            v = ir.Constant(target_ty, 0)
                     if v.type != target_ty:
                         if (isinstance(v.type, ir.IntType)
                                 and isinstance(target_ty, ir.IntType)):
@@ -5028,7 +5044,15 @@ class Codegen:
             if isinstance(mode.type, ir.IntType) and mode.type.width != 32:
                 mode = (builder.trunc(mode, I32) if mode.type.width > 32
                         else builder.sext(mode, I32))
-            db_slot = builder.alloca(I8P, name=f"{call_name}_databaseSlot")
+            # Entry-block alloca so a later `defer ... sqlite.closeDatabase`
+            # can re-load the handle from a slot that dominates every
+            # cleanup site (failure labels, returnOk fall-throughs, etc.).
+            # Pre-init the slot to NULL: a defer that fires before the
+            # open succeeded then sees a sentinel rather than garbage.
+            with builder.goto_entry_block():
+                db_slot = builder.alloca(
+                    I8P, name=f"{call_name}_databaseSlot")
+                builder.store(ir.Constant(I8P, None), db_slot)
             open_fn = self._runtime_func(
                 "ss_sqlite_database_open", I32, [I8P, I32, I8P.as_pointer()])
             self.provenance.record_external("ss_sqlite_database_open", call)
@@ -5038,6 +5062,9 @@ class Codegen:
             call["result"] = handle
             call["error_value"] = status
             call["error_cond"] = _sqlite_simple_status_error_cond(status)
+            # Stash the slot so the bind handler can route it to
+            # bind_slots, where emit_defers will find it.
+            call["handle_slot"] = db_slot
             return
 
         if target == "sqlite.closeDatabase":
