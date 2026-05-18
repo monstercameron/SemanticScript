@@ -1343,15 +1343,24 @@ class Codegen:
         # come from `input` lines minus opaque-dependency symbols (the
         # `console`/`process`/etc. inputs documented by §16 but not carried
         # at the LLVM ABI boundary).
+        # An operation named `main` that ISN'T the entry would collide with
+        # the LLVM `@main` we emit for the entry — that happens whenever
+        # importModule pulls in a stdlib_as module whose smoke-test op is
+        # called `main`. Skip those: each imported `main` is the module's
+        # own smoke test and unreachable from outside anyway.
         self._user_ops = {}  # opName -> {"fn": LLVMFn, "params": [(pname, llty, ptype_name)]}
         for name, op in self.prog.operations.items():
             if name == opname:
+                continue
+            if name == "main":
                 continue
             self._declare_user_op(op)
 
         # ---- pass 2: compile each non-main op's body into its prototype.
         for name, op in self.prog.operations.items():
             if name == opname:
+                continue
+            if name == "main":
                 continue
             self._compile_user_op(op)
 
