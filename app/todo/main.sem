@@ -1,15 +1,33 @@
 # Heap-array terminal todo app for the current SemanticScript compiler.
-# Run from app/todo so todos.json lives beside todo.exe.
-project TodoTuiApp
-target console
-# rationale: `runtime native 1` is the SemanticScript-canonical contract for
-# native console executables — same as todo-web / http-api-gauntlet. The
-# earlier `AgentRuntime 0.1` was an exploratory placeholder before the native
-# adapter solidified; switching to `native 1` aligns this sample with the
-# rest of the repo and with the runtime the compiler actually lowers to.
-runtime native 1
+# build.sem owns project identity, runtime target, executable metadata, and
+# the module registry. This file owns the app module contract, imports,
+# exports, and executable source. Run from app/todo/build so todos.json lives
+# beside todo.exe.
 module app.todo
-entry console main
+modulePurpose app.todo "Keyboard-driven console todo app with heap-backed todo storage and JSON persistence."
+moduleOwns app.todo "Terminal TUI lifecycle, keyboard handling, in-memory todo arrays, todos.json load/save, and process-local app state."
+moduleDoesNotOwn app.todo "Reusable standard library abstractions, native console primitive implementation, or cross-project package management."
+moduleWarning app.todo "This module is intentionally monolithic while the project-layout model is being prototyped; future refactors can split TUI, persistence, and domain operations into folder modules."
+moduleInvariant app.todo "main.sem is the default executable entry selected by build.sem, and todo.exe must be run from app/todo/build so todos.json resolves beside the executable."
+
+# Explicit public surface carried from the module contract. Exports are not
+# inferred; every symbol below is declared in this module source.
+exportType app.todo CAllocationError
+exportType app.todo TuiKeyCode
+exportType app.todo SaveTodosStatus
+exportType app.todo ScreenMode
+exportError app.todo MainError
+
+exportOperation app.todo main
+exportOperation app.todo readTuiKey
+exportOperation app.todo renderScreen
+exportOperation app.todo loadTodosFromJson
+exportOperation app.todo saveTodosToJson
+
+exportConstant app.todo tuiKeyArrowUp
+exportConstant app.todo tuiKeyArrowDown
+exportConstant app.todo tuiKeyArrowLeft
+exportConstant app.todo tuiKeyArrowRight
 
 type CAllocationError CSignedInt32
 type TuiKeyCode CSignedInt32
@@ -1327,7 +1345,8 @@ authority appendTodoFromEditBuffer memory.buffer write
 memoryHeap appendTodoFromEditBuffer no
 async appendTodoFromEditBuffer no
 purpose appendTodoFromEditBuffer "Append the edit buffer as a new unfinished todo."
-invariant appendTodoFromEditBuffer "Caller guarantees todoCount is below capacity; this operation writes exactly one title and one done byte, then returns todoCount plus one."
+precondition appendTodoFromEditBuffer "todoCount < todoCapacity (caller must have verified the active todo array has room before calling)."
+invariant appendTodoFromEditBuffer "This operation writes exactly one title slot and one done byte, then returns todoCount plus one."
 label startAppendTodoFromEditBuffer
 storage local immutable zeroValue CSignedInt64 0
 storage local immutable oneValue CSignedInt64 1
@@ -1368,7 +1387,8 @@ authority commitEditToSelectedTodo memory.buffer write
 memoryHeap commitEditToSelectedTodo no
 async commitEditToSelectedTodo no
 purpose commitEditToSelectedTodo "Replace the selected todo title with the edit buffer."
-invariant commitEditToSelectedTodo "Caller guarantees selectedIndex names an existing todo; only that todo title buffer is rewritten."
+precondition commitEditToSelectedTodo "selectedIndex < todoCount (caller must have verified the index addresses an existing todo, not the (new note) row)."
+invariant commitEditToSelectedTodo "Only the selectedIndex title buffer is rewritten; doneArray and todoCount are unchanged."
 label startCommitEditToSelectedTodo
 call existingTitlePointerCall getTitlePointerAt
 arg existingTitlePointerCall titlesBuffer titlesBuffer
@@ -1395,7 +1415,8 @@ authority toggleTodoAtSelectedIndex memory.buffer write
 memoryHeap toggleTodoAtSelectedIndex no
 async toggleTodoAtSelectedIndex no
 purpose toggleTodoAtSelectedIndex "Toggle the done flag for an existing selected todo and return the new done value."
-invariant toggleTodoAtSelectedIndex "Caller guarantees selectedIndex names an existing todo; the selected done byte is changed to zero or one and that new byte is returned."
+precondition toggleTodoAtSelectedIndex "selectedIndex < todoCount (caller must have verified the index addresses an existing todo)."
+invariant toggleTodoAtSelectedIndex "The selected done byte is changed to zero or one and that new byte is returned; titlesArray and todoCount are unchanged."
 label startToggleTodoAtSelectedIndex
 storage local immutable zeroValue CSignedInt32 0
 storage local immutable oneValue CSignedInt32 1
@@ -1438,7 +1459,8 @@ authority deleteTodoAtSelectedIndex memory.buffer write
 memoryHeap deleteTodoAtSelectedIndex no
 async deleteTodoAtSelectedIndex no
 purpose deleteTodoAtSelectedIndex "Delete the selected todo and shift later todo storage left."
-invariant deleteTodoAtSelectedIndex "Caller guarantees deletedIndex names an existing todo; all later todos shift left and todoCount is decremented exactly once."
+precondition deleteTodoAtSelectedIndex "deletedIndex < todoCount (caller must have verified the index addresses an existing todo)."
+invariant deleteTodoAtSelectedIndex "All later todos shift left by one slot in both doneArray and titlesArray; todoCount is decremented exactly once; the returned value is the new todoCount."
 label startDeleteTodoAtSelectedIndex
 storage local immutable zeroValue CSignedInt64 0
 storage local immutable oneValue CSignedInt64 1
@@ -1543,11 +1565,11 @@ memoryAllocationSource main allocateEditBufferCall
 memoryAllocationSource main allocateLineBufferCall
 async main no
 purpose main "Run a heap-array backed keyboard todo TUI with JSON persistence."
-invariant main "todo data shape: the active todos for indices [0, todoCount) are stored as two parallel heap arrays — doneArray (stride 1 byte; each cell holds a Bool stored as CSignedInt32 with values 0=open or 1=done) and titlesArray (stride titleCapacity bytes; each cell holds a CNullTerminatedByteString of at most titleCapacity-1 bytes plus NUL). Both arrays are allocated to length todoCapacity; the i-th todo's done flag is at pointer.offset(doneArray, i) and its title is at getTitlePointerAt(titlesArray, i, titleCapacity). Every reader/writer of `a todo` (renderTodoRow, saveTodosToJson, loadTodosFromJson, appendTodoFromEditBuffer, commitEditToSelectedTodo, toggleTodoAtSelectedIndex, deleteTodoAtSelectedIndex) obeys this same-index rule. Migrating to `record TodoEntry { field done Bool, field title CNullTerminatedByteString }` with `recordLayout TodoEntry column` would make the layout declarative."
+invariant main "todo data shape: the active todos for indices [0, todoCount) are stored as two parallel heap arrays — doneArray (stride 1 byte; each cell holds byte value 0=open or 1=done, passed through CSignedInt32 only because that is the value type pointer.storeByte / pointer.loadByte accepts; the on-disk and in-memory storage is a single byte per todo) and titlesArray (stride titleCapacity bytes; each cell holds a CNullTerminatedByteString of at most titleCapacity-1 bytes plus NUL). Both arrays are allocated to length todoCapacity; the i-th todo's done flag is at pointer.offset(doneArray, i) and its title is at getTitlePointerAt(titlesArray, i, titleCapacity). Every reader/writer of `a todo` (renderTodoRow, saveTodosToJson, loadTodosFromJson, appendTodoFromEditBuffer, commitEditToSelectedTodo, toggleTodoAtSelectedIndex, deleteTodoAtSelectedIndex) obeys this same-index rule. Migrating to `record TodoEntry { field done Bool, field title CNullTerminatedByteString }` with `recordLayout TodoEntry column` would make the layout declarative."
 invariant main "The selected index stays within the active todo range plus the add row while capacity remains."
 invariant main "restoreCursorOnExit owns cursor visibility cleanup on every exit path; showCursor is idempotent and safe before hideCursor."
 invariant main "After startup, every interactive mutation path (toggle, append, commit, delete) exits through persistTodosThenLoop; if saveTodosToJson succeeds, todos.json reflects the new todo state before the next render. Startup load mutates the arrays through loadTodosFromJson and does not route through persistTodosThenLoop because it is restoring already-persisted state."
-invariant main "lineBufferBytes must exceed two times the maximum stored title length plus the fixed JSON framing bytes; the current value 256 covers typical titles but a worst-case all-quote/all-backslash title at titleCapacity-1 length would exceed 256 and be truncated by c.fgets on reload. If titleCapacity grows or adversarial title content is expected, raise lineBufferBytes accordingly."
+invariant main "lineBufferBytes = 384 is the worst-case-safe bound for a JSON line emitted by saveTodosToJson at titleCapacity = 128: 2 * (titleCapacity - 1) escaped bytes (254) + 30-byte itemPrefixFormatText prefix + 4-byte item suffix + 1-byte c.fgets NUL = 289 bytes, rounded up to 384 for headroom. If titleCapacity grows, lineBufferBytes must grow with it or c.fgets will truncate an all-quote/all-backslash adversarial title on reload."
 invariant main "lineBufferBytes (CByteCount) and lineBufferCapacity (CSignedInt32) are deliberately parallel scalars holding the same numeric value — lineBufferBytes is the malloc size and lineBufferCapacity is the c.fgets `count` argument. They MUST stay equal: a future edit that bumps one without the other will desync allocation and read length, silently truncating or over-reading. If SemanticScript later supports an explicit narrowing call from CByteCount to CSignedInt32, derive lineBufferCapacity from lineBufferBytes rather than carrying two constants."
 invariant main "lineBuffer lifetime: allocated by allocateLineBufferCall before loadTodosFromJson and freed by freeLineBufferCall immediately after load completion. Unlike doneArray, titlesArray, and editBuffer (which live until quitProgram), lineBuffer is intentionally a short-lived scratch buffer for one-shot JSON parsing. The asymmetry is deliberate: quitProgram MUST NOT free lineBuffer again because it has already been freed; a use of lineBuffer after the loadTodosCall return is a use-after-free."
 defer restoreCursorOnExit showCursor
@@ -1563,14 +1585,18 @@ storage local immutable titleByteWidth CSignedInt64 1
 # fits an 80x24 terminal with header room. todoCapacity 128 caps heap use
 # under (128 * (1 + titleCapacity)) bytes ≈ 16 KiB.
 storage local immutable visibleRows CSignedInt64 8
-# rationale: lineBufferBytes = 2 * titleCapacity is a typical-case bound, not
-# a strict worst-case bound. JSON escape worst case is 2 * (titleCapacity - 1)
-# bytes plus the fixed `{"active":1,"done":N,"title":"..."}` framing (~35 bytes)
-# plus the trailing `\"}\n` or `\"},\n`. At titleCapacity=128 the strict worst
-# case is ~289 bytes; 256 is a deliberate looser bound because user-typed
-# titles rarely require every byte to be escaped.
-storage local immutable lineBufferBytes CByteCount 256
-storage local immutable lineBufferCapacity CSignedInt32 256
+# rationale: lineBufferBytes is sized for the worst-case JSON-escaped line so
+# reload never truncates a title the saver wrote. The bound is:
+#   2 * (titleCapacity - 1)             max escaped title bytes
+#   + len("{\"active\":1,\"done\":N,\"title\":\"") = 30 bytes prefix
+#   + len("\"},\n") = 4 bytes suffix (the all-but-last item form is the longest)
+#   + 1 byte NUL terminator written by c.fgets
+# At titleCapacity = 128 the strict worst case is 2*127 + 30 + 4 + 1 = 289
+# bytes; we round up to 384 to leave headroom for any future framing tweak
+# in saveTodosToJson's itemPrefixFormatText. If titleCapacity grows, this
+# value MUST grow with it — see the matching invariant on main.
+storage local immutable lineBufferBytes CByteCount 384
+storage local immutable lineBufferCapacity CSignedInt32 384
 # rationale: list-mode key bindings — these are the raw bytes c.consoleGetch
 # returns for non-extended keys, matching ASCII values:
 #   13 = CR/Enter, 8 = Backspace, 32 = Space, 27 = ESC, 68 = 'D', 100 = 'd'.
@@ -1595,7 +1621,7 @@ storage local immutable listFullText CNullTerminatedByteString "Todo array is fu
 storage local immutable noTodoText CNullTerminatedByteString "No todo selected."
 storage local immutable canceledText CNullTerminatedByteString "Edit canceled."
 storage local immutable ignoredKeyText CNullTerminatedByteString "No action for that key."
-storage local immutable goodbyeText CNullTerminatedByteString "\n  Todo TUI session saved.\n\n  todos.json is up to date.\n  Run todo.exe from app/todo to reopen.\n"
+storage local immutable goodbyeText CNullTerminatedByteString "\n  Todo TUI session saved.\n\n  todos.json is up to date.\n  Run todo.exe from app/todo/build to reopen.\n"
 storage local immutable quitSaveFailedText CNullTerminatedByteString "\n  Todo TUI session ended.\n\n  Save failed; todos.json may be stale.\n  Check file permissions and disk state before relying on it.\n"
 storage local immutable allocationFailedText CNullTerminatedByteString "Could not allocate todo arrays."
 storage local mutable todoCount CSignedInt64 zeroValue

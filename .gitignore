@@ -32,7 +32,10 @@ node_modules/
 out/
 dist/
 coverage/
+
+# SemanticScript compiler-managed artifact directories (.exe, .ll, resources).
 build/
+**/build/
 cmake-build-*/
 CMakeFiles/
 CMakeCache.txt

@@ -2,7 +2,7 @@
 
 Small SemanticScript console todo app with a keyboard-driven terminal UI and JSON persistence.
 
-Run commands from this folder so `todos.json` is read and written next to the executable.
+Run the generated executable from `build/` so `todos.json` is read and written next to it.
 
 ## Quick Preview
 
@@ -10,9 +10,34 @@ Run commands from this folder so `todos.json` is read and written next to the ex
 
 ## Contents
 
-- `todo.sscript` is the app source.
-- `todo.exe` is the generated native executable.
-- `todos.json` is runtime data written beside the executable.
+- `build.sem` is the experimental project build tape for the future
+  SemanticScript project model. It declares project metadata, output policy,
+  and the module registry.
+- `main.sem` is the canonical app module source, default executable entry,
+  and owner of the module import/export contract.
+- `build/todo.exe` is the generated native executable.
+- `build/todo.ll` is the optional persisted LLVM IR sidecar.
+- `build/resources/` contains generated linker resources such as VERSIONINFO.
+- `build/todos.json` is runtime data written beside the executable.
+
+## Project Layout Lab
+
+```text
+app/todo/
+  build.sem      # future project/build/comptime tape + module registry
+  main.sem       # app.todo source + local imports/exports
+  build/         # ignored compiler/app artifact directory
+    todo.exe
+    todo.ll
+    resources/
+    todos.json
+```
+
+This app is intentionally still a single root module. `build.sem` is the single
+build point and registers `app.todo`; `main.sem` declares `module app.todo` and
+keeps the export surface beside the source it describes. Later work can move
+TUI, persistence, and todo domain operations into folder modules by registering
+new module folders in `build.sem` and importing them from the module files.
 
 ## Current Status
 
@@ -23,15 +48,21 @@ the top-level console/file/memory API is still being designed.
 
 ```powershell
 cd C:\Users\Cam\Desktop\AgentScript
-python SemanticScript\compiler\semsc.py app\todo\todo.sscript --parse-only --lint
-python SemanticScript\linter\semlint.py app\todo\todo.sscript --summary
-python SemanticScript\compiler\semsc.py app\todo\todo.sscript --emit-exe app\todo\todo.exe
+python SemanticScript\compiler\semsc.py app\todo\build.sem --parse-only --lint
+python SemanticScript\linter\semlint.py app\todo\build.sem --summary
+python SemanticScript\compiler\semsc.py app\todo\build.sem --emit-exe
 ```
+
+`build.sem` is the single build point for the project-layout lab. It owns the
+project identity, target/runtime rows, embedded executable metadata, generated
+artifact directory, and module registry. Module files own their own
+`importModule` and explicit `export*` rows; exports must name symbols declared
+by that same module source, never inferred reachable symbols.
 
 ## Run
 
 ```powershell
-cd C:\Users\Cam\Desktop\AgentScript\app\todo
+cd C:\Users\Cam\Desktop\AgentScript\app\todo\build
 .\todo.exe
 ```
 
