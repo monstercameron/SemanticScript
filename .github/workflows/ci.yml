@@ -56,8 +56,8 @@ jobs:
 
       - name: Lint smoke fixtures
         run: |
-          python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sscript --fail-on none --summary
-          python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sem --fail-on none --summary
+          python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sscript --summary
+          python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sem --summary
 
   vscode-validation:
     name: VS Code extension validation
