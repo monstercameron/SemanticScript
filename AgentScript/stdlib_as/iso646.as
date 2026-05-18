@@ -245,6 +245,79 @@ branchIf notResult notHolds
 branch smokeAssertionFailed
 label notHolds
 
+# ============================================================
+# Extended unit tests: missing op (or) + boundary cases for each.
+# ============================================================
+
+# or(1, 0) == true (was untested)
+call orOneZeroCall evaluateIso646OrKeyword
+arg orOneZeroCall leftValue integerOneValue
+arg orOneZeroCall rightValue integerZeroBoundaryValue
+run orOneZeroCall
+bind orOneZeroResult Bool orOneZeroCall
+branchIf orOneZeroResult orOneZeroHolds
+branch smokeAssertionFailed
+label orOneZeroHolds
+
+# or(0, 0) == false (both falsy)
+call orZeroZeroCall evaluateIso646OrKeyword
+arg orZeroZeroCall leftValue integerZeroBoundaryValue
+arg orZeroZeroCall rightValue integerZeroBoundaryValue
+run orZeroZeroCall
+bind orZeroZeroResult Bool orZeroZeroCall
+branchIf orZeroZeroResult smokeAssertionFailed
+branch orZeroZeroHolds
+label orZeroZeroHolds
+
+# and(0, 1) == false (one falsy)
+call andZeroOneCall evaluateIso646AndKeyword
+arg andZeroOneCall leftValue integerZeroBoundaryValue
+arg andZeroOneCall rightValue integerOneValue
+run andZeroOneCall
+bind andZeroOneResult Bool andZeroOneCall
+branchIf andZeroOneResult smokeAssertionFailed
+branch andZeroOneHolds
+label andZeroOneHolds
+
+# not(1) == false (truthy negated)
+call notOneCall evaluateIso646NotKeyword
+arg notOneCall inputValue integerOneValue
+run notOneCall
+bind notOneResult Bool notOneCall
+branchIf notOneResult smokeAssertionFailed
+branch notOneHolds
+label notOneHolds
+
+# xor(1, 1) == false (same-truthy)
+call xorSameCall evaluateIso646XorKeyword
+arg xorSameCall leftValue integerOneValue
+arg xorSameCall rightValue integerOneValue
+run xorSameCall
+bind xorSameResult Bool xorSameCall
+branchIf xorSameResult smokeAssertionFailed
+branch xorSameHolds
+label xorSameHolds
+
+# equal(1, 1) == true (reflexive)
+call equalSameCall evaluateIso646EqualKeyword
+arg equalSameCall leftValue integerOneValue
+arg equalSameCall rightValue integerOneValue
+run equalSameCall
+bind equalSameResult Bool equalSameCall
+branchIf equalSameResult equalSameHolds
+branch smokeAssertionFailed
+label equalSameHolds
+
+# notEqual(2, 2) == false (irreflexive)
+call notEqualSameCall evaluateIso646NotEqualKeyword
+arg notEqualSameCall leftValue integerTwoValue
+arg notEqualSameCall rightValue integerTwoValue
+run notEqualSameCall
+bind notEqualSameResult Bool notEqualSameCall
+branchIf notEqualSameResult smokeAssertionFailed
+branch notEqualSameHolds
+label notEqualSameHolds
+
 const successMessageText CNullTerminatedByteString "OK"
 call writeSuccessLineCall console.writeLine
 arg writeSuccessLineCall console console
