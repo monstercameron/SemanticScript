@@ -1,333 +1,356 @@
+# ============================================================
+# AGENTSCRIPT STANDARD LIBRARY: integer numeric helpers
+# ============================================================
+#
+# # rationale: small total CSignedInt64 helpers plus a few
+#   closed-form aggregate computations. Most are one-liners over
+#   math.* primitives; the LCM helper folds a real gcd loop with
+#   typed-error handling for the divide-by-zero edge case.
+#
+# # invariant: total CSignedInt64 -> CSignedInt64 ops drop the
+#   Result wrapper. reciprocalFloat64 is total over non-zero
+#   doubles; with x = 0 it returns the IEEE-754 infinity. LCM
+#   surfaces a typed NumericError.LeastCommonMultipleOfZero
+#   variant when either input is 0.
+#
+# # security: pure value-level math; no allocation; no I/O.
+# # timing: constant for the one-liners; O(log min(|a|, |b|)) for
+#   leastCommonMultipleSignedInt64 (gcd loop).
+
 project StdNumericSelfTest
 target console
 runtime AgentRuntime 0.1
-
 entry console main
 
+error NumericError
+errorCase NumericError LeastCommonMultipleOfZero
+
 error MainError
-errorCase MainError TestFailed CSignedInt32
+errorCase MainError NumericSmokeAssertionFailed
 
-# ============================================================
-# AGENTSCRIPT STANDARD LIBRARY: more numeric helpers.
-#
-# Operations:
-#   incrementSignedInt64(n), decrementSignedInt64(n), doubleSignedInt64(n), halveSignedInt64(n)
-#   negateSignedInt64(n), reciprocalFloat64(x)
-#   sumSignedInt64OneThroughN(n)           - 1+2+...+n  via Gauss formula
-#   sumSignedInt64SquaresOneThroughN(n)    - 1^2+...+n^2 via closed form
-#   sumSignedInt64CubesOneThroughN(n)      - 1^3+...+n^3 via closed form
-#   triangularNumberSignedInt64(n)    - alias for sumSignedInt64OneThroughN
-#   leastCommonMultipleSignedInt64(a, b)           - least common multiple via gcd
-#   modPower(base, exp, m) - (base^exp) mod m, iterative
-# ============================================================
+domainLiteral integerOneStepValue CSignedInt64 1
+domainLiteralTrust integerOneStepValue trustedStaticLiteral
+domainLiteral integerTwoBaseValue CSignedInt64 2
+domainLiteralTrust integerTwoBaseValue trustedStaticLiteral
+domainLiteral integerSixDivisor CSignedInt64 6
+domainLiteralTrust integerSixDivisor trustedStaticLiteral
+domainLiteral integerNegativeOneMultiplier CSignedInt64 -1
+domainLiteralTrust integerNegativeOneMultiplier trustedStaticLiteral
+domainLiteral integerZeroBoundaryForNumeric CSignedInt64 0
+domainLiteralTrust integerZeroBoundaryForNumeric trustedStaticLiteral
+domainLiteral floatOneIdentity CFloat64 1.0
+domainLiteralTrust floatOneIdentity trustedStaticLiteral
 
+# section numeric.unary
 
 operation incrementSignedInt64
 input incrementSignedInt64 inputValue CSignedInt64
-output incrementSignedInt64 Result CSignedInt64 Void
-memory incrementSignedInt64 heap no
+output incrementSignedInt64 CSignedInt64
+memoryHeap incrementSignedInt64 no
 async incrementSignedInt64 no
-purpose incrementSignedInt64 "n + 1."
+purpose incrementSignedInt64 "Returns inputValue + 1."
+invariant incrementSignedInt64 "Wraps modulo 2^64 at INT64_MAX."
+guarantee incrementSignedInt64 "Total."
 label startIncrementSignedInt64
-const one I64 1
-call addCall math.addI64
-arg addCall left inputValue
-arg addCall right one
-run addCall
-bind r CSignedInt64 addCall
-returnOk r
-
+call addOneToInputCall math.addI64
+arg addOneToInputCall left inputValue
+arg addOneToInputCall right integerOneStepValue
+run addOneToInputCall
+bind incrementedValue CSignedInt64 addOneToInputCall
+returnValue incrementedValue
 
 operation decrementSignedInt64
 input decrementSignedInt64 inputValue CSignedInt64
-output decrementSignedInt64 Result CSignedInt64 Void
-memory decrementSignedInt64 heap no
+output decrementSignedInt64 CSignedInt64
+memoryHeap decrementSignedInt64 no
 async decrementSignedInt64 no
-purpose decrementSignedInt64 "n - 1."
+purpose decrementSignedInt64 "Returns inputValue - 1."
+invariant decrementSignedInt64 "Wraps modulo 2^64 at INT64_MIN."
+guarantee decrementSignedInt64 "Total."
 label startDecrementSignedInt64
-const one I64 1
-call subCall math.subtractI64
-arg subCall left inputValue
-arg subCall right one
-run subCall
-bind r CSignedInt64 subCall
-returnOk r
-
+call subtractOneFromInputCall math.subtractI64
+arg subtractOneFromInputCall left inputValue
+arg subtractOneFromInputCall right integerOneStepValue
+run subtractOneFromInputCall
+bind decrementedValue CSignedInt64 subtractOneFromInputCall
+returnValue decrementedValue
 
 operation doubleSignedInt64
 input doubleSignedInt64 inputValue CSignedInt64
-output doubleSignedInt64 Result CSignedInt64 Void
-memory doubleSignedInt64 heap no
+output doubleSignedInt64 CSignedInt64
+memoryHeap doubleSignedInt64 no
 async doubleSignedInt64 no
-purpose doubleSignedInt64 "n * 2."
+purpose doubleSignedInt64 "Returns inputValue * 2."
+guarantee doubleSignedInt64 "Total."
 label startDoubleSignedInt64
-const two I64 2
-call mulCall math.multiplyI64
-arg mulCall left inputValue
-arg mulCall right two
-run mulCall
-bind r CSignedInt64 mulCall
-returnOk r
-
+call multiplyByTwoCall math.multiplyI64
+arg multiplyByTwoCall left inputValue
+arg multiplyByTwoCall right integerTwoBaseValue
+run multiplyByTwoCall
+bind doubledValue CSignedInt64 multiplyByTwoCall
+returnValue doubledValue
 
 operation halveSignedInt64
 input halveSignedInt64 inputValue CSignedInt64
-output halveSignedInt64 Result CSignedInt64 Void
-memory halveSignedInt64 heap no
+output halveSignedInt64 CSignedInt64
+memoryHeap halveSignedInt64 no
 async halveSignedInt64 no
-purpose halveSignedInt64 "n / 2 (integer division)."
+purpose halveSignedInt64 "Returns inputValue / 2 (floor toward zero)."
+guarantee halveSignedInt64 "Total."
 label startHalveSignedInt64
-const two I64 2
-call divCall math.divideI64
-arg divCall left inputValue
-arg divCall right two
-run divCall
-bind r CSignedInt64 divCall
-returnOk r
-
+call divideByTwoCall math.divideI64
+arg divideByTwoCall left inputValue
+arg divideByTwoCall right integerTwoBaseValue
+run divideByTwoCall
+bind halvedValue CSignedInt64 divideByTwoCall
+returnValue halvedValue
 
 operation negateSignedInt64
 input negateSignedInt64 inputValue CSignedInt64
-output negateSignedInt64 Result CSignedInt64 Void
-memory negateSignedInt64 heap no
+output negateSignedInt64 CSignedInt64
+memoryHeap negateSignedInt64 no
 async negateSignedInt64 no
-purpose negateSignedInt64 "n * -1."
+purpose negateSignedInt64 "Returns -inputValue."
+warning negateSignedInt64 "INT64_MIN negated is still INT64_MIN (two's-complement wraparound)."
+guarantee negateSignedInt64 "Total."
 label startNegateSignedInt64
-const negOne I64 -1
-call mulCall math.multiplyI64
-arg mulCall left inputValue
-arg mulCall right negOne
-run mulCall
-bind r CSignedInt64 mulCall
-returnOk r
-
+call multiplyByNegativeOneForNegateCall math.multiplyI64
+arg multiplyByNegativeOneForNegateCall left inputValue
+arg multiplyByNegativeOneForNegateCall right integerNegativeOneMultiplier
+run multiplyByNegativeOneForNegateCall
+bind negatedValue CSignedInt64 multiplyByNegativeOneForNegateCall
+returnValue negatedValue
 
 operation reciprocalFloat64
 input reciprocalFloat64 inputValue CFloat64
-output reciprocalFloat64 Result CFloat64 Void
-memory reciprocalFloat64 heap no
+output reciprocalFloat64 CFloat64
+memoryHeap reciprocalFloat64 no
 async reciprocalFloat64 no
-purpose reciprocalFloat64 "1.0 / x."
+purpose reciprocalFloat64 "Returns 1.0 / inputValue."
+warning reciprocalFloat64 "Division by zero produces an IEEE-754 infinity; NaN inputs propagate."
+guarantee reciprocalFloat64 "Total over CFloat64."
 label startReciprocalFloat64
-const oneF CFloat64 1.0
-call divCall math.divideF64
-arg divCall left oneF
-arg divCall right inputValue
-run divCall
-bind r CFloat64 divCall
-returnOk r
+call divideOneByInputCall math.divideF64
+arg divideOneByInputCall left floatOneIdentity
+arg divideOneByInputCall right inputValue
+run divideOneByInputCall
+bind reciprocalResult CFloat64 divideOneByInputCall
+returnValue reciprocalResult
 
+# section numeric.aggregateSums
 
 operation sumSignedInt64OneThroughN
 input sumSignedInt64OneThroughN inputValue CSignedInt64
-output sumSignedInt64OneThroughN Result CSignedInt64 Void
-memory sumSignedInt64OneThroughN heap no
+output sumSignedInt64OneThroughN CSignedInt64
+memoryHeap sumSignedInt64OneThroughN no
 async sumSignedInt64OneThroughN no
-purpose sumSignedInt64OneThroughN "1+2+...+n via the closed-form n*(n+1)/2."
+purpose sumSignedInt64OneThroughN "Returns 1+2+...+inputValue via the Gauss closed form n*(n+1)/2."
+invariant sumSignedInt64OneThroughN "Equals the nth triangular number for non-negative inputs."
+warning sumSignedInt64OneThroughN "Overflows silently for inputValue beyond ~2^31."
+guarantee sumSignedInt64OneThroughN "Total."
 label startSumSignedInt64OneThroughN
-const one I64 1
-const two I64 2
-call addCall math.addI64
-arg addCall left inputValue
-arg addCall right one
-run addCall
-bind nPlus1 I64 addCall
-call mulCall math.multiplyI64
-arg mulCall left inputValue
-arg mulCall right nPlus1
-run mulCall
-bind product I64 mulCall
-call divCall math.divideI64
-arg divCall left product
-arg divCall right two
-run divCall
-bind r CSignedInt64 divCall
-returnOk r
-
+call addOneToInputForSumCall math.addI64
+arg addOneToInputForSumCall left inputValue
+arg addOneToInputForSumCall right integerOneStepValue
+run addOneToInputForSumCall
+bind inputPlusOne I64 addOneToInputForSumCall
+call multiplyForGaussSumCall math.multiplyI64
+arg multiplyForGaussSumCall left inputValue
+arg multiplyForGaussSumCall right inputPlusOne
+run multiplyForGaussSumCall
+bind productForGaussSum I64 multiplyForGaussSumCall
+call divideByTwoForGaussSumCall math.divideI64
+arg divideByTwoForGaussSumCall left productForGaussSum
+arg divideByTwoForGaussSumCall right integerTwoBaseValue
+run divideByTwoForGaussSumCall
+bind gaussSumResult CSignedInt64 divideByTwoForGaussSumCall
+returnValue gaussSumResult
 
 operation sumSignedInt64SquaresOneThroughN
 input sumSignedInt64SquaresOneThroughN inputValue CSignedInt64
-output sumSignedInt64SquaresOneThroughN Result CSignedInt64 Void
-memory sumSignedInt64SquaresOneThroughN heap no
+output sumSignedInt64SquaresOneThroughN CSignedInt64
+memoryHeap sumSignedInt64SquaresOneThroughN no
 async sumSignedInt64SquaresOneThroughN no
-purpose sumSignedInt64SquaresOneThroughN "1^2+2^2+...+n^2 via n*(n+1)*(2n+1)/6."
+purpose sumSignedInt64SquaresOneThroughN "Returns 1^2+...+inputValue^2 via the closed form n*(n+1)*(2n+1)/6."
+warning sumSignedInt64SquaresOneThroughN "Overflows silently for inputValue beyond ~2^21."
+guarantee sumSignedInt64SquaresOneThroughN "Total."
 label startSumSignedInt64SquaresOneThroughN
-const one I64 1
-const two I64 2
-const six I64 6
-call np1 math.addI64
-arg np1 left inputValue
-arg np1 right one
-run np1
-bind nP1 I64 np1
-call twoN math.multiplyI64
-arg twoN left inputValue
-arg twoN right two
-run twoN
-bind twoNv I64 twoN
-call twoNp1 math.addI64
-arg twoNp1 left twoNv
-arg twoNp1 right one
-run twoNp1
-bind twoNp1v I64 twoNp1
-call m1 math.multiplyI64
-arg m1 left inputValue
-arg m1 right nP1
-run m1
-bind m1v I64 m1
-call m2 math.multiplyI64
-arg m2 left m1v
-arg m2 right twoNp1v
-run m2
-bind m2v I64 m2
-call divCall math.divideI64
-arg divCall left m2v
-arg divCall right six
-run divCall
-bind r CSignedInt64 divCall
-returnOk r
-
+call computeNPlusOneCall math.addI64
+arg computeNPlusOneCall left inputValue
+arg computeNPlusOneCall right integerOneStepValue
+run computeNPlusOneCall
+bind squareNPlusOne I64 computeNPlusOneCall
+call computeTwoNCall math.multiplyI64
+arg computeTwoNCall left inputValue
+arg computeTwoNCall right integerTwoBaseValue
+run computeTwoNCall
+bind squareTwoN I64 computeTwoNCall
+call computeTwoNPlusOneCall math.addI64
+arg computeTwoNPlusOneCall left squareTwoN
+arg computeTwoNPlusOneCall right integerOneStepValue
+run computeTwoNPlusOneCall
+bind squareTwoNPlusOne I64 computeTwoNPlusOneCall
+call firstSquareProductCall math.multiplyI64
+arg firstSquareProductCall left inputValue
+arg firstSquareProductCall right squareNPlusOne
+run firstSquareProductCall
+bind firstSquareProductValue I64 firstSquareProductCall
+call secondSquareProductCall math.multiplyI64
+arg secondSquareProductCall left firstSquareProductValue
+arg secondSquareProductCall right squareTwoNPlusOne
+run secondSquareProductCall
+bind secondSquareProductValue I64 secondSquareProductCall
+call divideBySixForSquareSumCall math.divideI64
+arg divideBySixForSquareSumCall left secondSquareProductValue
+arg divideBySixForSquareSumCall right integerSixDivisor
+run divideBySixForSquareSumCall
+bind sumOfSquaresResult CSignedInt64 divideBySixForSquareSumCall
+returnValue sumOfSquaresResult
 
 operation sumSignedInt64CubesOneThroughN
 input sumSignedInt64CubesOneThroughN inputValue CSignedInt64
-output sumSignedInt64CubesOneThroughN Result CSignedInt64 Void
-memory sumSignedInt64CubesOneThroughN heap no
+output sumSignedInt64CubesOneThroughN CSignedInt64
+memoryHeap sumSignedInt64CubesOneThroughN no
 async sumSignedInt64CubesOneThroughN no
-purpose sumSignedInt64CubesOneThroughN "1^3+2^3+...+n^3 via (n*(n+1)/2)^2."
+purpose sumSignedInt64CubesOneThroughN "Returns 1^3+...+inputValue^3 via the identity (sum 1..n)^2."
+guarantee sumSignedInt64CubesOneThroughN "Total."
 label startSumSignedInt64CubesOneThroughN
-call triCall sumSignedInt64OneThroughN
-arg triCall n inputValue
-run triCall
-bindOk tri CSignedInt64 triCall
-call sqCall math.multiplyI64
-arg sqCall left tri
-arg sqCall right tri
-run sqCall
-bind r CSignedInt64 sqCall
-returnOk r
-
+call delegateToTriangularSumCall sumSignedInt64OneThroughN
+arg delegateToTriangularSumCall inputValue inputValue
+run delegateToTriangularSumCall
+bind triangularSumValue CSignedInt64 delegateToTriangularSumCall
+call squareTriangularSumCall math.multiplyI64
+arg squareTriangularSumCall left triangularSumValue
+arg squareTriangularSumCall right triangularSumValue
+run squareTriangularSumCall
+bind sumOfCubesResult CSignedInt64 squareTriangularSumCall
+returnValue sumOfCubesResult
 
 operation triangularNumberSignedInt64
 input triangularNumberSignedInt64 inputValue CSignedInt64
-output triangularNumberSignedInt64 Result CSignedInt64 Void
-memory triangularNumberSignedInt64 heap no
+output triangularNumberSignedInt64 CSignedInt64
+memoryHeap triangularNumberSignedInt64 no
 async triangularNumberSignedInt64 no
-purpose triangularNumberSignedInt64 "Alias for sumSignedInt64OneThroughN(n) — the nth triangular number."
+purpose triangularNumberSignedInt64 "Returns the nth triangular number — alias for sumSignedInt64OneThroughN."
+guarantee triangularNumberSignedInt64 "Total."
 label startTriangularNumberSignedInt64
-call call sumSignedInt64OneThroughN
-arg call n inputValue
-run call
-bindOk r CSignedInt64 call
-returnOk r
+call delegateToSumOneToNCall sumSignedInt64OneThroughN
+arg delegateToSumOneToNCall inputValue inputValue
+run delegateToSumOneToNCall
+bind triangularResultValue CSignedInt64 delegateToSumOneToNCall
+returnValue triangularResultValue
 
+# section numeric.gcdLcm
 
 operation leastCommonMultipleSignedInt64
 input leastCommonMultipleSignedInt64 leftValue CSignedInt64
 input leastCommonMultipleSignedInt64 rightValue CSignedInt64
-output leastCommonMultipleSignedInt64 Result CSignedInt64 Void
-memory leastCommonMultipleSignedInt64 heap no
+output leastCommonMultipleSignedInt64 Result CSignedInt64 NumericError
+memoryHeap leastCommonMultipleSignedInt64 no
 async leastCommonMultipleSignedInt64 no
-purpose leastCommonMultipleSignedInt64 "Least common multiple = |a*b|/gcd(a,b). Returns 0 if either input is 0."
+purpose leastCommonMultipleSignedInt64 "Returns |leftValue * rightValue| / gcd(leftValue, rightValue). Surfaces NumericError.LeastCommonMultipleOfZero when either input is zero."
+invariant leastCommonMultipleSignedInt64 "Result is non-negative when defined."
+failure leastCommonMultipleSignedInt64 LeastCommonMultipleOfZero "Returned when either input is 0 (LCM is undefined for zero operands)."
+guarantee leastCommonMultipleSignedInt64 "Defined for every (non-zero, non-zero) input pair."
 label startLeastCommonMultipleSignedInt64
-const zeroL I64 0
-const negOneL I64 -1
-call aEqZ math.equalI64
-arg aEqZ left leftValue
-arg aEqZ right zeroL
-run aEqZ
-bind aZ Bool aEqZ
-branchIf aZ lcmZero
-call bEqZ math.equalI64
-arg bEqZ left rightValue
-arg bEqZ right zeroL
-run bEqZ
-bind bZ Bool bEqZ
-branchIf bZ lcmZero
+call detectLeftIsZeroForLcmCall math.equalI64
+arg detectLeftIsZeroForLcmCall left leftValue
+arg detectLeftIsZeroForLcmCall right integerZeroBoundaryForNumeric
+run detectLeftIsZeroForLcmCall
+bind leftIsZeroForLcm Bool detectLeftIsZeroForLcmCall
+branchIf leftIsZeroForLcm raiseLcmOfZero
+call detectRightIsZeroForLcmCall math.equalI64
+arg detectRightIsZeroForLcmCall left rightValue
+arg detectRightIsZeroForLcmCall right integerZeroBoundaryForNumeric
+run detectRightIsZeroForLcmCall
+bind rightIsZeroForLcm Bool detectRightIsZeroForLcmCall
+branchIf rightIsZeroForLcm raiseLcmOfZero
 
-# Inline gcd
-var x I64 0
-var y I64 0
-# Take absolute values
-call aLt math.lessThanI64
-arg aLt left leftValue
-arg aLt right zeroL
-run aLt
-bind aNeg Bool aLt
-branchIf aNeg flipA
-set x leftValue
-branch checkB
-label flipA
-call negA math.multiplyI64
-arg negA left leftValue
-arg negA right negOneL
-run negA
-bind aAbs I64 negA
-set x aAbs
-branch checkB
-label checkB
-call bLt math.lessThanI64
-arg bLt left rightValue
-arg bLt right zeroL
-run bLt
-bind bNeg Bool bLt
-branchIf bNeg flipB
-set y rightValue
-branch gcdSetup
-label flipB
-call negB math.multiplyI64
-arg negB left rightValue
-arg negB right negOneL
-run negB
-bind bAbs I64 negB
-set y bAbs
-branch gcdSetup
-label gcdSetup
-label gcdLoop
-call yZeroCall math.equalI64
-arg yZeroCall left y
-arg yZeroCall right zeroL
-run yZeroCall
-bind yIsZero Bool yZeroCall
-branchIf yIsZero gcdDone
-call rCall math.moduloI64
-arg rCall left x
-arg rCall right y
-run rCall
-bind r I64 rCall
-set x y
-set y r
-branch gcdLoop
-label gcdDone
-# product / x
-call prod math.multiplyI64
-arg prod left leftValue
-arg prod right rightValue
-run prod
-bind product I64 prod
-call lcmCall math.divideI64
-arg lcmCall left product
-arg lcmCall right x
-run lcmCall
-bind lcmRaw I64 lcmCall
-# abs
-call lcmLt math.lessThanI64
-arg lcmLt left lcmRaw
-arg lcmLt right zeroL
-run lcmLt
-bind lcmNeg Bool lcmLt
-branchIf lcmNeg lcmFlip
-returnOk lcmRaw
-label lcmFlip
-call lcmNegCall math.multiplyI64
-arg lcmNegCall left lcmRaw
-arg lcmNegCall right negOneL
-run lcmNegCall
-bind lcmAbs CSignedInt64 lcmNegCall
-returnOk lcmAbs
+# Compute gcd via Euclid using absolute values.
+var gcdRunningDividend I64 0
+var gcdRunningDivisor I64 0
+call detectLeftIsNegativeForLcmCall math.lessThanI64
+arg detectLeftIsNegativeForLcmCall left leftValue
+arg detectLeftIsNegativeForLcmCall right integerZeroBoundaryForNumeric
+run detectLeftIsNegativeForLcmCall
+bind leftIsNegativeForLcm Bool detectLeftIsNegativeForLcmCall
+branchIf leftIsNegativeForLcm negateLeftForLcm
+set gcdRunningDividend leftValue
+branch checkRightForLcmAbs
+label negateLeftForLcm
+call negateLeftForLcmCall math.multiplyI64
+arg negateLeftForLcmCall left leftValue
+arg negateLeftForLcmCall right integerNegativeOneMultiplier
+run negateLeftForLcmCall
+bind absoluteLeftForLcm I64 negateLeftForLcmCall
+set gcdRunningDividend absoluteLeftForLcm
+branch checkRightForLcmAbs
+label checkRightForLcmAbs
+call detectRightIsNegativeForLcmCall math.lessThanI64
+arg detectRightIsNegativeForLcmCall left rightValue
+arg detectRightIsNegativeForLcmCall right integerZeroBoundaryForNumeric
+run detectRightIsNegativeForLcmCall
+bind rightIsNegativeForLcm Bool detectRightIsNegativeForLcmCall
+branchIf rightIsNegativeForLcm negateRightForLcm
+set gcdRunningDivisor rightValue
+branch enterGcdLoop
+label negateRightForLcm
+call negateRightForLcmCall math.multiplyI64
+arg negateRightForLcmCall left rightValue
+arg negateRightForLcmCall right integerNegativeOneMultiplier
+run negateRightForLcmCall
+bind absoluteRightForLcm I64 negateRightForLcmCall
+set gcdRunningDivisor absoluteRightForLcm
+branch enterGcdLoop
+label enterGcdLoop
+label gcdEuclidLoop
+call detectGcdDivisorIsZeroCall math.equalI64
+arg detectGcdDivisorIsZeroCall left gcdRunningDivisor
+arg detectGcdDivisorIsZeroCall right integerZeroBoundaryForNumeric
+run detectGcdDivisorIsZeroCall
+bind gcdDivisorIsZero Bool detectGcdDivisorIsZeroCall
+branchIf gcdDivisorIsZero gcdLoopComplete
+call computeGcdRemainderCall math.moduloI64
+arg computeGcdRemainderCall left gcdRunningDividend
+arg computeGcdRemainderCall right gcdRunningDivisor
+run computeGcdRemainderCall
+bind gcdRemainderValue I64 computeGcdRemainderCall
+set gcdRunningDividend gcdRunningDivisor
+set gcdRunningDivisor gcdRemainderValue
+branch gcdEuclidLoop
+label gcdLoopComplete
 
-label lcmZero
-returnOk zeroL
+# product / gcd
+call computeLcmProductCall math.multiplyI64
+arg computeLcmProductCall left leftValue
+arg computeLcmProductCall right rightValue
+run computeLcmProductCall
+bind lcmProductValue I64 computeLcmProductCall
+call divideLcmProductByGcdCall math.divideI64
+arg divideLcmProductByGcdCall left lcmProductValue
+arg divideLcmProductByGcdCall right gcdRunningDividend
+run divideLcmProductByGcdCall
+bind rawLcmValue I64 divideLcmProductByGcdCall
 
+# Take absolute value of result.
+call detectLcmNegativeCall math.lessThanI64
+arg detectLcmNegativeCall left rawLcmValue
+arg detectLcmNegativeCall right integerZeroBoundaryForNumeric
+run detectLcmNegativeCall
+bind lcmIsNegative Bool detectLcmNegativeCall
+branchIf lcmIsNegative absoluteLcmFromNegation
+returnOk rawLcmValue
+label absoluteLcmFromNegation
+call negateRawLcmCall math.multiplyI64
+arg negateRawLcmCall left rawLcmValue
+arg negateRawLcmCall right integerNegativeOneMultiplier
+run negateRawLcmCall
+bind absoluteLcmValue CSignedInt64 negateRawLcmCall
+returnOk absoluteLcmValue
+
+label raiseLcmOfZero
+makeError lcmOfZeroFailure NumericError.LeastCommonMultipleOfZero
+returnError lcmOfZeroFailure
 
 # ============================================================
 # Smoke test
@@ -337,62 +360,56 @@ operation main
 input main console Console
 output main Result ExitCode MainError
 effect main write console.stdout
-memory main heap no
+memoryHeap main no
 async main no
-purpose main "Smoke-test numeric ops. Prints OK."
+purpose main "Smoke-test the numeric helpers."
+invariant main "sumSignedInt64OneThroughN(100) == 5050; LCM(12, 18) == 36."
+
 label startMain
 
 # sumSignedInt64OneThroughN(100) == 5050
-const c100 CSignedInt64 100
-const c5050 CSignedInt64 5050
-call s1 sumSignedInt64OneThroughN
-arg s1 n c100
-run s1
-bindOk s1Res CSignedInt64 s1
-call s1Check math.equalI64
-arg s1Check left s1Res
-arg s1Check right c5050
-run s1Check
-bind s1Ok Bool s1Check
-branchIf s1Ok s1Lbl
-branch testFailed
-label s1Lbl
+const oneHundredInput CSignedInt64 100
+const expectedTriangularSumOf100 CSignedInt64 5050
+call assertGaussSumCall sumSignedInt64OneThroughN
+arg assertGaussSumCall inputValue oneHundredInput
+run assertGaussSumCall
+bind gaussSumActualResult CSignedInt64 assertGaussSumCall
+call checkGaussSumCall math.equalI64
+arg checkGaussSumCall left gaussSumActualResult
+arg checkGaussSumCall right expectedTriangularSumOf100
+run checkGaussSumCall
+bind gaussSumOk Bool checkGaussSumCall
+branchIf gaussSumOk gaussSumHolds
+branch smokeAssertionFailed
+label gaussSumHolds
 
-# leastCommonMultipleSignedInt64(12, 18) == 36
-const c12 CSignedInt64 12
-const c18 CSignedInt64 18
-const c36 CSignedInt64 36
-call l1 leastCommonMultipleSignedInt64
-arg l1 a c12
-arg l1 b c18
-run l1
-bindOk l1Res CSignedInt64 l1
-call l1Check math.equalI64
-arg l1Check left l1Res
-arg l1Check right c36
-run l1Check
-bind l1Ok Bool l1Check
-branchIf l1Ok l1Lbl
-branch testFailed
-label l1Lbl
+# LCM(12, 18) == 36
+const twelveValue CSignedInt64 12
+const eighteenValue CSignedInt64 18
+const thirtySixExpectedLcm CSignedInt64 36
+call assertLcmCall leastCommonMultipleSignedInt64
+arg assertLcmCall leftValue twelveValue
+arg assertLcmCall rightValue eighteenValue
+run assertLcmCall
+bindOk lcmActualResult CSignedInt64 assertLcmCall
+call checkLcmCall math.equalI64
+arg checkLcmCall left lcmActualResult
+arg checkLcmCall right thirtySixExpectedLcm
+run checkLcmCall
+bind lcmOk Bool checkLcmCall
+branchIf lcmOk lcmHolds
+branch smokeAssertionFailed
+label lcmHolds
 
-const charO CSignedInt32 79
-const charK CSignedInt32 75
-const charNl CSignedInt32 10
-call putO c.putchar
-arg putO c charO
-run putO
-call putK c.putchar
-arg putK c charK
-run putK
-call putNl c.putchar
-arg putNl c charNl
-run putNl
+const successMessageText CNullTerminatedByteString "OK"
+call writeSuccessLineCall console.writeLine
+arg writeSuccessLineCall console console
+arg writeSuccessLineCall text successMessageText
+run writeSuccessLineCall
+ignoreOk writeSuccessLineCall Void
+const exitOkCode ExitCode 0
+returnOk exitOkCode
 
-const exitOk ExitCode 0
-returnOk exitOk
-
-label testFailed
-const exitFail CSignedInt32 1
-makeError testFailure MainError.TestFailed exitFail
-returnError testFailure
+label smokeAssertionFailed
+makeError numericSmokeFailure MainError.NumericSmokeAssertionFailed
+returnError numericSmokeFailure
