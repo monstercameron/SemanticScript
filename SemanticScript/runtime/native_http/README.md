@@ -40,5 +40,5 @@ repeatable end-to-end HTTP test:
 ```powershell
 python app/todo-web/test_todo_web.py
 python app/todo-web-advanced/test_advanced_todo_web.py
-python app/http-api-gauntlet/test_http_api_gauntlet.py
+python app/http-api-gauntlet/scripts/test_http_api_gauntlet.py
 ```

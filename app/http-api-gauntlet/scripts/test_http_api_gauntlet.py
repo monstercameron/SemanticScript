@@ -7,15 +7,18 @@ import time
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
+# This test now lives in app/http-api-gauntlet/scripts/, so the parents climb
+# is one deeper than when the test sat at the gauntlet root: scripts -> app/
+# http-api-gauntlet -> app -> repo-root => parents[3].
+ROOT = Path(__file__).resolve().parents[3]
 # The gauntlet is compiled via its project-mode build tape (build.sem) per the
 # new SYNTAX.md build-tape rows (buildProject / registerModule / mainFile /
-# importModule …). build.sem inlines http_api_gauntlet.sscript as the module
-# source; passing build.sem to semsc applies the project metadata (VERSIONINFO
-# embedded into the PE), the build settings (profile / runtime-checks / native
-# output), and the module registry in one compilation unit.
+# importModule …). build.sem inlines main.sem as the module source; passing
+# build.sem to semsc applies the project metadata (VERSIONINFO embedded into
+# the PE), the build settings (profile / runtime-checks / native output), and
+# the module registry in one compilation unit.
 SOURCE = ROOT / "app" / "http-api-gauntlet" / "build.sem"
-MODULE_SOURCE = ROOT / "app" / "http-api-gauntlet" / "http_api_gauntlet.sscript"
+MODULE_SOURCE = ROOT / "app" / "http-api-gauntlet" / "main.sem"
 HOST = "127.0.0.1"
 PORT = 18082
 
@@ -214,6 +217,8 @@ def main():
     with tempfile.TemporaryDirectory(prefix="ss_http_gauntlet_") as temp_dir:
         exe_path = Path(temp_dir) / "http_api_gauntlet.exe"
 
+        # Parse + lint via the build tape so project metadata and module
+        # registration are validated together with the inlined source.
         run_command([
             sys.executable,
             "SemanticScript/compiler/semsc.py",
@@ -225,6 +230,17 @@ def main():
             sys.executable,
             "SemanticScript/linter/semlint.py",
             str(SOURCE),
+            "--summary",
+        ])
+        # Lint the module file standalone too so module-level rules
+        # (SS2506 exportedSymbolNotDeclared, the SS36xx webserver-discipline
+        # family, etc.) see the full module context, not just the build-tape
+        # rows. build.sem linting alone reads the project-level surface;
+        # this second pass exercises the in-module contract.
+        run_command([
+            sys.executable,
+            "SemanticScript/linter/semlint.py",
+            str(MODULE_SOURCE),
             "--summary",
         ])
         run_command([

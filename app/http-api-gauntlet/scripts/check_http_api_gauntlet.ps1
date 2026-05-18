@@ -5,8 +5,12 @@ param(
 $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$RepoRoot = Resolve-Path (Join-Path $ScriptDir "..\..")
-$SourcePath = Join-Path $ScriptDir "http_api_gauntlet.sscript"
+# This script now lives in app/http-api-gauntlet/scripts/, so the repo root
+# climb is three levels (..\..\..). The compile target is the project-mode
+# build tape (build.sem) in the parent directory; semsc inlines main.sem.
+$RepoRoot = Resolve-Path (Join-Path $ScriptDir "..\..\..")
+$AppDir = Resolve-Path (Join-Path $ScriptDir "..")
+$SourcePath = Join-Path $AppDir "build.sem"
 $ExePath = Join-Path $ScriptDir "http_api_gauntlet.exe"
 $BaseUrl = "http://127.0.0.1:18082"
 $TempFiles = New-Object System.Collections.Generic.List[string]
@@ -113,7 +117,7 @@ try {
     Invoke-GauntletCurl -Method "GET" -Path "/reflect/method" -ExpectedStatus 200 -ExpectedBody "GET" | Out-Null
     Invoke-GauntletCurl -Method "GET" -Path "/reflect/path?x=1" -ExpectedStatus 200 -ExpectedBody "/reflect/path" | Out-Null
     Invoke-GauntletCurl -Method "GET" -Path "/reflect/header" -ExpectedStatus 200 -ExpectedBody "abc" -Headers @{"X-Gauntlet-Token" = "abc"} | Out-Null
-    Invoke-GauntletCurl -Method "GET" -Path "/reflect/header" -ExpectedStatus 500 -ExpectedBody "handler failed`n" | Out-Null
+    Invoke-GauntletCurl -Method "GET" -Path "/reflect/header" -ExpectedStatus 400 -ExpectedBody "missing header: X-Gauntlet-Token`n" | Out-Null
     Invoke-GauntletCurl -Method "GET" -Path "/reflect/required-header-or-fail" -ExpectedStatus 200 -ExpectedBody "yes" -Headers @{"X-Gauntlet-Required" = "yes"} | Out-Null
     Invoke-GauntletCurl -Method "GET" -Path "/reflect/required-header-or-fail" -ExpectedStatus 500 -ExpectedBody "handler failed`n" | Out-Null
     Invoke-GauntletCurl -Method "GET" -Path "/reflect/query?name=earl" -ExpectedStatus 200 -ExpectedBody "earl" | Out-Null
@@ -134,6 +138,7 @@ try {
 
     Invoke-GauntletCurl -Method "DELETE" -Path "/empty" -ExpectedStatus 204 -ExpectedBody "" | Out-Null
     Invoke-GauntletCurl -Method "PATCH" -Path "/patch" -ExpectedStatus 200 -ExpectedBody "patched`n" | Out-Null
+    Invoke-GauntletCurl -Method "GET" -Path "/middleware-short-circuit" -ExpectedStatus 418 -ExpectedBody "middleware short-circuited; handler skipped by dispatcher`n" | Out-Null
 
     $sse = Invoke-GauntletCurl -Method "GET" -Path "/events/one" -ExpectedStatus 200 -ExpectedBody "event: gauntlet`ndata: connected`n`n"
     Assert-GauntletHeader -Response $sse -Name "Content-Type" -ExpectedValue "text/event-stream; charset=utf-8"

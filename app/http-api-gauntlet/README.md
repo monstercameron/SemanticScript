@@ -16,9 +16,9 @@ surface harder than the todo web sample:
 - repeated sequential requests against one native server process.
 
 `/reflect/required-header-or-fail` is intentionally a negative-test route: it
-returns `500 handler failed` when `X-Gauntlet-Required` is absent. Likewise,
-`/reflect/header` returns the current null-body failure path when
-`X-Gauntlet-Token` is absent.
+returns `500 handler failed` when `X-Gauntlet-Required` is absent.
+`/reflect/header` now guards the missing-token path and returns a static 400
+response so the gauntlet covers both guarded and pinned null-body behavior.
 
 Known intentional gaps are still visible: no path parameters, no route timeout
 enforcement, no structured JSON/form body decoder, no static file helper, no
@@ -29,6 +29,6 @@ backend.
 
 ```powershell
 cd C:\Users\Cam\Desktop\AgentScript
-python app\http-api-gauntlet\test_http_api_gauntlet.py
-.\app\http-api-gauntlet\check_http_api_gauntlet.ps1
+python app\http-api-gauntlet\scripts\test_http_api_gauntlet.py
+.\app\http-api-gauntlet\scripts\check_http_api_gauntlet.ps1
 ```

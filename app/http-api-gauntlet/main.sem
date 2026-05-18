@@ -351,7 +351,7 @@ useCapability headerReflectHandler httpRequestReader
 useCapability headerReflectHandler httpResponseWriter
 purpose headerReflectHandler "Return the case-insensitive X-Gauntlet-Token request header when present, or a 400 with a static reason body when absent"
 invariant headerReflectHandler "X-Gauntlet-Token absent ⇒ http.requestHeader returns null ⇒ pointer.isNull guard branches to headerMissingPath ⇒ 400. Present ⇒ raw header value returned with status 200. This route does NOT pin the null-body 500 contract; that role belongs to requiredHeaderHandler."
-warning headerReflectHandler "The 400-on-missing-token contract is part of the route's tested surface; tests/check_http_api_gauntlet.ps1 asserts the 400 response body matches `missing header: X-Gauntlet-Token\\n`. Do not silently switch this back to the null-body 500 path — requiredHeaderHandler exists specifically to keep that coverage."
+warning headerReflectHandler "The 400-on-missing-token contract is part of the route's tested surface; scripts/check_http_api_gauntlet.ps1 asserts the 400 response body matches `missing header: X-Gauntlet-Token\\n`. Do not silently switch this back to the null-body 500 path — requiredHeaderHandler exists specifically to keep that coverage."
 
 label startHeaderReflectHandler
 
