@@ -2,6 +2,8 @@
 
 ## 2026-05-18
 
+- `844fd05cf52d4c619c524e5ad4b7bb85e1ec87c0` - `docs: document web metadata syntax`
+  - Adds syntax-catalog rows for route timeout/middleware opt-outs, null-body failure-path declarations, response-body forwarders, and call-level rationale metadata.
 - `c31104f377583ca2a03a5b8730eb809aeb3162bc` - `app: attach gauntlet null-check rationale`
   - Replaces a proximity rationale comment in the HTTP API gauntlet with call-attached `rationale` metadata for the nullable header guard.
 - `bd131ca85f6423385b19bfdffd3be4b6b9882205` - `linter: cover rationale metadata checks`
