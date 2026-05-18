@@ -1,11 +1,35 @@
+# ============================================================
+# AGENTSCRIPT STANDARD LIBRARY: pure-AS float math
+# ============================================================
+#
+# # rationale: every operation lowers to math.{add,subtract,multiply,
+#   divide,less,greater,equal}F64 plus branching. NO libm call appears
+#   in the emitted IR — no c.sqrt, c.exp, c.log, c.fabs, c.pow, c.sin,
+#   c.cos, c.tan, etc. The point is a self-contained float surface
+#   that an AgentScript program can ship without linking libm.
+#
+# # invariant: every operation is total in the language-theory sense
+#   over its declared domain — Result wrappers are dropped because
+#   the existing implementations did not expose typed error variants.
+#   Out-of-domain inputs (negative sqrt argument, log of zero, etc.)
+#   return either 0.0 or an IEEE-754 sentinel; callers that need
+#   strict validation should screen inputs upstream.
+#
+# # security: pure value-level computation. No allocation. No I/O.
+#
+# # timing: each transcendental is implemented via a fixed-iteration
+#   Taylor series or Newton iteration. Worst case ~50 iterations
+#   (squareRoot Newton). Acceptable for tooling, not for hot loops.
+#
+# # observability: no logs, no metrics.
+
 project StdMathFloatSelfTest
 target console
 runtime AgentRuntime 0.1
-
 entry console main
 
 error MainError
-errorCase MainError TestFailed CSignedInt32
+errorCase MainError MathFloatSmokeAssertionFailed
 
 # ============================================================
 # AGENTSCRIPT STANDARD LIBRARY: <math.h>-style float ops, pure AS.
@@ -35,8 +59,8 @@ errorCase MainError TestFailed CSignedInt32
 
 operation absoluteFloat64
 input absoluteFloat64 inputValue CFloat64
-output absoluteFloat64 Result CFloat64 Void
-memory absoluteFloat64 heap no
+output absoluteFloat64 CFloat64
+memoryHeap absoluteFloat64 no
 async absoluteFloat64 no
 purpose absoluteFloat64 "|x| for double-precision x. Pure AS via comparison + multiply by -1."
 
@@ -49,20 +73,20 @@ arg isNegCall right zeroF
 run isNegCall
 bind isNeg Bool isNegCall
 branchIf isNeg fabsFlip
-returnOk inputValue
+returnValue inputValue
 label fabsFlip
 call flipCall math.multiplyF64
 arg flipCall left inputValue
 arg flipCall right negOneF
 run flipCall
 bind flipped CFloat64 flipCall
-returnOk flipped
+returnValue flipped
 
 
 operation squareRootFloat64
 input squareRootFloat64 inputValue CFloat64
-output squareRootFloat64 Result CFloat64 Void
-memory squareRootFloat64 heap no
+output squareRootFloat64 CFloat64
+memoryHeap squareRootFloat64 no
 async squareRootFloat64 no
 purpose squareRootFloat64 "sqrt(x) for x >= 0 via Newton's method. Returns 0.0 for x <= 0 (no NaN here yet — that needs IEEE special-value support)."
 
@@ -121,16 +145,16 @@ branchIf iterDone sqrtDone
 branch sqrtIter
 
 label sqrtDone
-returnOk guess
+returnValue guess
 
 label sqrtZero
-returnOk zeroFS
+returnValue zeroFS
 
 
 operation exponentialBaseEFloat64
 input exponentialBaseEFloat64 inputValue CFloat64
-output exponentialBaseEFloat64 Result CFloat64 Void
-memory exponentialBaseEFloat64 heap no
+output exponentialBaseEFloat64 CFloat64
+memoryHeap exponentialBaseEFloat64 no
 async exponentialBaseEFloat64 no
 purpose exponentialBaseEFloat64 "e^x via Taylor series: sum_{k=0..29} x^k / k!. Accurate to ~12 decimals for |x| <= 2; degrades beyond that. No argument reduction yet."
 
@@ -189,13 +213,13 @@ set kFloat nextKFloat
 branch expLoop
 
 label expReturn
-returnOk sumE
+returnValue sumE
 
 
 operation truncateFloat64TowardZero
 input truncateFloat64TowardZero inputValue CFloat64
-output truncateFloat64TowardZero Result CFloat64 Void
-memory truncateFloat64TowardZero heap no
+output truncateFloat64TowardZero CFloat64
+memoryHeap truncateFloat64TowardZero no
 async truncateFloat64TowardZero no
 purpose truncateFloat64TowardZero "Truncate toward zero. Uses math.floatToInt (fptosi) which already truncates, then converts back."
 label startTruncateFloat64TowardZero
@@ -207,13 +231,13 @@ call backToFloatCall math.intToFloat
 arg backToFloatCall value asInt
 run backToFloatCall
 bind backFloat CFloat64 backToFloatCall
-returnOk backFloat
+returnValue backFloat
 
 
 operation floorFloat64
 input floorFloat64 inputValue CFloat64
-output floorFloat64 Result CFloat64 Void
-memory floorFloat64 heap no
+output floorFloat64 CFloat64
+memoryHeap floorFloat64 no
 async floorFloat64 no
 purpose floorFloat64 "Largest integer <= x. trunc(x) is identical to floor for x >= 0, but for negative non-integer x we have to step down by 1."
 label startFloorFloat64
@@ -231,7 +255,7 @@ arg ngFCall right zeroFlr
 run ngFCall
 bind isNg Bool ngFCall
 branchIf isNg floorMaybeStepDown
-returnOk truncated
+returnValue truncated
 
 label floorMaybeStepDown
 # For negative x: if truncated == x exactly, x is integral -> floor is x.
@@ -247,15 +271,15 @@ arg subOneCall left truncated
 arg subOneCall right oneFlr
 run subOneCall
 bind floored CFloat64 subOneCall
-returnOk floored
+returnValue floored
 label floorIntegral
-returnOk truncated
+returnValue truncated
 
 
 operation ceilingFloat64
 input ceilingFloat64 inputValue CFloat64
-output ceilingFloat64 Result CFloat64 Void
-memory ceilingFloat64 heap no
+output ceilingFloat64 CFloat64
+memoryHeap ceilingFloat64 no
 async ceilingFloat64 no
 purpose ceilingFloat64 "Smallest integer >= x. Mirror image of floor: for x <= 0 trunc is the ceiling; for positive non-integer, ceil = trunc + 1."
 label startCeilingFloat64
@@ -272,7 +296,7 @@ arg gtZeroCall right zeroCl
 run gtZeroCall
 bind isPos Bool gtZeroCall
 branchIf isPos ceilMaybeStepUp
-returnOk cTruncated
+returnValue cTruncated
 
 label ceilMaybeStepUp
 call eqExactCCall math.equalF64
@@ -286,16 +310,16 @@ arg addOneCall left cTruncated
 arg addOneCall right oneCl
 run addOneCall
 bind ceiled CFloat64 addOneCall
-returnOk ceiled
+returnValue ceiled
 label ceilIntegral
-returnOk cTruncated
+returnValue cTruncated
 
 
 operation floatingRemainderFloat64
 input floatingRemainderFloat64 dividendValue CFloat64
 input floatingRemainderFloat64 divisorValue CFloat64
-output floatingRemainderFloat64 Result CFloat64 Void
-memory floatingRemainderFloat64 heap no
+output floatingRemainderFloat64 CFloat64
+memoryHeap floatingRemainderFloat64 no
 async floatingRemainderFloat64 no
 purpose floatingRemainderFloat64 "Floating-point remainder of x/y, truncating toward zero. fmod(x, y) = x - trunc(x/y) * y. Caller must ensure y != 0; we don't return NaN here (no IEEE special-value handling yet)."
 label startFloatingRemainderFloat64
@@ -318,13 +342,13 @@ arg remCall left dividendValue
 arg remCall right scaled
 run remCall
 bind rem CFloat64 remCall
-returnOk rem
+returnValue rem
 
 
 operation naturalLogFloat64
 input naturalLogFloat64 inputValue CFloat64
-output naturalLogFloat64 Result CFloat64 Void
-memory naturalLogFloat64 heap no
+output naturalLogFloat64 CFloat64
+memoryHeap naturalLogFloat64 no
 async naturalLogFloat64 no
 purpose naturalLogFloat64 "Natural log of x for x > 0. Uses range reduction (ln(x) = ln(x / 2^k) + k * ln(2), where k is chosen so x/2^k is in [1, 2)) before Newton iteration on f(y) = exp(y) - x. exponentialBaseEFloat64 is accurate in [0, 2], so the reduced ln(scaled) computation stays in the convergent zone. Returns 0.0 for x <= 0."
 label startNaturalLogFloat64
@@ -462,17 +486,17 @@ arg finalCall left y
 arg finalCall right kTimesLn
 run finalCall
 bind finalLn CFloat64 finalCall
-returnOk finalLn
+returnValue finalLn
 
 label lnReturnZero
-returnOk zeroLn
+returnValue zeroLn
 
 
 operation powerFloat64
 input powerFloat64 baseValue CFloat64
 input powerFloat64 exponentValue CFloat64
-output powerFloat64 Result CFloat64 Void
-memory powerFloat64 heap no
+output powerFloat64 CFloat64
+memoryHeap powerFloat64 no
 async powerFloat64 no
 purpose powerFloat64 "base^exponent for base > 0 via exp(exponent * ln(base)). Returns 1.0 for exponent == 0."
 label startPowerFloat64
@@ -497,15 +521,15 @@ call eRes exponentialBaseEFloat64
 arg eRes x prod
 run eRes
 bindOk powVal CFloat64 eRes
-returnOk powVal
+returnValue powVal
 label powOne
-returnOk oneFw
+returnValue oneFw
 
 
 operation sineRadiansFloat64
 input sineRadiansFloat64 inputValue CFloat64
-output sineRadiansFloat64 Result CFloat64 Void
-memory sineRadiansFloat64 heap no
+output sineRadiansFloat64 CFloat64
+memoryHeap sineRadiansFloat64 no
 async sineRadiansFloat64 no
 purpose sineRadiansFloat64 "sin(x) via Taylor series: x - x^3/3! + x^5/5! - x^7/7! + ... (20 terms). For best accuracy, caller should reduce x into [-pi, pi] beforehand. No argument reduction at this layer (yet)."
 label startSineRadiansFloat64
@@ -595,13 +619,13 @@ set kSn nextK
 branch sinLoop
 
 label sinReturn
-returnOk sumSn
+returnValue sumSn
 
 
 operation cosineRadiansFloat64
 input cosineRadiansFloat64 inputValue CFloat64
-output cosineRadiansFloat64 Result CFloat64 Void
-memory cosineRadiansFloat64 heap no
+output cosineRadiansFloat64 CFloat64
+memoryHeap cosineRadiansFloat64 no
 async cosineRadiansFloat64 no
 purpose cosineRadiansFloat64 "cos(x) via Taylor series: 1 - x^2/2! + x^4/4! - ... (20 terms). Same range caveat as sineRadiansFloat64."
 label startCosineRadiansFloat64
@@ -685,13 +709,13 @@ set kCs nextKcs
 branch cosLoop
 
 label cosReturn
-returnOk sumCs
+returnValue sumCs
 
 
 operation tangentRadiansFloat64
 input tangentRadiansFloat64 inputValue CFloat64
-output tangentRadiansFloat64 Result CFloat64 Void
-memory tangentRadiansFloat64 heap no
+output tangentRadiansFloat64 CFloat64
+memoryHeap tangentRadiansFloat64 no
 async tangentRadiansFloat64 no
 purpose tangentRadiansFloat64 "tan(x) = sin(x) / cos(x). Inherits range caveats from sineRadiansFloat64 / cosineRadiansFloat64 (no argument reduction)."
 label startTangentRadiansFloat64
@@ -708,13 +732,13 @@ arg divTanCall left sV
 arg divTanCall right cV
 run divTanCall
 bind tanV CFloat64 divTanCall
-returnOk tanV
+returnValue tanV
 
 
 operation hyperbolicSineFloat64
 input hyperbolicSineFloat64 inputValue CFloat64
-output hyperbolicSineFloat64 Result CFloat64 Void
-memory hyperbolicSineFloat64 heap no
+output hyperbolicSineFloat64 CFloat64
+memoryHeap hyperbolicSineFloat64 no
 async hyperbolicSineFloat64 no
 purpose hyperbolicSineFloat64 "Hyperbolic sine: (exp(x) - exp(-x)) / 2."
 label startHyperbolicSineFloat64
@@ -743,13 +767,13 @@ arg halveCall left diff
 arg halveCall right halfFShn
 run halveCall
 bind res CFloat64 halveCall
-returnOk res
+returnValue res
 
 
 operation hyperbolicCosineFloat64
 input hyperbolicCosineFloat64 inputValue CFloat64
-output hyperbolicCosineFloat64 Result CFloat64 Void
-memory hyperbolicCosineFloat64 heap no
+output hyperbolicCosineFloat64 CFloat64
+memoryHeap hyperbolicCosineFloat64 no
 async hyperbolicCosineFloat64 no
 purpose hyperbolicCosineFloat64 "Hyperbolic cosine: (exp(x) + exp(-x)) / 2."
 label startHyperbolicCosineFloat64
@@ -778,13 +802,13 @@ arg halveCcall left sumC
 arg halveCcall right halfFchn
 run halveCcall
 bind resC CFloat64 halveCcall
-returnOk resC
+returnValue resC
 
 
 operation hyperbolicTangentFloat64
 input hyperbolicTangentFloat64 inputValue CFloat64
-output hyperbolicTangentFloat64 Result CFloat64 Void
-memory hyperbolicTangentFloat64 heap no
+output hyperbolicTangentFloat64 CFloat64
+memoryHeap hyperbolicTangentFloat64 no
 async hyperbolicTangentFloat64 no
 purpose hyperbolicTangentFloat64 "Hyperbolic tangent: sinh(x) / cosh(x)."
 label startHyperbolicTangentFloat64
@@ -801,13 +825,13 @@ arg divTanhCall left snV
 arg divTanhCall right csV
 run divTanhCall
 bind thV CFloat64 divTanhCall
-returnOk thV
+returnValue thV
 
 
 operation logBaseTwoFloat64
 input logBaseTwoFloat64 inputValue CFloat64
-output logBaseTwoFloat64 Result CFloat64 Void
-memory logBaseTwoFloat64 heap no
+output logBaseTwoFloat64 CFloat64
+memoryHeap logBaseTwoFloat64 no
 async logBaseTwoFloat64 no
 purpose logBaseTwoFloat64 "Base-2 log: ln(x) / ln(2)."
 label startLogBaseTwoFloat64
@@ -821,13 +845,13 @@ arg divLg2Call left lnV
 arg divLg2Call right ln2
 run divLg2Call
 bind l2V CFloat64 divLg2Call
-returnOk l2V
+returnValue l2V
 
 
 operation logBaseTenFloat64
 input logBaseTenFloat64 inputValue CFloat64
-output logBaseTenFloat64 Result CFloat64 Void
-memory logBaseTenFloat64 heap no
+output logBaseTenFloat64 CFloat64
+memoryHeap logBaseTenFloat64 no
 async logBaseTenFloat64 no
 purpose logBaseTenFloat64 "Base-10 log: ln(x) / ln(10)."
 label startLogBaseTenFloat64
@@ -841,13 +865,13 @@ arg divLg10Call left lnV10
 arg divLg10Call right ln10
 run divLg10Call
 bind l10V CFloat64 divLg10Call
-returnOk l10V
+returnValue l10V
 
 
 operation exponentialMinusOneFloat64
 input exponentialMinusOneFloat64 inputValue CFloat64
-output exponentialMinusOneFloat64 Result CFloat64 Void
-memory exponentialMinusOneFloat64 heap no
+output exponentialMinusOneFloat64 CFloat64
+memoryHeap exponentialMinusOneFloat64 no
 async exponentialMinusOneFloat64 no
 purpose exponentialMinusOneFloat64 "exp(x) - 1. Not loss-of-precision-aware at this layer; production libm uses a separate series for tiny x."
 label startExponentialMinusOneFloat64
@@ -861,13 +885,13 @@ arg subOneCall left expVem
 arg subOneCall right oneEm
 run subOneCall
 bind emV CFloat64 subOneCall
-returnOk emV
+returnValue emV
 
 
 operation naturalLogOnePlusFloat64
 input naturalLogOnePlusFloat64 inputValue CFloat64
-output naturalLogOnePlusFloat64 Result CFloat64 Void
-memory naturalLogOnePlusFloat64 heap no
+output naturalLogOnePlusFloat64 CFloat64
+memoryHeap naturalLogOnePlusFloat64 no
 async naturalLogOnePlusFloat64 no
 purpose naturalLogOnePlusFloat64 "ln(1 + x). Same precision caveat as expm1."
 label startNaturalLogOnePlusFloat64
@@ -881,14 +905,14 @@ call lnCallL1p naturalLogFloat64
 arg lnCallL1p x plusX
 run lnCallL1p
 bindOk l1pV CFloat64 lnCallL1p
-returnOk l1pV
+returnValue l1pV
 
 
 operation hypotenuseFloat64
 input hypotenuseFloat64 firstLegValue CFloat64
 input hypotenuseFloat64 secondLegValue CFloat64
-output hypotenuseFloat64 Result CFloat64 Void
-memory hypotenuseFloat64 heap no
+output hypotenuseFloat64 CFloat64
+memoryHeap hypotenuseFloat64 no
 async hypotenuseFloat64 no
 purpose hypotenuseFloat64 "sqrt(x^2 + y^2). Naive form may overflow for huge inputs; production libm scales first."
 label startHypotenuseFloat64
@@ -911,13 +935,13 @@ call sqrtHyp squareRootFloat64
 arg sqrtHyp x sumSq
 run sqrtHyp
 bindOk h CFloat64 sqrtHyp
-returnOk h
+returnValue h
 
 
 operation arctangentRadiansFloat64
 input arctangentRadiansFloat64 inputValue CFloat64
-output arctangentRadiansFloat64 Result CFloat64 Void
-memory arctangentRadiansFloat64 heap no
+output arctangentRadiansFloat64 CFloat64
+memoryHeap arctangentRadiansFloat64 no
 async arctangentRadiansFloat64 no
 purpose arctangentRadiansFloat64 "atan(x) via Taylor series for |x| <= 1; uses the identity atan(x) = sign(x)*pi/2 - atan(1/x) for |x| > 1."
 label startArctangentRadiansFloat64
@@ -976,7 +1000,7 @@ arg combineCall left signedPi
 arg combineCall right recV
 run combineCall
 bind atanLarge CFloat64 combineCall
-returnOk atanLarge
+returnValue atanLarge
 
 label atanSeries
 # Taylor for |x| <= 1: sum_{k=0..19} (-1)^k * x^(2k+1) / (2k+1)
@@ -1076,13 +1100,13 @@ set kAt nextKat
 branch atanLoop
 
 label atanReturn
-returnOk sumAt
+returnValue sumAt
 
 
 operation arcsineRadiansFloat64
 input arcsineRadiansFloat64 inputValue CFloat64
-output arcsineRadiansFloat64 Result CFloat64 Void
-memory arcsineRadiansFloat64 heap no
+output arcsineRadiansFloat64 CFloat64
+memoryHeap arcsineRadiansFloat64 no
 async arcsineRadiansFloat64 no
 purpose arcsineRadiansFloat64 "asin(x) = atan(x / sqrt(1 - x^2)). Domain: [-1, 1]."
 label startArcsineRadiansFloat64
@@ -1110,13 +1134,13 @@ call atanAs arctangentRadiansFloat64
 arg atanAs x ratio
 run atanAs
 bindOk asV CFloat64 atanAs
-returnOk asV
+returnValue asV
 
 
 operation arccosineRadiansFloat64
 input arccosineRadiansFloat64 inputValue CFloat64
-output arccosineRadiansFloat64 Result CFloat64 Void
-memory arccosineRadiansFloat64 heap no
+output arccosineRadiansFloat64 CFloat64
+memoryHeap arccosineRadiansFloat64 no
 async arccosineRadiansFloat64 no
 purpose arccosineRadiansFloat64 "acos(x) = pi/2 - asin(x). Domain: [-1, 1]."
 label startArccosineRadiansFloat64
@@ -1130,15 +1154,15 @@ arg subCall left halfPiAcos
 arg subCall right asV
 run subCall
 bind acV CFloat64 subCall
-returnOk acV
+returnValue acV
 
 
 operation fusedMultiplyAddFloat64
 input fusedMultiplyAddFloat64 multiplicandValue CFloat64
 input fusedMultiplyAddFloat64 multiplierValue CFloat64
 input fusedMultiplyAddFloat64 addendValue CFloat64
-output fusedMultiplyAddFloat64 Result CFloat64 Void
-memory fusedMultiplyAddFloat64 heap no
+output fusedMultiplyAddFloat64 CFloat64
+memoryHeap fusedMultiplyAddFloat64 no
 async fusedMultiplyAddFloat64 no
 purpose fusedMultiplyAddFloat64 "Fused multiply-add: a*b + c. Not actually fused at this layer (libm fma uses a hardware FMA instruction); we just do the two ops in sequence with normal IEEE-754 rounding between them."
 label startFusedMultiplyAddFloat64
@@ -1152,14 +1176,14 @@ arg addCall left prod
 arg addCall right addendValue
 run addCall
 bind r CFloat64 addCall
-returnOk r
+returnValue r
 
 
 operation maximumFloat64
 input maximumFloat64 leftValue CFloat64
 input maximumFloat64 rightValue CFloat64
-output maximumFloat64 Result CFloat64 Void
-memory maximumFloat64 heap no
+output maximumFloat64 CFloat64
+memoryHeap maximumFloat64 no
 async maximumFloat64 no
 purpose maximumFloat64 "Max of a and b. Returns the non-NaN argument if exactly one is NaN; for both-NaN we don't detect (no isnan yet)."
 label startMaximumFloat64
@@ -1169,16 +1193,16 @@ arg gtCall right rightValue
 run gtCall
 bind aGreater Bool gtCall
 branchIf aGreater fmaxA
-returnOk rightValue
+returnValue rightValue
 label fmaxA
-returnOk leftValue
+returnValue leftValue
 
 
 operation minimumFloat64
 input minimumFloat64 leftValue CFloat64
 input minimumFloat64 rightValue CFloat64
-output minimumFloat64 Result CFloat64 Void
-memory minimumFloat64 heap no
+output minimumFloat64 CFloat64
+memoryHeap minimumFloat64 no
 async minimumFloat64 no
 purpose minimumFloat64 "Min of a and b."
 label startMinimumFloat64
@@ -1188,16 +1212,16 @@ arg ltCall right rightValue
 run ltCall
 bind aLess Bool ltCall
 branchIf aLess fminA
-returnOk rightValue
+returnValue rightValue
 label fminA
-returnOk leftValue
+returnValue leftValue
 
 
 operation positiveDifferenceFloat64
 input positiveDifferenceFloat64 leftValue CFloat64
 input positiveDifferenceFloat64 rightValue CFloat64
-output positiveDifferenceFloat64 Result CFloat64 Void
-memory positiveDifferenceFloat64 heap no
+output positiveDifferenceFloat64 CFloat64
+memoryHeap positiveDifferenceFloat64 no
 async positiveDifferenceFloat64 no
 purpose positiveDifferenceFloat64 "Positive difference: max(a - b, 0)."
 label startPositiveDifferenceFloat64
@@ -1213,16 +1237,16 @@ arg ltzCall right zeroFd
 run ltzCall
 bind diffNeg Bool ltzCall
 branchIf diffNeg fdimZero
-returnOk diff
+returnValue diff
 label fdimZero
-returnOk zeroFd
+returnValue zeroFd
 
 
 operation copySignFloat64
 input copySignFloat64 magnitudeValue CFloat64
 input copySignFloat64 signSourceValue CFloat64
-output copySignFloat64 Result CFloat64 Void
-memory copySignFloat64 heap no
+output copySignFloat64 CFloat64
+memoryHeap copySignFloat64 no
 async copySignFloat64 no
 purpose copySignFloat64 "Returns |magnitude| with the sign of signSource. Doesn't yet preserve sign of zero (real libm copysign treats -0.0 specially; we don't have signed-zero detection without bit-level access)."
 label startCopySignFloat64
@@ -1242,20 +1266,20 @@ arg sourceNegCall right zeroCp
 run sourceNegCall
 bind sourceIsNeg Bool sourceNegCall
 branchIf sourceIsNeg copysignFlip
-returnOk absMag
+returnValue absMag
 label copysignFlip
 call flipCall math.multiplyF64
 arg flipCall left absMag
 arg flipCall right negOneCp
 run flipCall
 bind flipped CFloat64 flipCall
-returnOk flipped
+returnValue flipped
 
 
 operation signOfFloat64
 input signOfFloat64 inputValue CFloat64
-output signOfFloat64 Result CFloat64 Void
-memory signOfFloat64 heap no
+output signOfFloat64 CFloat64
+memoryHeap signOfFloat64 no
 async signOfFloat64 no
 purpose signOfFloat64 "Returns -1.0 if x < 0, 1.0 if x > 0, 0.0 if x == 0."
 label startSignOfFloat64
@@ -1274,17 +1298,17 @@ arg gtCheck right zeroSg
 run gtCheck
 bind isPs Bool gtCheck
 branchIf isPs sgPos
-returnOk zeroSg
+returnValue zeroSg
 label sgNeg
-returnOk negOneSg
+returnValue negOneSg
 label sgPos
-returnOk oneSg
+returnValue oneSg
 
 
 operation roundFloat64ToNearestInteger
 input roundFloat64ToNearestInteger inputValue CFloat64
-output roundFloat64ToNearestInteger Result CFloat64 Void
-memory roundFloat64ToNearestInteger heap no
+output roundFloat64ToNearestInteger CFloat64
+memoryHeap roundFloat64ToNearestInteger no
 async roundFloat64ToNearestInteger no
 purpose roundFloat64ToNearestInteger "Round half-away-from-zero to nearest integer (matching libm round, not lrint which uses banker's rounding)."
 label startRoundFloat64ToNearestInteger
@@ -1307,7 +1331,7 @@ call flCall floorFloat64
 arg flCall x shifted
 run flCall
 bindOk rRes CFloat64 flCall
-returnOk rRes
+returnValue rRes
 label roundNeg
 # Negative: ceil(x - 0.5)
 call subCall math.subtractF64
@@ -1319,13 +1343,13 @@ call cCall ceilingFloat64
 arg cCall x shiftedN
 run cCall
 bindOk rResN CFloat64 cCall
-returnOk rResN
+returnValue rResN
 
 
 operation cubeRootFloat64
 input cubeRootFloat64 inputValue CFloat64
-output cubeRootFloat64 Result CFloat64 Void
-memory cubeRootFloat64 heap no
+output cubeRootFloat64 CFloat64
+memoryHeap cubeRootFloat64 no
 async cubeRootFloat64 no
 purpose cubeRootFloat64 "Cube root: sign(x) * pow(|x|, 1/3). Handles negative inputs by computing on |x| and reattaching the sign."
 label startCubeRootFloat64
@@ -1353,22 +1377,22 @@ arg ltZeroCheck right zeroCb
 run ltZeroCheck
 bind xIsNeg Bool ltZeroCheck
 branchIf xIsNeg cbrtNegate
-returnOk powAbsRes
+returnValue powAbsRes
 label cbrtNegate
 call flipCb math.multiplyF64
 arg flipCb left powAbsRes
 arg flipCb right negOneCb
 run flipCb
 bind flippedCb CFloat64 flipCb
-returnOk flippedCb
+returnValue flippedCb
 label cbrtZero
-returnOk zeroCb
+returnValue zeroCb
 
 
 operation exponentialBaseTwoFloat64
 input exponentialBaseTwoFloat64 inputValue CFloat64
-output exponentialBaseTwoFloat64 Result CFloat64 Void
-memory exponentialBaseTwoFloat64 heap no
+output exponentialBaseTwoFloat64 CFloat64
+memoryHeap exponentialBaseTwoFloat64 no
 async exponentialBaseTwoFloat64 no
 purpose exponentialBaseTwoFloat64 "2^x via pow(2.0, x)."
 label startExponentialBaseTwoFloat64
@@ -1378,7 +1402,7 @@ arg powCall base twoE2
 arg powCall exponent inputValue
 run powCall
 bindOk r CFloat64 powCall
-returnOk r
+returnValue r
 
 
 # ============================================================
@@ -1389,7 +1413,7 @@ operation main
 input main console Console
 output main Result ExitCode MainError
 effect main write console.stdout
-memory main heap no
+memoryHeap main no
 async main no
 purpose main "Smoke-test absoluteFloat64 / squareRootFloat64 / exponentialBaseEFloat64. Prints OK on success."
 
@@ -1743,6 +1767,5 @@ const exitOk ExitCode 0
 returnOk exitOk
 
 label testFailed
-const exitFail CSignedInt32 1
-makeError testFailure MainError.TestFailed exitFail
+makeError testFailure MainError.MathFloatSmokeAssertionFailed
 returnError testFailure
