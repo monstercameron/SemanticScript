@@ -2,7 +2,7 @@
   "name": "agentscript-vscode",
   "displayName": "AgentScript",
   "description": "Syntax highlighting and segment coloring for AgentScript .as files.",
-  "version": "0.1.6",
+  "version": "0.1.9",
   "publisher": "agentscript-local",
   "license": "UNLICENSED",
   "engines": {
@@ -73,7 +73,16 @@
         "agentScript.linter.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable AgentScript lint diagnostics using the standalone aslint.py CLI."
+          "description": "Enable AgentScript lint diagnostics using the selected standalone linter CLI."
+        },
+        "agentScript.linter.engine": {
+          "type": "string",
+          "default": "aslint",
+          "enum": [
+            "aslint",
+            "aslint2"
+          ],
+          "description": "Select the AgentScript linter engine. aslint is stable; aslint2 emits structured refinement diagnostics."
         },
         "agentScript.linter.run": {
           "type": "string",
@@ -88,12 +97,12 @@
         "agentScript.linter.pythonPath": {
           "type": "string",
           "default": "python",
-          "description": "Python executable used to run aslint.py."
+          "description": "Python executable used to run the selected linter."
         },
         "agentScript.linter.path": {
           "type": "string",
           "default": "",
-          "description": "Optional path to aslint.py. Leave empty to auto-discover AgentScript/linter/aslint.py from the workspace."
+          "description": "Optional path to aslint.py or aslint2.py. Leave empty to auto-discover the selected linter from the workspace."
         },
         "agentScript.linter.skipFutureSyntax": {
           "type": "boolean",

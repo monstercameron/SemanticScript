@@ -20,11 +20,16 @@ current compiler accept those future forms.
   targets, schema values, and role suffixes.
 - Whole-line segment coloring for declaration, context, action, control,
   comment, and unknown lines.
-- Hovers for AgentScript verbs, refined syntax verbs, primitive targets,
-  generated codec targets, domain methods, primitive types, opaque inputs,
-  schema values, role suffixes, and call objects.
+- Context-aware hovers that explain the concrete line being hovered, including
+  actual constant names, types, values, call targets, argument flow, control
+  edges, cleanup edges, worker items, and same-file operation metadata.
+- Identifier hovers resolve same-file symbols such as constants, variables,
+  inputs, storage slots, call objects, labels, bindings, failures, fields,
+  groups, collection declarations, and work items.
 - Optional diagnostics from `aslint.py`, with current-linter diagnostics skipped
   by default for refined future syntax files.
+- Optional structured diagnostics from `aslint2.py` via
+  `agentScript.linter.engine`.
 
 ## Refined Syntax Coverage
 
@@ -33,6 +38,8 @@ The extension recognizes the recent syntax families from the refined example:
 - Sections and explicit storage:
   `section`, `storage`, `sharedState`, `read`, `set local`,
   `set module`, `set sharedState`.
+- Program mode:
+  `mode capturedOutputReplay`.
 - Operation contracts:
   `operationBody`, `runtimeBinding`, `runtimeBindingPrecondition`,
   `runtimeBindingFailure`, `intrinsicName`, `dependencyPath`,
@@ -56,6 +63,9 @@ The extension recognizes the recent syntax families from the refined example:
 - Groups, guards, and defers:
   `group*`, `guardToken*`, `deferLog`, `deferLogSink`, `deferRunOn`,
   `deferOrder`, `deferFailurePolicy`, `deferConsumes`, and async defer forms.
+- Intervals and worker pools:
+  `interval`, `startInterval`, `awaitIntervalTick`, `workerPool`, `work`,
+  `workArg`, `submitWork`, and `awaitWork`.
 
 Unknown verbs remain visually distinct through the unknown-line segment color so
 syntax drift is easy to spot.
@@ -89,10 +99,12 @@ suffix fragments.
 
 ## Linting
 
-Linting uses `../AgentScript/linter/aslint.py`. The extension auto-discovers the
-linter from the workspace root, the `AgentScript` folder, or ancestors of the
-open `.as` file. Set `agentScript.linter.path` if your checkout layout is
-different.
+Linting uses `../AgentScript/linter/aslint.py` by default. Set
+`agentScript.linter.engine` to `aslint2` to use the structured refinement
+diagnostics from `../AgentScript/linter/aslint2.py`. The extension
+auto-discovers the selected linter from the workspace root, the `AgentScript`
+folder, or ancestors of the open `.as` file. Set `agentScript.linter.path` if
+your checkout layout is different.
 
 Files using the refined future syntax are skipped by the current linter by
 default because that syntax is a mock/spec showcase and is not current
@@ -143,6 +155,7 @@ Then reload VS Code.
   "agentScript.segmentColors.enabled": true,
   "agentScript.segmentColors.colorMode": "background",
   "agentScript.linter.enabled": true,
+  "agentScript.linter.engine": "aslint",
   "agentScript.linter.run": "onSave",
   "agentScript.linter.pythonPath": "python",
   "agentScript.linter.path": "",
@@ -152,5 +165,7 @@ Then reload VS Code.
 
 `agentScript.segmentColors.colorMode` can be `background`, `overview`, or
 `both`.
+
+`agentScript.linter.engine` can be `aslint` or `aslint2`.
 
 `agentScript.linter.run` can be `onSave`, `onType`, or `manual`.

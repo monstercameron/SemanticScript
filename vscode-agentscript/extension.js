@@ -7,7 +7,7 @@ const vscode = require('vscode');
 
 const declarationVerbs = new Set([
   'section',
-  'project', 'target', 'runtime', 'entry', 'module', 'dependency', 'dependencyEffect',
+  'project', 'target', 'runtime', 'entry', 'module', 'mode', 'dependency', 'dependencyEffect',
   'dependencyExports', 'dependencyFunction', 'dependencyFunctionInput',
   'dependencyFunctionOutput', 'dependencyFunctionEffect', 'dependencyFunctionAsync',
   'importModule', 'type', 'typeParameter', 'typeInvariant', 'typeRepresentation', 'typeTrust',
@@ -21,6 +21,7 @@ const declarationVerbs = new Set([
   'resourceValue', 'resourceKind', 'adapter', 'boundary', 'mapper', 'retryPolicy',
   'timeoutBudget', 'capability', 'authority', 'mutex', 'shared', 'channel',
   'listType', 'arrayType', 'sliceType', 'smallListType', 'mapType',
+  'interval', 'workerPool', 'work',
   'const', 'var', 'testCovers',
 ]);
 
@@ -56,6 +57,7 @@ const contextVerbs = new Set([
   'groupFailure', 'groupTiming',
   'deferLogSink', 'deferRunOn', 'deferOrder', 'deferFailurePolicy',
   'deferConsumes', 'deferAwaitLogSink', 'deferAwaitTimeout', 'deferWhenExitLogSink',
+  'workArg',
 ]);
 
 const actionVerbs = new Set([
@@ -66,6 +68,7 @@ const actionVerbs = new Set([
   'defer', 'deferLog', 'deferAwaitLog', 'deferWhenExitLog', 'select', 'selectCase',
   'runSelect', 'taskGroup', 'startInGroup', 'awaitGroup', 'bindGroupError',
   'send', 'receive', 'lock', 'unlock', 'useRetry', 'useCapability',
+  'startInterval', 'awaitIntervalTick', 'submitWork', 'awaitWork',
 ]);
 
 const controlVerbs = new Set([
@@ -80,6 +83,7 @@ const primitiveTargets = new Map([
   ['console.writeLine', 'puts(text) -> i32. Writes one text line.'],
   ['console.writeIntegerLine', 'printf("%lld\\n", value) -> i32. Writes one integer line.'],
   ['console.writeInteger', 'Alias for console.writeIntegerLine.'],
+  ['console.writeFloatLine', 'printf("%f\\n", value) -> i32. Writes one floating-point line.'],
   ['math.addI64', 'i64 addition. Infallible math target; use bind.'],
   ['math.subtractI64', 'i64 subtraction. Infallible math target; use bind.'],
   ['math.multiplyI64', 'i64 multiplication. Infallible math target; use bind.'],
@@ -91,9 +95,28 @@ const primitiveTargets = new Map([
   ['math.lessThanOrEqualI64', 'i64 less-than-or-equal comparison returning Bool.'],
   ['math.greaterThanI64', 'i64 greater-than comparison returning Bool.'],
   ['math.greaterThanOrEqualI64', 'i64 greater-than-or-equal comparison returning Bool.'],
+  ['math.addF64', 'F64 addition. Infallible math target; use bind.'],
+  ['math.subtractF64', 'F64 subtraction. Infallible math target; use bind.'],
+  ['math.multiplyF64', 'F64 multiplication. Infallible math target; use bind.'],
+  ['math.divideF64', 'F64 division. Infallible math target; use bind.'],
+  ['math.equalF64', 'F64 equality comparison returning Bool.'],
+  ['math.notEqualF64', 'F64 inequality comparison returning Bool.'],
+  ['math.lessThanF64', 'F64 less-than comparison returning Bool.'],
+  ['math.lessThanOrEqualF64', 'F64 less-than-or-equal comparison returning Bool.'],
+  ['math.greaterThanF64', 'F64 greater-than comparison returning Bool.'],
+  ['math.greaterThanOrEqualF64', 'F64 greater-than-or-equal comparison returning Bool.'],
+  ['math.intToFloat', 'Signed integer to F64 conversion.'],
+  ['math.floatToInt', 'F64 to signed integer conversion, rounding toward zero.'],
+  ['math.convertSignedInt64ToFloat64', 'Alias for math.intToFloat.'],
+  ['math.convertFloat64ToSignedInt64', 'Alias for math.floatToInt.'],
   ['math.equalCSignedInt32', 'C signed 32-bit equality comparison returning Bool.'],
   ['math.greaterThanOrEqualCByteCount', 'C byte-count greater-than-or-equal comparison returning Bool.'],
   ['math.checkedMultiplyI64', 'i64 signed multiply with overflow detection. Fallible target; use bindOk, bindError, and branchIfError.'],
+  ['pointer.loadByte', 'Reads one byte from buffer + offset. Requires declared memory read effects for checked lint paths.'],
+  ['pointer.storeByte', 'Writes one byte to buffer + offset. Requires declared memory write effects for checked lint paths.'],
+  ['pointer.offset', 'Returns buffer + offset without dereferencing.'],
+  ['pointer.difference', 'Returns pointer distance as a signed integer.'],
+  ['pointer.isNull', 'Returns Bool indicating whether a pointer is null.'],
   ['scheduler.sleep', 'Async typed-duration sleep target. Use cancelOn, start, await, bindError, and branchIfError.'],
   ['retryPolicy.delayForAttempt', 'Retry-policy delay calculation target. Fallible when policy or attempt state is invalid.'],
   ['metrics.computeIncrementI64', 'Metrics-owned counter increment calculation. Fallible target; bind success and error explicitly.'],
@@ -110,8 +133,27 @@ const primitiveTargets = new Map([
 ]);
 
 const generatedTargetPattern = /^(?:json\.(?:decode|encode)\.[A-Z][A-Za-z0-9_]*)$/;
+const cRuntimeTargetPattern = /^c\.[A-Za-z_][A-Za-z0-9_]*$/;
+const jsonPrimitiveTargetTypes = new Set([
+  'I64', 'CSignedInt64', 'CSignedInt32', 'CUnsignedInt32',
+  'CSignedInt16', 'CUnsignedInt16', 'CSignedByte', 'CUnsignedByte',
+  'DurationMilliseconds', 'MonotonicMilliseconds', 'UtcMilliseconds',
+  'Bool', 'F64', 'CFloat64', 'CFloat32', 'String', 'CNullTerminatedByteString',
+]);
 
 const generatedTargetHoverText = (text) => {
+  const targetType = text.split('.').pop();
+
+  if (jsonPrimitiveTargetTypes.has(targetType)) {
+    if (text.startsWith('json.decode.')) {
+      return 'Reference compiler primitive JSON decode target. Numeric values use libc parsing, Bool compares against true, and malformed inputs return the libc default.';
+    }
+
+    if (text.startsWith('json.encode.')) {
+      return 'Reference compiler primitive JSON encode target. Numerics and Bool use direct formatting; strings are quoted with full escaping deferred to the codec runtime.';
+    }
+  }
+
   if (text.startsWith('json.decode.')) {
     return 'Generated JSON decode target. It should be declared by jsonCodecDecodeTarget and backed by jsonCodec input, output, failure, strictness, and limit metadata.';
   }
@@ -124,8 +166,11 @@ const generatedTargetHoverText = (text) => {
 };
 
 const schemaValues = new Map([
+  ['true', 'Boolean literal token.'],
+  ['false', 'Boolean literal token.'],
   ['yes', 'Boolean schema value.'],
   ['no', 'Boolean schema value.'],
+  ['capturedOutputReplay', 'Mode marker for programs that replay captured output.'],
   ['local', 'Storage scope for operation-local storage.'],
   ['module', 'Storage scope for module-owned storage.'],
   ['process', 'Storage scope for process-shared state.'],
@@ -159,9 +204,19 @@ const schemaValues = new Map([
   ['trustedStaticLiteral', 'Trust-boundary source: static literal accepted by type literal rules.'],
   ['trustedUtf8Literal', 'Trust-boundary source: static UTF-8 literal accepted by validation rules.'],
   ['trustedExternalCNullTerminatedUtf8Source', 'Trust-boundary source: externally stored C-null-terminated UTF-8 data with digest/source metadata.'],
+  ['trustedInternal', 'Trust marker for internally trusted data.'],
+  ['trustedSessionContext', 'Trust marker for values supplied by trusted session context.'],
+  ['trustedStaticAsset', 'Trust marker for committed/static assets.'],
   ['rawPointerToValidatedCString', 'Trust-boundary kind: raw pointer becomes validated C string.'],
   ['rawUtf8ToValidatedText', 'Trust-boundary kind: raw UTF-8 becomes validated text.'],
   ['row', 'Record layout kind: row layout.'],
+  ['column', 'Record layout kind: column layout.'],
+  ['packed', 'Record layout kind: packed layout.'],
+  ['heap', 'Heap allocator or memory policy marker.'],
+  ['inPlace', 'Collection mutation mode: mutates existing storage.'],
+  ['boundsChecked', 'Collection index policy: bounds checked.'],
+  ['denseZeroIndexed', 'List literal index policy: dense zero-based indexes.'],
+  ['all', 'Defer lifecycle trigger for every operation exit path.'],
   ['immutableUpdate', 'Collection mutation mode: returns a new collection value.'],
   ['borrowedView', 'Collection mutation/view mode: returns a borrowed view.'],
   ['zeroBasedChecked', 'Collection index policy: zero-based and checked.'],
@@ -190,8 +245,12 @@ const domainMethods = new Set([
 const primitiveTypes = new Map([
   ['I64', '64-bit integer.'],
   ['I32', '32-bit integer.'],
+  ['I16', '16-bit integer.'],
+  ['I8', '8-bit integer.'],
   ['ExitCode', '32-bit process exit code.'],
   ['Bool', 'Boolean value.'],
+  ['F64', '64-bit floating-point value.'],
+  ['F32', '32-bit floating-point value.'],
   ['String', 'Null-terminated UTF-8 string.'],
   ['Bytes', 'Byte sequence.'],
   ['Utf8Text', 'UTF-8 text value.'],
@@ -202,8 +261,30 @@ const primitiveTypes = new Map([
   ['RawCStringPointer', 'Raw C string pointer before trust-boundary validation.'],
   ['COpaqueMemoryAddress', 'Opaque memory address value.'],
   ['CByteCount', 'C ABI byte-count value.'],
+  ['CSignedByteCount', 'C ABI signed byte-count value.'],
+  ['CAddressOffset', 'C ABI pointer offset value.'],
+  ['CUnixSecondsSinceEpoch', 'C ABI Unix timestamp seconds value.'],
+  ['CCpuClockTicks', 'C ABI CPU clock tick value.'],
+  ['CFileByteOffset', 'C ABI file byte offset value.'],
+  ['CSignedByte', 'C ABI signed 8-bit byte.'],
+  ['CUnsignedByte', 'C ABI unsigned 8-bit byte.'],
+  ['CSignedInt16', 'C ABI signed 16-bit integer.'],
+  ['CUnsignedInt16', 'C ABI unsigned 16-bit integer.'],
   ['CSignedInt32', 'C ABI signed 32-bit integer.'],
+  ['CUnsignedInt32', 'C ABI unsigned 32-bit integer.'],
   ['CSignedInt64', 'C ABI signed 64-bit integer.'],
+  ['CUnsignedInt64', 'C ABI unsigned 64-bit integer.'],
+  ['CFloat32', 'C ABI 32-bit floating-point value.'],
+  ['CFloat64', 'C ABI 64-bit floating-point value.'],
+  ['CFileHandle', 'Opaque C file handle pointer.'],
+  ['CDecomposedTimeAddress', 'Opaque C decomposed-time pointer.'],
+  ['CSetjmpRegisterBuffer', 'Opaque C setjmp buffer pointer.'],
+  ['Console', 'Opaque console dependency token.'],
+  ['Process', 'Opaque process dependency token.'],
+  ['Environment', 'Opaque environment dependency token.'],
+  ['HttpRequest', 'Opaque HTTP request dependency token.'],
+  ['DatabaseClient', 'Opaque database client dependency token.'],
+  ['Clock', 'Opaque clock dependency token.'],
   ['Void', 'No useful success value. Used with ignoreOk/ignoreValue to make explicit discards visible.'],
   ['DurationMilliseconds', '64-bit duration in milliseconds.'],
   ['MonotonicMilliseconds', '64-bit monotonic timestamp in milliseconds.'],
@@ -221,6 +302,7 @@ const verbHoverText = new Map([
   ['runtime', 'Top-level declaration: runtime NAME VERSION.'],
   ['entry', 'Top-level declaration: entry MODE OPERATION.'],
   ['module', 'Top-level module declaration. Parsed as project context by the current compiler.'],
+  ['mode', 'Top-level mode declaration such as mode capturedOutputReplay.'],
   ['dependency', 'Dependency declaration. Dependency contract metadata is parsed for tooling context.'],
   ['dependencyEffect', 'Dependency effect declaration.'],
   ['dependencyExports', 'Dependency export declaration.'],
@@ -270,6 +352,9 @@ const verbHoverText = new Map([
   ['mutex', 'Top-level mutex declaration. Parsed as metadata.'],
   ['shared', 'Top-level shared-state declaration. Parsed as metadata.'],
   ['channel', 'Top-level channel declaration. Parsed as metadata.'],
+  ['interval', 'Typed interval declaration. Single-thread compiler lowering treats start/await ticks as no-ops.'],
+  ['workerPool', 'Worker-pool declaration. Single-thread compiler lowering runs submitted work inline.'],
+  ['work', 'Worker-pool work item declaration: work NAME target OPERATION.'],
   ['testCovers', 'Top-level coverage metadata: testCovers TEST_NAME TARGET_NAME.'],
   ['input', 'Operation metadata: input OPERATION PARAM_NAME PARAM_TYPE.'],
   ['output', 'Operation metadata: output OPERATION TYPE_EXPR.'],
@@ -319,6 +404,11 @@ const verbHoverText = new Map([
   ['select', 'Reserved select declaration statement.'],
   ['selectCase', 'Reserved select case statement.'],
   ['runSelect', 'Reserved select execution statement.'],
+  ['startInterval', 'Interval lifecycle statement: startInterval NAME. Single-thread lowering is a no-op.'],
+  ['awaitIntervalTick', 'Interval lifecycle statement: awaitIntervalTick NAME. Single-thread lowering falls through.'],
+  ['workArg', 'Worker-pool argument edge: workArg WORK ARG VALUE.'],
+  ['submitWork', 'Worker-pool dispatch: submitWork WORK POOL. Single-thread lowering calls the work target inline.'],
+  ['awaitWork', 'Worker-pool await: awaitWork WORK. The direct-dispatch lowering has already run the work item.'],
   ['useRetry', 'Reserved policy attachment: useRetry CALL_NAME RETRY_POLICY_NAME.'],
   ['useCapability', 'Reserved policy attachment: useCapability OPERATION_OR_CALL CAPABILITY_NAME.'],
   ['set', 'Mutation statement: set VAR_NAME VALUE_NAME.'],
@@ -484,6 +574,7 @@ let linterRunMode = 'onSave';
 let linterPythonPath = 'python';
 let linterConfiguredPath = '';
 let linterSkipFutureSyntax = true;
+let linterEngine = 'aslint';
 let diagnosticCollection = null;
 let lintStatusBarItem = null;
 const lintUpdateTimeouts = new Map();
@@ -593,6 +684,14 @@ const futureSyntaxLinterSkipVerbs = new Set([
   'deferAwaitTimeout',
   'deferWhenExitLog',
   'deferWhenExitLogSink',
+  'interval',
+  'startInterval',
+  'awaitIntervalTick',
+  'workerPool',
+  'work',
+  'workArg',
+  'submitWork',
+  'awaitWork',
   'read',
 ]);
 
@@ -846,13 +945,39 @@ const operationReferenceVerbs = new Set([
   'deferAwaitTimeout', 'deferWhenExitLogSink',
 ]);
 
+const operationMetadataVerbs = new Set([
+  'input', 'output', 'effect', 'memory', 'memoryHeap', 'memoryArena',
+  'memoryAllocationSource', 'memoryStackLimit', 'async', 'operationBody',
+  'purpose', 'invariant', 'warning', 'failure', 'guarantee', 'security',
+  'timing', 'observability', 'authority', 'runtimeBinding',
+  'runtimeBindingPrecondition', 'runtimeBindingFailure', 'intrinsicName',
+  'dependencyPath', 'dependencyFailure', 'recordConstructor',
+  'recordConstructorFailure', 'recordBuildFailure',
+]);
+
+const operationHoverReferencePositions = new Map([
+  ['operation', 1],
+  ['entry', 2],
+  ['route', 4],
+  ['routeMiddleware', 3],
+  ['trustBoundaryValidator', 2],
+  ['jsonCodecDecodeTarget', 2],
+  ['jsonCodecEncodeTarget', 2],
+  ['guardTokenRelease', 2],
+  ['defer', 2],
+  ['deferLog', 2],
+  ['deferAwaitLog', 2],
+  ['deferWhenExitLog', 3],
+  ['testCovers', 2],
+]);
+
 const namedDeclarationVerbs = new Set([
   'project', 'operation', 'webServer', 'record', 'enum', 'error', 'codec',
   'jsonCodec', 'validator', 'mapper', 'adapter', 'boundary', 'policy',
   'errorPolicy', 'retryPolicy', 'timeoutBudget', 'resource', 'capability',
   'mutex', 'shared', 'channel', 'section', 'domainLiteral', 'literal',
   'listLiteral', 'listType', 'arrayType', 'sliceType', 'smallListType',
-  'mapType', 'collectionOperation',
+  'mapType', 'collectionOperation', 'interval', 'workerPool', 'work',
 ]);
 
 const singleCallReferenceVerbs = new Set([
@@ -870,6 +995,425 @@ const branchLabelPositions = new Map([
 ]);
 
 const isLowerQualifiedName = (text) => /^[a-z][A-Za-z0-9_]*(?:\.[a-zA-Z_][A-Za-z0-9_]*)+$/.test(text);
+
+const operationMetadataCache = new WeakMap();
+const symbolIndexCache = new WeakMap();
+
+const ensureOperationMetadataEntry = (operations, name) => {
+  if (!operations.has(name)) {
+    operations.set(name, {
+      name,
+      section: null,
+      declarationLine: null,
+      declarationText: null,
+      metadata: [],
+    });
+  }
+
+  return operations.get(name);
+};
+
+const buildOperationMetadataIndex = (document) => {
+  const operations = new Map();
+  let currentSection = null;
+
+  for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex += 1) {
+    const lineText = document.lineAt(lineIndex).text;
+    const tokens = tokenizeLine(lineText);
+
+    if (tokens.length === 0 || tokens[0].text.startsWith('#')) {
+      continue;
+    }
+
+    const verb = tokens[0].text;
+
+    if (verb === 'section' && tokens[1]) {
+      currentSection = tokens.slice(1).map((token) => token.text).join(' ');
+      continue;
+    }
+
+    if (verb === 'operation' && tokens[1]) {
+      const entry = ensureOperationMetadataEntry(operations, tokens[1].text);
+      entry.section = currentSection;
+      entry.declarationLine = lineIndex + 1;
+      entry.declarationText = lineText.trim();
+      continue;
+    }
+
+    if (operationMetadataVerbs.has(verb) && tokens[1]) {
+      const entry = ensureOperationMetadataEntry(operations, tokens[1].text);
+
+      if (!entry.section) {
+        entry.section = currentSection;
+      }
+
+      entry.metadata.push({
+        line: lineIndex + 1,
+        text: lineText.trim(),
+      });
+    }
+  }
+
+  return operations;
+};
+
+const getOperationMetadataIndex = (document) => {
+  const cached = operationMetadataCache.get(document);
+
+  if (cached && cached.version === document.version) {
+    return cached.operations;
+  }
+
+  const operations = buildOperationMetadataIndex(document);
+  operationMetadataCache.set(document, {
+    version: document.version,
+    operations,
+  });
+  return operations;
+};
+
+const isSymbolLike = (text) => (
+  /^[A-Za-z_][A-Za-z0-9_.]*$/.test(text)
+  && !text.startsWith('c.')
+  && !primitiveTargets.has(text)
+  && !generatedTargetPattern.test(text)
+  && !cRuntimeTargetPattern.test(text)
+);
+
+const ensureSymbolEntry = (symbols, name) => {
+  if (!symbols.has(name)) {
+    symbols.set(name, {
+      name,
+      declarations: [],
+    });
+  }
+
+  return symbols.get(name);
+};
+
+const addSymbolDeclaration = (symbols, name, declaration) => {
+  if (!name || name === '?' || name.startsWith('"') || /^-?\d+$/.test(name)) {
+    return null;
+  }
+
+  const entry = ensureSymbolEntry(symbols, name);
+  entry.declarations.push(declaration);
+  return declaration;
+};
+
+const buildDocumentSymbolIndex = (document) => {
+  const symbols = new Map();
+  const calls = new Map();
+  const lineOperations = new Map();
+  let currentOperation = null;
+
+  const declarationBase = (kind, tokens, lineIndex, extra = {}) => ({
+    kind,
+    line: lineIndex + 1,
+    lineIndex,
+    text: document.lineAt(lineIndex).text.trim(),
+    operation: currentOperation,
+    ...extra,
+  });
+
+  for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex += 1) {
+    const lineText = document.lineAt(lineIndex).text;
+    const tokens = tokenizeLine(lineText);
+
+    if (tokens.length === 0 || tokens[0].text.startsWith('#')) {
+      lineOperations.set(lineIndex, currentOperation);
+      continue;
+    }
+
+    const verb = tokens[0].text;
+
+    if (verb === 'operation' && tokens[1]) {
+      currentOperation = tokens[1].text;
+    }
+
+    lineOperations.set(lineIndex, currentOperation);
+
+    switch (verb) {
+      case 'operation':
+        addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase('operation', tokens, lineIndex, {
+          name: tokenText(tokens, 1),
+        }));
+        break;
+
+      case 'input':
+        addSymbolDeclaration(symbols, tokenText(tokens, 2), declarationBase('input parameter', tokens, lineIndex, {
+          name: tokenText(tokens, 2),
+          owner: tokenText(tokens, 1),
+          type: tokenText(tokens, 3),
+        }));
+        break;
+
+      case 'const':
+        addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase('constant', tokens, lineIndex, {
+          name: tokenText(tokens, 1),
+          type: tokenText(tokens, 2),
+          value: tokenTailText(tokens, 3),
+          mutability: 'immutable',
+        }));
+        break;
+
+      case 'var':
+        addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase('mutable variable', tokens, lineIndex, {
+          name: tokenText(tokens, 1),
+          type: tokenText(tokens, 2),
+          value: tokenTailText(tokens, 3),
+          mutability: 'mutable',
+        }));
+        break;
+
+      case 'storage':
+        addSymbolDeclaration(symbols, tokenText(tokens, 3), declarationBase('storage binding', tokens, lineIndex, {
+          name: tokenText(tokens, 3),
+          scope: tokenText(tokens, 1),
+          mutability: tokenText(tokens, 2),
+          type: tokenText(tokens, 4),
+          value: tokenTailText(tokens, 5),
+        }));
+        break;
+
+      case 'sharedState':
+        addSymbolDeclaration(symbols, tokenText(tokens, 3), declarationBase('shared state', tokens, lineIndex, {
+          name: tokenText(tokens, 3),
+          scope: tokenText(tokens, 1),
+          mutability: tokenText(tokens, 2),
+          type: tokenText(tokens, 4),
+          value: tokenTailText(tokens, 5),
+        }));
+        break;
+
+      case 'domainLiteral':
+      case 'literal':
+      case 'listLiteral':
+        addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase(readableVerbName(verb).toLowerCase(), tokens, lineIndex, {
+          name: tokenText(tokens, 1),
+          type: tokenText(tokens, 2),
+          value: tokenTailText(tokens, 3),
+        }));
+        break;
+
+      case 'type':
+      case 'record':
+      case 'enum':
+      case 'error':
+      case 'dependency':
+      case 'codec':
+      case 'jsonCodec':
+      case 'validator':
+      case 'mapper':
+      case 'adapter':
+      case 'boundary':
+      case 'policy':
+      case 'errorPolicy':
+      case 'retryPolicy':
+      case 'timeoutBudget':
+      case 'resource':
+      case 'capability':
+      case 'webServer':
+      case 'interval':
+      case 'workerPool':
+      case 'group':
+      case 'listType':
+      case 'arrayType':
+      case 'sliceType':
+      case 'smallListType':
+      case 'mapType':
+      case 'collectionOperation':
+      case 'mutex':
+      case 'shared':
+      case 'channel':
+        addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase(readableVerbName(verb).toLowerCase(), tokens, lineIndex, {
+          name: tokenText(tokens, 1),
+          details: tokenTailText(tokens, 2),
+        }));
+        break;
+
+      case 'field':
+        addSymbolDeclaration(symbols, tokenText(tokens, 2), declarationBase('record field', tokens, lineIndex, {
+          name: tokenText(tokens, 2),
+          owner: tokenText(tokens, 1),
+          type: tokenText(tokens, 3),
+        }));
+        break;
+
+      case 'enumCase':
+      case 'errorCase':
+        addSymbolDeclaration(symbols, tokenText(tokens, 2), declarationBase(readableVerbName(verb).toLowerCase(), tokens, lineIndex, {
+          name: tokenText(tokens, 2),
+          owner: tokenText(tokens, 1),
+          value: tokenTailText(tokens, 3),
+        }));
+        break;
+
+      case 'label':
+        addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase('label', tokens, lineIndex, {
+          name: tokenText(tokens, 1),
+        }));
+        break;
+
+      case 'call': {
+        const callDeclaration = addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase('call object', tokens, lineIndex, {
+          name: tokenText(tokens, 1),
+          target: tokenText(tokens, 2),
+          args: [],
+          resultBindings: [],
+        }));
+
+        if (callDeclaration) {
+          calls.set(callDeclaration.name, callDeclaration);
+        }
+        break;
+      }
+
+      case 'arg': {
+        const callDeclaration = calls.get(tokenText(tokens, 1));
+
+        if (callDeclaration) {
+          callDeclaration.args.push({
+            role: tokenText(tokens, 2),
+            value: tokenText(tokens, 3),
+            line: lineIndex + 1,
+          });
+        }
+        break;
+      }
+
+      case 'bind':
+      case 'bindOk':
+      case 'bindError': {
+        const bindingKind = verb === 'bindError' ? 'bound error' : 'bound value';
+        addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase(bindingKind, tokens, lineIndex, {
+          name: tokenText(tokens, 1),
+          type: tokenText(tokens, 2),
+          sourceCall: tokenText(tokens, 3),
+        }));
+
+        const callDeclaration = calls.get(tokenText(tokens, 3));
+
+        if (callDeclaration) {
+          callDeclaration.resultBindings.push({
+            verb,
+            name: tokenText(tokens, 1),
+            type: tokenText(tokens, 2),
+            line: lineIndex + 1,
+          });
+        }
+        break;
+      }
+
+      case 'fieldGet':
+        addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase('derived value', tokens, lineIndex, {
+          name: tokenText(tokens, 1),
+          type: tokenText(tokens, 2),
+          value: tokenTailText(tokens, 3),
+        }));
+        break;
+
+      case 'read':
+        if (tokens[1] && tokens[1].text === 'sharedState') {
+          addSymbolDeclaration(symbols, tokenText(tokens, 2), declarationBase('derived value', tokens, lineIndex, {
+            name: tokenText(tokens, 2),
+            type: tokenText(tokens, 3),
+            value: tokenText(tokens, 4),
+          }));
+        }
+        break;
+
+      case 'recordBuilder':
+      case 'recordCopy':
+        addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase('record builder', tokens, lineIndex, {
+          name: tokenText(tokens, 1),
+          type: tokenText(tokens, 2),
+          value: tokenTailText(tokens, 3),
+        }));
+        break;
+
+      case 'recordBuild': {
+        const buildDeclaration = addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase('record build call', tokens, lineIndex, {
+          name: tokenText(tokens, 1),
+          target: 'recordBuild',
+          value: tokenText(tokens, 2),
+          args: [],
+          resultBindings: [],
+        }));
+
+        if (buildDeclaration) {
+          calls.set(buildDeclaration.name, buildDeclaration);
+        }
+        break;
+      }
+
+      case 'makeError':
+      case 'declareFailure':
+        addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase('failure value', tokens, lineIndex, {
+          name: tokenText(tokens, 1),
+          type: tokenText(tokens, 2).split('.')[0],
+          value: tokenTailText(tokens, 2),
+        }));
+        break;
+
+      case 'work':
+        addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase('work item', tokens, lineIndex, {
+          name: tokenText(tokens, 1),
+          target: tokenText(tokens, 3),
+        }));
+        break;
+
+      default:
+        break;
+    }
+  }
+
+  return {
+    symbols,
+    lineOperations,
+  };
+};
+
+const getDocumentSymbolIndex = (document) => {
+  const cached = symbolIndexCache.get(document);
+
+  if (cached && cached.version === document.version) {
+    return cached.index;
+  }
+
+  const index = buildDocumentSymbolIndex(document);
+  symbolIndexCache.set(document, {
+    version: document.version,
+    index,
+  });
+  return index;
+};
+
+const operationHoverNameForToken = (text, tokenIndex, tokens) => {
+  if (tokenIndex === 0 || text.startsWith('#') || text.startsWith('"')) {
+    return null;
+  }
+
+  const verb = tokens && tokens[0] ? tokens[0].text : '';
+
+  if (operationMetadataVerbs.has(verb) && tokenIndex === 1) {
+    return text;
+  }
+
+  if (verb === 'call' && tokenIndex === 2) {
+    return text;
+  }
+
+  if (verb === 'work' && tokenIndex === 3 && tokens[2] && tokens[2].text === 'target') {
+    return text;
+  }
+
+  if (operationHoverReferencePositions.get(verb) === tokenIndex) {
+    return text;
+  }
+
+  return null;
+};
 
 const contextTokenTypeForSymbol = (text, index, tokens) => {
   const verb = tokens && tokens[0] ? tokens[0].text : '';
@@ -1001,6 +1545,30 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
   }
 
   if (verb === 'recordCopy' && index === 1) {
+    return 'agentscriptDeclaredName';
+  }
+
+  if (verb === 'workArg' && index === 1) {
+    return 'agentscriptDeclaredName';
+  }
+
+  if (verb === 'workArg' && index === 2) {
+    return 'agentscriptArgumentName';
+  }
+
+  if (verb === 'work' && index === 2 && text === 'target') {
+    return 'agentscriptSchemaValue';
+  }
+
+  if (verb === 'work' && index === 3 && tokens[2] && tokens[2].text === 'target') {
+    return 'agentscriptDeclaredName';
+  }
+
+  if ((verb === 'startInterval' || verb === 'awaitIntervalTick' || verb === 'awaitWork') && index === 1) {
+    return 'agentscriptDeclaredName';
+  }
+
+  if (verb === 'submitWork' && (index === 1 || index === 2)) {
     return 'agentscriptDeclaredName';
   }
 
@@ -1140,6 +1708,10 @@ const tokenTypeForSymbol = (text, index, tokens) => {
     return 'agentscriptPrimitiveTarget';
   }
 
+  if (cRuntimeTargetPattern.test(text)) {
+    return 'agentscriptPrimitiveTarget';
+  }
+
   if (generatedTargetPattern.test(text)) {
     return 'agentscriptGeneratedTarget';
   }
@@ -1260,6 +1832,757 @@ const markdownHover = (title, body) => {
   return new vscode.Hover(markdown);
 };
 
+const inlineCode = (value) => {
+  const text = value === undefined || value === null || value === '' ? '?' : String(value);
+  return `\`${text.replace(/`/g, "'")}\``;
+};
+
+const tokenText = (tokens, index, fallback = '?') => (
+  tokens[index] ? tokens[index].text : fallback
+);
+
+const tokenTailText = (tokens, startIndex) => (
+  tokens.slice(startIndex).map((token) => token.text).join(' ') || '?'
+);
+
+const readableVerbName = (verb) => (
+  verb
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/^\w/, (first) => first.toUpperCase())
+);
+
+const detailHover = (title, lines) => (
+  markdownHover(title, lines.filter(Boolean).join('\n\n'))
+);
+
+const humanReadableLineHover = (tokens, tokenIndex) => {
+  if (tokenIndex !== 0 || !tokens[0]) {
+    return null;
+  }
+
+  const verb = tokens[0].text;
+
+  switch (verb) {
+    case 'const':
+      return detailHover(`Constant: ${tokenText(tokens, 1)}`, [
+        `Declares ${inlineCode(tokenText(tokens, 1))} as an immutable value.`,
+        `Type: ${inlineCode(tokenText(tokens, 2))}`,
+        `Initial value: ${inlineCode(tokenTailText(tokens, 3))}`,
+        'Later lines can read this binding; it is not a storage slot and cannot be updated with `set`.',
+      ]);
+
+    case 'var':
+      return detailHover(`Mutable variable: ${tokenText(tokens, 1)}`, [
+        `Declares ${inlineCode(tokenText(tokens, 1))} as an operation-local mutable value.`,
+        `Type: ${inlineCode(tokenText(tokens, 2))}`,
+        `Initial value: ${inlineCode(tokenTailText(tokens, 3))}`,
+        'Later `set` lines may replace this value inside the current operation.',
+      ]);
+
+    case 'storage':
+      return detailHover(`Storage binding: ${tokenText(tokens, 3)}`, [
+        `Declares ${inlineCode(tokenText(tokens, 3))} in ${inlineCode(tokenText(tokens, 1))} storage.`,
+        `Mutability: ${inlineCode(tokenText(tokens, 2))}`,
+        `Type: ${inlineCode(tokenText(tokens, 4))}`,
+        `Initial value: ${inlineCode(tokenTailText(tokens, 5))}`,
+      ]);
+
+    case 'sharedState':
+      return detailHover(`Shared state: ${tokenText(tokens, 3)}`, [
+        `Declares process-visible mutable state ${inlineCode(tokenText(tokens, 3))}.`,
+        `Scope: ${inlineCode(tokenText(tokens, 1))}`,
+        `Mutability: ${inlineCode(tokenText(tokens, 2))}`,
+        `Type: ${inlineCode(tokenText(tokens, 4))}`,
+        `Initial value: ${inlineCode(tokenTailText(tokens, 5))}`,
+        'Reads and writes should name the guard token with `protectedBy`.',
+      ]);
+
+    case 'operation':
+      return detailHover(`Operation: ${tokenText(tokens, 1)}`, [
+        `Starts the executable operation ${inlineCode(tokenText(tokens, 1))}.`,
+        'Its `input`, `output`, `effect`, memory, async, and narrative metadata lines attach to this operation name.',
+      ]);
+
+    case 'input':
+      return detailHover(`Input: ${tokenText(tokens, 2)}`, [
+        `Adds parameter ${inlineCode(tokenText(tokens, 2))} to operation ${inlineCode(tokenText(tokens, 1))}.`,
+        `Type: ${inlineCode(tokenText(tokens, 3))}`,
+      ]);
+
+    case 'output':
+      return detailHover(`Output contract: ${tokenText(tokens, 1)}`, [
+        `Declares what ${inlineCode(tokenText(tokens, 1))} returns.`,
+        `Return shape: ${inlineCode(tokenTailText(tokens, 2))}`,
+      ]);
+
+    case 'effect':
+      return detailHover(`Effect: ${tokenText(tokens, 1)}`, [
+        `Operation ${inlineCode(tokenText(tokens, 1))} declares an external effect.`,
+        `Action: ${inlineCode(tokenText(tokens, 2))}`,
+        `Path: ${inlineCode(tokenTailText(tokens, 3))}`,
+      ]);
+
+    case 'memory':
+    case 'memoryHeap':
+    case 'memoryArena':
+    case 'memoryAllocationSource':
+    case 'memoryStackLimit':
+    case 'async':
+    case 'operationBody':
+      return detailHover(`${readableVerbName(verb)}: ${tokenText(tokens, 1)}`, [
+        `Attaches ${inlineCode(verb)} metadata to ${inlineCode(tokenText(tokens, 1))}.`,
+        `Value: ${inlineCode(tokenTailText(tokens, 2))}`,
+      ]);
+
+    case 'purpose':
+    case 'invariant':
+    case 'warning':
+    case 'failure':
+    case 'guarantee':
+    case 'security':
+    case 'timing':
+    case 'observability':
+      return detailHover(`${readableVerbName(verb)}: ${tokenText(tokens, 1)}`, [
+        `Human context attached to ${inlineCode(tokenText(tokens, 1))}.`,
+        `Text: ${inlineCode(tokenTailText(tokens, 2))}`,
+      ]);
+
+    case 'call':
+      return detailHover(`Call: ${tokenText(tokens, 1)}`, [
+        `Creates call object ${inlineCode(tokenText(tokens, 1))}.`,
+        `Target: ${inlineCode(tokenText(tokens, 2))}`,
+        'Add `arg` lines, execute with `run` or `start`, then bind or ignore the result explicitly.',
+      ]);
+
+    case 'arg':
+      return detailHover(`Argument: ${tokenText(tokens, 2)}`, [
+        `Passes ${inlineCode(tokenText(tokens, 3))} into call ${inlineCode(tokenText(tokens, 1))}.`,
+        `Argument role: ${inlineCode(tokenText(tokens, 2))}`,
+      ]);
+
+    case 'run':
+      return detailHover(`Run call: ${tokenText(tokens, 1)}`, [
+        `Executes prepared call ${inlineCode(tokenText(tokens, 1))} synchronously.`,
+        'A later `bind`, `bindOk`, `bindError`, `ignoreOk`, or `ignoreValue` line should dispose of the result.',
+      ]);
+
+    case 'start':
+      return detailHover(`Start async call: ${tokenText(tokens, 1)}`, [
+        `Starts prepared call ${inlineCode(tokenText(tokens, 1))}.`,
+        'The current single-thread lowering runs it immediately, but the source keeps the async lifecycle explicit.',
+      ]);
+
+    case 'await':
+      return detailHover(`Await call: ${tokenText(tokens, 1)}`, [
+        `Waits for started call ${inlineCode(tokenText(tokens, 1))}.`,
+        'Under current synchronous lowering this is a no-op after `start`, but the contract remains visible.',
+      ]);
+
+    case 'bind':
+      return detailHover(`Bind result: ${tokenText(tokens, 1)}`, [
+        `Stores the infallible result of ${inlineCode(tokenText(tokens, 3))} into ${inlineCode(tokenText(tokens, 1))}.`,
+        `Type: ${inlineCode(tokenText(tokens, 2))}`,
+      ]);
+
+    case 'bindOk':
+      return detailHover(`Bind success: ${tokenText(tokens, 1)}`, [
+        `Stores the success value from fallible call ${inlineCode(tokenText(tokens, 3))}.`,
+        `Name: ${inlineCode(tokenText(tokens, 1))}`,
+        `Type: ${inlineCode(tokenText(tokens, 2))}`,
+      ]);
+
+    case 'bindError':
+      return detailHover(`Bind error: ${tokenText(tokens, 1)}`, [
+        `Stores the error value from fallible call ${inlineCode(tokenText(tokens, 3))}.`,
+        `Name: ${inlineCode(tokenText(tokens, 1))}`,
+        `Type: ${inlineCode(tokenText(tokens, 2))}`,
+        'Pair this with `branchIfError` so the failure path is explicit.',
+      ]);
+
+    case 'ignoreOk':
+    case 'ignoreValue':
+      return detailHover(`${readableVerbName(verb)}: ${tokenText(tokens, 1)}`, [
+        `Explicitly discards the value from ${inlineCode(tokenText(tokens, 1))}.`,
+        `Discarded type: ${inlineCode(tokenText(tokens, 2))}`,
+      ]);
+
+    case 'label':
+      return detailHover(`Label: ${tokenText(tokens, 1)}`, [
+        `Declares branch target ${inlineCode(tokenText(tokens, 1))}.`,
+        'Control-flow lines can jump here by name.',
+      ]);
+
+    case 'branch':
+      return detailHover(`Branch: ${tokenText(tokens, 1)}`, [
+        `Always jumps to ${inlineCode(tokenText(tokens, 1))}.`,
+      ]);
+
+    case 'branchIf':
+      return detailHover(`Conditional branch: ${tokenText(tokens, 2)}`, [
+        `Jumps to ${inlineCode(tokenText(tokens, 2))} when ${inlineCode(tokenText(tokens, 1))} is true.`,
+        'The false path continues to the next line.',
+      ]);
+
+    case 'branchIfError':
+      return detailHover(`Error branch: ${tokenText(tokens, 2)}`, [
+        `Jumps to ${inlineCode(tokenText(tokens, 2))} if call ${inlineCode(tokenText(tokens, 1))} failed.`,
+      ]);
+
+    case 'returnOk':
+      return detailHover(`Return success: ${tokenText(tokens, 1)}`, [
+        `Returns ${inlineCode(tokenText(tokens, 1))} through the operation success path.`,
+      ]);
+
+    case 'returnError':
+      return detailHover(`Return error: ${tokenText(tokens, 1)}`, [
+        `Returns ${inlineCode(tokenText(tokens, 1))} through the operation error path.`,
+      ]);
+
+    case 'returnValue':
+      return detailHover(`Return value: ${tokenText(tokens, 1)}`, [
+        `Returns raw value ${inlineCode(tokenText(tokens, 1))}.`,
+      ]);
+
+    case 'makeError':
+      return detailHover(`Construct error: ${tokenText(tokens, 1)}`, [
+        `Creates typed failure value ${inlineCode(tokenText(tokens, 1))}.`,
+        `Variant: ${inlineCode(tokenText(tokens, 2))}`,
+        `Source value: ${inlineCode(tokenTailText(tokens, 3))}`,
+      ]);
+
+    case 'declareFailure':
+      return detailHover(`Declare failure: ${tokenText(tokens, 1)}`, [
+        `Declares named failure value ${inlineCode(tokenText(tokens, 1))}.`,
+        `Variant: ${inlineCode(tokenText(tokens, 2))}`,
+        `Source value: ${inlineCode(tokenTailText(tokens, 3))}`,
+      ]);
+
+    case 'set':
+      if (tokens[1] && ['local', 'module', 'sharedState'].includes(tokens[1].text)) {
+        return detailHover(`Set ${tokens[1].text}: ${tokenText(tokens, 2)}`, [
+          `Updates ${inlineCode(tokenText(tokens, 2))} in ${inlineCode(tokenText(tokens, 1))} storage.`,
+          `New value: ${inlineCode(tokenText(tokens, 3))}`,
+          tokens.length > 4 ? `Authority clause: ${inlineCode(tokenTailText(tokens, 4))}` : '',
+        ]);
+      }
+
+      return detailHover(`Set variable: ${tokenText(tokens, 1)}`, [
+        `Updates mutable value ${inlineCode(tokenText(tokens, 1))}.`,
+        `New value: ${inlineCode(tokenTailText(tokens, 2))}`,
+      ]);
+
+    case 'read':
+      return detailHover(`Read: ${tokenText(tokens, 2)}`, [
+        `Reads ${inlineCode(tokenText(tokens, 4))} into ${inlineCode(tokenText(tokens, 2))}.`,
+        `Scope: ${inlineCode(tokenText(tokens, 1))}`,
+        `Type: ${inlineCode(tokenText(tokens, 3))}`,
+        tokens.length > 5 ? `Authority clause: ${inlineCode(tokenTailText(tokens, 5))}` : '',
+      ]);
+
+    case 'timeout':
+    case 'cancelOn':
+    case 'useRetry':
+      return detailHover(`${readableVerbName(verb)}: ${tokenText(tokens, 1)}`, [
+        `Attaches ${inlineCode(verb)} to call ${inlineCode(tokenText(tokens, 1))}.`,
+        `Value: ${inlineCode(tokenTailText(tokens, 2))}`,
+      ]);
+
+    case 'useCapability':
+      return detailHover(`Capability use: ${tokenText(tokens, 2)}`, [
+        `Attaches capability ${inlineCode(tokenText(tokens, 2))} to ${inlineCode(tokenText(tokens, 1))}.`,
+      ]);
+
+    case 'new':
+      return detailHover(`New record: ${tokenText(tokens, 1)}`, [
+        `Creates record value ${inlineCode(tokenText(tokens, 1))}.`,
+        `Record type: ${inlineCode(tokenText(tokens, 2))}`,
+      ]);
+
+    case 'fieldGet':
+      return detailHover(`Read field: ${tokenText(tokens, 4)}`, [
+        `Reads field ${inlineCode(tokenText(tokens, 4))} from ${inlineCode(tokenText(tokens, 3))}.`,
+        `Output: ${inlineCode(tokenText(tokens, 1))}`,
+        `Type: ${inlineCode(tokenText(tokens, 2))}`,
+      ]);
+
+    case 'fieldSet':
+      return detailHover(`Write field: ${tokenText(tokens, 2)}`, [
+        `Writes ${inlineCode(tokenText(tokens, 3))} into field ${inlineCode(tokenText(tokens, 2))}.`,
+        `Record value: ${inlineCode(tokenText(tokens, 1))}`,
+      ]);
+
+    case 'recordBuilder':
+      return detailHover(`Record builder: ${tokenText(tokens, 1)}`, [
+        `Creates builder ${inlineCode(tokenText(tokens, 1))}.`,
+        `Record type: ${inlineCode(tokenText(tokens, 2))}`,
+      ]);
+
+    case 'recordSet':
+      return detailHover(`Builder field: ${tokenText(tokens, 2)}`, [
+        `Sets field ${inlineCode(tokenText(tokens, 2))} on builder ${inlineCode(tokenText(tokens, 1))}.`,
+        `Value: ${inlineCode(tokenText(tokens, 3))}`,
+      ]);
+
+    case 'recordBuild':
+      return detailHover(`Build record call: ${tokenText(tokens, 1)}`, [
+        `Creates fallible build call ${inlineCode(tokenText(tokens, 1))}.`,
+        `Builder: ${inlineCode(tokenText(tokens, 2))}`,
+      ]);
+
+    case 'defer':
+    case 'deferLog':
+    case 'deferAwaitLog':
+      return detailHover(`${readableVerbName(verb)}: ${tokenText(tokens, 1)}`, [
+        `Registers cleanup ${inlineCode(tokenText(tokens, 1))}.`,
+        `Target operation: ${inlineCode(tokenText(tokens, 2))}`,
+        `Arguments: ${inlineCode(tokenTailText(tokens, 3))}`,
+      ]);
+
+    case 'deferWhenExitLog':
+      return detailHover(`Conditional cleanup: ${tokenText(tokens, 1)}`, [
+        `Registers cleanup ${inlineCode(tokenText(tokens, 1))}.`,
+        `Guard value: ${inlineCode(tokenText(tokens, 2))}`,
+        `Target operation: ${inlineCode(tokenText(tokens, 3))}`,
+        `Arguments: ${inlineCode(tokenTailText(tokens, 4))}`,
+      ]);
+
+    case 'deferLogSink':
+    case 'deferAwaitLogSink':
+    case 'deferWhenExitLogSink':
+    case 'deferRunOn':
+    case 'deferOrder':
+    case 'deferFailurePolicy':
+    case 'deferConsumes':
+    case 'deferAwaitTimeout':
+      return detailHover(`${readableVerbName(verb)}: ${tokenText(tokens, 1)}`, [
+        `Attaches ${inlineCode(verb)} metadata to cleanup ${inlineCode(tokenText(tokens, 1))}.`,
+        `Value: ${inlineCode(tokenTailText(tokens, 2))}`,
+      ]);
+
+    case 'workerPool':
+      return detailHover(`Worker pool: ${tokenText(tokens, 1)}`, [
+        `Declares worker pool ${inlineCode(tokenText(tokens, 1))}.`,
+        `Options: ${inlineCode(tokenTailText(tokens, 2))}`,
+        'The current single-thread lowering runs submitted work inline.',
+      ]);
+
+    case 'work':
+      return detailHover(`Work item: ${tokenText(tokens, 1)}`, [
+        `Declares work item ${inlineCode(tokenText(tokens, 1))}.`,
+        `Target operation: ${inlineCode(tokenText(tokens, 3))}`,
+      ]);
+
+    case 'workArg':
+      return detailHover(`Work argument: ${tokenText(tokens, 2)}`, [
+        `Passes ${inlineCode(tokenText(tokens, 3))} into work item ${inlineCode(tokenText(tokens, 1))}.`,
+        `Argument role: ${inlineCode(tokenText(tokens, 2))}`,
+      ]);
+
+    case 'submitWork':
+      return detailHover(`Submit work: ${tokenText(tokens, 1)}`, [
+        `Submits work item ${inlineCode(tokenText(tokens, 1))} to pool ${inlineCode(tokenText(tokens, 2))}.`,
+        'Current lowering dispatches the target operation immediately on the same thread.',
+      ]);
+
+    case 'awaitWork':
+      return detailHover(`Await work: ${tokenText(tokens, 1)}`, [
+        `Waits for work item ${inlineCode(tokenText(tokens, 1))}.`,
+        'Current lowering has already completed the work at `submitWork`.',
+      ]);
+
+    case 'interval':
+      return detailHover(`Interval: ${tokenText(tokens, 1)}`, [
+        `Declares interval ${inlineCode(tokenText(tokens, 1))}.`,
+        `Options: ${inlineCode(tokenTailText(tokens, 2))}`,
+      ]);
+
+    case 'startInterval':
+    case 'awaitIntervalTick':
+      return detailHover(`${readableVerbName(verb)}: ${tokenText(tokens, 1)}`, [
+        `Uses interval ${inlineCode(tokenText(tokens, 1))}.`,
+        'Current single-thread lowering treats interval waiting as a no-op.',
+      ]);
+
+    case 'project':
+    case 'target':
+    case 'runtime':
+    case 'entry':
+    case 'module':
+    case 'mode':
+    case 'importModule':
+    case 'type':
+    case 'record':
+    case 'field':
+    case 'enum':
+    case 'enumCase':
+    case 'error':
+    case 'errorCase':
+    case 'webServer':
+    case 'route':
+    case 'routeTimeout':
+    case 'routeMiddleware':
+    case 'capability':
+    case 'authority':
+    case 'resource':
+    case 'codec':
+    case 'jsonCodec':
+    case 'schema':
+    case 'unknownFields':
+    case 'retryPolicy':
+    case 'timeoutBudget':
+    case 'trustBoundary':
+    case 'guardTokenSource':
+    case 'guardTokenOwner':
+    case 'guardTokenProtects':
+    case 'guardTokenRelease':
+      return detailHover(`${readableVerbName(verb)} line`, [
+        `Declares ${inlineCode(tokenText(tokens, 1))} with ${inlineCode(verb)}.`,
+        tokens.length > 2 ? `Details: ${inlineCode(tokenTailText(tokens, 2))}` : '',
+      ]);
+
+    default:
+      if (verbHoverText.has(verb)) {
+        return detailHover(`${readableVerbName(verb)} line`, [
+          verbHoverText.get(verb),
+          tokens.length > 1 ? `Parsed fields: ${inlineCode(tokenTailText(tokens, 1))}` : '',
+        ]);
+      }
+
+      return null;
+  }
+};
+
+const declarationKindTitle = (declaration) => (
+  declaration.kind
+    ? declaration.kind.replace(/^\w/, (first) => first.toUpperCase())
+    : 'Symbol'
+);
+
+const declarationSummaryLines = (declaration) => {
+  const lines = [];
+
+  if (declaration.operation) {
+    lines.push(`Scope: operation ${inlineCode(declaration.operation)}`);
+  } else {
+    lines.push('Scope: module level');
+  }
+
+  lines.push(`Declared on line ${declaration.line}.`);
+
+  if (declaration.owner) {
+    lines.push(`Owner: ${inlineCode(declaration.owner)}`);
+  }
+
+  if (declaration.scope) {
+    lines.push(`Storage scope: ${inlineCode(declaration.scope)}`);
+  }
+
+  if (declaration.mutability) {
+    lines.push(`Mutability: ${inlineCode(declaration.mutability)}`);
+  }
+
+  if (declaration.type) {
+    lines.push(`Type: ${inlineCode(declaration.type)}`);
+  }
+
+  if (declaration.value && declaration.value !== '?') {
+    lines.push(`Value/source: ${inlineCode(declaration.value)}`);
+  }
+
+  if (declaration.target) {
+    lines.push(`Target: ${inlineCode(declaration.target)}`);
+  }
+
+  if (declaration.details && declaration.details !== '?') {
+    lines.push(`Details: ${inlineCode(declaration.details)}`);
+  }
+
+  if (declaration.args && declaration.args.length > 0) {
+    lines.push(`Arguments: ${declaration.args.map((arg) => (
+      `${inlineCode(arg.role)} <- ${inlineCode(arg.value)}`
+    )).join(', ')}`);
+  }
+
+  if (declaration.resultBindings && declaration.resultBindings.length > 0) {
+    lines.push(`Result handling: ${declaration.resultBindings.map((binding) => (
+      `${inlineCode(binding.verb)} ${inlineCode(binding.name)} as ${inlineCode(binding.type)}`
+    )).join(', ')}`);
+  }
+
+  return lines;
+};
+
+const tokenUseDescription = (tokens, tokenIndex, declaration) => {
+  const verb = tokens[0] ? tokens[0].text : '';
+  const text = tokenText(tokens, tokenIndex);
+
+  switch (verb) {
+    case 'const':
+    case 'var':
+      if (tokenIndex === 1) {
+        return `This token declares ${inlineCode(text)}.`;
+      }
+      if (tokenIndex === 2) {
+        return `This token is the declared type for ${inlineCode(tokenText(tokens, 1))}.`;
+      }
+      if (tokenIndex >= 3) {
+        return `This token contributes to the initial value of ${inlineCode(tokenText(tokens, 1))}.`;
+      }
+      break;
+
+    case 'storage':
+    case 'sharedState':
+      if (tokenIndex === 3) {
+        return `This token declares the storage slot ${inlineCode(text)}.`;
+      }
+      if (tokenIndex === 4) {
+        return `This token is the storage value type for ${inlineCode(tokenText(tokens, 3))}.`;
+      }
+      if (tokenIndex >= 5) {
+        return `This token contributes to the initial storage value for ${inlineCode(tokenText(tokens, 3))}.`;
+      }
+      break;
+
+    case 'input':
+      if (tokenIndex === 2) {
+        return `This token declares input parameter ${inlineCode(text)} for ${inlineCode(tokenText(tokens, 1))}.`;
+      }
+      if (tokenIndex === 3) {
+        return `This token is the parameter type for ${inlineCode(tokenText(tokens, 2))}.`;
+      }
+      break;
+
+    case 'call':
+      if (tokenIndex === 1) {
+        return `This token declares call object ${inlineCode(text)}.`;
+      }
+      if (tokenIndex === 2) {
+        return `This token is the target invoked by ${inlineCode(tokenText(tokens, 1))}.`;
+      }
+      break;
+
+    case 'arg':
+      if (tokenIndex === 1) {
+        return `This token selects call object ${inlineCode(text)}.`;
+      }
+      if (tokenIndex === 2) {
+        return `This token is the target argument role on ${inlineCode(tokenText(tokens, 1))}.`;
+      }
+      if (tokenIndex === 3) {
+        return `This value flows into ${inlineCode(tokenText(tokens, 2))} on call ${inlineCode(tokenText(tokens, 1))}.`;
+      }
+      break;
+
+    case 'run':
+    case 'start':
+    case 'await':
+    case 'ignoreOk':
+    case 'ignoreValue':
+    case 'timeout':
+    case 'cancelOn':
+    case 'useRetry':
+      if (tokenIndex === 1) {
+        return `This token references call object ${inlineCode(text)}.`;
+      }
+      if (tokenIndex >= 2) {
+        return `This token configures ${inlineCode(tokenText(tokens, 1))}.`;
+      }
+      break;
+
+    case 'bind':
+    case 'bindOk':
+    case 'bindError':
+      if (tokenIndex === 1) {
+        return `This token declares ${inlineCode(text)} from call ${inlineCode(tokenText(tokens, 3))}.`;
+      }
+      if (tokenIndex === 2) {
+        return `This token is the declared type for ${inlineCode(tokenText(tokens, 1))}.`;
+      }
+      if (tokenIndex === 3) {
+        return `This token is the call object whose result is being bound.`;
+      }
+      break;
+
+    case 'set':
+      if (tokens[1] && ['local', 'module', 'sharedState'].includes(tokens[1].text)) {
+        if (tokenIndex === 2) {
+          return `This token is the storage slot being updated.`;
+        }
+        if (tokenIndex === 3) {
+          return `This value is written into ${inlineCode(tokenText(tokens, 2))}.`;
+        }
+      } else if (tokenIndex === 1) {
+        return `This token is the mutable value being updated.`;
+      } else if (tokenIndex >= 2) {
+        return `This value is assigned to ${inlineCode(tokenText(tokens, 1))}.`;
+      }
+      break;
+
+    case 'read':
+      if (tokenIndex === 2) {
+        return `This token declares the value loaded from shared state.`;
+      }
+      if (tokenIndex === 4) {
+        return `This token is the shared-state slot being read.`;
+      }
+      break;
+
+    case 'label':
+      if (tokenIndex === 1) {
+        return `This token declares branch target ${inlineCode(text)}.`;
+      }
+      break;
+
+    case 'branch':
+      if (tokenIndex === 1) {
+        return `This token is the label jumped to unconditionally.`;
+      }
+      break;
+
+    case 'branchIf':
+      if (tokenIndex === 1) {
+        return `This token is the condition being tested.`;
+      }
+      if (tokenIndex === 2) {
+        return `This token is the label used when the condition is true.`;
+      }
+      break;
+
+    case 'branchIfError':
+      if (tokenIndex === 1) {
+        return `This token is the call object checked for failure.`;
+      }
+      if (tokenIndex === 2) {
+        return `This token is the label used when the call failed.`;
+      }
+      break;
+
+    case 'returnOk':
+      if (tokenIndex === 1) {
+        return `This token is returned through the success path.`;
+      }
+      break;
+
+    case 'returnError':
+      if (tokenIndex === 1) {
+        return `This token is returned through the error path.`;
+      }
+      break;
+
+    case 'returnValue':
+      if (tokenIndex === 1) {
+        return `This token is returned as the raw operation value.`;
+      }
+      break;
+
+    case 'makeError':
+    case 'declareFailure':
+      if (tokenIndex === 1) {
+        return `This token declares a named failure value.`;
+      }
+      if (tokenIndex === 2) {
+        return `This token names the error variant.`;
+      }
+      if (tokenIndex >= 3) {
+        return `This token is the source value attached to the failure.`;
+      }
+      break;
+
+    default:
+      if (declaration) {
+        return `This line uses ${inlineCode(text)} as a ${declaration.kind}.`;
+      }
+      break;
+  }
+
+  return null;
+};
+
+const chooseSymbolDeclaration = (entry, currentOperation) => {
+  if (!entry || entry.declarations.length === 0) {
+    return null;
+  }
+
+  return entry.declarations.find((declaration) => declaration.operation === currentOperation)
+    || entry.declarations.find((declaration) => !declaration.operation)
+    || entry.declarations[0];
+};
+
+const symbolHover = (document, position, token, tokenIndex, tokens) => {
+  const text = token.text;
+
+  if (tokenIndex === 0 || !isSymbolLike(text) || schemaValues.has(text)) {
+    return null;
+  }
+
+  const index = getDocumentSymbolIndex(document);
+  const currentOperation = index.lineOperations.get(position.line) || null;
+  const entry = index.symbols.get(text);
+  const declaration = chooseSymbolDeclaration(entry, currentOperation);
+
+  if (!declaration) {
+    return null;
+  }
+
+  const useDescription = tokenUseDescription(tokens, tokenIndex, declaration);
+  const markdown = new vscode.MarkdownString();
+  markdown.appendMarkdown(`**${declarationKindTitle(declaration)}: ${text}**\n\n`);
+
+  if (useDescription) {
+    markdown.appendMarkdown(`${useDescription}\n\n`);
+  }
+
+  declarationSummaryLines(declaration).forEach((line) => {
+    markdown.appendMarkdown(`${line}\n\n`);
+  });
+
+  if (entry.declarations.length > 1) {
+    markdown.appendMarkdown(`Other declarations with this name: ${entry.declarations.length - 1}.\n\n`);
+  }
+
+  if (declaration.text) {
+    markdown.appendCodeblock(declaration.text, 'agentscript');
+  }
+
+  return new vscode.Hover(markdown);
+};
+
+const operationMetadataHover = (operation) => {
+  const markdown = new vscode.MarkdownString();
+  markdown.appendMarkdown(`**Operation metadata: ${operation.name}**\n\n`);
+
+  if (operation.section) {
+    markdown.appendMarkdown(`Section: \`${operation.section}\`\n\n`);
+  }
+
+  if (operation.declarationLine) {
+    markdown.appendMarkdown(`Declared on line ${operation.declarationLine}.\n\n`);
+  } else {
+    markdown.appendMarkdown('No `operation` declaration was found in this file; showing metadata references only.\n\n');
+  }
+
+  const codeLines = [];
+
+  if (operation.declarationText) {
+    codeLines.push(operation.declarationText);
+  }
+
+  const maxMetadataLines = 30;
+  operation.metadata.slice(0, maxMetadataLines).forEach((record) => {
+    codeLines.push(record.text);
+  });
+
+  if (operation.metadata.length > maxMetadataLines) {
+    codeLines.push(`# ... ${operation.metadata.length - maxMetadataLines} more metadata line(s)`);
+  }
+
+  if (codeLines.length > 0) {
+    markdown.appendCodeblock(codeLines.join('\n'), 'agentscript');
+  }
+
+  return new vscode.Hover(markdown);
+};
+
 const roleSuffixHover = (token, character) => {
   const suffixMatch = token.text.match(roleSuffixPattern);
 
@@ -1290,6 +2613,28 @@ const provideHover = (document, position) => {
   const { token, tokenIndex, tokens } = found;
   const text = token.text;
 
+  const operationHoverName = operationHoverNameForToken(text, tokenIndex, tokens);
+
+  if (operationHoverName) {
+    const operation = getOperationMetadataIndex(document).get(operationHoverName);
+
+    if (operation) {
+      return operationMetadataHover(operation);
+    }
+  }
+
+  const lineHover = humanReadableLineHover(tokens, tokenIndex);
+
+  if (lineHover) {
+    return lineHover;
+  }
+
+  const resolvedSymbolHover = symbolHover(document, position, token, tokenIndex, tokens);
+
+  if (resolvedSymbolHover) {
+    return resolvedSymbolHover;
+  }
+
   const tokenType = tokenTypeForSymbol(text, tokenIndex, tokens);
   const suffixHover = roleSuffixHover(token, position.character);
 
@@ -1303,6 +2648,13 @@ const provideHover = (document, position) => {
 
   if (primitiveTargets.has(text)) {
     return markdownHover(`Primitive call target: ${text}`, primitiveTargets.get(text));
+  }
+
+  if (cRuntimeTargetPattern.test(text)) {
+    return markdownHover(
+      `C runtime call target: ${text}`,
+      'Calls a registered C standard-library function through the reference compiler libc registry. Declare matching operation effects for lint coverage.'
+    );
   }
 
   if (generatedTargetPattern.test(text)) {
@@ -1368,6 +2720,7 @@ const syncConfiguration = () => {
   linterPythonPath = linterConfig.get('pythonPath', 'python');
   linterConfiguredPath = linterConfig.get('path', '');
   linterSkipFutureSyntax = linterConfig.get('skipFutureSyntax', true);
+  linterEngine = linterConfig.get('engine', 'aslint');
 };
 
 const isAgentScriptDocument = (document) => (
@@ -1396,16 +2749,19 @@ const documentUsesFutureSyntax = (document) => {
   });
 };
 
+const linterScriptName = () => (linterEngine === 'aslint2' ? 'aslint2.py' : 'aslint.py');
+
 const candidateLinterPaths = (document) => {
   const candidates = [];
   const workspaceFolder = document ? vscode.workspace.getWorkspaceFolder(document.uri) : null;
+  const scriptName = linterScriptName();
   const addAncestorCandidates = (startPath) => {
     let currentPath = path.resolve(startPath);
     const rootPath = path.parse(currentPath).root;
 
     while (currentPath && currentPath !== rootPath) {
-      candidates.push(path.join(currentPath, 'AgentScript', 'linter', 'aslint.py'));
-      candidates.push(path.join(currentPath, 'linter', 'aslint.py'));
+      candidates.push(path.join(currentPath, 'AgentScript', 'linter', scriptName));
+      candidates.push(path.join(currentPath, 'linter', scriptName));
       currentPath = path.dirname(currentPath);
     }
   };
@@ -1420,9 +2776,9 @@ const candidateLinterPaths = (document) => {
 
   const workspaceFolders = vscode.workspace.workspaceFolders || [];
   workspaceFolders.forEach((folder) => {
-    candidates.push(path.join(folder.uri.fsPath, 'AgentScript', 'linter', 'aslint.py'));
-    candidates.push(path.join(folder.uri.fsPath, 'linter', 'aslint.py'));
-    candidates.push(path.join(folder.uri.fsPath, '..', 'AgentScript', 'linter', 'aslint.py'));
+    candidates.push(path.join(folder.uri.fsPath, 'AgentScript', 'linter', scriptName));
+    candidates.push(path.join(folder.uri.fsPath, 'linter', scriptName));
+    candidates.push(path.join(folder.uri.fsPath, '..', 'AgentScript', 'linter', scriptName));
     addAncestorCandidates(folder.uri.fsPath);
   });
 
@@ -1430,7 +2786,7 @@ const candidateLinterPaths = (document) => {
     addAncestorCandidates(path.dirname(document.fileName));
   }
 
-  candidates.push(path.join(__dirname, 'tools', 'aslint.py'));
+  candidates.push(path.join(__dirname, 'tools', scriptName));
 
   return candidates;
 };
@@ -1486,6 +2842,53 @@ const diagnosticRange = (document, lineNumber, columnNumber) => {
   );
 };
 
+const aslint2Message = (record) => {
+  const parts = [];
+
+  if (record.code || record.kind) {
+    parts.push([record.code, record.kind].filter(Boolean).join(' '));
+  }
+
+  if (record.intentSlogan) {
+    parts.push(record.intentSlogan);
+  } else if (record.invariantRule) {
+    parts.push(record.invariantRule);
+  }
+
+  if (record.subjectName) {
+    parts.push(`${record.subjectKind || 'subject'}: ${record.subjectName}`);
+  }
+
+  if (record.gapEdge) {
+    parts.push(`gap: ${record.gapEdge}`);
+  }
+
+  return parts.join(' - ') || 'AgentScript lint diagnostic';
+};
+
+const diagnosticFromAslint2Record = (document, record) => {
+  const primary = record.primary || {};
+  const diagnostic = new vscode.Diagnostic(
+    diagnosticRange(document, primary.line, primary.column),
+    aslint2Message(record),
+    severityFromLinter(record.severity)
+  );
+  diagnostic.source = 'aslint2';
+  diagnostic.code = record.code || undefined;
+  return diagnostic;
+};
+
+const diagnosticFromAslintRecord = (document, record) => {
+  const diagnostic = new vscode.Diagnostic(
+    diagnosticRange(document, record.line, record.column),
+    record.message || String(record.rule || 'AgentScript lint diagnostic'),
+    severityFromLinter(record.severity)
+  );
+  diagnostic.source = 'aslint';
+  diagnostic.code = record.rule || undefined;
+  return diagnostic;
+};
+
 const parseLinterDiagnostics = (document, stdout) => {
   let records;
 
@@ -1495,7 +2898,7 @@ const parseLinterDiagnostics = (document, stdout) => {
     return [
       new vscode.Diagnostic(
         new vscode.Range(0, 0, 0, Math.max(1, document.lineAt(0).text.length)),
-        'aslint returned invalid JSON diagnostics.',
+        `${linterEngine} returned invalid JSON diagnostics.`,
         vscode.DiagnosticSeverity.Error
       ),
     ];
@@ -1506,14 +2909,11 @@ const parseLinterDiagnostics = (document, stdout) => {
   }
 
   return records.map((record) => {
-    const diagnostic = new vscode.Diagnostic(
-      diagnosticRange(document, record.line, record.column),
-      record.message || String(record.rule || 'AgentScript lint diagnostic'),
-      severityFromLinter(record.severity)
-    );
-    diagnostic.source = 'aslint';
-    diagnostic.code = record.rule || undefined;
-    return diagnostic;
+    if (record && record.primary) {
+      return diagnosticFromAslint2Record(document, record);
+    }
+
+    return diagnosticFromAslintRecord(document, record || {});
   });
 };
 
@@ -1559,7 +2959,7 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
 
   if (linterSkipFutureSyntax && documentUsesFutureSyntax(document)) {
     diagnosticCollection.delete(document.uri);
-    setLinterStatus('$(info) AgentScript future syntax', 'Current aslint is skipped for refined future syntax.');
+    setLinterStatus('$(info) AgentScript future syntax', `${linterEngine} is skipped for refined future syntax.`);
     clearLinterStatusLater();
     return;
   }
@@ -1571,7 +2971,7 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
 
     if (showMissingLinterMessage) {
       vscode.window.showWarningMessage(
-        'AgentScript linter not found. Set agentScript.linter.path or open the AgentScript repo root.'
+        `AgentScript ${linterEngine} linter not found. Set agentScript.linter.path or open the AgentScript repo root.`
       );
     }
 
@@ -1579,10 +2979,13 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
   }
 
   setLinterStatus('$(sync~spin) AgentScript lint', document.fileName);
+  const linterArgs = linterEngine === 'aslint2'
+    ? [linterPath, document.fileName, '--format', 'json']
+    : [linterPath, document.fileName, '--format', 'json', '--fail-on', 'none'];
 
   const lintProcess = childProcess.spawn(
     linterPythonPath,
-    [linterPath, document.fileName, '--format', 'json', '--fail-on', 'none'],
+    linterArgs,
     {
       cwd: vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath || path.dirname(document.fileName),
       windowsHide: true,
@@ -1607,7 +3010,7 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
     diagnosticCollection.set(document.uri, [
       new vscode.Diagnostic(
         new vscode.Range(0, 0, 0, Math.max(1, document.lineAt(0).text.length)),
-        `Failed to run aslint with ${linterPythonPath}: ${error.message}`,
+        `Failed to run ${linterEngine} with ${linterPythonPath}: ${error.message}`,
         vscode.DiagnosticSeverity.Error
       ),
     ]);
