@@ -17,6 +17,7 @@ sourceRoot httpApiGauntlet "."
 registerModule httpApiGauntlet app.http_api_gauntlet "."
 mainFile httpApiGauntlet "main.sem"
 testPattern httpApiGauntlet "*.test.sem"
+testRoot httpApiGauntlet "."
 
 target webServer
 # rationale: `runtime native 1` matches the rest of the repo's executable
@@ -48,6 +49,14 @@ buildProfile httpApiGauntlet dev
 optLevel httpApiGauntlet 2
 runtimeChecks httpApiGauntlet panic
 persistLlvmIr httpApiGauntlet yes
+emitLlvmIr httpApiGauntlet auto
+emitOptimizedLlvmIr httpApiGauntlet no
+buildFolderName httpApiGauntlet build
+nativeHttpHost httpApiGauntlet "127.0.0.1"
+nativeHttpPort httpApiGauntlet 18082
+formatterSetting httpApiGauntlet lineWidth 100
+linterSetting httpApiGauntlet maxTier T4
+docsOutput httpApiGauntlet "docs"
 # Basenames resolve into the compiler-managed build directory, so this emits
 # app/http-api-gauntlet/build/http_api_gauntlet.exe while keeping the
 # source-level executable name stable.

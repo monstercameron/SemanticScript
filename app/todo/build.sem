@@ -16,6 +16,7 @@ registerModule todoTui app.todo "."
 mainFile todoTui "main.sem"
 mainOperation todoTui main
 testPattern todoTui "*.test.sem"
+testRoot todoTui "."
 
 target console
 # rationale: `runtime native 1` is the SemanticScript-canonical contract for
@@ -110,6 +111,12 @@ buildProfile todoTui dev
 optLevel todoTui 2
 runtimeChecks todoTui panic
 persistLlvmIr todoTui yes
+emitLlvmIr todoTui auto
+emitOptimizedLlvmIr todoTui no
+buildFolderName todoTui build
+formatterSetting todoTui lineWidth 100
+linterSetting todoTui maxTier T4
+docsOutput todoTui "docs"
 # Basenames resolve into the compiler-managed build directory, so this emits
 # app/todo/build/todo.exe while keeping the source-level executable name stable.
 nativeOutput todoTui "todo.exe"

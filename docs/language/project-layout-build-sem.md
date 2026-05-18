@@ -109,8 +109,14 @@ Current responsibilities:
 - `mainFile PROJECT "main.sem"` records the default executable source.
 - `mainOperation PROJECT OPERATION` records the default executable operation.
 - `testPattern PROJECT "*.test.sem"` records local test discovery rules.
+- `testRoot PROJECT "PATH"` records the root used by test discovery.
 - `targetRuntime`, `buildProfile`, `optLevel`, `runtimeChecks`, `persistLlvmIr`,
+  `emitLlvmIr`, `llvmIrOutput`, `emitOptimizedLlvmIr`,
+  `optimizedLlvmIrOutput`, `buildDir`, `buildRoot`, `buildFolderName`,
   `nativeOutput`, and `keepResources` record build-output policy.
+- `nativeHttpHost` and `nativeHttpPort` record the native webserver defaults.
+- `formatterSetting`, `linterSetting`, and `docsOutput` expose project tool
+  settings without adding a TOML/YAML sidecar.
 - `comptimeOperation` is reserved for future compile-time configuration work.
 - The final `importModule app.todo` is the current compiler bridge that inlines
   the registered executable module.
@@ -118,6 +124,117 @@ Current responsibilities:
 `build.sem` must not own public API export rows. Those belong in the module
 source so a module folder can be understood without editing the build entry
 point.
+
+## build.sem Schema Reference
+
+The current build tape is deliberately row-oriented. Every project-scoped row
+starts with the same `PROJECT` token declared by `buildProject PROJECT`.
+
+| Row | Required | Meaning |
+|---|---:|---|
+| `buildProject PROJECT` | yes | Names the single project described by this tape. |
+| `project NAME` | bridge | Current compiler project name row. |
+| `modulePath PROJECT MODULE_PATH` | yes | Canonical Go-style module/package path. |
+| `languageVersion PROJECT "VERSION"` | yes | SemanticScript language contract. |
+| `projectVersion PROJECT "VERSION"` | yes | Package or application version. |
+| `projectLicense PROJECT LICENSE` | yes | SPDX-style license token, for example `MIT`. |
+| `sourceRoot PROJECT "PATH"` | yes | Root for project source paths, relative to `build.sem` unless absolute. |
+| `registerModule PROJECT MODULE_PATH "PATH"` | usually | Registers a module folder or source file. |
+| `mainFile PROJECT "PATH"` | executable | Default source file for `nativeExe` and `webServer`. |
+| `mainOperation PROJECT OPERATION` | nativeExe | Default operation for console/native executable entry. |
+| `testRoot PROJECT "PATH"` | no | Root folder for test discovery. |
+| `testPattern PROJECT "GLOB"` | no | Local test filename pattern, normally `*.test.sem`. |
+| `targetRuntime PROJECT nativeExe\|webServer\|library` | yes | Project build target class. |
+| `buildProfile PROJECT dev\|prod` | yes | Default compiler profile. |
+| `runtimeChecks PROJECT off\|traps\|panic` | yes | Runtime check lowering policy. |
+| `optLevel PROJECT 0\|1\|2\|3` | yes | LLVM optimization level for JIT/AOT paths. |
+| `persistLlvmIr PROJECT auto\|yes\|no` | yes | Whether generated LLVM IR is kept. |
+| `emitLlvmIr PROJECT auto\|yes\|no` | no | Project default for pre-optimization `.ll` output. |
+| `llvmIrOutput PROJECT "PATH"` | no | Explicit pre-optimization `.ll` path. Basenames use the build folder. |
+| `emitOptimizedLlvmIr PROJECT yes\|no` | no | Project default for optimized IR during `--run`. |
+| `optimizedLlvmIrOutput PROJECT "PATH"` | no | Explicit optimized `.ll` path. Basenames use the build folder. |
+| `buildDir PROJECT "PATH"` | no | Exact artifact directory. Mutually exclusive with build root/folder CLI shape. |
+| `buildRoot PROJECT "PATH"` | no | Parent directory where the managed build folder is created. |
+| `buildFolderName PROJECT NAME` | no | Managed build folder name. Must be one folder name, not a path. |
+| `nativeOutput PROJECT "PATH"` | no | Native executable output. Basenames use the build folder. |
+| `keepResources PROJECT yes\|no` | no | Keep transient Windows resource files for debugging. |
+| `resourcesDir PROJECT "PATH"` | no | Explicit resource scratch directory. Implies kept resources. |
+| `nativeHttpHost PROJECT "HOST"` | webServer | Default webserver host metadata. |
+| `nativeHttpPort PROJECT PORT` | webServer | Default webserver port metadata. |
+| `formatterSetting PROJECT KEY VALUE` | no | Project formatter setting row. |
+| `linterSetting PROJECT KEY VALUE` | no | Project linter setting row. |
+| `docsOutput PROJECT "PATH"` | no | Documentation output directory. |
+| `comptimeOperation PROJECT OPERATION` | reserved | Future 2.0 compile-time build hook. |
+| `importModule MODULE_PATH` | bridge | Current compiler bridge that inlines registered module source. |
+
+Strict checks now reject multiple `buildProject` rows, project-name drift,
+malformed project rows, invalid enum values, missing required rows, and
+`buildFolderName` values that are paths.
+
+## Native Webserver Example
+
+```semanticscript
+buildProject helloWeb
+project HelloWeb
+modulePath helloWeb github.com/example/hello-web
+languageVersion helloWeb "1.0"
+projectVersion helloWeb "1.0.0"
+projectLicense helloWeb MIT
+
+sourceRoot helloWeb "."
+registerModule helloWeb app.hello_web "."
+mainFile helloWeb "main.sem"
+testRoot helloWeb "."
+testPattern helloWeb "*.test.sem"
+
+target webServer
+runtime native 1
+
+targetRuntime helloWeb webServer
+buildProfile helloWeb dev
+runtimeChecks helloWeb panic
+optLevel helloWeb 2
+persistLlvmIr helloWeb yes
+emitLlvmIr helloWeb auto
+emitOptimizedLlvmIr helloWeb no
+buildFolderName helloWeb build
+nativeOutput helloWeb "hello_web.exe"
+nativeHttpHost helloWeb "127.0.0.1"
+nativeHttpPort helloWeb 18080
+
+importModule app.hello_web
+```
+
+## Library/Package Example
+
+```semanticscript
+buildProject todoDomain
+project TodoDomain
+modulePath todoDomain github.com/example/todo/domain
+languageVersion todoDomain "1.0"
+projectVersion todoDomain "1.0.0"
+projectLicense todoDomain MIT
+
+sourceRoot todoDomain "."
+registerModule todoDomain app.todo.domain "."
+testRoot todoDomain "."
+testPattern todoDomain "*.test.sem"
+
+target library
+runtime native 1
+
+targetRuntime todoDomain library
+buildProfile todoDomain dev
+runtimeChecks todoDomain panic
+optLevel todoDomain 2
+persistLlvmIr todoDomain auto
+emitLlvmIr todoDomain no
+emitOptimizedLlvmIr todoDomain no
+buildFolderName todoDomain build
+formatterSetting todoDomain lineWidth 100
+linterSetting todoDomain maxTier T4
+docsOutput todoDomain "docs"
+```
 
 ## Module Source Responsibilities
 
