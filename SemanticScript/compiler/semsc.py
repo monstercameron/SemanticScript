@@ -48,8 +48,11 @@ External call targets:
 
 import argparse
 import ctypes
+import json
 import os
+import re
 import sys
+from dataclasses import dataclass, field
 from llvmlite import ir
 import llvmlite.binding as llvm
 
@@ -58,6 +61,281 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import libc_registry
 
 __version__ = "1.0.0"
+
+
+# ============================================================
+# Diagnostics
+# ============================================================
+
+@dataclass
+class DiagnosticSpan:
+    path: str
+    line: int = 0
+    column: int = 1
+    raw: str = ""
+    role: str = "primary"
+
+    def to_json(self):
+        return {
+            "path": self.path,
+            "line": self.line,
+            "column": self.column,
+            "raw": self.raw,
+            "role": self.role,
+        }
+
+
+@dataclass
+class DiagnosticFrame:
+    kind: str
+    operation: str = ""
+    call_name: str = ""
+    call_target: str = ""
+    span: DiagnosticSpan = None
+    note: str = ""
+
+    def to_json(self):
+        return {
+            "kind": self.kind,
+            "operation": self.operation,
+            "callName": self.call_name,
+            "callTarget": self.call_target,
+            "span": self.span.to_json() if self.span else None,
+            "note": self.note,
+        }
+
+
+@dataclass
+class CompilerDiagnostic:
+    code: str
+    phase: str
+    message: str
+    severity: str = "error"
+    primary: DiagnosticSpan = None
+    semantic_stack: list = field(default_factory=list)
+    lowering_trace: list = field(default_factory=list)
+    direction: str = ""
+    suggested_fixes: list = field(default_factory=list)
+    backend_excerpt: str = ""
+    agent_hint: str = ""
+
+    def to_json(self):
+        return {
+            "schema": "semsc.diagnostic.v1",
+            "code": self.code,
+            "phase": self.phase,
+            "severity": self.severity,
+            "message": self.message,
+            "blocksCompile": True,
+            "primary": self.primary.to_json() if self.primary else None,
+            "semanticStack": [frame.to_json() for frame in self.semantic_stack],
+            "loweringTrace": list(self.lowering_trace),
+            "direction": self.direction,
+            "suggestedFixes": list(self.suggested_fixes),
+            "backendExcerpt": self.backend_excerpt,
+            "agentHint": self.agent_hint,
+        }
+
+    def render_agent(self) -> str:
+        lines = [
+            f"error {self.code}: {self.message}",
+            f"phase: {self.phase}",
+            "agent_log:",
+            "  schema: semsc.diagnostic.v1",
+            f"  severity: {self.severity}",
+            "  blocks_compile: yes",
+        ]
+        if self.primary:
+            lines.append(
+                f"  primary: {self.primary.path}:{self.primary.line}:{self.primary.column}"
+            )
+        if self.semantic_stack:
+            lines.append("")
+            lines.append("SemanticScript stack:")
+            for index, frame in enumerate(self.semantic_stack, start=1):
+                span = frame.span
+                loc = (f"{span.path}:{span.line}:{span.column}"
+                       if span else "<unknown>")
+                lines.append(f"  {index}. {loc}")
+                if frame.operation:
+                    lines.append(f"     operation {frame.operation}")
+                if frame.call_name or frame.call_target:
+                    call_bits = " ".join(
+                        bit for bit in (frame.call_name, frame.call_target) if bit)
+                    lines.append(f"     call {call_bits}")
+                if span and span.raw:
+                    lines.append(f"     source: {span.raw.strip()}")
+                if frame.note:
+                    lines.append(f"     note: {frame.note}")
+        if self.lowering_trace:
+            lines.append("")
+            lines.append("Lowering trace:")
+            for step in self.lowering_trace:
+                lines.append(f"  - {step}")
+        if self.direction:
+            lines.append("")
+            lines.append("Direction:")
+            lines.extend(f"  {line}" for line in self.direction.splitlines())
+        if self.suggested_fixes:
+            lines.append("")
+            lines.append("Suggested fixes:")
+            for index, fix in enumerate(self.suggested_fixes, start=1):
+                lines.append(f"  {index}. {fix}")
+        if self.agent_hint:
+            lines.append("")
+            lines.append("Agent hint:")
+            lines.extend(f"  {line}" for line in self.agent_hint.splitlines())
+        if self.backend_excerpt:
+            lines.append("")
+            lines.append("Backend excerpt:")
+            for line in self.backend_excerpt.rstrip().splitlines()[:12]:
+                lines.append(f"  {line}")
+        lines.append("")
+        lines.append("Debug: rerun with SEMSC_TRACEBACK=1 for the internal Python traceback.")
+        return "\n".join(lines)
+
+    def render(self, fmt: str = "agent") -> str:
+        if fmt == "json":
+            return json.dumps(self.to_json(), indent=2)
+        if fmt == "raw":
+            return self.backend_excerpt or self.message
+        return self.render_agent()
+
+
+class CompilerDiagnosticError(Exception):
+    def __init__(self, diagnostic: CompilerDiagnostic):
+        super().__init__(diagnostic.message)
+        self.diagnostic = diagnostic
+
+
+class CompilerProvenance:
+    def __init__(self, prog):
+        self.prog = prog
+        self.externals = {}       # llvm/c symbol -> list[DiagnosticFrame]
+        self.call_edges = {}      # caller operation -> list[(callee, frame)]
+
+    def span(self, lineno: int, role: str = "primary") -> DiagnosticSpan:
+        path = self.prog.source_path or "<source>"
+        raw = self.prog.source_lines.get(lineno, "")
+        return DiagnosticSpan(path=path, line=lineno or 0, column=1, raw=raw, role=role)
+
+    def frame_from_call(self, call, kind: str = "SemanticScript call",
+                        note: str = "") -> DiagnosticFrame:
+        return DiagnosticFrame(
+            kind=kind,
+            operation=call.get("operation", ""),
+            call_name=call.get("name", ""),
+            call_target=call.get("target", ""),
+            span=self.span(call.get("line", 0), role="callSite"),
+            note=note,
+        )
+
+    def record_external(self, symbol: str, call) -> None:
+        if not symbol or not call:
+            return
+        frame = self.frame_from_call(call)
+        self.externals.setdefault(symbol, []).append(frame)
+
+    def record_call_edge(self, caller: str, callee: str, call) -> None:
+        if not caller or not callee:
+            return
+        self.call_edges.setdefault(caller, []).append(
+            (callee, self.frame_from_call(call, kind="SemanticScript call edge")))
+
+    def entry_operation(self) -> str:
+        if self.prog.entry and len(self.prog.entry) >= 2:
+            return self.prog.entry[1]
+        return ""
+
+    def path_to_operation(self, target_operation: str):
+        entry = self.entry_operation()
+        if not entry or not target_operation or entry == target_operation:
+            return []
+        queue = [(entry, [])]
+        seen = {entry}
+        while queue:
+            op_name, path = queue.pop(0)
+            for callee, frame in self.call_edges.get(op_name, []):
+                if callee in seen:
+                    continue
+                next_path = path + [frame]
+                if callee == target_operation:
+                    return next_path
+                seen.add(callee)
+                queue.append((callee, next_path))
+        return []
+
+    def _backend_excerpt(self, stderr: str) -> str:
+        lines = [line for line in stderr.strip().splitlines() if line.strip()]
+        return "\n".join(lines[:12])
+
+    def explain_backend_error(self, stderr: str, cmd=None) -> CompilerDiagnostic:
+        undefined = re.search(r"undefined symbol:\s*([A-Za-z_][A-Za-z0-9_]*)", stderr)
+        if undefined:
+            symbol = undefined.group(1)
+            frames = list(self.externals.get(symbol, []))
+            semantic_stack = []
+            if frames:
+                primary_frame = frames[0]
+                semantic_stack.append(primary_frame)
+                semantic_stack.extend(self.path_to_operation(primary_frame.operation))
+                primary = primary_frame.span
+                call_target = primary_frame.call_target or f"c.{symbol}"
+                direction = (
+                    f"`{call_target}` lowered to raw LLVM external `@{symbol}`, "
+                    "but the selected native toolchain did not provide that "
+                    "symbol at link time."
+                )
+            else:
+                primary = None
+                direction = (
+                    f"The generated LLVM IR referenced external `@{symbol}`, "
+                    "but no SemanticScript call-site provenance was recorded "
+                    "for that symbol. Add provenance at the lowering site for "
+                    "this external."
+                )
+            fixes = [
+                "Prefer a portable SemanticScript/runtime path for this call target.",
+                "Add a platform-specific lowering or alias in the compiler's libc registry.",
+                "Verify SEMSC_CLANG and the selected C runtime if the symbol should exist.",
+            ]
+            return CompilerDiagnostic(
+                code="SSBE001",
+                phase="backend.link",
+                message=f"undefined external symbol `{symbol}`",
+                primary=primary,
+                semantic_stack=semantic_stack,
+                lowering_trace=[
+                    f"SemanticScript call target -> LLVM external @{symbol}",
+                    "LLVM IR -> clang",
+                    "clang/lld -> native executable link",
+                    f"backend reported missing symbol `{symbol}`",
+                ],
+                direction=direction,
+                suggested_fixes=fixes,
+                backend_excerpt=self._backend_excerpt(stderr),
+                agent_hint=(
+                    "Start from the first SemanticScript stack frame. If the "
+                    "call target begins with `c.`, inspect libc_registry.py "
+                    "and platform-specific C runtime availability before "
+                    "changing user source."
+                ),
+            )
+        return CompilerDiagnostic(
+            code="SSBE999",
+            phase="backend.link",
+            message="native backend failed to compile generated LLVM IR",
+            backend_excerpt=self._backend_excerpt(stderr),
+            direction=(
+                "The backend did not expose a recognized error shape. Inspect "
+                "the backend excerpt, then rerun with --emit-ir and "
+                "SEMSC_TRACEBACK=1 if source provenance is missing."
+            ),
+            suggested_fixes=[
+                "Run with --emit-ir to inspect the generated LLVM.",
+                "Check SEMSC_CLANG and the native linker configuration.",
+            ],
+        )
 
 
 # ============================================================
@@ -135,8 +413,9 @@ def _bool_token_to_int(value):
 # ============================================================
 
 class Operation:
-    def __init__(self, name):
+    def __init__(self, name, decl_line=0):
         self.name = name
+        self.decl_line = decl_line
         self.lines = []          # list of (verb, args, srcline)
         # Operation-local const declarations. The resolver consults this
         # before falling back to prog.consts so a const declared inside
@@ -173,6 +452,8 @@ class WebServer:
 
 class Program:
     def __init__(self):
+        self.source_path = ""
+        self.source_lines = {}        # line -> raw source text in parsed stream
         # ---- declarations relevant to codegen ----
         self.project_name = None
         self.targets = []
@@ -285,6 +566,7 @@ _KNOWN_MODES = {
 def parse(source: str) -> Program:
     prog = Program()
     for lineno, raw in enumerate(source.splitlines(), start=1):
+        prog.source_lines[lineno] = raw
         toks = tokenize_line(raw)
         if not toks:
             continue
@@ -598,7 +880,7 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
 
     # ----- operations -----
     if verb == "operation":
-        op = Operation(args[0])
+        op = Operation(args[0], decl_line=lineno)
         prog.operations[args[0]] = op
         prog.current_op = op
         return
@@ -640,7 +922,7 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
         return
 
     # ===== refined-syntax / experimental verbs =====
-    # The refined-syntax surface in experiments/refined_syntax_example.sscript
+    # The refined-syntax surface in sem/refined_syntax_demo.sscript
     # adds many declarative verbs (section, runtimeBinding*, collectionOp*,
     # group*, recordBuilder/recordSet/recordBuild*, jsonCodec*, retry*,
     # listType/sliceType/arrayType/mapType/smallList*, domainLiteral*,
@@ -987,10 +1269,12 @@ _DOMAIN_METHOD_TO_I64_PRIMITIVE = {
 # ============================================================
 
 class Codegen:
-    def __init__(self, prog: Program):
+    def __init__(self, prog: Program, runtime_checks: str = "off"):
         self.prog = prog
+        self.runtime_checks = runtime_checks
         self.module = ir.Module(name=prog.project_name or "semanticscript_module")
         self.module.triple = llvm.get_default_triple()
+        self.provenance = CompilerProvenance(prog)
         self.strings = {}
         self._next_str_id = 0
         self._declare_externals()
@@ -1004,6 +1288,10 @@ class Codegen:
         # that actually needs the libc symbol gets it declared then.
         self._puts = None
         self._printf = None
+        self._llvm_trap = None
+        self._win_get_std_handle = None
+        self._win_write_file = None
+        self._posix_write = None
         # LLVM signed-multiply-with-overflow intrinsic. Produces a literal
         # struct { i64 product, i1 overflowOccurred }. Used to lower checked
         # multiplication call targets so callers can branchIfError on the
@@ -1040,6 +1328,140 @@ class Codegen:
                                        ir.FunctionType(I32, [I8P], var_arg=True),
                                        name="printf")
         return self._printf
+
+    @property
+    def llvm_trap(self):
+        if self._llvm_trap is None:
+            for fn in self.module.functions:
+                if fn.name == "llvm.trap":
+                    self._llvm_trap = fn
+                    break
+            if self._llvm_trap is None:
+                self._llvm_trap = ir.Function(
+                    self.module, ir.FunctionType(ir.VoidType(), []),
+                    name="llvm.trap")
+        return self._llvm_trap
+
+    @property
+    def win_get_std_handle(self):
+        if self._win_get_std_handle is None:
+            self._win_get_std_handle = ir.Function(
+                self.module, ir.FunctionType(I8P, [I32]),
+                name="GetStdHandle")
+        return self._win_get_std_handle
+
+    @property
+    def win_write_file(self):
+        if self._win_write_file is None:
+            self._win_write_file = ir.Function(
+                self.module,
+                ir.FunctionType(I32, [I8P, I8P, I32, I32.as_pointer(), I8P]),
+                name="WriteFile")
+        return self._win_write_file
+
+    @property
+    def posix_write(self):
+        if self._posix_write is None:
+            self._posix_write = ir.Function(
+                self.module, ir.FunctionType(I64, [I32, I8P, I64]),
+                name="write")
+        return self._posix_write
+
+    def _safe_block_name(self, raw: str) -> str:
+        cleaned = re.sub(r"[^A-Za-z0-9_.]+", "_", raw or "runtime_check")
+        return cleaned[:80] or "runtime_check"
+
+    def _runtime_panic_lines(self, call, reason: str):
+        path = self.prog.source_path or "<source>"
+        line = call.get("line", 0)
+        raw = self.prog.source_lines.get(line, "").strip()
+        call_bits = ""
+        if call.get("name") and call.get("target"):
+            call_bits = f"{call['name']} -> {call['target']}"
+        elif call.get("name") or call.get("target"):
+            call_bits = call.get("name") or call.get("target")
+        lines = [
+            "error SSRUN001: SemanticScript runtime panic",
+            "--------------------------------------------",
+            "status: trapped before undefined behavior",
+            f"reason: {reason}",
+            "",
+            "Location:",
+            f"  file: {path}",
+            f"  line: {line}",
+        ]
+        if call.get("operation"):
+            lines.append(f"  operation: {call['operation']}")
+        if call_bits:
+            lines.append(f"  call: {call_bits}")
+        if raw:
+            lines.extend([
+                "",
+                "Source:",
+                f"  {line} | {raw}",
+            ])
+        lines.extend([
+            "",
+            "Direction:",
+            "  Inspect the source row above.",
+        ])
+        return lines
+
+    def _emit_runtime_panic_write(self, builder, text: str):
+        text_with_newline = text + "\n"
+        ptr = self._i8p(builder, text_with_newline)
+        byte_count = len(text_with_newline.encode("utf-8"))
+        triple = (self.module.triple or "").lower()
+        if "windows" in triple or "win32" in triple or "msvc" in triple:
+            # STD_ERROR_HANDLE is (DWORD)-12. Use kernel32 directly instead
+            # of C stdio so panic diagnostics stay close to the emitted IR.
+            handle = builder.call(
+                self.win_get_std_handle, [ir.Constant(I32, -12)],
+                name="panicStderr")
+            bytes_written = builder.alloca(I32, name="panicBytesWritten")
+            builder.call(self.win_write_file, [
+                handle,
+                ptr,
+                ir.Constant(I32, byte_count),
+                bytes_written,
+                ir.Constant(I8P, None),
+            ])
+            return
+        builder.call(self.posix_write, [
+            ir.Constant(I32, 2),
+            ptr,
+            ir.Constant(I64, byte_count),
+        ])
+
+    def _emit_runtime_failure(self, builder, call, reason: str):
+        if self.runtime_checks == "panic":
+            self._emit_runtime_panic_write(
+                builder, "\n".join(self._runtime_panic_lines(call, reason)))
+        builder.call(self.llvm_trap, [])
+        builder.unreachable()
+
+    def _emit_runtime_check(self, builder, failed_cond, call, reason: str):
+        if self.runtime_checks == "off":
+            return
+        if builder.block.is_terminated:
+            return
+        safe_name = self._safe_block_name(call.get("name") or reason)
+        panic_bb = builder.function.append_basic_block(f"panic_{safe_name}")
+        ok_bb = builder.function.append_basic_block(f"after_panic_check_{safe_name}")
+        builder.cbranch(failed_cond, panic_bb, ok_bb)
+        builder.position_at_end(panic_bb)
+        self._emit_runtime_failure(builder, call, reason)
+        builder.position_at_end(ok_bb)
+
+    def _emit_null_pointer_check(self, builder, pointer_value, call, reason: str):
+        if self.runtime_checks == "off":
+            return
+        if not isinstance(pointer_value.type, ir.PointerType):
+            return
+        failed = builder.icmp_unsigned(
+            "==", pointer_value, ir.Constant(pointer_value.type, None),
+            name=f"{self._safe_block_name(call.get('name'))}_isNull")
+        self._emit_runtime_check(builder, failed, call, reason)
 
     # Attribute groups applied to libc declarations so the LLVM optimizer can
     # treat them as nearly-pure functions. Without these the JIT cannot hoist
@@ -1714,6 +2136,19 @@ class Codegen:
         SENTINEL = object()
         opaque_inputs = OPAQUE_INPUTS
 
+        def make_call(call_name, target, lineno):
+            return {
+                "name": call_name,
+                "operation": op.name,
+                "line": lineno,
+                "target": target,
+                "args": {},
+                "arg_lines": {},
+                "result": None,
+                "error_value": None,
+                "error_cond": None,
+            }
+
         def get_block(name):
             if name not in labels:
                 labels[name] = fn.append_basic_block(name)
@@ -2075,10 +2510,7 @@ class Codegen:
                 # `result`      : value bound by bindOk / bind
                 # `error_value` : value bound by bindError (defaults to result)
                 # `error_cond`  : i1 used by branchIfError (default: result < 0)
-                calls[call_name] = {
-                    "target": target, "args": {},
-                    "result": None, "error_value": None, "error_cond": None,
-                }
+                calls[call_name] = make_call(call_name, target, _ln)
                 continue
 
             # Refined-syntax `recordBuild NAME BUILDER` registers a call
@@ -2089,15 +2521,13 @@ class Codegen:
             # so the surrounding bind chain still compiles.
             if verb == "recordBuild" and len(args) >= 2:
                 call_name = args[0]
-                calls[call_name] = {
-                    "target": "record.build", "args": {},
-                    "result": None, "error_value": None, "error_cond": None,
-                }
+                calls[call_name] = make_call(call_name, "record.build", _ln)
                 continue
 
             if verb == "arg":
                 call_name, arg_name, value_name = args[0], args[1], args[2]
                 calls[call_name]["args"][arg_name] = value_name
+                calls[call_name]["arg_lines"][arg_name] = _ln
                 continue
 
             if verb in ("timeout", "cancelOn"):
@@ -2255,11 +2685,9 @@ class Codegen:
                 if (work_def is not None
                         and work_def.get("target") in self._user_ops):
                     synth_call_name = f"_workSubmit__{work_name}"
-                    calls[synth_call_name] = {
-                        "target": work_def["target"],
-                        "args": dict(work_def["args"]),
-                        "result": None, "error_value": None, "error_cond": None,
-                    }
+                    calls[synth_call_name] = make_call(
+                        synth_call_name, work_def["target"], _ln)
+                    calls[synth_call_name]["args"].update(dict(work_def["args"]))
                     self._emit_run(builder, synth_call_name, calls,
                                    resolve, opaque_inputs, SENTINEL)
                     # Stash under both the work name and the synth name so
@@ -2613,8 +3041,74 @@ class Codegen:
             else:
                 builder.ret(ir.Constant(rty, 0))
 
+    def _diagnostic_for_call_error(self, error: Exception, call) -> CompilerDiagnostic:
+        message = str(error)
+        frame = self.provenance.frame_from_call(call)
+        direction = (
+            "The compiler failed while lowering this call to LLVM IR. Inspect "
+            "the call row, its arg rows, and the target operation or builtin "
+            "signature before changing unrelated source."
+        )
+        if "unresolved symbol" in message:
+            direction = (
+                "One of this call's argument values does not resolve in the "
+                "current operation. Check the `arg` rows for typos, missing "
+                "const/var/bind declarations, or values that were declared "
+                "inside another operation."
+            )
+        elif "missing" in message and "arg" in message:
+            direction = (
+                "The call target expects an argument that is absent at this "
+                "call site. Add the missing `arg` row or rename the existing "
+                "arg to match the target input."
+            )
+        elif "unsupported c.* target" in message:
+            direction = (
+                "This `c.*` call target has no libc registry signature. Add "
+                "a signature or SemanticScript-facing alias in libc_registry.py, "
+                "or replace the call with a supported target."
+            )
+        return CompilerDiagnostic(
+            code="SSCG002",
+            phase="codegen.call-lowering",
+            message=message,
+            primary=frame.span,
+            semantic_stack=[frame],
+            lowering_trace=[
+                "SemanticScript call row -> call object",
+                "call target + arg rows -> LLVM IRBuilder emission",
+                "lowering stopped before native backend",
+            ],
+            direction=direction,
+            suggested_fixes=[
+                "Inspect every `arg` row attached to this call name.",
+                "Confirm the call target's required inputs and supported types.",
+                "Run with --diagnostics-format json if an agent should consume this mechanically.",
+            ],
+            agent_hint=(
+                "Patch the SemanticScript source or the compiler lowering rule. "
+                "Do not edit generated LLVM IR; it is an output artifact."
+            ),
+        )
+
     # ---------- run dispatch ----------
     def _emit_run(self, builder, call_name, calls, resolve, opaque_inputs, SENTINEL):
+        call = calls.get(call_name, {
+            "name": call_name,
+            "operation": "",
+            "line": 0,
+            "target": "",
+        })
+        try:
+            return self._emit_run_impl(
+                builder, call_name, calls, resolve, opaque_inputs, SENTINEL)
+        except CompilerDiagnosticError:
+            raise
+        except Exception as e:
+            raise CompilerDiagnosticError(
+                self._diagnostic_for_call_error(e, call)) from e
+
+    def _emit_run_impl(self, builder, call_name, calls, resolve, opaque_inputs, SENTINEL):
         call = calls[call_name]
         target = _TARGET_ALIASES.get(call["target"], call["target"])
 
@@ -2686,11 +3180,13 @@ class Codegen:
 
         if target == "console.writeLine":
             text = arg_val_named("text")
+            self.provenance.record_external("puts", call)
             call["result"] = builder.call(self.puts, [text], name=f"{call_name}_res")
             return
         if target == "console.writeIntegerLine":
             n = to_i64(arg_val_named("value"))
             fmt_ptr = self._i8p(builder, "%lld\n")
+            self.provenance.record_external("printf", call)
             call["result"] = builder.call(self.printf, [fmt_ptr, n], name=f"{call_name}_res")
             return
         if target == "console.writeFloatLine":
@@ -2704,6 +3200,7 @@ class Codegen:
             elif isinstance(v.type, ir.FloatType):
                 v = builder.fpext(v, F64)
             fmt_ptr = self._i8p(builder, "%f\n")
+            self.provenance.record_external("printf", call)
             call["result"] = builder.call(
                 self.printf, [fmt_ptr, v], name=f"{call_name}_res")
             return
@@ -2751,6 +3248,13 @@ class Codegen:
             else:
                 a, b = operand_pair()
             a, b = to_i64(a), to_i64(b)
+            if target in ("math.divideI64", "math.moduloI64"):
+                divisor_is_zero = builder.icmp_signed(
+                    "==", b, ir.Constant(b.type, 0),
+                    name=f"{call_name}_divisorIsZero")
+                self._emit_runtime_check(
+                    builder, divisor_is_zero, call,
+                    f"zero divisor before {target}")
             op = _BINOP_TO_LLVM[target]
             call["result"] = getattr(builder, op)(a, b, name=f"{call_name}_res")
             return
@@ -2794,6 +3298,9 @@ class Codegen:
             if buffer_arg.type != I8P:
                 buffer_arg = builder.bitcast(buffer_arg, I8P)
             offset_arg = self._coerce_for_libc(builder, offset_arg, "CSize")
+            self._emit_null_pointer_check(
+                builder, buffer_arg, call,
+                "null buffer before pointer.loadByte")
             ptr = builder.gep(buffer_arg, [offset_arg], inbounds=True,
                               name=f"{call_name}_addr")
             call["result"] = builder.load(ptr, name=f"{call_name}_res")
@@ -2809,6 +3316,9 @@ class Codegen:
                 buffer_arg = builder.bitcast(buffer_arg, I8P)
             offset_arg = self._coerce_for_libc(builder, offset_arg, "CSize")
             value_arg = self._coerce_for_libc(builder, value_arg, "I8")
+            self._emit_null_pointer_check(
+                builder, buffer_arg, call,
+                "null buffer before pointer.storeByte")
             ptr = builder.gep(buffer_arg, [offset_arg], inbounds=True,
                               name=f"{call_name}_addr")
             builder.store(value_arg, ptr)
@@ -2897,6 +3407,7 @@ class Codegen:
                 raise ValueError(f"unsupported c.* target: {target}")
             ret_typ, param_typs, var_args = sig
             fn = self._libc_func(semantic_name)
+            self.provenance.record_external(c_symbol, call)
             cname = semantic_name  # preserve downstream variable usage
             arg_values = []
             arg_items = list(call["args"].items())
@@ -2947,6 +3458,7 @@ class Codegen:
         # returns i32 with the puts/printf convention: negative means error,
         # which the existing branchIfError default condition already handles.
         if target in self._user_ops:
+            self.provenance.record_call_edge(call.get("operation", ""), target, call)
             op_info = self._user_ops[target]
             arg_values = []
             for pname, _llty, _ptype in op_info["params"]:
@@ -3496,6 +4008,8 @@ _LIBC_REQUIRED_EFFECTS = {
     # stdio reads
     "scanf":       [("read", "console.stdin")],
     "getchar":     [("read", "console.stdin")],
+    "consoleGetch": [("read", "console.stdin")],
+    "_getch":      [("read", "console.stdin")],
     "getsSafe":    [("read", "console.stdin")],
     "gets_s":      [("read", "console.stdin")],
     # filesystem
@@ -3678,7 +4192,9 @@ def _optimize(mod, tm, opt_level: int):
     mpm.run(mod, pb)
 
 
-def emit_executable(module_ir: str, exe_path: str, opt_level: int = 2) -> None:
+def emit_executable(module_ir: str, exe_path: str, opt_level: int = 2,
+                    provenance: CompilerProvenance = None,
+                    diagnostics_format: str = "agent") -> None:
     """Ahead-of-time compile SemanticScript IR to a native executable.
 
     The SemanticScript runtime depends only on libc, so the same toolchain that
@@ -3716,6 +4232,9 @@ def emit_executable(module_ir: str, exe_path: str, opt_level: int = 2) -> None:
         cmd = [clang, f"-O{opt_level}", "-o", exe_path, ll_path]
         proc = subprocess.run(cmd, capture_output=True, text=True)
         if proc.returncode != 0:
+            if provenance is not None:
+                raise CompilerDiagnosticError(
+                    provenance.explain_backend_error(proc.stderr, cmd=cmd))
             raise RuntimeError(
                 f"clang failed to compile SemanticScript IR:\n{proc.stderr}")
     finally:
@@ -3723,6 +4242,155 @@ def emit_executable(module_ir: str, exe_path: str, opt_level: int = 2) -> None:
             os.unlink(ll_path)
         except OSError:
             pass
+
+
+def _diagnostic_from_codegen_error(prog: Program, error: Exception) -> CompilerDiagnostic:
+    message = str(error)
+    primary = None
+    semantic_stack = []
+
+    line_match = re.search(r"\bline\s+(\d+)\b", message)
+    if line_match:
+        line = int(line_match.group(1))
+        primary = DiagnosticSpan(
+            path=prog.source_path or "<source>",
+            line=line,
+            column=1,
+            raw=prog.source_lines.get(line, ""),
+            role="sourceError",
+        )
+
+    call_match = re.match(r"([A-Za-z_][A-Za-z0-9_]*)\s*:", message)
+    call_name = call_match.group(1) if call_match else ""
+    if call_name:
+        for op in prog.operations.values():
+            call_line = None
+            call_target = ""
+            for verb, args, lineno in op.lines:
+                if verb == "call" and len(args) >= 2 and args[0] == call_name:
+                    call_line = lineno
+                    call_target = args[1]
+                    break
+            if call_line is not None:
+                primary = DiagnosticSpan(
+                    path=prog.source_path or "<source>",
+                    line=call_line,
+                    column=1,
+                    raw=prog.source_lines.get(call_line, ""),
+                    role="callSite",
+                )
+                semantic_stack.append(DiagnosticFrame(
+                    kind="SemanticScript call",
+                    operation=op.name,
+                    call_name=call_name,
+                    call_target=call_target,
+                    span=primary,
+                ))
+                break
+
+    if primary is None:
+        primary = DiagnosticSpan(
+            path=prog.source_path or "<source>",
+            line=0,
+            column=1,
+            raw="",
+            role="compilerError",
+        )
+
+    direction = (
+        "The compiler failed while lowering SemanticScript to LLVM IR. Start "
+        "from the SemanticScript stack frame, then inspect the named call, "
+        "its arg rows, and the declaration of every referenced value."
+    )
+    if "unresolved symbol" in message:
+        direction = (
+            "A source value reference could not be resolved in this operation. "
+            "This usually means a typo, a missing const/var/bind, or a value "
+            "declared in another operation's scope."
+        )
+    elif "missing arg" in message or "missing required arg" in message:
+        direction = (
+            "The call target expects an argument that the call site did not "
+            "provide. Add the missing `arg` row, or align the arg name with "
+            "the target operation's `input` row."
+        )
+    elif "unsupported c.* target" in message:
+        direction = (
+            "The source uses a `c.*` target that is not registered in "
+            "libc_registry.py. Add a signature/alias there or replace the "
+            "call with a supported runtime primitive."
+        )
+
+    return CompilerDiagnostic(
+        code="SSCG001",
+        phase="codegen.lower",
+        message=message,
+        primary=primary,
+        semantic_stack=semantic_stack,
+        lowering_trace=[
+            "SemanticScript source -> parsed Program",
+            "Program operation body -> LLVM IRBuilder",
+            "lowering stopped before native backend",
+        ],
+        direction=direction,
+        suggested_fixes=[
+            "Inspect the primary source row and the operation-local declarations.",
+            "Run `semsc SOURCE --parse-only --lint` to surface structural issues before codegen.",
+            "Rerun with SEMSC_TRACEBACK=1 only if this looks like a compiler bug.",
+        ],
+        agent_hint=(
+            "Prefer source edits near the primary frame. Avoid changing LLVM "
+            "output directly; it is regenerated from SemanticScript."
+        ),
+    )
+
+
+def _resolve_runtime_checks(build_profile: str, runtime_checks: str = None) -> str:
+    if runtime_checks is not None:
+        return runtime_checks
+    if build_profile == "prod":
+        return "traps"
+    return "panic"
+
+
+def _render_success_message(code: str, title: str, source_path: str,
+                            outputs=None, details=None, next_steps=None) -> str:
+    lines = [
+        f"success {code}: {title}",
+        "-" * (len(f"success {code}: {title}")),
+        f"source: {source_path}",
+    ]
+    if details:
+        for label, value in details:
+            if value is not None and value != "":
+                lines.append(f"{label}: {value}")
+    if outputs:
+        lines.extend(["", "Outputs:"])
+        for label, value in outputs:
+            lines.append(f"  {label}: {value}")
+    if next_steps:
+        lines.extend(["", "Next:"])
+        for step in next_steps:
+            lines.append(f"  {step}")
+    return "\n".join(lines)
+
+
+def _default_ir_sidecar_path(source_path: str, exe_path: str = None) -> str:
+    basis = exe_path or source_path
+    root, _ext = os.path.splitext(basis)
+    return (root or basis) + ".ll"
+
+
+def _resolve_persisted_ir_path(source_path: str, emit_exe: str = None,
+                               emit_ir: str = None,
+                               persist_llvm_ir: str = "auto") -> str:
+    if persist_llvm_ir == "no":
+        return None
+    if emit_ir:
+        return emit_ir
+    if persist_llvm_ir == "yes":
+        return _default_ir_sidecar_path(source_path, emit_exe)
+    return None
 
 
 def jit_run(module_ir: str, opt_level: int = 2,
@@ -3861,6 +4529,12 @@ def main():
     ap.add_argument("--version", action="version",
                     version=f"semsc {__version__}")
     ap.add_argument("--emit-ir", help="write LLVM IR to this path")
+    ap.add_argument("--persist-llvm-ir", choices=("auto", "yes", "no"),
+                    default="auto",
+                    help=("control whether generated LLVM IR is kept on disk. "
+                          "auto keeps current behavior and persists only with "
+                          "--emit-ir, yes writes a .ll sidecar when needed, "
+                          "no disables IR persistence"))
     ap.add_argument("--run", action="store_true", help="JIT-execute main after compile")
     ap.add_argument("--lint", action="store_true",
                     help="run agent-safety lint pass and report diagnostics")
@@ -3877,10 +4551,32 @@ def main():
                          "(uses clang on PATH or $SEMSC_CLANG to link)")
     ap.add_argument("--quiet", action="store_true",
                     help="suppress informational messages on success")
+    ap.add_argument("--diagnostics-format", choices=("agent", "json", "raw"),
+                    default="agent",
+                    help="format for compiler/backend errors; default agent")
+    ap.add_argument("--build-profile", choices=("dev", "prod"), default="dev",
+                    help=("compiled runtime profile; dev embeds SemanticScript "
+                          "panic context, prod hides source context and traps; "
+                          "default dev"))
+    ap.add_argument("--runtime-checks", choices=("off", "traps", "panic"),
+                    default=None,
+                    help=("override runtime safety checks: off=no checks, "
+                          "traps=llvm.trap only, panic=static SemanticScript "
+                          "message then llvm.trap. Defaults to panic for "
+                          "--build-profile dev and traps for --build-profile prod"))
     args = ap.parse_args()
+    if args.emit_ir and args.persist_llvm_ir == "no":
+        ap.error("--emit-ir cannot be used with --persist-llvm-ir no")
+    runtime_checks = _resolve_runtime_checks(
+        args.build_profile, args.runtime_checks)
 
     if not args.source:
         ap.error("the following arguments are required: source")
+    persisted_ir_path = _resolve_persisted_ir_path(
+        args.source,
+        emit_exe=args.emit_exe,
+        emit_ir=args.emit_ir,
+        persist_llvm_ir=args.persist_llvm_ir)
 
     try:
         with open(args.source, "r", encoding="utf-8") as f:
@@ -3903,6 +4599,7 @@ def main():
 
     try:
         prog = parse(source)
+        prog.source_path = args.source
     except SyntaxError as e:
         import traceback as _tb
         print(f"semsc: parse error in {args.source}: {e}", file=sys.stderr)
@@ -3922,40 +4619,73 @@ def main():
 
     if args.parse_only:
         if not args.quiet:
-            print(f"semsc: parse OK ({args.source})")
+            print(_render_success_message(
+                "SSOK000",
+                "SemanticScript parse complete",
+                args.source,
+                details=[
+                    ("phase", "parse"),
+                    ("lint", "enabled" if (args.lint or args.strict) else "not requested"),
+                ],
+            ))
         return
 
     try:
-        cg = Codegen(prog)
+        cg = Codegen(prog, runtime_checks=runtime_checks)
         mod = cg.compile()
+    except CompilerDiagnosticError as e:
+        print(e.diagnostic.render(args.diagnostics_format), file=sys.stderr)
+        if os.environ.get("SEMSC_TRACEBACK"):
+            import traceback as _tb
+            _tb.print_exc(file=sys.stderr)
+        sys.exit(3)
     except NotImplementedError as e:
         print(f"semsc: {e}", file=sys.stderr)
         sys.exit(3)
     except Exception as e:
         import traceback as _tb
-        print(f"semsc: codegen error in {args.source}: {e}", file=sys.stderr)
+        diagnostic = _diagnostic_from_codegen_error(prog, e)
+        print(diagnostic.render(args.diagnostics_format), file=sys.stderr)
         if os.environ.get("SEMSC_TRACEBACK"):
             _tb.print_exc(file=sys.stderr)
         sys.exit(3)
     ir_text = str(mod)
 
     did_output = False
-    if args.emit_ir:
-        with open(args.emit_ir, "w", encoding="utf-8") as f:
+    outputs = []
+    if persisted_ir_path:
+        with open(persisted_ir_path, "w", encoding="utf-8") as f:
             f.write(ir_text)
         did_output = True
-        if not args.quiet:
-            print(f"semsc: wrote LLVM IR to {args.emit_ir}")
+        outputs.append(("llvm ir", persisted_ir_path))
 
     if args.emit_exe:
         try:
-            emit_executable(ir_text, args.emit_exe, opt_level=args.opt_level)
+            emit_executable(ir_text, args.emit_exe, opt_level=args.opt_level,
+                            provenance=cg.provenance,
+                            diagnostics_format=args.diagnostics_format)
+        except CompilerDiagnosticError as e:
+            print(e.diagnostic.render(args.diagnostics_format), file=sys.stderr)
+            sys.exit(4)
         except RuntimeError as e:
             print(f"semsc: {e}", file=sys.stderr)
             sys.exit(4)
         did_output = True
-        if not args.quiet:
-            print(f"semsc: wrote executable to {args.emit_exe}")
+        outputs.append(("executable", args.emit_exe))
+
+    if did_output and not args.quiet and not args.run:
+        print(_render_success_message(
+            "SSOK001",
+            "SemanticScript compile complete",
+            args.source,
+            outputs=outputs,
+            details=[
+                ("profile", args.build_profile),
+                ("runtime checks", runtime_checks),
+                ("llvm ir", "persisted" if persisted_ir_path else "discarded"),
+                ("opt level", args.opt_level),
+            ],
+        ))
 
     if args.run:
         rc = jit_run(ir_text, opt_level=args.opt_level,
@@ -3966,8 +4696,21 @@ def main():
         # Reaching this branch means the source compiled successfully but
         # no output flag was given. Tell the user what they could do next
         # instead of exiting silently.
-        print(f"semsc: compile OK ({args.source}); no output requested. "
-              f"Try --emit-ir, --emit-exe, or --run.")
+        print(_render_success_message(
+            "SSOK001",
+            "SemanticScript compile complete",
+            args.source,
+            details=[
+                ("profile", args.build_profile),
+                ("runtime checks", runtime_checks),
+                ("llvm ir", "persisted" if persisted_ir_path else "discarded"),
+                ("opt level", args.opt_level),
+            ],
+            outputs=[("artifact", "none requested")],
+            next_steps=[
+                "Use --emit-ir PATH, --emit-exe PATH, or --run.",
+            ],
+        ))
 
 
 if __name__ == "__main__":

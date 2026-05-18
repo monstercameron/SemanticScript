@@ -19,9 +19,11 @@ Exits non-zero on first failure, prints a summary otherwise.
 """
 
 import os
+import json
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -155,6 +157,273 @@ def test_cli_accepts_sem_alias():
     check("compile: .sem alias parses",
           proc.returncode == 0,
           f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_success_message_renderer():
+    rendered = semsc._render_success_message(
+        "SSOK001",
+        "SemanticScript compile complete",
+        "sample.sscript",
+        outputs=[("llvm ir", "sample.ll"), ("executable", "sample.exe")],
+        details=[("profile", "dev"), ("runtime checks", "panic")],
+        next_steps=["Run sample.exe."],
+    )
+    check("success message: names code and title",
+          rendered.startswith("success SSOK001: SemanticScript compile complete"),
+          rendered)
+    check("success message: lists outputs",
+          "Outputs:\n  llvm ir: sample.ll\n  executable: sample.exe" in rendered,
+          rendered)
+    check("success message: lists next step",
+          "Next:\n  Run sample.exe." in rendered,
+          rendered)
+
+
+def test_persisted_ir_path_resolution():
+    check("persist llvm ir: auto without --emit-ir discards",
+          semsc._resolve_persisted_ir_path("sample.sscript") is None)
+    check("persist llvm ir: explicit --emit-ir wins",
+          semsc._resolve_persisted_ir_path(
+              "sample.sscript", emit_ir="custom.ll") == "custom.ll")
+    check("persist llvm ir: yes creates source sidecar",
+          semsc._resolve_persisted_ir_path(
+              "sample.sscript", persist_llvm_ir="yes") == "sample.ll")
+    check("persist llvm ir: yes prefers executable basename",
+          semsc._resolve_persisted_ir_path(
+              "sample.sscript", emit_exe="out.exe",
+              persist_llvm_ir="yes") == "out.ll")
+    check("persist llvm ir: no suppresses even explicit path",
+          semsc._resolve_persisted_ir_path(
+              "sample.sscript", emit_ir="custom.ll",
+              persist_llvm_ir="no") is None)
+
+
+def test_cli_persist_llvm_ir_flag():
+    src = "\n".join([
+        "project PersistIr",
+        "entry console main",
+        "operation main",
+        "output main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "returnValue 0",
+        "",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "persist_ir.sscript"
+        sidecar_path = Path(tmpdir) / "persist_ir.ll"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        auto_proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--quiet"],
+            capture_output=True, text=True,
+        )
+        check("persist llvm ir: auto leaves no sidecar",
+              auto_proc.returncode == 0 and not sidecar_path.exists(),
+              f"rc={auto_proc.returncode} stderr={auto_proc.stderr!r}")
+        yes_proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--persist-llvm-ir", "yes", "--quiet"],
+            capture_output=True, text=True,
+        )
+        check("persist llvm ir: yes writes sidecar",
+              yes_proc.returncode == 0 and sidecar_path.exists(),
+              f"rc={yes_proc.returncode} stderr={yes_proc.stderr!r}")
+        sidecar_path.unlink()
+        no_proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--persist-llvm-ir", "no", "--quiet"],
+            capture_output=True, text=True,
+        )
+        check("persist llvm ir: no leaves no sidecar",
+              no_proc.returncode == 0 and not sidecar_path.exists(),
+              f"rc={no_proc.returncode} stderr={no_proc.stderr!r}")
+
+
+def test_codegen_diagnostic_is_agent_readable():
+    src = "\n".join([
+        "project BadDiagnostic",
+        "entry console main",
+        "operation main",
+        "output main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "call badCall math.addI64",
+        "arg badCall left missingValue",
+        "arg badCall right 1",
+        "run badCall",
+        "bind resultValue CSignedInt64 badCall",
+        "returnValue resultValue",
+        "",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "bad.sscript"
+        ir_path = Path(tmpdir) / "bad.ll"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-ir", str(ir_path)],
+            capture_output=True, text=True,
+        )
+        stderr = proc.stderr
+        check("diagnostics: call-lowering failure exits 3",
+              proc.returncode == 3,
+              f"rc={proc.returncode} stderr={stderr!r}")
+        check("diagnostics: agent log names code and phase",
+              "error SSCG002" in stderr and "phase: codegen.call-lowering" in stderr,
+              stderr)
+        check("diagnostics: SemanticScript stack points to call",
+              "call badCall math.addI64" in stderr
+              and "source: call badCall math.addI64" in stderr,
+              stderr)
+        json_proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-ir", str(ir_path),
+             "--diagnostics-format", "json"],
+            capture_output=True, text=True,
+        )
+        try:
+            payload = json.loads(json_proc.stderr)
+        except json.JSONDecodeError:
+            payload = {}
+        check("diagnostics: json renderer is machine-readable",
+              payload.get("code") == "SSCG002"
+              and payload.get("semanticStack", [{}])[0].get("callName") == "badCall",
+              json_proc.stderr)
+
+
+def test_backend_diagnostic_maps_symbol_to_source_call():
+    src = "\n".join([
+        "project BackendDiagnostic",
+        "entry console main",
+        "operation main",
+        "output main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "call loadJsonCall c.fscanf",
+        "returnValue 0",
+        "",
+    ])
+    prog = semsc.parse(src)
+    prog.source_path = "backend_bad.sscript"
+    cg = semsc.Codegen(prog)
+    fake_call = {
+        "name": "loadJsonCall",
+        "operation": "main",
+        "line": 8,
+        "target": "c.fscanf",
+    }
+    cg.provenance.record_external("fscanf", fake_call)
+    diag = cg.provenance.explain_backend_error(
+        "lld-link: error: undefined symbol: fscanf\n"
+        ">>> referenced by tmp.o:(main)\n"
+    )
+    rendered = diag.render("agent")
+    check("diagnostics: backend undefined symbol maps to source",
+          diag.code == "SSBE001"
+          and diag.primary.line == 8
+          and "call loadJsonCall c.fscanf" in rendered,
+          rendered)
+
+
+def test_runtime_check_resolution_profiles():
+    check("runtime profile: dev defaults to panic",
+          semsc._resolve_runtime_checks("dev") == "panic")
+    check("runtime profile: prod defaults to traps",
+          semsc._resolve_runtime_checks("prod") == "traps")
+    check("runtime profile: explicit override wins",
+          semsc._resolve_runtime_checks("prod", "panic") == "panic"
+          and semsc._resolve_runtime_checks("dev", "off") == "off")
+
+
+def test_runtime_profiles_control_panic_context():
+    import shutil
+    clang = (os.environ.get("SEMSC_CLANG")
+             or shutil.which("clang")
+             or r"C:/Program Files/LLVM/bin/clang.exe")
+    if not Path(clang).exists():
+        check("runtime checks: clang available", False,
+              f"clang not found at {clang}")
+        return
+    src = "\n".join([
+        "project RuntimePanicDiagnostic",
+        "entry console main",
+        "operation main",
+        "output main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "const numeratorValue CSignedInt64 7",
+        "const zeroDivisor CSignedInt64 0",
+        "call divideByZeroCall math.divideI64",
+        "arg divideByZeroCall left numeratorValue",
+        "arg divideByZeroCall right zeroDivisor",
+        "run divideByZeroCall",
+        "bind quotientValue CSignedInt64 divideByZeroCall",
+        "returnValue quotientValue",
+        "",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "runtime_panic.sscript"
+        dev_exe_path = Path(tmpdir) / "runtime_panic_dev.exe"
+        dev_ir_path = Path(tmpdir) / "runtime_panic_dev.ll"
+        prod_exe_path = Path(tmpdir) / "runtime_panic_prod.exe"
+        prod_ir_path = Path(tmpdir) / "runtime_panic_prod.ll"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        dev_build = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-exe", str(dev_exe_path),
+             "--emit-ir", str(dev_ir_path), "--quiet"],
+            capture_output=True, text=True,
+        )
+        if dev_build.returncode != 0:
+            check("runtime profile: dev sample builds", False, dev_build.stderr)
+            return
+        dev_ir_text = dev_ir_path.read_text(encoding="utf-8")
+        check("runtime profile: dev panic path avoids C stdio",
+              "puts" not in dev_ir_text and "fflush" not in dev_ir_text,
+              dev_ir_text)
+        dev_run = subprocess.run(
+            [str(dev_exe_path)], capture_output=True, text=True)
+        dev_output = dev_run.stdout + dev_run.stderr
+        check("runtime profile: dev sample exits nonzero",
+              dev_run.returncode != 0,
+              f"rc={dev_run.returncode} output={dev_output!r}")
+        check("runtime profile: dev output names source row by default",
+              "error SSRUN001: SemanticScript runtime panic" in dev_output
+              and "call: divideByZeroCall -> math.divideI64" in dev_output
+              and "10 | call divideByZeroCall math.divideI64" in dev_output
+              and "reason: zero divisor before math.divideI64" in dev_output
+              and "--build-profile prod" not in dev_output
+              and "--runtime-checks off" not in dev_output,
+              dev_output)
+
+        prod_build = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-exe", str(prod_exe_path),
+             "--emit-ir", str(prod_ir_path), "--build-profile", "prod",
+             "--quiet"],
+            capture_output=True, text=True,
+        )
+        if prod_build.returncode != 0:
+            check("runtime profile: prod sample builds", False, prod_build.stderr)
+            return
+        prod_ir_text = prod_ir_path.read_text(encoding="utf-8")
+        prod_run = subprocess.run(
+            [str(prod_exe_path)], capture_output=True, text=True)
+        prod_output = prod_run.stdout + prod_run.stderr
+        check("runtime profile: prod sample exits nonzero",
+              prod_run.returncode != 0,
+              f"rc={prod_run.returncode} output={prod_output!r}")
+        check("runtime profile: prod hides source context",
+              "llvm.trap" in prod_ir_text
+              and "SSRUN001" not in prod_ir_text
+              and "SemanticScript runtime panic" not in prod_output
+              and "SSRUN001" not in prod_output,
+              f"ir={prod_ir_text!r}\noutput={prod_output!r}")
 
 
 # ============================================================
@@ -330,6 +599,13 @@ def main():
     test_parser_syntax_error_has_line()
     test_compile_hello_world_to_ir()
     test_cli_accepts_sem_alias()
+    test_success_message_renderer()
+    test_persisted_ir_path_resolution()
+    test_cli_persist_llvm_ir_flag()
+    test_codegen_diagnostic_is_agent_readable()
+    test_backend_diagnostic_maps_symbol_to_source_call()
+    test_runtime_check_resolution_profiles()
+    test_runtime_profiles_control_panic_context()
     test_bootstrap3_emits_constant_return_ir()
     test_bootstrap4_emits_greeting_and_exit()
     test_bootstrap5_emits_countdown_loop()

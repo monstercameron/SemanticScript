@@ -120,6 +120,11 @@ STDIO = {
     "setvbuf":    ("CSignedInt32", ["CFileHandle", "CNullTerminatedByteString", "CSignedInt32", "CByteCount"], False),
 }
 
+# ---- <conio.h> Windows console helpers ----
+CONIO = {
+    "_getch":     ("CSignedInt32", [], False),
+}
+
 # ---- <stdlib.h> ----
 STDLIB = {
     "malloc":     ("COpaqueMemoryAddress", ["CByteCount"], False),
@@ -554,7 +559,7 @@ WCTYPE = {
 
 # ---- merge everything into a single dispatch dict ----
 ALL_FUNCTIONS = {}
-for bucket in (STDIO, STDLIB, STRING, MATH, CTYPE, TIME,
+for bucket in (STDIO, CONIO, STDLIB, STRING, MATH, CTYPE, TIME,
                SETJMP, SIGNAL, LOCALE, WCHAR, WCTYPE,
                FENV, COMPLEX, UCHAR, THREADS):
     for name, sig in bucket.items():
@@ -571,6 +576,8 @@ for bucket in (STDIO, STDLIB, STRING, MATH, CTYPE, TIME,
 SEMANTICSCRIPT_FACING_ALIASES = {
     # ---- <stdio.h> ----
     "getsSafe":                    "gets_s",
+    # ---- <conio.h> ----
+    "consoleGetch":                "_getch",
     # ---- <stdlib.h> ----
     "alignedAlloc":                "aligned_alloc",
     "processExitWithoutCleanup":   "_Exit",

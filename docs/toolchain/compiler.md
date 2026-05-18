@@ -25,6 +25,7 @@ CLI flags:
 |---|---|
 | `--version` | Print compiler version. |
 | `--emit-ir PATH` | Write pre-optimization LLVM IR. |
+| `--persist-llvm-ir auto\|yes\|no` | Control LLVM IR persistence. `auto` is the default and persists only with `--emit-ir`; `yes` writes a `.ll` sidecar when no explicit path is provided; `no` disables IR persistence. |
 | `--emit-optimized-ir PATH` | Write post-optimization LLVM IR during `--run`. |
 | `--run` | JIT-execute `main` and return its exit code. |
 | `--emit-exe PATH` | AOT compile with clang. |
@@ -32,10 +33,24 @@ CLI flags:
 | `--strict` | Treat compiler lint diagnostics as fatal. |
 | `--parse-only` | Parse, optionally lint, and stop before codegen. |
 | `--opt-level N` | LLVM optimization level `0..3`, default `2`. |
+| `--build-profile dev\|prod` | Runtime safety profile for compiled output. `dev` is the default and embeds `SSRUN001` panic context; `prod` keeps trap checks but hides source context. |
+| `--runtime-checks off\|traps\|panic` | Override the profile default. `off` emits no runtime checks, `traps` emits silent `llvm.trap` checks, and `panic` embeds the SemanticScript panic message before trapping. |
 | `--quiet` | Suppress success messages. |
 
 Set `SEMSC_CLANG` to override the clang executable used by `--emit-exe`.
 Set `SEMSC_TRACEBACK=1` to print Python tracebacks for parse/codegen failures.
+
+## 1.0 Support Matrix
+
+| Area | 1.0 status | Supported in 1.0 | Not a 1.0 guarantee |
+|---|---|---|---|
+| Python reference compiler | Supported | `SemanticScript/compiler/semsc.py` is the release compiler. It accepts `.sscript` and `.sem`, resolves `importModule`, emits LLVM IR, JIT-runs `entry console`, and can link native executables through clang. | It is not a general web server host and it is not replaced by the SemanticScript-written bootstrap compiler. |
+| Bootstrap and self-hosting | Preview, release-tested | `bootstrap/run_bootstrap_chain.py` and `tests/sem_compiler_parity.py` are valid release verification commands. The staged SemanticScript-written compilers demonstrate input-dependent IR generation for documented subsets. | Self-hosting is not complete. `bootstrap_general.sscript` is not the 1.0 production compiler and does not compile the whole language. |
+| VS Code extension | Supported editor tooling | `vscode-semanticscript/` registers `.sscript` and `.sem`, provides highlighting, hovers, semantic roles, and optional `semlint` / `semlint2` diagnostics. | Highlighted or hovered syntax is not automatically executable compiler support. The compiler and `SYNTAX.md` decide runtime support. |
+| Refined syntax | Partial, inspectable | The parser accepts many refined declarative lines for AST, linter, and editor inspection. Pure metadata is preserved or skipped safely. Some concurrency and dataflow forms lower to documented synchronous fallbacks. | Refined syntax is not uniformly runtime-complete. Use `--parse-only` for forms whose backend is intentionally absent. |
+| Web / HTTP runtime | Metadata and handler IR only | `target webServer`, `webServer`, and `route` metadata can be authored and indexed. Programs with no explicit entry compile handlers as callable LLVM functions plus a stub `main`. | There is no 1.0 HTTP listener or request/response runtime. Explicit non-console entries are rejected until a backend is wired. |
+| Partial syntax rows | Explicitly partial | Rows marked partial in `SYNTAX.md` may parse, lint, lower synchronously, or emit structural stubs exactly as documented there. | A partial row must not be treated as full application-runtime support. Unsupported runtime semantics should fail rather than silently disappear. |
+| Runtime and diagnostics flags | Supported compiler interface | `--build-profile dev\|prod`, `--runtime-checks off\|traps\|panic`, `--persist-llvm-ir auto\|yes\|no`, `--diagnostics-format agent\|json\|raw`, and `--opt-level 0..3` are the 1.0 flag surface. | These flags do not change language support. `prod` hides panic source context; `off` removes runtime checks and should be chosen deliberately. |
 
 ## Parse Pipeline
 
@@ -135,4 +150,3 @@ SemanticScript/sem/feature_tests/
 
 When adding or changing lowering behavior, add the smallest feature test that
 proves the exact line schema and runtime result.
-
