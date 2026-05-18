@@ -310,10 +310,7 @@ arg headerReadCall name tokenHeaderName
 run headerReadCall
 bind tokenHeaderValue CNullTerminatedByteString headerReadCall
 
-# rationale: pointer.isNull is the only typed null detector — the default
-# branchIfError convention (result < 0) cannot inspect a returned NULL
-# pointer. semsc lowers this to a real `icmp_unsigned eq ptr, null`
-# (semsc.py:3674) so the branchIf below has a real Bool to read.
+rationale tokenMissingCheckCall "pointer.isNull is the only typed null detector — the default branchIfError convention (result < 0) cannot inspect a returned NULL pointer. semsc lowers this to a real `icmp_unsigned eq ptr, null` (semsc.py:3674) so the branchIf below has a real Bool to read. The rationale is attached to the call via SS3608 instead of a proximity `# rationale:` comment so a refactor that renames or removes the call also surfaces this context as orphaned."
 call tokenMissingCheckCall pointer.isNull
 arg tokenMissingCheckCall pointer tokenHeaderValue
 run tokenMissingCheckCall
