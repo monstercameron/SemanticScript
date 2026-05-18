@@ -1,17 +1,40 @@
 __pycache__/
 *.pyc
 *.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 *.exe
 *.dll
 *.obj
 *.pdb
+*.o
+*.a
+*.so
+*.dylib
+*.lib
+*.exp
+*.ilk
+*.map
+*.out
 
 *.vsix
+node_modules/
+.vscode-test/
+out/
+dist/
+coverage/
 
 AgentScript/tests/as_compiler_build/
-AgentScript/tests/feature_coverage/build/
+AgentScript/tests/feature_coverage/
 AgentScript/bootstrap/bootstrap_general.ll
+
+SemanticScript/tests/sem_compiler_build/
+SemanticScript/tests/feature_coverage/
+SemanticScript/bootstrap/bootstrap_general.ll
 
 .claude/
 
@@ -21,3 +44,5 @@ Thumbs.db
 
 # Subagent probe / scratch files
 .tmp_*.as
+.tmp_*.sscript
+.tmp_*.sem
