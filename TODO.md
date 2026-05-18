@@ -261,6 +261,8 @@ validation, and compiler project-mode entry.
   - [x] Add parser support for `buildProject`.
   - [x] Add parser support for `modulePath`.
   - [x] Add parser support for `languageVersion`.
+  - [x] Add parser support for `projectVersion`.
+  - [x] Add parser support for `projectLicense`.
   - [x] Add parser support for `sourceRoot`.
   - [x] Add parser support for `mainFile`.
   - [x] Add parser support for `mainOperation`.
@@ -269,6 +271,7 @@ validation, and compiler project-mode entry.
   - [x] Add parser support for `dependencySource`.
   - [x] Add parser support for `dependencyIntegrity`.
   - [x] Add parser support for `buildProfile`.
+  - [x] Add parser support for `optLevel`.
   - [x] Add parser support for `runtimeChecks`.
   - [x] Add parser support for `persistLlvmIr`.
   - [x] Add parser support for `nativeOutput`.
@@ -280,21 +283,21 @@ validation, and compiler project-mode entry.
   - [ ] Reject ambiguous nested project roots with a source-located diagnostic.
   - [ ] Preserve source locations for every build-tape row.
 - [ ] Implement build-tape validation.
-  - [ ] Require one active `buildProject`.
-  - [ ] Validate singleton rows.
-  - [ ] Validate source roots.
-  - [ ] Validate target runtime choices.
-  - [ ] Validate `mainFile` / `mainOperation` requirements per target.
+  - [x] Require one active `buildProject`.
+  - [x] Validate singleton rows.
+  - [x] Validate source roots.
+  - [x] Validate target runtime choices.
+  - [x] Validate `mainFile` / `mainOperation` requirements per target.
   - [ ] Validate dependency aliases and module paths.
   - [ ] Validate release builds do not use floating dependency refs without a
         lock.
 - [ ] Wire project mode into compiler/build flow.
   - [ ] Add compiler project-mode entrypoint.
-  - [ ] Pass build profile from `build.sem` into existing compiler options.
-  - [ ] Pass runtime checks from `build.sem` into existing compiler options.
-  - [ ] Pass LLVM IR persistence from `build.sem` into existing compiler
+  - [x] Pass build profile from `build.sem` into existing compiler options.
+  - [x] Pass runtime checks from `build.sem` into existing compiler options.
+  - [x] Pass LLVM IR persistence from `build.sem` into existing compiler
         options.
-  - [ ] Resolve native output from `build.sem`.
+  - [x] Resolve native output from `build.sem`.
   - [ ] Add focused tests for valid and invalid build tapes.
 - [ ] Agent 1 handoff notes.
   - [ ] Document public parser/validation helpers for Agent 2 and Agent 6.
@@ -611,6 +614,8 @@ workstreams.
   - [x] Add `buildProject PROJECT_NAME`.
   - [x] Add `modulePath PROJECT_NAME MODULE_PATH`.
   - [x] Add `languageVersion PROJECT_NAME VERSION_TEXT`.
+  - [x] Add `projectVersion PROJECT_NAME VERSION_TEXT`.
+  - [x] Add `projectLicense PROJECT_NAME LICENSE_TEXT`.
   - [x] Add `sourceRoot PROJECT_NAME PATH_TEXT`.
   - [x] Add `mainFile PROJECT_NAME PATH_TEXT`.
   - [x] Add `mainOperation PROJECT_NAME OPERATION_NAME`.
@@ -619,6 +624,7 @@ workstreams.
   - [x] Add `dependencySource PROJECT_NAME ALIAS SOURCE_KIND SOURCE_TEXT`.
   - [x] Add `dependencyIntegrity PROJECT_NAME ALIAS INTEGRITY_TEXT`.
   - [x] Add `buildProfile PROJECT_NAME dev|prod`.
+  - [x] Add `optLevel PROJECT_NAME 0|1|2|3`.
   - [x] Add `runtimeChecks PROJECT_NAME off|traps|panic`.
   - [x] Add `persistLlvmIr PROJECT_NAME auto|yes|no`.
   - [x] Add `nativeOutput PROJECT_NAME PATH_TEXT`.
@@ -636,22 +642,22 @@ workstreams.
   - [ ] Support single-file mode when no `build.sem` exists.
   - [ ] Never silently create `build.sem`.
 - [ ] Implement `build.sem` parsing.
-  - [ ] Add parser rows for every build-tape verb.
+  - [x] Add parser rows for every current build-tape verb.
   - [ ] Preserve source locations for build diagnostics.
   - [ ] Reject unknown build-tape verbs with a suggestion.
   - [ ] Reject missing project names.
   - [ ] Reject duplicate `buildProject` names in one build file.
-  - [ ] Reject duplicate singleton rows such as `modulePath`, `mainFile`, and
+  - [x] Reject duplicate singleton rows such as `modulePath`, `mainFile`, and
         `mainOperation` unless overriding is explicitly designed.
-  - [ ] Validate paths without requiring referenced files to exist until the
+  - [x] Validate paths without requiring referenced files to exist until the
         project discovery pass.
 - [ ] Implement build-tape validation.
-  - [ ] Require exactly one `buildProject` for normal project builds.
-  - [ ] Require `modulePath`.
-  - [ ] Require `languageVersion` or define a default.
-  - [ ] Require `sourceRoot` or default to `"."`.
-  - [ ] Require `mainFile` only for executable targets.
-  - [ ] Require `mainOperation` or default to `main`.
+  - [x] Require exactly one `buildProject` for normal project builds.
+  - [x] Require `modulePath`.
+  - [x] Require `languageVersion` or define a default.
+  - [x] Require `sourceRoot` or default to `"."`.
+  - [x] Require `mainFile` only for executable targets.
+  - [x] Require `mainOperation` or default to `main`.
   - [ ] Require dependency aliases to be valid identifiers.
   - [ ] Require dependency module paths to be canonical.
   - [ ] Require dependency versions/refs to be pinned for release builds.
@@ -661,10 +667,10 @@ workstreams.
   - [ ] Make `sem build` call compiler project mode once the `sem` driver
         exists.
   - [ ] Resolve all source roots before parsing application modules.
-  - [ ] Resolve build profile from `build.sem`.
-  - [ ] Resolve runtime checks from `build.sem`.
-  - [ ] Resolve LLVM IR persistence from `build.sem`.
-  - [ ] Resolve native output path from `build.sem`.
+  - [x] Resolve build profile from `build.sem`.
+  - [x] Resolve runtime checks from `build.sem`.
+  - [x] Resolve LLVM IR persistence from `build.sem`.
+  - [x] Resolve native output path from `build.sem`.
   - [ ] Emit diagnostics in terms of `build.sem` rows when build config fails.
 - [ ] Add build-tape tests.
   - [ ] Minimal valid `build.sem`.

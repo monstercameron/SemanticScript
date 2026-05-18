@@ -627,6 +627,62 @@ _PROJECT_METADATA_VERBS = (
 # at .rc generation time.
 _PROJECT_VERSION_RE = re.compile(r"^\d+(\.\d+){0,3}$")
 
+_BUILD_TAPE_PROJECT_VERBS = frozenset({
+    "modulePath", "languageVersion", "projectVersion", "projectLicense",
+    "sourceRoot", "mainFile", "mainOperation", "testPattern", "testRoot",
+    "targetRuntime", "buildProfile", "runtimeChecks", "persistLlvmIr",
+    "nativeOutput", "keepResources", "resourcesDir",
+    "nativeHttpHost", "nativeHttpPort",
+    "formatterSetting", "linterSetting", "docsOutput",
+    "optLevel", "emitLlvmIr", "llvmIrOutput",
+    "emitOptimizedLlvmIr", "optimizedLlvmIrOutput",
+    "buildDir", "buildRoot", "buildFolderName",
+    "registerModule",
+    "dependency", "dependencySource", "dependencyIntegrity",
+    "comptimeOperation",
+})
+
+_BUILD_TAPE_SINGLETON_VERBS = frozenset({
+    "modulePath", "languageVersion", "projectVersion", "projectLicense",
+    "sourceRoot", "mainFile", "mainOperation", "targetRuntime",
+    "buildProfile", "runtimeChecks", "persistLlvmIr", "nativeOutput",
+    "keepResources", "resourcesDir", "nativeHttpHost", "nativeHttpPort",
+    "docsOutput", "optLevel", "emitLlvmIr", "llvmIrOutput",
+    "emitOptimizedLlvmIr", "optimizedLlvmIrOutput",
+    "buildDir", "buildRoot", "buildFolderName", "comptimeOperation",
+})
+
+_BUILD_TAPE_REQUIRED_VERBS = frozenset({
+    "modulePath", "languageVersion", "projectVersion", "projectLicense",
+    "sourceRoot", "targetRuntime", "buildProfile", "runtimeChecks",
+    "persistLlvmIr", "optLevel",
+})
+
+_BUILD_TAPE_PATH_VERBS = frozenset({
+    "sourceRoot", "mainFile", "testPattern", "testRoot", "nativeOutput",
+    "resourcesDir", "docsOutput", "llvmIrOutput",
+    "optimizedLlvmIrOutput", "buildDir", "buildRoot",
+})
+
+_BUILD_TAPE_MIN_ARITY = {
+    "dependency": 4,
+    "dependencySource": 3,
+    "dependencyIntegrity": 3,
+    "formatterSetting": 3,
+    "linterSetting": 3,
+    "registerModule": 3,
+}
+
+_BUILD_TAPE_CHOICES = {
+    "targetRuntime": {"nativeExe", "webServer", "library"},
+    "buildProfile": {"dev", "prod"},
+    "runtimeChecks": {"off", "traps", "panic"},
+    "persistLlvmIr": {"auto", "yes", "no"},
+    "keepResources": {"yes", "no", "true", "false", "on", "off", "1", "0"},
+    "emitLlvmIr": {"auto", "yes", "no"},
+    "emitOptimizedLlvmIr": {"yes", "no"},
+}
+
 # Recognised icon role tokens. The taxonomy is fixed so a typo can't
 # silently declare a new role no emitter knows about.
 _ICON_ROLES_RECOGNIZED = frozenset({
@@ -745,6 +801,158 @@ def parse(source: str) -> Program:
         except Exception as e:
             raise SyntaxError(f"line {lineno}: {e}\n  >> {raw}") from e
     return prog
+
+
+def _is_build_tape_path(source_path: str) -> bool:
+    return os.path.basename(str(source_path)).lower() in ("build.sem", "build.sscript")
+
+
+def _looks_like_build_tape(source: str) -> bool:
+    for raw in source.splitlines():
+        toks = tokenize_line(raw)
+        if toks and toks[0] == "buildProject":
+            return True
+    return False
+
+
+def _normalize_build_tape_path(source_path: str, path_text: str,
+                               source_root_text: str = None) -> str:
+    base_dir = os.path.dirname(os.path.abspath(source_path))
+    if source_root_text:
+        root = _unwrap(source_root_text)
+        if root and not os.path.isabs(str(root)):
+            base_dir = os.path.abspath(os.path.join(base_dir, str(root)))
+        elif root:
+            base_dir = os.path.abspath(str(root))
+    raw_path = str(_unwrap(path_text))
+    if os.path.isabs(raw_path):
+        return os.path.abspath(raw_path)
+    return os.path.abspath(os.path.join(base_dir, raw_path))
+
+
+def _validate_build_tape_source(source: str, source_path: str) -> None:
+    """Strict build.sem validation for rows that affect project tooling.
+
+    The normal SemanticScript parser accepts many future rows as metadata so
+    examples stay parseable. A build tape is different: it is the project
+    contract, so malformed project rows should fail before imports/codegen.
+    """
+    build_projects = []
+    rows_by_project = {}
+    singleton_seen = {}
+    source_roots = {}
+    target_runtime_by_project = {}
+    allowed_non_project_verbs = (
+        {"buildProject", "project", "target", "runtime", "entry", "importModule",
+         "moduleFolder"}
+        | set(_PROJECT_METADATA_VERBS)
+        | {
+            "metadata",
+            "iconRoleDefinition", "icon", "iconRole", "iconPurpose",
+            "iconImage", "iconImageGroup", "iconImagePath", "iconImageFormat",
+            "iconImageWidth", "iconImageHeight", "iconImageScale",
+            "iconImageDepth", "iconImagePlatform", "iconImagePurpose",
+        }
+    )
+
+    for lineno, raw in enumerate(source.splitlines(), start=1):
+        toks = tokenize_line(raw)
+        if not toks or toks[0] == "#":
+            continue
+        verb = toks[0]
+        args = toks[1:]
+        if verb == "buildProject":
+            if len(args) < 1:
+                raise SyntaxError(f"line {lineno}: buildProject requires: buildProject PROJECT")
+            build_projects.append(args[0])
+            continue
+        if verb == "project":
+            if len(args) < 1:
+                raise SyntaxError(f"line {lineno}: project requires: project NAME")
+            continue
+        if verb not in _BUILD_TAPE_PROJECT_VERBS:
+            if verb not in allowed_non_project_verbs:
+                raise SyntaxError(
+                    f"line {lineno}: unknown build-tape row `{verb}`")
+            continue
+        minimum_arity = _BUILD_TAPE_MIN_ARITY.get(verb, 2)
+        if len(args) < minimum_arity:
+            raise SyntaxError(
+                f"line {lineno}: {verb} requires at least {minimum_arity} "
+                "argument(s)")
+        project_name = args[0]
+        rows_by_project.setdefault(project_name, set()).add(verb)
+        if verb in _BUILD_TAPE_SINGLETON_VERBS:
+            key = (project_name, verb)
+            if key in singleton_seen:
+                previous_line = singleton_seen[key]
+                raise SyntaxError(
+                    f"line {lineno}: duplicate `{verb}` for project "
+                    f"`{project_name}`; first declared on line {previous_line}")
+            singleton_seen[key] = lineno
+        if verb in _BUILD_TAPE_CHOICES:
+            value = str(_unwrap(args[1]))
+            if value not in _BUILD_TAPE_CHOICES[verb]:
+                raise SyntaxError(
+                    f"line {lineno}: {verb} value `{value}` is invalid; "
+                    f"expected one of {sorted(_BUILD_TAPE_CHOICES[verb])}")
+        if verb == "optLevel":
+            try:
+                opt_level = int(str(_unwrap(args[1])))
+            except (TypeError, ValueError):
+                raise SyntaxError(f"line {lineno}: optLevel must be an integer 0..3")
+            if opt_level < 0 or opt_level > 3:
+                raise SyntaxError(f"line {lineno}: optLevel must be in range 0..3")
+        if verb == "nativeHttpPort":
+            try:
+                port = int(str(_unwrap(args[1])))
+            except (TypeError, ValueError):
+                raise SyntaxError(f"line {lineno}: nativeHttpPort must be an integer")
+            if port <= 0 or port > 65535:
+                raise SyntaxError(f"line {lineno}: nativeHttpPort must be 1..65535")
+        if verb == "buildFolderName":
+            folder_name = str(_unwrap(args[1]))
+            normalized = folder_name.replace("\\", os.sep).replace("/", os.sep)
+            if (os.path.isabs(normalized)
+                    or os.path.dirname(normalized)
+                    or normalized in ("", ".", "..")):
+                raise SyntaxError(
+                    f"line {lineno}: buildFolderName must be one folder name, not a path")
+        if verb == "sourceRoot":
+            source_roots[project_name] = args[1]
+        if verb == "targetRuntime":
+            target_runtime_by_project[project_name] = str(_unwrap(args[1]))
+        if verb in _BUILD_TAPE_PATH_VERBS:
+            root_for_project = source_roots.get(project_name)
+            _normalize_build_tape_path(source_path, args[1], root_for_project)
+        if verb == "registerModule":
+            root_for_project = source_roots.get(project_name)
+            _normalize_build_tape_path(source_path, args[2], root_for_project)
+
+    if len(build_projects) != 1:
+        raise SyntaxError(
+            f"build.sem requires exactly one buildProject row; found {len(build_projects)}")
+    project_name = build_projects[0]
+    project_rows = rows_by_project.get(project_name, set())
+    missing_rows = sorted(_BUILD_TAPE_REQUIRED_VERBS - project_rows)
+    if missing_rows:
+        raise SyntaxError(
+            f"buildProject `{project_name}` is missing required row(s): "
+            + ", ".join(missing_rows))
+    for other_project in sorted(rows_by_project):
+        if other_project != project_name:
+            raise SyntaxError(
+                f"build tape row targets `{other_project}`, but active "
+                f"buildProject is `{project_name}`")
+    target_runtime = target_runtime_by_project.get(project_name)
+    if target_runtime in ("nativeExe", "webServer") and "mainFile" not in project_rows:
+        raise SyntaxError(
+            f"buildProject `{project_name}` targetRuntime `{target_runtime}` "
+            "requires mainFile PROJECT \"PATH\"")
+    if target_runtime == "nativeExe" and "mainOperation" not in project_rows:
+        raise SyntaxError(
+            f"buildProject `{project_name}` targetRuntime `nativeExe` "
+            "requires mainOperation PROJECT OPERATION")
 
 
 def _parse_group_anchor(comment_body: str):
@@ -6282,7 +6490,7 @@ def main():
                     help="treat lint diagnostics as fatal")
     ap.add_argument("--parse-only", action="store_true",
                     help="parse the source, run lint (if requested), and exit without codegen")
-    ap.add_argument("--opt-level", type=int, default=2,
+    ap.add_argument("--opt-level", type=int, default=None,
                     help="LLVM optimization level for the JIT (0..3); default 2")
     ap.add_argument("--emit-optimized-ir",
                     help="write the post-optimization LLVM IR to this path (after --opt-level passes run)")
@@ -6341,6 +6549,13 @@ def main():
         print("semsc: source file must use .sscript or .sem", file=sys.stderr)
         sys.exit(2)
 
+    if _is_build_tape_path(args.source) or _looks_like_build_tape(source):
+        try:
+            _validate_build_tape_source(source, args.source)
+        except SyntaxError as e:
+            print(f"semsc: build-tape error in {args.source}: {e}", file=sys.stderr)
+            sys.exit(2)
+
     try:
         # Resolve cross-file imports. `importModule DOTTED.PATH [as ALIAS]`
         # lines reference module files. Build tapes resolve registered
@@ -6376,16 +6591,31 @@ def main():
         lint(prog, strict=args.strict)
 
     try:
+        build_dir_override = args.build_dir
+        build_root_override = args.build_root
+        build_folder_override = args.build_folder_name
+        if build_dir_override is None:
+            build_dir_override = _build_metadata_value(prog, "buildDir")
+        if build_root_override is None:
+            build_root_override = _build_metadata_value(prog, "buildRoot")
+        if build_folder_override is None:
+            build_folder_override = _build_metadata_value(prog, "buildFolderName")
         build_dir = _resolve_build_dir(
             args.source,
-            build_dir=args.build_dir,
-            build_root=args.build_root,
-            build_folder_name=args.build_folder_name)
+            build_dir=build_dir_override,
+            build_root=build_root_override,
+            build_folder_name=build_folder_override)
         build_profile = _resolve_choice_from_build(
             prog, "buildProfile", args.build_profile, "dev", {"dev", "prod"})
         persist_llvm_ir = _resolve_choice_from_build(
             prog, "persistLlvmIr", args.persist_llvm_ir, "auto",
             {"auto", "yes", "no"})
+        opt_level_raw = args.opt_level
+        if opt_level_raw is None:
+            opt_level_raw = _build_metadata_value(prog, "optLevel")
+        opt_level = int(opt_level_raw) if opt_level_raw is not None else 2
+        if opt_level < 0 or opt_level > 3:
+            raise ValueError("optLevel: value must be in range 0..3")
         runtime_checks_override = args.runtime_checks
         if runtime_checks_override is None:
             runtime_checks_override = _build_metadata_value(prog, "runtimeChecks")
@@ -6405,14 +6635,33 @@ def main():
         ):
             ir_sidecar_basis_path = _resolve_emit_exe_path(
                 args.source, "", prog, build_dir)
-        if args.emit_ir is not None and persist_llvm_ir == "no":
+        emit_ir_request = args.emit_ir
+        if emit_ir_request is None:
+            build_emit_ir = _build_metadata_value(prog, "emitLlvmIr")
+            build_ir_output = _build_metadata_value(prog, "llvmIrOutput")
+            if build_ir_output:
+                emit_ir_request = build_ir_output
+            elif build_emit_ir == "yes":
+                emit_ir_request = ""
+        if emit_ir_request is not None and persist_llvm_ir == "no":
             ap.error("--emit-ir cannot be used with --persist-llvm-ir no")
         persisted_ir_path = _resolve_persisted_ir_path(
             args.source,
             emit_exe=ir_sidecar_basis_path,
-            emit_ir=args.emit_ir,
+            emit_ir=emit_ir_request,
             persist_llvm_ir=persist_llvm_ir,
             build_dir=build_dir)
+        emit_optimized_ir_path = args.emit_optimized_ir
+        if emit_optimized_ir_path is None:
+            build_optimized_ir_output = _build_metadata_value(prog, "optimizedLlvmIrOutput")
+            build_emit_optimized_ir = _build_metadata_value(prog, "emitOptimizedLlvmIr")
+            if build_optimized_ir_output:
+                emit_optimized_ir_path = _resolve_build_output_path(
+                    args.source, build_dir, build_optimized_ir_output)
+            elif build_emit_optimized_ir == "yes":
+                source_stem = os.path.splitext(os.path.basename(args.source))[0] or "program"
+                emit_optimized_ir_path = _resolve_build_output_path(
+                    args.source, build_dir, source_stem + ".opt.ll")
     except ValueError as e:
         ap.error(str(e))
 
@@ -6474,7 +6723,7 @@ def main():
                 extra_sources.append(resource_path)
                 outputs.append(("resource", resource_path))
             try:
-                emit_executable(ir_text, emit_exe_path, opt_level=args.opt_level,
+                emit_executable(ir_text, emit_exe_path, opt_level=opt_level,
                                 provenance=cg.provenance,
                                 diagnostics_format=args.diagnostics_format,
                                 extra_sources=extra_sources,
@@ -6507,13 +6756,13 @@ def main():
                 ("runtime checks", runtime_checks),
                 ("llvm ir", "persisted" if persisted_ir_path else "discarded"),
                 ("build dir", build_dir if did_output else ""),
-                ("opt level", args.opt_level),
+                ("opt level", opt_level),
             ],
         ))
 
     if args.run:
-        rc = jit_run(ir_text, opt_level=args.opt_level,
-                     emit_optimized_ir_to=args.emit_optimized_ir)
+        rc = jit_run(ir_text, opt_level=opt_level,
+                     emit_optimized_ir_to=emit_optimized_ir_path)
         sys.exit(rc)
 
     if not did_output and not args.quiet:
@@ -6528,7 +6777,7 @@ def main():
                 ("profile", build_profile),
                 ("runtime checks", runtime_checks),
                 ("llvm ir", "persisted" if persisted_ir_path else "discarded"),
-                ("opt level", args.opt_level),
+                ("opt level", opt_level),
             ],
             outputs=[("artifact", "none requested")],
             next_steps=[

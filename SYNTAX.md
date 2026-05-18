@@ -45,21 +45,37 @@ blocks, and dynamic object or array literals.
 | `trademark "text"` | Declares the legal trademark string. Lowers to VERSIONINFO `LegalTrademarks`. | Impl'd |
 | `comments "text"` | Declares an arbitrary comments block. Lowers to VERSIONINFO `Comments`. | Impl'd |
 | `metadata "key" "value"` | Declares an arbitrary user-defined metadata pair. Lowers to a custom VERSIONINFO StringFileInfo entry with the given key — readable via `version.dll`'s `VerQueryValue`. May be repeated; insertion order is preserved. | Impl'd |
-| `buildProject PROJECT` | Starts a project build tape in `build.sem`; current compiler treats it as top-level metadata while project-mode validation is designed. | Partial |
+| `buildProject PROJECT` | Starts a project build tape in `build.sem`; project-mode validation requires exactly one active build project. | Partial |
 | `modulePath PROJECT MODULE_PATH` | Declares the Go-style canonical module path for the project. | Partial |
 | `languageVersion PROJECT "VERSION"` | Pins the SemanticScript language version expected by the build tape. | Partial |
+| `projectVersion PROJECT "VERSION"` | Pins the project/package version expected by the build tape. | Partial |
+| `projectLicense PROJECT LICENSE` | Records the project license token for tooling and release metadata. | Partial |
 | `sourceRoot PROJECT "PATH"` | Declares the project source root relative to `build.sem`. | Partial |
 | `registerModule PROJECT MODULE_PATH "PATH"` | Registers one project module with the build tape. Imports must reference registered module paths; the registered path may be a module source file or a folder with `main.sem`, `index.sem`, the leaf module file, or exactly one non-test `.sem`/`.sscript`. | Partial |
 | `mainFile PROJECT "main.sem"` | Declares the default executable source file. | Partial |
 | `mainOperation PROJECT OPERATION` | Declares the default executable operation inside `mainFile`. | Partial |
 | `testPattern PROJECT "*.test.sem"` | Declares the local test-file glob for project test discovery. | Partial |
+| `testRoot PROJECT "PATH"` | Declares the test source root relative to `build.sem`. | Partial |
 | `dependencySource PROJECT ALIAS SOURCE` | Declares a module dependency source such as a Git URL or canonical module path. | Partial |
 | `dependencyIntegrity PROJECT ALIAS DIGEST` | Records an integrity pin for a dependency source. | Partial |
 | `targetRuntime PROJECT nativeExe|webServer|library` | Declares the build target runtime class for project-mode builds. | Partial |
 | `buildProfile PROJECT dev|prod` | Declares the default build profile for project-mode builds. | Partial |
-| `runtimeChecks PROJECT panic|off` | Declares runtime-check policy for project-mode builds. | Partial |
+| `optLevel PROJECT 0|1|2|3` | Declares the LLVM optimization level for project-mode builds. | Impl'd |
+| `runtimeChecks PROJECT off|traps|panic` | Declares runtime-check policy for project-mode builds. | Partial |
 | `persistLlvmIr PROJECT auto|yes|no` | Declares whether project-mode builds keep generated LLVM IR artifacts. | Partial |
+| `emitLlvmIr PROJECT auto|yes|no` | Requests pre-optimization LLVM IR emission from the build tape. | Impl'd |
+| `llvmIrOutput PROJECT "PATH"` | Declares the pre-optimization LLVM IR output path. Relative paths resolve into the compiler-managed build directory. | Impl'd |
+| `emitOptimizedLlvmIr PROJECT yes|no` | Requests post-optimization LLVM IR emission from the build tape. | Impl'd |
+| `optimizedLlvmIrOutput PROJECT "PATH"` | Declares the post-optimization LLVM IR output path. Relative paths resolve into the compiler-managed build directory. | Impl'd |
+| `buildDir PROJECT "PATH"` | Overrides the exact compiler-managed build output directory. | Impl'd |
+| `buildRoot PROJECT "PATH"` | Overrides the root that contains the compiler-managed build folder. | Impl'd |
+| `buildFolderName PROJECT NAME` | Overrides the managed build folder name used with `buildRoot`. Must be a single folder name, not a path. | Impl'd |
 | `nativeOutput PROJECT "PATH"` | Declares the native executable output path for project-mode builds. A basename resolves into the compiler-managed `build/` artifact directory. | Partial |
+| `nativeHttpHost PROJECT "HOST"` | Declares the default native HTTP bind host for web-server project builds. | Partial |
+| `nativeHttpPort PROJECT PORT` | Declares the default native HTTP bind port for web-server project builds. | Partial |
+| `formatterSetting PROJECT KEY VALUE` | Records a project-level formatter setting. | Partial |
+| `linterSetting PROJECT KEY VALUE` | Records a project-level linter setting. | Partial |
+| `docsOutput PROJECT "PATH"` | Declares where generated project documentation should be written. | Partial |
 | `comptimeOperation PROJECT OPERATION` | Reserves a compile-time configuration operation for the future comptime build surface; current compiler does not execute it. | Proposed |
 | `moduleFolder MODULE_PATH "PATH"` | Compatibility alias for `registerModule`; new build tapes should prefer `registerModule PROJECT MODULE_PATH "PATH"` so the owning project is explicit. | Partial |
 | `modulePurpose MODULE_PATH "text"` | Describes the module's role for agents, docs, and future module validation. | Partial |

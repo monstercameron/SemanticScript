@@ -657,6 +657,13 @@ VERB_MINIMUM_ARITY: Dict[str, int] = {
     "testPattern": 2, "dependencySource": 3, "dependencyIntegrity": 3,
     "buildProfile": 2, "runtimeChecks": 2, "persistLlvmIr": 2,
     "nativeOutput": 2, "targetRuntime": 2, "comptimeOperation": 2,
+    "projectVersion": 2, "projectLicense": 2, "testRoot": 2,
+    "nativeHttpHost": 2, "nativeHttpPort": 2,
+    "formatterSetting": 3, "linterSetting": 3, "docsOutput": 2,
+    "optLevel": 2, "emitLlvmIr": 2, "llvmIrOutput": 2,
+    "emitOptimizedLlvmIr": 2, "optimizedLlvmIrOutput": 2,
+    "buildDir": 2, "buildRoot": 2, "buildFolderName": 2,
+    "keepResources": 2, "resourcesDir": 2,
     "registerModule": 3,
     "moduleFolder": 2, "modulePurpose": 2, "moduleOwns": 2,
     "moduleDoesNotOwn": 2, "moduleDependency": 2, "moduleWarning": 2,
@@ -788,6 +795,10 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "mainFile", "mainOperation", "testPattern", "dependencySource",
     "dependencyIntegrity", "buildProfile", "runtimeChecks", "persistLlvmIr",
     "nativeOutput", "targetRuntime", "comptimeOperation", "registerModule",
+    "projectVersion", "projectLicense", "testRoot", "nativeHttpHost",
+    "nativeHttpPort", "formatterSetting", "linterSetting", "docsOutput",
+    "optLevel", "emitLlvmIr", "llvmIrOutput", "emitOptimizedLlvmIr",
+    "optimizedLlvmIrOutput", "buildDir", "buildRoot", "buildFolderName",
     "keepResources", "resourcesDir",
     "moduleFolder", "modulePurpose", "moduleOwns", "moduleDoesNotOwn",
     "moduleDependency", "moduleWarning", "moduleInvariant", "moduleSecurity",
@@ -7946,6 +7957,74 @@ EXPORT_VERB_DECLARATION_KIND: Dict[str, str] = {
 }
 
 
+BUILD_TAPE_PROJECT_VERBS: Set[str] = {
+    "modulePath", "languageVersion", "projectVersion", "projectLicense",
+    "sourceRoot", "mainFile", "mainOperation", "testPattern", "testRoot",
+    "targetRuntime", "buildProfile", "runtimeChecks", "persistLlvmIr",
+    "nativeOutput", "keepResources", "resourcesDir",
+    "nativeHttpHost", "nativeHttpPort",
+    "formatterSetting", "linterSetting", "docsOutput",
+    "optLevel", "emitLlvmIr", "llvmIrOutput",
+    "emitOptimizedLlvmIr", "optimizedLlvmIrOutput",
+    "buildDir", "buildRoot", "buildFolderName",
+    "registerModule",
+    "dependency", "dependencySource", "dependencyIntegrity",
+    "comptimeOperation",
+}
+
+BUILD_TAPE_SINGLETON_VERBS: Set[str] = {
+    "modulePath", "languageVersion", "projectVersion", "projectLicense",
+    "sourceRoot", "mainFile", "mainOperation", "targetRuntime",
+    "buildProfile", "runtimeChecks", "persistLlvmIr", "nativeOutput",
+    "keepResources", "resourcesDir", "nativeHttpHost", "nativeHttpPort",
+    "docsOutput", "optLevel", "emitLlvmIr", "llvmIrOutput",
+    "emitOptimizedLlvmIr", "optimizedLlvmIrOutput",
+    "buildDir", "buildRoot", "buildFolderName", "comptimeOperation",
+}
+
+BUILD_TAPE_REQUIRED_VERBS: Set[str] = {
+    "modulePath", "languageVersion", "projectVersion", "projectLicense",
+    "sourceRoot", "targetRuntime", "buildProfile", "runtimeChecks",
+    "persistLlvmIr", "optLevel",
+}
+
+BUILD_TAPE_CHOICES: Dict[str, Set[str]] = {
+    "targetRuntime": {"nativeExe", "webServer", "library"},
+    "buildProfile": {"dev", "prod"},
+    "runtimeChecks": {"off", "traps", "panic"},
+    "persistLlvmIr": {"auto", "yes", "no"},
+    "keepResources": {"yes", "no", "true", "false", "on", "off", "1", "0"},
+    "emitLlvmIr": {"auto", "yes", "no"},
+    "emitOptimizedLlvmIr": {"yes", "no"},
+}
+
+BUILD_TAPE_PATH_VERBS: Set[str] = {
+    "sourceRoot", "mainFile", "testPattern", "testRoot", "nativeOutput",
+    "resourcesDir", "docsOutput", "llvmIrOutput",
+    "optimizedLlvmIrOutput", "buildDir", "buildRoot",
+}
+
+BUILD_TAPE_MIN_ARITY: Dict[str, int] = {
+    "dependency": 4,
+    "dependencySource": 3,
+    "dependencyIntegrity": 3,
+    "formatterSetting": 3,
+    "linterSetting": 3,
+    "registerModule": 3,
+}
+
+BUILD_TAPE_ALLOWED_NON_PROJECT_VERBS: Set[str] = {
+    "buildProject", "project", "target", "runtime", "entry", "importModule",
+    "moduleFolder",
+    "version", "publisher", "description", "copyright", "productName",
+    "internalName", "originalFilename", "trademark", "comments", "metadata",
+    "iconRoleDefinition", "icon", "iconRole", "iconPurpose",
+    "iconImage", "iconImageGroup", "iconImagePath", "iconImageFormat",
+    "iconImageWidth", "iconImageHeight", "iconImageScale",
+    "iconImageDepth", "iconImagePlatform", "iconImagePurpose",
+}
+
+
 def _collect_declared_export_symbols(facts: ExtendedFacts) -> Dict[str, Set[str]]:
     declared: Dict[str, Set[str]] = {
         "type": set(),
@@ -7989,6 +8068,309 @@ def _is_build_tape(facts: ExtendedFacts) -> bool:
         for line in facts.base.lines
         if line.tokens and not is_comment(line)
     )
+
+
+def _build_tape_diagnostic(
+    sourceLine: SourceLine,
+    code: str,
+    kind: str,
+    subjectName: str,
+    subjectKind: str,
+    gapEdge: str,
+    intentSlogan: str,
+    invariantRule: str,
+    fixShape: str,
+) -> Diagnostic:
+    return Diagnostic(
+        tier=Tier.T1_SPEC,
+        code=code,
+        kind=kind,
+        severity=Severity.ERROR,
+        subjectName=subjectName,
+        subjectKind=subjectKind,
+        gapEdge=gapEdge,
+        intentSlogan=intentSlogan,
+        primary=span_of_line(sourceLine, "buildTapeSchema"),
+        invariantRule=invariantRule,
+        specAnchor="docs/language/project-layout-build-sem.md#buildsem-schema-reference",
+        fixCandidates=[
+            FixCandidate(name="repairBuildTapeRow", shape=fixShape),
+        ],
+        confidence=Confidence.HIGH,
+        blocksCompile=True,
+        effort=Effort.TRIVIAL,
+        passProvenance="check_project_build_tape_schema",
+        agentHint=(
+            "build.sem is the single project contract; repair the row "
+            "instead of compensating in module source files"
+        ),
+    )
+
+
+def check_project_build_tape_schema(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS252x - build.sem project rows must form a strict build contract."""
+    diagnostics: List[Diagnostic] = []
+    if not _is_build_tape(facts):
+        return diagnostics
+
+    buildProjects: List[Tuple[str, SourceLine]] = []
+    rowsByProject: Dict[str, Set[str]] = {}
+    singletonSeen: Dict[Tuple[str, str], SourceLine] = {}
+    sourceRoots: Dict[str, str] = {}
+    targetRuntimes: Dict[str, str] = {}
+
+    for sourceLine in facts.base.lines:
+        if not sourceLine.tokens or is_comment(sourceLine):
+            continue
+        verb = sourceLine.verb
+        args = sourceLine.args
+
+        if verb == "buildProject":
+            if args:
+                buildProjects.append((args[0], sourceLine))
+            continue
+
+        if verb not in BUILD_TAPE_PROJECT_VERBS:
+            if verb not in BUILD_TAPE_ALLOWED_NON_PROJECT_VERBS:
+                diagnostics.append(_build_tape_diagnostic(
+                    sourceLine,
+                    "SS2520",
+                    "buildTape.unknownTopLevelRow",
+                    verb,
+                    "verb",
+                    "buildTapeVocabulary",
+                    f"`{verb}` is not valid in build.sem",
+                    (
+                        "A build tape is a closed project contract. Top-level "
+                        "rows must be project metadata, module registration, "
+                        "build settings, resource metadata, or the current "
+                        "compiler bridge rows."
+                    ),
+                    "# move this row into module source or add a documented build.sem verb",
+                ))
+            continue
+
+        minimumArity = BUILD_TAPE_MIN_ARITY.get(verb, 2)
+        if len(args) < minimumArity:
+            diagnostics.append(_build_tape_diagnostic(
+                sourceLine,
+                "SS2523",
+                "buildTape.malformedProjectRow",
+                verb,
+                "verb",
+                "projectScopedBuildRow",
+                f"`{verb}` is missing required arguments",
+                (
+                    f"`{verb}` rows in build.sem require at least "
+                    f"{minimumArity} argument(s), starting with PROJECT."
+                ),
+                f"{verb} <project> <value>",
+            ))
+            continue
+
+        projectName = args[0]
+        rowsByProject.setdefault(projectName, set()).add(verb)
+
+        if verb in BUILD_TAPE_SINGLETON_VERBS:
+            key = (projectName, verb)
+            previousLine = singletonSeen.get(key)
+            if previousLine is not None:
+                diagnostics.append(_build_tape_diagnostic(
+                    sourceLine,
+                    "SS2524",
+                    "buildTape.duplicateSingletonRow",
+                    verb,
+                    "verb",
+                    "singleSourceOfTruth",
+                    f"`{verb}` is declared more than once",
+                    (
+                        f"`{verb}` is a singleton build setting for "
+                        f"`{projectName}`. Keep one row so tooling does not "
+                        "need precedence rules."
+                    ),
+                    f"# remove one `{verb} {projectName} ...` row",
+                ))
+            else:
+                singletonSeen[key] = sourceLine
+
+        if verb in BUILD_TAPE_CHOICES:
+            value = args[1]
+            if value not in BUILD_TAPE_CHOICES[verb]:
+                diagnostics.append(_build_tape_diagnostic(
+                    sourceLine,
+                    "SS2525",
+                    "buildTape.invalidChoiceValue",
+                    value,
+                    verb,
+                    "closedEnumValue",
+                    f"`{value}` is not valid for `{verb}`",
+                    (
+                        f"`{verb}` accepts only "
+                        f"{', '.join(sorted(BUILD_TAPE_CHOICES[verb]))}."
+                    ),
+                    f"{verb} {projectName} <valid-value>",
+                ))
+
+        if verb == "optLevel":
+            try:
+                optLevel = int(args[1])
+            except ValueError:
+                optLevel = -1
+            if optLevel < 0 or optLevel > 3:
+                diagnostics.append(_build_tape_diagnostic(
+                    sourceLine,
+                    "SS2525",
+                    "buildTape.invalidChoiceValue",
+                    args[1],
+                    "optLevel",
+                    "llvmOptLevel",
+                    "`optLevel` must be 0..3",
+                    "LLVM optimization levels exposed by build.sem are integers 0, 1, 2, or 3.",
+                    f"optLevel {projectName} 2",
+                ))
+
+        if verb == "nativeHttpPort":
+            try:
+                port = int(args[1])
+            except ValueError:
+                port = -1
+            if port <= 0 or port > 65535:
+                diagnostics.append(_build_tape_diagnostic(
+                    sourceLine,
+                    "SS2525",
+                    "buildTape.invalidChoiceValue",
+                    args[1],
+                    "nativeHttpPort",
+                    "tcpPort",
+                    "`nativeHttpPort` must be 1..65535",
+                    "Native HTTP build metadata must name a valid TCP port.",
+                    f"nativeHttpPort {projectName} 18080",
+                ))
+
+        if verb == "buildFolderName":
+            folderName = args[1]
+            normalized = folderName.replace("\\", os.sep).replace("/", os.sep)
+            if (os.path.isabs(normalized)
+                    or os.path.dirname(normalized)
+                    or normalized in {"", ".", ".."}):
+                diagnostics.append(_build_tape_diagnostic(
+                    sourceLine,
+                    "SS2526",
+                    "buildTape.invalidPathValue",
+                    folderName,
+                    "buildFolderName",
+                    "managedBuildFolderName",
+                    "`buildFolderName` must be one folder name",
+                    (
+                        "`buildFolderName PROJECT NAME` renames the managed "
+                        "folder only. Use `buildDir` for an exact path or "
+                        "`buildRoot` for a parent directory."
+                    ),
+                    f"buildFolderName {projectName} build",
+                ))
+
+        if verb == "sourceRoot":
+            sourceRoots[projectName] = args[1]
+        elif verb == "targetRuntime":
+            targetRuntimes[projectName] = args[1]
+
+        if verb in BUILD_TAPE_PATH_VERBS:
+            baseDir = Path(facts.base.path).resolve().parent
+            sourceRoot = sourceRoots.get(projectName)
+            if sourceRoot:
+                sourceRootPath = Path(sourceRoot)
+                if not sourceRootPath.is_absolute():
+                    baseDir = (baseDir / sourceRootPath).resolve()
+                else:
+                    baseDir = sourceRootPath.resolve()
+            rawPath = Path(args[1])
+            _ = rawPath if rawPath.is_absolute() else (baseDir / rawPath).resolve()
+
+    if len(buildProjects) != 1:
+        primaryLine = buildProjects[0][1] if buildProjects else facts.base.lines[0]
+        diagnostics.append(_build_tape_diagnostic(
+            primaryLine,
+            "SS2521",
+            "buildTape.projectCount",
+            str(len(buildProjects)),
+            "buildProject",
+            "singleBuildProject",
+            "build.sem must declare exactly one buildProject",
+            "A build tape describes one project. Multi-project orchestration belongs in a higher-level workspace tool later.",
+            "buildProject <project>",
+        ))
+        return diagnostics
+
+    projectName, projectLine = buildProjects[0]
+    projectRows = rowsByProject.get(projectName, set())
+    missingRows = sorted(BUILD_TAPE_REQUIRED_VERBS - projectRows)
+    if missingRows:
+        diagnostics.append(_build_tape_diagnostic(
+            projectLine,
+            "SS2522",
+            "buildTape.missingRequiredRow",
+            projectName,
+            "buildProject",
+            "requiredBuildRows",
+            "buildProject is missing required rows",
+            (
+                f"`buildProject {projectName}` must include: "
+                f"{', '.join(sorted(BUILD_TAPE_REQUIRED_VERBS))}. "
+                f"Missing now: {', '.join(missingRows)}."
+            ),
+            f"# add rows for: {', '.join(missingRows)}",
+        ))
+
+    for otherProject, rows in sorted(rowsByProject.items()):
+        if otherProject == projectName:
+            continue
+        firstOffendingLine = next(
+            line for line in facts.base.lines
+            if line.tokens
+            and not is_comment(line)
+            and line.verb in rows
+            and line.args
+            and line.args[0] == otherProject
+        )
+        diagnostics.append(_build_tape_diagnostic(
+            firstOffendingLine,
+            "SS2527",
+            "buildTape.rowTargetsUnknownProject",
+            otherProject,
+            "project",
+            "projectNameConsistency",
+            f"row targets `{otherProject}`, not `{projectName}`",
+            "Every project-scoped build row must use the single active buildProject name.",
+            f"{firstOffendingLine.verb} {projectName} ...",
+        ))
+
+    targetRuntime = targetRuntimes.get(projectName)
+    if targetRuntime in {"nativeExe", "webServer"} and "mainFile" not in projectRows:
+        diagnostics.append(_build_tape_diagnostic(
+            projectLine,
+            "SS2522",
+            "buildTape.missingRequiredRow",
+            projectName,
+            "buildProject",
+            "mainFile",
+            "`mainFile` is required for executable targets",
+            "`targetRuntime nativeExe` and `targetRuntime webServer` need an explicit default source file.",
+            f"mainFile {projectName} \"main.sem\"",
+        ))
+    if targetRuntime == "nativeExe" and "mainOperation" not in projectRows:
+        diagnostics.append(_build_tape_diagnostic(
+            projectLine,
+            "SS2522",
+            "buildTape.missingRequiredRow",
+            projectName,
+            "buildProject",
+            "mainOperation",
+            "`mainOperation` is required for nativeExe",
+            "`targetRuntime nativeExe` needs an explicit entry operation inside mainFile.",
+            f"mainOperation {projectName} main",
+        ))
+
+    return diagnostics
 
 
 def _nearest_build_facts(modulePath: Path) -> Optional[ProgramFacts]:
@@ -8329,6 +8711,7 @@ CHECKERS = [
     check_math_operand_width_drift,
     check_duplicate_declarations,
     check_unknown_verbs,
+    check_project_build_tape_schema,
     check_registered_module_contract,
     check_unused_calls,
     check_unused_labels,

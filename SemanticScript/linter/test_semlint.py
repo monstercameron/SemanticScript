@@ -455,17 +455,34 @@ purpose main "smoke"
 project TodoTuiApp
 modulePath todoTui github.com/monstercameron/SemanticScript/app/todo
 languageVersion todoTui "1.0"
+projectVersion todoTui "1.0.0"
+projectLicense todoTui MIT
 sourceRoot todoTui "."
 registerModule todoTui app.todo "."
 mainFile todoTui "fixture.sscript"
 mainOperation todoTui main
 testPattern todoTui "*.test.sem"
+testRoot todoTui "."
 dependencySource todoTui semstd github.com/monstercameron/SemanticScript/std
 dependencyIntegrity todoTui semstd "sha256-example"
 buildProfile todoTui dev
 runtimeChecks todoTui panic
 persistLlvmIr todoTui no
+optLevel todoTui 2
+emitLlvmIr todoTui auto
+llvmIrOutput todoTui "build/todo.ll"
+emitOptimizedLlvmIr todoTui no
+optimizedLlvmIrOutput todoTui "build/todo.opt.ll"
+buildRoot todoTui "."
+buildFolderName todoTui build
 nativeOutput todoTui "todo.exe"
+nativeHttpHost todoTui "127.0.0.1"
+nativeHttpPort todoTui 18080
+formatterSetting todoTui lineWidth 100
+linterSetting todoTui maxTier T4
+docsOutput todoTui "docs"
+keepResources todoTui no
+resourcesDir todoTui "build/resources"
 targetRuntime todoTui nativeExe
 comptimeOperation todoTui configureTodoTuiBuild
 iconRoleDefinition applicationPrimary "Primary app icon."
@@ -485,6 +502,96 @@ iconImagePurpose todoPrimaryAt16 "Small shell icon."
 """)
         self.assertNotIn("SS0001", _codes(diagnostics))
         self.assertNotIn("SS0002", _codes(diagnostics))
+
+
+# ==========================================================================
+# SS252x  build.sem project build tape schema
+# ==========================================================================
+
+class TestProjectBuildTapeSchema(unittest.TestCase):
+    def _write_complete_project(self, root: Path, extraRows: str = "") -> Path:
+        (root / "main.sem").write_text("module app.todo\n", encoding="utf-8")
+        buildPath = root / "build.sem"
+        buildPath.write_text(f"""buildProject todoTui
+project TodoTuiApp
+modulePath todoTui github.com/example/todo
+languageVersion todoTui "1.0"
+projectVersion todoTui "1.0.0"
+projectLicense todoTui MIT
+sourceRoot todoTui "."
+registerModule todoTui app.todo "."
+mainFile todoTui "main.sem"
+mainOperation todoTui main
+testPattern todoTui "*.test.sem"
+testRoot todoTui "."
+targetRuntime todoTui nativeExe
+buildProfile todoTui dev
+runtimeChecks todoTui panic
+persistLlvmIr todoTui auto
+optLevel todoTui 2
+emitLlvmIr todoTui auto
+emitOptimizedLlvmIr todoTui no
+buildFolderName todoTui build
+formatterSetting todoTui lineWidth 100
+linterSetting todoTui maxTier T4
+docsOutput todoTui "docs"
+{extraRows}""", encoding="utf-8")
+        return buildPath
+
+    def test_complete_build_tape_schema_is_clean(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            buildPath = self._write_complete_project(Path(tempDir))
+            diagnostics = semlint.lint_path(buildPath)
+        self.assertNotIn("SS2521", _codes(diagnostics))
+        self.assertNotIn("SS2522", _codes(diagnostics))
+        self.assertNotIn("SS2523", _codes(diagnostics))
+        self.assertNotIn("SS2524", _codes(diagnostics))
+        self.assertNotIn("SS2525", _codes(diagnostics))
+        self.assertNotIn("SS2526", _codes(diagnostics))
+        self.assertNotIn("SS2527", _codes(diagnostics))
+
+    def test_missing_required_rows_are_flagged(self) -> None:
+        diagnostics = _lint_source("""buildProject todoTui
+project TodoTuiApp
+""")
+        self.assertIn("SS2522", _codes(diagnostics))
+
+    def test_invalid_opt_level_is_flagged(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            buildPath = self._write_complete_project(
+                Path(tempDir),
+                extraRows="optLevel todoTui 9\n",
+            )
+            diagnostics = semlint.lint_path(buildPath)
+        self.assertIn("SS2524", _codes(diagnostics))
+        self.assertIn("SS2525", _codes(diagnostics))
+
+    def test_duplicate_singleton_is_flagged(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            buildPath = self._write_complete_project(
+                Path(tempDir),
+                extraRows="buildProfile todoTui prod\n",
+            )
+            diagnostics = semlint.lint_path(buildPath)
+        self.assertIn("SS2524", _codes(diagnostics))
+
+    def test_project_name_mismatch_is_flagged(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            buildPath = self._write_complete_project(
+                Path(tempDir),
+                extraRows="modulePath otherProject github.com/example/other\n",
+            )
+            diagnostics = semlint.lint_path(buildPath)
+        self.assertIn("SS2527", _codes(diagnostics))
+
+    def test_build_folder_name_rejects_path(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            buildPath = self._write_complete_project(
+                Path(tempDir),
+                extraRows="buildFolderName todoTui nested/build\n",
+            )
+            diagnostics = semlint.lint_path(buildPath)
+        self.assertIn("SS2526", _codes(diagnostics))
 
 
 # ==========================================================================

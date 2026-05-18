@@ -64,6 +64,8 @@ buildProject todoTui
 project TodoTuiApp
 modulePath todoTui github.com/monstercameron/SemanticScript/app/todo
 languageVersion todoTui "1.0"
+projectVersion todoTui "1.0.0"
+projectLicense todoTui MIT
 
 sourceRoot todoTui "."
 registerModule todoTui app.todo "."
@@ -79,6 +81,7 @@ entry console main
 
 targetRuntime todoTui nativeExe
 buildProfile todoTui dev
+optLevel todoTui 2
 runtimeChecks todoTui panic
 persistLlvmIr todoTui yes
 nativeOutput todoTui "todo.exe"
@@ -89,6 +92,8 @@ comptimeOperation todoTui configureTodoTuiBuild
 importModule app.todo
 ```
 
+### build.sem Schema Reference
+
 Current responsibilities:
 
 - `buildProject PROJECT` names the build tape's project identity.
@@ -96,13 +101,15 @@ Current responsibilities:
   remain the compiler bridge rows used by the current reference compiler.
 - `modulePath PROJECT PATH` records the Go-style canonical project path.
 - `languageVersion PROJECT "VERSION"` records the expected language version.
+- `projectVersion PROJECT "VERSION"` records the package/application version.
+- `projectLicense PROJECT LICENSE` records the SPDX-style license token.
 - `sourceRoot PROJECT "PATH"` records the source root relative to `build.sem`.
 - `registerModule PROJECT MODULE_PATH "PATH"` registers a module path to a
   source file or folder.
 - `mainFile PROJECT "main.sem"` records the default executable source.
 - `mainOperation PROJECT OPERATION` records the default executable operation.
 - `testPattern PROJECT "*.test.sem"` records local test discovery rules.
-- `targetRuntime`, `buildProfile`, `runtimeChecks`, `persistLlvmIr`,
+- `targetRuntime`, `buildProfile`, `optLevel`, `runtimeChecks`, `persistLlvmIr`,
   `nativeOutput`, and `keepResources` record build-output policy.
 - `comptimeOperation` is reserved for future compile-time configuration work.
 - The final `importModule app.todo` is the current compiler bridge that inlines

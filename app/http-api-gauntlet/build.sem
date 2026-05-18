@@ -10,6 +10,8 @@ buildProject httpApiGauntlet
 project HttpApiGauntlet
 modulePath httpApiGauntlet github.com/monstercameron/SemanticScript/app/http-api-gauntlet
 languageVersion httpApiGauntlet "1.0"
+projectVersion httpApiGauntlet "1.0.0"
+projectLicense httpApiGauntlet MIT
 
 sourceRoot httpApiGauntlet "."
 registerModule httpApiGauntlet app.http_api_gauntlet "."
@@ -43,6 +45,7 @@ metadata "DispatcherPort" "18082"
 
 targetRuntime httpApiGauntlet webServer
 buildProfile httpApiGauntlet dev
+optLevel httpApiGauntlet 2
 runtimeChecks httpApiGauntlet panic
 persistLlvmIr httpApiGauntlet yes
 # Basenames resolve into the compiler-managed build directory, so this emits

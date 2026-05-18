@@ -8,6 +8,8 @@ buildProject todoTui
 project TodoTuiApp
 modulePath todoTui github.com/monstercameron/SemanticScript/app/todo
 languageVersion todoTui "1.0"
+projectVersion todoTui "1.0.0"
+projectLicense todoTui MIT
 
 sourceRoot todoTui "."
 registerModule todoTui app.todo "."
@@ -105,6 +107,7 @@ iconImagePurpose  todoPrimaryAt256 "Windows Extra Large Icons view, taskbar at 2
 
 targetRuntime todoTui nativeExe
 buildProfile todoTui dev
+optLevel todoTui 2
 runtimeChecks todoTui panic
 persistLlvmIr todoTui yes
 # Basenames resolve into the compiler-managed build directory, so this emits

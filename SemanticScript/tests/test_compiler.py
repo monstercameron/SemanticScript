@@ -174,11 +174,22 @@ def test_build_registry_imports_registered_module():
         build_path.write_text("\n".join([
             "buildProject registrySmoke",
             "project RegistrySmoke",
+            "modulePath registrySmoke github.com/example/registry-smoke",
+            "languageVersion registrySmoke \"1.0\"",
+            "projectVersion registrySmoke \"1.0.0\"",
+            "projectLicense registrySmoke MIT",
+            "sourceRoot registrySmoke \".\"",
+            "targetRuntime registrySmoke nativeExe",
+            "buildProfile registrySmoke dev",
+            "optLevel registrySmoke 2",
+            "runtimeChecks registrySmoke panic",
+            "persistLlvmIr registrySmoke auto",
             "target console",
             "runtime native 1",
             "entry console main",
             "registerModule registrySmoke app.todo \".\"",
             "mainFile registrySmoke \"main.sem\"",
+            "mainOperation registrySmoke main",
             "importModule app.todo",
             "",
         ]), encoding="utf-8", newline="\n")
@@ -210,10 +221,22 @@ def test_build_registry_missing_source_is_error():
         build_path.write_text("\n".join([
             "buildProject registryBad",
             "project RegistryBad",
+            "modulePath registryBad github.com/example/registry-bad",
+            "languageVersion registryBad \"1.0\"",
+            "projectVersion registryBad \"1.0.0\"",
+            "projectLicense registryBad MIT",
+            "sourceRoot registryBad \".\"",
+            "targetRuntime registryBad nativeExe",
+            "buildProfile registryBad dev",
+            "optLevel registryBad 2",
+            "runtimeChecks registryBad panic",
+            "persistLlvmIr registryBad auto",
             "target console",
             "runtime native 1",
             "entry console main",
             "registerModule registryBad app.missing \"missing\"",
+            "mainFile registryBad \"main.sem\"",
+            "mainOperation registryBad main",
             "importModule app.missing",
             "",
         ]), encoding="utf-8", newline="\n")
@@ -659,6 +682,94 @@ def test_cli_build_root_and_folder_name():
               f"rc={proc.returncode} stderr={proc.stderr!r}")
 
 
+def test_build_tape_path_normalization():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        build_path = root / "build.sem"
+        relative_path = semsc._normalize_build_tape_path(
+            str(build_path), "main.sem", ".")
+        absolute_target = root / "src" / "main.sem"
+        absolute_path = semsc._normalize_build_tape_path(
+            str(build_path), str(absolute_target), "src")
+        check("build tape: relative path normalizes beside sourceRoot",
+              relative_path == str((root / "main.sem").resolve()),
+              relative_path)
+        check("build tape: absolute path remains absolute",
+              absolute_path == str(absolute_target.resolve()),
+              absolute_path)
+
+
+def test_build_tape_validation_rejects_missing_required_rows():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir) / "build.sem"
+        raised = False
+        msg = ""
+        try:
+            semsc._validate_build_tape_source(
+                "buildProject incomplete\nproject Incomplete\n",
+                str(build_path))
+        except SyntaxError as e:
+            raised = True
+            msg = str(e)
+        check("build tape: missing required rows rejected",
+              raised and "missing required row" in msg,
+              f"raised={raised} msg={msg!r}")
+
+
+def test_build_tape_llvm_flags_drive_outputs():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        build_path = root / "build.sem"
+        module_path = root / "main.sem"
+        build_ir_path = root / "artifacts" / "sem-build" / "custom.ll"
+        build_path.write_text("\n".join([
+            "buildProject llvmFlags",
+            "project LlvmFlags",
+            "modulePath llvmFlags github.com/example/llvm-flags",
+            "languageVersion llvmFlags \"1.0\"",
+            "projectVersion llvmFlags \"1.0.0\"",
+            "projectLicense llvmFlags MIT",
+            "sourceRoot llvmFlags \".\"",
+            "registerModule llvmFlags app.llvm_flags \".\"",
+            "mainFile llvmFlags \"main.sem\"",
+            "mainOperation llvmFlags main",
+            "targetRuntime llvmFlags nativeExe",
+            "buildProfile llvmFlags dev",
+            "runtimeChecks llvmFlags panic",
+            "persistLlvmIr llvmFlags auto",
+            "optLevel llvmFlags 0",
+            "emitLlvmIr llvmFlags yes",
+            "llvmIrOutput llvmFlags \"custom.ll\"",
+            "buildRoot llvmFlags \"artifacts\"",
+            "buildFolderName llvmFlags sem-build",
+            "target console",
+            "runtime native 1",
+            "entry console main",
+            "importModule app.llvm_flags",
+            "",
+        ]), encoding="utf-8", newline="\n")
+        module_path.write_text("\n".join([
+            "module app.llvm_flags",
+            "exportOperation app.llvm_flags main",
+            "operation main",
+            "output main ExitCode",
+            "memory main heap no",
+            "async main no",
+            "purpose main \"build tape llvm flag smoke\"",
+            "returnValue 0",
+            "",
+        ]), encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(build_path), "--quiet"],
+            capture_output=True, text=True,
+        )
+        ir_exists = build_ir_path.exists()
+    check("build tape: llvm flags write IR into configured build folder",
+          proc.returncode == 0 and ir_exists,
+          f"rc={proc.returncode} stderr={proc.stderr!r} path={build_ir_path}")
+
+
 def test_codegen_diagnostic_is_agent_readable():
     src = "\n".join([
         "project BadDiagnostic",
@@ -1084,6 +1195,9 @@ def main():
     test_cli_persist_llvm_ir_flag()
     test_cli_emit_ir_without_path_uses_build_dir()
     test_cli_build_root_and_folder_name()
+    test_build_tape_path_normalization()
+    test_build_tape_validation_rejects_missing_required_rows()
+    test_build_tape_llvm_flags_drive_outputs()
     test_codegen_diagnostic_is_agent_readable()
     test_web_codegen_rejects_unsupported_http_target()
     test_backend_diagnostic_maps_symbol_to_source_call()
