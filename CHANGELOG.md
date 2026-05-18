@@ -2,6 +2,8 @@
 
 ## 2026-05-18
 
+- `14c43065ff720d9d5cc1bfb285f7bffc6d6cb1bf` - `linter: track call-level rationales`
+  - Adds semlint2 support for `rationale CALL "text"` metadata so diagnostics can cite call-specific rationale records in addition to operation-level rationale comments.
 - `ec1f24db27d45dd54cda9d060002249bd776f015` - `linter: cover route metadata drift checks`
   - Adds semlint2 coverage for missing `routeTimeout` / `routeMiddleware` metadata and explicit opt-out cases so web route coverage drift remains visible in tests.
 - `cbb8963386448af1bcd56758156ded1428796cad` - `docs: refresh web runtime and release guidance`
