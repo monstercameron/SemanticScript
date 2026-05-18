@@ -1318,7 +1318,11 @@ def call_has_later_cleanup_call(
 #                   requires a non-empty rationale string),
 #            SS3607 forwarderDeclarationNotHonored (responseBodyForwarder
 #                   declarations must actually wire `arg <call> body
-#                   <declaredArgName>` against a known writer)
+#                   <declaredArgName>` against a known writer),
+#            SS3608 rationaleReferencesUnknownCall / rationaleMissingText
+#                   (the `rationale CALL "text"` verb must name a real
+#                   call AND carry non-empty text; orphan rationale is
+#                   the strongest dangling-context signal)
 #   SS37xx — type system discipline           (T3 refinement)
 #            SS3701 circularAlias
 #   SS38xx — codec discipline                 (T3 refinement)
