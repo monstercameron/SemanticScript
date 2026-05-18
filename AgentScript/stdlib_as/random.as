@@ -3,7 +3,7 @@
 # ============================================================
 #
 # # rationale: implements the MINSTD Linear Congruential Generator
-#   (Park-Miller) entirely in AS — no libc rand() / srand(). State
+#   (Park-Miller) entirely in AS â€” no libc rand() / srand(). State
 #   is held in a caller-passed 8-byte heap slot (rand_r-style
 #   reentrant pattern) because AS user-operations cannot yet share
 #   module-level mutable state portably.
@@ -11,7 +11,7 @@
 # # invariant: LCG parameters are multiplier 48271 over modulus
 #   2147483647 (=2^31 - 1). Period is 2^31 - 2 ~= 2.1 billion.
 #   Output is in [1, 2147483646] under a non-zero seed. Two zero
-#   inputs (zero or negative seeds) are normalized to 1 — the LCG
+#   inputs (zero or negative seeds) are normalized to 1 â€” the LCG
 #   has a fixed point at zero.
 #
 # # security: deterministic and short-period; NOT suitable for any
@@ -19,31 +19,33 @@
 #   game-mechanic determinism). Cryptographic callers must use a
 #   different source.
 #
-# # timing: nextDeterministicRandomSignedInt64 is O(1) — one
+# # timing: nextDeterministicRandomSignedInt64 is O(1) â€” one
 #   load-state, one multiply-mod, one store-state.
 #
 # # observability: state mutation happens entirely in the
 #   caller-owned slot; no module-global state to log.
 
-project StdRandomSelfTest
+project StdRandom
 target console
 runtime AgentRuntime 0.1
-entry console main
+entry console loadUnsignedByteFromBufferOffset
+
+# This is a pure-module (library) file: it exports operations
+# consumed by other programs (notably stdlib_as/random.test.as which
+# importModules it and runs the smoke). The project / target /
+# runtime / entry block is retained so the module can still be
+# linted standalone â€” the entry just points at the first exported
+# operation rather than a `main` smoke.
 
 # Typed error domain for state allocation / use failures.
 error RandomStateError
 errorCase RandomStateError MemoryAllocationFailed
 
-error MainError
-errorCase MainError RandomSmokeAssertionFailed
-errorCase MainError ConsoleWriteFailed
-
-# section capability
-# rationale: smoke-test main writes a single OK line to stdout.
-capability stdoutWriteCapability console.stdout write
 # State slot lifetime: createDeterministicRandomState allocates an
 # 8-byte LCG slot via c.malloc; releaseDeterministicRandomState
-# returns it via c.free.
+# returns it via c.free. These capabilities remain in the impl
+# module because impl operations declare `useCapability` against
+# them.
 capability heapAllocationCapability heap allocate
 capability heapFreeCapability heap free
 
@@ -138,7 +140,7 @@ memoryAllocationSource createDeterministicRandomState allocateRandomStateSlotCal
 async createDeterministicRandomState no
 purpose createDeterministicRandomState "Allocate an 8-byte LCG state slot, store the seed (or 1 when seed <= 0), return the slot pointer."
 invariant createDeterministicRandomState "Stored seed is always > 0; the MINSTD LCG has a zero fixed point that we explicitly avoid by normalizing."
-failure createDeterministicRandomState MemoryAllocationFailed "Returned when c.malloc returns NULL — caller should treat as fatal."
+failure createDeterministicRandomState MemoryAllocationFailed "Returned when c.malloc returns NULL â€” caller should treat as fatal."
 guarantee createDeterministicRandomState "Returns OK with a non-null slot, or Err with MemoryAllocationFailed."
 label startCreateDeterministicRandomState
 call allocateRandomStateSlotCall c.malloc
@@ -310,7 +312,7 @@ memoryHeap releaseDeterministicRandomState yes
 memoryAllocationSource releaseDeterministicRandomState releaseSlotCall
 async releaseDeterministicRandomState no
 purpose releaseDeterministicRandomState "Releases the slot returned by createDeterministicRandomState back to the libc allocator."
-invariant releaseDeterministicRandomState "Idempotent for double-free safety only if the libc allocator tolerates it — caller should track ownership."
+invariant releaseDeterministicRandomState "Idempotent for double-free safety only if the libc allocator tolerates it â€” caller should track ownership."
 guarantee releaseDeterministicRandomState "Always returns 0."
 label startReleaseDeterministicRandomState
 call releaseSlotCall c.free
@@ -597,174 +599,3 @@ arg storeNextStateByteSevenCall value stateEncoderWorkingValue
 run storeNextStateByteSevenCall
 
 returnValue nextStateValue
-
-# ============================================================
-# Smoke test: well-known MINSTD sequence from seed 1.
-# ============================================================
-
-operation main
-input main console Console
-output main Result ExitCode MainError
-useCapability main stdoutWriteCapability
-useCapability main heapAllocationCapability
-useCapability main heapFreeCapability
-effect main write console.stdout
-effect main allocate heap
-effect main free heap
-memoryHeap main yes
-memoryAllocationSource main createStateCall
-async main no
-purpose main "Seed the LCG with 1; draw two values and verify the MINSTD canonical sequence: 1 -> 48271 -> 182605794."
-invariant main "The MINSTD multiplier produces a deterministic sequence — any deviation indicates encoder/decoder drift."
-
-label startMain
-const seedOneInteger CSignedInt64 1
-call createStateCall createDeterministicRandomState
-arg createStateCall randomSeed seedOneInteger
-run createStateCall
-bindOk randomStateSlot COpaqueMemoryAddress createStateCall
-
-# Draw 1: 1 * 48271 mod (2^31-1) = 48271
-call drawFirstRandomCall nextDeterministicRandomSignedInt64
-arg drawFirstRandomCall randomState randomStateSlot
-run drawFirstRandomCall
-bind firstRandomValue CSignedInt64 drawFirstRandomCall
-const expectedFirstRandom CSignedInt64 48271
-call checkFirstDrawCall math.equalI64
-arg checkFirstDrawCall left firstRandomValue
-arg checkFirstDrawCall right expectedFirstRandom
-run checkFirstDrawCall
-bind firstDrawOk Bool checkFirstDrawCall
-branchIf firstDrawOk firstDrawHolds
-branch smokeAssertionFailed
-label firstDrawHolds
-
-# Draw 2: 48271^2 mod (2^31-1) = 182605794
-call drawSecondRandomCall nextDeterministicRandomSignedInt64
-arg drawSecondRandomCall randomState randomStateSlot
-run drawSecondRandomCall
-bind secondRandomValue CSignedInt64 drawSecondRandomCall
-const expectedSecondRandom CSignedInt64 182605794
-call checkSecondDrawCall math.equalI64
-arg checkSecondDrawCall left secondRandomValue
-arg checkSecondDrawCall right expectedSecondRandom
-run checkSecondDrawCall
-bind secondDrawOk Bool checkSecondDrawCall
-branchIf secondDrawOk secondDrawHolds
-branch smokeAssertionFailed
-label secondDrawHolds
-
-# Read the LCG state mid-sequence and verify it equals the last draw.
-# After two draws the state should equal the second draw value (the
-# LCG stores state[k] = x_k where the most recently produced value is
-# the current state).
-call readStateCall readDeterministicRandomState
-arg readStateCall randomState randomStateSlot
-run readStateCall
-bind readStateResult CSignedInt64 readStateCall
-call checkReadStateCall math.equalI64
-arg checkReadStateCall left readStateResult
-arg checkReadStateCall right expectedSecondRandom
-run checkReadStateCall
-bind readStateOk Bool checkReadStateCall
-branchIf readStateOk readStateHolds
-branch smokeAssertionFailed
-label readStateHolds
-
-# Draw 3: continue the sequence — verify it doesn't repeat the first.
-call drawThirdRandomCall nextDeterministicRandomSignedInt64
-arg drawThirdRandomCall randomState randomStateSlot
-run drawThirdRandomCall
-bind thirdRandomValue CSignedInt64 drawThirdRandomCall
-call checkThirdDistinctCall math.notEqualI64
-arg checkThirdDistinctCall left thirdRandomValue
-arg checkThirdDistinctCall right firstRandomValue
-run checkThirdDistinctCall
-bind thirdDistinctOk Bool checkThirdDistinctCall
-branchIf thirdDistinctOk thirdDistinctHolds
-branch smokeAssertionFailed
-label thirdDistinctHolds
-
-# loadUnsignedByteFromBufferOffset: 'h' is byte 104 at offset 0 of "hello".
-const helloForRandom CNullTerminatedByteString "hello"
-const offsetZeroForRandom CSignedInt64 0
-const expectedHByte CSignedInt64 104
-call loadByteCall loadUnsignedByteFromBufferOffset
-arg loadByteCall byteBuffer helloForRandom
-arg loadByteCall byteOffset offsetZeroForRandom
-run loadByteCall
-bind loadedByteResult CSignedInt64 loadByteCall
-call checkLoadByteCall math.equalI64
-arg checkLoadByteCall left loadedByteResult
-arg checkLoadByteCall right expectedHByte
-run checkLoadByteCall
-bind loadByteOk Bool checkLoadByteCall
-branchIf loadByteOk loadByteHolds
-branch smokeAssertionFailed
-label loadByteHolds
-
-# loadUnsignedByteFromBufferOffset at non-zero offset: byte at offset 4 of "hello" = 'o' = 111
-const offsetFourForRandom CSignedInt64 4
-const expectedOByte CSignedInt64 111
-call loadByteOffCall loadUnsignedByteFromBufferOffset
-arg loadByteOffCall byteBuffer helloForRandom
-arg loadByteOffCall byteOffset offsetFourForRandom
-run loadByteOffCall
-bind loadedByteOffResult CSignedInt64 loadByteOffCall
-call checkLoadByteOffCall math.equalI64
-arg checkLoadByteOffCall left loadedByteOffResult
-arg checkLoadByteOffCall right expectedOByte
-run checkLoadByteOffCall
-bind loadByteOffOk Bool checkLoadByteOffCall
-branchIf loadByteOffOk loadByteOffHolds
-branch smokeAssertionFailed
-label loadByteOffHolds
-
-call releaseStateCall releaseDeterministicRandomState
-arg releaseStateCall randomState randomStateSlot
-run releaseStateCall
-ignoreValue releaseStateCall CSignedInt32
-
-# Property: a fresh seed-1 LCG produces the same first value (48271).
-# This verifies determinism across state instances.
-call createStateAgainCall createDeterministicRandomState
-arg createStateAgainCall randomSeed seedOneInteger
-run createStateAgainCall
-bindOk randomStateAgainSlot COpaqueMemoryAddress createStateAgainCall
-call drawAgainCall nextDeterministicRandomSignedInt64
-arg drawAgainCall randomState randomStateAgainSlot
-run drawAgainCall
-bind firstRandomAgainValue CSignedInt64 drawAgainCall
-call checkDeterministicCall math.equalI64
-arg checkDeterministicCall left firstRandomAgainValue
-arg checkDeterministicCall right expectedFirstRandom
-run checkDeterministicCall
-bind deterministicOk Bool checkDeterministicCall
-branchIf deterministicOk deterministicHolds
-branch smokeAssertionFailed
-label deterministicHolds
-call releaseStateAgainCall releaseDeterministicRandomState
-arg releaseStateAgainCall randomState randomStateAgainSlot
-run releaseStateAgainCall
-ignoreValue releaseStateAgainCall CSignedInt32
-
-const successMessageText CNullTerminatedByteString "OK"
-call writeSuccessLineCall console.writeLine
-arg writeSuccessLineCall console console
-arg writeSuccessLineCall text successMessageText
-run writeSuccessLineCall
-ignoreOk writeSuccessLineCall CSignedInt32
-bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
-branchIfError writeSuccessLineCall consoleWriteFailedHandler
-const exitOkCode ExitCode 0
-returnOk exitOkCode
-
-# Failure leg: surface the raw negative CSignedInt32 from
-# console.writeLine as the cause attached to the typed
-# MainError.ConsoleWriteFailed variant.
-label consoleWriteFailedHandler
-makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
-returnError consoleWriteFailedFailure
-label smokeAssertionFailed
-makeError randomSmokeFailure MainError.RandomSmokeAssertionFailed
-returnError randomSmokeFailure

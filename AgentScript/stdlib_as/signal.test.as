@@ -1,0 +1,88 @@
+# ============================================================
+# AGENTSCRIPT STANDARD LIBRARY TESTS: POSIX signal numbers
+# ============================================================
+#
+# # rationale: companion test file for stdlib_as/signal.as. Imports
+#   the signal module and verifies the canonical SIGINT / SIGTERM
+#   numbers. raiseProcessSignalNumber is deliberately NOT invoked
+#   here — calling it would deliver a signal to the test runner.
+#
+# # invariant: success prints "OK\n" and exits 0; any failed
+#   assertion surfaces MainError.SignalSmokeAssertionFailed.
+#
+# # pattern: this is the canonical foo.test.as form — same
+#   directory as foo.as, importModule foo, project block local
+#   to the test, entry console main. The implementation file
+#   stdlib_as/signal.as carries no smoke main itself.
+
+project StdSignalTest
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+importModule signal
+
+error MainError
+errorCase MainError SignalSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+# section capability
+# rationale: smoke-test main writes a single OK line to stdout.
+capability stdoutWriteCapability console.stdout write
+
+# ============================================================
+# Smoke test
+# ============================================================
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+effect main write console.stdout
+memoryHeap main no
+async main no
+purpose main "Verify signal-number constants resolve to expected POSIX values."
+invariant main "SIGINT == 2, SIGTERM == 15."
+
+label startMain
+
+const interruptExpectedValue CSignedInt32 2
+call checkInterruptCall math.equalI64
+arg checkInterruptCall left interruptSignalNumber
+arg checkInterruptCall right interruptExpectedValue
+run checkInterruptCall
+bind interruptOk Bool checkInterruptCall
+branchIf interruptOk interruptHolds
+branch smokeAssertionFailed
+label interruptHolds
+
+const terminationExpectedValue CSignedInt32 15
+call checkTerminationCall math.equalI64
+arg checkTerminationCall left terminationSignalNumber
+arg checkTerminationCall right terminationExpectedValue
+run checkTerminationCall
+bind terminationOk Bool checkTerminationCall
+branchIf terminationOk terminationHolds
+branch smokeAssertionFailed
+label terminationHolds
+
+const successMessageText CNullTerminatedByteString "OK"
+call writeSuccessLineCall console.writeLine
+arg writeSuccessLineCall console console
+arg writeSuccessLineCall text successMessageText
+run writeSuccessLineCall
+ignoreOk writeSuccessLineCall CSignedInt32
+bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branchIfError writeSuccessLineCall consoleWriteFailedHandler
+const exitOkCode ExitCode 0
+returnOk exitOkCode
+
+# Failure leg: surface the raw negative CSignedInt32 from
+# console.writeLine as the cause attached to the typed
+# MainError.ConsoleWriteFailed variant.
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
+returnError consoleWriteFailedFailure
+label smokeAssertionFailed
+makeError signalSmokeFailure MainError.SignalSmokeAssertionFailed
+returnError signalSmokeFailure

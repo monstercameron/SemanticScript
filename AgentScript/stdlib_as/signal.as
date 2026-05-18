@@ -23,10 +23,17 @@
 #   SignalDeliveryError variant rather than the C convention of
 #   "non-zero means failure".
 
-project StdSignalSelfTest
+project StdSignal
 target console
 runtime AgentRuntime 0.1
-entry console main
+entry console raiseProcessSignalNumber
+
+# This is a pure-module (library) file: it exports operations and
+# domainLiterals consumed by other programs (notably
+# stdlib_as/signal.test.as which importModules it and runs the
+# smoke). The project / target / runtime / entry block is retained
+# so the module can still be linted standalone — the entry just
+# points at the first exported operation rather than a `main` smoke.
 
 # Typed error domain for signal delivery. libc raise() returns
 # non-zero on any failure (including unknown signal numbers); we
@@ -34,14 +41,6 @@ entry console main
 # distinguish causes the kernel doesn't separate.
 error SignalDeliveryError
 errorCase SignalDeliveryError DeliveryFailed
-
-error MainError
-errorCase MainError SignalSmokeAssertionFailed
-errorCase MainError ConsoleWriteFailed
-
-# section capability
-# rationale: smoke-test main writes a single OK line to stdout.
-capability stdoutWriteCapability console.stdout write
 
 # raise() touches the abstract `process.signal` effect channel;
 # every effect needs an authorizing capability proof.
@@ -107,60 +106,3 @@ makeError signalDeliveryFailure SignalDeliveryError.DeliveryFailed
 returnError signalDeliveryFailure
 label returnRaiseSuccess
 returnOk zeroSuccessCode
-
-# ============================================================
-# Smoke test
-# ============================================================
-
-operation main
-input main console Console
-output main Result ExitCode MainError
-useCapability main stdoutWriteCapability
-effect main write console.stdout
-memoryHeap main no
-async main no
-purpose main "Verify signal-number constants resolve to expected POSIX values."
-invariant main "SIGINT == 2, SIGTERM == 15."
-
-label startMain
-
-const interruptExpectedValue CSignedInt32 2
-call checkInterruptCall math.equalI64
-arg checkInterruptCall left interruptSignalNumber
-arg checkInterruptCall right interruptExpectedValue
-run checkInterruptCall
-bind interruptOk Bool checkInterruptCall
-branchIf interruptOk interruptHolds
-branch smokeAssertionFailed
-label interruptHolds
-
-const terminationExpectedValue CSignedInt32 15
-call checkTerminationCall math.equalI64
-arg checkTerminationCall left terminationSignalNumber
-arg checkTerminationCall right terminationExpectedValue
-run checkTerminationCall
-bind terminationOk Bool checkTerminationCall
-branchIf terminationOk terminationHolds
-branch smokeAssertionFailed
-label terminationHolds
-
-const successMessageText CNullTerminatedByteString "OK"
-call writeSuccessLineCall console.writeLine
-arg writeSuccessLineCall console console
-arg writeSuccessLineCall text successMessageText
-run writeSuccessLineCall
-ignoreOk writeSuccessLineCall CSignedInt32
-bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
-branchIfError writeSuccessLineCall consoleWriteFailedHandler
-const exitOkCode ExitCode 0
-returnOk exitOkCode
-
-# Failure leg: surface the raw negative CSignedInt32 from
-# console.writeLine as the cause attached to the typed
-# MainError.ConsoleWriteFailed variant.
-label consoleWriteFailedHandler
-makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
-returnError consoleWriteFailedFailure
-label smokeAssertionFailed
-makeError signalSmokeFailure MainError.SignalSmokeAssertionFailed
-returnError signalSmokeFailure

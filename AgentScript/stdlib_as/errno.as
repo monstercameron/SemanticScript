@@ -19,18 +19,17 @@
 #
 # # observability: no logs; callers wrap when needed.
 
-project StdErrnoSelfTest
+project StdErrno
 target console
 runtime AgentRuntime 0.1
-entry console main
+entry console lookupErrnoMessageCString
 
-error MainError
-errorCase MainError ErrnoSmokeAssertionFailed
-errorCase MainError ConsoleWriteFailed
-
-# section capability
-# rationale: smoke-test main writes a single OK line to stdout.
-capability stdoutWriteCapability console.stdout write
+# This is a pure-module (library) file: it exports operations and
+# domainLiterals consumed by other programs (notably
+# stdlib_as/errno.test.as which importModules it and runs the
+# smoke). The project / target / runtime / entry block is retained
+# so the module can still be linted standalone — the entry just
+# points at the first exported operation rather than a `main` smoke.
 
 # section errno.numbers
 # rationale: POSIX errno constants.
@@ -221,71 +220,3 @@ label returnBrokenPipeMessage
 returnValue messageForBrokenPipe
 label returnResultOutOfRangeMessage
 returnValue messageForResultOutOfRange
-
-# ============================================================
-# Smoke test
-# ============================================================
-
-operation main
-input main console Console
-output main Result ExitCode MainError
-useCapability main stdoutWriteCapability
-effect main write console.stdout
-memoryHeap main no
-async main no
-purpose main "Verify errno constants and message lookup."
-invariant main "ENOENT == 2; lookupErrnoMessageCString(2) is a non-empty string."
-
-label startMain
-
-const twoExpected CSignedInt32 2
-call checkEnoentCall math.equalI64
-arg checkEnoentCall left fileNotFoundErrorNumber
-arg checkEnoentCall right twoExpected
-run checkEnoentCall
-bind enoentOk Bool checkEnoentCall
-branchIf enoentOk enoentHolds
-branch smokeAssertionFailed
-label enoentHolds
-
-# Lookup returns a non-empty string for ENOENT.
-call lookupEnoentCall lookupErrnoMessageCString
-arg lookupEnoentCall errorNumber fileNotFoundErrorNumber
-run lookupEnoentCall
-bind enoentMessage CNullTerminatedByteString lookupEnoentCall
-const zeroOffset CByteCount 0
-call peekFirstByteCall pointer.loadByte
-arg peekFirstByteCall buffer enoentMessage
-arg peekFirstByteCall offset zeroOffset
-run peekFirstByteCall
-bind firstMessageByte I8 peekFirstByteCall
-const nullByteForComparison I64 0
-call detectMessageNonEmptyCall math.notEqualI64
-arg detectMessageNonEmptyCall left firstMessageByte
-arg detectMessageNonEmptyCall right nullByteForComparison
-run detectMessageNonEmptyCall
-bind messageNonEmpty Bool detectMessageNonEmptyCall
-branchIf messageNonEmpty messageNonEmptyHolds
-branch smokeAssertionFailed
-label messageNonEmptyHolds
-
-const successMessageText CNullTerminatedByteString "OK"
-call writeSuccessLineCall console.writeLine
-arg writeSuccessLineCall console console
-arg writeSuccessLineCall text successMessageText
-run writeSuccessLineCall
-ignoreOk writeSuccessLineCall CSignedInt32
-bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
-branchIfError writeSuccessLineCall consoleWriteFailedHandler
-const exitOkCode ExitCode 0
-returnOk exitOkCode
-
-# Failure leg: surface the raw negative CSignedInt32 from
-# console.writeLine as the cause attached to the typed
-# MainError.ConsoleWriteFailed variant.
-label consoleWriteFailedHandler
-makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
-returnError consoleWriteFailedFailure
-label smokeAssertionFailed
-makeError errnoSmokeFailure MainError.ErrnoSmokeAssertionFailed
-returnError errnoSmokeFailure

@@ -1,0 +1,279 @@
+# ============================================================
+# AGENTSCRIPT STDLIB TESTS: convert
+# ============================================================
+#
+# Companion smoke + extended unit tests for stdlib_as/convert.as.
+# Imports the convert module and asserts every numeric / pointer
+# conversion (widen / narrow / byte normalize / int↔float /
+# pointer offset / advance) plus boundary / round-trip cases.
+#
+# Pattern: stdlib_as/foo.as ships pure-module operations only;
+# stdlib_as/foo.test.as carries every smoke / unit test for it.
+
+project StdConvertTest
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+importModule convert
+
+error MainError
+errorCase MainError ConvertSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+# section capability
+# rationale: smoke-test main writes a single OK line to stdout.
+capability stdoutWriteCapability console.stdout write
+
+# ============================================================
+# Smoke test
+# ============================================================
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+effect main write console.stdout
+memoryHeap main no
+async main no
+purpose main "Smoke-test the conversion operations."
+invariant main "widen(-1) == -1; convertByteValueToUnsignedInt32(-1) == 255; convertFloat64ToSignedInt64(3.7) == 3."
+
+label startMain
+
+# widenSignedInt32ToSignedInt64(-1) == -1
+const negativeOneAsSignedInt32 CSignedInt32 -1
+const negativeOneAsSignedInt64 CSignedInt64 -1
+call assertWidenCall widenSignedInt32ToSignedInt64
+arg assertWidenCall inputValue negativeOneAsSignedInt32
+run assertWidenCall
+bind widenResult CSignedInt64 assertWidenCall
+call checkWidenCall math.equalI64
+arg checkWidenCall left widenResult
+arg checkWidenCall right negativeOneAsSignedInt64
+run checkWidenCall
+bind widenOk Bool checkWidenCall
+branchIf widenOk widenHolds
+branch smokeAssertionFailed
+label widenHolds
+
+# convertByteValueToUnsignedInt32(-1) == 255
+const expectedTwoHundredFiftyFive CSignedInt32 255
+call assertByteConversionCall convertByteValueToUnsignedInt32
+arg assertByteConversionCall signExtendedByteValue negativeOneAsSignedInt32
+run assertByteConversionCall
+bind byteConversionResult CSignedInt32 assertByteConversionCall
+call checkByteConversionCall math.equalI64
+arg checkByteConversionCall left byteConversionResult
+arg checkByteConversionCall right expectedTwoHundredFiftyFive
+run checkByteConversionCall
+bind byteConversionOk Bool checkByteConversionCall
+branchIf byteConversionOk byteConversionHolds
+branch smokeAssertionFailed
+label byteConversionHolds
+
+# convertFloat64ToSignedInt64(3.7) == 3 (truncate toward zero)
+const threePointSevenFloat CFloat64 3.7
+const expectedThree CSignedInt64 3
+call assertFloatToIntCall convertFloat64ToSignedInt64
+arg assertFloatToIntCall inputValue threePointSevenFloat
+run assertFloatToIntCall
+bind floatToIntResult CSignedInt64 assertFloatToIntCall
+call checkFloatToIntCall math.equalI64
+arg checkFloatToIntCall left floatToIntResult
+arg checkFloatToIntCall right expectedThree
+run checkFloatToIntCall
+bind floatToIntOk Bool checkFloatToIntCall
+branchIf floatToIntOk floatToIntHolds
+branch smokeAssertionFailed
+label floatToIntHolds
+
+# ============================================================
+# Extended unit tests: covers the 4 ops the smoke previously
+# omitted (narrow, convertSignedInt64ToFloat64,
+# calculateCStringPointerOffset; advanceOpaquePointerByByteOffset
+# is exercised via round-trip with calculateCStringPointerOffset)
+# plus negative / zero / boundary cases for the existing ops.
+# ============================================================
+
+const fiveSigned CSignedInt64 5
+const fiveAsI32 CSignedInt32 5
+const zeroSigned CSignedInt64 0
+const zeroAsI32 CSignedInt32 0
+const negThreePointSeven CFloat64 -3.7
+const negThree CSignedInt64 -3
+const zeroFloatCvt CFloat64 0.0
+const sevenSigned CSignedInt64 7
+const floatCvtTol CFloat64 0.0001
+const negFloatCvtTol CFloat64 -0.0001
+const maxInt32Signed CSignedInt64 2147483647
+
+# narrowSignedInt64ToSignedInt32(5) == 5 (in-range, no truncation)
+call narrowFiveCall narrowSignedInt64ToSignedInt32
+arg narrowFiveCall inputValue fiveSigned
+run narrowFiveCall
+bind narrowFiveResult CSignedInt32 narrowFiveCall
+call narrowFiveCheckCall math.equalI64
+arg narrowFiveCheckCall left narrowFiveResult
+arg narrowFiveCheckCall right fiveAsI32
+run narrowFiveCheckCall
+bind narrowFiveOk Bool narrowFiveCheckCall
+branchIf narrowFiveOk narrowFiveHolds
+branch smokeAssertionFailed
+label narrowFiveHolds
+
+# narrow(2147483647) == 2147483647 (max i32 boundary, exact)
+const maxInt32AsI32 CSignedInt32 2147483647
+call narrowMaxCall narrowSignedInt64ToSignedInt32
+arg narrowMaxCall inputValue maxInt32Signed
+run narrowMaxCall
+bind narrowMaxResult CSignedInt32 narrowMaxCall
+call narrowMaxCheckCall math.equalI64
+arg narrowMaxCheckCall left narrowMaxResult
+arg narrowMaxCheckCall right maxInt32AsI32
+run narrowMaxCheckCall
+bind narrowMaxOk Bool narrowMaxCheckCall
+branchIf narrowMaxOk narrowMaxHolds
+branch smokeAssertionFailed
+label narrowMaxHolds
+
+# convertSignedInt64ToFloat64(5) ≈ 5.0 (within tolerance)
+const fiveAsFloat CFloat64 5.0
+call intToFloatCall convertSignedInt64ToFloat64
+arg intToFloatCall inputValue fiveSigned
+run intToFloatCall
+bind intToFloatResult CFloat64 intToFloatCall
+call intToFloatDiffCall math.subtractF64
+arg intToFloatDiffCall left intToFloatResult
+arg intToFloatDiffCall right fiveAsFloat
+run intToFloatDiffCall
+bind intToFloatDiff CFloat64 intToFloatDiffCall
+# tolerance check: -tol < diff < tol
+call intToFloatLowerCall math.greaterThanF64
+arg intToFloatLowerCall left intToFloatDiff
+arg intToFloatLowerCall right negFloatCvtTol
+run intToFloatLowerCall
+bind intToFloatAboveLower Bool intToFloatLowerCall
+call intToFloatUpperCall math.lessThanF64
+arg intToFloatUpperCall left intToFloatDiff
+arg intToFloatUpperCall right floatCvtTol
+run intToFloatUpperCall
+bind intToFloatBelowUpper Bool intToFloatUpperCall
+branchIf intToFloatAboveLower intToFloatCheckUpper
+branch smokeAssertionFailed
+label intToFloatCheckUpper
+branchIf intToFloatBelowUpper intToFloatHolds
+branch smokeAssertionFailed
+label intToFloatHolds
+
+# convertFloat64ToSignedInt64(-3.7) == -3 (truncates toward zero, not floor)
+call floatToIntNegCall convertFloat64ToSignedInt64
+arg floatToIntNegCall inputValue negThreePointSeven
+run floatToIntNegCall
+bind floatToIntNegResult CSignedInt64 floatToIntNegCall
+call floatToIntNegCheckCall math.equalI64
+arg floatToIntNegCheckCall left floatToIntNegResult
+arg floatToIntNegCheckCall right negThree
+run floatToIntNegCheckCall
+bind floatToIntNegOk Bool floatToIntNegCheckCall
+branchIf floatToIntNegOk floatToIntNegHolds
+branch smokeAssertionFailed
+label floatToIntNegHolds
+
+# convertFloat64ToSignedInt64(0.0) == 0
+call floatToIntZeroCall convertFloat64ToSignedInt64
+arg floatToIntZeroCall inputValue zeroFloatCvt
+run floatToIntZeroCall
+bind floatToIntZeroResult CSignedInt64 floatToIntZeroCall
+call floatToIntZeroCheckCall math.equalI64
+arg floatToIntZeroCheckCall left floatToIntZeroResult
+arg floatToIntZeroCheckCall right zeroSigned
+run floatToIntZeroCheckCall
+bind floatToIntZeroOk Bool floatToIntZeroCheckCall
+branchIf floatToIntZeroOk floatToIntZeroHolds
+branch smokeAssertionFailed
+label floatToIntZeroHolds
+
+# Property: convertFloat64ToSignedInt64(convertSignedInt64ToFloat64(7)) == 7
+call roundTripFloatCall convertSignedInt64ToFloat64
+arg roundTripFloatCall inputValue sevenSigned
+run roundTripFloatCall
+bind roundTripFloatResult CFloat64 roundTripFloatCall
+call roundTripIntCall convertFloat64ToSignedInt64
+arg roundTripIntCall inputValue roundTripFloatResult
+run roundTripIntCall
+bind roundTripIntResult CSignedInt64 roundTripIntCall
+call roundTripCheckCall math.equalI64
+arg roundTripCheckCall left roundTripIntResult
+arg roundTripCheckCall right sevenSigned
+run roundTripCheckCall
+bind roundTripOk Bool roundTripCheckCall
+branchIf roundTripOk roundTripHolds
+branch smokeAssertionFailed
+label roundTripHolds
+
+# calculateCStringPointerOffset(s, s) == 0 (same pointer → zero offset)
+const sampleStr CNullTerminatedByteString "abc"
+call sameOffsetCall calculateCStringPointerOffset
+arg sameOffsetCall baseValue sampleStr
+arg sameOffsetCall pointerValue sampleStr
+run sameOffsetCall
+bind sameOffsetResult CSignedInt64 sameOffsetCall
+call sameOffsetCheckCall math.equalI64
+arg sameOffsetCheckCall left sameOffsetResult
+arg sameOffsetCheckCall right zeroSigned
+run sameOffsetCheckCall
+bind sameOffsetOk Bool sameOffsetCheckCall
+branchIf sameOffsetOk sameOffsetHolds
+branch smokeAssertionFailed
+label sameOffsetHolds
+
+# convertByteValueToUnsignedInt32(0) == 0 (boundary)
+call byteZeroCall convertByteValueToUnsignedInt32
+arg byteZeroCall signExtendedByteValue zeroAsI32
+run byteZeroCall
+bind byteZeroResult CSignedInt32 byteZeroCall
+call byteZeroCheckCall math.equalI64
+arg byteZeroCheckCall left byteZeroResult
+arg byteZeroCheckCall right zeroAsI32
+run byteZeroCheckCall
+bind byteZeroOk Bool byteZeroCheckCall
+branchIf byteZeroOk byteZeroHolds
+branch smokeAssertionFailed
+label byteZeroHolds
+
+# convertByteValueToUnsignedInt32(127) == 127 (positive in-range)
+const onehTwentySevenI32 CSignedInt32 127
+call byteMidCall convertByteValueToUnsignedInt32
+arg byteMidCall signExtendedByteValue onehTwentySevenI32
+run byteMidCall
+bind byteMidResult CSignedInt32 byteMidCall
+call byteMidCheckCall math.equalI64
+arg byteMidCheckCall left byteMidResult
+arg byteMidCheckCall right onehTwentySevenI32
+run byteMidCheckCall
+bind byteMidOk Bool byteMidCheckCall
+branchIf byteMidOk byteMidHolds
+branch smokeAssertionFailed
+label byteMidHolds
+
+const successMessageText CNullTerminatedByteString "OK"
+call writeSuccessLineCall console.writeLine
+arg writeSuccessLineCall console console
+arg writeSuccessLineCall text successMessageText
+run writeSuccessLineCall
+ignoreOk writeSuccessLineCall CSignedInt32
+bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branchIfError writeSuccessLineCall consoleWriteFailedHandler
+const exitOkCode ExitCode 0
+returnOk exitOkCode
+
+# Failure leg: surface the raw negative CSignedInt32 from
+# console.writeLine as the cause attached to the typed
+# MainError.ConsoleWriteFailed variant.
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
+returnError consoleWriteFailedFailure
+label smokeAssertionFailed
+makeError convertSmokeFailure MainError.ConvertSmokeAssertionFailed
+returnError convertSmokeFailure

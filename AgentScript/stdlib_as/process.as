@@ -46,18 +46,17 @@
 #   as the process's wait-status. abort() additionally produces a
 #   core dump on systems configured to capture them.
 
-project StdProcessSelfTest
+project StdProcess
 target console
 runtime AgentRuntime 0.1
-entry console main
+entry console exitProcessWithStatusCode
 
-error MainError
-errorCase MainError ConsoleWriteFailed
-
-# Smoke-test main writes one OK line to stdout — declare the
-# capability once at module scope so the operation header can
-# reference it.
-capability stdoutWriteCapability console.stdout write
+# This is a pure-module (library) file: it exports operations
+# consumed by other programs (notably stdlib_as/process.test.as
+# which importModules it and runs the smoke). The project / target
+# / runtime / entry block is retained so the module can still be
+# linted standalone — the entry just points at the first exported
+# operation rather than a `main` smoke.
 
 # The two terminators write to the abstract `process.lifecycle`
 # effect channel; the linter requires every declared effect to
@@ -102,45 +101,3 @@ guarantee abortCurrentProcess "Always terminates the process."
 label startAbortCurrentProcess
 call libcAbortCall c.abort
 run libcAbortCall
-
-# ============================================================
-# Smoke test
-# ============================================================
-#
-# We deliberately do NOT invoke either terminator — calling them
-# would kill the test runner. Instead, the smoke verifies that
-# this file compiles, that its metadata parses, and that the OK
-# banner reaches stdout. The bindError + branchIfError pair on
-# console.writeLine surfaces a typed ConsoleWriteFailed variant
-# if the write itself fails (e.g. broken pipe).
-
-operation main
-input main console Console
-output main Result ExitCode MainError
-useCapability main stdoutWriteCapability
-effect main write console.stdout
-memoryHeap main no
-async main no
-purpose main "Verify process.as compiles and metadata parses; emit OK on stdout. The terminators are NOT invoked."
-invariant main "Exit 0 on success; ConsoleWriteFailed only if the OK write itself returns an error."
-
-label startMain
-const successMessageText CNullTerminatedByteString "OK"
-call writeSuccessLineCall console.writeLine
-arg writeSuccessLineCall console console
-arg writeSuccessLineCall text successMessageText
-run writeSuccessLineCall
-ignoreOk writeSuccessLineCall CSignedInt32
-bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
-branchIfError writeSuccessLineCall consoleWriteFailedHandler
-const exitOkCode ExitCode 0
-returnOk exitOkCode
-
-# Failure leg: console.writeLine returned a negative CSignedInt32.
-# We surface that raw return as the cause attached to the typed
-# MainError.ConsoleWriteFailed variant we return to the caller —
-# the typed variant is what callers branch on, the raw int is
-# preserved for diagnostic correlation.
-label consoleWriteFailedHandler
-makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
-returnError consoleWriteFailedFailure

@@ -1,0 +1,138 @@
+# ============================================================
+# AGENTSCRIPT STDLIB TESTS: stdio
+# ============================================================
+#
+# Companion smoke for stdlib_as/stdio.as. Unlike most stdlib
+# smokes (which print only "OK"), this one prints a multi-line
+# demo of every writer because the writers' job IS to write —
+# stdout IS the assertion surface. test_stdlib.py asserts the
+# exact byte sequence emitted here matches its EXPECTED_STDIO_OUTPUT.
+#
+# Pattern: stdlib_as/foo.as ships pure-module operations only;
+# stdlib_as/foo.test.as carries every smoke / unit test for it.
+# stdio is special — the impl writers themselves declare
+# stdoutWriteCapability + heapAllocationCapability + heapFreeCapability
+# (they're not smoke-only), so those declarations STAY in stdio.as
+# rather than moving here.
+
+project StdStdioTest
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+importModule stdio
+
+# Typed error domain for write failures. Aggregate writers absorb
+# putchar/EOF failures via ignoreValue; the smoke wires
+# console.writeLine failures into MainError.ByteWriteFailedDuringSmoke.
+error MainError
+errorCase MainError ByteWriteFailedDuringSmoke
+
+# ============================================================
+# Smoke test — output expected by tests/test_stdlib.py:
+#   "Hello, AgentScript stdlib!\n"
+#   "no-newline-then-writeCStringLineToStandardOutput\n"
+#   "42\n"
+#   "-1234\n"
+#   "0\n"
+#   "255\n"
+#   "ff\n"
+# ============================================================
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+useCapability main heapAllocationCapability
+useCapability main heapFreeCapability
+effect main write console.stdout
+effect main allocate heap
+effect main free heap
+memoryHeap main yes
+memoryStackLimit main 16384
+# The decimal/hex formatters are the heap-allocators; we name one
+# of them as the canonical allocation source for tooling.
+memoryAllocationSource main emitFortyTwoCall
+async main no
+purpose main "Smoke-test every stdio writer. Output matches the byte-exact sequence expected by test_stdlib.py."
+invariant main "Emits the test_stdlib.py-expected byte sequence; returns Ok 0 on success."
+
+label startMain
+
+# Emit the first banner via console.writeLine so the smoke
+# references the runtime Console handle AND surfaces a typed
+# failure path through MainError.ByteWriteFailedDuringSmoke if
+# stdout itself fails (e.g. closed pipe). The remaining lines go
+# through the byte-level writers under test.
+const helloAgentscriptStdlibBanner CNullTerminatedByteString "Hello, AgentScript stdlib!"
+call emitHelloBannerCall console.writeLine
+arg emitHelloBannerCall console console
+arg emitHelloBannerCall text helloAgentscriptStdlibBanner
+run emitHelloBannerCall
+ignoreOk emitHelloBannerCall CSignedInt32
+bindError emitHelloBannerError CSignedInt32 emitHelloBannerCall
+branchIfError emitHelloBannerCall byteWriteFailedDuringSmokeHandler
+
+const noNewlineProbeText CNullTerminatedByteString "no-newline-then-writeCStringLineToStandardOutput"
+call emitNoNewlineProbeCall writeCStringToStandardOutput
+arg emitNoNewlineProbeCall inputText noNewlineProbeText
+run emitNoNewlineProbeCall
+ignoreValue emitNoNewlineProbeCall CByteCount
+
+const emptyTerminatorMarker CNullTerminatedByteString ""
+call emitEmptyTerminatorCall writeCStringLineToStandardOutput
+arg emitEmptyTerminatorCall inputText emptyTerminatorMarker
+run emitEmptyTerminatorCall
+ignoreValue emitEmptyTerminatorCall CByteCount
+
+const fortyTwoSampleValue CSignedInt64 42
+call emitFortyTwoCall writeSignedInt64DecimalToStandardOutput
+arg emitFortyTwoCall inputValue fortyTwoSampleValue
+run emitFortyTwoCall
+ignoreValue emitFortyTwoCall CByteCount
+
+const negativeTwelveThirtyFour CSignedInt64 -1234
+call emitNegativeSampleCall writeSignedInt64DecimalToStandardOutput
+arg emitNegativeSampleCall inputValue negativeTwelveThirtyFour
+run emitNegativeSampleCall
+ignoreValue emitNegativeSampleCall CByteCount
+
+const zeroSampleForDecimal CSignedInt64 0
+call emitDecimalZeroSampleCall writeSignedInt64DecimalToStandardOutput
+arg emitDecimalZeroSampleCall inputValue zeroSampleForDecimal
+run emitDecimalZeroSampleCall
+ignoreValue emitDecimalZeroSampleCall CByteCount
+
+const twoFiftyFiveSampleValue CSignedInt64 255
+call emitUnsignedTwoFiftyFiveCall writeUnsignedInt64DecimalToStandardOutput
+arg emitUnsignedTwoFiftyFiveCall inputValue twoFiftyFiveSampleValue
+run emitUnsignedTwoFiftyFiveCall
+ignoreValue emitUnsignedTwoFiftyFiveCall CByteCount
+
+call emitHexTwoFiftyFiveCall writeSignedInt64HexToStandardOutput
+arg emitHexTwoFiftyFiveCall inputValue twoFiftyFiveSampleValue
+run emitHexTwoFiftyFiveCall
+ignoreValue emitHexTwoFiftyFiveCall CByteCount
+
+# Exercise writeByteToStandardOutput by emitting 'A' (65) then '\n' (10).
+# This was the one stdio op missing from the original smoke; the
+# expected stdout in test_stdlib.py is extended by exactly "A\n".
+const capitalAByteCode CSignedInt32 65
+call emitCapitalAByteCall writeByteToStandardOutput
+arg emitCapitalAByteCall characterCode capitalAByteCode
+run emitCapitalAByteCall
+ignoreValue emitCapitalAByteCall CSignedInt32
+const lineFeedByteCode CSignedInt32 10
+call emitLineFeedByteCall writeByteToStandardOutput
+arg emitLineFeedByteCall characterCode lineFeedByteCode
+run emitLineFeedByteCall
+ignoreValue emitLineFeedByteCall CSignedInt32
+
+const exitOkCode ExitCode 0
+returnOk exitOkCode
+
+# Failure leg: the first banner write failed (closed pipe, etc.).
+# Surface the typed variant with the raw negative status as cause.
+label byteWriteFailedDuringSmokeHandler
+makeError byteWriteFailedDuringSmokeFailure MainError.ByteWriteFailedDuringSmoke emitHelloBannerError
+returnError byteWriteFailedDuringSmokeFailure

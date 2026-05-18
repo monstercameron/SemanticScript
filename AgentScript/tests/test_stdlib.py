@@ -103,11 +103,16 @@ def main():
             failures += 1
         if not within_budget:
             over_budget += 1
-    ok, elapsed, within_budget = run(STDLIB_DIR / "stdio.as", EXPECTED_STDIO_OUTPUT)
+    # stdio: same .test.as fallback as the OK-only suite. The
+    # implementation file (stdio.as) carries all the writers; the
+    # test file emits the byte-exact demo output asserted below.
+    stdio_test = STDLIB_DIR / "stdio.test.as"
+    stdio_target = stdio_test if stdio_test.exists() else STDLIB_DIR / "stdio.as"
+    ok, elapsed, within_budget = run(stdio_target, EXPECTED_STDIO_OUTPUT)
     total_elapsed += elapsed
     if elapsed > slowest_elapsed:
         slowest_elapsed = elapsed
-        slowest_name = "stdio.as"
+        slowest_name = stdio_target.name
     if not ok:
         failures += 1
     if not within_budget:

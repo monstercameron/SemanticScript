@@ -27,18 +27,17 @@
 # # observability: nothing to observe; consumers see only the
 #   raw CSignedInt64 value.
 
-project StdStddefSelfTest
+project StdStddef
 target console
 runtime AgentRuntime 0.1
-entry console main
+entry console acquireNullOpaquePointer
 
-error MainError
-errorCase MainError StddefSmokeAssertionFailed
-errorCase MainError ConsoleWriteFailed
-
-# section capability
-# rationale: smoke-test main writes a single OK line to stdout.
-capability stdoutWriteCapability console.stdout write
+# This is a pure-module (library) file: it exports operations and
+# domainLiterals consumed by other programs (notably
+# stdlib_as/stddef.test.as which importModules it and runs the
+# smoke). The project / target / runtime / entry block is retained
+# so the module can still be linted standalone — the entry just
+# points at the first exported operation rather than a `main` smoke.
 
 # section stddef.byteSizes
 # rationale: byte-size constants per the target ABI (x86-64 Windows).
@@ -95,72 +94,3 @@ arg probeEnvironmentForNullCall name deliberatelyAbsentEnvName
 run probeEnvironmentForNullCall
 bind nullPointerValue COpaqueMemoryAddress probeEnvironmentForNullCall
 returnValue nullPointerValue
-
-# ============================================================
-# Smoke test
-# ============================================================
-
-operation main
-input main console Console
-output main Result ExitCode MainError
-useCapability main stdoutWriteCapability
-effect main write console.stdout
-memoryHeap main no
-async main no
-purpose main "Verify the stddef sizes resolve to expected ABI values."
-invariant main "Pointer is 8 bytes; int32 is 4; int64 is 8; double is 8."
-
-label startMain
-
-# byteSizeOfOpaquePointer == 8
-const eightExpected CSignedInt64 8
-call checkPointerSizeCall math.equalI64
-arg checkPointerSizeCall left byteSizeOfOpaquePointer
-arg checkPointerSizeCall right eightExpected
-run checkPointerSizeCall
-bind pointerSizeOk Bool checkPointerSizeCall
-branchIf pointerSizeOk pointerSizeHolds
-branch smokeAssertionFailed
-label pointerSizeHolds
-
-# byteSizeOfSignedInt32 == 4
-const fourExpected CSignedInt64 4
-call checkInt32SizeCall math.equalI64
-arg checkInt32SizeCall left byteSizeOfSignedInt32
-arg checkInt32SizeCall right fourExpected
-run checkInt32SizeCall
-bind int32SizeOk Bool checkInt32SizeCall
-branchIf int32SizeOk int32SizeHolds
-branch smokeAssertionFailed
-label int32SizeHolds
-
-# byteSizeOfFloat64 == 8
-call checkFloat64SizeCall math.equalI64
-arg checkFloat64SizeCall left byteSizeOfFloat64
-arg checkFloat64SizeCall right eightExpected
-run checkFloat64SizeCall
-bind float64SizeOk Bool checkFloat64SizeCall
-branchIf float64SizeOk float64SizeHolds
-branch smokeAssertionFailed
-label float64SizeHolds
-
-const successMessageText CNullTerminatedByteString "OK"
-call writeSuccessLineCall console.writeLine
-arg writeSuccessLineCall console console
-arg writeSuccessLineCall text successMessageText
-run writeSuccessLineCall
-ignoreOk writeSuccessLineCall CSignedInt32
-bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
-branchIfError writeSuccessLineCall consoleWriteFailedHandler
-const exitOkCode ExitCode 0
-returnOk exitOkCode
-
-# Failure leg: surface the raw negative CSignedInt32 from
-# console.writeLine as the cause attached to the typed
-# MainError.ConsoleWriteFailed variant.
-label consoleWriteFailedHandler
-makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
-returnError consoleWriteFailedFailure
-label smokeAssertionFailed
-makeError stddefSmokeFailure MainError.StddefSmokeAssertionFailed
-returnError stddefSmokeFailure

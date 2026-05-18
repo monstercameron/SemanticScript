@@ -1,0 +1,75 @@
+# ============================================================
+# AGENTSCRIPT STANDARD LIBRARY TESTS: process lifecycle terminators
+# ============================================================
+#
+# # rationale: companion test file for stdlib_as/process.as. Imports
+#   the process module and verifies that compilation succeeds and
+#   the OK banner reaches stdout. The terminators
+#   (exitProcessWithStatusCode, abortCurrentProcess) are deliberately
+#   NOT invoked — calling either would kill the test runner.
+#
+# # invariant: success prints "OK\n" and exits 0; only the typed
+#   ConsoleWriteFailed variant is surfaced if the OK write itself
+#   returns an error.
+#
+# # pattern: this is the canonical foo.test.as form — same
+#   directory as foo.as, importModule foo, project block local
+#   to the test, entry console main. The implementation file
+#   stdlib_as/process.as carries no smoke main itself.
+
+project StdProcessTest
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+importModule process
+
+error MainError
+errorCase MainError ConsoleWriteFailed
+
+# Smoke-test main writes one OK line to stdout — declare the
+# capability once at module scope so the operation header can
+# reference it.
+capability stdoutWriteCapability console.stdout write
+
+# ============================================================
+# Smoke test
+# ============================================================
+#
+# We deliberately do NOT invoke either terminator — calling them
+# would kill the test runner. Instead, the smoke verifies that
+# this file compiles, that its metadata parses, and that the OK
+# banner reaches stdout. The bindError + branchIfError pair on
+# console.writeLine surfaces a typed ConsoleWriteFailed variant
+# if the write itself fails (e.g. broken pipe).
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+effect main write console.stdout
+memoryHeap main no
+async main no
+purpose main "Verify process.as compiles and metadata parses; emit OK on stdout. The terminators are NOT invoked."
+invariant main "Exit 0 on success; ConsoleWriteFailed only if the OK write itself returns an error."
+
+label startMain
+const successMessageText CNullTerminatedByteString "OK"
+call writeSuccessLineCall console.writeLine
+arg writeSuccessLineCall console console
+arg writeSuccessLineCall text successMessageText
+run writeSuccessLineCall
+ignoreOk writeSuccessLineCall CSignedInt32
+bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branchIfError writeSuccessLineCall consoleWriteFailedHandler
+const exitOkCode ExitCode 0
+returnOk exitOkCode
+
+# Failure leg: console.writeLine returned a negative CSignedInt32.
+# We surface that raw return as the cause attached to the typed
+# MainError.ConsoleWriteFailed variant we return to the caller —
+# the typed variant is what callers branch on, the raw int is
+# preserved for diagnostic correlation.
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
+returnError consoleWriteFailedFailure

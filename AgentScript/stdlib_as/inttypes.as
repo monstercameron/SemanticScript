@@ -26,10 +26,13 @@
 #   digits were consumed" — that contract belongs to a stricter
 #   variant in stdlib.as.
 
-project StdInttypesSelfTest
+project StdInttypes
 target console
 runtime AgentRuntime 0.1
-entry console main
+entry console absoluteMaxWidthSignedInt
+
+# Pure-module file: smoke + extended tests live in
+# stdlib_as/inttypes.test.as.
 
 # Typed error domain for integer arithmetic. AgentScript-style errors
 # replace the previous "negative return = failure" C convention. The
@@ -39,13 +42,6 @@ entry console main
 error IntegerArithmeticError
 errorCase IntegerArithmeticError DivisionByZeroAttempted
 
-error MainError
-errorCase MainError InttypesSmokeAssertionFailed
-errorCase MainError ConsoleWriteFailed
-
-# section capability
-# rationale: smoke-test main writes a single OK line to stdout.
-capability stdoutWriteCapability console.stdout write
 
 domainLiteral integerZeroComparisonValue CSignedInt64 0
 domainLiteralTrust integerZeroComparisonValue trustedStaticLiteral
@@ -269,193 +265,4 @@ label octalParseDone
 returnValue octalAccumulator
 
 # ============================================================
-# Smoke test
-# ============================================================
 
-operation main
-input main console Console
-output main Result ExitCode MainError
-useCapability main stdoutWriteCapability
-effect main write console.stdout
-memoryHeap main no
-async main no
-purpose main "Smoke-test the inttypes helpers end-to-end."
-invariant main "All assertions hold or the failure path runs."
-
-label startMain
-
-# absoluteMaxWidthSignedInt(-7) == 7
-const negativeSevenValue CSignedInt64 -7
-call assertAbsCall absoluteMaxWidthSignedInt
-arg assertAbsCall inputValue negativeSevenValue
-run assertAbsCall
-bind absResult CSignedInt64 assertAbsCall
-const sevenValue CSignedInt64 7
-call checkAbsCall math.equalI64
-arg checkAbsCall left absResult
-arg checkAbsCall right sevenValue
-run checkAbsCall
-bind absOk Bool checkAbsCall
-branchIf absOk absHolds
-branch smokeAssertionFailed
-label absHolds
-
-# parsePositiveBinaryCStringToSignedInt64("1101") == 13
-const binaryThirteenText CNullTerminatedByteString "1101"
-call assertParseBinaryCall parsePositiveBinaryCStringToSignedInt64
-arg assertParseBinaryCall inputText binaryThirteenText
-run assertParseBinaryCall
-bind parseBinaryResult CSignedInt64 assertParseBinaryCall
-const thirteenValue CSignedInt64 13
-call checkParseBinaryCall math.equalI64
-arg checkParseBinaryCall left parseBinaryResult
-arg checkParseBinaryCall right thirteenValue
-run checkParseBinaryCall
-bind parseBinaryOk Bool checkParseBinaryCall
-branchIf parseBinaryOk parseBinaryHolds
-branch smokeAssertionFailed
-label parseBinaryHolds
-
-# parsePositiveOctalCStringToSignedInt64("755") == 493
-const octal755Text CNullTerminatedByteString "755"
-call assertParseOctalCall parsePositiveOctalCStringToSignedInt64
-arg assertParseOctalCall inputText octal755Text
-run assertParseOctalCall
-bind parseOctalResult CSignedInt64 assertParseOctalCall
-const fourNinetyThreeValue CSignedInt64 493
-call checkParseOctalCall math.equalI64
-arg checkParseOctalCall left parseOctalResult
-arg checkParseOctalCall right fourNinetyThreeValue
-run checkParseOctalCall
-bind parseOctalOk Bool checkParseOctalCall
-branchIf parseOctalOk parseOctalHolds
-branch smokeAssertionFailed
-label parseOctalHolds
-
-# ============================================================
-# Extended unit tests: covers the 2 ops the smoke previously
-# omitted (divideMaxWidthSignedIntQuotient + Remainder).
-# ============================================================
-
-const numeratorTwentyThree CSignedInt64 23
-const denominatorFour CSignedInt64 4
-const expectedQuotientFive CSignedInt64 5
-const expectedRemainderThree CSignedInt64 3
-
-# divideMaxWidthSignedIntQuotient(23, 4) == 5
-call divQuotientCall divideMaxWidthSignedIntQuotient
-arg divQuotientCall numeratorValue numeratorTwentyThree
-arg divQuotientCall denominatorValue denominatorFour
-run divQuotientCall
-bindOk divQuotientResult CSignedInt64 divQuotientCall
-call checkDivQuotientCall math.equalI64
-arg checkDivQuotientCall left divQuotientResult
-arg checkDivQuotientCall right expectedQuotientFive
-run checkDivQuotientCall
-bind divQuotientOk Bool checkDivQuotientCall
-branchIf divQuotientOk divQuotientHolds
-branch smokeAssertionFailed
-label divQuotientHolds
-
-# divideMaxWidthSignedIntRemainder(23, 4) == 3
-call divRemainderCall divideMaxWidthSignedIntRemainder
-arg divRemainderCall numeratorValue numeratorTwentyThree
-arg divRemainderCall denominatorValue denominatorFour
-run divRemainderCall
-bindOk divRemainderResult CSignedInt64 divRemainderCall
-call checkDivRemainderCall math.equalI64
-arg checkDivRemainderCall left divRemainderResult
-arg checkDivRemainderCall right expectedRemainderThree
-run checkDivRemainderCall
-bind divRemainderOk Bool checkDivRemainderCall
-branchIf divRemainderOk divRemainderHolds
-branch smokeAssertionFailed
-label divRemainderHolds
-
-# Property: quotient * denominator + remainder == numerator
-# (5 * 4 + 3 == 23)
-call propMulCall math.multiplyI64
-arg propMulCall left divQuotientResult
-arg propMulCall right denominatorFour
-run propMulCall
-bind propMulResult CSignedInt64 propMulCall
-call propAddCall math.addI64
-arg propAddCall left propMulResult
-arg propAddCall right divRemainderResult
-run propAddCall
-bind propAddResult CSignedInt64 propAddCall
-call propCheckCall math.equalI64
-arg propCheckCall left propAddResult
-arg propCheckCall right numeratorTwentyThree
-run propCheckCall
-bind propCheckOk Bool propCheckCall
-branchIf propCheckOk propCheckHolds
-branch smokeAssertionFailed
-label propCheckHolds
-
-# divideMaxWidthSignedIntQuotient(0, 5) == 0 (zero dividend)
-const zeroNumerator CSignedInt64 0
-const fiveDenominator CSignedInt64 5
-call divZeroQuotientCall divideMaxWidthSignedIntQuotient
-arg divZeroQuotientCall numeratorValue zeroNumerator
-arg divZeroQuotientCall denominatorValue fiveDenominator
-run divZeroQuotientCall
-bindOk divZeroQuotientResult CSignedInt64 divZeroQuotientCall
-call checkDivZeroQuotientCall math.equalI64
-arg checkDivZeroQuotientCall left divZeroQuotientResult
-arg checkDivZeroQuotientCall right zeroNumerator
-run checkDivZeroQuotientCall
-bind divZeroQuotientOk Bool checkDivZeroQuotientCall
-branchIf divZeroQuotientOk divZeroQuotientHolds
-branch smokeAssertionFailed
-label divZeroQuotientHolds
-
-# parsePositiveBinaryCStringToSignedInt64("0") == 0 (boundary)
-const binaryZeroText CNullTerminatedByteString "0"
-call parseZeroBinaryCall parsePositiveBinaryCStringToSignedInt64
-arg parseZeroBinaryCall inputText binaryZeroText
-run parseZeroBinaryCall
-bind parseZeroBinaryResult CSignedInt64 parseZeroBinaryCall
-call checkParseZeroBinaryCall math.equalI64
-arg checkParseZeroBinaryCall left parseZeroBinaryResult
-arg checkParseZeroBinaryCall right zeroNumerator
-run checkParseZeroBinaryCall
-bind parseZeroBinaryOk Bool checkParseZeroBinaryCall
-branchIf parseZeroBinaryOk parseZeroBinaryHolds
-branch smokeAssertionFailed
-label parseZeroBinaryHolds
-
-# absoluteMaxWidthSignedInt(0) == 0 (boundary)
-call absZeroCall absoluteMaxWidthSignedInt
-arg absZeroCall inputValue zeroNumerator
-run absZeroCall
-bind absZeroResult CSignedInt64 absZeroCall
-call checkAbsZeroCall math.equalI64
-arg checkAbsZeroCall left absZeroResult
-arg checkAbsZeroCall right zeroNumerator
-run checkAbsZeroCall
-bind absZeroOk Bool checkAbsZeroCall
-branchIf absZeroOk absZeroHolds
-branch smokeAssertionFailed
-label absZeroHolds
-
-const successMessageText CNullTerminatedByteString "OK"
-call writeSuccessLineCall console.writeLine
-arg writeSuccessLineCall console console
-arg writeSuccessLineCall text successMessageText
-run writeSuccessLineCall
-ignoreOk writeSuccessLineCall CSignedInt32
-bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
-branchIfError writeSuccessLineCall consoleWriteFailedHandler
-const exitOkCode ExitCode 0
-returnOk exitOkCode
-
-# Failure leg: surface the raw negative CSignedInt32 from
-# console.writeLine as the cause attached to the typed
-# MainError.ConsoleWriteFailed variant.
-label consoleWriteFailedHandler
-makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
-returnError consoleWriteFailedFailure
-label smokeAssertionFailed
-makeError inttypesSmokeFailure MainError.InttypesSmokeAssertionFailed
-returnError inttypesSmokeFailure
