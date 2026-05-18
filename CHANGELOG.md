@@ -2,6 +2,16 @@
 
 ## 2026-05-18
 
+- `aaf0eaf3af20627fc38185236590b43855a2345e` - `compiler: reload sqlite defer handles from slots`
+  - Re-loads SQLite cleanup handles from entry-block slots so deferred close/finalize calls use values that dominate failure-label and success-return cleanup sites.
+- `9d6997a4f3975a8f9221d3512db2edc459ddd20d` - `docs: mark completed tooling todos`
+  - Marks completed build-tape parser/discovery/project-mode, VS Code, project-layout, `semfmt`, and `sem` driver checklist items while leaving unresolved dependency-cache, LSP, and advanced formatter work open.
+- `06f7f80cacd8da8b4f772a370bc58b8007ba16e6` - `vscode: expose cpu build settings`
+  - Documents CPU build-tape rows and compiler CLI flags, adds CPU examples, and exposes CPU settings, hovers, document symbols, and grammar highlighting in the VS Code extension.
+- `f02b566d03c19d2e0daf8d816ebe4533770e5026` - `compiler: lower sqlite defers safely`
+  - Routes SQLite cleanup defers through native runtime symbols only on paths where the defer has been registered and adds deep SQLite IR, unsupported-target, and native end-to-end compiler tests.
+- `aac3630b39684ec0a5cd18866eb08feb2c63e22c` - `compiler: wire sqlite and cpu build surfaces`
+  - Adds SQLite built-in enum/type/lowering support, linter visibility for SQLite built-ins, CPU build-tape/CLI lowering flags with tests, and app build-tape CPU defaults.
 - `e6349d282566588e5b7c4102211bd080f579ec96` - `docs: mark build tape TODOs complete`
   - Marks the completed build-tape schema, parser, tooling integration, and documentation checklist items in the root TODO.
 - `f8d4736ee5fe287f8884bf0b4c2fb25c5e00ab69` - `app: refresh todo build tape notes`
