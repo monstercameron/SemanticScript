@@ -1,36 +1,42 @@
+# ============================================================
+# AGENTSCRIPT STANDARD LIBRARY: integer math helpers
+# ============================================================
+#
+# # rationale: pure-AS integer math — sqrt, factorial, primality,
+#   power-of-two tests, bit counts. Every operation lowers to math.*
+#   primitives plus branching; no libc math.h dependency.
+#
+# # invariant: every operation is total over its declared CSignedInt64
+#   domain. Predicates (isSignedInt64Prime / IsPowerOfTwo / IsEven /
+#   IsOdd / IsWithinInclusiveRange) return Bool directly — no more
+#   round-trips through "0 or 1 in a CSignedInt32".
+#
+# # security: pure value-level computation. No I/O. No allocation.
+#
+# # timing: integerSquareRoot is O(log n) (Newton iterations);
+#   factorial is O(n); isSignedInt64Prime is O(sqrt(n)); bit counts
+#   are O(64) — acceptable for tooling, not for hot loops.
+#
+# # observability: no logs; consumers wrap when needed.
+
 project StdMathSelfTest
 target console
 runtime AgentRuntime 0.1
-
 entry console main
 
 error MainError
-errorCase MainError TestFailed CSignedInt32
-
-# ============================================================
-# AGENTSCRIPT STANDARD LIBRARY: integer math.
-#
-# Pure AS — every operation lowers to math.* primitives + branching,
-# no libc math.h dependency.
-#
-# Operations:
-#   integerSquareRootSignedInt64(n)         - floor(sqrt(n)) via Newton's method on integers.
-#   factorialSignedInt64(n)       - n! by repeated multiplication (n <= 20 fits i64).
-#   isSignedInt64Prime(n)         - 1 if prime, 0 otherwise; trial division up to sqrt(n).
-#   isSignedInt64PowerOfTwo(n)    - 1 if n is a positive power of 2, else 0.
-#   nextPowerOfTwoForSignedInt64(n)  - smallest power of 2 >= n (1 for n <= 1).
-#   countDecimalDigitsInSignedInt64(n) - decimal digit count of |n| (1 for 0).
-#   isSignedInt64Even(n) / isSignedInt64Odd(n)  - parity helpers using modulo 2.
-# ============================================================
+errorCase MainError MathSmokeAssertionFailed
 
 
 operation integerSquareRootSignedInt64
 input integerSquareRootSignedInt64 inputValue CSignedInt64
-output integerSquareRootSignedInt64 Result CSignedInt64 Void
-memory integerSquareRootSignedInt64 heap no
-memory integerSquareRootSignedInt64 stack max 1KiB
+output integerSquareRootSignedInt64 CSignedInt64
+memoryHeap integerSquareRootSignedInt64 no
+memoryStackLimit integerSquareRootSignedInt64 1024
 async integerSquareRootSignedInt64 no
-purpose integerSquareRootSignedInt64 "Integer square root: floor(sqrt(n)) for n >= 0. Newton iteration: x_{k+1} = (x_k + n/x_k) / 2. Terminates when the iterate stops improving. Returns 0 for n <= 0."
+purpose integerSquareRootSignedInt64 "Returns floor(sqrt(inputValue)) for inputValue >= 0 via Newton iteration; returns 0 for inputValue <= 0."
+invariant integerSquareRootSignedInt64 "For n >= 0, result*result <= n < (result+1)*(result+1)."
+guarantee integerSquareRootSignedInt64 "Total."
 
 label startIntegerSquareRootSignedInt64
 const zeroI64 I64 0
@@ -81,19 +87,22 @@ set guess nextGuess
 branch sqrtLoop
 
 label intSqrtDone
-returnOk guess
+returnValue guess
 
 label intSqrtZero
-returnOk zeroI64
+returnValue zeroI64
 
 
 operation factorialSignedInt64
 input factorialSignedInt64 inputValue CSignedInt64
-output factorialSignedInt64 Result CSignedInt64 Void
-memory factorialSignedInt64 heap no
-memory factorialSignedInt64 stack max 1KiB
+output factorialSignedInt64 CSignedInt64
+memoryHeap factorialSignedInt64 no
+memoryStackLimit factorialSignedInt64 1024
 async factorialSignedInt64 no
-purpose factorialSignedInt64 "n! for n in 0..20. Returns 1 for n <= 0. For n > 20 the result overflows signed 64-bit; we accept the wrap (matching standard C with -fwrapv)."
+purpose factorialSignedInt64 "Returns inputValue! by repeated multiplication. Defined for inputValue in [0, 20]; n > 20 overflows CSignedInt64 silently."
+invariant factorialSignedInt64 "factorialSignedInt64(0) == 1 (convention)."
+warning factorialSignedInt64 "Wraps silently above 20! — no overflow error surfaced."
+guarantee factorialSignedInt64 "Total over the CSignedInt64 domain (with overflow wrap)."
 
 label startFactorialSignedInt64
 const zeroFac I64 0
@@ -129,26 +138,28 @@ bind nextI I64 incCall
 set i nextI
 branch factorialLoop
 label factorialReturn
-returnOk product
+returnValue product
 label factorialOne
-returnOk oneFac
+returnValue oneFac
 
 
 operation isSignedInt64Prime
 input isSignedInt64Prime inputValue CSignedInt64
-output isSignedInt64Prime Result CSignedInt32 Void
-memory isSignedInt64Prime heap no
-memory isSignedInt64Prime stack max 1KiB
+output isSignedInt64Prime Bool
+memoryHeap isSignedInt64Prime no
+memoryStackLimit isSignedInt64Prime 1024
 async isSignedInt64Prime no
-purpose isSignedInt64Prime "Returns 1 if n is prime, 0 otherwise. n <= 1 -> 0. Tests divisibility by 2 then odd numbers up to floor(sqrt(n))."
+purpose isSignedInt64Prime "Returns true when inputValue is prime; n <= 1 returns false. Tests divisibility by 2 then odd numbers up to floor(sqrt(n))."
+invariant isSignedInt64Prime "Exact for inputValue in [2, INT64_MAX/2]; uses integerSquareRootSignedInt64 to bound the trial-division loop."
+guarantee isSignedInt64Prime "Total."
 
 label startIsSignedInt64Prime
 const zeroP I64 0
 const oneP I64 1
 const twoP I64 2
 const threeP I64 3
-const truePr CSignedInt32 1
-const falsePr CSignedInt32 0
+const truePr Bool true
+const falsePr Bool false
 
 call leOneCall math.lessThanOrEqualI64
 arg leOneCall left inputValue
@@ -179,9 +190,9 @@ branchIf isSignedInt64Even isPrimeFalse
 
 # Trial divide by odd i from 3 up to floor(sqrt(n)).
 call limitCall integerSquareRootSignedInt64
-arg limitCall n inputValue
+arg limitCall inputValue inputValue
 run limitCall
-bindOk limit CSignedInt64 limitCall
+bind limit CSignedInt64 limitCall
 
 var i I64 3
 label trialLoop
@@ -211,25 +222,25 @@ set i nextI
 branch trialLoop
 
 label isPrimeFalse
-returnOk falsePr
+returnValue falsePr
 label isPrimeTrue
-returnOk truePr
+returnValue truePr
 
 
 operation isSignedInt64PowerOfTwo
 input isSignedInt64PowerOfTwo inputValue CSignedInt64
-output isSignedInt64PowerOfTwo Result CSignedInt32 Void
-memory isSignedInt64PowerOfTwo heap no
-memory isSignedInt64PowerOfTwo stack max 1KiB
+output isSignedInt64PowerOfTwo Bool
+memoryHeap isSignedInt64PowerOfTwo no
 async isSignedInt64PowerOfTwo no
-purpose isSignedInt64PowerOfTwo "Returns 1 if n is a positive power of 2 (1, 2, 4, 8, ...), else 0. Halves n repeatedly while it's even; if result is exactly 1, original was a power of 2."
+purpose isSignedInt64PowerOfTwo "Returns true when inputValue is a positive power of 2 (1, 2, 4, 8, ...)."
+guarantee isSignedInt64PowerOfTwo "Total."
 
 label startIsSignedInt64PowerOfTwo
 const zeroPt I64 0
 const oneCount I64 1
 const twoPt I64 2
-const truePt CSignedInt32 1
-const falsePt CSignedInt32 0
+const truePt Bool true
+const falsePt Bool false
 
 call leZeroPtCall math.lessThanOrEqualI64
 arg leZeroPtCall left inputValue
@@ -268,18 +279,18 @@ set x xHalved
 branch halveLoop
 
 label isPowerOfTwoFalse
-returnOk falsePt
+returnValue falsePt
 label isPowerOfTwoTrue
-returnOk truePt
+returnValue truePt
 
 
 operation nextPowerOfTwoForSignedInt64
 input nextPowerOfTwoForSignedInt64 inputValue CSignedInt64
-output nextPowerOfTwoForSignedInt64 Result CSignedInt64 Void
-memory nextPowerOfTwoForSignedInt64 heap no
-memory nextPowerOfTwoForSignedInt64 stack max 1KiB
+output nextPowerOfTwoForSignedInt64 CSignedInt64
+memoryHeap nextPowerOfTwoForSignedInt64 no
 async nextPowerOfTwoForSignedInt64 no
-purpose nextPowerOfTwoForSignedInt64 "Smallest power of 2 that is >= n. Returns 1 for n <= 1. Doubles 1 until result >= n."
+purpose nextPowerOfTwoForSignedInt64 "Returns the smallest power of 2 >= inputValue (1 for inputValue <= 1)."
+guarantee nextPowerOfTwoForSignedInt64 "Total."
 
 label startNextPowerOfTwoForSignedInt64
 const zeroNp I64 0
@@ -310,18 +321,18 @@ set p nextP
 branch doubleLoop
 
 label nextPowDone
-returnOk p
+returnValue p
 label nextPowOne
-returnOk oneNp
+returnValue oneNp
 
 
 operation countDecimalDigitsInSignedInt64
 input countDecimalDigitsInSignedInt64 inputValue CSignedInt64
-output countDecimalDigitsInSignedInt64 Result CSignedInt64 Void
-memory countDecimalDigitsInSignedInt64 heap no
-memory countDecimalDigitsInSignedInt64 stack max 1KiB
+output countDecimalDigitsInSignedInt64 CSignedInt64
+memoryHeap countDecimalDigitsInSignedInt64 no
 async countDecimalDigitsInSignedInt64 no
-purpose countDecimalDigitsInSignedInt64 "Number of decimal digits in |n|. Returns 1 for n==0. Works for negative n by counting digits of -n."
+purpose countDecimalDigitsInSignedInt64 "Returns the count of decimal digits in |inputValue|. Returns 1 for inputValue == 0."
+guarantee countDecimalDigitsInSignedInt64 "Total."
 
 label startCountDecimalDigitsInSignedInt64
 const zeroCd I64 0
@@ -379,24 +390,24 @@ set count nextCount
 branch cdStep
 
 label countDigitsReturn
-returnOk count
+returnValue count
 
 label countDigitsOne
-returnOk oneCd
+returnValue oneCd
 
 
 operation isSignedInt64Even
 input isSignedInt64Even inputValue CSignedInt64
-output isSignedInt64Even Result CSignedInt32 Void
-memory isSignedInt64Even heap no
-memory isSignedInt64Even stack max 1KiB
+output isSignedInt64Even Bool
+memoryHeap isSignedInt64Even no
 async isSignedInt64Even no
-purpose isSignedInt64Even "1 if n % 2 == 0, else 0."
+purpose isSignedInt64Even "Returns true when inputValue % 2 == 0."
+guarantee isSignedInt64Even "Total."
 label startIsSignedInt64Even
 const zeroE I64 0
 const twoE I64 2
-const trueE CSignedInt32 1
-const falseE CSignedInt32 0
+const trueE Bool true
+const falseE Bool false
 call modECall math.moduloI64
 arg modECall left inputValue
 arg modECall right twoE
@@ -408,23 +419,23 @@ arg eqZeroECall right zeroE
 run eqZeroECall
 bind eqZeroE Bool eqZeroECall
 branchIf eqZeroE isEvenTrue
-returnOk falseE
+returnValue falseE
 label isEvenTrue
-returnOk trueE
+returnValue trueE
 
 
 operation isSignedInt64Odd
 input isSignedInt64Odd inputValue CSignedInt64
-output isSignedInt64Odd Result CSignedInt32 Void
-memory isSignedInt64Odd heap no
-memory isSignedInt64Odd stack max 1KiB
+output isSignedInt64Odd Bool
+memoryHeap isSignedInt64Odd no
 async isSignedInt64Odd no
-purpose isSignedInt64Odd "1 if n % 2 != 0, else 0."
+purpose isSignedInt64Odd "Returns true when inputValue % 2 != 0."
+guarantee isSignedInt64Odd "Total."
 label startIsSignedInt64Odd
 const zeroO I64 0
 const twoO I64 2
-const trueO CSignedInt32 1
-const falseO CSignedInt32 0
+const trueO Bool true
+const falseO Bool false
 call modOCall math.moduloI64
 arg modOCall left inputValue
 arg modOCall right twoO
@@ -436,17 +447,18 @@ arg neZeroOCall right zeroO
 run neZeroOCall
 bind neZeroO Bool neZeroOCall
 branchIf neZeroO isOddTrue
-returnOk falseO
+returnValue falseO
 label isOddTrue
-returnOk trueO
+returnValue trueO
 
 
 operation countSetBitsInSignedInt64
 input countSetBitsInSignedInt64 inputValue CSignedInt64
-output countSetBitsInSignedInt64 Result CSignedInt64 Void
-memory countSetBitsInSignedInt64 heap no
+output countSetBitsInSignedInt64 CSignedInt64
+memoryHeap countSetBitsInSignedInt64 no
 async countSetBitsInSignedInt64 no
-purpose countSetBitsInSignedInt64 "Population count of n (number of 1-bits). Uses mod-2 / div-2 since AS doesn't have bitwise primitives. Works on non-negative n; negative inputs work modulo 2's-complement representation."
+purpose countSetBitsInSignedInt64 "Returns the population count of inputValue (number of 1-bits in its 64-bit representation)."
+guarantee countSetBitsInSignedInt64 "Total — in [0, 64]."
 label startCountSetBitsInSignedInt64
 const zeroPc I64 0
 const onePc I64 1
@@ -498,15 +510,16 @@ bind pcIterNext I64 pcIterInc
 set pcIter pcIterNext
 branch pcLoop
 label pcReturn
-returnOk pcCount
+returnValue pcCount
 
 
 operation countTrailingZeroBitsInSignedInt64
 input countTrailingZeroBitsInSignedInt64 inputValue CSignedInt64
-output countTrailingZeroBitsInSignedInt64 Result CSignedInt64 Void
-memory countTrailingZeroBitsInSignedInt64 heap no
+output countTrailingZeroBitsInSignedInt64 CSignedInt64
+memoryHeap countTrailingZeroBitsInSignedInt64 no
 async countTrailingZeroBitsInSignedInt64 no
-purpose countTrailingZeroBitsInSignedInt64 "Trailing zero bits of n. Returns 64 for n == 0 (matching the GCC __builtin_ctzll convention for zero)."
+purpose countTrailingZeroBitsInSignedInt64 "Returns the count of trailing zero bits in inputValue's 64-bit representation. Returns 64 for inputValue == 0 (matching GCC __builtin_ctzll)."
+guarantee countTrailingZeroBitsInSignedInt64 "Total."
 label startCountTrailingZeroBitsInSignedInt64
 const zeroTz I64 0
 const oneTz I64 1
@@ -548,17 +561,18 @@ bind tzCountNext I64 tzIncCall
 set tzCount tzCountNext
 branch tzLoop
 label tzReturn
-returnOk tzCount
+returnValue tzCount
 label tzReturn64
-returnOk sixtyFourTz
+returnValue sixtyFourTz
 
 
 operation signOfSignedInt64
 input signOfSignedInt64 inputValue CSignedInt64
-output signOfSignedInt64 Result CSignedInt64 Void
-memory signOfSignedInt64 heap no
+output signOfSignedInt64 CSignedInt64
+memoryHeap signOfSignedInt64 no
 async signOfSignedInt64 no
-purpose signOfSignedInt64 "Returns -1 if n < 0, +1 if n > 0, 0 if n == 0."
+purpose signOfSignedInt64 "Returns -1 when inputValue is negative, 1 when positive, 0 when zero."
+guarantee signOfSignedInt64 "Total — result is always exactly -1, 0, or 1."
 label startSignOfSignedInt64
 const zeroSi I64 0
 const oneSi I64 1
@@ -575,20 +589,22 @@ arg gtCheck right zeroSi
 run gtCheck
 bind isPs Bool gtCheck
 branchIf isPs siPos
-returnOk zeroSi
+returnValue zeroSi
 label siNeg
-returnOk negOneSi
+returnValue negOneSi
 label siPos
-returnOk oneSi
+returnValue oneSi
 
 
 operation absoluteDifferenceBetweenSignedInt64Values
 input absoluteDifferenceBetweenSignedInt64Values leftValue CSignedInt64
 input absoluteDifferenceBetweenSignedInt64Values rightValue CSignedInt64
-output absoluteDifferenceBetweenSignedInt64Values Result CSignedInt64 Void
-memory absoluteDifferenceBetweenSignedInt64Values heap no
+output absoluteDifferenceBetweenSignedInt64Values CSignedInt64
+memoryHeap absoluteDifferenceBetweenSignedInt64Values no
 async absoluteDifferenceBetweenSignedInt64Values no
-purpose absoluteDifferenceBetweenSignedInt64Values "Absolute difference |a - b|. Inlines the absolute-value flip rather than depending on stdlib.as#absoluteInt (each stdlib_as file is self-contained today; cross-file operation calls aren't wired up yet)."
+purpose absoluteDifferenceBetweenSignedInt64Values "Returns |leftValue - rightValue|."
+invariant absoluteDifferenceBetweenSignedInt64Values "Symmetric and non-negative."
+guarantee absoluteDifferenceBetweenSignedInt64Values "Total (modulo two's-complement INT64_MIN wraparound)."
 label startAbsoluteDifferenceBetweenSignedInt64Values
 const zeroAdi I64 0
 const negOneAdi I64 -1
@@ -603,22 +619,23 @@ arg lt0 right zeroAdi
 run lt0
 bind diffNeg Bool lt0
 branchIf diffNeg flipDiff
-returnOk diff
+returnValue diff
 label flipDiff
 call flip math.multiplyI64
 arg flip left diff
 arg flip right negOneAdi
 run flip
 bind absDiff CSignedInt64 flip
-returnOk absDiff
+returnValue absDiff
 
 
 operation countLeadingZeroBitsInSignedInt64
 input countLeadingZeroBitsInSignedInt64 inputValue CSignedInt64
-output countLeadingZeroBitsInSignedInt64 Result CSignedInt64 Void
-memory countLeadingZeroBitsInSignedInt64 heap no
+output countLeadingZeroBitsInSignedInt64 CSignedInt64
+memoryHeap countLeadingZeroBitsInSignedInt64 no
 async countLeadingZeroBitsInSignedInt64 no
-purpose countLeadingZeroBitsInSignedInt64 "Number of leading zero bits of n in its 64-bit representation. Returns 64 for n == 0. Pure AS: doubles a probe bit until it's > n."
+purpose countLeadingZeroBitsInSignedInt64 "Returns the count of leading zero bits in inputValue's 64-bit representation. Returns 64 for inputValue == 0."
+guarantee countLeadingZeroBitsInSignedInt64 "Total — in [0, 64]."
 label startCountLeadingZeroBitsInSignedInt64
 const zeroClz I64 0
 const oneClz I64 1
@@ -663,32 +680,36 @@ bind probeIsZero Bool probeZero
 branchIf probeIsZero clzReturn64
 branch clzLoop
 label clzDone
-returnOk clzCount
+returnValue clzCount
 label clzReturn64
-returnOk sixtyFourClz
+returnValue sixtyFourClz
 
 
 operation squareSignedInt64
 input squareSignedInt64 inputValue CSignedInt64
-output squareSignedInt64 Result CSignedInt64 Void
-memory squareSignedInt64 heap no
+output squareSignedInt64 CSignedInt64
+memoryHeap squareSignedInt64 no
 async squareSignedInt64 no
-purpose squareSignedInt64 "x * x."
+purpose squareSignedInt64 "Returns inputValue * inputValue."
+warning squareSignedInt64 "Wraps modulo 2^64 on overflow."
+guarantee squareSignedInt64 "Total."
 label startSquareSignedInt64
 call sqCall math.multiplyI64
 arg sqCall left inputValue
 arg sqCall right inputValue
 run sqCall
-bind r CSignedInt64 sqCall
-returnOk r
+bind squareResult CSignedInt64 sqCall
+returnValue squareResult
 
 
 operation cubeSignedInt64
 input cubeSignedInt64 inputValue CSignedInt64
-output cubeSignedInt64 Result CSignedInt64 Void
-memory cubeSignedInt64 heap no
+output cubeSignedInt64 CSignedInt64
+memoryHeap cubeSignedInt64 no
 async cubeSignedInt64 no
-purpose cubeSignedInt64 "x * x * x."
+purpose cubeSignedInt64 "Returns inputValue * inputValue * inputValue."
+warning cubeSignedInt64 "Wraps modulo 2^64 on overflow."
+guarantee cubeSignedInt64 "Total."
 label startCubeSignedInt64
 call sq1 math.multiplyI64
 arg sq1 left inputValue
@@ -699,21 +720,22 @@ call cb math.multiplyI64
 arg cb left sq
 arg cb right inputValue
 run cb
-bind r CSignedInt64 cb
-returnOk r
+bind cubeResult CSignedInt64 cb
+returnValue cubeResult
 
 
 operation isSignedInt64WithinInclusiveRange
 input isSignedInt64WithinInclusiveRange inputValue CSignedInt64
 input isSignedInt64WithinInclusiveRange lowerBound CSignedInt64
 input isSignedInt64WithinInclusiveRange upperBound CSignedInt64
-output isSignedInt64WithinInclusiveRange Result CSignedInt32 Void
-memory isSignedInt64WithinInclusiveRange heap no
+output isSignedInt64WithinInclusiveRange Bool
+memoryHeap isSignedInt64WithinInclusiveRange no
 async isSignedInt64WithinInclusiveRange no
-purpose isSignedInt64WithinInclusiveRange "1 if lo <= x <= hi, else 0."
+purpose isSignedInt64WithinInclusiveRange "Returns true when lowerBound <= inputValue <= upperBound."
+guarantee isSignedInt64WithinInclusiveRange "Total."
 label startIsSignedInt64WithinInclusiveRange
-const trueIR CSignedInt32 1
-const falseIR CSignedInt32 0
+const trueIR Bool true
+const falseIR Bool false
 call belowLo math.lessThanI64
 arg belowLo left inputValue
 arg belowLo right lowerBound
@@ -726,9 +748,9 @@ arg aboveHi right upperBound
 run aboveHi
 bind above Bool aboveHi
 branchIf above irFalse
-returnOk trueIR
+returnValue trueIR
 label irFalse
-returnOk falseIR
+returnValue falseIR
 
 
 # ============================================================
@@ -739,250 +761,204 @@ operation main
 input main console Console
 output main Result ExitCode MainError
 effect main write console.stdout
-memory main heap no
+memoryHeap main no
 async main no
-purpose main "Smoke-test integer math ports. Prints OK."
+purpose main "Smoke-test the integer math helpers."
+invariant main "Every named check holds, or the failure path runs."
 
 label startMain
-const oneE I64 1
-const trueChk CSignedInt32 1
-const falseChk CSignedInt32 0
 
 # integerSquareRootSignedInt64(144) == 12
-const c144 CSignedInt64 144
-const c12 CSignedInt64 12
-call s1 integerSquareRootSignedInt64
-arg s1 n c144
-run s1
-bindOk s1Res CSignedInt64 s1
-call s1Check math.equalI64
-arg s1Check left s1Res
-arg s1Check right c12
-run s1Check
-bind s1Ok Bool s1Check
-branchIf s1Ok s1OkLabel
-branch testFailed
-label s1OkLabel
+const oneHundredFortyFour CSignedInt64 144
+const twelveExpected CSignedInt64 12
+call assertSqrtCall integerSquareRootSignedInt64
+arg assertSqrtCall inputValue oneHundredFortyFour
+run assertSqrtCall
+bind sqrtResult CSignedInt64 assertSqrtCall
+call checkSqrtCall math.equalI64
+arg checkSqrtCall left sqrtResult
+arg checkSqrtCall right twelveExpected
+run checkSqrtCall
+bind sqrtOk Bool checkSqrtCall
+branchIf sqrtOk sqrtHolds
+branch smokeAssertionFailed
+label sqrtHolds
 
 # factorialSignedInt64(5) == 120
-const c5 CSignedInt64 5
-const c120 CSignedInt64 120
-call f1 factorialSignedInt64
-arg f1 n c5
-run f1
-bindOk f1Res CSignedInt64 f1
-call f1Check math.equalI64
-arg f1Check left f1Res
-arg f1Check right c120
-run f1Check
-bind f1Ok Bool f1Check
-branchIf f1Ok f1OkLabel
-branch testFailed
-label f1OkLabel
+const fiveInputForFactorial CSignedInt64 5
+const oneHundredTwentyExpected CSignedInt64 120
+call assertFactorialCall factorialSignedInt64
+arg assertFactorialCall inputValue fiveInputForFactorial
+run assertFactorialCall
+bind factorialResult CSignedInt64 assertFactorialCall
+call checkFactorialCall math.equalI64
+arg checkFactorialCall left factorialResult
+arg checkFactorialCall right oneHundredTwentyExpected
+run checkFactorialCall
+bind factorialOk Bool checkFactorialCall
+branchIf factorialOk factorialHolds
+branch smokeAssertionFailed
+label factorialHolds
 
-# isSignedInt64Prime(17) == 1
-const c17 CSignedInt64 17
-call pr1 isSignedInt64Prime
-arg pr1 n c17
-run pr1
-bindOk pr1Res CSignedInt32 pr1
-call pr1Check math.equalI64
-arg pr1Check left pr1Res
-arg pr1Check right trueChk
-run pr1Check
-bind pr1Ok Bool pr1Check
-branchIf pr1Ok pr1OkLabel
-branch testFailed
-label pr1OkLabel
+# isSignedInt64Prime(17) == true
+const seventeen CSignedInt64 17
+call assertPrime17Call isSignedInt64Prime
+arg assertPrime17Call inputValue seventeen
+run assertPrime17Call
+bind prime17Result Bool assertPrime17Call
+branchIf prime17Result prime17Holds
+branch smokeAssertionFailed
+label prime17Holds
 
-# isSignedInt64Prime(15) == 0
-const c15 CSignedInt64 15
-call pr2 isSignedInt64Prime
-arg pr2 n c15
-run pr2
-bindOk pr2Res CSignedInt32 pr2
-call pr2Check math.equalI64
-arg pr2Check left pr2Res
-arg pr2Check right falseChk
-run pr2Check
-bind pr2Ok Bool pr2Check
-branchIf pr2Ok pr2OkLabel
-branch testFailed
-label pr2OkLabel
+# isSignedInt64Prime(15) == false
+const fifteen CSignedInt64 15
+call assertPrime15Call isSignedInt64Prime
+arg assertPrime15Call inputValue fifteen
+run assertPrime15Call
+bind prime15Result Bool assertPrime15Call
+branchIf prime15Result smokeAssertionFailed
 
-# isSignedInt64PowerOfTwo(64) == 1
-const c64 CSignedInt64 64
-call pt1 isSignedInt64PowerOfTwo
-arg pt1 n c64
-run pt1
-bindOk pt1Res CSignedInt32 pt1
-call pt1Check math.equalI64
-arg pt1Check left pt1Res
-arg pt1Check right trueChk
-run pt1Check
-bind pt1Ok Bool pt1Check
-branchIf pt1Ok pt1OkLabel
-branch testFailed
-label pt1OkLabel
+# isSignedInt64PowerOfTwo(64) == true
+const sixtyFour CSignedInt64 64
+call assertPow64Call isSignedInt64PowerOfTwo
+arg assertPow64Call inputValue sixtyFour
+run assertPow64Call
+bind pow64Result Bool assertPow64Call
+branchIf pow64Result pow64Holds
+branch smokeAssertionFailed
+label pow64Holds
 
-# isSignedInt64PowerOfTwo(48) == 0
-const c48 CSignedInt64 48
-call pt2 isSignedInt64PowerOfTwo
-arg pt2 n c48
-run pt2
-bindOk pt2Res CSignedInt32 pt2
-call pt2Check math.equalI64
-arg pt2Check left pt2Res
-arg pt2Check right falseChk
-run pt2Check
-bind pt2Ok Bool pt2Check
-branchIf pt2Ok pt2OkLabel
-branch testFailed
-label pt2OkLabel
+# isSignedInt64PowerOfTwo(48) == false
+const fortyEight CSignedInt64 48
+call assertPow48Call isSignedInt64PowerOfTwo
+arg assertPow48Call inputValue fortyEight
+run assertPow48Call
+bind pow48Result Bool assertPow48Call
+branchIf pow48Result smokeAssertionFailed
 
 # nextPowerOfTwoForSignedInt64(100) == 128
-const c100 CSignedInt64 100
-const c128 CSignedInt64 128
-call np1 nextPowerOfTwoForSignedInt64
-arg np1 n c100
-run np1
-bindOk np1Res CSignedInt64 np1
-call np1Check math.equalI64
-arg np1Check left np1Res
-arg np1Check right c128
-run np1Check
-bind np1Ok Bool np1Check
-branchIf np1Ok np1OkLabel
-branch testFailed
-label np1OkLabel
+const oneHundred CSignedInt64 100
+const oneHundredTwentyEight CSignedInt64 128
+call assertNextPow2Call nextPowerOfTwoForSignedInt64
+arg assertNextPow2Call inputValue oneHundred
+run assertNextPow2Call
+bind nextPow2Result CSignedInt64 assertNextPow2Call
+call checkNextPow2Call math.equalI64
+arg checkNextPow2Call left nextPow2Result
+arg checkNextPow2Call right oneHundredTwentyEight
+run checkNextPow2Call
+bind nextPow2Ok Bool checkNextPow2Call
+branchIf nextPow2Ok nextPow2Holds
+branch smokeAssertionFailed
+label nextPow2Holds
 
 # countDecimalDigitsInSignedInt64(12345) == 5
-const c12345 CSignedInt64 12345
-const c5lim CSignedInt64 5
-call cd1 countDecimalDigitsInSignedInt64
-arg cd1 n c12345
-run cd1
-bindOk cd1Res CSignedInt64 cd1
-call cd1Check math.equalI64
-arg cd1Check left cd1Res
-arg cd1Check right c5lim
-run cd1Check
-bind cd1Ok Bool cd1Check
-branchIf cd1Ok cd1OkLabel
-branch testFailed
-label cd1OkLabel
+const twelveThousandThreeHundredFortyFive CSignedInt64 12345
+const fiveDigitsExpected CSignedInt64 5
+call assertDigitCountCall countDecimalDigitsInSignedInt64
+arg assertDigitCountCall inputValue twelveThousandThreeHundredFortyFive
+run assertDigitCountCall
+bind digitCountResult CSignedInt64 assertDigitCountCall
+call checkDigitCountCall math.equalI64
+arg checkDigitCountCall left digitCountResult
+arg checkDigitCountCall right fiveDigitsExpected
+run checkDigitCountCall
+bind digitCountOk Bool checkDigitCountCall
+branchIf digitCountOk digitCountHolds
+branch smokeAssertionFailed
+label digitCountHolds
 
-# isSignedInt64Even(10) == 1, isSignedInt64Odd(10) == 0
-const c10 CSignedInt64 10
-call ev1 isSignedInt64Even
-arg ev1 n c10
-run ev1
-bindOk ev1Res CSignedInt32 ev1
-call ev1Check math.equalI64
-arg ev1Check left ev1Res
-arg ev1Check right trueChk
-run ev1Check
-bind ev1Ok Bool ev1Check
-branchIf ev1Ok ev1OkLabel
-branch testFailed
-label ev1OkLabel
+# isSignedInt64Even(10) == true
+const tenInteger CSignedInt64 10
+call assertEvenCall isSignedInt64Even
+arg assertEvenCall inputValue tenInteger
+run assertEvenCall
+bind evenResult Bool assertEvenCall
+branchIf evenResult evenHolds
+branch smokeAssertionFailed
+label evenHolds
 
-call od1 isSignedInt64Odd
-arg od1 n c10
-run od1
-bindOk od1Res CSignedInt32 od1
-call od1Check math.equalI64
-arg od1Check left od1Res
-arg od1Check right falseChk
-run od1Check
-bind od1Ok Bool od1Check
-branchIf od1Ok od1OkLabel
-branch testFailed
-label od1OkLabel
+# isSignedInt64Odd(10) == false
+call assertOddCall isSignedInt64Odd
+arg assertOddCall inputValue tenInteger
+run assertOddCall
+bind oddResult Bool assertOddCall
+branchIf oddResult smokeAssertionFailed
 
-# countSetBitsInSignedInt64(0b1101) = countSetBitsInSignedInt64(13) == 3
-const c13 CSignedInt64 13
-const c3 CSignedInt64 3
-call pc1 countSetBitsInSignedInt64
-arg pc1 n c13
-run pc1
-bindOk pc1Res CSignedInt64 pc1
-call pc1Check math.equalI64
-arg pc1Check left pc1Res
-arg pc1Check right c3
-run pc1Check
-bind pc1Ok Bool pc1Check
-branchIf pc1Ok pc1OkLabel
-branch testFailed
-label pc1OkLabel
+# countSetBitsInSignedInt64(13) == 3  (0b1101)
+const thirteen CSignedInt64 13
+const threeBits CSignedInt64 3
+call assertPopcountCall countSetBitsInSignedInt64
+arg assertPopcountCall inputValue thirteen
+run assertPopcountCall
+bind popcountResult CSignedInt64 assertPopcountCall
+call checkPopcountCall math.equalI64
+arg checkPopcountCall left popcountResult
+arg checkPopcountCall right threeBits
+run checkPopcountCall
+bind popcountOk Bool checkPopcountCall
+branchIf popcountOk popcountHolds
+branch smokeAssertionFailed
+label popcountHolds
 
 # countTrailingZeroBitsInSignedInt64(16) == 4
-const c16ct CSignedInt64 16
-const c4ct CSignedInt64 4
-call ctz1 countTrailingZeroBitsInSignedInt64
-arg ctz1 n c16ct
-run ctz1
-bindOk ctz1Res CSignedInt64 ctz1
-call ctz1Check math.equalI64
-arg ctz1Check left ctz1Res
-arg ctz1Check right c4ct
-run ctz1Check
-bind ctz1Ok Bool ctz1Check
-branchIf ctz1Ok ctz1OkLabel
-branch testFailed
-label ctz1OkLabel
+const sixteenInteger CSignedInt64 16
+const fourTrailingZeros CSignedInt64 4
+call assertCtzCall countTrailingZeroBitsInSignedInt64
+arg assertCtzCall inputValue sixteenInteger
+run assertCtzCall
+bind ctzResult CSignedInt64 assertCtzCall
+call checkCtzCall math.equalI64
+arg checkCtzCall left ctzResult
+arg checkCtzCall right fourTrailingZeros
+run checkCtzCall
+bind ctzOk Bool checkCtzCall
+branchIf ctzOk ctzHolds
+branch smokeAssertionFailed
+label ctzHolds
 
 # signOfSignedInt64(-5) == -1
-const cNeg5 CSignedInt64 -5
-const cNeg1 CSignedInt64 -1
-call sgn1 signOfSignedInt64
-arg sgn1 n cNeg5
-run sgn1
-bindOk sgn1Res CSignedInt64 sgn1
-call sgn1Check math.equalI64
-arg sgn1Check left sgn1Res
-arg sgn1Check right cNeg1
-run sgn1Check
-bind sgn1Ok Bool sgn1Check
-branchIf sgn1Ok sgn1OkLabel
-branch testFailed
-label sgn1OkLabel
+const negativeFive CSignedInt64 -5
+const negativeOne CSignedInt64 -1
+call assertSignCall signOfSignedInt64
+arg assertSignCall inputValue negativeFive
+run assertSignCall
+bind signResult CSignedInt64 assertSignCall
+call checkSignCall math.equalI64
+arg checkSignCall left signResult
+arg checkSignCall right negativeOne
+run checkSignCall
+bind signOk Bool checkSignCall
+branchIf signOk signHolds
+branch smokeAssertionFailed
+label signHolds
 
 # absoluteDifferenceBetweenSignedInt64Values(10, 3) == 7
-const c10ad CSignedInt64 10
-const c3ad CSignedInt64 3
-const c7ad CSignedInt64 7
-call ad1 absoluteDifferenceBetweenSignedInt64Values
-arg ad1 a c10ad
-arg ad1 b c3ad
-run ad1
-bindOk ad1Res CSignedInt64 ad1
-call ad1Check math.equalI64
-arg ad1Check left ad1Res
-arg ad1Check right c7ad
-run ad1Check
-bind ad1Ok Bool ad1Check
-branchIf ad1Ok ad1OkLabel
-branch testFailed
-label ad1OkLabel
+const threeForAbsDiff CSignedInt64 3
+const sevenExpected CSignedInt64 7
+call assertAbsDiffCall absoluteDifferenceBetweenSignedInt64Values
+arg assertAbsDiffCall leftValue tenInteger
+arg assertAbsDiffCall rightValue threeForAbsDiff
+run assertAbsDiffCall
+bind absDiffResult CSignedInt64 assertAbsDiffCall
+call checkAbsDiffCall math.equalI64
+arg checkAbsDiffCall left absDiffResult
+arg checkAbsDiffCall right sevenExpected
+run checkAbsDiffCall
+bind absDiffOk Bool checkAbsDiffCall
+branchIf absDiffOk absDiffHolds
+branch smokeAssertionFailed
+label absDiffHolds
 
-const charO CSignedInt32 79
-const charK CSignedInt32 75
-const charNl CSignedInt32 10
-call putO c.putchar
-arg putO c charO
-run putO
-call putK c.putchar
-arg putK c charK
-run putK
-call putNl c.putchar
-arg putNl c charNl
-run putNl
+const successMessageText CNullTerminatedByteString "OK"
+call writeSuccessLineCall console.writeLine
+arg writeSuccessLineCall console console
+arg writeSuccessLineCall text successMessageText
+run writeSuccessLineCall
+ignoreOk writeSuccessLineCall Void
+const exitOkCode ExitCode 0
+returnOk exitOkCode
 
-const exitOk ExitCode 0
-returnOk exitOk
-
-label testFailed
-const exitFail CSignedInt32 1
-makeError testFailure MainError.TestFailed exitFail
-returnError testFailure
+label smokeAssertionFailed
+makeError mathSmokeFailure MainError.MathSmokeAssertionFailed
+returnError mathSmokeFailure
