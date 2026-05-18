@@ -6491,7 +6491,8 @@ def main():
     ap.add_argument("--parse-only", action="store_true",
                     help="parse the source, run lint (if requested), and exit without codegen")
     ap.add_argument("--opt-level", type=int, default=None,
-                    help="LLVM optimization level for the JIT (0..3); default 2")
+                    help=("LLVM optimization level for JIT/AOT (0..3); "
+                          "default 2 or optLevel from build.sem"))
     ap.add_argument("--emit-optimized-ir",
                     help="write the post-optimization LLVM IR to this path (after --opt-level passes run)")
     ap.add_argument("--emit-exe", nargs="?", const="",

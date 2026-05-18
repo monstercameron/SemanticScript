@@ -41,7 +41,7 @@ CLI flags:
 | `--lint` | Run built-in compiler lint pass. |
 | `--strict` | Treat compiler lint diagnostics as fatal. |
 | `--parse-only` | Parse, optionally lint, and stop before codegen. |
-| `--opt-level N` | LLVM optimization level `0..3`, default `2`. |
+| `--opt-level N` | LLVM optimization level `0..3`, default `2` unless `build.sem` provides `optLevel PROJECT N`. |
 | `--build-profile dev\|prod` | Runtime safety profile for compiled output. `dev` is the default and embeds `SSRUN001` panic context; `prod` keeps trap checks but hides source context. |
 | `--runtime-checks off\|traps\|panic` | Override the profile default. `off` emits no runtime checks, `traps` emits silent `llvm.trap` checks, and `panic` embeds the SemanticScript panic message before trapping. |
 | `--build-file PATH` | Merge build-time declarations (project metadata, icon registry, build switches) from this `.sem` / `.sscript` file into the main Program before codegen. Conflicting redeclarations are rejected. Unused by `build.sem` entry points that use `importModule` directly. |
@@ -76,6 +76,23 @@ python compiler/semsc.py ..\app\todo\build.sem --emit-exe --build-dir C:\sem-art
 
 The repository ignores `build/` folders, so app-local artifacts such as
 `app/todo/build/todo.exe` stay out of source control.
+
+`build.sem` can carry the same artifact and LLVM defaults so project builds are
+repeatable without TOML/YAML sidecars:
+
+| Build tape row | CLI equivalent |
+|---|---|
+| `buildDir PROJECT "PATH"` | `--build-dir PATH` |
+| `buildRoot PROJECT "PATH"` | `--build-root PATH` |
+| `buildFolderName PROJECT NAME` | `--build-folder-name NAME` |
+| `optLevel PROJECT 0\|1\|2\|3` | `--opt-level N` |
+| `persistLlvmIr PROJECT auto\|yes\|no` | `--persist-llvm-ir auto\|yes\|no` |
+| `emitLlvmIr PROJECT yes` | `--emit-ir` |
+| `llvmIrOutput PROJECT "PATH"` | `--emit-ir PATH` |
+| `emitOptimizedLlvmIr PROJECT yes` | `--emit-optimized-ir <default>.opt.ll --run` |
+| `optimizedLlvmIrOutput PROJECT "PATH"` | `--emit-optimized-ir PATH --run` |
+
+CLI flags win over build-tape defaults for one-off invocations.
 
 ## Build-Time Resources
 

@@ -353,6 +353,14 @@ The current linter enforces the project-module boundary with `SS250x` rules:
 
 | Code | Rule |
 |---|---|
+| `SS2520` | A known-but-invalid top-level row must not appear in `build.sem`. |
+| `SS2521` | A build tape must declare exactly one `buildProject`. |
+| `SS2522` | Required build rows must be present for the active project. |
+| `SS2523` | Project-scoped build rows must have the required shape. |
+| `SS2524` | Singleton build rows must not be duplicated. |
+| `SS2525` | Build enum values, LLVM opt levels, and HTTP ports must be valid. |
+| `SS2526` | `buildFolderName` must be one folder name, not a path. |
+| `SS2527` | Project-scoped rows must target the active `buildProject`. |
 | `SS2501` | A registered module path must select a deterministic module source. |
 | `SS2502` | `export*` rows must not live in `build.sem`. |
 | `SS2503` | A module declaration in project code must be registered by `build.sem`. |
@@ -377,6 +385,9 @@ Implemented now:
 - `build.sem` as a compiler entry point through the final `importModule`.
 - registered module resolution before filesystem fallback.
 - compiler-managed build folders.
+- `sem build PATH` discovery through the thin `SemanticScript/tools/sem.py`
+  driver.
+- strict build-tape schema validation in `semsc.py` and `semlint.py`.
 - linter validation for registered modules, imports, explicit exports, and
   `mainFile` rename drift.
 
