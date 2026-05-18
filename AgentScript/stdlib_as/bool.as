@@ -309,6 +309,154 @@ run convertZeroToBoolCall
 bind zeroAsBool Bool convertZeroToBoolCall
 branchIf zeroAsBool smokeAssertionFailed
 
+# ============================================================
+# Extended unit tests: missing cases (negate(true), and(false,false),
+# convertBack(1)) plus involution, commutativity, and de Morgan
+# property tests over the four Bool combinations.
+# ============================================================
+
+# negate(true) == false
+call negateTrueCall negateBoolean
+arg negateTrueCall valueToNegate canonicalBooleanTrue
+run negateTrueCall
+bind negateTrueResult Bool negateTrueCall
+branchIf negateTrueResult smokeAssertionFailed
+branch negateTrueHolds
+label negateTrueHolds
+
+# Involution: negate(negate(true)) == true
+call invStep1Call negateBoolean
+arg invStep1Call valueToNegate canonicalBooleanTrue
+run invStep1Call
+bind invStep1Result Bool invStep1Call
+call invStep2Call negateBoolean
+arg invStep2Call valueToNegate invStep1Result
+run invStep2Call
+bind invStep2Result Bool invStep2Call
+branchIf invStep2Result invHolds
+branch smokeAssertionFailed
+label invHolds
+
+# and(false, false) == false
+call andFalseFalseCall andBooleans
+arg andFalseFalseCall firstOperand canonicalBooleanFalse
+arg andFalseFalseCall secondOperand canonicalBooleanFalse
+run andFalseFalseCall
+bind andFalseFalseResult Bool andFalseFalseCall
+branchIf andFalseFalseResult smokeAssertionFailed
+branch andFalseFalseHolds
+label andFalseFalseHolds
+
+# or(false, false) == false
+call orFalseFalseCall orBooleans
+arg orFalseFalseCall firstOperand canonicalBooleanFalse
+arg orFalseFalseCall secondOperand canonicalBooleanFalse
+run orFalseFalseCall
+bind orFalseFalseResult Bool orFalseFalseCall
+branchIf orFalseFalseResult smokeAssertionFailed
+branch orFalseFalseHolds
+label orFalseFalseHolds
+
+# or(true, true) == true
+call orTrueTrueCall orBooleans
+arg orTrueTrueCall firstOperand canonicalBooleanTrue
+arg orTrueTrueCall secondOperand canonicalBooleanTrue
+run orTrueTrueCall
+bind orTrueTrueResult Bool orTrueTrueCall
+branchIf orTrueTrueResult orTrueTrueHolds
+branch smokeAssertionFailed
+label orTrueTrueHolds
+
+# Commutativity: xor(true, false) == xor(false, true)
+call xorTFCall exclusiveOrBooleans
+arg xorTFCall firstOperand canonicalBooleanTrue
+arg xorTFCall secondOperand canonicalBooleanFalse
+run xorTFCall
+bind xorTFResult Bool xorTFCall
+call xorFTCall exclusiveOrBooleans
+arg xorFTCall firstOperand canonicalBooleanFalse
+arg xorFTCall secondOperand canonicalBooleanTrue
+run xorFTCall
+bind xorFTResult Bool xorFTCall
+call xorCommutativeCall areBooleansEquivalent
+arg xorCommutativeCall firstOperand xorTFResult
+arg xorCommutativeCall secondOperand xorFTResult
+run xorCommutativeCall
+bind xorCommutativeResult Bool xorCommutativeCall
+branchIf xorCommutativeResult xorCommHolds
+branch smokeAssertionFailed
+label xorCommHolds
+
+# De Morgan: negate(and(true, false)) == or(negate(true), negate(false))
+# = negate(false) == or(false, true)
+# = true == true
+call deMorganAndCall andBooleans
+arg deMorganAndCall firstOperand canonicalBooleanTrue
+arg deMorganAndCall secondOperand canonicalBooleanFalse
+run deMorganAndCall
+bind deMorganAndResult Bool deMorganAndCall
+call deMorganLhsCall negateBoolean
+arg deMorganLhsCall valueToNegate deMorganAndResult
+run deMorganLhsCall
+bind deMorganLhsResult Bool deMorganLhsCall
+call deMorganNegFirstCall negateBoolean
+arg deMorganNegFirstCall valueToNegate canonicalBooleanTrue
+run deMorganNegFirstCall
+bind deMorganNegFirstResult Bool deMorganNegFirstCall
+call deMorganNegSecondCall negateBoolean
+arg deMorganNegSecondCall valueToNegate canonicalBooleanFalse
+run deMorganNegSecondCall
+bind deMorganNegSecondResult Bool deMorganNegSecondCall
+call deMorganRhsCall orBooleans
+arg deMorganRhsCall firstOperand deMorganNegFirstResult
+arg deMorganRhsCall secondOperand deMorganNegSecondResult
+run deMorganRhsCall
+bind deMorganRhsResult Bool deMorganRhsCall
+call deMorganEquivCall areBooleansEquivalent
+arg deMorganEquivCall firstOperand deMorganLhsResult
+arg deMorganEquivCall secondOperand deMorganRhsResult
+run deMorganEquivCall
+bind deMorganEquivResult Bool deMorganEquivCall
+branchIf deMorganEquivResult deMorganHolds
+branch smokeAssertionFailed
+label deMorganHolds
+
+# convertBooleanToCSignedInt32(false) == 0
+call convertFalseToIntCall convertBooleanToCSignedInt32
+arg convertFalseToIntCall sourceBoolean canonicalBooleanFalse
+run convertFalseToIntCall
+bind falseAsCInt CSignedInt32 convertFalseToIntCall
+call checkConvertFalseCall math.equalI64
+arg checkConvertFalseCall left falseAsCInt
+arg checkConvertFalseCall right zeroI32Input
+run checkConvertFalseCall
+bind convertFalseOk Bool checkConvertFalseCall
+branchIf convertFalseOk convertFalseHolds
+branch smokeAssertionFailed
+label convertFalseHolds
+
+# convertCSignedInt32ToBoolean(1) == true
+call convertOneToBoolCall convertCSignedInt32ToBoolean
+arg convertOneToBoolCall sourceCSignedInt32Value oneI32Expected
+run convertOneToBoolCall
+bind oneAsBool Bool convertOneToBoolCall
+branchIf oneAsBool oneAsBoolHolds
+branch smokeAssertionFailed
+label oneAsBoolHolds
+
+# Round trip: convertCSignedInt32ToBoolean(convertBooleanToCSignedInt32(true)) == true
+call roundTripBoolToIntCall convertBooleanToCSignedInt32
+arg roundTripBoolToIntCall sourceBoolean canonicalBooleanTrue
+run roundTripBoolToIntCall
+bind roundTripIntValue CSignedInt32 roundTripBoolToIntCall
+call roundTripIntToBoolCall convertCSignedInt32ToBoolean
+arg roundTripIntToBoolCall sourceCSignedInt32Value roundTripIntValue
+run roundTripIntToBoolCall
+bind roundTripBoolResult Bool roundTripIntToBoolCall
+branchIf roundTripBoolResult roundTripBoolHolds
+branch smokeAssertionFailed
+label roundTripBoolHolds
+
 # All assertions hold. Emit OK\n and exit 0.
 const successMessageText CNullTerminatedByteString "OK"
 call writeSuccessLineCall console.writeLine
