@@ -3277,5 +3277,96 @@ returnValue outerStatus
         self.assertNotIn("SS3607", _codes(diagnostics))
 
 
+# ==========================================================================
+# SS3604  webserver.routeCoverageDrift
+# ==========================================================================
+
+class TestRouteCoverageDrift(unittest.TestCase):
+    """Every declared route should have a matching routeTimeout +
+    routeMiddleware OR an explicit routeTimeoutOptOut /
+    routeMiddlewareOptOut so cross-cutting coverage gaps are declared
+    choices, not silent omissions."""
+
+    def _minimal_route_program(self, extraCoverageLines: str = "") -> str:
+        return f"""project WebTest
+target webServer
+runtime native 1
+webServer testServer
+serverHost testServer "127.0.0.1"
+serverPort testServer 18099
+route testServer GET "/probe" probeHandler
+{extraCoverageLines}
+capability httpResponseWriter http.response write
+
+operation probeHandler
+input probeHandler request HttpRequest
+input probeHandler response HttpResponse
+output probeHandler CSignedInt32
+effect probeHandler write http.response
+memory probeHandler arena request
+async probeHandler no
+useCapability probeHandler httpResponseWriter
+purpose probeHandler "smoke handler"
+invariant probeHandler "static response"
+label startProbeHandler
+storage local immutable okStatus CSignedInt32 200
+storage local immutable bodyText CNullTerminatedByteString "ok\\n"
+call writeCall http.responseText
+arg writeCall response response
+arg writeCall status okStatus
+arg writeCall body bodyText
+run writeCall
+bind writeStatus CSignedInt32 writeCall
+returnValue writeStatus
+"""
+
+    def test_route_without_timeout_or_optout_is_flagged(self) -> None:
+        diagnostics = _lint_source(self._minimal_route_program())
+        codes = _codes(diagnostics)
+        # Two SS3604 hits expected: one for routeTimeout, one for routeMiddleware
+        self.assertEqual(
+            len(_diagnostics_with_code(diagnostics, "SS3604")),
+            2,
+            msg=f"expected both timeout and middleware drift; got {codes}",
+        )
+
+    def test_explicit_timeout_silences_timeout_drift(self) -> None:
+        diagnostics = _lint_source(self._minimal_route_program(
+            'timeoutBudget probeBudget DurationMilliseconds 2000\n'
+            'routeTimeout testServer "/probe" probeBudget\n'
+        ))
+        coverageDriftKinds = {
+            d.kind for d in _diagnostics_with_code(diagnostics, "SS3604")
+        }
+        # routeMiddleware coverage still drifts; routeTimeout coverage doesn't.
+        self.assertNotIn("webserver.routeTimeoutCoverageDrift", coverageDriftKinds)
+        self.assertIn("webserver.routeMiddlewareCoverageDrift", coverageDriftKinds)
+
+    def test_explicit_timeout_optout_silences_timeout_drift(self) -> None:
+        diagnostics = _lint_source(self._minimal_route_program(
+            'routeTimeoutOptOut testServer "/probe" "smoke handler is uninterruptible — no budget needed"\n'
+        ))
+        coverageDriftKinds = {
+            d.kind for d in _diagnostics_with_code(diagnostics, "SS3604")
+        }
+        self.assertNotIn("webserver.routeTimeoutCoverageDrift", coverageDriftKinds)
+
+    def test_explicit_middleware_optout_silences_middleware_drift(self) -> None:
+        diagnostics = _lint_source(self._minimal_route_program(
+            'routeMiddlewareOptOut testServer "/probe" "bare healthcheck — middleware would re-enter the probe loop"\n'
+        ))
+        coverageDriftKinds = {
+            d.kind for d in _diagnostics_with_code(diagnostics, "SS3604")
+        }
+        self.assertNotIn("webserver.routeMiddlewareCoverageDrift", coverageDriftKinds)
+
+    def test_both_opt_outs_clean(self) -> None:
+        diagnostics = _lint_source(self._minimal_route_program(
+            'routeTimeoutOptOut testServer "/probe" "no budget"\n'
+            'routeMiddlewareOptOut testServer "/probe" "no middleware"\n'
+        ))
+        self.assertEqual(_diagnostics_with_code(diagnostics, "SS3604"), [])
+
+
 if __name__ == "__main__":
     unittest.main()
