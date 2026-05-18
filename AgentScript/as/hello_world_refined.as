@@ -1,0 +1,102 @@
+# hello_world_refined.as
+#
+# Migration of as/hello_world.as to refined syntax. Same behavior — print
+# `Hello, world!` on one line — but rewritten with the transformer-friendly
+# verb forms from experiments/refined_syntax_example.as.
+#
+# Changes from the V0 source:
+#   - `section` anchors for retrieval / attention.
+#   - `domainLiteral` for typed string and i32 sentinels.
+#   - `storage module immutable` for shared exit-code values.
+#   - `memoryHeap` / `memoryStackLimit` instead of multi-token `memory NAME …`.
+#   - `operationBody NAME sourceTape` declares the body kind explicitly.
+#
+# Verify identical behavior to as/hello_world.as via:
+#   python compiler/ascc.py as/hello_world_refined.as --emit-ir /tmp/h.ll
+#   clang /tmp/h.ll -o /tmp/h.exe && /tmp/h.exe   # prints `Hello, world!\n`
+
+section program.helloWorldRefined
+
+project HelloWorldRefined
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+section program.helloWorldRefined.types
+
+type ConsoleWriteErrorCode I32
+
+section program.helloWorldRefined.errors
+
+error MainError
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+
+section program.helloWorldRefined.literals
+
+domainLiteral helloWorldGreetingText String "Hello, world!"
+storage module immutable successfulExitCode ExitCode 0
+storage module immutable writeStandardOutputLineSuccessSentinel ExitCode 0
+
+section program.helloWorldRefined.operations
+
+operation writeStandardOutputLine
+input writeStandardOutputLine text String
+output writeStandardOutputLine Result Void ConsoleWriteError
+effect writeStandardOutputLine write console.stdout
+memoryHeap writeStandardOutputLine no
+memoryStackLimit writeStandardOutputLine 1KiB
+async writeStandardOutputLine no
+operationBody writeStandardOutputLine sourceTape
+
+purpose writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
+invariant writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
+guarantee writeStandardOutputLine "On success the entire text plus a single newline byte is written exactly once"
+
+label startWriteStandardOutputLine
+
+call writeStandardOutputLineConsoleWriteCall console.writeLine
+arg writeStandardOutputLineConsoleWriteCall console console
+arg writeStandardOutputLineConsoleWriteCall text text
+run writeStandardOutputLineConsoleWriteCall
+ignoreOk writeStandardOutputLineConsoleWriteCall Void
+bindError writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
+branchIfError writeStandardOutputLineConsoleWriteCall writeStandardOutputLineConsoleWriteFailed
+
+returnOk writeStandardOutputLineSuccessSentinel
+
+label writeStandardOutputLineConsoleWriteFailed
+returnError writeStandardOutputLineConsoleWriteError
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memoryHeap main no
+memoryStackLimit main 4KiB
+async main no
+operationBody main sourceTape
+
+purpose main "Print the baseline greeting from javascript/hello-world.js exactly as Node emits it"
+invariant main "The output is a single line: Hello, world!"
+
+label startMain
+
+var lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
+
+# rationale: One named call so the success and failure legs of the write are both inspectable.
+call writeHelloWorldGreetingLineCall writeStandardOutputLine
+arg writeHelloWorldGreetingLineCall text helloWorldGreetingText
+run writeHelloWorldGreetingLineCall
+ignoreOk writeHelloWorldGreetingLineCall Void
+bindError writeHelloWorldGreetingLineError ConsoleWriteError writeHelloWorldGreetingLineCall
+set lastConsoleWriteErrorCode writeHelloWorldGreetingLineError
+branchIfError writeHelloWorldGreetingLineCall consoleWriteFailed
+
+returnOk successfulExitCode
+
+label consoleWriteFailed
+# rationale: lastConsoleWriteErrorCode holds whichever emit actually failed; its `set`
+# ran immediately before the corresponding branchIfError, so the typed
+# MainError.ConsoleWriteFailed value honestly names its cause (§12).
+makeError consoleWriteFailure MainError.ConsoleWriteFailed lastConsoleWriteErrorCode
+returnError consoleWriteFailure

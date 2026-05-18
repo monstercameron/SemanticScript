@@ -1,0 +1,237 @@
+# refined_syntax_demo.as
+#
+# A small, runnable program written entirely in refined syntax. Exercises
+# the runtime-binding lowerings and intrinsic lowerings end-to-end so a
+# reader can verify the refined-syntax surface actually computes real
+# values, not just compile-stubs.
+#
+# Build + run via:
+#   python compiler/ascc.py as/refined_syntax_demo.as --emit-ir /tmp/d.ll
+#   clang /tmp/d.ll -o /tmp/d.exe
+#   /tmp/d.exe
+#
+# Expected stdout, in order:
+#   5            <- math.addI64(2, 3)
+#   1            <- isLeapYear(2024) — true
+#   0            <- compareCString("hello", "hello") — strcmp equal
+#   5            <- stringByteLength("hello") — strlen
+#   150          <- retryPolicy.delayForAttempt(_, 2) = (2+1)*50
+#   15           <- metrics.computeIncrementI64(_, 10, 5) = 10+5
+
+project RefinedSyntaxDemo
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+error DemoError
+errorCase DemoError ConsoleWriteFailed ConsoleWriteError
+
+# ----- error types reused by the bindings -----
+
+error CStringCompareError
+errorCase CStringCompareError InvalidCStringInput
+errorCase CStringCompareError RuntimeCompareFailed
+
+error CStringLengthError
+errorCase CStringLengthError RuntimeLengthReadFailed
+
+error TimePredicateError
+errorCase TimePredicateError InvalidYear
+
+error RetryPolicyError
+errorCase RetryPolicyError DelayComputeFailed
+
+error MetricsWriteError
+errorCase MetricsWriteError IncrementFailed
+
+# ----- intrinsic-bodied math op -----
+
+operation math.addI64
+input math.addI64 left I64
+input math.addI64 right I64
+output math.addI64 I64
+effect math.addI64 read left
+effect math.addI64 read right
+memoryHeap math.addI64 no
+async math.addI64 no
+operationBody math.addI64 intrinsic
+purpose math.addI64 "Signed 64-bit integer addition"
+intrinsicName math.addI64 arithmetic.addI64
+
+# ----- libc-bodied string ops -----
+
+operation compareCString
+input compareCString left CNullTerminatedByteString
+input compareCString right CNullTerminatedByteString
+output compareCString Result CSignedInt32 CStringCompareError
+effect compareCString read left
+effect compareCString read right
+memoryHeap compareCString no
+async compareCString no
+operationBody compareCString runtimeBinding
+purpose compareCString "Compare two null-terminated byte strings; wraps strcmp."
+runtimeBinding compareCString runtime.cstring.compare
+
+operation stringByteLength
+input stringByteLength inputText CNullTerminatedByteString
+output stringByteLength Result CByteCount CStringLengthError
+effect stringByteLength read inputText
+memoryHeap stringByteLength no
+async stringByteLength no
+operationBody stringByteLength runtimeBinding
+purpose stringByteLength "Return the byte length of a null-terminated string; wraps strlen."
+runtimeBinding stringByteLength runtime.cstring.byteLength
+
+# ----- inline-bodied calendar op -----
+
+operation isLeapYear
+input isLeapYear candidateYear CSignedInt64
+output isLeapYear Result Bool TimePredicateError
+effect isLeapYear read candidateYear
+memoryHeap isLeapYear no
+async isLeapYear no
+operationBody isLeapYear runtimeBinding
+purpose isLeapYear "True iff candidateYear is a leap year under the proleptic Gregorian rule."
+runtimeBinding isLeapYear runtime.calendar.isLeapYearBool
+
+# ----- inline-bodied retry-delay op -----
+
+operation retryPolicy.delayForAttempt
+input retryPolicy.delayForAttempt policy RetryPolicy
+input retryPolicy.delayForAttempt attemptIndex I64
+output retryPolicy.delayForAttempt Result DurationMilliseconds RetryPolicyError
+effect retryPolicy.delayForAttempt read policy
+effect retryPolicy.delayForAttempt read attemptIndex
+memoryHeap retryPolicy.delayForAttempt no
+async retryPolicy.delayForAttempt no
+operationBody retryPolicy.delayForAttempt runtimeBinding
+purpose retryPolicy.delayForAttempt "Compute the delay before retry attempt N. Lowers to a 50ms linear backoff stub."
+runtimeBinding retryPolicy.delayForAttempt retryPolicy.delayForAttempt
+
+# ----- inline-bodied metrics-increment op -----
+
+operation metrics.computeIncrementI64
+input metrics.computeIncrementI64 runtime MetricsRuntime
+input metrics.computeIncrementI64 current I64
+input metrics.computeIncrementI64 step I64
+output metrics.computeIncrementI64 Result I64 MetricsWriteError
+effect metrics.computeIncrementI64 read runtime
+effect metrics.computeIncrementI64 read current
+effect metrics.computeIncrementI64 read step
+memoryHeap metrics.computeIncrementI64 no
+async metrics.computeIncrementI64 no
+operationBody metrics.computeIncrementI64 runtimeBinding
+purpose metrics.computeIncrementI64 "Compute (current + step) through a metrics-owned primitive."
+runtimeBinding metrics.computeIncrementI64 metrics.computeIncrementI64
+
+# ----- driver -----
+
+operation main
+input main console Console
+output main Result ExitCode DemoError
+effect main read math
+effect main read time
+effect main write console.stdout
+memory main heap no
+async main no
+purpose main "Call each wired refined-syntax binding once and print its result on its own line."
+invariant main "Output is the six lines documented at the top of this file."
+
+label startMain
+
+# 1) math.addI64(2, 3) = 5
+const twoVal I64 2
+const threeVal I64 3
+call addCall math.addI64
+arg addCall left twoVal
+arg addCall right threeVal
+run addCall
+bind addResult I64 addCall
+var addVar I64 twoVal
+set addVar addResult
+call printAddCall console.writeIntegerLine
+arg printAddCall console console
+arg printAddCall value addVar
+run printAddCall
+ignoreOk printAddCall Void
+
+# 2) isLeapYear(2024) = 1 (true)
+const yr2024 CSignedInt64 2024
+call leapCall isLeapYear
+arg leapCall candidateYear yr2024
+run leapCall
+bindOk leapResult Bool leapCall
+var leapVar I64 twoVal
+set leapVar leapResult
+call printLeapCall console.writeIntegerLine
+arg printLeapCall console console
+arg printLeapCall value leapVar
+run printLeapCall
+ignoreOk printLeapCall Void
+
+# 3) compareCString("hello", "hello") = 0
+const greetLeft CNullTerminatedByteString "hello"
+const greetRight CNullTerminatedByteString "hello"
+call cmpCall compareCString
+arg cmpCall left greetLeft
+arg cmpCall right greetRight
+run cmpCall
+bindOk cmpResult CSignedInt32 cmpCall
+var cmpVar I64 twoVal
+set cmpVar cmpResult
+call printCmpCall console.writeIntegerLine
+arg printCmpCall console console
+arg printCmpCall value cmpVar
+run printCmpCall
+ignoreOk printCmpCall Void
+
+# 4) stringByteLength("hello") = 5
+const greetText CNullTerminatedByteString "hello"
+call lenCall stringByteLength
+arg lenCall inputText greetText
+run lenCall
+bindOk lenResult CByteCount lenCall
+var lenVar I64 twoVal
+set lenVar lenResult
+call printLenCall console.writeIntegerLine
+arg printLenCall console console
+arg printLenCall value lenVar
+run printLenCall
+ignoreOk printLenCall Void
+
+# 5) retryPolicy.delayForAttempt(_, 2) = 150
+const policyHandle RetryPolicy 0
+const attemptTwo I64 2
+call delayCall retryPolicy.delayForAttempt
+arg delayCall policy policyHandle
+arg delayCall attemptIndex attemptTwo
+run delayCall
+bindOk delayResult DurationMilliseconds delayCall
+var delayVar I64 twoVal
+set delayVar delayResult
+call printDelayCall console.writeIntegerLine
+arg printDelayCall console console
+arg printDelayCall value delayVar
+run printDelayCall
+ignoreOk printDelayCall Void
+
+# 6) metrics.computeIncrementI64(_, 10, 5) = 15
+const runtimeHandle MetricsRuntime 0
+const tenVal I64 10
+const fiveVal I64 5
+call incCall metrics.computeIncrementI64
+arg incCall runtime runtimeHandle
+arg incCall current tenVal
+arg incCall step fiveVal
+run incCall
+bindOk incResult I64 incCall
+var incVar I64 twoVal
+set incVar incResult
+call printIncCall console.writeIntegerLine
+arg printIncCall console console
+arg printIncCall value incVar
+run printIncCall
+ignoreOk printIncCall Void
+
+const successfulExitCode ExitCode 0
+returnOk successfulExitCode

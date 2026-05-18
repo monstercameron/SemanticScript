@@ -1,0 +1,123 @@
+# event_workflow_refined.as
+#
+# Migration of as/event_workflow.as to refined syntax. Same behavior —
+# print the deterministic event-workflow trace from the JS baseline.
+
+section program.eventWorkflowRefined
+
+project EventWorkflowRefined
+target console
+runtime AgentRuntime 0.1
+mode capturedOutputReplay
+entry console main
+
+section program.eventWorkflowRefined.types
+
+type ConsoleWriteErrorCode I32
+
+section program.eventWorkflowRefined.errors
+
+error MainError
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+
+section program.eventWorkflowRefined.literals
+
+domainLiteral eventWorkflowTitleText String "Event Workflow"
+domainLiteral eventWorkflowTitleUnderlineText String "=============="
+domainLiteral eventWorkflowCreatedText String "created order-2001 for Katherine"
+domainLiteral eventWorkflowPaidText String "paid order-2001 amount=3499"
+domainLiteral eventWorkflowShippedText String "shipped order-2001 carrier=UPS"
+storage module immutable successfulExitCode ExitCode 0
+storage module immutable writeStandardOutputLineSuccessSentinel ExitCode 0
+
+section program.eventWorkflowRefined.operations
+
+operation writeStandardOutputLine
+input writeStandardOutputLine text String
+output writeStandardOutputLine Result Void ConsoleWriteError
+effect writeStandardOutputLine write console.stdout
+memoryHeap writeStandardOutputLine no
+memoryStackLimit writeStandardOutputLine 1KiB
+async writeStandardOutputLine no
+operationBody writeStandardOutputLine sourceTape
+
+purpose writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
+invariant writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
+guarantee writeStandardOutputLine "On success the entire text plus a single newline byte is written exactly once"
+
+label startWriteStandardOutputLine
+
+call writeStandardOutputLineConsoleWriteCall console.writeLine
+arg writeStandardOutputLineConsoleWriteCall console console
+arg writeStandardOutputLineConsoleWriteCall text text
+run writeStandardOutputLineConsoleWriteCall
+ignoreOk writeStandardOutputLineConsoleWriteCall Void
+bindError writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
+branchIfError writeStandardOutputLineConsoleWriteCall writeStandardOutputLineConsoleWriteFailed
+
+returnOk writeStandardOutputLineSuccessSentinel
+
+label writeStandardOutputLineConsoleWriteFailed
+returnError writeStandardOutputLineConsoleWriteError
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memoryHeap main no
+memoryStackLimit main 4KiB
+async main no
+operationBody main sourceTape
+
+purpose main "Print the deterministic event-workflow trace from javascript/event-workflow.js"
+invariant main "Trace lines appear in emit order: created, paid, shipped for order-2001"
+
+label startMain
+
+var lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
+
+call writeEventWorkflowTitleLineCall writeStandardOutputLine
+arg writeEventWorkflowTitleLineCall text eventWorkflowTitleText
+run writeEventWorkflowTitleLineCall
+ignoreOk writeEventWorkflowTitleLineCall Void
+bindError writeEventWorkflowTitleLineError ConsoleWriteError writeEventWorkflowTitleLineCall
+set lastConsoleWriteErrorCode writeEventWorkflowTitleLineError
+branchIfError writeEventWorkflowTitleLineCall consoleWriteFailed
+
+call writeEventWorkflowTitleUnderlineLineCall writeStandardOutputLine
+arg writeEventWorkflowTitleUnderlineLineCall text eventWorkflowTitleUnderlineText
+run writeEventWorkflowTitleUnderlineLineCall
+ignoreOk writeEventWorkflowTitleUnderlineLineCall Void
+bindError writeEventWorkflowTitleUnderlineLineError ConsoleWriteError writeEventWorkflowTitleUnderlineLineCall
+set lastConsoleWriteErrorCode writeEventWorkflowTitleUnderlineLineError
+branchIfError writeEventWorkflowTitleUnderlineLineCall consoleWriteFailed
+
+call writeEventWorkflowCreatedLineCall writeStandardOutputLine
+arg writeEventWorkflowCreatedLineCall text eventWorkflowCreatedText
+run writeEventWorkflowCreatedLineCall
+ignoreOk writeEventWorkflowCreatedLineCall Void
+bindError writeEventWorkflowCreatedLineError ConsoleWriteError writeEventWorkflowCreatedLineCall
+set lastConsoleWriteErrorCode writeEventWorkflowCreatedLineError
+branchIfError writeEventWorkflowCreatedLineCall consoleWriteFailed
+
+call writeEventWorkflowPaidLineCall writeStandardOutputLine
+arg writeEventWorkflowPaidLineCall text eventWorkflowPaidText
+run writeEventWorkflowPaidLineCall
+ignoreOk writeEventWorkflowPaidLineCall Void
+bindError writeEventWorkflowPaidLineError ConsoleWriteError writeEventWorkflowPaidLineCall
+set lastConsoleWriteErrorCode writeEventWorkflowPaidLineError
+branchIfError writeEventWorkflowPaidLineCall consoleWriteFailed
+
+call writeEventWorkflowShippedLineCall writeStandardOutputLine
+arg writeEventWorkflowShippedLineCall text eventWorkflowShippedText
+run writeEventWorkflowShippedLineCall
+ignoreOk writeEventWorkflowShippedLineCall Void
+bindError writeEventWorkflowShippedLineError ConsoleWriteError writeEventWorkflowShippedLineCall
+set lastConsoleWriteErrorCode writeEventWorkflowShippedLineError
+branchIfError writeEventWorkflowShippedLineCall consoleWriteFailed
+
+returnOk successfulExitCode
+
+label consoleWriteFailed
+makeError consoleWriteFailure MainError.ConsoleWriteFailed lastConsoleWriteErrorCode
+returnError consoleWriteFailure

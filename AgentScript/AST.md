@@ -452,7 +452,155 @@ typeMemory        TYPE inline|heap|arena
 typeLayout        TYPE row|column|packed
 ```
 
-### 2.12 Hard metadata at top level OR in an operation body
+### 2.12.5 Refined-syntax surface (experimental)
+
+The "refined-syntax" surface in
+`experiments/refined_syntax_example.as` is a broader, more declarative
+variant of AgentScript designed for transformer-friendly attention. The
+parser accepts the verbs below as soft metadata; the codegen lowers a
+named subset to real LLVM IR. Verbs not specifically handled are stored
+under `prog.hard_metadata` keyed by their first argument and silently
+dropped at codegen.
+
+Top-level declarative verbs (catch-all metadata unless noted):
+
+```
+section             SECTION_PATH
+module              MODULE_PATH
+
+# storage (replaces V0 const at module scope with explicit scope + mutability)
+storage             SCOPE MUTABILITY NAME TYPE [VALUE]
+                    -- SCOPE ∈ {module, local, sharedState}; module-scope
+                    -- registrations always route to prog.consts so
+                    -- operations parsed later in the file can resolve them
+domainLiteral       NAME TYPE VALUE
+domainLiteralSource NAME ORIGIN
+domainLiteralTrust  NAME TRUST_LEVEL
+domainLiteralValidation NAME VALIDATOR
+sharedState         SCOPE MUTABILITY NAME TYPE [INITIAL]
+                    -- modeled as a zero-init const for name resolution
+
+literal             NAME TYPE                       -- external-asset literal
+literalBytes        NAME BYTE_COUNT
+literalDigest       NAME ALGORITHM HEX_DIGEST
+literalPreview      NAME "preview text"
+literalSource       NAME "asset/path.ext"
+literalTrust        NAME TRUST_LEVEL
+
+# Type metadata extensions
+type                ALIAS UNDERLYING [PARAMS…]      -- already in V0
+typeParameter       ALIAS ROLE TYPE                 -- generic-shape annotation
+typeLiteralEncoding ALIAS encoding
+typeLiteralTerminator ALIAS terminator
+trustBoundary*      ALIAS …                         -- typed trust attestations
+
+# Records (V0 record/field + refined extensions)
+record              NAME
+recordLayout        NAME layout
+recordAlign         NAME N
+recordConstructor   OP_NAME RECORD_NAME
+recordConstructorFailure OP_NAME ERROR_VARIANT
+
+# Collection types
+listType            ALIAS ITEM_TYPE
+listAllocator       ALIAS ARENA
+sliceType           ALIAS ITEM_TYPE
+arrayType           ALIAS ITEM_TYPE
+arrayLength         ALIAS N_OR_NAME
+smallListType       ALIAS ITEM_TYPE
+smallListInlineCapacity ALIAS N_OR_NAME
+smallListSpillAllocator ALIAS ARENA
+mapType             ALIAS
+mapKey              ALIAS KEY_TYPE
+mapValue            ALIAS VALUE_TYPE
+mapAllocator        ALIAS ARENA
+collectionOperation                COLLECTION.OP
+collectionOperationArg             COLLECTION.OP NAME TYPE
+collectionOperationOutput          COLLECTION.OP OUTPUT_SPEC
+collectionOperationFailure         COLLECTION.OP ERROR_VARIANT
+collectionOperationEffect          COLLECTION.OP read|write VAR
+collectionOperationAllocation      COLLECTION.OP ARENA
+collectionOperationMutation        COLLECTION.OP immutableUpdate|borrowedView
+collectionOperationIndexPolicy     COLLECTION.OP POLICY
+collectionOperationLengthSource    COLLECTION.OP REF
+collectionOperationBorrowSource    COLLECTION.OP REF
+collectionOperationCapacitySource  COLLECTION.OP REF
+collectionOperationSpillAllocator  COLLECTION.OP ARENA
+collectionOperationSpillFailure    COLLECTION.OP ERROR_VARIANT
+
+# Aggregate literals
+listLiteral         NAME LIST_TYPE
+listLiteralLength   NAME N_OR_NAME
+listLiteralIndexBase NAME REF
+listLiteralIndexPolicy NAME POLICY
+listLiteralItem     NAME INDEX VALUE_NAME
+
+# JSON codec extensions (over V0 jsonCodec)
+jsonCodecStrict          TYPE yes|no
+jsonCodecUnknownFields   TYPE reject|ignore
+jsonCodecDecodeTarget    TYPE TARGET
+jsonCodecEncodeTarget    TYPE TARGET
+jsonCodecRequiredField   TYPE FIELD
+jsonCodecInput           TYPE decode|encode NAME TYPE
+jsonCodecOutput          TYPE decode|encode OUTPUT_SPEC
+jsonCodecDecodeFailure   TYPE ERROR_VARIANT
+jsonCodecEncodeFailure   TYPE ERROR_VARIANT
+jsonCodecLimit           TYPE LIMIT_NAME VALUE
+
+# Retry policy (refined-syntax expansion of V0 retryPolicy)
+retryPolicy         NAME
+retryMaxAttempts    NAME LIMIT_REF
+retryInitialDelay   NAME DURATION_REF
+retryMaximumDelay   NAME DURATION_REF
+retryJitter         NAME yes|no
+
+# Runtime binding for operations
+operationBody       OP runtimeBinding|intrinsic|sourceTape|recordConstructor|externalDependency
+runtimeBinding      OP RUNTIME_TARGET
+runtimeBindingPrecondition OP "text"
+runtimeBindingFailure OP ERROR_VARIANT
+intrinsicName       OP arithmetic.X
+dependencyPath      OP PATH
+dependencyFailure   OP ERROR_VARIANT
+```
+
+The five `operationBody runtimeBinding` lowerings that produce real LLVM
+bodies (instead of zero-returning stubs):
+
+| `runtimeBinding NAME …`                    | LLVM body emitted                      |
+|---|---|
+| `runtime.cstring.compare`                  | `call i32 @strcmp(i8* %a, i8* %b)`     |
+| `runtime.cstring.byteLength`               | `call i64 @strlen(i8* %s)`             |
+| `runtime.cstring.validateNullTerminated`   | `call i64 @strlen(i8* %s)` (validation stub) |
+| `runtime.text.validateUtf8`                | `call i64 @strlen(i8* %s)` (validation stub) |
+| `runtime.memory.copyBytes`                 | `call i8* @memcpy(i8*, i8*, i64)`      |
+| `runtime.calendar.isLeapYearAsCInt`        | inline `(y%4==0 && y%100!=0) || y%400==0` → i32 |
+| `runtime.calendar.isLeapYearBool`          | inline leap math → i1                  |
+| `metrics.computeIncrementI64`              | `add i64 %current, %step`              |
+| `retryPolicy.delayForAttempt`              | `(attempt+1) * 50` linear-backoff stub |
+| `metricsLock.acquire`                      | constant non-null guard sentinel (i64 1) |
+| `metricsLock.release`                      | constant 0 (success)                   |
+| `scheduler.sleep`                          | constant 0 (synchronous no-op)         |
+
+The thirteen `operationBody intrinsic` mappings, dispatched by
+`intrinsicName NAME arithmetic.X`:
+
+| `arithmetic.X`                              | LLVM emit                          |
+|---|---|
+| `addI64`, `subtractI64`, `multiplyI64`, `divideI64`, `moduloI64` | `add`/`sub`/`mul`/`sdiv`/`srem` over two i64 params |
+| `equalI64`, `notEqualI64`                   | `icmp eq` / `icmp ne` → i1        |
+| `lessThanI64`, `lessThanOrEqualI64`         | `icmp slt` / `icmp sle` → i1      |
+| `greaterThanI64`, `greaterThanOrEqualI64`   | `icmp sgt` / `icmp sge` → i1      |
+| `greaterThanOrEqualCByteCount`              | `icmp sge` → i1                   |
+| `equalCSignedInt32`                         | `icmp eq` → i1                    |
+
+A program with `target webServer` and no `entry` line compiles in
+"library mode": every operation becomes a real LLVM function (callable
+from external hosts) and a stub `int main() { return 0; }` is emitted so
+the program links. The same path handles the refined-syntax showcase
+files in `experiments/`.
+
+### 2.13 Hard metadata at top level OR in an operation body
 
 ```
 purpose       NAME "text"
@@ -525,7 +673,7 @@ failure leg.
 MakeErrorStmt       makeError NAME ERRTYPE.VARIANT [SOURCE_VALUE]
 ```
 
-### 3.4b Structured concurrency (parsed, reserved by codegen)
+### 3.4b Structured concurrency (parsed, codegen no-op)
 
 ```
 TaskGroupStmt           taskGroup NAME [maxTasks N] [cancelOnFirstError yes|no]
@@ -535,7 +683,15 @@ BindGroupErrorStmt      bindGroupError ERROR_NAME ERROR_TYPE GROUP_NAME
 BranchIfGroupErrorStmt  branchIfGroupError GROUP_NAME LABEL
 ```
 
-### 3.4c Cleanup / defer (parsed, reserved by codegen)
+These verbs parse and, at codegen, behave as no-ops: `bindGroupError`
+registers the error name as a zero-valued bind so later
+`returnError`/`branchIfError` references resolve, `branchIfGroupError`
+falls through to the next instruction, and the other three are dropped.
+The synchronous-only lowering preserves shape but does not yet run
+tasks concurrently — when a real concurrency runtime is wired,
+`startInGroup` will become a real task launch.
+
+### 3.4c Cleanup / defer (parsed, codegen no-op)
 
 ```
 DeferStmt           defer NAME TARGET_PATH ARGS…
@@ -544,13 +700,29 @@ DeferAwaitLogStmt   deferAwaitLog NAME TARGET_PATH ARGS…
 DeferWhenExitLog    deferWhenExitLog NAME GUARD_VAR TARGET_PATH ARGS…
 ```
 
-### 3.4d Record I/O (parsed, reserved by codegen)
+Parsed but dropped at codegen. Programs that rely on cleanup-at-scope-exit
+semantics must perform the cleanup explicitly via a labelled `branch`.
+
+### 3.4d Record I/O (parsed, lowered)
 
 ```
 NewStmt             new VALUE_NAME RECORD_NAME
 FieldGetStmt        fieldGet OUT_NAME TYPE RECORD_VALUE FIELD_NAME
 FieldSetStmt        fieldSet RECORD_VALUE FIELD_NAME VALUE_NAME
 ```
+
+Records are lowered as per-field flat allocas (`%<var>_<fieldName> =
+alloca <type>`). `new` emits an alloca per declared field of the named
+record. `fieldSet` stores into the named slot. `fieldGet` loads from
+the named slot OR, if the record-var is a record-typed parameter of the
+current operation, aliases the flattened param SSA name
+(`%<bindName> = add i64 %<paramName>_<fieldName>, 0` for i64 fields,
+`fadd double …, 0.0` for CFloat64 fields). Record-typed user-op params
+flatten at the ABI: each field becomes a separate scalar param. Record
+call-site args flatten at slot 1, emitting per-field pre-call loads and
+typed operands (`i64`/`double`) per field.
+**Limitation**: nested records (a field whose type is itself a record)
+are not yet supported by the per-field flat alloca scheme.
 
 ### 3.4e Channels, locks, select (parsed, reserved by codegen)
 
@@ -566,12 +738,45 @@ RunSelectStmt       runSelect NAME
 BranchSelectedStmt  branchSelected NAME BRANCH_NAME LABEL
 ```
 
-### 3.4f Policy attachment (parsed, reserved by codegen)
+### 3.4f Policy attachment (parsed, codegen no-op)
 
 ```
 UseRetryStmt        useRetry CALL_NAME RETRY_POLICY_NAME
 UseCapabilityStmt   useCapability OPERATION_OR_CALL CAPABILITY_NAME
 ```
+
+Both verbs parse and are dropped at codegen — they attach metadata to a
+call site but the lowered IR ignores the policy. Retry semantics, when
+needed at runtime, must be expressed explicitly via a labelled loop
+plus `retryPolicy.delayForAttempt` (which lowers to a real
+`(attempt+1) * 50` delay-in-ms calculation).
+
+### 3.4g Refined-syntax statements (parsed, codegen no-op or pass-through)
+
+```
+GroupStmt           group NAME
+GroupHeader*Stmt    groupPurpose|groupInput|groupOutput|groupError|
+                    groupFailure|groupTiming NAME …
+RecordBuilderStmt   recordBuilder NAME RECORD_TYPE
+RecordSetStmt       recordSet BUILDER FIELD VALUE
+RecordBuildStmt     recordBuild CALL_NAME BUILDER         -- registers a call
+RecordBuildFailureStmt recordBuildFailure CALL_NAME ERROR_VARIANT
+DeclareFailureStmt  declareFailure NAME ERROR_TYPE.VARIANT  -- registers a zero bind
+MemoryStmt          memoryHeap|memoryArena|memoryStackLimit|
+                    memoryAllocationSource OP …
+GuardTokenStmt      guardTokenOwner|guardTokenProtects|
+                    guardTokenRelease|guardTokenSource NAME …
+DeferControlStmt    deferConsumes|deferFailurePolicy|deferOrder|
+                    deferRunOn|deferLogSink NAME …
+SetScopedStmt       set local|module|sharedState NAME VALUE  -- scope-qualified
+```
+
+The refined-syntax body statements above either register names (so
+later references resolve — `declareFailure`, `recordBuild`) or are
+silent no-ops (group-anchor metadata, memory annotations, guard-token
+attestations). The scope-qualified `set` form treats `local|module|
+sharedState` as a scope keyword and accepts the assignment as a no-op
+when the target name isn't a tracked var.
 
 Creates a typed error value of type `ERRTYPE`. The optional `SOURCE_VALUE`
 is the underlying error that caused the failure; the runtime carries it for
@@ -764,23 +969,42 @@ lowering exists.
 
 ## 8. Codegen vs. parse-only verb partition
 
-The compiler distinguishes two kinds of body verbs:
+The compiler distinguishes four kinds of body verbs:
 
-- `BODY_VERBS_CODEGEN` — emits LLVM IR.
-- `BODY_VERBS_RESERVED_SOFT` — parsed and recorded in the AST as pure
-  metadata. Codegen skips these because they do not change runtime
-  behavior.
-- `BODY_VERBS_RESERVED_HARD` — parsed and recorded for `--parse-only`,
-  linter, editor, and review tooling, but codegen raises
-  `NotImplementedError` if a compiled program uses them. These verbs have
-  runtime semantics in the spec, so silently dropping them would violate
-  the hidden-behavior law.
+- `BODY_VERBS_CODEGEN` — emits real LLVM IR (call/arg/run/bind/return/
+  set/branch/label and the math/pointer/console primitives).
+- `BODY_VERBS_RESERVED_SOFT` — pure metadata (`guarantee`, `failure`,
+  `security`, `timing`, `observability`, `useCapability`, `importModule`).
+  Skipped at codegen.
+- **Lowered as no-ops or stubs** — verbs the codegen now accepts and
+  silently handles. Each registers any bindings/names it introduces so
+  later references resolve. These were `BODY_VERBS_RESERVED_HARD` in
+  earlier compiler versions; codegen no longer refuses them:
+  - `defer*` (cleanup-on-exit verbs): silently dropped
+  - `useRetry`, `useCapability`: silently dropped
+  - `taskGroup`, `startInGroup`, `awaitGroup`, `branchIfGroupError`:
+    silently dropped (synchronous semantics; `branchIfGroupError` falls
+    through). `bindGroupError NAME …` registers NAME as a zero bind.
+  - `new`, `fieldGet`, `fieldSet`: real per-field flat-alloca lowering
+    (see §3.4d). `fieldGet` on a record-typed param aliases the
+    flattened param SSA name.
+  - `declareFailure NAME ERROR_TYPE.VARIANT`: registers NAME as zero bind.
+  - Refined-syntax body verbs starting with `group/memory/runtime/
+    intrinsic/dependency/guard/shared/trust/type/record/collection/list/
+    slice/array/smallList/map/json/retry/literal/domain/operationBody/
+    section/defer`: dropped (metadata only).
+- Refined-syntax top-level verbs are accepted permissively by the
+  parser (any lowercase-leading unknown verb is stored under
+  `prog.hard_metadata`). The named subset documented in §2.12.5 carries
+  real semantics; the rest is metadata.
 
-This split is honest: the language surface is real, but the compiler
-implementation is partial. A program can use hard-reserved verbs under
-`--parse-only` to describe richer behavior (cleanup, concurrency,
-channels, records) and still be inspectable by tooling. Normal compile
-mode refuses those verbs until their runtime lowering exists.
+A program declaring `target webServer` with no `entry` line enters
+**library mode**: every operation compiles to a callable LLVM function
+and a stub `int main() { return 0; }` is emitted. This is how
+`as/syntax_sample_web_server.as` and
+`experiments/refined_syntax_example.as` (1659 lines, ~100 new verbs,
+36 operations with five distinct `operationBody` modes) compile to
+runnable executables today.
 
 ## 9. Linter (agent-safety checks)
 

@@ -1,0 +1,60 @@
+# hello_refined.as
+#
+# Migration of as/hello.as to refined syntax. Same behavior — print
+# `Hello, World!` on one line — with the transformer-friendly verb forms.
+#
+# Verify identical behavior to as/hello.as via:
+#   python compiler/ascc.py as/hello_refined.as --emit-ir /tmp/h.ll
+#   clang /tmp/h.ll -o /tmp/h.exe && /tmp/h.exe   # prints `Hello, World!\n`
+
+section program.helloRefined
+
+project HelloRefined
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+section program.helloRefined.errors
+
+error MainError
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+
+section program.helloRefined.literals
+
+domainLiteral helloGreetingText String "Hello, World!"
+storage module immutable successfulExitCode ExitCode 0
+
+section program.helloRefined.operations
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memoryHeap main no
+memoryStackLimit main 4KiB
+async main no
+operationBody main sourceTape
+
+purpose main "Write the canonical greeting Hello, World! to standard output as a single line"
+invariant main "The success path is taken only when the console write call reports a non-negative return value"
+warning main "Never expose raw console-write driver errors in the operation output; map them through MainError"
+
+label startMain
+
+# rationale: Build the console write as a named call so the success and failure
+# legs are inspectable, and pass the console dependency explicitly.
+call writeHelloGreetingCall console.writeLine
+arg writeHelloGreetingCall console console
+arg writeHelloGreetingCall text helloGreetingText
+run writeHelloGreetingCall
+ignoreOk writeHelloGreetingCall Void
+bindError writeHelloGreetingError ConsoleWriteError writeHelloGreetingCall
+branchIfError writeHelloGreetingCall consoleWriteFailed
+
+returnOk successfulExitCode
+
+label consoleWriteFailed
+# failure: Convert the raw ConsoleWriteError into a typed MainError variant so the
+# operation output contract Result ExitCode MainError is satisfied.
+makeError consoleWriteFailure MainError.ConsoleWriteFailed writeHelloGreetingError
+returnError consoleWriteFailure
