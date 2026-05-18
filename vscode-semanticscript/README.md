@@ -8,6 +8,32 @@ SemanticScript surface and the refined future syntax used in
 highlighting, hovers, semantic roles, and drift detection; it does not make the
 current compiler accept those future forms.
 
+## Contents
+
+- `extension.js` implements extension behavior.
+- `package.json` defines VS Code contribution points and settings.
+- `language-configuration.json` defines editor language behavior.
+- `syntaxes/` contains TextMate grammar assets.
+- `.vscode/` contains local extension debugging configuration.
+
+## Current Status
+
+Active editor tooling. It supports both current executable syntax and refined
+future syntax for highlighting, hovers, semantic roles, and lint integration.
+
+## Release Readiness
+
+The package is still pre-1.0 and local-release oriented. Before a public 1.0
+Marketplace release, the release owner must decide:
+
+- whether `version` should advance from `0.1.9` to `1.0.0`;
+- the real Marketplace `publisher` value to replace `semanticscript-local`;
+- the legal `license` value to replace `UNLICENSED`, or whether distribution
+  remains private.
+
+Run `npm run check` before packaging. Use `npm run package:vsix` for local VSIX
+builds only after accepting those metadata constraints for the target release.
+
 ## Features
 
 - Language registration for `.sscript` and `.sem`.

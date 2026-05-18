@@ -9,7 +9,7 @@ source remains inspectable while the runtime catches up.
 The extension should provide:
 
 ```text
-language registration for .sscript and .sscript
+language registration for .sscript and .sem
 TextMate highlighting
 semantic token roles
 whole-line segment coloring
@@ -105,8 +105,9 @@ Open representative files:
 
 ```text
 ../SemanticScript/sem/countdown.sscript
+../SemanticScript/sem/refined_syntax_demo.sscript
+../SemanticScript/sem/syntax_sample_web_server.sscript
 ../SemanticScript/sem/feature_tests/147_worker_pool_submit_work_runs.sscript
-../experiments/refined_syntax_example.sscript
 ```
 
 ## Packaging
@@ -130,4 +131,3 @@ When adding a language verb:
 4. Add identifier indexing if the verb declares or references a symbol.
 5. Update `README.md` and the docs file that owns the verb family.
 6. Package a new VSIX only after `npm run check` passes.
-

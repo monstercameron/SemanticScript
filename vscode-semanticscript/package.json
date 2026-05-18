@@ -1,7 +1,7 @@
 {
   "name": "semanticscript-vscode",
   "displayName": "SemanticScript",
-  "description": "Syntax highlighting and segment coloring for SemanticScript .sscript files.",
+  "description": "Syntax highlighting, segment coloring, and lint integration for SemanticScript .sscript and .sem files.",
   "version": "0.1.9",
   "publisher": "semanticscript-local",
   "license": "UNLICENSED",
@@ -11,6 +11,13 @@
   "categories": [
     "Programming Languages"
   ],
+  "keywords": [
+    "semanticscript",
+    "language",
+    "syntax",
+    "linting",
+    "vscode-extension"
+  ],
   "activationEvents": [
     "onLanguage:semanticscript",
     "onCommand:semanticscript.toggleSegmentColors",
@@ -18,7 +25,10 @@
   ],
   "main": "./extension.js",
   "scripts": {
-    "check": "node --check extension.js"
+    "check": "node --check extension.js && npm run check:json",
+    "check:json": "node -e \"const fs = require('fs'); ['package.json', 'language-configuration.json', 'syntaxes/semanticscript.tmLanguage.json'].forEach((file) => JSON.parse(fs.readFileSync(file, 'utf8')));\"",
+    "package:vsix": "npm run check && npx --yes @vscode/vsce package",
+    "vscode:prepublish": "npm run check"
   },
   "contributes": {
     "languages": [
