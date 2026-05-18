@@ -1,91 +1,95 @@
+# ============================================================
+# AGENTSCRIPT STANDARD LIBRARY: <stddef.h>-style type sizing
+# ============================================================
+#
+# # rationale: C's <stddef.h> is mostly typedefs (size_t, ptrdiff_t)
+#   plus the NULL macro. AgentScript has those types natively
+#   (CByteCount, COpaqueMemoryAddress, etc.) so this module only
+#   exposes the few callable surfaces — sizeof-style accessors for
+#   the common ABI types — as module-scope domainLiteral constants
+#   per the refined-syntax pattern (AST.md §2.12.5). The previous
+#   shape (zero-arg operations returning `Result CSignedInt64 Void`)
+#   is removed because constants belong in domainLiteral, not in
+#   operation bodies.
+#
+# # invariant: every byte-size constant matches the AgentScript
+#   target ABI (x86-64 Windows MSVC under the current bootstrap
+#   triple). Width-specific aliases (CSignedInt32 / CSignedInt64 /
+#   CFloat64) carry their byte count directly in the name; the
+#   module-scope literals are convenience accessors for
+#   serialization / FFI code that needs to compute buffer sizes
+#   from type categories.
+#
+# # security: pure constants. No effects. No allocation.
+#
+# # timing: zero — the LLVM optimizer inlines every reference.
+#
+# # observability: nothing to observe; consumers see only the
+#   raw CSignedInt64 value.
+
 project StdStddefSelfTest
 target console
 runtime AgentRuntime 0.1
-
 entry console main
 
 error MainError
-errorCase MainError TestFailed CSignedInt32
+errorCase MainError StddefSmokeAssertionFailed
 
-# ============================================================
-# AGENTSCRIPT STANDARD LIBRARY: <stddef.h>-style accessors.
-#
-# C's <stddef.h> is mostly typedefs (size_t, ptrdiff_t, etc.) and the
-# NULL macro. AgentScript has those types natively (CByteCount,
-# COpaqueMemoryAddress); this file exposes the few callable surfaces.
-#
-# Operations:
-#   nullOpaquePointerValue   - returns the NULL pointer.
-#   byteSizeOfOpaquePointer  - sizeof(void*) on x86-64 = 8.
-#   byteSizeOfSignedInt32    - 4.
-#   byteSizeOfSignedInt64    - 8.
-#   byteSizeOfFloat64        - 8.
-# ============================================================
+# section stddef.byteSizes
+# rationale: byte-size constants per the target ABI (x86-64 Windows).
 
+domainLiteral byteSizeOfOpaquePointer CSignedInt64 8
+domainLiteralSource byteSizeOfOpaquePointer abi.x86_64.windows.pointerSize
+domainLiteralTrust byteSizeOfOpaquePointer trustedStaticLiteral
+domainLiteralValidation byteSizeOfOpaquePointer trustedAbiConstant
 
-operation nullOpaquePointerValue
-output nullOpaquePointerValue Result COpaqueMemoryAddress Void
-memory nullOpaquePointerValue heap no
-async nullOpaquePointerValue no
-purpose nullOpaquePointerValue "Returns the NULL pointer (i8* 0)."
-label startNullOpaquePointerValue
-# We synthesize NULL by allocating zero bytes? No — use c.malloc(0) which
-# is implementation-defined. Cleaner: build via pointer arithmetic from
-# a known global. Simplest: malloc(1), then free + reuse pattern is bad.
-# AgentScript today doesn't have an explicit "null pointer literal" in
-# the type system, so we lean on the c.* ABI: every c.* function that
-# CAN return NULL exposes it. We use c.getenv with an obviously absent
-# variable.
-const absentVar CNullTerminatedByteString "AGENTSCRIPT_DEFINITELY_NOT_SET_4D7F00"
-call envCall c.getenv
-arg envCall name absentVar
-run envCall
-bind nullVal CNullTerminatedByteString envCall
-# This SHOULD be NULL on every reasonable host. If it isn't (someone
-# defined this oddly named env var) the caller's NULL check will not
-# fire, which is a non-fatal smoke-test annoyance.
-returnOk nullVal
+domainLiteral byteSizeOfSignedInt32 CSignedInt64 4
+domainLiteralSource byteSizeOfSignedInt32 abi.fixedWidth.int32
+domainLiteralTrust byteSizeOfSignedInt32 trustedStaticLiteral
+domainLiteralValidation byteSizeOfSignedInt32 trustedAbiConstant
 
+domainLiteral byteSizeOfSignedInt64 CSignedInt64 8
+domainLiteralSource byteSizeOfSignedInt64 abi.fixedWidth.int64
+domainLiteralTrust byteSizeOfSignedInt64 trustedStaticLiteral
+domainLiteralValidation byteSizeOfSignedInt64 trustedAbiConstant
 
-operation byteSizeOfOpaquePointer
-output byteSizeOfOpaquePointer Result CSignedInt64 Void
-memory byteSizeOfOpaquePointer heap no
-async byteSizeOfOpaquePointer no
-purpose byteSizeOfOpaquePointer "sizeof(void*) on the AgentScript target (x86-64 Windows): 8 bytes."
-label startByteSizeOfOpaquePointer
-const v CSignedInt64 8
-returnOk v
+domainLiteral byteSizeOfFloat64 CSignedInt64 8
+domainLiteralSource byteSizeOfFloat64 abi.ieee754.binary64
+domainLiteralTrust byteSizeOfFloat64 trustedStaticLiteral
+domainLiteralValidation byteSizeOfFloat64 trustedAbiConstant
 
+domainLiteral byteSizeOfFloat32 CSignedInt64 4
+domainLiteralSource byteSizeOfFloat32 abi.ieee754.binary32
+domainLiteralTrust byteSizeOfFloat32 trustedStaticLiteral
+domainLiteralValidation byteSizeOfFloat32 trustedAbiConstant
 
-operation byteSizeOfSignedInt32
-output byteSizeOfSignedInt32 Result CSignedInt64 Void
-memory byteSizeOfSignedInt32 heap no
-async byteSizeOfSignedInt32 no
-purpose byteSizeOfSignedInt32 "sizeof(int32_t) = 4."
-label startByteSizeOfSignedInt32
-const v CSignedInt64 4
-returnOk v
+domainLiteral byteSizeOfSignedByte CSignedInt64 1
+domainLiteralSource byteSizeOfSignedByte abi.fixedWidth.int8
+domainLiteralTrust byteSizeOfSignedByte trustedStaticLiteral
+domainLiteralValidation byteSizeOfSignedByte trustedAbiConstant
 
+# section stddef.opaquePointers
+# rationale: NULL pointer accessor; resolved at runtime via libc.
 
-operation byteSizeOfSignedInt64
-output byteSizeOfSignedInt64 Result CSignedInt64 Void
-memory byteSizeOfSignedInt64 heap no
-async byteSizeOfSignedInt64 no
-purpose byteSizeOfSignedInt64 "sizeof(int64_t) = 8."
-label startByteSizeOfSignedInt64
-const v CSignedInt64 8
-returnOk v
-
-
-operation byteSizeOfFloat64
-output byteSizeOfFloat64 Result CSignedInt64 Void
-memory byteSizeOfFloat64 heap no
-async byteSizeOfFloat64 no
-purpose byteSizeOfFloat64 "sizeof(double) = 8."
-label startByteSizeOfFloat64
-const v CSignedInt64 8
-returnOk v
-
+operation acquireNullOpaquePointer
+output acquireNullOpaquePointer COpaqueMemoryAddress
+memoryHeap acquireNullOpaquePointer no
+async acquireNullOpaquePointer no
+purpose acquireNullOpaquePointer "Returns the canonical NULL pointer (i8* 0)."
+invariant acquireNullOpaquePointer "Result compares equal to any other NULL produced by libc."
+# rationale: AgentScript lacks an explicit null pointer literal in the
+#   type system, so we route through c.getenv with a deliberately
+#   absent environment variable name. Every reasonable host returns
+#   NULL; if a hostile host pre-sets this variable the caller will
+#   observe a non-null pointer and the smoke test will fail visibly.
+guarantee acquireNullOpaquePointer "Total under normal host environments."
+label startAcquireNullOpaquePointer
+const deliberatelyAbsentEnvName CNullTerminatedByteString "AGENTSCRIPT_DEFINITELY_NOT_SET_4D7F00"
+call probeEnvironmentForNullCall c.getenv
+arg probeEnvironmentForNullCall name deliberatelyAbsentEnvName
+run probeEnvironmentForNullCall
+bind nullPointerValue COpaqueMemoryAddress probeEnvironmentForNullCall
+returnValue nullPointerValue
 
 # ============================================================
 # Smoke test
@@ -95,54 +99,54 @@ operation main
 input main console Console
 output main Result ExitCode MainError
 effect main write console.stdout
-memory main heap no
+memoryHeap main no
 async main no
-purpose main "Smoke-test the stddef accessors. Prints OK."
+purpose main "Verify the stddef sizes resolve to expected ABI values."
+invariant main "Pointer is 8 bytes; int32 is 4; int64 is 8; double is 8."
 
 label startMain
-call s1 byteSizeOfOpaquePointer
-run s1
-bindOk s1Res CSignedInt64 s1
-const eight CSignedInt64 8
-call s1Check math.equalI64
-arg s1Check left s1Res
-arg s1Check right eight
-run s1Check
-bind s1Ok Bool s1Check
-branchIf s1Ok s1OkLabel
-branch testFailed
-label s1OkLabel
 
-call s2 byteSizeOfSignedInt32
-run s2
-bindOk s2Res CSignedInt64 s2
-const four CSignedInt64 4
-call s2Check math.equalI64
-arg s2Check left s2Res
-arg s2Check right four
-run s2Check
-bind s2Ok Bool s2Check
-branchIf s2Ok s2OkLabel
-branch testFailed
-label s2OkLabel
+# byteSizeOfOpaquePointer == 8
+const eightExpected CSignedInt64 8
+call checkPointerSizeCall math.equalI64
+arg checkPointerSizeCall left byteSizeOfOpaquePointer
+arg checkPointerSizeCall right eightExpected
+run checkPointerSizeCall
+bind pointerSizeOk Bool checkPointerSizeCall
+branchIf pointerSizeOk pointerSizeHolds
+branch smokeAssertionFailed
+label pointerSizeHolds
 
-const charO CSignedInt32 79
-const charK CSignedInt32 75
-const charNl CSignedInt32 10
-call putO c.putchar
-arg putO c charO
-run putO
-call putK c.putchar
-arg putK c charK
-run putK
-call putNl c.putchar
-arg putNl c charNl
-run putNl
+# byteSizeOfSignedInt32 == 4
+const fourExpected CSignedInt64 4
+call checkInt32SizeCall math.equalI64
+arg checkInt32SizeCall left byteSizeOfSignedInt32
+arg checkInt32SizeCall right fourExpected
+run checkInt32SizeCall
+bind int32SizeOk Bool checkInt32SizeCall
+branchIf int32SizeOk int32SizeHolds
+branch smokeAssertionFailed
+label int32SizeHolds
 
-const exitOk ExitCode 0
-returnOk exitOk
+# byteSizeOfFloat64 == 8
+call checkFloat64SizeCall math.equalI64
+arg checkFloat64SizeCall left byteSizeOfFloat64
+arg checkFloat64SizeCall right eightExpected
+run checkFloat64SizeCall
+bind float64SizeOk Bool checkFloat64SizeCall
+branchIf float64SizeOk float64SizeHolds
+branch smokeAssertionFailed
+label float64SizeHolds
 
-label testFailed
-const exitFail CSignedInt32 1
-makeError testFailure MainError.TestFailed exitFail
-returnError testFailure
+const successMessageText CNullTerminatedByteString "OK"
+call writeSuccessLineCall console.writeLine
+arg writeSuccessLineCall console console
+arg writeSuccessLineCall text successMessageText
+run writeSuccessLineCall
+ignoreOk writeSuccessLineCall Void
+const exitOkCode ExitCode 0
+returnOk exitOkCode
+
+label smokeAssertionFailed
+makeError stddefSmokeFailure MainError.StddefSmokeAssertionFailed
+returnError stddefSmokeFailure

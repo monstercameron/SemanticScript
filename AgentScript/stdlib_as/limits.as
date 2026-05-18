@@ -1,154 +1,101 @@
+# ============================================================
+# AGENTSCRIPT STANDARD LIBRARY: <limits.h>-style numeric limits
+# ============================================================
+#
+# # rationale: C's <limits.h> is a wall of preprocessor `#define`s
+#   for integer-type bounds. AgentScript has no macros, so the
+#   pre-refined version exposed each bound as a zero-arg operation
+#   returning `Result CSignedInt64 Void`. The refined surface
+#   replaces the operations with module-scope `domainLiteral`
+#   constants — AST §2.12.5's purpose-built verb for typed
+#   compile-time values. Every bound is constant-folded by LLVM
+#   and carries a `domainLiteralSource` pointer back to the ISO C
+#   spec for provenance.
+#
+# # invariant: every limit matches ISO C99 §5.2.4.2.1 for its width
+#   on a two's-complement target. AgentScript targets two's
+#   complement exclusively (LLVM IR does not model sign-magnitude
+#   or one's-complement representations).
+#
+# # security: pure constants. No effects. No allocation.
+#
+# # timing: zero — every reference inlines.
+#
+# # observability: nothing to observe at runtime.
+
 project StdLimitsSelfTest
 target console
 runtime AgentRuntime 0.1
-
 entry console main
 
 error MainError
-errorCase MainError TestFailed CSignedInt32
+errorCase MainError LimitsSmokeAssertionFailed
 
-# ============================================================
-# AGENTSCRIPT STANDARD LIBRARY: <limits.h>-style accessors.
-#
-# C's <limits.h> is a header full of #define constants; AgentScript
-# doesn't have macros, so we expose each limit as an `operation` that
-# returns the value. Inlining-aware codegen makes this zero-cost.
-#
-# Operations:
-#   maximumSignedInt8Value         - 127
-#   minimumSignedInt8Value         - -128
-#   maximumUnsignedInt8Value       - 255
-#   maximumSignedInt16Value        - 32767
-#   minimumSignedInt16Value        - -32768
-#   maximumUnsignedInt16Value      - 65535
-#   maximumSignedInt32Value        - 2147483647
-#   minimumSignedInt32Value        - -2147483648
-#   maximumUnsignedInt32Value      - 4294967295
-#   maximumSignedInt64Value        - 9223372036854775807
-#   minSignedInt64        - -9223372036854775808 (wraps at I64 boundary)
-#   bitCountPerByte           - 8
-# ============================================================
+# section limits.signed8
+domainLiteral maximumSignedInt8Value CSignedInt64 127
+domainLiteralSource maximumSignedInt8Value isoC99.INT8_MAX
+domainLiteralTrust maximumSignedInt8Value trustedStaticLiteral
+domainLiteralValidation maximumSignedInt8Value trustedAbiConstant
 
-operation maximumSignedInt8Value
-output maximumSignedInt8Value Result CSignedInt64 Void
-memory maximumSignedInt8Value heap no
-memory maximumSignedInt8Value stack max 1KiB
-async maximumSignedInt8Value no
-purpose maximumSignedInt8Value "Largest value of a signed 8-bit integer (INT8_MAX)."
-label startMaximumSignedInt8Value
-const v CSignedInt64 127
-returnOk v
+domainLiteral minimumSignedInt8Value CSignedInt64 -128
+domainLiteralSource minimumSignedInt8Value isoC99.INT8_MIN
+domainLiteralTrust minimumSignedInt8Value trustedStaticLiteral
+domainLiteralValidation minimumSignedInt8Value trustedAbiConstant
 
+domainLiteral maximumUnsignedInt8Value CSignedInt64 255
+domainLiteralSource maximumUnsignedInt8Value isoC99.UINT8_MAX
+domainLiteralTrust maximumUnsignedInt8Value trustedStaticLiteral
+domainLiteralValidation maximumUnsignedInt8Value trustedAbiConstant
 
-operation minimumSignedInt8Value
-output minimumSignedInt8Value Result CSignedInt64 Void
-memory minimumSignedInt8Value heap no
-memory minimumSignedInt8Value stack max 1KiB
-async minimumSignedInt8Value no
-purpose minimumSignedInt8Value "Smallest value of a signed 8-bit integer (INT8_MIN)."
-label startMinimumSignedInt8Value
-const v CSignedInt64 -128
-returnOk v
+# section limits.signed16
+domainLiteral maximumSignedInt16Value CSignedInt64 32767
+domainLiteralSource maximumSignedInt16Value isoC99.INT16_MAX
+domainLiteralTrust maximumSignedInt16Value trustedStaticLiteral
+domainLiteralValidation maximumSignedInt16Value trustedAbiConstant
 
+domainLiteral minimumSignedInt16Value CSignedInt64 -32768
+domainLiteralSource minimumSignedInt16Value isoC99.INT16_MIN
+domainLiteralTrust minimumSignedInt16Value trustedStaticLiteral
+domainLiteralValidation minimumSignedInt16Value trustedAbiConstant
 
-operation maximumUnsignedInt8Value
-output maximumUnsignedInt8Value Result CSignedInt64 Void
-memory maximumUnsignedInt8Value heap no
-memory maximumUnsignedInt8Value stack max 1KiB
-async maximumUnsignedInt8Value no
-purpose maximumUnsignedInt8Value "UINT8_MAX = 255."
-label startMaximumUnsignedInt8Value
-const v CSignedInt64 255
-returnOk v
+domainLiteral maximumUnsignedInt16Value CSignedInt64 65535
+domainLiteralSource maximumUnsignedInt16Value isoC99.UINT16_MAX
+domainLiteralTrust maximumUnsignedInt16Value trustedStaticLiteral
+domainLiteralValidation maximumUnsignedInt16Value trustedAbiConstant
 
+# section limits.signed32
+domainLiteral maximumSignedInt32Value CSignedInt64 2147483647
+domainLiteralSource maximumSignedInt32Value isoC99.INT32_MAX
+domainLiteralTrust maximumSignedInt32Value trustedStaticLiteral
+domainLiteralValidation maximumSignedInt32Value trustedAbiConstant
 
-operation maximumSignedInt16Value
-output maximumSignedInt16Value Result CSignedInt64 Void
-memory maximumSignedInt16Value heap no
-memory maximumSignedInt16Value stack max 1KiB
-async maximumSignedInt16Value no
-purpose maximumSignedInt16Value "INT16_MAX = 32767."
-label startMaximumSignedInt16Value
-const v CSignedInt64 32767
-returnOk v
+domainLiteral minimumSignedInt32Value CSignedInt64 -2147483648
+domainLiteralSource minimumSignedInt32Value isoC99.INT32_MIN
+domainLiteralTrust minimumSignedInt32Value trustedStaticLiteral
+domainLiteralValidation minimumSignedInt32Value trustedAbiConstant
 
+domainLiteral maximumUnsignedInt32Value CSignedInt64 4294967295
+domainLiteralSource maximumUnsignedInt32Value isoC99.UINT32_MAX
+domainLiteralTrust maximumUnsignedInt32Value trustedStaticLiteral
+domainLiteralValidation maximumUnsignedInt32Value trustedAbiConstant
 
-operation minimumSignedInt16Value
-output minimumSignedInt16Value Result CSignedInt64 Void
-memory minimumSignedInt16Value heap no
-memory minimumSignedInt16Value stack max 1KiB
-async minimumSignedInt16Value no
-purpose minimumSignedInt16Value "INT16_MIN = -32768."
-label startMinimumSignedInt16Value
-const v CSignedInt64 -32768
-returnOk v
+# section limits.signed64
+domainLiteral maximumSignedInt64Value CSignedInt64 9223372036854775807
+domainLiteralSource maximumSignedInt64Value isoC99.INT64_MAX
+domainLiteralTrust maximumSignedInt64Value trustedStaticLiteral
+domainLiteralValidation maximumSignedInt64Value trustedAbiConstant
 
+# # warning: INT64_MIN (-9223372036854775808) cannot be expressed
+#   as a positive literal in any base-10 representation that fits
+#   inside an i64 — the parser would see 9223372036854775808 first,
+#   which overflows. Callers needing INT64_MIN should compute it
+#   from maximumSignedInt64Value via `negate(max) - 1`.
 
-operation maximumUnsignedInt16Value
-output maximumUnsignedInt16Value Result CSignedInt64 Void
-memory maximumUnsignedInt16Value heap no
-memory maximumUnsignedInt16Value stack max 1KiB
-async maximumUnsignedInt16Value no
-purpose maximumUnsignedInt16Value "UINT16_MAX = 65535."
-label startMaximumUnsignedInt16Value
-const v CSignedInt64 65535
-returnOk v
-
-
-operation maximumSignedInt32Value
-output maximumSignedInt32Value Result CSignedInt64 Void
-memory maximumSignedInt32Value heap no
-memory maximumSignedInt32Value stack max 1KiB
-async maximumSignedInt32Value no
-purpose maximumSignedInt32Value "INT32_MAX = 2147483647."
-label startMaximumSignedInt32Value
-const v CSignedInt64 2147483647
-returnOk v
-
-
-operation minimumSignedInt32Value
-output minimumSignedInt32Value Result CSignedInt64 Void
-memory minimumSignedInt32Value heap no
-memory minimumSignedInt32Value stack max 1KiB
-async minimumSignedInt32Value no
-purpose minimumSignedInt32Value "INT32_MIN = -2147483648."
-label startMinimumSignedInt32Value
-const v CSignedInt64 -2147483648
-returnOk v
-
-
-operation maximumUnsignedInt32Value
-output maximumUnsignedInt32Value Result CSignedInt64 Void
-memory maximumUnsignedInt32Value heap no
-memory maximumUnsignedInt32Value stack max 1KiB
-async maximumUnsignedInt32Value no
-purpose maximumUnsignedInt32Value "UINT32_MAX = 4294967295."
-label startMaximumUnsignedInt32Value
-const v CSignedInt64 4294967295
-returnOk v
-
-
-operation maximumSignedInt64Value
-output maximumSignedInt64Value Result CSignedInt64 Void
-memory maximumSignedInt64Value heap no
-memory maximumSignedInt64Value stack max 1KiB
-async maximumSignedInt64Value no
-purpose maximumSignedInt64Value "INT64_MAX = 9223372036854775807."
-label startMaximumSignedInt64Value
-const v CSignedInt64 9223372036854775807
-returnOk v
-
-
-operation bitCountPerByte
-output bitCountPerByte Result CSignedInt64 Void
-memory bitCountPerByte heap no
-memory bitCountPerByte stack max 1KiB
-async bitCountPerByte no
-purpose bitCountPerByte "CHAR_BIT (always 8 in C99+)."
-label startBitCountPerByte
-const v CSignedInt64 8
-returnOk v
-
+# section limits.platform
+domainLiteral bitCountPerByte CSignedInt64 8
+domainLiteralSource bitCountPerByte isoC99.CHAR_BIT
+domainLiteralTrust bitCountPerByte trustedStaticLiteral
+domainLiteralValidation bitCountPerByte trustedAbiConstant
 
 # ============================================================
 # Smoke test
@@ -158,55 +105,52 @@ operation main
 input main console Console
 output main Result ExitCode MainError
 effect main write console.stdout
-memory main heap no
+memoryHeap main no
 async main no
-purpose main "Smoke-test limits accessors. Prints OK."
+purpose main "Verify a representative subset of the numeric-limit constants resolves correctly."
+invariant main "INT8_MAX == 127, INT32_MAX == 2147483647, CHAR_BIT == 8."
 
 label startMain
 
-call l1 maximumSignedInt32Value
-run l1
-bindOk l1Res CSignedInt64 l1
-const exp32 CSignedInt64 2147483647
-call l1Check math.equalI64
-arg l1Check left l1Res
-arg l1Check right exp32
-run l1Check
-bind l1Ok Bool l1Check
-branchIf l1Ok l1OkLabel
-branch testFailed
-label l1OkLabel
+const oneHundredTwentySeven CSignedInt64 127
+call checkInt8MaxCall math.equalI64
+arg checkInt8MaxCall left maximumSignedInt8Value
+arg checkInt8MaxCall right oneHundredTwentySeven
+run checkInt8MaxCall
+bind int8MaxOk Bool checkInt8MaxCall
+branchIf int8MaxOk int8MaxHolds
+branch smokeAssertionFailed
+label int8MaxHolds
 
-call l2 bitCountPerByte
-run l2
-bindOk l2Res CSignedInt64 l2
-const eight CSignedInt64 8
-call l2Check math.equalI64
-arg l2Check left l2Res
-arg l2Check right eight
-run l2Check
-bind l2Ok Bool l2Check
-branchIf l2Ok l2OkLabel
-branch testFailed
-label l2OkLabel
+const twoToThirtyOneMinusOne CSignedInt64 2147483647
+call checkInt32MaxCall math.equalI64
+arg checkInt32MaxCall left maximumSignedInt32Value
+arg checkInt32MaxCall right twoToThirtyOneMinusOne
+run checkInt32MaxCall
+bind int32MaxOk Bool checkInt32MaxCall
+branchIf int32MaxOk int32MaxHolds
+branch smokeAssertionFailed
+label int32MaxHolds
 
-const charO CSignedInt32 79
-const charK CSignedInt32 75
-const charNl CSignedInt32 10
-call putO c.putchar
-arg putO c charO
-run putO
-call putK c.putchar
-arg putK c charK
-run putK
-call putNl c.putchar
-arg putNl c charNl
-run putNl
+const eightBits CSignedInt64 8
+call checkCharBitCall math.equalI64
+arg checkCharBitCall left bitCountPerByte
+arg checkCharBitCall right eightBits
+run checkCharBitCall
+bind charBitOk Bool checkCharBitCall
+branchIf charBitOk charBitHolds
+branch smokeAssertionFailed
+label charBitHolds
 
-const exitOk ExitCode 0
-returnOk exitOk
+const successMessageText CNullTerminatedByteString "OK"
+call writeSuccessLineCall console.writeLine
+arg writeSuccessLineCall console console
+arg writeSuccessLineCall text successMessageText
+run writeSuccessLineCall
+ignoreOk writeSuccessLineCall Void
+const exitOkCode ExitCode 0
+returnOk exitOkCode
 
-label testFailed
-const exitFail CSignedInt32 1
-makeError testFailure MainError.TestFailed exitFail
-returnError testFailure
+label smokeAssertionFailed
+makeError limitsSmokeFailure MainError.LimitsSmokeAssertionFailed
+returnError limitsSmokeFailure
