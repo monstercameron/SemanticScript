@@ -1,8 +1,7 @@
 # Todo TUI project build tape.
 # This is the project-layout lab for the future SemanticScript project model.
-# Current semsc.py can compile this build tape because importModule inlines
-# main.sem after the project/runtime/metadata rows. Rich project-mode parsing of
-# build.sem is tracked in the root TODO.
+# semsc.py validates this build tape, reads build output/LLVM defaults from it,
+# then uses importModule to inline main.sem through the registered module path.
 
 buildProject todoTui
 project TodoTuiApp
