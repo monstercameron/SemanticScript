@@ -854,6 +854,12 @@ class ExtendedFacts:
     codecDeclarations: Dict[str, SourceLine] = field(default_factory=dict)
     collectionTypeDeclarations: Dict[str, SourceLine] = field(default_factory=dict)
     collectionOperationDeclarations: Dict[str, SourceLine] = field(default_factory=dict)
+    # P10 — `rationale CALL "text"` verb attaches a rationale to a
+    # specific call name within an operation. Sister to the `# rationale:`
+    # typed comment (which attaches to the operation), but explicit
+    # enough that diagnostics can cite it by call-name lookup rather
+    # than by comment proximity. Keyed by (operationName, callName).
+    callRationales: Dict[Tuple[str, str], Citation] = field(default_factory=dict)
 
 
 def gather_extended(baseFacts: ProgramFacts) -> ExtendedFacts:
@@ -878,6 +884,25 @@ def gather_extended(baseFacts: ProgramFacts) -> ExtendedFacts:
 
         verb = sourceLine.verb
         args = sourceLine.args
+
+        if verb == "rationale" and currentOperation and len(args) >= 2:
+            # `rationale CALL "text"` — args[0] is the call name; the
+            # rest is rationale text (the parser keeps quoted text as
+            # one token, but allow whitespace-joined fallback for tools
+            # that emit unquoted multi-token bodies).
+            callName = args[0]
+            rationaleText = " ".join(args[1:]).strip()
+            facts.callRationales[(currentOperation, callName)] = Citation(
+                span=span_of_line(sourceLine, "callRationale"),
+                edgeKind="rationale",
+                text=rationaleText,
+            )
+            # Also surface in the per-op rationale list so the existing
+            # narrative_citations_for_operation walk picks it up.
+            facts.operationRationale.setdefault(currentOperation, []).append(
+                facts.callRationales[(currentOperation, callName)]
+            )
+            continue
 
         if verb == "operation" and args:
             currentOperation = args[0]
@@ -6695,6 +6720,102 @@ def check_pins_null_body_failure_path_missing_rationale(facts: ExtendedFacts) ->
     return diagnostics
 
 
+def check_rationale_call_references_known_call(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3608 — `rationale CALL "text"` must reference a call name that
+    was declared earlier in the same operation. A rationale attached to
+    a typoed or removed call name is dangling context — the lint surfaces
+    it instead of letting it rot. Empty rationale text also trips: a
+    bare `rationale callName` is the same magic as a `#` proximity
+    comment with none of the explicit-binding benefit."""
+    diagnostics: List[Diagnostic] = []
+    for (operationName, callName), citation in facts.callRationales.items():
+        operationFact = facts.base.operations.get(operationName)
+        if operationFact is None:
+            # SS4104 already covers the missing-op case.
+            continue
+        declaredCallNames: Set[str] = set()
+        for sourceLine in operationFact.lines:
+            if (is_comment(sourceLine) or not sourceLine.tokens
+                    or sourceLine.verb != "call" or len(sourceLine.args) < 2):
+                continue
+            declaredCallNames.add(sourceLine.args[0])
+        rationaleSpan = citation.span
+        if callName not in declaredCallNames:
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS3608",
+                kind="webserver.rationaleReferencesUnknownCall",
+                severity=Severity.ERROR,
+                subjectName=callName,
+                subjectKind="call",
+                gapEdge="callDeclaration",
+                intentSlogan=f"`rationale {callName}` references undeclared call",
+                primary=Span(
+                    path=rationaleSpan.path,
+                    line=rationaleSpan.line,
+                    column=rationaleSpan.column,
+                    role="rationaleCallReference",
+                ),
+                invariantRule=(
+                    f"`rationale {callName} \"…\"` must name a call declared "
+                    f"earlier in operation `{operationName}`; dangling "
+                    f"rationale rots when the call is renamed or removed"
+                ),
+                specAnchor="SYNTAX.md#rationale",
+                fixCandidates=[
+                    FixCandidate(
+                        name="correctCallName",
+                        shape=f"# verify `{callName}` against the call names in operation `{operationName}`",
+                    ),
+                    FixCandidate(
+                        name="removeOrphanRationale",
+                        shape=f"# remove `rationale {callName} \"…\"` if the call no longer exists",
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.TRIVIAL,
+                passProvenance="check_rationale_call_references_known_call",
+                agentHint="orphan rationale is one of the strongest signals that a refactor moved code but left context behind",
+            ))
+            continue
+        if not citation.text:
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3608",
+                kind="webserver.rationaleMissingText",
+                severity=Severity.WARNING,
+                subjectName=callName,
+                subjectKind="call",
+                gapEdge="rationaleText",
+                intentSlogan=f"`rationale {callName}` has no rationale text",
+                primary=Span(
+                    path=rationaleSpan.path,
+                    line=rationaleSpan.line,
+                    column=rationaleSpan.column,
+                    role="rationaleVerbWithoutText",
+                ),
+                invariantRule=(
+                    "`rationale CALL \"text\"` requires a non-empty rationale "
+                    "string; a bare `rationale callName` is no better than the "
+                    "proximity-based `# rationale:` comment it was meant to "
+                    "replace"
+                ),
+                specAnchor="SYNTAX.md#rationale",
+                fixCandidates=[
+                    FixCandidate(
+                        name="addRationaleText",
+                        shape=f"rationale {callName} \"<why this call is shaped this way>\"",
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                effort=Effort.TRIVIAL,
+                passProvenance="check_rationale_call_references_known_call",
+                agentHint="the rationale text IS the value-add; without it, prefer the `# rationale:` comment form",
+            ))
+    return diagnostics
+
+
 CHECKERS = [
     # Foundational basics — run first so reference / arity / duplicate
     # errors surface before any refinement-level diagnostic.
@@ -6769,6 +6890,7 @@ CHECKERS = [
     check_legacy_null_body_marker,
     check_pins_null_body_failure_path_missing_rationale,
     check_response_body_forwarder_declaration_honored,
+    check_rationale_call_references_known_call,
 ]
 
 
