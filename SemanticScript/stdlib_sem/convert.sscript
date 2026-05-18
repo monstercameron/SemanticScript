@@ -35,11 +35,15 @@ input widenSignedInt32ToSignedInt64 inputValue CSignedInt32
 output widenSignedInt32ToSignedInt64 CSignedInt64
 memoryHeap widenSignedInt32ToSignedInt64 no
 async widenSignedInt32ToSignedInt64 no
-purpose widenSignedInt32ToSignedInt64 "Sign-extend an i32 to i64. Implemented via the return-type coercion that returnValue performs."
+purpose widenSignedInt32ToSignedInt64 "Sign-extend an i32 to i64 through the explicit compiler conversion target."
 invariant widenSignedInt32ToSignedInt64 "Value-preserving: every CSignedInt32 fits in CSignedInt64."
 guarantee widenSignedInt32ToSignedInt64 "Total."
 label startWidenSignedInt32ToSignedInt64
-returnValue inputValue
+call widenInputCall math.signExtendCSignedInt32ToCSignedInt64
+arg widenInputCall inputValue inputValue
+run widenInputCall
+bind widenedInput CSignedInt64 widenInputCall
+returnValue widenedInput
 
 operation narrowSignedInt64ToSignedInt32
 input narrowSignedInt64ToSignedInt32 inputValue CSignedInt64
@@ -51,7 +55,11 @@ invariant narrowSignedInt64ToSignedInt32 "For inputs in [-2^31, 2^31-1] the resu
 warning narrowSignedInt64ToSignedInt32 "Inputs outside the i32 range are silently truncated — caller must screen first to avoid surprise."
 guarantee narrowSignedInt64ToSignedInt32 "Total."
 label startNarrowSignedInt64ToSignedInt32
-returnValue inputValue
+call narrowInputCall math.truncateCSignedInt64ToCSignedInt32
+arg narrowInputCall inputValue inputValue
+run narrowInputCall
+bind narrowedInput CSignedInt32 narrowInputCall
+returnValue narrowedInput
 
 operation convertByteValueToUnsignedInt32
 input convertByteValueToUnsignedInt32 signExtendedByteValue CSignedInt32
@@ -66,8 +74,12 @@ guarantee convertByteValueToUnsignedInt32 "Total."
 #   unsigned byte need this conversion. The +256 then mod-256
 #   normalizes any sign-extended -1 / -2 / ... back to 255 / 254 / ...
 label startConvertByteValueToUnsignedInt32
+call widenByteCall math.signExtendCSignedInt32ToCSignedInt64
+arg widenByteCall inputValue signExtendedByteValue
+run widenByteCall
+bind signExtendedByteValue64 CSignedInt64 widenByteCall
 call shiftByteUpwardCall math.addI64
-arg shiftByteUpwardCall left signExtendedByteValue
+arg shiftByteUpwardCall left signExtendedByteValue64
 arg shiftByteUpwardCall right byteRoleAdjustmentValue
 run shiftByteUpwardCall
 bind shiftedByteUpward I64 shiftByteUpwardCall
@@ -75,7 +87,11 @@ call reduceByteModuloCall math.moduloI64
 arg reduceByteModuloCall left shiftedByteUpward
 arg reduceByteModuloCall right byteRoleAdjustmentValue
 run reduceByteModuloCall
-bind unsignedByteValue CSignedInt32 reduceByteModuloCall
+bind unsignedByteValue64 CSignedInt64 reduceByteModuloCall
+call narrowUnsignedByteCall math.truncateCSignedInt64ToCSignedInt32
+arg narrowUnsignedByteCall inputValue unsignedByteValue64
+run narrowUnsignedByteCall
+bind unsignedByteValue CSignedInt32 narrowUnsignedByteCall
 returnValue unsignedByteValue
 
 # section convert.numericFloats

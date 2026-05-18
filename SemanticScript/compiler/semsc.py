@@ -456,6 +456,8 @@ class Program:
         self.source_lines = {}        # line -> raw source text in parsed stream
         # ---- declarations relevant to codegen ----
         self.project_name = None
+        self.module_name = None
+        self.module_line = 0
         self.targets = []
         self.entry = None
         self.consts = {}              # name -> (type, value)
@@ -521,8 +523,25 @@ BODY_VERBS_CODEGEN = {
 # indexes.
 BODY_VERBS_RESERVED_SOFT = {
     "guarantee", "failure", "security", "timing", "observability",
+    "memoryAllocationSource",
     "useCapability",
     "importModule",
+    # `pinsNullBodyFailurePath OP "rationale"` — explicit opt-in to the
+    # native HTTP adapter's null-body 500 contract. Replaces a stringly-
+    # typed marker phrase that used to live inside `warning OP "..."`
+    # text. semsc treats it as metadata; semlint2 SS3603 reads it as the
+    # canonical opt-out. See SYNTAX.md#pinsNullBodyFailurePath.
+    "pinsNullBodyFailurePath",
+    # `responseBodyForwarder OP bodyArgName` — declares that an operation
+    # forwards its `bodyArgName` input straight into an http.response*
+    # writer (or another forwarder), making it part of the transitive
+    # response-body-writer set. Replaces a `body` arg-name string match.
+    "responseBodyForwarder",
+    # `rationale CALL "text"` — operation-body counterpart to the
+    # `# rationale:` typed comment; explicitly attaches a rationale to a
+    # specific call site so SS3603 (and other rules) can cite it without
+    # relying on comment proximity. See SYNTAX.md#rationale.
+    "rationale",
 }
 
 # `*_HARD` verbs are spec-defined runtime features (cleanup, structured
@@ -561,6 +580,8 @@ BODY_VERBS = BODY_VERBS_CODEGEN | BODY_VERBS_RESERVED
 _KNOWN_MODES = {
     "capturedOutputReplay",
 }
+
+_MODULE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
 
 
 def parse(source: str) -> Program:
@@ -650,7 +671,21 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
     if verb == "target":
         prog.targets.append(args[0])
         return
-    if verb in ("runtime", "module"):
+    if verb == "runtime":
+        return
+    if verb == "module":
+        if not args:
+            raise SyntaxError("module requires: module DOTTED_NAME")
+        module_name = args[0]
+        if not _MODULE_NAME_RE.match(module_name):
+            raise SyntaxError(
+                f"module: `{module_name}` is not a valid dotted SemanticScript namespace")
+        if prog.module_name is not None and prog.module_name != module_name:
+            raise SyntaxError(
+                f"module: conflicting module declarations `{prog.module_name}` "
+                f"(line {prog.module_line}) and `{module_name}`")
+        prog.module_name = module_name
+        prog.module_line = lineno
         return
     if verb == "mode":
         # mode NAME — declares an honest classification of the program's
@@ -796,6 +831,19 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
         ws = prog.web_servers[args[0]]
         ws.middleware.append((args[1], args[2]))
         return
+    if verb in ("routeTimeoutOptOut", "routeMiddlewareOptOut"):
+        # `routeTimeoutOptOut SERVER PATH "rationale"` /
+        # `routeMiddlewareOptOut SERVER PATH "rationale"` — declares that
+        # a route deliberately omits the cross-cutting timeout /
+        # middleware contract. semsc accepts as metadata; semlint2 SS3604
+        # uses it to suppress the coverage-drift diagnostic. Stored under
+        # the server's hard_metadata bucket so tooling can inspect it.
+        if len(args) < 2:
+            raise SyntaxError(
+                f"{verb} requires: {verb} SERVER PATH \"rationale\"")
+        prog.hard_metadata.setdefault(args[0], {}).setdefault(verb, []).append(
+            tuple(_unwrap(t) for t in args[1:]))
+        return
 
     # ----- codecs / validators / mappers / boundaries / adapters -----
     if verb in ("codec", "validator", "mapper", "adapter", "boundary", "jsonCodec"):
@@ -852,6 +900,8 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
         return
     if verb == "authority":
         # authority OPERATION EFFECT_PATH ACCESS  (top-level grant form)
+        if len(args) < 3:
+            raise SyntaxError("authority requires: authority TARGET EFFECT_PATH ACCESS")
         prog.hard_metadata.setdefault(args[0], {}).setdefault(
             "authority", []).append(" ".join(args[1:]))
         return
@@ -1003,8 +1053,15 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
 # Verbs that carry the operation name as their first arg for §9 checkability.
 HEADER_VERBS_WITH_OWNERSHIP = {
     "input", "output", "effect", "memory", "async",
+    "memoryAllocationSource",
     "purpose", "invariant", "warning",
     "guarantee", "failure", "security", "timing", "observability",
+    # `pinsNullBodyFailurePath OP "rationale"` — first arg is the owning
+    # operation; spec §9 ownership rule applies for checkability.
+    "pinsNullBodyFailurePath",
+    # `responseBodyForwarder OP bodyArgName` — first arg is the owning
+    # operation that forwards its body input.
+    "responseBodyForwarder",
 }
 
 
@@ -1078,8 +1135,38 @@ def resolve_alias_full(prog: Program, name: str) -> list:
     return [name]
 
 
+def enum_repr_type(prog: Program, name: str) -> str | None:
+    enum = prog.enums.get(name)
+    if enum is None:
+        return None
+    return enum.repr or "CSignedInt32"
+
+
+def enum_case_values(prog: Program) -> dict:
+    values = {}
+    for enum_name, enum in prog.enums.items():
+        next_value = 0
+        for case_name, raw_value in enum.cases:
+            if raw_value is None:
+                case_value = next_value
+            else:
+                try:
+                    case_value = int(raw_value)
+                except (TypeError, ValueError):
+                    # Keep lowering deterministic for metadata-like enum
+                    # values; a linter pass can reject non-integer repr cases
+                    # when an enum is used as a runtime value.
+                    case_value = next_value
+            values[case_name] = (enum_name, case_value)
+            next_value = case_value + 1
+    return values
+
+
 def llvm_type_for(prog: Program, typename: str):
     typename = resolve_alias(prog, typename)
+    enum_repr = enum_repr_type(prog, typename)
+    if enum_repr is not None:
+        return llvm_type_for(prog, enum_repr)
     # C-stdlib alignment: every C scalar type has a spec-compliant
     # SemanticScript alias whose name carries signedness, width, ABI role, or
     # encoding contract (spec §6 names-must-carry-local-intent, §10
@@ -1139,6 +1226,8 @@ def llvm_type_for(prog: Program, typename: str):
         "CVoidPtr", "CFile", "CFilePtr", "CTm", "CTmPtr", "CJmpBuf",
     ):
         return I8P
+    if typename in ("HttpRequest", "HttpResponse"):
+        return I8P
     return None
 
 
@@ -1147,6 +1236,63 @@ def llvm_type_for_or_void(prog: Program, typename: str):
     if typename in ("Void", "CVoid"):
         return VOID
     return llvm_type_for(prog, typename)
+
+
+@dataclass
+class OutputContract:
+    line: int
+    tokens: list
+    ok_type: str = ""
+    llvm_type: object = None
+    problem: str = ""
+    message: str = ""
+
+
+def _operation_output_contract(prog: Program, op: Operation) -> OutputContract:
+    """Return the lowerable success type declared by an operation output line."""
+    for verb, args, lineno in op.lines:
+        if verb != "output" or not args or args[0] != op.name:
+            continue
+        tokens = args[1:]
+        if not tokens:
+            return OutputContract(
+                lineno, tokens, problem="malformedOutputContract",
+                message=(
+                    f"malformedOutputContract: operation `{op.name}` has an "
+                    "empty output contract; expected `output OP TYPE` or "
+                    "`output OP Result OK ERROR`"))
+        if tokens[0] == "Result":
+            if len(tokens) < 3:
+                return OutputContract(
+                    lineno, tokens, problem="malformedOutputContract",
+                    message=(
+                        f"malformedOutputContract: operation `{op.name}` "
+                        "declares `Result` output without both OK and ERROR "
+                        "types"))
+            ok_type = tokens[1]
+        else:
+            ok_type = tokens[0]
+
+        resolved_ok = resolve_alias(prog, ok_type)
+        if resolved_ok in ("Void", "CVoid"):
+            return OutputContract(lineno, tokens, ok_type=ok_type, llvm_type=I32)
+        llty = llvm_type_for(prog, ok_type)
+        if llty is None:
+            return OutputContract(
+                lineno, tokens, ok_type=ok_type, problem="unknownOutputType",
+                message=(
+                    f"unknownOutputType: operation `{op.name}` declares output "
+                    f"type `{ok_type}`, but semsc cannot lower it to a known "
+                    "SemanticScript/LLVM type"))
+        return OutputContract(lineno, tokens, ok_type=ok_type, llvm_type=llty)
+
+    line = op.decl_line or (op.lines[0][2] if op.lines else 0)
+    return OutputContract(
+        line, [], problem="missingOutputContract",
+        message=(
+            f"missingOutputContract: operation `{op.name}` has no output "
+            f"contract; add `output {op.name} TYPE` or "
+            f"`output {op.name} Result OK ERROR`"))
 
 
 # ============================================================
@@ -1170,6 +1316,8 @@ _TARGET_ALIASES = {
     # short forms so the existing call-target dispatch fires correctly.
     "math.convertSignedInt64ToFloat64": "math.intToFloat",
     "math.convertFloat64ToSignedInt64": "math.floatToInt",
+    "math.convertSignedInt32ToSignedInt64": "math.signExtendCSignedInt32ToCSignedInt64",
+    "math.convertSignedInt64ToSignedInt32": "math.truncateCSignedInt64ToCSignedInt32",
 }
 
 _BINOP_TO_LLVM = {
@@ -1215,6 +1363,15 @@ _CMP_TO_LLVM = {
     "math.lessThanOrEqualI64":    "<=",
     "math.greaterThanI64":        ">",
     "math.greaterThanOrEqualI64": ">=",
+}
+
+_CMP_I32_TO_LLVM = {
+    "math.equalCSignedInt32":              "==",
+    "math.notEqualCSignedInt32":           "!=",
+    "math.lessThanCSignedInt32":           "<",
+    "math.lessThanOrEqualCSignedInt32":    "<=",
+    "math.greaterThanCSignedInt32":        ">",
+    "math.greaterThanOrEqualCSignedInt32": ">=",
 }
 
 
@@ -1264,6 +1421,20 @@ _DOMAIN_METHOD_TO_I64_PRIMITIVE = {
 }
 
 
+# Domain methods for CSignedInt32-repr types and enums. Mirrors the I64
+# table; used when `TypeName.methodName` resolves to a CSignedInt32-shaped
+# alias or to an enum with `repr CSignedInt32`. Supports equality and
+# ordered comparison on int32-shaped enum cases like SaveTodosStatus.
+_DOMAIN_METHOD_TO_I32_PRIMITIVE = {
+    "equal":                "math.equalCSignedInt32",
+    "notEqual":             "math.notEqualCSignedInt32",
+    "lessThan":             "math.lessThanCSignedInt32",
+    "lessThanOrEqual":      "math.lessThanOrEqualCSignedInt32",
+    "greaterThan":          "math.greaterThanCSignedInt32",
+    "greaterThanOrEqual":   "math.greaterThanOrEqualCSignedInt32",
+}
+
+
 # ============================================================
 # Codegen
 # ============================================================
@@ -1277,6 +1448,7 @@ class Codegen:
         self.provenance = CompilerProvenance(prog)
         self.strings = {}
         self._next_str_id = 0
+        self._web_route_handler_names = set()
         self._declare_externals()
 
     def _declare_externals(self):
@@ -1304,6 +1476,7 @@ class Codegen:
         # program that calls only c.printf doesn't drag every libc external
         # into its IR.
         self._libc_funcs = {}
+        self._http_runtime_funcs = {}
         # Cache for stdio stream globals (stdin / stdout / stderr).
         self._libc_streams = {}
         # Mutable module-scope globals: emitted at compile() entry, looked
@@ -1536,6 +1709,17 @@ class Codegen:
         self._libc_funcs[semantic_name] = fn
         return fn
 
+    def _runtime_func(self, name: str, ret_ty, param_tys):
+        if name in self._http_runtime_funcs:
+            return self._http_runtime_funcs[name]
+        for existing in self.module.functions:
+            if existing.name == name:
+                self._http_runtime_funcs[name] = existing
+                return existing
+        fn = ir.Function(self.module, ir.FunctionType(ret_ty, param_tys), name=name)
+        self._http_runtime_funcs[name] = fn
+        return fn
+
     def _coerce_for_libc(self, builder, value, target_typ_name: str):
         """Coerce an SSA value to match a libc parameter's declared type."""
         target_ll = llvm_type_for(self.prog, target_typ_name)
@@ -1728,6 +1912,12 @@ class Codegen:
             gv.initializer = initializer
             self._mutable_globals[name] = gv
 
+    def _require_operation_output_contract(self, op: Operation) -> OutputContract:
+        contract = _operation_output_contract(self.prog, op)
+        if contract.problem:
+            raise ValueError(contract.message)
+        return contract
+
     # ---------- entry ----------
     def compile(self):
         # Emit mutable module globals first so any operation body that
@@ -1758,6 +1948,7 @@ class Codegen:
                 f"the AST of an `entry {mode}` program.")
         if opname not in self.prog.operations:
             raise ValueError(f"entry references unknown operation: {opname}")
+        self._require_operation_output_contract(self.prog.operations[opname])
 
         # ---- pass 1: pre-declare every non-main user operation as an LLVM
         # function prototype, so any operation can call any other regardless
@@ -1798,33 +1989,32 @@ class Codegen:
         The return type is derived from the operation's `output` line:
             output OPNAME Result OK_TYPE ERR_TYPE     -> OK_TYPE
             output OPNAME OK_TYPE                     -> OK_TYPE
+        Current 1.0 behavior rejects missing, malformed, or unknown output
+        contracts before LLVM lowering.
         If OK_TYPE is `Void` (the spec's no-value success leg), we fall back
         to i32 because the LLVM ABI still needs a concrete return slot — the
         i32 then carries a sentinel zero. If the output line is missing or
         the OK type isn't a known SemanticScript type alias, we also use i32 (backward
-        compatible with pre-typed user-ops)."""
+        compatible with pre-typed user-ops).
+
+        1.0 strictness note: that legacy fallback is now guarded by
+        _require_operation_output_contract; missing, malformed, or unknown
+        output contracts are rejected before lowering."""
         params = []  # list of (pname, llvm_type, source_type_name)
-        return_type = I32  # default
-        return_type_name = None
+        contract = self._require_operation_output_contract(op)
+        return_type = contract.llvm_type
+        return_type_name = contract.ok_type
         for verb, args, _ln in op.lines:
-            if verb == "output" and len(args) >= 2:
-                # args = [opname, ...rest]
-                rest = args[1:]
-                ok_type_name = None
-                if len(rest) >= 1 and rest[0] == "Result" and len(rest) >= 2:
-                    ok_type_name = rest[1]
-                elif len(rest) >= 1:
-                    ok_type_name = rest[0]
-                if ok_type_name and ok_type_name not in ("Void", "CVoid"):
-                    rt = llvm_type_for(self.prog, ok_type_name)
-                    if rt is not None:
-                        return_type = rt
-                        return_type_name = ok_type_name
+            if verb == "output":
                 continue
             if verb != "input" or len(args) < 3:
                 continue
             _owner_op_name, pname, ptype = args[0], args[1], args[2]
-            if pname in OPAQUE_INPUTS:
+            preserve_web_handle = (
+                op.name in self._web_route_handler_names
+                and ptype in ("HttpRequest", "HttpResponse")
+            )
+            if pname in OPAQUE_INPUTS and not preserve_web_handle:
                 continue
             llty = llvm_type_for(self.prog, ptype)
             if llty is None:
@@ -2102,21 +2292,130 @@ class Codegen:
         self._compile_body(op, fn, builder, initial_binds={})
 
     def _compile_webserver_program(self):
-        # Compile every operation as a callable function (handlers + any
-        # helpers). The HTTP runtime isn't wired here — instead we emit a
-        # stub `int main()` that returns 0 so the program links. The route
-        # handlers exist as real LLVM functions that an external runtime
-        # could dispatch to once added.
+        # Compile every operation as a callable function (handlers + helpers).
+        # Routed webServer programs now emit a native HTTP runtime entrypoint;
+        # declarative/library files without routes keep the historic stub main.
         self._user_ops = {}
+        active_servers = [
+            server for server in self.prog.web_servers.values()
+            if server.routes
+        ]
+        self._web_route_handler_names = {
+            handler for server in active_servers
+            for _method, _path, handler in server.routes
+        }
+        self._web_route_handler_names.update({
+            middleware for server in active_servers
+            for _path, middleware in server.middleware
+        })
         for name, op in self.prog.operations.items():
             self._declare_user_op(op)
         for name, op in self.prog.operations.items():
             self._compile_user_op(op)
+
+        if active_servers:
+            if len(active_servers) > 1:
+                raise ValueError(
+                    "target webServer currently supports one routed webServer per executable")
+            self._emit_webserver_main(active_servers[0])
+            return
+
         fnty = ir.FunctionType(I32, [])
         fn = ir.Function(self.module, fnty, name="main")
         entry_bb = fn.append_basic_block("entry")
         builder = ir.IRBuilder(entry_bb)
         builder.ret(ir.Constant(I32, 0))
+
+    def _validate_web_route_handler(self, server_name: str, method: str, path: str, handler_name: str):
+        if handler_name not in self.prog.operations:
+            raise ValueError(
+                f"route {server_name} {method} {path}: handler `{handler_name}` is not defined")
+        op_info = self._user_ops.get(handler_name)
+        if op_info is None:
+            raise ValueError(
+                f"route {server_name} {method} {path}: handler `{handler_name}` was not compiled")
+
+        param_types = [ptype for _pname, _llty, ptype in op_info["params"]]
+        if param_types != ["HttpRequest", "HttpResponse"]:
+            raise ValueError(
+                f"route {server_name} {method} {path}: handler `{handler_name}` must declare "
+                "`input HANDLER request HttpRequest`, `input HANDLER response HttpResponse`, "
+                "and no extra native ABI parameters")
+        if op_info["return_type"] != I32:
+            raise ValueError(
+                f"route {server_name} {method} {path}: handler `{handler_name}` must return CSignedInt32")
+
+    def _emit_webserver_main(self, server: WebServer):
+        if server.host is None:
+            raise ValueError(f"webServer `{server.name}` is missing serverHost")
+        if server.port is None:
+            raise ValueError(f"webServer `{server.name}` is missing serverPort")
+        for method, path, handler_name in server.routes:
+            self._validate_web_route_handler(server.name, method, path, handler_name)
+        middleware_by_path = {}
+        for path, middleware_name in server.middleware:
+            route_path = _unwrap(path)
+            self._validate_web_route_handler(server.name, "MIDDLEWARE", route_path, middleware_name)
+            middleware_by_path[route_path] = middleware_name
+
+        handler_fnty = ir.FunctionType(I32, [I8P, I8P])
+        handler_ptr_ty = handler_fnty.as_pointer()
+        route_ty = ir.LiteralStructType([I8P, I8P, handler_ptr_ty, handler_ptr_ty])
+        config_ty = ir.LiteralStructType([I8P, I16, route_ty.as_pointer(), I64])
+        server_run = self._runtime_func("ss_http_server_run", I32, [config_ty.as_pointer()])
+
+        fnty = ir.FunctionType(I32, [])
+        fn = ir.Function(self.module, fnty, name="main")
+        entry_bb = fn.append_basic_block("entry")
+        builder = ir.IRBuilder(entry_bb)
+
+        route_count = len(server.routes)
+        routes_ty = ir.ArrayType(route_ty, route_count)
+        routes_slot = builder.alloca(routes_ty, name="ss_routes")
+        zero_i32 = ir.Constant(I32, 0)
+
+        for index, (method, path, handler_name) in enumerate(server.routes):
+            route_ptr = builder.gep(
+                routes_slot,
+                [zero_i32, ir.Constant(I32, index)],
+                inbounds=True,
+                name=f"ss_route_{index}"
+            )
+            method_ptr = self._i8p(builder, method.upper())
+            path_ptr = self._i8p(builder, path)
+            handler_fn = self._user_ops[handler_name]["fn"]
+            handler_ptr = handler_fn
+            middleware_ptr = ir.Constant(handler_ptr_ty, None)
+            middleware_name = middleware_by_path.get(path)
+            if middleware_name is not None:
+                middleware_ptr = self._user_ops[middleware_name]["fn"]
+                if middleware_ptr.type != handler_ptr_ty:
+                    middleware_ptr = builder.bitcast(middleware_ptr, handler_ptr_ty)
+            if handler_ptr.type != handler_ptr_ty:
+                handler_ptr = builder.bitcast(handler_ptr, handler_ptr_ty)
+
+            builder.store(method_ptr, builder.gep(
+                route_ptr, [zero_i32, zero_i32], inbounds=True))
+            builder.store(path_ptr, builder.gep(
+                route_ptr, [zero_i32, ir.Constant(I32, 1)], inbounds=True))
+            builder.store(handler_ptr, builder.gep(
+                route_ptr, [zero_i32, ir.Constant(I32, 2)], inbounds=True))
+            builder.store(middleware_ptr, builder.gep(
+                route_ptr, [zero_i32, ir.Constant(I32, 3)], inbounds=True))
+
+        config_slot = builder.alloca(config_ty, name="ss_server_config")
+        first_route_ptr = builder.gep(routes_slot, [zero_i32, zero_i32], inbounds=True)
+        builder.store(self._i8p(builder, server.host), builder.gep(
+            config_slot, [zero_i32, zero_i32], inbounds=True))
+        builder.store(ir.Constant(I16, int(server.port)), builder.gep(
+            config_slot, [zero_i32, ir.Constant(I32, 1)], inbounds=True))
+        builder.store(first_route_ptr, builder.gep(
+            config_slot, [zero_i32, ir.Constant(I32, 2)], inbounds=True))
+        builder.store(ir.Constant(I64, route_count), builder.gep(
+            config_slot, [zero_i32, ir.Constant(I32, 3)], inbounds=True))
+
+        rc = builder.call(server_run, [config_slot], name="ss_http_server_status")
+        builder.ret(rc)
 
     # ---------- shared body compilation ----------
     def _compile_body(self, op: Operation, fn, builder, initial_binds: dict):
@@ -2157,6 +2456,11 @@ class Codegen:
         def emit_const_value(typ, raw):
             llty = llvm_type_for(prog, typ)
             resolved = resolve_alias(prog, typ)
+            enum_cases = enum_case_values(prog)
+            if enum_repr_type(prog, resolved) is not None and isinstance(raw, str):
+                enum_case = enum_cases.get(raw)
+                if enum_case is not None and enum_case[0] == resolved:
+                    raw = enum_case[1]
             # Refined-syntax `storage module immutable A I64 B` lets `B` be
             # the name of another const rather than a literal. Recursively
             # resolve up to a small depth to avoid pathological cycles.
@@ -2232,6 +2536,10 @@ class Codegen:
             if tok in prog.consts:
                 typ, val = prog.consts[tok]
                 return emit_const_value(typ, val)
+            enum_case = enum_case_values(prog).get(tok)
+            if enum_case is not None:
+                enum_name, enum_value = enum_case
+                return emit_const_value(enum_name, enum_value)
             if tok in opaque_inputs:
                 return SENTINEL
             raise ValueError(f"unresolved symbol: {tok!r}")
@@ -3115,24 +3423,45 @@ class Codegen:
         # Lower domain-typed methods (`TypeName.methodName`) to the underlying
         # primitive based on the type alias's resolution chain. This keeps the
         # source-level call advertising domain context while reusing the
-        # primitive dispatch below.
+        # primitive dispatch below. Enum names also dispatch through here:
+        # `SaveTodosStatus.equal` resolves the enum's repr type and picks the
+        # matching width's primitive (CSignedInt32 → math.equalCSignedInt32,
+        # CSignedInt64 → math.equalI64), so callers compare enum values
+        # without leaking the underlying integer width into source.
         if (target not in _BINOP_TO_LLVM and target not in _CMP_TO_LLVM
+                and target not in _CMP_I32_TO_LLVM
                 and target not in _FBINOP_TO_LLVM and target not in _FCMP_TO_LLVM
                 and target not in ("console.writeLine", "console.writeIntegerLine",
                                    "console.writeFloatLine")
                 and not target.startswith("c.")
                 and "." in target):
             type_part, method_part = target.split(".", 1)
-            underlying = resolve_alias(self.prog, type_part)
-            primitive = _DOMAIN_METHOD_TO_I64_PRIMITIVE.get(method_part)
-            if primitive is not None and underlying == "I64":
-                target = primitive
-                call["target"] = primitive
-                call["domain_method"] = method_part
-            elif method_part in _DOMAIN_METHOD_TO_F64_PRIMITIVE and underlying in ("F64", "CDouble"):
-                target = _DOMAIN_METHOD_TO_F64_PRIMITIVE[method_part]
-                call["target"] = target
-                call["domain_method"] = method_part
+            enum_repr = enum_repr_type(self.prog, type_part)
+            if enum_repr is not None:
+                # Enum dispatch — pick the primitive for the declared repr.
+                if enum_repr in ("CSignedInt64", "I64"):
+                    primitive = _DOMAIN_METHOD_TO_I64_PRIMITIVE.get(method_part)
+                else:
+                    primitive = _DOMAIN_METHOD_TO_I32_PRIMITIVE.get(method_part)
+                if primitive is not None:
+                    target = primitive
+                    call["target"] = primitive
+                    call["domain_method"] = method_part
+            else:
+                underlying = resolve_alias(self.prog, type_part)
+                primitive = _DOMAIN_METHOD_TO_I64_PRIMITIVE.get(method_part)
+                if primitive is not None and underlying == "I64":
+                    target = primitive
+                    call["target"] = primitive
+                    call["domain_method"] = method_part
+                elif method_part in _DOMAIN_METHOD_TO_I32_PRIMITIVE and underlying in ("I32", "CSignedInt32"):
+                    target = _DOMAIN_METHOD_TO_I32_PRIMITIVE[method_part]
+                    call["target"] = target
+                    call["domain_method"] = method_part
+                elif method_part in _DOMAIN_METHOD_TO_F64_PRIMITIVE and underlying in ("F64", "CDouble"):
+                    target = _DOMAIN_METHOD_TO_F64_PRIMITIVE[method_part]
+                    call["target"] = target
+                    call["domain_method"] = method_part
 
         def arg_val_named(arg_name):
             sym = call["args"].get(arg_name)
@@ -3171,12 +3500,28 @@ class Codegen:
                 raise ValueError(f"{call_name}: opaque-input as operand for {target}")
             return value
 
-        def to_i64(v):
+        def coerce_i64_for_non_math_abi(v):
             if v.type == I64:
                 return v
             if isinstance(v.type, ir.IntType):
                 return builder.sext(v, I64) if v.type.width < 64 else builder.trunc(v, I64)
             raise ValueError(f"{call_name}: cannot coerce {v.type} to i64")
+
+        def require_exact_type(v, expected_type, expected_name: str, context: str):
+            if v.type != expected_type:
+                raise ValueError(
+                    f"{call_name}: {context} expects {expected_name} exactly, got {v.type}; "
+                    "insert an explicit conversion operation before this math call")
+            return v
+
+        def require_i64(v, context: str):
+            return require_exact_type(v, I64, "I64", context)
+
+        def require_i32(v, context: str):
+            return require_exact_type(v, I32, "CSignedInt32/I32", context)
+
+        def require_f64(v, context: str):
+            return require_exact_type(v, F64, "F64", context)
 
         if target == "console.writeLine":
             text = arg_val_named("text")
@@ -3184,7 +3529,7 @@ class Codegen:
             call["result"] = builder.call(self.puts, [text], name=f"{call_name}_res")
             return
         if target == "console.writeIntegerLine":
-            n = to_i64(arg_val_named("value"))
+            n = coerce_i64_for_non_math_abi(arg_val_named("value"))
             fmt_ptr = self._i8p(builder, "%lld\n")
             self.provenance.record_external("printf", call)
             call["result"] = builder.call(self.printf, [fmt_ptr, n], name=f"{call_name}_res")
@@ -3205,6 +3550,22 @@ class Codegen:
                 self.printf, [fmt_ptr, v], name=f"{call_name}_res")
             return
 
+        if target == "math.signExtendCSignedInt32ToCSignedInt64":
+            usable = [(k, v) for k, v in call["args"].items()
+                      if v not in opaque_inputs]
+            v = resolve(usable[0][1])
+            v = require_i32(v, "math.signExtendCSignedInt32ToCSignedInt64 input")
+            call["result"] = builder.sext(v, I64, name=f"{call_name}_res")
+            return
+
+        if target == "math.truncateCSignedInt64ToCSignedInt32":
+            usable = [(k, v) for k, v in call["args"].items()
+                      if v not in opaque_inputs]
+            v = resolve(usable[0][1])
+            v = require_i64(v, "math.truncateCSignedInt64ToCSignedInt32 input")
+            call["result"] = builder.trunc(v, I32, name=f"{call_name}_res")
+            return
+
         if target == "math.intToFloat":
             # Convert a signed integer to double precision (sitofp).
             # Used by SemanticScript-stdlib float math to bridge integer counters
@@ -3212,7 +3573,7 @@ class Codegen:
             usable = [(k, v) for k, v in call["args"].items()
                       if v not in opaque_inputs]
             v = resolve(usable[0][1])
-            v = to_i64(v)
+            v = require_i64(v, "math.intToFloat input")
             call["result"] = builder.sitofp(v, F64, name=f"{call_name}_res")
             return
         if target == "math.floatToInt":
@@ -3222,7 +3583,7 @@ class Codegen:
             usable = [(k, v) for k, v in call["args"].items()
                       if v not in opaque_inputs]
             v = resolve(usable[0][1])
-            v = self._coerce_for_libc(builder, v, "CDouble")
+            v = require_f64(v, "math.floatToInt input")
             call["result"] = builder.fptosi(v, I64, name=f"{call_name}_res")
             return
 
@@ -3231,7 +3592,8 @@ class Codegen:
             # callers can branchIfError on the overflow bit instead of
             # silently wrapping.
             a, b = operand_pair()
-            a, b = to_i64(a), to_i64(b)
+            a = require_i64(a, "math.checkedMultiplyI64 left operand")
+            b = require_i64(b, "math.checkedMultiplyI64 right operand")
             agg = builder.call(self.smul_overflow_i64, [a, b],
                                name=f"{call_name}_tuple")
             product = builder.extract_value(agg, 0, name=f"{call_name}_res")
@@ -3247,7 +3609,8 @@ class Codegen:
                 b = a
             else:
                 a, b = operand_pair()
-            a, b = to_i64(a), to_i64(b)
+            a = require_i64(a, f"{target} left operand")
+            b = require_i64(b, f"{target} right operand")
             if target in ("math.divideI64", "math.moduloI64"):
                 divisor_is_zero = builder.icmp_signed(
                     "==", b, ir.Constant(b.type, 0),
@@ -3261,24 +3624,32 @@ class Codegen:
 
         if target in _FBINOP_TO_LLVM:
             a, b = operand_pair()
-            a = self._coerce_for_libc(builder, a, "CDouble")
-            b = self._coerce_for_libc(builder, b, "CDouble")
+            a = require_f64(a, f"{target} left operand")
+            b = require_f64(b, f"{target} right operand")
             op = _FBINOP_TO_LLVM[target]
             call["result"] = getattr(builder, op)(a, b, name=f"{call_name}_res")
             return
 
         if target in _FCMP_TO_LLVM:
             a, b = operand_pair()
-            a = self._coerce_for_libc(builder, a, "CDouble")
-            b = self._coerce_for_libc(builder, b, "CDouble")
+            a = require_f64(a, f"{target} left operand")
+            b = require_f64(b, f"{target} right operand")
             call["result"] = builder.fcmp_ordered(_FCMP_TO_LLVM[target], a, b,
                                                   name=f"{call_name}_res")
             return
 
         if target in _CMP_TO_LLVM:
             a, b = operand_pair()
-            a, b = to_i64(a), to_i64(b)
+            a = require_i64(a, f"{target} left operand")
+            b = require_i64(b, f"{target} right operand")
             call["result"] = builder.icmp_signed(_CMP_TO_LLVM[target], a, b, name=f"{call_name}_res")
+            return
+
+        if target in _CMP_I32_TO_LLVM:
+            a, b = operand_pair()
+            a = require_i32(a, f"{target} left operand")
+            b = require_i32(b, f"{target} right operand")
+            call["result"] = builder.icmp_signed(_CMP_I32_TO_LLVM[target], a, b, name=f"{call_name}_res")
             return
 
         # Pointer-arithmetic primitives. `pointer.loadByte` reads a single
@@ -3303,7 +3674,8 @@ class Codegen:
                 "null buffer before pointer.loadByte")
             ptr = builder.gep(buffer_arg, [offset_arg], inbounds=True,
                               name=f"{call_name}_addr")
-            call["result"] = builder.load(ptr, name=f"{call_name}_res")
+            loaded_byte = builder.load(ptr, name=f"{call_name}_byte")
+            call["result"] = builder.sext(loaded_byte, I32, name=f"{call_name}_res")
             return
 
         if target == "pointer.storeByte":
@@ -3555,7 +3927,7 @@ class Codegen:
                       "json.encode.DurationMilliseconds",
                       "json.encode.MonotonicMilliseconds",
                       "json.encode.UtcMilliseconds"):
-            n = to_i64(arg_val_named("value"))
+            n = coerce_i64_for_non_math_abi(arg_val_named("value"))
             buf_size = 32
             with builder.goto_entry_block():
                 buf = builder.alloca(
@@ -3666,6 +4038,223 @@ class Codegen:
                          [buf_ptr, ir.Constant(I64, buf_size), fmt, v])
             call["result"] = buf_ptr
             return
+
+        if target == "http.responseText":
+            response = arg_val_named("response")
+            status = arg_val_named("status")
+            body = arg_val_named("body")
+            content_type = ir.Constant(I8P, None)
+            if "contentType" in call["args"]:
+                content_type = arg_val_named("contentType")
+            if isinstance(status.type, ir.IntType) and status.type.width != 32:
+                status = builder.trunc(status, I32) if status.type.width > 32 else builder.sext(status, I32)
+            if isinstance(response.type, ir.IntType):
+                response = builder.inttoptr(response, I8P)
+            if isinstance(body.type, ir.IntType):
+                body = builder.inttoptr(body, I8P)
+            if isinstance(content_type.type, ir.IntType):
+                content_type = builder.inttoptr(content_type, I8P)
+            response_text = self._runtime_func(
+                "ss_http_response_text",
+                I32,
+                [I8P, I32, I8P, I8P]
+            )
+            self.provenance.record_external("ss_http_response_text", call)
+            call["result"] = builder.call(
+                response_text,
+                [response, status, body, content_type],
+                name=f"{call_name}_res"
+            )
+            return
+
+        if target == "http.responseBytes":
+            response = arg_val_named("response")
+            status = arg_val_named("status")
+            body = arg_val_named("body")
+            body_length = arg_val_named("bodyLength")
+            content_type = ir.Constant(I8P, None)
+            if "contentType" in call["args"]:
+                content_type = arg_val_named("contentType")
+            if isinstance(status.type, ir.IntType) and status.type.width != 32:
+                status = builder.trunc(status, I32) if status.type.width > 32 else builder.sext(status, I32)
+            if isinstance(response.type, ir.IntType):
+                response = builder.inttoptr(response, I8P)
+            if isinstance(body.type, ir.IntType):
+                body = builder.inttoptr(body, I8P)
+            if isinstance(body_length.type, ir.IntType) and body_length.type.width != 64:
+                body_length = builder.zext(body_length, I64) if body_length.type.width < 64 else builder.trunc(body_length, I64)
+            if isinstance(content_type.type, ir.IntType):
+                content_type = builder.inttoptr(content_type, I8P)
+            response_bytes = self._runtime_func(
+                "ss_http_response_bytes",
+                I32,
+                [I8P, I32, I8P, I64, I8P]
+            )
+            self.provenance.record_external("ss_http_response_bytes", call)
+            call["result"] = builder.call(
+                response_bytes,
+                [response, status, body, body_length, content_type],
+                name=f"{call_name}_res"
+            )
+            return
+
+        if target == "http.responseSseEvent":
+            response = arg_val_named("response")
+            status = arg_val_named("status")
+            event_name = arg_val_named("event")
+            event_data = arg_val_named("data")
+            if isinstance(status.type, ir.IntType) and status.type.width != 32:
+                status = builder.trunc(status, I32) if status.type.width > 32 else builder.sext(status, I32)
+            if isinstance(response.type, ir.IntType):
+                response = builder.inttoptr(response, I8P)
+            if isinstance(event_name.type, ir.IntType):
+                event_name = builder.inttoptr(event_name, I8P)
+            if isinstance(event_data.type, ir.IntType):
+                event_data = builder.inttoptr(event_data, I8P)
+            response_sse_event = self._runtime_func(
+                "ss_http_response_sse_event",
+                I32,
+                [I8P, I32, I8P, I8P]
+            )
+            self.provenance.record_external("ss_http_response_sse_event", call)
+            call["result"] = builder.call(
+                response_sse_event,
+                [response, status, event_name, event_data],
+                name=f"{call_name}_res"
+            )
+            return
+
+        if target == "http.responseHeader":
+            response = arg_val_named("response")
+            name = arg_val_named("name")
+            value = arg_val_named("value")
+            if isinstance(response.type, ir.IntType):
+                response = builder.inttoptr(response, I8P)
+            if isinstance(name.type, ir.IntType):
+                name = builder.inttoptr(name, I8P)
+            if isinstance(value.type, ir.IntType):
+                value = builder.inttoptr(value, I8P)
+            response_header = self._runtime_func(
+                "ss_http_response_header",
+                I32,
+                [I8P, I8P, I8P]
+            )
+            self.provenance.record_external("ss_http_response_header", call)
+            call["result"] = builder.call(
+                response_header,
+                [response, name, value],
+                name=f"{call_name}_res"
+            )
+            return
+
+        if target == "http.requestMethod":
+            request = arg_val_named("request")
+            if isinstance(request.type, ir.IntType):
+                request = builder.inttoptr(request, I8P)
+            request_method = self._runtime_func("ss_http_request_method", I8P, [I8P])
+            self.provenance.record_external("ss_http_request_method", call)
+            call["result"] = builder.call(request_method, [request], name=f"{call_name}_res")
+            return
+
+        if target == "http.requestPath":
+            request = arg_val_named("request")
+            if isinstance(request.type, ir.IntType):
+                request = builder.inttoptr(request, I8P)
+            request_path = self._runtime_func("ss_http_request_path", I8P, [I8P])
+            self.provenance.record_external("ss_http_request_path", call)
+            call["result"] = builder.call(request_path, [request], name=f"{call_name}_res")
+            return
+
+        if target == "http.requestHeader":
+            request = arg_val_named("request")
+            name = arg_val_named("name")
+            if isinstance(request.type, ir.IntType):
+                request = builder.inttoptr(request, I8P)
+            if isinstance(name.type, ir.IntType):
+                name = builder.inttoptr(name, I8P)
+            request_header = self._runtime_func("ss_http_request_header", I8P, [I8P, I8P])
+            self.provenance.record_external("ss_http_request_header", call)
+            call["result"] = builder.call(request_header, [request, name], name=f"{call_name}_res")
+            return
+
+        if target == "http.requestQueryParam":
+            request = arg_val_named("request")
+            name = arg_val_named("name")
+            if isinstance(request.type, ir.IntType):
+                request = builder.inttoptr(request, I8P)
+            if isinstance(name.type, ir.IntType):
+                name = builder.inttoptr(name, I8P)
+            request_query_param = self._runtime_func("ss_http_request_query_param", I8P, [I8P, I8P])
+            self.provenance.record_external("ss_http_request_query_param", call)
+            call["result"] = builder.call(request_query_param, [request, name], name=f"{call_name}_res")
+            return
+
+        if target == "http.requestBodyText":
+            request = arg_val_named("request")
+            if isinstance(request.type, ir.IntType):
+                request = builder.inttoptr(request, I8P)
+            request_body = self._runtime_func("ss_http_request_body_text", I8P, [I8P])
+            self.provenance.record_external("ss_http_request_body_text", call)
+            call["result"] = builder.call(request_body, [request], name=f"{call_name}_res")
+            return
+
+        if target == "http.requestBodyBytes":
+            request = arg_val_named("request")
+            if isinstance(request.type, ir.IntType):
+                request = builder.inttoptr(request, I8P)
+            request_body = self._runtime_func("ss_http_request_body_bytes", I8P, [I8P])
+            self.provenance.record_external("ss_http_request_body_bytes", call)
+            call["result"] = builder.call(request_body, [request], name=f"{call_name}_res")
+            return
+
+        if target == "http.requestBodyLength":
+            request = arg_val_named("request")
+            if isinstance(request.type, ir.IntType):
+                request = builder.inttoptr(request, I8P)
+            request_body_length = self._runtime_func("ss_http_request_body_length", I64, [I8P])
+            self.provenance.record_external("ss_http_request_body_length", call)
+            call["result"] = builder.call(request_body_length, [request], name=f"{call_name}_res")
+            return
+
+        if target in {
+            "http.multipartPartText",
+            "http.multipartPartBytes",
+            "http.multipartPartFilename",
+            "http.multipartPartContentType",
+        }:
+            request = arg_val_named("request")
+            name = arg_val_named("name")
+            runtime_name = {
+                "http.multipartPartText": "ss_http_multipart_part_text",
+                "http.multipartPartBytes": "ss_http_multipart_part_bytes",
+                "http.multipartPartFilename": "ss_http_multipart_part_filename",
+                "http.multipartPartContentType": "ss_http_multipart_part_content_type",
+            }[target]
+            if isinstance(request.type, ir.IntType):
+                request = builder.inttoptr(request, I8P)
+            if isinstance(name.type, ir.IntType):
+                name = builder.inttoptr(name, I8P)
+            multipart_reader = self._runtime_func(runtime_name, I8P, [I8P, I8P])
+            self.provenance.record_external(runtime_name, call)
+            call["result"] = builder.call(multipart_reader, [request, name], name=f"{call_name}_res")
+            return
+
+        if target == "http.multipartPartLength":
+            request = arg_val_named("request")
+            name = arg_val_named("name")
+            if isinstance(request.type, ir.IntType):
+                request = builder.inttoptr(request, I8P)
+            if isinstance(name.type, ir.IntType):
+                name = builder.inttoptr(name, I8P)
+            multipart_length = self._runtime_func("ss_http_multipart_part_length", I64, [I8P, I8P])
+            self.provenance.record_external("ss_http_multipart_part_length", call)
+            call["result"] = builder.call(multipart_length, [request, name], name=f"{call_name}_res")
+            return
+
+        if target.startswith("http."):
+            raise ValueError(
+                f"unsupported native HTTP call target: {target!r}; "
+                "add an explicit compiler lowering before using it in a webServer executable")
 
         # External-module fallback: targets that look like a method on an
         # imported module (`http.requestCancellationToken`,
@@ -3866,6 +4455,12 @@ def lint(prog: Program, strict: bool = False):
     # ---- module-level: identifier casing per spec §6 ----
     _check_identifier_casing(prog, diags)
 
+    # ---- per-operation: output contracts must be explicit and lowerable ----
+    _check_output_contracts(prog, diags)
+
+    # ---- per-operation: declared effects need capability or authority ----
+    _check_effect_authority_coverage(prog, diags)
+
     # ---- per-operation: declared effects must cover called c.* effects ----
     _check_libc_effect_coverage(prog, diags)
 
@@ -4013,9 +4608,9 @@ _LIBC_REQUIRED_EFFECTS = {
     "getsSafe":    [("read", "console.stdin")],
     "gets_s":      [("read", "console.stdin")],
     # filesystem
-    "fopen":       [("read", "filesystem"), ("write", "filesystem")],
-    "freopen":     [("read", "filesystem"), ("write", "filesystem")],
-    "fclose":      [("write", "filesystem")],
+    "fopen":       [],
+    "freopen":     [],
+    "fclose":      [("close", "file")],
     "fread":       [("read", "filesystem")],
     "fwrite":      [("write", "filesystem")],
     "fgets":       [("read", "filesystem")],
@@ -4067,6 +4662,132 @@ _POINTER_REQUIRED_EFFECTS = {
 }
 
 
+def _operation_literal_values(op):
+    values = {}
+    for verb, args, _ in op.lines:
+        if verb == "const" and len(args) >= 3:
+            values[args[0]] = args[2]
+        elif verb == "storage" and len(args) >= 5:
+            values[args[2]] = args[4]
+    return values
+
+
+def _operation_call_args(op):
+    call_args = {}
+    for verb, args, _ in op.lines:
+        if verb == "arg" and len(args) >= 3:
+            call_args.setdefault(args[0], {})[args[1]] = args[2]
+    return call_args
+
+
+def _resolve_literal_token(token, literal_values):
+    value = literal_values.get(token, token)
+    if isinstance(value, tuple) and len(value) >= 2:
+        value = value[1]
+    return str(value).strip('"')
+
+
+def _looks_like_fopen_mode(mode):
+    return bool(mode) and mode[0] in {"r", "w", "a"} and all(char in {"b", "+"} for char in mode[1:])
+
+
+def _fopen_required_effects(call_name, call_args, literal_values):
+    mode_token = call_args.get(call_name, {}).get("mode")
+    if mode_token is None:
+        return [("open", "file"), ("read", "filesystem"), ("write", "filesystem")]
+
+    mode = _resolve_literal_token(mode_token, literal_values).lower()
+    if not _looks_like_fopen_mode(mode):
+        return [("open", "file"), ("read", "filesystem"), ("write", "filesystem")]
+
+    effects = [("open", "file")]
+    if mode[0] == "r" or "+" in mode:
+        effects.append(("read", "filesystem"))
+    if mode[0] in {"w", "a"} or "+" in mode:
+        effects.append(("write", "filesystem"))
+    return effects
+
+
+def _effect_path_covers(scope_path: str, effect_path: str) -> bool:
+    return effect_path == scope_path or effect_path.startswith(scope_path + ".")
+
+
+def _access_covers(grant_access: str, action: str) -> bool:
+    return (
+        grant_access == action
+        or grant_access == "manage"
+        or (grant_access == "readWrite" and action in {"read", "write"})
+    )
+
+
+def _check_output_contracts(prog: Program, diags):
+    """Warn when an operation has no explicit lowerable output contract."""
+    for op in prog.operations.values():
+        contract = _operation_output_contract(prog, op)
+        if contract.problem:
+            diags.append((contract.line, contract.message))
+
+
+def _check_effect_authority_coverage(prog: Program, diags):
+    """Warn when declared effects have no matching capability or authority."""
+    for op_name, op in prog.operations.items():
+        declared_effects = []
+        used_capabilities = []
+        for verb, args, lineno in op.lines:
+            if verb == "effect" and len(args) >= 3 and args[0] == op_name:
+                declared_effects.append((args[1], args[2], lineno))
+            elif verb == "useCapability" and len(args) >= 2:
+                used_capabilities.append((args[1], lineno))
+
+        used_capability_facts = []
+        for capability_name, lineno in used_capabilities:
+            capability = prog.capabilities.get(capability_name)
+            if capability is None:
+                diags.append((lineno,
+                    f"unknownCapabilityReference: operation `{op_name}` uses "
+                    f"capability `{capability_name}`, but no capability declaration defines it"))
+                continue
+            used_capability_facts.append(capability)
+
+        authority_facts = []
+        for authority_text in prog.hard_metadata.get(op_name, {}).get("authority", []):
+            parts = authority_text.split()
+            if len(parts) >= 2:
+                authority_facts.append({"effect": parts[0], "access": parts[1]})
+
+        for action, effect_path, lineno in declared_effects:
+            capability_ok = any(
+                _access_covers(capability.get("access", ""), action)
+                and _effect_path_covers(capability.get("effect", ""), effect_path)
+                for capability in used_capability_facts
+            )
+            authority_ok = any(
+                _access_covers(authority.get("access", ""), action)
+                and _effect_path_covers(authority.get("effect", ""), effect_path)
+                for authority in authority_facts
+            )
+            if capability_ok or authority_ok:
+                continue
+
+            candidate = next(
+                (
+                    capability_name
+                    for capability_name, capability in prog.capabilities.items()
+                    if _access_covers(capability.get("access", ""), action)
+                    and _effect_path_covers(capability.get("effect", ""), effect_path)
+                ),
+                None,
+            )
+            hint = (
+                f"add `useCapability {op_name} {candidate}`"
+                if candidate
+                else f"declare a capability or authority for `{effect_path} {action}`"
+            )
+            diags.append((lineno,
+                f"missingCapabilityUse: operation `{op_name}` declares effect "
+                f"`{action} {effect_path}` without an authorizing capability or authority; {hint}"))
+
+
 def _check_libc_effect_coverage(prog: Program, diags):
     """For every c.* / pointer.* call in an operation, verify that the
     operation's `effect` lines declare the required effects (spec §17
@@ -4076,18 +4797,24 @@ def _check_libc_effect_coverage(prog: Program, diags):
         for verb, args, _ in op.lines:
             if verb == "effect" and len(args) >= 3:
                 declared.add((args[1], args[2]))
+        literal_values = _operation_literal_values(op)
+        call_args = _operation_call_args(op)
         for verb, args, lineno in op.lines:
             if verb != "call" or len(args) < 2:
                 continue
             tgt = args[1]
             required = None
             if tgt.startswith("c."):
+                call_name = args[0]
                 semantic_name = tgt[2:]
-                # Try SemanticScript-facing name first, then translate to C symbol.
-                required = _LIBC_REQUIRED_EFFECTS.get(semantic_name)
-                if required is None:
-                    c_symbol = libc_registry.resolve_c_symbol(semantic_name)
-                    required = _LIBC_REQUIRED_EFFECTS.get(c_symbol, [])
+                if semantic_name in {"fopen", "freopen"}:
+                    required = _fopen_required_effects(call_name, call_args, literal_values)
+                else:
+                    # Try SemanticScript-facing name first, then translate to C symbol.
+                    required = _LIBC_REQUIRED_EFFECTS.get(semantic_name)
+                    if required is None:
+                        c_symbol = libc_registry.resolve_c_symbol(semantic_name)
+                        required = _LIBC_REQUIRED_EFFECTS.get(c_symbol, [])
             elif tgt in _POINTER_REQUIRED_EFFECTS:
                 required = _POINTER_REQUIRED_EFFECTS[tgt]
             if not required:
@@ -4194,7 +4921,9 @@ def _optimize(mod, tm, opt_level: int):
 
 def emit_executable(module_ir: str, exe_path: str, opt_level: int = 2,
                     provenance: CompilerProvenance = None,
-                    diagnostics_format: str = "agent") -> None:
+                    diagnostics_format: str = "agent",
+                    extra_sources=None,
+                    extra_link_args=None) -> None:
     """Ahead-of-time compile SemanticScript IR to a native executable.
 
     The SemanticScript runtime depends only on libc, so the same toolchain that
@@ -4230,6 +4959,10 @@ def emit_executable(module_ir: str, exe_path: str, opt_level: int = 2,
         f.write(module_ir)
     try:
         cmd = [clang, f"-O{opt_level}", "-o", exe_path, ll_path]
+        if extra_sources:
+            cmd.extend(extra_sources)
+        if extra_link_args:
+            cmd.extend(extra_link_args)
         proc = subprocess.run(cmd, capture_output=True, text=True)
         if proc.returncode != 0:
             if provenance is not None:
@@ -4449,7 +5182,7 @@ def _resolve_imports(source: str, source_path: str) -> str:
         # `standard.time` should not pick up `stdlib_sem/time.sscript`).
         return None
 
-    header_skip = ("project ", "target ", "runtime ", "entry ")
+    header_skip = ("project ", "target ", "runtime ", "entry ", "module ")
 
     def process(text: str, base_dir: str, is_root: bool):
         for line in text.splitlines():
@@ -4518,6 +5251,26 @@ def _load_external_literals(prog: Program, source_path: str) -> None:
                 typ, _stub = prog.consts[name]
                 prog.consts[name] = (typ, loaded)
                 break
+
+
+def _native_http_link_inputs(prog: Program):
+    if "webServer" not in prog.targets:
+        return [], []
+    if not any(server.routes for server in prog.web_servers.values()):
+        return [], []
+
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    runtime_source = os.path.join(
+        repo_root,
+        "SemanticScript",
+        "runtime",
+        "native_http",
+        "sem_http_runtime.c",
+    )
+    link_args = []
+    if os.name == "nt":
+        link_args.append("-lws2_32")
+    return [runtime_source], link_args
 
 
 def main():
@@ -4661,9 +5414,12 @@ def main():
 
     if args.emit_exe:
         try:
+            extra_sources, extra_link_args = _native_http_link_inputs(prog)
             emit_executable(ir_text, args.emit_exe, opt_level=args.opt_level,
                             provenance=cg.provenance,
-                            diagnostics_format=args.diagnostics_format)
+                            diagnostics_format=args.diagnostics_format,
+                            extra_sources=extra_sources,
+                            extra_link_args=extra_link_args)
         except CompilerDiagnosticError as e:
             print(e.diagnostic.render(args.diagnostics_format), file=sys.stderr)
             sys.exit(4)

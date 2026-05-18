@@ -46,6 +46,17 @@ def check(label, predicate, message=""):
         print(f"[FAIL] {label}: {message}")
 
 
+def run_semsc_source(source, *args, suffix=".sscript"):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / f"sample{suffix}"
+        src_path.write_text(source, encoding="utf-8", newline="\n")
+        return subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), *args],
+            capture_output=True, text=True,
+        )
+
+
 # ============================================================
 # Tokenizer
 # ============================================================
@@ -128,6 +139,112 @@ def test_parser_syntax_error_has_line():
           f"msg = {msg!r}")
 
 
+def test_parser_module_namespace_contract():
+    prog = semsc.parse("\n".join([
+        "project ModuleOk",
+        "module examples.valid_module",
+        "",
+    ]))
+    check("parser: module namespace recorded",
+          prog.module_name == "examples.valid_module",
+          f"got {prog.module_name!r}")
+
+    raised = False
+    msg = ""
+    try:
+        semsc.parse("\n".join([
+            "project ModuleBad",
+            "module examples.one",
+            "module examples.two",
+            "",
+        ]))
+    except SyntaxError as e:
+        raised = True
+        msg = str(e)
+    check("parser: conflicting module namespaces rejected",
+          raised and "conflicting module declarations" in msg,
+          f"raised={raised} msg={msg!r}")
+
+
+def test_strict_rejects_missing_output_contract():
+    src = "\n".join([
+        "project MissingOutput",
+        "entry console main",
+        "operation main",
+        "purpose main \"exercise missing output diagnostics\"",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "returnValue 0",
+        "",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--strict", "--quiet")
+    check("strict lint: missing output is fatal",
+          proc.returncode == 2 and "missingOutputContract" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_rejects_unknown_output_contract_type():
+    src = "\n".join([
+        "project UnknownOutput",
+        "entry console main",
+        "operation main",
+        "output main MysteryReturnType",
+        "purpose main \"exercise unknown output diagnostics\"",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "returnValue 0",
+        "",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--strict", "--quiet")
+    check("strict lint: unknown output type is fatal",
+          proc.returncode == 2 and "unknownOutputType" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_requires_effect_capability_or_authority():
+    src = "\n".join([
+        "project MissingAuthority",
+        "entry console main",
+        "operation main",
+        "output main ExitCode",
+        "effect main write console.stdout",
+        "purpose main \"exercise capability diagnostics\"",
+        "invariant main \"Effect is intentionally declared for lint coverage.\"",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "returnValue 0",
+        "",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--strict", "--quiet")
+    check("strict lint: effect without authority is fatal",
+          proc.returncode == 2 and "missingCapabilityUse" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+    authorized_src = "\n".join([
+        "project InlineAuthority",
+        "entry console main",
+        "authority main console.stdout write",
+        "operation main",
+        "output main ExitCode",
+        "effect main write console.stdout",
+        "purpose main \"exercise inline authority coverage\"",
+        "invariant main \"Inline authority covers the declared effect.\"",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "returnValue 0",
+        "",
+    ])
+    authorized = run_semsc_source(
+        authorized_src, "--parse-only", "--strict", "--quiet")
+    check("strict lint: inline authority covers effect",
+          authorized.returncode == 0,
+          f"rc={authorized.returncode} stderr={authorized.stderr!r}")
+
+
 # ============================================================
 # End-to-end compile + JIT for a canonical program
 # ============================================================
@@ -145,6 +262,143 @@ def test_compile_hello_world_to_ir():
     check("compile: hello.sscript references puts",
           "@\"puts\"" in ir_text or "@puts" in ir_text,
           "no puts in IR")
+
+
+def test_compile_i32_comparison_to_i32_ir():
+    source = "\n".join([
+        "project I32Compare",
+        "target console",
+        "runtime AgentRuntime 0.1",
+        "entry console main",
+        "enum StatusCode repr CSignedInt32",
+        "enumCase StatusCode NegativeStatus -1",
+        "enumCase StatusCode ZeroStatus 0",
+        "operation main",
+        "output main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "purpose main \"exercise width-specific i32 comparison lowering\"",
+        "invariant main \"math.lessThanCSignedInt32 lowers to an i32 signed compare\"",
+        "label startMain",
+        "const successExit ExitCode 0",
+        "const failureExit ExitCode 1",
+        "call negativeCheckCall math.lessThanCSignedInt32",
+        "arg negativeCheckCall left NegativeStatus",
+        "arg negativeCheckCall right ZeroStatus",
+        "run negativeCheckCall",
+        "bind statusIsNegative Bool negativeCheckCall",
+        "branchIf statusIsNegative returnSuccess",
+        "returnValue failureExit",
+        "label returnSuccess",
+        "returnValue successExit",
+        "",
+    ])
+    prog = semsc.parse(source)
+    cg = semsc.Codegen(prog)
+    mod = cg.compile()
+    ir_text = str(mod)
+    check("compile: math.lessThanCSignedInt32 uses i32 compare",
+          "icmp slt i32" in ir_text,
+          f"IR was:\n{ir_text}")
+
+
+def test_compile_rejects_implicit_i32_to_i64_math():
+    source = "\n".join([
+        "project StrictMath",
+        "target console",
+        "runtime AgentRuntime 0.1",
+        "entry console main",
+        "operation main",
+        "output main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "purpose main \"reject implicit math widening\"",
+        "const successExit ExitCode 0",
+        "const leftStatus CSignedInt32 1",
+        "const rightStatus CSignedInt32 1",
+        "call statusCheckCall math.equalI64",
+        "arg statusCheckCall left leftStatus",
+        "arg statusCheckCall right rightStatus",
+        "run statusCheckCall",
+        "returnValue successExit",
+        "",
+    ])
+    try:
+        prog = semsc.parse(source)
+        semsc.Codegen(prog).compile()
+    except (ValueError, semsc.CompilerDiagnosticError) as exc:
+        message = str(exc)
+        check("compile: math.equalI64 rejects implicit i32 widening",
+              "expects I64 exactly" in message
+              and "explicit conversion operation" in message,
+              message)
+        return
+    check("compile: math.equalI64 rejects implicit i32 widening",
+          False,
+          "compile unexpectedly succeeded")
+
+
+def test_compile_explicit_i32_to_i64_conversion_lowers_to_sext():
+    source = "\n".join([
+        "project ExplicitMathConversion",
+        "target console",
+        "runtime AgentRuntime 0.1",
+        "entry console main",
+        "operation main",
+        "output main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "purpose main \"explicit conversion is visible in IR\"",
+        "const successExit ExitCode 0",
+        "const sourceValue CSignedInt32 -1",
+        "call widenCall math.signExtendCSignedInt32ToCSignedInt64",
+        "arg widenCall inputValue sourceValue",
+        "run widenCall",
+        "bind widenedValue CSignedInt64 widenCall",
+        "returnValue successExit",
+        "",
+    ])
+    prog = semsc.parse(source)
+    cg = semsc.Codegen(prog)
+    mod = cg.compile()
+    ir_text = str(mod)
+    check("compile: explicit i32->i64 conversion uses sext",
+          "sext i32" in ir_text and " to i64" in ir_text,
+          f"IR was:\n{ir_text}")
+
+
+def test_compile_pointer_load_byte_sign_extends_to_i32():
+    source = "\n".join([
+        "project LoadByteShape",
+        "target console",
+        "runtime AgentRuntime 0.1",
+        "entry console main",
+        "operation main",
+        "output main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "purpose main \"pointer.loadByte returns a signed CSignedInt32 byte value\"",
+        "const successExit ExitCode 0",
+        "const text CNullTerminatedByteString \"A\"",
+        "const zeroOffset CByteCount 0",
+        "call loadByteCall pointer.loadByte",
+        "arg loadByteCall buffer text",
+        "arg loadByteCall offset zeroOffset",
+        "run loadByteCall",
+        "bind loadedByte CSignedInt32 loadByteCall",
+        "returnValue successExit",
+        "",
+    ])
+    prog = semsc.parse(source)
+    cg = semsc.Codegen(prog)
+    mod = cg.compile()
+    ir_text = str(mod)
+    check("compile: pointer.loadByte loads i8",
+          "load i8" in ir_text,
+          f"IR was:\n{ir_text}")
+    check("compile: pointer.loadByte sign-extends to i32",
+          "sext i8" in ir_text and " to i32" in ir_text,
+          f"IR was:\n{ir_text}")
 
 
 def test_cli_accepts_sem_alias():
@@ -292,6 +546,57 @@ def test_codegen_diagnostic_is_agent_readable():
               payload.get("code") == "SSCG002"
               and payload.get("semanticStack", [{}])[0].get("callName") == "badCall",
               json_proc.stderr)
+
+
+def test_web_codegen_rejects_unsupported_http_target():
+    src = "\n".join([
+        "project UnsupportedHttpTarget",
+        "target webServer",
+        "runtime native 1",
+        "module fixture",
+        "webServer fixtureServer",
+        "serverHost fixtureServer \"127.0.0.1\"",
+        "serverPort fixtureServer 18081",
+        "route fixtureServer GET \"/json\" jsonHandler",
+        "capability httpResponseWriter http.response write",
+        "operation jsonHandler",
+        "input jsonHandler request HttpRequest",
+        "input jsonHandler response HttpResponse",
+        "output jsonHandler CSignedInt32",
+        "effect jsonHandler write http.response",
+        "memory jsonHandler arena request",
+        "async jsonHandler no",
+        "useCapability jsonHandler httpResponseWriter",
+        "purpose jsonHandler \"Exercise unsupported HTTP target diagnostics\"",
+        "label startJsonHandler",
+        "const okStatus CSignedInt32 200",
+        "const jsonBody CNullTerminatedByteString \"{}\"",
+        "call jsonWriteCall http.responseJson",
+        "arg jsonWriteCall response response",
+        "arg jsonWriteCall status okStatus",
+        "arg jsonWriteCall body jsonBody",
+        "run jsonWriteCall",
+        "bind responseStatus CSignedInt32 jsonWriteCall",
+        "returnValue responseStatus",
+        "",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "unsupported_http.sscript"
+        ir_path = Path(tmpdir) / "unsupported_http.ll"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-ir", str(ir_path)],
+            capture_output=True, text=True,
+        )
+    check("web codegen: unsupported http target exits 3",
+          proc.returncode == 3,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+    check("web codegen: unsupported http target names call",
+          "unsupported native HTTP call target" in proc.stderr
+          and "http.responseJson" in proc.stderr
+          and "call jsonWriteCall http.responseJson" in proc.stderr,
+          proc.stderr)
 
 
 def test_backend_diagnostic_maps_symbol_to_source_call():
@@ -597,12 +902,21 @@ def main():
     test_tokenizer()
     test_parser_minimal()
     test_parser_syntax_error_has_line()
+    test_parser_module_namespace_contract()
+    test_strict_rejects_missing_output_contract()
+    test_strict_rejects_unknown_output_contract_type()
+    test_strict_requires_effect_capability_or_authority()
     test_compile_hello_world_to_ir()
+    test_compile_i32_comparison_to_i32_ir()
+    test_compile_rejects_implicit_i32_to_i64_math()
+    test_compile_explicit_i32_to_i64_conversion_lowers_to_sext()
+    test_compile_pointer_load_byte_sign_extends_to_i32()
     test_cli_accepts_sem_alias()
     test_success_message_renderer()
     test_persisted_ir_path_resolution()
     test_cli_persist_llvm_ir_flag()
     test_codegen_diagnostic_is_agent_readable()
+    test_web_codegen_rejects_unsupported_http_target()
     test_backend_diagnostic_maps_symbol_to_source_call()
     test_runtime_check_resolution_profiles()
     test_runtime_profiles_control_panic_context()

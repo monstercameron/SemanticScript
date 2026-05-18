@@ -1,0 +1,84 @@
+# expect.stdout: equal\nnotEqual\n
+# expect.exit: 0
+# Tests: enum.equal domain-method dispatch.
+# `SaveTodosStatus.equal` (repr CSignedInt32) and `ScreenMode.equal`
+# (repr CSignedInt64) compile to the matching math.equal* primitive based
+# on the enum's declared repr. The compare must produce a real Bool that
+# branches at runtime — a no-op lowering would fail the equality test
+# and print the wrong branch.
+project EnumEqualDomainMethod
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+enum SaveTodosStatus repr CSignedInt32
+enumCase SaveTodosStatus SaveSucceeded 0
+enumCase SaveTodosStatus SaveOpenFailed 1
+enumCase SaveTodosStatus SaveWriteFailed 2
+
+enum ScreenMode repr CSignedInt64
+enumCase ScreenMode ListMode 0
+enumCase ScreenMode EditMode 1
+
+error MainError
+errorCase MainError Placeholder CSignedInt32
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+memory main heap no
+async main no
+purpose main "Verify enum.equal dispatch for both CSignedInt32 and CSignedInt64 reprs."
+
+label startMain
+storage local immutable equalText CNullTerminatedByteString "equal"
+storage local immutable notEqualText CNullTerminatedByteString "notEqual"
+storage local immutable successfulExitCode ExitCode 0
+
+# Both arguments are SaveSucceeded — must compare equal via repr-CSignedInt32 path.
+call sameStatusCall SaveTodosStatus.equal
+arg sameStatusCall left SaveSucceeded
+arg sameStatusCall right SaveSucceeded
+run sameStatusCall
+bind sameStatusEqual Bool sameStatusCall
+branchIf sameStatusEqual sameStatusPath
+branch failSameStatus
+
+label sameStatusPath
+call writeEqualCall console.writeLine
+arg writeEqualCall console console
+arg writeEqualCall text equalText
+run writeEqualCall
+ignoreValue writeEqualCall CSignedInt32
+branch checkDifferentMode
+
+label failSameStatus
+call writeFailSameCall console.writeLine
+arg writeFailSameCall console console
+arg writeFailSameCall text notEqualText
+run writeFailSameCall
+ignoreValue writeFailSameCall CSignedInt32
+returnOk successfulExitCode
+
+label checkDifferentMode
+# ListMode != EditMode — must compare not-equal via repr-CSignedInt64 path.
+call differentModeCall ScreenMode.equal
+arg differentModeCall left ListMode
+arg differentModeCall right EditMode
+run differentModeCall
+bind differentModeEqual Bool differentModeCall
+branchIf differentModeEqual failDifferentMode
+call writeNotEqualCall console.writeLine
+arg writeNotEqualCall console console
+arg writeNotEqualCall text notEqualText
+run writeNotEqualCall
+ignoreValue writeNotEqualCall CSignedInt32
+returnOk successfulExitCode
+
+label failDifferentMode
+call writeFailDiffCall console.writeLine
+arg writeFailDiffCall console console
+arg writeFailDiffCall text equalText
+run writeFailDiffCall
+ignoreValue writeFailDiffCall CSignedInt32
+returnOk successfulExitCode

@@ -1,9 +1,11 @@
 # expect.stdout: ok\n
 # expect.exit: 0
 # Dotted typed-method call targets (TaskList.append, TaskMap.get, json.decode.X,
-# json.encode.X) compile cleanly: semsc.py routes them through the
+# json.encode.X) compile cleanly but are not runtime-complete. semsc.py routes
+# non-primitive generated codecs and typed collection calls through the
 # external-module fallback in _emit_run; bootstrap_general.exe lowers them
-# through its runUnhandled dummy-SSA path. Both produce well-typed IR.
+# through its runUnhandled dummy-SSA path. Both produce well-typed IR with
+# zero-shaped stub results. semlint2 flags this as an explicit runtime gap.
 project TypedMethodCallsCompile
 target console
 runtime AgentRuntime 0.1
@@ -17,13 +19,13 @@ output main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Smoke-test that dotted typed-method calls (TaskList.append, TaskMap.get, json.decode.X, json.encode.X) compile to valid IR via the external-module fallback."
+purpose main "Smoke-test that dotted typed-method calls (TaskList.append, TaskMap.get, json.decode.X, json.encode.X) compile to valid IR via the external-module fallback, not that they have real runtime behavior."
 invariant main "Output is 'ok\\n'."
 label startMain
 
 # These calls have no real implementation — they hit the external-module
-# fallback in _emit_run that emits zero results. We bind each so the
-# emit path exercises both call+arg+run+bind.
+# fallback in _emit_run that emits zero results. We bind each so the emit path
+# exercises both call+arg+run+bind while the linter carries the runtime warning.
 const triggerSize CByteCount 1
 call walkerTriggerCall c.malloc
 arg walkerTriggerCall size triggerSize

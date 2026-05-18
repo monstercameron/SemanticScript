@@ -63,7 +63,7 @@ call assertByteConversionCall convertByteValueToUnsignedInt32
 arg assertByteConversionCall signExtendedByteValue negativeOneAsSignedInt32
 run assertByteConversionCall
 bind byteConversionResult CSignedInt32 assertByteConversionCall
-call checkByteConversionCall math.equalI64
+call checkByteConversionCall math.equalCSignedInt32
 arg checkByteConversionCall left byteConversionResult
 arg checkByteConversionCall right expectedTwoHundredFiftyFive
 run checkByteConversionCall
@@ -113,7 +113,7 @@ call narrowFiveCall narrowSignedInt64ToSignedInt32
 arg narrowFiveCall inputValue fiveSigned
 run narrowFiveCall
 bind narrowFiveResult CSignedInt32 narrowFiveCall
-call narrowFiveCheckCall math.equalI64
+call narrowFiveCheckCall math.equalCSignedInt32
 arg narrowFiveCheckCall left narrowFiveResult
 arg narrowFiveCheckCall right fiveAsI32
 run narrowFiveCheckCall
@@ -128,7 +128,7 @@ call narrowMaxCall narrowSignedInt64ToSignedInt32
 arg narrowMaxCall inputValue maxInt32Signed
 run narrowMaxCall
 bind narrowMaxResult CSignedInt32 narrowMaxCall
-call narrowMaxCheckCall math.equalI64
+call narrowMaxCheckCall math.equalCSignedInt32
 arg narrowMaxCheckCall left narrowMaxResult
 arg narrowMaxCheckCall right maxInt32AsI32
 run narrowMaxCheckCall
@@ -233,7 +233,7 @@ call byteZeroCall convertByteValueToUnsignedInt32
 arg byteZeroCall signExtendedByteValue zeroAsI32
 run byteZeroCall
 bind byteZeroResult CSignedInt32 byteZeroCall
-call byteZeroCheckCall math.equalI64
+call byteZeroCheckCall math.equalCSignedInt32
 arg byteZeroCheckCall left byteZeroResult
 arg byteZeroCheckCall right zeroAsI32
 run byteZeroCheckCall
@@ -248,7 +248,7 @@ call byteMidCall convertByteValueToUnsignedInt32
 arg byteMidCall signExtendedByteValue onehTwentySevenI32
 run byteMidCall
 bind byteMidResult CSignedInt32 byteMidCall
-call byteMidCheckCall math.equalI64
+call byteMidCheckCall math.equalCSignedInt32
 arg byteMidCheckCall left byteMidResult
 arg byteMidCheckCall right onehTwentySevenI32
 run byteMidCheckCall
