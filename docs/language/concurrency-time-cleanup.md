@@ -112,7 +112,7 @@ unlock metricsLock
 
 Current lowering: lock and unlock are no-ops in single-thread execution.
 They do not provide runtime mutual exclusion until a multi-thread runtime is
-bound. `semlint2.py` checks for lock acquisition without cleanup so the source
+bound. `semlint.py` checks for lock acquisition without cleanup so the source
 still records the intended release path.
 
 ## Select
@@ -126,7 +126,7 @@ branchSelected nextEventSelect taskReadyBranch handleTaskReady
 ```
 
 Current lowering: selection metadata is preserved and the single-thread
-execution path falls through. `semlint2.py` checks selects without cases and
+execution path falls through. `semlint.py` checks selects without cases and
 cases that reference unknown selects.
 
 ## Intervals

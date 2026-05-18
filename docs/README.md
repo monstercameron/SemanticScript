@@ -57,6 +57,7 @@ matrix. The release-level boundary is:
 | [language/README.md](language/README.md) | Language model, executable vs refined surfaces, minimal program. |
 | [language/lexical-model.md](language/lexical-model.md) | Tokenization, comments, strings, identifiers, rejected syntax. |
 | [language/program-structure.md](language/program-structure.md) | Project headers, imports, entries, operations, ownership. |
+| [language/project-layout-build-sem.md](language/project-layout-build-sem.md) | Folder layout, `build.sem` rules, module registry, explicit exports. |
 | [language/types-values.md](language/types-values.md) | Primitive types, aliases, constants, literals, records, enums. |
 | [language/operations-dataflow.md](language/operations-dataflow.md) | Operation contracts, calls, bindings, variables, control flow. |
 | [language/errors-effects-capabilities.md](language/errors-effects-capabilities.md) | Result flow, typed errors, effects, capabilities, authority. |

@@ -26,7 +26,7 @@ python SemanticScript/linter/semlint.py SemanticScript/sem --summary
 JSON output for editor integration:
 
 ```powershell
-python SemanticScript/linter/semlint.py SemanticScript/sem/fizzbuzz.sscript --format json --fail-on none
+python SemanticScript/linter/semlint.py SemanticScript/sem/fizzbuzz.sscript --format json
 ```
 
 Strict CI:

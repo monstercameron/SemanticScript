@@ -25,7 +25,7 @@ recordAlign RECORD N
 ```
 
 `field` currently requires the record to have been declared first.
-`recordAlign` should be a power of two; `semlint2.py` checks that rule.
+`recordAlign` should be a power of two; `semlint.py` checks that rule.
 
 ## Field Operations
 
@@ -91,7 +91,7 @@ as `json.encode.Bool`, `json.decode.Bool`, and selected scalar codec targets
 have direct compiler support. Record-level generated codecs are still primarily
 metadata unless a backing operation/runtime binding is present.
 
-`semlint2.py` checks incomplete JSON codecs. It also flags record-level
+`semlint.py` checks incomplete JSON codecs. It also flags record-level
 generated targets such as `json.decode.Task` or `json.encode.Task` as runtime
 gaps unless they are replaced with explicit operations or backed by a real
 runtime binding. Current codegen otherwise reaches the external fallback and
@@ -118,7 +118,7 @@ storage or implement methods such as `TaskList.append`, `TaskMap.get`, or
 `TaskList.length`.
 
 Until the collection runtime is wired, use explicit operations for executable
-behavior. `semlint2.py` flags typed collection calls whose current compiler path
+behavior. `semlint.py` flags typed collection calls whose current compiler path
 would fall through to the zero-stub external fallback.
 
 ## Validators, Mappers, Adapters, Boundaries
@@ -151,6 +151,6 @@ Trust-boundary declarations should answer:
 - Which validator proves the transition?
 - Which source is permitted?
 
-`semlint2.py` checks partial trust boundaries. Treat that diagnostic as design
+`semlint.py` checks partial trust boundaries. Treat that diagnostic as design
 pressure: a partial boundary is usually worse than no boundary because it
 implies safety without enough evidence.

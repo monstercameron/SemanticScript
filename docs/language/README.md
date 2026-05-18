@@ -21,9 +21,31 @@ authority for executable lowering.
 ## Contents
 
 This folder contains the language explanation layer: lexical rules, program
-structure, types, operations/dataflow, effects/errors, memory/state, records,
-codecs, cleanup, concurrency, time-related syntax, and planned native HTTP API
-shape.
+structure, project layout and `build.sem`, types, operations/dataflow,
+effects/errors, memory/state, records, codecs, cleanup, concurrency,
+time-related syntax, and planned native HTTP API shape.
+
+- [lexical-model.md](lexical-model.md) defines tokenization, comments,
+  strings, identifiers, and rejected syntax.
+- [program-structure.md](program-structure.md) explains project headers,
+  imports, entries, operations, and ownership.
+- [project-layout-build-sem.md](project-layout-build-sem.md) defines folder
+  layout, `build.sem` rules, module registration, artifact directories, and
+  explicit export contracts.
+- [types-values.md](types-values.md) covers primitive types, aliases,
+  constants, literals, records, and enums.
+- [operations-dataflow.md](operations-dataflow.md) covers operation contracts,
+  calls, bindings, variables, and control flow.
+- [errors-effects-capabilities.md](errors-effects-capabilities.md) covers
+  result flow, typed errors, effects, capabilities, and authority.
+- [memory-state.md](memory-state.md) covers storage, shared state, mutation,
+  guard tokens, and pointer primitives.
+- [records-codecs-boundaries.md](records-codecs-boundaries.md) covers records,
+  builders, JSON codecs, and trust boundaries.
+- [concurrency-time-cleanup.md](concurrency-time-cleanup.md) covers cleanup,
+  retry, async, groups, channels, locks, and worker pools.
+- [native-http-api.md](native-http-api.md) describes the planned native HTTP
+  server API and route-handler ABI.
 
 ## Current Status
 

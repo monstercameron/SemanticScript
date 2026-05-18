@@ -6,6 +6,8 @@ Documentation for compiler, linter, and editor tooling.
 
 - `compiler.md` documents `semsc.py` behavior and CLI usage.
 - `linter.md` documents `semlint.py`.
+- `../language/project-layout-build-sem.md` documents project folder layout,
+  `build.sem`, module registration, and compiler-managed artifact folders.
 - `native-http-runtime.md` documents the current native HTTP adapter and planned
   H2O / `libh2o` backend.
 - `vscode-extension.md` documents the VS Code extension surface.

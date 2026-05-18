@@ -90,7 +90,7 @@ not enforce guard-token ownership or protection at load/store time. `protectedBy
 therefore means "this access claims the named token in the source contract",
 not "the generated code validates the token".
 
-`semlint2.py` checks for guard-token sources without releases, shared-state
+`semlint.py` checks for guard-token sources without releases, shared-state
 access without `protectedBy`, and `protectedBy` tokens that do not declare a
 matching `guardTokenProtects TOKEN RESOURCE` edge.
 
@@ -105,7 +105,7 @@ memoryStackLimit appendAndReadTask 4096
 ```
 
 These lines declare memory behavior for review and checking. They do not
-replace actual allocation checks. `semlint2.py` can flag contradictions such as
+replace actual allocation checks. `semlint.py` can flag contradictions such as
 declaring no heap while allocating, missing allocation source metadata, and
 stack-limit overruns based on primitive size estimates.
 

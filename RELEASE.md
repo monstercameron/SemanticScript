@@ -42,8 +42,8 @@ python -m compileall -q SemanticScript python samples
 python -m unittest SemanticScript/linter/test_semlint.py -v
 python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sscript --parse-only
 python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sem --parse-only
-python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sscript --fail-on none --summary
-python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sem --fail-on none --summary
+python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sscript --summary
+python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sem --summary
 npm --prefix vscode-semanticscript run check
 ```
 

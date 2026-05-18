@@ -54,7 +54,7 @@ bindError ERROR_VALUE ERROR_TYPE CALL
 branchIfError CALL LABEL
 ```
 
-`semlint2.py` checks hidden-failure patterns for known fallible targets such as
+`semlint.py` checks hidden-failure patterns for known fallible targets such as
 `console.writeLine`, heap allocation calls, and selected libc calls.
 
 ## Constructing Domain Failures
@@ -111,7 +111,7 @@ authority TARGET EFFECT_PATH ACCESS
 
 Capabilities name grants. `useCapability` attaches a grant to an operation or
 use site. `authority` is an inline grant form. Compiler strict lint and
-`semlint2.py` check for effect sites without capability coverage.
+`semlint.py` check for effect sites without capability coverage.
 
 Capability paths are hierarchical. A capability declared at `http.request read`
 authorizes narrower reads such as `http.request.method`, `http.request.path`,

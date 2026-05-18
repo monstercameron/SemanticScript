@@ -41,7 +41,7 @@ That leaks a libc byte count into the operation boundary. A caller or backend ma
 
 ## Linter Guardrail
 
-`semlint2.py` (the canonical linter — `semlint.py` is legacy) reports
+`semlint.py`, the canonical structured linter, reports
 structured diagnostics under stable SS codes; the guardrails below cite the
 codes that enforce each rule so agents can grep both this guide and the
 linter's `kind` strings against the same vocabulary.
@@ -331,7 +331,7 @@ operation boundary:
 returnValue SaveWriteFailed
 ```
 
-Do not return raw repr values such as `returnValue 2`. `semlint2.py` reports
+Do not return raw repr values such as `returnValue 2`. `semlint.py` reports
 `enumReturnUsesRawValue` for that shape because it erases the closed status
 domain that the enum was introduced to provide.
 
@@ -342,7 +342,7 @@ pointer-loaded bytes, prefer:
 call doneCheckCall math.equalCSignedInt32
 ```
 
-over routing those values through `math.equalI64`. `semlint2.py` reports
+over routing those values through `math.equalI64`. `semlint.py` reports
 `mathOperandWidthDrift` when any math target receives an operand with a
 different numeric shape. The compiler rejects those mismatches too; use a
 width-specific math target or an explicit conversion operation.
@@ -410,7 +410,7 @@ sentinels that are part of that operation's own state machine, or values whose
 meaning is coupled to one operation's body. Module scope is for cross-operation
 contract, not for a convenient way to share `0` and `1`.
 
-`semlint2.py` reports `SS4401 styleDiscipline.duplicateLocalImmutableAcrossOps`
+`semlint.py` reports `SS4401 styleDiscipline.duplicateLocalImmutableAcrossOps`
 (T4 style, info severity) when a `storage local immutable` declaration with the
 same name, type, and value appears in three or more operations. The diagnostic
 includes a `hoistToModuleImmutable` fix candidate carrying the module-scope
@@ -437,7 +437,7 @@ storage local immutable quoteByte CSignedInt32 34
 storage local immutable backslashByte CSignedInt32 92
 ```
 
-`semlint2.py` reports `SS4402 styleDiscipline.magicAsciiByteLiteral` (T4 style,
+`semlint.py` reports `SS4402 styleDiscipline.magicAsciiByteLiteral` (T4 style,
 info severity) when a `storage local immutable NAME CSignedInt32 V` declares a
 printable-ASCII byte value (V in 32..126) without a `# rationale:` comment
 naming the character. The diagnostic is suppressed when SS4401 already flags
@@ -466,7 +466,7 @@ storage local immutable titleValueOffset CSignedInt64 30
 The `warning` line on the loader operation should also point at the produces
 operation by name so an agent can navigate the coupling.
 
-`semlint2.py` reports `SS4404 styleDiscipline.fixedOffsetParserNeedsRationale`
+`semlint.py` reports `SS4404 styleDiscipline.fixedOffsetParserNeedsRationale`
 (T4 style, info severity) when an operation declares two or more `storage local
 immutable *Offset` rows in a contiguous block without a preceding `# rationale:`
 comment that names the emitter operation or the format-string derivation. The
@@ -495,7 +495,7 @@ storage local mutable writeIndex CSignedInt64 zeroIndex
 set local readIndex valueOffset
 ```
 
-`semlint2.py` reports `SS4403 styleDiscipline.deadStorageInitializer` (T4
+`semlint.py` reports `SS4403 styleDiscipline.deadStorageInitializer` (T4
 style, info severity) when a `storage local mutable NAME TYPE INIT` is
 immediately followed by `set local NAME NEW` with no intervening read of
 `NAME`. The diagnostic carries a `seedWithRealFirstValue` fix candidate
@@ -555,7 +555,7 @@ arg sameStatusCall left titleWriteStatus
 arg sameStatusCall right SaveSucceeded
 ```
 
-`semlint2.py` reports `SS4405 styleDiscipline.enumReprComparison` (T4 style,
+`semlint.py` reports `SS4405 styleDiscipline.enumReprComparison` (T4 style,
 info severity) when any operand of a `math.equal*` / `math.notEqual*` /
 `math.lessThan*` / `math.greaterThan*` call resolves to a declared enum type.
 The fix candidate carries the exact `call <name> <EnumName>.<method>` line
@@ -576,7 +576,7 @@ ignoreValue saveCall SaveTodosStatus
 ignoreValue saveCall SaveTodosStatus
 ```
 
-`semlint2.py` reports `SS4406 styleDiscipline.enumResultDiscarded` (T4
+`semlint.py` reports `SS4406 styleDiscipline.enumResultDiscarded` (T4
 style, info severity) when an `ignoreValue` row discards a value typed as
 a declared enum. The diagnostic suggests either binding the result and
 branching on the cases, or adding a `# rationale:` line justifying why all
@@ -584,6 +584,159 @@ cases are acceptable at the discard site.
 
 The general rule: enum cases are the contract. Comparing or discarding
 them must name the enum, not the underlying integer.
+
+## Project Metadata Embedded In The Executable
+
+Declare project metadata in the project's `build.sem` tape so executable
+identity lives beside target/runtime/output configuration instead of inside
+`main.sem`. `build.sem` also registers module folders; module files keep their
+own `module`, `importModule`, and `export*` contract rows. On `--emit-exe` the
+compiler generates a transient Windows
+`VERSIONINFO` resource, compiles it with `llvm-rc` (or `windres` if present),
+and links the compiled `.res` from the managed `build/resources/` directory
+into the final PE — no separate metadata file ships with the program. The
+fields are then visible from Windows Explorer → Properties → Details, from
+PowerShell `(Get-Item file.exe).VersionInfo`, and via `version.dll`'s
+`VerQueryValue` for arbitrary user keys.
+
+```semanticscript
+project TodoTuiApp
+target console
+runtime native 1
+entry console main
+
+version "1.0.0.0"
+publisher "Earl Cameron"
+description "SemanticScript Todo TUI — keyboard-driven console todo app."
+copyright "Copyright (c) 2026 Earl Cameron."
+productName "Todo TUI"
+internalName "todo"
+originalFilename "todo.exe"
+comments "Built from app/todo/main.sem by the SemanticScript compiler."
+metadata "BuildSource" "app/todo/main.sem"
+metadata "RuntimeContract" "native 1"
+
+registerModule todoTui app.todo "."
+```
+
+Mapping to Windows VERSIONINFO StringFileInfo entries:
+
+| SemanticScript verb | VERSIONINFO key | Default if omitted |
+|---|---|---|
+| `version "A.B.C.D"` | `FileVersion`, `ProductVersion`, `FILEVERSION` / `PRODUCTVERSION` | `0.0.0.0` |
+| `publisher "..."` | `CompanyName` | empty |
+| `description "..."` | `FileDescription` | project name |
+| `copyright "..."` | `LegalCopyright` | empty |
+| `productName "..."` | `ProductName` | project name |
+| `internalName "..."` | `InternalName` | project name |
+| `originalFilename "..."` | `OriginalFilename` | basename of emit-exe path |
+| `trademark "..."` | `LegalTrademarks` | empty |
+| `comments "..."` | `Comments` | empty (entry omitted) |
+| `metadata "key" "value"` | arbitrary user key in the same string-table | n/a, repeatable |
+
+Toolchain notes:
+
+- The compiler probes `llvm-rc` on `PATH` and at
+  `C:\Program Files\LLVM\bin\llvm-rc.exe`, then `windres`. Honors
+  `$SEMSC_WINRC` for an explicit override.
+- The generated `.rc` is UTF-8 with BOM; non-ASCII characters in metadata
+  strings (em-dash, smart quotes, accents) are passed through with
+  `/C 65001` so the resource compiler interprets the high-bit bytes as
+  UTF-8.
+- On non-Windows platforms the metadata is still parsed and indexed (so
+  IDE tooltips, agents, and future macOS/Linux emitters can read it) but
+  no resource is generated and the link proceeds normally.
+- If no resource compiler is available the build emits a warning and
+  links without VERSIONINFO; the exe still runs.
+
+The `metadata "key" "value"` form is the escape hatch for arbitrary
+publisher-specific fields (`BuildSource`, `BuildDate`, `GitCommit`, etc.).
+Custom keys land in the same StringFileInfo block as the standard fields
+and are readable from `VerQueryValue` queries against
+`\StringFileInfo\040904b0\<key>`.
+
+## Build-Time Icon Registry Embedded In The Executable
+
+Icons declared in `build.sem` are baked into the same Windows VERSIONINFO
+resource section as the metadata above. Every fact about every image gets
+its own row so the relationship between source PNGs and what ships inside
+the `.exe` is grep-able and machine-checkable:
+
+```semanticscript
+iconRoleDefinition applicationPrimary   "Primary application icon …"
+iconRoleDefinition applicationSecondary "Secondary application icon …"
+
+icon         todoPrimaryIcon
+iconRole     todoPrimaryIcon applicationPrimary
+iconPurpose  todoPrimaryIcon "Stylized 'T' on a teal background …"
+
+iconImage         todoPrimaryAt16
+iconImageGroup    todoPrimaryAt16 todoPrimaryIcon
+iconImagePath     todoPrimaryAt16 "assets/icons/icon-16.png"
+iconImageFormat   todoPrimaryAt16 png
+iconImageWidth    todoPrimaryAt16 16
+iconImageHeight   todoPrimaryAt16 16
+iconImageScale    todoPrimaryAt16 1
+iconImageDepth    todoPrimaryAt16 bits32
+iconImagePlatform todoPrimaryAt16 any
+iconImagePurpose  todoPrimaryAt16 "Smallest cell — Explorer details column …"
+
+# iconImageAt32 / At48 / At256 follow the same row shape …
+```
+
+At `--emit-exe` time the compiler:
+
+1. Walks every `iconImage` whose `iconImageGroup` resolves to an `icon`
+   with `iconRole applicationPrimary`.
+2. Filters to images with `iconImagePlatform any` or `windows`.
+3. Sorts by width and packs the source PNGs into a transient
+   PNG-encoded multi-size `.ico` (Vista+ supported, preserves alpha).
+4. Emits `1 ICON "<tmp>.ico"` ahead of the VERSIONINFO block in the
+   generated `.rc`, hands the file to `llvm-rc`, and the resulting
+   `.res` is linked into the PE.
+
+After link the icon is readable from Windows Explorer thumbnails, the
+taskbar, the Alt-Tab thumbnail row, and via
+`[System.Drawing.Icon]::ExtractAssociatedIcon` from PowerShell. macOS
+(`macos`) and Linux (`linux`) platform tokens are parsed and indexed for
+future emitters; nothing is embedded for them yet.
+
+## Residue-Free Build Default
+
+The intermediate `.rc`, `.res`, and `.ico` produced for VERSIONINFO and
+icon embedding live in a system tempdir by default. After `llvm-rc` and
+clang finish, the temp files are deleted — the resource bytes survive
+only inside the linked `.exe`'s PE resource section. A clean build
+contains nothing but the executable (plus `.ll` if IR persistence is
+on):
+
+```text
+build/
+  todo.exe
+  todo.ll
+```
+
+To inspect the generated `.rc` or the packed `.ico` (e.g. when an icon
+isn't appearing or a custom metadata key isn't readable), opt in via the
+build tape:
+
+```semanticscript
+keepResources    todoTui yes
+# or, with an explicit directory:
+resourcesDir     todoTui "build/resources"
+```
+
+Or per-invocation via the CLI:
+
+```text
+python compiler/semsc.py build.sem --emit-exe build/todo.exe --keep-resources
+python compiler/semsc.py build.sem --emit-exe build/todo.exe --resource-dir /tmp/icon-debug
+```
+
+CLI flags override `build.sem` declarations. The default is intentionally
+strict: a release build leaves no filesystem residue, so the question
+"what shipped in the binary?" is answered only by reading the binary
+itself, not by a stale `.rc` left behind on a developer's machine.
 
 ## Optimization Rule
 
@@ -683,7 +836,7 @@ branchIf queryMissing queryMissingPath
 
 **Transitive wrapper detection.** A user op that takes a `body` input and
 forwards it unchanged to `http.response*` is treated as a response body
-writer by the linter (semlint2 walks to a fixed point). The gauntlet's
+writer by the linter (semlint walks to a fixed point). The gauntlet's
 `writeTextResponse(response, status, body)` is the prototype case. You do
 not need to repeat the guard inside each wrapper layer — guard once at
 the binding site, and the lint follows the body through wrappers.
@@ -698,7 +851,7 @@ warning yourHandler "this route intentionally exercises the adapter null-body fa
 ```
 
 The phrase `null-body failure path` (or `null-body 500`) must appear
-verbatim in the warning text — that's the marker `semlint2`
+verbatim in the warning text — that's the marker `semlint`
 (`HTTP_NULL_GUARD_OPT_OUT_MARKERS`) matches. The marker is deliberately
 specific so a generic "this might 500" warning cannot accidentally
 silence the lint.
@@ -808,3 +961,237 @@ forms make scope, mutability, and ownership visible on every line, which
 matters for the cross-op duplication detector (SS4401
 `duplicateLocalImmutableAcrossOps`) — that rule's hoist suggestion is
 always "promote to `storage module immutable`," not "promote to `const`".
+
+## Route Handler Input Names Are An ABI Contract
+
+Every operation reachable from a `route SERVER METHOD PATH HANDLER`
+binding (and every operation bound via `routeMiddleware`) MUST declare
+its `HttpRequest` input under the canonical name `request` and its
+`HttpResponse` input under the canonical name `response`. The native
+dispatcher binds positionally (`[HttpRequest, HttpResponse,
+CSignedInt32]`) so a handler with `req`/`resp` *compiles and runs*,
+but every other name-based lookup in the toolchain breaks silently:
+
+- `semlint`'s SS3603 transitive-body walk resolves the response slot
+  by looking for `arg <call> body <slot>` against the `body` input
+  name.
+- `narrative_citations_for_operation` walks per-input narrative edges
+  by input name.
+- Agents reading the source infer the request/response role from the
+  name — `req`/`resp` reads as "ported from JavaScript/Go" and is
+  semantically ambiguous.
+
+This is enforced by `semlint` SS3609 `routeHandlerInputNameMismatch`,
+graded ERROR with `blocksCompile=True`. The rule cites the route
+binding site alongside the offending input line so a reader sees both
+"why this op is held to the contract" and "where the contract is
+violated." The fix is a 1-token rename and the fix candidate is
+auto-applicable.
+
+## Method-Polymorphic Route Handlers
+
+A single handler can be registered for multiple HTTP methods on the
+same path — the gauntlet's `bodySizeHandler` is bound to both
+`POST /reflect/body-size` and `PUT /reflect/body-size`. There is no
+`routeShared HANDLER METHODS_LIST PATH` verb today; method
+polymorphism is expressed by repeating the `route` row with the same
+handler name.
+
+When the handler actually inspects the request method (e.g., to branch
+between POST and PUT semantics), it MUST declare the matching effect:
+
+```semanticscript
+operation methodAwareHandler
+input methodAwareHandler request HttpRequest
+input methodAwareHandler response HttpResponse
+output methodAwareHandler CSignedInt32
+effect methodAwareHandler read http.request.method  # required when inspecting method
+effect methodAwareHandler write http.response
+```
+
+If the handler ignores the method and treats the body identically
+across verbs (as `bodySizeHandler` does), `read http.request.method`
+is NOT required — and adding it would be a false claim that
+SS3603-style effect-coverage rules would honor as truth. Lint guidance:
+declare the effect when, and only when, an `http.requestMethod` call
+appears in the handler body. The companion `routeMiddleware` /
+`routeTimeout` coverage entries collapse POST+PUT to one entry per
+path, so the multiplicity is asymmetric: route rows repeat, middleware
+and timeout rows don't.
+
+## Middleware Return Contract (Proposed)
+
+Today middleware ops declare `output OP CSignedInt32` and return `0`
+to continue. The dispatcher only honors `0` (every non-zero value is
+silently ignored), so the "non-zero means short-circuit" promise is
+half-real. The SYNTAX.md `Proposed` row for `enum MiddlewareControl
+repr CSignedInt32` (with `continueMiddlewareControl: 0` and
+`shortCircuitMiddlewareControl: 1`) is the planned replacement: typed
+enum cases instead of magic integers, and a dispatcher that actually
+halts the chain on `shortCircuit`.
+
+Until the dispatcher honors short-circuit, middleware ops should
+return `0` and document the contract in the operation's `invariant`
+line. Do not return a sentinel `1` and assume it will short-circuit —
+the current runtime continues regardless, and the assumption rots the
+moment a test relies on it. The future SS3610 (when shipped) will
+enforce `output OP MiddlewareControl` over bare `CSignedInt32`.
+
+## Cross-Document References
+
+Several `warning OP "..."` and `invariant OP "..."` lines cite spec
+rows by anchor (`SYNTAX.md#webServer`, `SYNTAX.md#routeMiddleware`).
+There is no first-class `tracks OP "anchor"` verb; the references are
+prose. The discipline:
+
+- Use the literal anchor text that appears in `SYNTAX.md` (e.g.,
+  `#routeMiddleware` not `#middleware`).
+- The drift guard `TestHttpTargetSourceOfTruth` (`test_semlint.py`)
+  asserts every `http.*` target from `semsc.py` is mentioned in
+  `SYNTAX.md`. For other cross-doc references, manual review is the
+  only enforcement — add `grep -F 'SYNTAX.md#anchor' app/` to the
+  review checklist if you add a new tracking citation pattern.
+- If a tracking citation breaks (anchor renamed, row removed), fix
+  the source row rather than silently updating the reference; the
+  citation is a contract that says "this code is shaped by THAT spec
+  decision," and stale citations decay faster than stale comments.
+
+This pattern is intentionally informal: a new `tracks` verb would only
+pay off when the cross-doc citation count exceeds the dozen or so
+currently in flight. Until then, prose + manual grep is cheaper than
+a verb nobody adopts.
+
+## HTTP Target Source-Of-Truth
+
+The native HTTP target surface lives in three places:
+
+1. `semsc.py` — the dispatch block (`if target == "http.responseText":`
+   and friends), each marked with the SOURCE-OF-TRUTH banner.
+2. `semlint.py` — `HTTP_METHOD_WHITELIST`,
+   `NON_NULLABLE_HTTP_REQUEST_READS`, `NULLABLE_HTTP_REQUEST_READS`,
+   `HTTP_RESPONSE_BODY_WRITERS`, `HTTP_RESPONSE_OTHER_WRITERS`, and
+   the `ALL_NATIVE_HTTP_TARGETS` union.
+3. `SYNTAX.md` — the two `http.requestMethod, …` and
+   `http.responseText, …` umbrella rows.
+
+`TestHttpTargetSourceOfTruth` in `test_semlint.py` parses semsc.py
+for every `"http.X"` literal and asserts the set equals
+`ALL_NATIVE_HTTP_TARGETS`. A second assertion checks every dispatch
+target appears in SYNTAX.md. A third checks the four classifier sets
+are pairwise disjoint so membership-based decisions in SS3603 /
+SS3601 are unambiguous.
+
+When you add a new `http.*` target to the runtime, update all three
+sites in lockstep. The drift test will tell you if you missed one;
+don't silence the test, fix the drift.
+
+## Void Output Operations Use `returnVoid`
+
+The user-op ABI returns i32 even for operations declared
+`output OP Void` / `output OP CVoid` — the type system maps Void to
+i32 at the return slot, and codegen tolerates any sentinel value.
+That tolerance has a cost: a Void op that ends with `returnValue
+someI32Zero` says one thing at the output line ("no caller-actionable
+value") and another at the return site ("here is an integer
+sentinel"), and a future agent reading either half in isolation has
+to recognise the ABI quirk to reconcile them.
+
+`returnVoid` is the explicit form:
+
+```semanticscript
+operation addCommonHeaders
+input addCommonHeaders response HttpResponse
+output addCommonHeaders Void
+effect addCommonHeaders write http.response
+memory addCommonHeaders arena request
+async addCommonHeaders no
+useCapability addCommonHeaders httpResponseWriter
+purpose addCommonHeaders "stamp diagnostic headers; no caller-actionable status"
+invariant addCommonHeaders "Void output means the op never reports a recoverable error"
+label startAddCommonHeaders
+# ... header writes ...
+returnVoid
+```
+
+Codegen still emits the i32-zero sentinel under the hood, but the
+source matches the semantic contract. The compiler rejects
+`returnVoid` on non-Void outputs so the verb cannot become a backdoor
+around the result-contract checker.
+
+`semlint` SS3612 `voidReturnValueShouldBeReturnVoid` flags Void-output
+ops that still use `returnValue NAME`. The fix candidate is
+auto-applicable: drop the `storage local immutable zeroSentinel
+CSignedInt32 0` line and rewrite `returnValue zeroSentinel` →
+`returnVoid`. SS3612 is WARNING by default (the legacy form compiles
+correctly); `--strict` promotes it to fatal for CI pipelines that
+want source-level honesty enforced.
+
+## Narrative Citations Should Cite Stable Identifiers
+
+When a `purpose` / `invariant` / `warning` / `rationale` line refers
+to another file, cite by **stable identifier**, not by line number.
+The stable choices, in order of preference:
+
+1. **Rule ID** — `SS3603 unguardedHttpInput`. Rule IDs are assigned
+   once and never renumbered.
+2. **Spec anchor** — `SYNTAX.md#routeMiddleware`. Anchors track the
+   spec row; row reordering doesn't change the anchor.
+3. **Function name** — `semsc.py`'s `_check_route_methods`. Function
+   names rename rarely and break loudly when they do.
+4. **Grep-anchor** — a quoted unique string that finds the cited
+   code: `"if target == \"http.responseText\""`. Survives line drift
+   as long as the literal stays in the source.
+
+The brittle form is:
+
+```semanticscript
+# DON'T:
+invariant gauntletMiddleware "see semsc.py:3674 for the lowering"
+warning requiredHeaderHandler "asserted at test_http_api_gauntlet.py:273-279"
+```
+
+Both citations drift the moment the referenced file gets an insertion
+above the cited line — and they drift silently, because nothing in
+the build verifies that `semsc.py` line 3674 is still the function
+the narrative meant.
+
+The stable form is:
+
+```semanticscript
+# DO:
+invariant gauntletMiddleware "see semsc.py's pointer.isNull lowering"
+warning requiredHeaderHandler "asserted by the `/reflect/required-header-or-fail` block in test_http_api_gauntlet.py"
+```
+
+`semlint` SS3613 `narrativeReferencesLineNumber` flags `<file>:<line>`
+and `line <NN>` patterns inside narrative text. The diagnostic
+suggests function-name and rule-ID replacements. Like SS3612, it's
+WARNING by default; promote to fatal under `--strict` if narrative
+durability is a CI requirement.
+
+## Multipart Content-Type Nullability
+
+`http.multipartPartContentType` returns NULL when the part exists but
+has no `Content-Type` header in its `Content-Disposition` block.
+Passing NULL to `http.responseBytes`'s `contentType` argument is
+safe — the native runtime defaults a NULL `contentType` to
+`"application/octet-stream"`. So this pattern is well-defined:
+
+```semanticscript
+bind uploadFileContentType CNullTerminatedByteString uploadFileContentTypeReadCall
+# safe to pass straight to http.responseBytes — runtime defaults NULL → octet-stream
+arg uploadFileBytesResponseCall contentType uploadFileContentType
+```
+
+What is NOT safe is using `uploadFileContentType` for anything OTHER
+than the response writer's `contentType` argument — e.g., binding it
+to a variable that gets compared against a string, or splicing it
+into a format buffer. The NULL would propagate and crash. If you
+need to inspect the content type, guard with `pointer.isNull` first
+and substitute an explicit default at the SemanticScript layer.
+
+This contract is documented in `multipartFileBytesHandler`'s
+invariant. The gauntlet's multipart test fixture sends an explicit
+`Content-Type: application/x-gauntlet` so the test verifies the
+non-NULL path, but the NULL → octet-stream default path is reachable
+for clients that omit the header.

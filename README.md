@@ -429,9 +429,9 @@ Run current compiler commands from `SemanticScript/`:
 cd SemanticScript
 python compiler/semsc.py --version
 python compiler/semsc.py sem/fizzbuzz.sscript --run
-python compiler/semsc.py sem/fizzbuzz.sscript --emit-ir fizzbuzz.ll
-python compiler/semsc.py sem/fizzbuzz.sscript --emit-exe fizzbuzz.exe
-python compiler/semsc.py sem/fizzbuzz.sscript --emit-exe fizzbuzz.exe --persist-llvm-ir yes
+python compiler/semsc.py sem/fizzbuzz.sscript --emit-ir
+python compiler/semsc.py sem/fizzbuzz.sscript --emit-exe
+python compiler/semsc.py sem/fizzbuzz.sscript --emit-exe --persist-llvm-ir yes
 python compiler/semsc.py sem/fizzbuzz.sscript --emit-exe fizzbuzz-prod.exe --build-profile prod
 python linter/semlint.py sem/fizzbuzz.sscript --summary
 ```
@@ -441,11 +441,11 @@ Run the focused CI checks:
 ```powershell
 python -m pip install -r requirements.txt
 python -m compileall -q SemanticScript python samples
-python -m unittest SemanticScript/linter/test_semlint2.py -v
+python -m unittest SemanticScript/linter/test_semlint.py -v
 python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sscript --parse-only
 python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sem --parse-only
-python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sscript --fail-on none --summary
-python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sem --fail-on none --summary
+python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sscript --summary
+python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sem --summary
 npm --prefix vscode-semanticscript run check
 ```
 
@@ -473,11 +473,11 @@ The local extension is in `vscode-semanticscript/`. It provides:
   primitive types, opaque inputs, call objects, and role suffixes;
 - whole-line segment coloring for declaration/context/action/control/comment
   lines and unknown verbs;
-- optional `semlint.py` or `semlint2.py` diagnostics.
+- optional `semlint.py` diagnostics.
 
-The extension skips current-linter diagnostics for refined future syntax by
-default because some refined examples under `SemanticScript/sem/` are syntax
-showcases rather than current executable SemanticScript.
+`semanticScript.linter.skipFutureSyntax` defaults to `false`. If enabled, it
+skips linter diagnostics on refinement-only files that are not executable by
+the current compiler yet.
 
 Package the extension with:
 
@@ -487,15 +487,16 @@ npm run check
 npx --yes @vscode/vsce package
 ```
 
-The 1.0 local VSIX package name is
-`vscode-semanticscript/semanticscript-vscode-1.0.0.vsix`. Generated `.vsix`
+The current local VSIX package name is
+`vscode-semanticscript/semanticscript-vscode-1.0.1.vsix`. Generated `.vsix`
 files stay ignored and should be attached outside the repository.
 
 ## Release Hygiene
 
 Release policy lives in `docs/reference/release-hygiene.md`.
 
-- The root `LICENSE` is currently a no-license notice, not an open-source grant.
+- First-party SemanticScript source, docs, samples, and tooling are distributed
+  under the MIT License in the root `LICENSE`.
 - `samples/python/` is canonical; top-level `python/` is a 1.0 compatibility
   mirror.
 - `.sem` files directly under `SemanticScript/sem/` are tracked alias fixtures

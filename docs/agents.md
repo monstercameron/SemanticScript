@@ -466,7 +466,7 @@ T0/T1/T2 correctness. T3 design debt. T4 style.
   python SemanticScript/compiler/semsc.py file.sscript --run
   python SemanticScript/compiler/semsc.py file.sscript --emit-ir out.ll
   python SemanticScript/compiler/semsc.py file.sscript --emit-exe out.exe
-  python SemanticScript/linter/semlint.py file.sscript --format json --fail-on none
+  python SemanticScript/linter/semlint.py file.sscript --format json
   python SemanticScript/linter/semlint.py file.sscript --format human
   python SemanticScript/linter/semlint.py file.sscript --format json
   python SemanticScript/linter/semlint.py file.sscript --tier T3 --code SS0101

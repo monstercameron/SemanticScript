@@ -44,15 +44,46 @@ diagnostics.
 importModule standard.string as string
 ```
 
+For project builds, `build.sem` registers modules and the module source files
+own their own imports/exports:
+
+```semanticscript
+buildProject todoTui
+sourceRoot todoTui "."
+registerModule todoTui app.todo "."
+mainFile todoTui "main.sem"
+mainOperation todoTui main
+
+importModule app.todo
+```
+
+```semanticscript
+module app.todo
+importModule app.persistence
+exportOperation app.todo main
+```
+
+Exports are explicit only. The compiler and linter must not infer a public API
+from reachable operations, entry points, or call sites; each `export*` row has
+to name a symbol declared by that same module source.
+
 `semsc.py` resolves `importModule DOTTED.PATH [as ALIAS]` before parsing:
 
-1. Convert dotted path to a path: `standard.string` -> `standard/string.sscript`.
-2. Search relative to the source file's directory.
-3. Search `SemanticScript/stdlib_sem/`.
-4. Search the project root.
-5. Inline imported content with cycle detection.
+1. If the root source has `registerModule` rows, resolve matching module paths
+   from that registry first.
+2. A registered module path may point directly at a source file or at a folder
+   containing `main.sem`, `index.sem`, the leaf module file, or exactly one
+   non-test `.sem`/`.sscript`.
+3. Convert unregistered dotted paths to filesystem paths:
+   `standard.string` -> `standard/string.sscript`.
+4. Search relative to the source file's directory.
+5. Search `SemanticScript/stdlib_sem/`.
+6. Search the project root.
+7. Inline imported content with cycle detection.
 
-The alias is recorded but is not a namespace system yet.
+The alias is recorded but is not a namespace system yet. New project modules
+should import registered module paths; the filesystem/std-lib fallback is kept
+for single-file sources and older samples.
 
 ## Library and Web Server Mode
 
