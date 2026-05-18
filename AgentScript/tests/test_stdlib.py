@@ -28,10 +28,11 @@ OK_PROGRAMS = ["string.as", "ctype.as", "stdlib.as", "memory.as",
 # operation), not just OK.
 EXPECTED_STDIO_OUTPUT = (
     "Hello, AgentScript stdlib!\n"
-    # putString prints "no-newline-then-putLine" with no trailing
-    # newline; the immediately-following putLine("") supplies the
-    # single LF that ends the line, so the next line starts cleanly.
-    "no-newline-then-putLine\n"
+    # writeCStringToStandardOutput prints the literal without a trailing
+    # newline; the immediately-following writeCStringLineToStandardOutput("")
+    # supplies the single LF that ends the line, so the next line starts
+    # cleanly. (Pre-rename, the operations were named putString and putLine.)
+    "no-newline-then-writeCStringLineToStandardOutput\n"
     "42\n"
     "-1234\n"
     "0\n"
