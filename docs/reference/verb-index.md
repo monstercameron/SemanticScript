@@ -23,7 +23,35 @@ partial       mixed behavior; see owning language doc
 | `module` | `module DOTTED.PATH` | metadata |
 | `mode` | `mode capturedOutputReplay` | metadata |
 | `entry` | `entry console OPERATION` | lowered |
+| `buildProject` | `buildProject PROJECT` | partial |
+| `modulePath` | `modulePath PROJECT MODULE_PATH` | metadata |
+| `languageVersion` | `languageVersion PROJECT "VERSION"` | metadata |
+| `projectVersion` | `projectVersion PROJECT "VERSION"` | metadata |
+| `projectLicense` | `projectLicense PROJECT LICENSE` | metadata |
+| `sourceRoot` | `sourceRoot PROJECT "PATH"` | partial |
 | `registerModule` | `registerModule PROJECT MODULE_PATH "PATH"` | partial |
+| `mainFile` | `mainFile PROJECT "PATH"` | partial |
+| `mainOperation` | `mainOperation PROJECT OPERATION` | partial |
+| `testRoot` | `testRoot PROJECT "PATH"` | metadata |
+| `testPattern` | `testPattern PROJECT "GLOB"` | metadata |
+| `targetRuntime` | `targetRuntime PROJECT nativeExe|webServer|library` | partial |
+| `buildProfile` | `buildProfile PROJECT dev|prod` | partial |
+| `runtimeChecks` | `runtimeChecks PROJECT off|traps|panic` | partial |
+| `optLevel` | `optLevel PROJECT 0|1|2|3` | partial |
+| `persistLlvmIr` | `persistLlvmIr PROJECT auto|yes|no` | partial |
+| `emitLlvmIr` | `emitLlvmIr PROJECT auto|yes|no` | partial |
+| `llvmIrOutput` | `llvmIrOutput PROJECT "PATH"` | partial |
+| `emitOptimizedLlvmIr` | `emitOptimizedLlvmIr PROJECT yes|no` | partial |
+| `optimizedLlvmIrOutput` | `optimizedLlvmIrOutput PROJECT "PATH"` | partial |
+| `buildDir` | `buildDir PROJECT "PATH"` | partial |
+| `buildRoot` | `buildRoot PROJECT "PATH"` | partial |
+| `buildFolderName` | `buildFolderName PROJECT NAME` | partial |
+| `nativeOutput` | `nativeOutput PROJECT "PATH"` | partial |
+| `nativeHttpHost` | `nativeHttpHost PROJECT "HOST"` | metadata |
+| `nativeHttpPort` | `nativeHttpPort PROJECT PORT` | metadata |
+| `formatterSetting` | `formatterSetting PROJECT KEY VALUE` | metadata |
+| `linterSetting` | `linterSetting PROJECT KEY VALUE` | metadata |
+| `docsOutput` | `docsOutput PROJECT "PATH"` | metadata |
 | `importModule` | `importModule DOTTED.PATH [as ALIAS]` | lowered pre-parse |
 | `section` | `section NAME` | metadata |
 
