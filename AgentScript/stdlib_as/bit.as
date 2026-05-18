@@ -1,299 +1,295 @@
+# ============================================================
+# AGENTSCRIPT STANDARD LIBRARY: bitwise operations on CSignedInt64
+# ============================================================
+#
+# # rationale: AgentScript's math.* surface has no native bitwise
+#   primitives (and/or/xor/not/shift), so this module implements
+#   them via multiplication, division, and modulo. Each bit op is
+#   pure-AS — no libc, no special LLVM intrinsics — and constant-
+#   folds when both operands are compile-time constants.
+#
+# # invariant: shifts are unsigned-equivalent (multiplication /
+#   division by 2^k). isSignedInt64BitSet checks the k-th bit of
+#   the abstract base-2 representation, equivalent to ((n >> k) & 1).
+#   setSignedInt64Bit / clearSignedInt64Bit / toggleSignedInt64Bit
+#   preserve every other bit.
+#
+# # security: pure value-level math; no allocation; no branches
+#   over secret-dependent bit patterns beyond the standard k-step
+#   power-of-two loop.
+#
+# # timing: O(k) where k is bitIndex (loop bound). Acceptable for
+#   bitIndex up to 63; not for hot inner loops. Future revisions
+#   should expose LLVM `shl`/`lshr`/`and`/`or`/`xor` intrinsics.
+#
+# # observability: no logs, no metrics.
+#
+# # warning: bitIndex must be in [0, 63]. Values outside this
+#   range silently wrap (multiplication by 2^64 overflows back).
+#
+# Operations exposed:
+#   shiftSignedInt64BitsLeft(inputValue, bitIndex)   -> CSignedInt64
+#   shiftSignedInt64BitsRight(inputValue, bitIndex)  -> CSignedInt64
+#   isSignedInt64BitSet(inputValue, bitIndex)        -> Bool
+#   setSignedInt64Bit(inputValue, bitIndex)          -> CSignedInt64
+#   clearSignedInt64Bit(inputValue, bitIndex)        -> CSignedInt64
+#   toggleSignedInt64Bit(inputValue, bitIndex)       -> CSignedInt64
+
 project StdBitSelfTest
 target console
 runtime AgentRuntime 0.1
-
 entry console main
 
 error MainError
-errorCase MainError TestFailed CSignedInt32
+errorCase MainError BitSmokeAssertionFailed
 
-# ============================================================
-# AGENTSCRIPT STANDARD LIBRARY: bitwise operations.
-#
-# AgentScript's math.* surface has no native bitwise primitives, so
-# every op in this file is implemented in pure-AS via multiplication,
-# division, modulo, and comparison. Performance is O(64) per call
-# for compound ops; acceptable for tooling, not for hot loops.
-#
-# Operations:
-#   shiftSignedInt64BitsLeft(n, k)        - n * 2^k (clipped at 64-bit width).
-#   shiftSignedInt64BitsRight(n, k)       - n / 2^k (arithmetic, signed).
-#   isSignedInt64BitSet(n, k)             - 1 if bit k of n is set, 0 otherwise.
-#   setSignedInt64Bit(n, k)              - n with bit k forced to 1.
-#   clearSignedInt64Bit(n, k)            - n with bit k forced to 0.
-#   toggleSignedInt64Bit(n, k)             - n with bit k toggled.
-#   bitwiseAnd(a, b)          - AND, bit-by-bit.
-#   bitwiseOr(a, b)           - OR, bit-by-bit.
-#   bitwiseXor(a, b)          - XOR, bit-by-bit.
-#   highestSetBitIndex(n)     - position of MSB; -1 for n == 0.
-# ============================================================
+domainLiteral integerZeroComparisonValue CSignedInt64 0
+domainLiteralTrust integerZeroComparisonValue trustedStaticLiteral
+domainLiteral integerOneStepValue CSignedInt64 1
+domainLiteralTrust integerOneStepValue trustedStaticLiteral
+domainLiteral integerTwoBaseValue CSignedInt64 2
+domainLiteralTrust integerTwoBaseValue trustedStaticLiteral
 
+# section bit.shift
 
 operation shiftSignedInt64BitsLeft
 input shiftSignedInt64BitsLeft inputValue CSignedInt64
 input shiftSignedInt64BitsLeft bitIndex CSignedInt64
-output shiftSignedInt64BitsLeft Result CSignedInt64 Void
-memory shiftSignedInt64BitsLeft heap no
+output shiftSignedInt64BitsLeft CSignedInt64
+memoryHeap shiftSignedInt64BitsLeft no
 async shiftSignedInt64BitsLeft no
-purpose shiftSignedInt64BitsLeft "n << k via multiplication by 2^k. k must be 0..63; outside that range the result wraps."
+purpose shiftSignedInt64BitsLeft "Returns inputValue << bitIndex, computed as inputValue * 2^bitIndex."
+invariant shiftSignedInt64BitsLeft "For bitIndex in [0, 63] and non-overflowing values, equivalent to LLVM's shl."
+warning shiftSignedInt64BitsLeft "Overflow wraps modulo 2^64; bitIndex < 0 is undefined."
+guarantee shiftSignedInt64BitsLeft "Terminates after bitIndex iterations."
 label startShiftSignedInt64BitsLeft
-const zeroSl I64 0
-const oneSl I64 1
-const twoSl I64 2
-var result I64 1
-var iter I64 0
-label slLoop
-call doneCall math.greaterThanOrEqualI64
-arg doneCall left iter
-arg doneCall right bitIndex
-run doneCall
-bind done Bool doneCall
-branchIf done slApply
-call doubleCall math.multiplyI64
-arg doubleCall left result
-arg doubleCall right twoSl
-run doubleCall
-bind nextResult I64 doubleCall
-set result nextResult
-call incCall math.addI64
-arg incCall left iter
-arg incCall right oneSl
-run incCall
-bind nextIter I64 incCall
-set iter nextIter
-branch slLoop
-label slApply
-call applyCall math.multiplyI64
-arg applyCall left inputValue
-arg applyCall right result
-run applyCall
-bind shifted CSignedInt64 applyCall
-returnOk shifted
-
+var leftShiftPowerAccumulator I64 1
+var leftShiftIteration I64 0
+label leftShiftLoop
+call detectLeftShiftDoneCall math.greaterThanOrEqualI64
+arg detectLeftShiftDoneCall left leftShiftIteration
+arg detectLeftShiftDoneCall right bitIndex
+run detectLeftShiftDoneCall
+bind leftShiftDone Bool detectLeftShiftDoneCall
+branchIf leftShiftDone applyLeftShiftMultiplication
+call doubleLeftShiftPowerCall math.multiplyI64
+arg doubleLeftShiftPowerCall left leftShiftPowerAccumulator
+arg doubleLeftShiftPowerCall right integerTwoBaseValue
+run doubleLeftShiftPowerCall
+bind doubledLeftShiftPower I64 doubleLeftShiftPowerCall
+set leftShiftPowerAccumulator doubledLeftShiftPower
+call incrementLeftShiftIterationCall math.addI64
+arg incrementLeftShiftIterationCall left leftShiftIteration
+arg incrementLeftShiftIterationCall right integerOneStepValue
+run incrementLeftShiftIterationCall
+bind nextLeftShiftIteration I64 incrementLeftShiftIterationCall
+set leftShiftIteration nextLeftShiftIteration
+branch leftShiftLoop
+label applyLeftShiftMultiplication
+call multiplyInputByPowerCall math.multiplyI64
+arg multiplyInputByPowerCall left inputValue
+arg multiplyInputByPowerCall right leftShiftPowerAccumulator
+run multiplyInputByPowerCall
+bind shiftedLeftResult CSignedInt64 multiplyInputByPowerCall
+returnValue shiftedLeftResult
 
 operation shiftSignedInt64BitsRight
 input shiftSignedInt64BitsRight inputValue CSignedInt64
 input shiftSignedInt64BitsRight bitIndex CSignedInt64
-output shiftSignedInt64BitsRight Result CSignedInt64 Void
-memory shiftSignedInt64BitsRight heap no
+output shiftSignedInt64BitsRight CSignedInt64
+memoryHeap shiftSignedInt64BitsRight no
 async shiftSignedInt64BitsRight no
-purpose shiftSignedInt64BitsRight "n >> k (arithmetic) via division by 2^k."
+purpose shiftSignedInt64BitsRight "Returns inputValue >> bitIndex, computed as inputValue / 2^bitIndex (arithmetic for signed values via LLVM sdiv)."
+invariant shiftSignedInt64BitsRight "For bitIndex in [0, 63] equivalent to LLVM's ashr semantics on the round-toward-zero domain."
+warning shiftSignedInt64BitsRight "sdiv rounds toward zero, not toward minus-infinity — differs from C's >> on negative operands when bitIndex > 0."
+guarantee shiftSignedInt64BitsRight "Terminates after bitIndex iterations."
 label startShiftSignedInt64BitsRight
-const zeroSr I64 0
-const oneSr I64 1
-const twoSr I64 2
-var divisor I64 1
-var iterSr I64 0
-label srLoop
-call srDone math.greaterThanOrEqualI64
-arg srDone left iterSr
-arg srDone right bitIndex
-run srDone
-bind srDoneB Bool srDone
-branchIf srDoneB srApply
-call srMul math.multiplyI64
-arg srMul left divisor
-arg srMul right twoSr
-run srMul
-bind srNext I64 srMul
-set divisor srNext
-call srInc math.addI64
-arg srInc left iterSr
-arg srInc right oneSr
-run srInc
-bind srItN I64 srInc
-set iterSr srItN
-branch srLoop
-label srApply
-call srDiv math.divideI64
-arg srDiv left inputValue
-arg srDiv right divisor
-run srDiv
-bind shifted CSignedInt64 srDiv
-returnOk shifted
+var rightShiftDivisorAccumulator I64 1
+var rightShiftIteration I64 0
+label rightShiftLoop
+call detectRightShiftDoneCall math.greaterThanOrEqualI64
+arg detectRightShiftDoneCall left rightShiftIteration
+arg detectRightShiftDoneCall right bitIndex
+run detectRightShiftDoneCall
+bind rightShiftDone Bool detectRightShiftDoneCall
+branchIf rightShiftDone applyRightShiftDivision
+call doubleRightShiftDivisorCall math.multiplyI64
+arg doubleRightShiftDivisorCall left rightShiftDivisorAccumulator
+arg doubleRightShiftDivisorCall right integerTwoBaseValue
+run doubleRightShiftDivisorCall
+bind doubledRightShiftDivisor I64 doubleRightShiftDivisorCall
+set rightShiftDivisorAccumulator doubledRightShiftDivisor
+call incrementRightShiftIterationCall math.addI64
+arg incrementRightShiftIterationCall left rightShiftIteration
+arg incrementRightShiftIterationCall right integerOneStepValue
+run incrementRightShiftIterationCall
+bind nextRightShiftIteration I64 incrementRightShiftIterationCall
+set rightShiftIteration nextRightShiftIteration
+branch rightShiftLoop
+label applyRightShiftDivision
+call divideInputByDivisorCall math.divideI64
+arg divideInputByDivisorCall left inputValue
+arg divideInputByDivisorCall right rightShiftDivisorAccumulator
+run divideInputByDivisorCall
+bind shiftedRightResult CSignedInt64 divideInputByDivisorCall
+returnValue shiftedRightResult
 
+# section bit.predicate
 
 operation isSignedInt64BitSet
 input isSignedInt64BitSet inputValue CSignedInt64
 input isSignedInt64BitSet bitIndex CSignedInt64
-output isSignedInt64BitSet Result CSignedInt32 Void
-memory isSignedInt64BitSet heap no
+output isSignedInt64BitSet Bool
+memoryHeap isSignedInt64BitSet no
 async isSignedInt64BitSet no
-purpose isSignedInt64BitSet "1 if bit k of n is set; 0 otherwise. (n >> k) & 1."
+purpose isSignedInt64BitSet "Returns true when the k-th bit of inputValue is set, equivalent to ((inputValue >> bitIndex) & 1) != 0."
+invariant isSignedInt64BitSet "Pure function: same inputs always produce the same Bool."
+guarantee isSignedInt64BitSet "Total."
 label startIsSignedInt64BitSet
-const oneTb CSignedInt32 1
-const zeroTb CSignedInt32 0
-const twoTb I64 2
-const zeroI I64 0
-call shiftCall shiftSignedInt64BitsRight
-arg shiftCall n inputValue
-arg shiftCall k bitIndex
-run shiftCall
-bindOk shifted CSignedInt64 shiftCall
-call modCall math.moduloI64
-arg modCall left shifted
-arg modCall right twoTb
-run modCall
-bind low I64 modCall
-call eqOne math.notEqualI64
-arg eqOne left low
-arg eqOne right zeroI
-run eqOne
-bind isSet Bool eqOne
-branchIf isSet tbTrue
-returnOk zeroTb
-label tbTrue
-returnOk oneTb
+call shiftDownToTargetBitCall shiftSignedInt64BitsRight
+arg shiftDownToTargetBitCall inputValue inputValue
+arg shiftDownToTargetBitCall bitIndex bitIndex
+run shiftDownToTargetBitCall
+bind shiftedDownInput CSignedInt64 shiftDownToTargetBitCall
+call extractLowBitCall math.moduloI64
+arg extractLowBitCall left shiftedDownInput
+arg extractLowBitCall right integerTwoBaseValue
+run extractLowBitCall
+bind lowestBitValue I64 extractLowBitCall
+call detectLowBitIsOneCall math.notEqualI64
+arg detectLowBitIsOneCall left lowestBitValue
+arg detectLowBitIsOneCall right integerZeroComparisonValue
+run detectLowBitIsOneCall
+bind lowBitIsOne Bool detectLowBitIsOneCall
+returnValue lowBitIsOne
 
+# section bit.mutation
 
 operation setSignedInt64Bit
 input setSignedInt64Bit inputValue CSignedInt64
 input setSignedInt64Bit bitIndex CSignedInt64
-output setSignedInt64Bit Result CSignedInt64 Void
-memory setSignedInt64Bit heap no
+output setSignedInt64Bit CSignedInt64
+memoryHeap setSignedInt64Bit no
 async setSignedInt64Bit no
-purpose setSignedInt64Bit "n with bit k forced to 1. If bit k is already set, returns n unchanged. Else returns n + 2^k."
+purpose setSignedInt64Bit "Returns inputValue with the k-th bit forced to 1. No change if the bit is already set."
+invariant setSignedInt64Bit "isSignedInt64BitSet(setSignedInt64Bit(x, k), k) == true."
+guarantee setSignedInt64Bit "Total."
 label startSetSignedInt64Bit
-call alreadyCall isSignedInt64BitSet
-arg alreadyCall n inputValue
-arg alreadyCall k bitIndex
-run alreadyCall
-bindOk alreadyB CSignedInt32 alreadyCall
-const oneI32 CSignedInt32 1
-call check math.equalI64
-arg check left alreadyB
-arg check right oneI32
-run check
-bind already Bool check
-branchIf already sbReturn
-
-const oneI I64 1
-const twoI I64 2
-var pow I64 1
-var iter2 I64 0
-label sbPowLoop
-call sbDoneCall math.greaterThanOrEqualI64
-arg sbDoneCall left iter2
-arg sbDoneCall right bitIndex
-run sbDoneCall
-bind sbDone Bool sbDoneCall
-branchIf sbDone sbAdd
-call sbMul math.multiplyI64
-arg sbMul left pow
-arg sbMul right twoI
-run sbMul
-bind sbN I64 sbMul
-set pow sbN
-call sbInc math.addI64
-arg sbInc left iter2
-arg sbInc right oneI
-run sbInc
-bind sbIN I64 sbInc
-set iter2 sbIN
-branch sbPowLoop
-label sbAdd
-call sbAddCall math.addI64
-arg sbAddCall left inputValue
-arg sbAddCall right pow
-run sbAddCall
-bind sbR CSignedInt64 sbAddCall
-returnOk sbR
-
-label sbReturn
-returnOk inputValue
-
+call detectBitAlreadySetCall isSignedInt64BitSet
+arg detectBitAlreadySetCall inputValue inputValue
+arg detectBitAlreadySetCall bitIndex bitIndex
+run detectBitAlreadySetCall
+bind bitAlreadySet Bool detectBitAlreadySetCall
+branchIf bitAlreadySet returnInputUnchangedForSet
+var setBitPowerAccumulator I64 1
+var setBitIteration I64 0
+label setBitPowerLoop
+call detectSetBitDoneCall math.greaterThanOrEqualI64
+arg detectSetBitDoneCall left setBitIteration
+arg detectSetBitDoneCall right bitIndex
+run detectSetBitDoneCall
+bind setBitDone Bool detectSetBitDoneCall
+branchIf setBitDone applySetBitAddition
+call doubleSetBitPowerCall math.multiplyI64
+arg doubleSetBitPowerCall left setBitPowerAccumulator
+arg doubleSetBitPowerCall right integerTwoBaseValue
+run doubleSetBitPowerCall
+bind doubledSetBitPower I64 doubleSetBitPowerCall
+set setBitPowerAccumulator doubledSetBitPower
+call incrementSetBitIterationCall math.addI64
+arg incrementSetBitIterationCall left setBitIteration
+arg incrementSetBitIterationCall right integerOneStepValue
+run incrementSetBitIterationCall
+bind nextSetBitIteration I64 incrementSetBitIterationCall
+set setBitIteration nextSetBitIteration
+branch setBitPowerLoop
+label applySetBitAddition
+call addBitPowerToInputCall math.addI64
+arg addBitPowerToInputCall left inputValue
+arg addBitPowerToInputCall right setBitPowerAccumulator
+run addBitPowerToInputCall
+bind setBitResultValue CSignedInt64 addBitPowerToInputCall
+returnValue setBitResultValue
+label returnInputUnchangedForSet
+returnValue inputValue
 
 operation clearSignedInt64Bit
 input clearSignedInt64Bit inputValue CSignedInt64
 input clearSignedInt64Bit bitIndex CSignedInt64
-output clearSignedInt64Bit Result CSignedInt64 Void
-memory clearSignedInt64Bit heap no
+output clearSignedInt64Bit CSignedInt64
+memoryHeap clearSignedInt64Bit no
 async clearSignedInt64Bit no
-purpose clearSignedInt64Bit "n with bit k forced to 0. If already cleared, return n unchanged. Else n - 2^k."
+purpose clearSignedInt64Bit "Returns inputValue with the k-th bit forced to 0. No change if the bit is already clear."
+invariant clearSignedInt64Bit "isSignedInt64BitSet(clearSignedInt64Bit(x, k), k) == false."
+guarantee clearSignedInt64Bit "Total."
 label startClearSignedInt64Bit
-call alreadyCall isSignedInt64BitSet
-arg alreadyCall n inputValue
-arg alreadyCall k bitIndex
-run alreadyCall
-bindOk alreadyB CSignedInt32 alreadyCall
-const zeroI32 CSignedInt32 0
-call check math.equalI64
-arg check left alreadyB
-arg check right zeroI32
-run check
-bind alreadyClear Bool check
-branchIf alreadyClear cbReturn
-
-const oneI I64 1
-const twoI I64 2
-var pow I64 1
-var iter2 I64 0
-label cbPowLoop
-call cbDoneCall math.greaterThanOrEqualI64
-arg cbDoneCall left iter2
-arg cbDoneCall right bitIndex
-run cbDoneCall
-bind cbDone Bool cbDoneCall
-branchIf cbDone cbSub
-call cbMul math.multiplyI64
-arg cbMul left pow
-arg cbMul right twoI
-run cbMul
-bind cbN I64 cbMul
-set pow cbN
-call cbInc math.addI64
-arg cbInc left iter2
-arg cbInc right oneI
-run cbInc
-bind cbIN I64 cbInc
-set iter2 cbIN
-branch cbPowLoop
-label cbSub
-call cbSubCall math.subtractI64
-arg cbSubCall left inputValue
-arg cbSubCall right pow
-run cbSubCall
-bind cbR CSignedInt64 cbSubCall
-returnOk cbR
-
-label cbReturn
-returnOk inputValue
-
+call detectBitAlreadyClearCall isSignedInt64BitSet
+arg detectBitAlreadyClearCall inputValue inputValue
+arg detectBitAlreadyClearCall bitIndex bitIndex
+run detectBitAlreadyClearCall
+bind bitCurrentlySet Bool detectBitAlreadyClearCall
+branchIf bitCurrentlySet subtractBitPowerFromInputComputePath
+returnValue inputValue
+label subtractBitPowerFromInputComputePath
+var clearBitPowerAccumulator I64 1
+var clearBitIteration I64 0
+label clearBitPowerLoop
+call detectClearBitDoneCall math.greaterThanOrEqualI64
+arg detectClearBitDoneCall left clearBitIteration
+arg detectClearBitDoneCall right bitIndex
+run detectClearBitDoneCall
+bind clearBitDone Bool detectClearBitDoneCall
+branchIf clearBitDone applyClearBitSubtraction
+call doubleClearBitPowerCall math.multiplyI64
+arg doubleClearBitPowerCall left clearBitPowerAccumulator
+arg doubleClearBitPowerCall right integerTwoBaseValue
+run doubleClearBitPowerCall
+bind doubledClearBitPower I64 doubleClearBitPowerCall
+set clearBitPowerAccumulator doubledClearBitPower
+call incrementClearBitIterationCall math.addI64
+arg incrementClearBitIterationCall left clearBitIteration
+arg incrementClearBitIterationCall right integerOneStepValue
+run incrementClearBitIterationCall
+bind nextClearBitIteration I64 incrementClearBitIterationCall
+set clearBitIteration nextClearBitIteration
+branch clearBitPowerLoop
+label applyClearBitSubtraction
+call subtractBitPowerFromInputCall math.subtractI64
+arg subtractBitPowerFromInputCall left inputValue
+arg subtractBitPowerFromInputCall right clearBitPowerAccumulator
+run subtractBitPowerFromInputCall
+bind clearBitResultValue CSignedInt64 subtractBitPowerFromInputCall
+returnValue clearBitResultValue
 
 operation toggleSignedInt64Bit
 input toggleSignedInt64Bit inputValue CSignedInt64
 input toggleSignedInt64Bit bitIndex CSignedInt64
-output toggleSignedInt64Bit Result CSignedInt64 Void
-memory toggleSignedInt64Bit heap no
+output toggleSignedInt64Bit CSignedInt64
+memoryHeap toggleSignedInt64Bit no
 async toggleSignedInt64Bit no
-purpose toggleSignedInt64Bit "n with bit k toggled. Implementation: if isSignedInt64BitSet(n,k) then clearSignedInt64Bit else setSignedInt64Bit."
+purpose toggleSignedInt64Bit "Returns inputValue with the k-th bit flipped (set→clear / clear→set)."
+invariant toggleSignedInt64Bit "Self-inverse: toggleSignedInt64Bit(toggleSignedInt64Bit(x, k), k) == x."
+guarantee toggleSignedInt64Bit "Total."
 label startToggleSignedInt64Bit
-call wasSet isSignedInt64BitSet
-arg wasSet n inputValue
-arg wasSet k bitIndex
-run wasSet
-bindOk wasSetB CSignedInt32 wasSet
-const oneI32 CSignedInt32 1
-call ck math.equalI64
-arg ck left wasSetB
-arg ck right oneI32
-run ck
-bind isSet Bool ck
-branchIf isSet fbClear
-call setIt setSignedInt64Bit
-arg setIt n inputValue
-arg setIt k bitIndex
-run setIt
-bindOk sR CSignedInt64 setIt
-returnOk sR
-label fbClear
-call clearIt clearSignedInt64Bit
-arg clearIt n inputValue
-arg clearIt k bitIndex
-run clearIt
-bindOk cR CSignedInt64 clearIt
-returnOk cR
-
+call detectBitForToggleCall isSignedInt64BitSet
+arg detectBitForToggleCall inputValue inputValue
+arg detectBitForToggleCall bitIndex bitIndex
+run detectBitForToggleCall
+bind bitWasSetBeforeToggle Bool detectBitForToggleCall
+branchIf bitWasSetBeforeToggle clearBitForToggle
+call setBitForToggleCall setSignedInt64Bit
+arg setBitForToggleCall inputValue inputValue
+arg setBitForToggleCall bitIndex bitIndex
+run setBitForToggleCall
+bind toggledFromClearToSet CSignedInt64 setBitForToggleCall
+returnValue toggledFromClearToSet
+label clearBitForToggle
+call clearBitForToggleCall clearSignedInt64Bit
+arg clearBitForToggleCall inputValue inputValue
+arg clearBitForToggleCall bitIndex bitIndex
+run clearBitForToggleCall
+bind toggledFromSetToClear CSignedInt64 clearBitForToggleCall
+returnValue toggledFromSetToClear
 
 # ============================================================
 # Smoke test
@@ -303,130 +299,117 @@ operation main
 input main console Console
 output main Result ExitCode MainError
 effect main write console.stdout
-memory main heap no
+memoryHeap main no
 async main no
-purpose main "Smoke-test bit ops. Prints OK."
+purpose main "Smoke-test the bit operations end-to-end."
+invariant main "shift / set / clear / toggle / predicate all produce the expected values."
+
 label startMain
+const threeValue CSignedInt64 3
+const fourValue CSignedInt64 4
+const fortyEightValue CSignedInt64 48
+const zeroValue CSignedInt64 0
+const eightValue CSignedInt64 8
+const fifteenValue CSignedInt64 15
+const oneValue CSignedInt64 1
+const thirteenValue CSignedInt64 13
+const fiveValue CSignedInt64 5
+const sevenValue CSignedInt64 7
 
 # shiftSignedInt64BitsLeft(3, 4) == 48
-const c3 CSignedInt64 3
-const c4 CSignedInt64 4
-const c48 CSignedInt64 48
-call sl1 shiftSignedInt64BitsLeft
-arg sl1 n c3
-arg sl1 k c4
-run sl1
-bindOk sl1Res CSignedInt64 sl1
-call sl1Check math.equalI64
-arg sl1Check left sl1Res
-arg sl1Check right c48
-run sl1Check
-bind sl1Ok Bool sl1Check
-branchIf sl1Ok sl1Lbl
-branch testFailed
-label sl1Lbl
+call assertShiftLeftCall shiftSignedInt64BitsLeft
+arg assertShiftLeftCall inputValue threeValue
+arg assertShiftLeftCall bitIndex fourValue
+run assertShiftLeftCall
+bind shiftLeftResult CSignedInt64 assertShiftLeftCall
+call checkShiftLeftCall math.equalI64
+arg checkShiftLeftCall left shiftLeftResult
+arg checkShiftLeftCall right fortyEightValue
+run checkShiftLeftCall
+bind shiftLeftOk Bool checkShiftLeftCall
+branchIf shiftLeftOk shiftLeftHolds
+branch smokeAssertionFailed
+label shiftLeftHolds
 
 # shiftSignedInt64BitsRight(48, 4) == 3
-call sr1 shiftSignedInt64BitsRight
-arg sr1 n c48
-arg sr1 k c4
-run sr1
-bindOk sr1Res CSignedInt64 sr1
-call sr1Check math.equalI64
-arg sr1Check left sr1Res
-arg sr1Check right c3
-run sr1Check
-bind sr1Ok Bool sr1Check
-branchIf sr1Ok sr1Lbl
-branch testFailed
-label sr1Lbl
+call assertShiftRightCall shiftSignedInt64BitsRight
+arg assertShiftRightCall inputValue fortyEightValue
+arg assertShiftRightCall bitIndex fourValue
+run assertShiftRightCall
+bind shiftRightResult CSignedInt64 assertShiftRightCall
+call checkShiftRightCall math.equalI64
+arg checkShiftRightCall left shiftRightResult
+arg checkShiftRightCall right threeValue
+run checkShiftRightCall
+bind shiftRightOk Bool checkShiftRightCall
+branchIf shiftRightOk shiftRightHolds
+branch smokeAssertionFailed
+label shiftRightHolds
 
-# isSignedInt64BitSet(48, 4) == 1 (48 == 0b110000, bit 4 is set)
-const oneI32t CSignedInt32 1
-const zeroI32t CSignedInt32 0
-call tb1 isSignedInt64BitSet
-arg tb1 n c48
-arg tb1 k c4
-run tb1
-bindOk tb1Res CSignedInt32 tb1
-call tb1Check math.equalI64
-arg tb1Check left tb1Res
-arg tb1Check right oneI32t
-run tb1Check
-bind tb1Ok Bool tb1Check
-branchIf tb1Ok tb1Lbl
-branch testFailed
-label tb1Lbl
+# isSignedInt64BitSet(48, 4) == true (48 == 0b110000, bit 4 is set)
+call assertBitSetCall isSignedInt64BitSet
+arg assertBitSetCall inputValue fortyEightValue
+arg assertBitSetCall bitIndex fourValue
+run assertBitSetCall
+bind bitSetResult Bool assertBitSetCall
+branchIf bitSetResult bitSetHolds
+branch smokeAssertionFailed
+label bitSetHolds
 
 # setSignedInt64Bit(0, 3) == 8
-const c0 CSignedInt64 0
-const c8 CSignedInt64 8
-call sb1 setSignedInt64Bit
-arg sb1 n c0
-arg sb1 k c3
-run sb1
-bindOk sb1Res CSignedInt64 sb1
-call sb1Check math.equalI64
-arg sb1Check left sb1Res
-arg sb1Check right c8
-run sb1Check
-bind sb1Ok Bool sb1Check
-branchIf sb1Ok sb1Lbl
-branch testFailed
-label sb1Lbl
+call assertSetBitCall setSignedInt64Bit
+arg assertSetBitCall inputValue zeroValue
+arg assertSetBitCall bitIndex threeValue
+run assertSetBitCall
+bind setBitResult CSignedInt64 assertSetBitCall
+call checkSetBitCall math.equalI64
+arg checkSetBitCall left setBitResult
+arg checkSetBitCall right eightValue
+run checkSetBitCall
+bind setBitOk Bool checkSetBitCall
+branchIf setBitOk setBitHolds
+branch smokeAssertionFailed
+label setBitHolds
 
 # clearSignedInt64Bit(15, 1) == 13
-const c15 CSignedInt64 15
-const c1 CSignedInt64 1
-const c13 CSignedInt64 13
-call cb1 clearSignedInt64Bit
-arg cb1 n c15
-arg cb1 k c1
-run cb1
-bindOk cb1Res CSignedInt64 cb1
-call cb1Check math.equalI64
-arg cb1Check left cb1Res
-arg cb1Check right c13
-run cb1Check
-bind cb1Ok Bool cb1Check
-branchIf cb1Ok cb1Lbl
-branch testFailed
-label cb1Lbl
+call assertClearBitCall clearSignedInt64Bit
+arg assertClearBitCall inputValue fifteenValue
+arg assertClearBitCall bitIndex oneValue
+run assertClearBitCall
+bind clearBitResult CSignedInt64 assertClearBitCall
+call checkClearBitCall math.equalI64
+arg checkClearBitCall left clearBitResult
+arg checkClearBitCall right thirteenValue
+run checkClearBitCall
+bind clearBitOk Bool checkClearBitCall
+branchIf clearBitOk clearBitHolds
+branch smokeAssertionFailed
+label clearBitHolds
 
 # toggleSignedInt64Bit(5, 1) == 7
-const c5 CSignedInt64 5
-const c7 CSignedInt64 7
-call fb1 toggleSignedInt64Bit
-arg fb1 n c5
-arg fb1 k c1
-run fb1
-bindOk fb1Res CSignedInt64 fb1
-call fb1Check math.equalI64
-arg fb1Check left fb1Res
-arg fb1Check right c7
-run fb1Check
-bind fb1Ok Bool fb1Check
-branchIf fb1Ok fb1Lbl
-branch testFailed
-label fb1Lbl
+call assertToggleBitCall toggleSignedInt64Bit
+arg assertToggleBitCall inputValue fiveValue
+arg assertToggleBitCall bitIndex oneValue
+run assertToggleBitCall
+bind toggleBitResult CSignedInt64 assertToggleBitCall
+call checkToggleBitCall math.equalI64
+arg checkToggleBitCall left toggleBitResult
+arg checkToggleBitCall right sevenValue
+run checkToggleBitCall
+bind toggleBitOk Bool checkToggleBitCall
+branchIf toggleBitOk toggleBitHolds
+branch smokeAssertionFailed
+label toggleBitHolds
 
-const charO CSignedInt32 79
-const charK CSignedInt32 75
-const charNl CSignedInt32 10
-call putO c.putchar
-arg putO c charO
-run putO
-call putK c.putchar
-arg putK c charK
-run putK
-call putNl c.putchar
-arg putNl c charNl
-run putNl
+const successMessageText CNullTerminatedByteString "OK"
+call writeSuccessLineCall console.writeLine
+arg writeSuccessLineCall console console
+arg writeSuccessLineCall text successMessageText
+run writeSuccessLineCall
+ignoreOk writeSuccessLineCall Void
+const exitOkCode ExitCode 0
+returnOk exitOkCode
 
-const exitOk ExitCode 0
-returnOk exitOk
-
-label testFailed
-const exitFail CSignedInt32 1
-makeError testFailure MainError.TestFailed exitFail
-returnError testFailure
+label smokeAssertionFailed
+makeError bitSmokeFailure MainError.BitSmokeAssertionFailed
+returnError bitSmokeFailure
