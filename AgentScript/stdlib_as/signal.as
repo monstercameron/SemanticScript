@@ -1,161 +1,145 @@
+# ============================================================
+# AGENTSCRIPT STANDARD LIBRARY: POSIX signal numbers + raise
+# ============================================================
+#
+# # rationale: C's <signal.h> exposes SIGABRT, SIGFPE, SIGILL,
+#   SIGINT, SIGSEGV, SIGTERM as preprocessor `#define`s plus
+#   raise(int) for self-delivery. The refined surface replaces the
+#   zero-arg accessor operations with module-scope `domainLiteral`
+#   constants and keeps `raiseProcessSignalNumber` as a real
+#   operation (it has an effect: write process.signal).
+#
+# # invariant: every signal number matches the canonical POSIX
+#   value as documented in IEEE Std 1003.1.
+#
+# # security: raising a signal can terminate the process. The
+#   effect declaration on raiseProcessSignalNumber surfaces that
+#   risk so the lint can flag any unauthorized call site.
+#
+# # timing: signal accessors are O(0) (constant-folded);
+#   raiseProcessSignalNumber yields to the OS scheduler.
+#
+# # observability: c.raise return value is propagated as a typed
+#   SignalDeliveryError variant rather than the C convention of
+#   "non-zero means failure".
+
 project StdSignalSelfTest
 target console
 runtime AgentRuntime 0.1
-
 entry console main
 
+# Typed error domain for signal delivery.
+error SignalDeliveryError
+errorCase SignalDeliveryError DeliveryFailed
+errorCase SignalDeliveryError UnknownSignalNumber
+
 error MainError
-errorCase MainError TestFailed CSignedInt32
+errorCase MainError SignalSmokeAssertionFailed
 
-# ============================================================
-# AGENTSCRIPT STANDARD LIBRARY: <signal.h>-style signals.
-#
-# Floor primitives at this layer: c.raise (for signal-self-delivery)
-# and c.signal (for handler registration — not exercised here yet
-# because AS doesn't have first-class function pointers).
-#
-# Operations:
-#   raiseProcessSignalNumber(signalNumber)       Wrap c.raise. Returns 0 on success.
-#   abortSignalNumber, floatingPointExceptionSignalNumber,
-#   illegalInstructionSignalNumber, interruptSignalNumber,
-#   segmentationViolationSignalNumber, terminationSignalNumber     Standard signal-number accessors.
-# ============================================================
+# section signal.numbers
+# rationale: POSIX signal-number constants.
 
+domainLiteral abortSignalNumber CSignedInt32 6
+domainLiteralSource abortSignalNumber posix.SIGABRT
+domainLiteralTrust abortSignalNumber trustedStaticLiteral
+domainLiteralValidation abortSignalNumber trustedAbiConstant
+
+domainLiteral floatingPointExceptionSignalNumber CSignedInt32 8
+domainLiteralSource floatingPointExceptionSignalNumber posix.SIGFPE
+domainLiteralTrust floatingPointExceptionSignalNumber trustedStaticLiteral
+
+domainLiteral illegalInstructionSignalNumber CSignedInt32 4
+domainLiteralSource illegalInstructionSignalNumber posix.SIGILL
+domainLiteralTrust illegalInstructionSignalNumber trustedStaticLiteral
+
+domainLiteral interruptSignalNumber CSignedInt32 2
+domainLiteralSource interruptSignalNumber posix.SIGINT
+domainLiteralTrust interruptSignalNumber trustedStaticLiteral
+
+domainLiteral segmentationViolationSignalNumber CSignedInt32 11
+domainLiteralSource segmentationViolationSignalNumber posix.SIGSEGV
+domainLiteralTrust segmentationViolationSignalNumber trustedStaticLiteral
+
+domainLiteral terminationSignalNumber CSignedInt32 15
+domainLiteralSource terminationSignalNumber posix.SIGTERM
+domainLiteralTrust terminationSignalNumber trustedStaticLiteral
+
+# section signal.raise
+# rationale: deliver a signal to the current process.
 
 operation raiseProcessSignalNumber
 input raiseProcessSignalNumber signalNumber CSignedInt32
-output raiseProcessSignalNumber Result CSignedInt32 Void
+output raiseProcessSignalNumber Result CSignedInt32 SignalDeliveryError
 effect raiseProcessSignalNumber write process.signal
-memory raiseProcessSignalNumber heap no
+memoryHeap raiseProcessSignalNumber no
 async raiseProcessSignalNumber no
-purpose raiseProcessSignalNumber "Wrap c.raise. Delivers signalNumber to this process; returns 0 on success and a non-zero result on failure."
+purpose raiseProcessSignalNumber "Deliver the given POSIX signal to this process via libc raise()."
+invariant raiseProcessSignalNumber "On success returns 0; on failure returns SignalDeliveryError.DeliveryFailed."
+failure raiseProcessSignalNumber DeliveryFailed "Returned when libc raise() reports a non-zero status — typically when signalNumber is out of range."
+warning raiseProcessSignalNumber "May terminate the process if the signal's default disposition is fatal and no handler is installed via c.signal."
+guarantee raiseProcessSignalNumber "Always returns OR terminates; never hangs."
 
 label startRaiseProcessSignalNumber
-call libcCall c.raise
-arg libcCall sig signalNumber
-run libcCall
-bind raiseResult CSignedInt32 libcCall
-returnOk raiseResult
-
-
-operation abortSignalNumber
-output abortSignalNumber Result CSignedInt32 Void
-memory abortSignalNumber heap no
-async abortSignalNumber no
-purpose abortSignalNumber "SIGABRT (6). Abnormal-termination signal raised by abort()."
-label startAbortSignalNumber
-const v CSignedInt32 6
-returnOk v
-
-
-operation floatingPointExceptionSignalNumber
-output floatingPointExceptionSignalNumber Result CSignedInt32 Void
-memory floatingPointExceptionSignalNumber heap no
-async floatingPointExceptionSignalNumber no
-purpose floatingPointExceptionSignalNumber "SIGFPE (8). Erroneous arithmetic (divide by zero, overflow)."
-label startFloatingPointExceptionSignalNumber
-const v CSignedInt32 8
-returnOk v
-
-
-operation illegalInstructionSignalNumber
-output illegalInstructionSignalNumber Result CSignedInt32 Void
-memory illegalInstructionSignalNumber heap no
-async illegalInstructionSignalNumber no
-purpose illegalInstructionSignalNumber "SIGILL (4). Illegal instruction."
-label startIllegalInstructionSignalNumber
-const v CSignedInt32 4
-returnOk v
-
-
-operation interruptSignalNumber
-output interruptSignalNumber Result CSignedInt32 Void
-memory interruptSignalNumber heap no
-async interruptSignalNumber no
-purpose interruptSignalNumber "SIGINT (2). Interactive attention signal (Ctrl-C)."
-label startInterruptSignalNumber
-const v CSignedInt32 2
-returnOk v
-
-
-operation segmentationViolationSignalNumber
-output segmentationViolationSignalNumber Result CSignedInt32 Void
-memory segmentationViolationSignalNumber heap no
-async segmentationViolationSignalNumber no
-purpose segmentationViolationSignalNumber "SIGSEGV (11). Invalid memory reference (segmentation fault)."
-label startSegmentationViolationSignalNumber
-const v CSignedInt32 11
-returnOk v
-
-
-operation terminationSignalNumber
-output terminationSignalNumber Result CSignedInt32 Void
-memory terminationSignalNumber heap no
-async terminationSignalNumber no
-purpose terminationSignalNumber "SIGTERM (15). Termination request."
-label startTerminationSignalNumber
-const v CSignedInt32 15
-returnOk v
-
+call deliverSignalCall c.raise
+arg deliverSignalCall sig signalNumber
+run deliverSignalCall
+bind raiseLibcResultCode CSignedInt32 deliverSignalCall
+const zeroSuccessCode CSignedInt32 0
+call detectRaiseSuccessCall math.equalI64
+arg detectRaiseSuccessCall left raiseLibcResultCode
+arg detectRaiseSuccessCall right zeroSuccessCode
+run detectRaiseSuccessCall
+bind raiseSucceeded Bool detectRaiseSuccessCall
+branchIf raiseSucceeded returnRaiseSuccess
+makeError signalDeliveryFailure SignalDeliveryError.DeliveryFailed
+returnError signalDeliveryFailure
+label returnRaiseSuccess
+returnOk zeroSuccessCode
 
 # ============================================================
-# Smoke test — we only check the constant accessors. We don't
-# actually raise any signal because that would terminate the process.
+# Smoke test
 # ============================================================
 
 operation main
 input main console Console
 output main Result ExitCode MainError
 effect main write console.stdout
-memory main heap no
+memoryHeap main no
 async main no
-purpose main "Smoke-test signal accessors. Prints OK."
+purpose main "Verify signal-number constants resolve to expected POSIX values."
+invariant main "SIGINT == 2, SIGTERM == 15."
 
 label startMain
 
-call s1 abortSignalNumber
-run s1
-bindOk s1Res CSignedInt32 s1
-const six CSignedInt32 6
-call s1Check math.equalI64
-arg s1Check left s1Res
-arg s1Check right six
-run s1Check
-bind s1Ok Bool s1Check
-branchIf s1Ok s1OkLabel
-branch testFailed
-label s1OkLabel
+const interruptExpectedValue CSignedInt32 2
+call checkInterruptCall math.equalI64
+arg checkInterruptCall left interruptSignalNumber
+arg checkInterruptCall right interruptExpectedValue
+run checkInterruptCall
+bind interruptOk Bool checkInterruptCall
+branchIf interruptOk interruptHolds
+branch smokeAssertionFailed
+label interruptHolds
 
-call s2 terminationSignalNumber
-run s2
-bindOk s2Res CSignedInt32 s2
-const fifteen CSignedInt32 15
-call s2Check math.equalI64
-arg s2Check left s2Res
-arg s2Check right fifteen
-run s2Check
-bind s2Ok Bool s2Check
-branchIf s2Ok s2OkLabel
-branch testFailed
-label s2OkLabel
+const terminationExpectedValue CSignedInt32 15
+call checkTerminationCall math.equalI64
+arg checkTerminationCall left terminationSignalNumber
+arg checkTerminationCall right terminationExpectedValue
+run checkTerminationCall
+bind terminationOk Bool checkTerminationCall
+branchIf terminationOk terminationHolds
+branch smokeAssertionFailed
+label terminationHolds
 
-const charO CSignedInt32 79
-const charK CSignedInt32 75
-const charNl CSignedInt32 10
-call putO c.putchar
-arg putO c charO
-run putO
-call putK c.putchar
-arg putK c charK
-run putK
-call putNl c.putchar
-arg putNl c charNl
-run putNl
+const successMessageText CNullTerminatedByteString "OK"
+call writeSuccessLineCall console.writeLine
+arg writeSuccessLineCall console console
+arg writeSuccessLineCall text successMessageText
+run writeSuccessLineCall
+ignoreOk writeSuccessLineCall Void
+const exitOkCode ExitCode 0
+returnOk exitOkCode
 
-const exitOk ExitCode 0
-returnOk exitOk
-
-label testFailed
-const exitFail CSignedInt32 1
-makeError testFailure MainError.TestFailed exitFail
-returnError testFailure
+label smokeAssertionFailed
+makeError signalSmokeFailure MainError.SignalSmokeAssertionFailed
+returnError signalSmokeFailure

@@ -1,294 +1,221 @@
+# ============================================================
+# AGENTSCRIPT STANDARD LIBRARY: POSIX errno numbers + message lookup
+# ============================================================
+#
+# # rationale: C's <errno.h> exposes EPERM/ENOENT/etc. as
+#   preprocessor `#define`s. The refined surface replaces every
+#   zero-arg accessor with a module-scope `domainLiteral` and keeps
+#   the `lookupErrnoMessageCString` chain (a real string-mapping
+#   operation with branching logic) as an `operation`.
+#
+# # invariant: every errno value matches the canonical POSIX number.
+#   Messages are short English text, ASCII-only, NUL-terminated.
+#
+# # security: pure value-level mapping; no I/O; no allocation.
+#
+# # timing: accessors are O(0). The message lookup is O(K) where K
+#   is the number of known codes (currently 13); a code that is
+#   not in the table maps to the "unknown error" sentinel.
+#
+# # observability: no logs; callers wrap when needed.
+
 project StdErrnoSelfTest
 target console
 runtime AgentRuntime 0.1
-
 entry console main
 
 error MainError
-errorCase MainError TestFailed CSignedInt32
+errorCase MainError ErrnoSmokeAssertionFailed
 
-# ============================================================
-# AGENTSCRIPT STANDARD LIBRARY: <errno.h>-style codes.
-#
-# Standard POSIX errno values exposed as accessors. Mirrors the integer
-# constants from the POSIX errno header.
-#
-# Operations (each returns the canonical numeric code):
-#   permissionDeniedErrorNumber, fileNotFoundErrorNumber, processNotFoundErrorNumber, interruptedSystemCallErrorNumber, inputOutputErrorNumber, outOfMemoryErrorNumber,
-#   accessDeniedErrorNumber, badAddressErrorNumber, fileAlreadyExistsErrorNumber, errENOTDIR, errEISDIR,
-#   invalidArgumentErrorNumber, errENFILE, errEMFILE, noSpaceLeftOnDeviceErrorNumber, brokenPipeErrorNumber,
-#   resultOutOfRangeErrorNumber
-#
-# Plus lookupErrnoMessageCString(code) -> CNullTerminatedByteString that returns a
-# short message for the known codes (uses no libc strerror).
-# ============================================================
+# section errno.numbers
+# rationale: POSIX errno constants.
 
-operation permissionDeniedErrorNumber
-output permissionDeniedErrorNumber Result CSignedInt32 Void
-memory permissionDeniedErrorNumber heap no
-async permissionDeniedErrorNumber no
-purpose permissionDeniedErrorNumber "Operation not permitted (1)."
-label startEPERM
-const v CSignedInt32 1
-returnOk v
+domainLiteral permissionDeniedErrorNumber CSignedInt32 1
+domainLiteralSource permissionDeniedErrorNumber posix.EPERM
+domainLiteralTrust permissionDeniedErrorNumber trustedStaticLiteral
 
-operation fileNotFoundErrorNumber
-output fileNotFoundErrorNumber Result CSignedInt32 Void
-memory fileNotFoundErrorNumber heap no
-async fileNotFoundErrorNumber no
-purpose fileNotFoundErrorNumber "No such file or directory (2)."
-label startENOENT
-const v CSignedInt32 2
-returnOk v
+domainLiteral fileNotFoundErrorNumber CSignedInt32 2
+domainLiteralSource fileNotFoundErrorNumber posix.ENOENT
+domainLiteralTrust fileNotFoundErrorNumber trustedStaticLiteral
 
-operation processNotFoundErrorNumber
-output processNotFoundErrorNumber Result CSignedInt32 Void
-memory processNotFoundErrorNumber heap no
-async processNotFoundErrorNumber no
-purpose processNotFoundErrorNumber "No such process (3)."
-label startESRCH
-const v CSignedInt32 3
-returnOk v
+domainLiteral processNotFoundErrorNumber CSignedInt32 3
+domainLiteralSource processNotFoundErrorNumber posix.ESRCH
+domainLiteralTrust processNotFoundErrorNumber trustedStaticLiteral
 
-operation interruptedSystemCallErrorNumber
-output interruptedSystemCallErrorNumber Result CSignedInt32 Void
-memory interruptedSystemCallErrorNumber heap no
-async interruptedSystemCallErrorNumber no
-purpose interruptedSystemCallErrorNumber "Interrupted system call (4)."
-label startEINTR
-const v CSignedInt32 4
-returnOk v
+domainLiteral interruptedSystemCallErrorNumber CSignedInt32 4
+domainLiteralSource interruptedSystemCallErrorNumber posix.EINTR
+domainLiteralTrust interruptedSystemCallErrorNumber trustedStaticLiteral
 
-operation inputOutputErrorNumber
-output inputOutputErrorNumber Result CSignedInt32 Void
-memory inputOutputErrorNumber heap no
-async inputOutputErrorNumber no
-purpose inputOutputErrorNumber "Input/output error (5)."
-label startEIO
-const v CSignedInt32 5
-returnOk v
+domainLiteral inputOutputErrorNumber CSignedInt32 5
+domainLiteralSource inputOutputErrorNumber posix.EIO
+domainLiteralTrust inputOutputErrorNumber trustedStaticLiteral
 
-operation outOfMemoryErrorNumber
-output outOfMemoryErrorNumber Result CSignedInt32 Void
-memory outOfMemoryErrorNumber heap no
-async outOfMemoryErrorNumber no
-purpose outOfMemoryErrorNumber "Out of memory (12)."
-label startENOMEM
-const v CSignedInt32 12
-returnOk v
+domainLiteral outOfMemoryErrorNumber CSignedInt32 12
+domainLiteralSource outOfMemoryErrorNumber posix.ENOMEM
+domainLiteralTrust outOfMemoryErrorNumber trustedStaticLiteral
 
-operation accessDeniedErrorNumber
-output accessDeniedErrorNumber Result CSignedInt32 Void
-memory accessDeniedErrorNumber heap no
-async accessDeniedErrorNumber no
-purpose accessDeniedErrorNumber "Permission denied (13)."
-label startEACCES
-const v CSignedInt32 13
-returnOk v
+domainLiteral accessDeniedErrorNumber CSignedInt32 13
+domainLiteralSource accessDeniedErrorNumber posix.EACCES
+domainLiteralTrust accessDeniedErrorNumber trustedStaticLiteral
 
-operation badAddressErrorNumber
-output badAddressErrorNumber Result CSignedInt32 Void
-memory badAddressErrorNumber heap no
-async badAddressErrorNumber no
-purpose badAddressErrorNumber "Bad address (14)."
-label startEFAULT
-const v CSignedInt32 14
-returnOk v
+domainLiteral badAddressErrorNumber CSignedInt32 14
+domainLiteralSource badAddressErrorNumber posix.EFAULT
+domainLiteralTrust badAddressErrorNumber trustedStaticLiteral
 
-operation fileAlreadyExistsErrorNumber
-output fileAlreadyExistsErrorNumber Result CSignedInt32 Void
-memory fileAlreadyExistsErrorNumber heap no
-async fileAlreadyExistsErrorNumber no
-purpose fileAlreadyExistsErrorNumber "File exists (17)."
-label startEEXIST
-const v CSignedInt32 17
-returnOk v
+domainLiteral fileAlreadyExistsErrorNumber CSignedInt32 17
+domainLiteralSource fileAlreadyExistsErrorNumber posix.EEXIST
+domainLiteralTrust fileAlreadyExistsErrorNumber trustedStaticLiteral
 
-operation invalidArgumentErrorNumber
-output invalidArgumentErrorNumber Result CSignedInt32 Void
-memory invalidArgumentErrorNumber heap no
-async invalidArgumentErrorNumber no
-purpose invalidArgumentErrorNumber "Invalid argument (22)."
-label startEINVAL
-const v CSignedInt32 22
-returnOk v
+domainLiteral invalidArgumentErrorNumber CSignedInt32 22
+domainLiteralSource invalidArgumentErrorNumber posix.EINVAL
+domainLiteralTrust invalidArgumentErrorNumber trustedStaticLiteral
 
-operation noSpaceLeftOnDeviceErrorNumber
-output noSpaceLeftOnDeviceErrorNumber Result CSignedInt32 Void
-memory noSpaceLeftOnDeviceErrorNumber heap no
-async noSpaceLeftOnDeviceErrorNumber no
-purpose noSpaceLeftOnDeviceErrorNumber "No space left on device (28)."
-label startENOSPC
-const v CSignedInt32 28
-returnOk v
+domainLiteral noSpaceLeftOnDeviceErrorNumber CSignedInt32 28
+domainLiteralSource noSpaceLeftOnDeviceErrorNumber posix.ENOSPC
+domainLiteralTrust noSpaceLeftOnDeviceErrorNumber trustedStaticLiteral
 
-operation brokenPipeErrorNumber
-output brokenPipeErrorNumber Result CSignedInt32 Void
-memory brokenPipeErrorNumber heap no
-async brokenPipeErrorNumber no
-purpose brokenPipeErrorNumber "Broken pipe (32)."
-label startEPIPE
-const v CSignedInt32 32
-returnOk v
+domainLiteral brokenPipeErrorNumber CSignedInt32 32
+domainLiteralSource brokenPipeErrorNumber posix.EPIPE
+domainLiteralTrust brokenPipeErrorNumber trustedStaticLiteral
 
-operation resultOutOfRangeErrorNumber
-output resultOutOfRangeErrorNumber Result CSignedInt32 Void
-memory resultOutOfRangeErrorNumber heap no
-async resultOutOfRangeErrorNumber no
-purpose resultOutOfRangeErrorNumber "Result out of range (34)."
-label startERANGE
-const v CSignedInt32 34
-returnOk v
+domainLiteral resultOutOfRangeErrorNumber CSignedInt32 34
+domainLiteralSource resultOutOfRangeErrorNumber posix.ERANGE
+domainLiteralTrust resultOutOfRangeErrorNumber trustedStaticLiteral
 
+# section errno.messageLookup
 
-# ============================================================
-# lookupErrnoMessageCString(code) -> short C-string description.
-# Pure AS chain of code comparisons; no strerror() libc call.
-# ============================================================
 operation lookupErrnoMessageCString
 input lookupErrnoMessageCString errorNumber CSignedInt32
-output lookupErrnoMessageCString Result CNullTerminatedByteString Void
-memory lookupErrnoMessageCString heap no
+output lookupErrnoMessageCString CNullTerminatedByteString
+memoryHeap lookupErrnoMessageCString no
 async lookupErrnoMessageCString no
-purpose lookupErrnoMessageCString "Return a short English message for known POSIX errno values, or 'unknown error' for others. Pure-AS — no libc strerror."
-
+purpose lookupErrnoMessageCString "Map a POSIX errno number to a short English text description; returns 'unknown error' for codes outside the known set."
+invariant lookupErrnoMessageCString "Output is always non-empty NUL-terminated ASCII."
+guarantee lookupErrnoMessageCString "Total — every input produces some message."
+# rationale: pure-AS comparison chain — no libc strerror dependency
+#   (strerror is not thread-safe in all libcs and would pull in extra
+#   FFI metadata for one short helper).
 label startLookupErrnoMessageCString
-const msgEPERM CNullTerminatedByteString "operation not permitted"
-const msgENOENT CNullTerminatedByteString "no such file or directory"
-const msgESRCH CNullTerminatedByteString "no such process"
-const msgEINTR CNullTerminatedByteString "interrupted system call"
-const msgEIO CNullTerminatedByteString "input/output error"
-const msgENOMEM CNullTerminatedByteString "out of memory"
-const msgEACCES CNullTerminatedByteString "permission denied"
-const msgEFAULT CNullTerminatedByteString "bad address"
-const msgEEXIST CNullTerminatedByteString "file exists"
-const msgEINVAL CNullTerminatedByteString "invalid argument"
-const msgENOSPC CNullTerminatedByteString "no space left on device"
-const msgEPIPE CNullTerminatedByteString "broken pipe"
-const msgERANGE CNullTerminatedByteString "result out of range"
-const msgUnknown CNullTerminatedByteString "unknown error"
+const messageForPermissionDenied CNullTerminatedByteString "operation not permitted"
+const messageForFileNotFound CNullTerminatedByteString "no such file or directory"
+const messageForProcessNotFound CNullTerminatedByteString "no such process"
+const messageForInterruptedSystemCall CNullTerminatedByteString "interrupted system call"
+const messageForInputOutputError CNullTerminatedByteString "input/output error"
+const messageForOutOfMemory CNullTerminatedByteString "out of memory"
+const messageForAccessDenied CNullTerminatedByteString "permission denied"
+const messageForBadAddress CNullTerminatedByteString "bad address"
+const messageForFileAlreadyExists CNullTerminatedByteString "file exists"
+const messageForInvalidArgument CNullTerminatedByteString "invalid argument"
+const messageForNoSpaceLeftOnDevice CNullTerminatedByteString "no space left on device"
+const messageForBrokenPipe CNullTerminatedByteString "broken pipe"
+const messageForResultOutOfRange CNullTerminatedByteString "result out of range"
+const messageForUnknownErrorCode CNullTerminatedByteString "unknown error"
 
-const c1 CSignedInt32 1
-const c2 CSignedInt32 2
-const c3 CSignedInt32 3
-const c4 CSignedInt32 4
-const c5 CSignedInt32 5
-const c12 CSignedInt32 12
-const c13 CSignedInt32 13
-const c14 CSignedInt32 14
-const c17 CSignedInt32 17
-const c22 CSignedInt32 22
-const c28 CSignedInt32 28
-const c32 CSignedInt32 32
-const c34 CSignedInt32 34
-
-call eq1 math.equalI64
-arg eq1 left errorNumber
-arg eq1 right c1
-run eq1
-bind is1 Bool eq1
-branchIf is1 retEPERM
-call eq2 math.equalI64
-arg eq2 left errorNumber
-arg eq2 right c2
-run eq2
-bind is2 Bool eq2
-branchIf is2 retENOENT
-call eq3 math.equalI64
-arg eq3 left errorNumber
-arg eq3 right c3
-run eq3
-bind is3 Bool eq3
-branchIf is3 retESRCH
-call eq4 math.equalI64
-arg eq4 left errorNumber
-arg eq4 right c4
-run eq4
-bind is4 Bool eq4
-branchIf is4 retEINTR
-call eq5 math.equalI64
-arg eq5 left errorNumber
-arg eq5 right c5
-run eq5
-bind is5 Bool eq5
-branchIf is5 retEIO
-call eq12 math.equalI64
-arg eq12 left errorNumber
-arg eq12 right c12
-run eq12
-bind is12 Bool eq12
-branchIf is12 retENOMEM
-call eq13 math.equalI64
-arg eq13 left errorNumber
-arg eq13 right c13
-run eq13
-bind is13 Bool eq13
-branchIf is13 retEACCES
-call eq14 math.equalI64
-arg eq14 left errorNumber
-arg eq14 right c14
-run eq14
-bind is14 Bool eq14
-branchIf is14 retEFAULT
-call eq17 math.equalI64
-arg eq17 left errorNumber
-arg eq17 right c17
-run eq17
-bind is17 Bool eq17
-branchIf is17 retEEXIST
-call eq22 math.equalI64
-arg eq22 left errorNumber
-arg eq22 right c22
-run eq22
-bind is22 Bool eq22
-branchIf is22 retEINVAL
-call eq28 math.equalI64
-arg eq28 left errorNumber
-arg eq28 right c28
-run eq28
-bind is28 Bool eq28
-branchIf is28 retENOSPC
-call eq32 math.equalI64
-arg eq32 left errorNumber
-arg eq32 right c32
-run eq32
-bind is32 Bool eq32
-branchIf is32 retEPIPE
-call eq34 math.equalI64
-arg eq34 left errorNumber
-arg eq34 right c34
-run eq34
-bind is34 Bool eq34
-branchIf is34 retERANGE
-returnOk msgUnknown
-
-label retEPERM
-returnOk msgEPERM
-label retENOENT
-returnOk msgENOENT
-label retESRCH
-returnOk msgESRCH
-label retEINTR
-returnOk msgEINTR
-label retEIO
-returnOk msgEIO
-label retENOMEM
-returnOk msgENOMEM
-label retEACCES
-returnOk msgEACCES
-label retEFAULT
-returnOk msgEFAULT
-label retEEXIST
-returnOk msgEEXIST
-label retEINVAL
-returnOk msgEINVAL
-label retENOSPC
-returnOk msgENOSPC
-label retEPIPE
-returnOk msgEPIPE
-label retERANGE
-returnOk msgERANGE
-
+call detectIsPermissionDeniedCall math.equalI64
+arg detectIsPermissionDeniedCall left errorNumber
+arg detectIsPermissionDeniedCall right permissionDeniedErrorNumber
+run detectIsPermissionDeniedCall
+bind isPermissionDenied Bool detectIsPermissionDeniedCall
+branchIf isPermissionDenied returnPermissionDeniedMessage
+call detectIsFileNotFoundCall math.equalI64
+arg detectIsFileNotFoundCall left errorNumber
+arg detectIsFileNotFoundCall right fileNotFoundErrorNumber
+run detectIsFileNotFoundCall
+bind isFileNotFound Bool detectIsFileNotFoundCall
+branchIf isFileNotFound returnFileNotFoundMessage
+call detectIsProcessNotFoundCall math.equalI64
+arg detectIsProcessNotFoundCall left errorNumber
+arg detectIsProcessNotFoundCall right processNotFoundErrorNumber
+run detectIsProcessNotFoundCall
+bind isProcessNotFound Bool detectIsProcessNotFoundCall
+branchIf isProcessNotFound returnProcessNotFoundMessage
+call detectIsInterruptedSystemCallCall math.equalI64
+arg detectIsInterruptedSystemCallCall left errorNumber
+arg detectIsInterruptedSystemCallCall right interruptedSystemCallErrorNumber
+run detectIsInterruptedSystemCallCall
+bind isInterruptedSystemCall Bool detectIsInterruptedSystemCallCall
+branchIf isInterruptedSystemCall returnInterruptedSystemCallMessage
+call detectIsInputOutputErrorCall math.equalI64
+arg detectIsInputOutputErrorCall left errorNumber
+arg detectIsInputOutputErrorCall right inputOutputErrorNumber
+run detectIsInputOutputErrorCall
+bind isInputOutputError Bool detectIsInputOutputErrorCall
+branchIf isInputOutputError returnInputOutputErrorMessage
+call detectIsOutOfMemoryCall math.equalI64
+arg detectIsOutOfMemoryCall left errorNumber
+arg detectIsOutOfMemoryCall right outOfMemoryErrorNumber
+run detectIsOutOfMemoryCall
+bind isOutOfMemory Bool detectIsOutOfMemoryCall
+branchIf isOutOfMemory returnOutOfMemoryMessage
+call detectIsAccessDeniedCall math.equalI64
+arg detectIsAccessDeniedCall left errorNumber
+arg detectIsAccessDeniedCall right accessDeniedErrorNumber
+run detectIsAccessDeniedCall
+bind isAccessDenied Bool detectIsAccessDeniedCall
+branchIf isAccessDenied returnAccessDeniedMessage
+call detectIsBadAddressCall math.equalI64
+arg detectIsBadAddressCall left errorNumber
+arg detectIsBadAddressCall right badAddressErrorNumber
+run detectIsBadAddressCall
+bind isBadAddress Bool detectIsBadAddressCall
+branchIf isBadAddress returnBadAddressMessage
+call detectIsFileAlreadyExistsCall math.equalI64
+arg detectIsFileAlreadyExistsCall left errorNumber
+arg detectIsFileAlreadyExistsCall right fileAlreadyExistsErrorNumber
+run detectIsFileAlreadyExistsCall
+bind isFileAlreadyExists Bool detectIsFileAlreadyExistsCall
+branchIf isFileAlreadyExists returnFileAlreadyExistsMessage
+call detectIsInvalidArgumentCall math.equalI64
+arg detectIsInvalidArgumentCall left errorNumber
+arg detectIsInvalidArgumentCall right invalidArgumentErrorNumber
+run detectIsInvalidArgumentCall
+bind isInvalidArgument Bool detectIsInvalidArgumentCall
+branchIf isInvalidArgument returnInvalidArgumentMessage
+call detectIsNoSpaceLeftOnDeviceCall math.equalI64
+arg detectIsNoSpaceLeftOnDeviceCall left errorNumber
+arg detectIsNoSpaceLeftOnDeviceCall right noSpaceLeftOnDeviceErrorNumber
+run detectIsNoSpaceLeftOnDeviceCall
+bind isNoSpaceLeftOnDevice Bool detectIsNoSpaceLeftOnDeviceCall
+branchIf isNoSpaceLeftOnDevice returnNoSpaceLeftOnDeviceMessage
+call detectIsBrokenPipeCall math.equalI64
+arg detectIsBrokenPipeCall left errorNumber
+arg detectIsBrokenPipeCall right brokenPipeErrorNumber
+run detectIsBrokenPipeCall
+bind isBrokenPipe Bool detectIsBrokenPipeCall
+branchIf isBrokenPipe returnBrokenPipeMessage
+call detectIsResultOutOfRangeCall math.equalI64
+arg detectIsResultOutOfRangeCall left errorNumber
+arg detectIsResultOutOfRangeCall right resultOutOfRangeErrorNumber
+run detectIsResultOutOfRangeCall
+bind isResultOutOfRange Bool detectIsResultOutOfRangeCall
+branchIf isResultOutOfRange returnResultOutOfRangeMessage
+returnValue messageForUnknownErrorCode
+label returnPermissionDeniedMessage
+returnValue messageForPermissionDenied
+label returnFileNotFoundMessage
+returnValue messageForFileNotFound
+label returnProcessNotFoundMessage
+returnValue messageForProcessNotFound
+label returnInterruptedSystemCallMessage
+returnValue messageForInterruptedSystemCall
+label returnInputOutputErrorMessage
+returnValue messageForInputOutputError
+label returnOutOfMemoryMessage
+returnValue messageForOutOfMemory
+label returnAccessDeniedMessage
+returnValue messageForAccessDenied
+label returnBadAddressMessage
+returnValue messageForBadAddress
+label returnFileAlreadyExistsMessage
+returnValue messageForFileAlreadyExists
+label returnInvalidArgumentMessage
+returnValue messageForInvalidArgument
+label returnNoSpaceLeftOnDeviceMessage
+returnValue messageForNoSpaceLeftOnDevice
+label returnBrokenPipeMessage
+returnValue messageForBrokenPipe
+label returnResultOutOfRangeMessage
+returnValue messageForResultOutOfRange
 
 # ============================================================
 # Smoke test
@@ -298,64 +225,53 @@ operation main
 input main console Console
 output main Result ExitCode MainError
 effect main write console.stdout
-memory main heap no
+memoryHeap main no
 async main no
-purpose main "Smoke-test errno accessors and lookupErrnoMessageCString. Prints OK."
+purpose main "Verify errno constants and message lookup."
+invariant main "ENOENT == 2; lookupErrnoMessageCString(2) is a non-empty string."
 
 label startMain
-call e1 fileNotFoundErrorNumber
-run e1
-bindOk e1Res CSignedInt32 e1
-const two32 CSignedInt32 2
-call e1Check math.equalI64
-arg e1Check left e1Res
-arg e1Check right two32
-run e1Check
-bind e1Ok Bool e1Check
-branchIf e1Ok e1OkLabel
-branch testFailed
-label e1OkLabel
 
-# lookupErrnoMessageCString(2) should be a non-empty string.
-call em1 lookupErrnoMessageCString
-arg em1 code two32
-run em1
-bindOk em1Res CNullTerminatedByteString em1
+const twoExpected CSignedInt32 2
+call checkEnoentCall math.equalI64
+arg checkEnoentCall left fileNotFoundErrorNumber
+arg checkEnoentCall right twoExpected
+run checkEnoentCall
+bind enoentOk Bool checkEnoentCall
+branchIf enoentOk enoentHolds
+branch smokeAssertionFailed
+label enoentHolds
 
-# Check that the first byte isn't NUL (i.e., the message is non-empty).
+# Lookup returns a non-empty string for ENOENT.
+call lookupEnoentCall lookupErrnoMessageCString
+arg lookupEnoentCall errorNumber fileNotFoundErrorNumber
+run lookupEnoentCall
+bind enoentMessage CNullTerminatedByteString lookupEnoentCall
 const zeroOffset CByteCount 0
-call peekCall pointer.loadByte
-arg peekCall buffer em1Res
-arg peekCall offset zeroOffset
-run peekCall
-bind firstByte I8 peekCall
-const zeroByteI64 I64 0
-call notNullCall math.notEqualI64
-arg notNullCall left firstByte
-arg notNullCall right zeroByteI64
-run notNullCall
-bind isNonEmpty Bool notNullCall
-branchIf isNonEmpty msgOkLabel
-branch testFailed
-label msgOkLabel
+call peekFirstByteCall pointer.loadByte
+arg peekFirstByteCall buffer enoentMessage
+arg peekFirstByteCall offset zeroOffset
+run peekFirstByteCall
+bind firstMessageByte I8 peekFirstByteCall
+const nullByteForComparison I64 0
+call detectMessageNonEmptyCall math.notEqualI64
+arg detectMessageNonEmptyCall left firstMessageByte
+arg detectMessageNonEmptyCall right nullByteForComparison
+run detectMessageNonEmptyCall
+bind messageNonEmpty Bool detectMessageNonEmptyCall
+branchIf messageNonEmpty messageNonEmptyHolds
+branch smokeAssertionFailed
+label messageNonEmptyHolds
 
-const charO CSignedInt32 79
-const charK CSignedInt32 75
-const charNl CSignedInt32 10
-call putO c.putchar
-arg putO c charO
-run putO
-call putK c.putchar
-arg putK c charK
-run putK
-call putNl c.putchar
-arg putNl c charNl
-run putNl
+const successMessageText CNullTerminatedByteString "OK"
+call writeSuccessLineCall console.writeLine
+arg writeSuccessLineCall console console
+arg writeSuccessLineCall text successMessageText
+run writeSuccessLineCall
+ignoreOk writeSuccessLineCall Void
+const exitOkCode ExitCode 0
+returnOk exitOkCode
 
-const exitOk ExitCode 0
-returnOk exitOk
-
-label testFailed
-const exitFail CSignedInt32 1
-makeError testFailure MainError.TestFailed exitFail
-returnError testFailure
+label smokeAssertionFailed
+makeError errnoSmokeFailure MainError.ErrnoSmokeAssertionFailed
+returnError errnoSmokeFailure
