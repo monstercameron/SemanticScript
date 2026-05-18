@@ -1,7 +1,52 @@
-project HttpApiGauntlet
-target webServer
-runtime native 1
 module app.http_api_gauntlet
+modulePurpose app.http_api_gauntlet "Native HTTP/1.1 adapter conformance harness: every routing, request-read, response-write, multipart, SSE, and middleware edge currently lowered by the reference compiler is exercised here under a test asserting the exact wire-level contract."
+moduleOwns app.http_api_gauntlet "All 27 route handlers and middleware ops, the webServer routing surface, path-scoped routeTimeout/routeMiddleware bindings, the gauntlet's two capabilities (httpRequestReader, httpResponseWriter), module-scope status constants, the request-timeout budget, and the response-body forwarder declaration on writeTextResponse."
+moduleDoesNotOwn app.http_api_gauntlet "The native HTTP runtime itself (sem_http_runtime.c lives under SemanticScript/runtime/native_http), the MiddlewareControl built-in enum (auto-registered by semsc per the SYNTAX.md MiddlewareControl row), and the dispatcher's short-circuit semantics (owned by the runtime; this module only exercises them via shortCircuitProbeMiddleware)."
+moduleWarning app.http_api_gauntlet "Two routes intentionally exhibit non-default contracts that future agents MUST NOT 'fix' silently: /reflect/required-header-or-fail pins the adapter's null-body 500 failure path via `pinsNullBodyFailurePath requiredHeaderHandler`, and /middleware-short-circuit pins the dispatcher's short-circuit arm via shortCircuitMiddlewareControl. Both behaviors are externally asserted by test_http_api_gauntlet.py; remove the pin and you delete coverage."
+moduleInvariant app.http_api_gauntlet "Every dispatched route either guards nullable http.request* reads with pointer.isNull and returns 400 on absence, OR carries `pinsNullBodyFailurePath OP \"rationale\"` to opt into the legacy null-body 500 contract. The semlint SS3603 rule enforces this split — silence it only by adding the verb, never by deleting the guard."
+
+# rationale: HttpRequest, HttpResponse, and MiddlewareControl are NOT exported
+# here even though every handler signature uses them. Per SS2506
+# (module.exportedSymbolNotDeclared), exports must be backed by declarations
+# in THIS module — those three are compiler-provided (HttpRequest/HttpResponse
+# are opaque dependency tokens registered universally by semsc; MiddlewareControl
+# is auto-registered by `_register_builtin_middleware_control_enum`). Re-exporting
+# them would be re-publishing a contract this module does not own.
+exportCapability app.http_api_gauntlet httpRequestReader
+exportCapability app.http_api_gauntlet httpResponseWriter
+exportConstant app.http_api_gauntlet okStatus
+exportConstant app.http_api_gauntlet createdStatus
+exportConstant app.http_api_gauntlet noContentStatus
+exportConstant app.http_api_gauntlet redirectStatus
+exportConstant app.http_api_gauntlet badRequestStatus
+exportConstant app.http_api_gauntlet largeBodyThreshold
+exportOperation app.http_api_gauntlet indexHandler
+exportOperation app.http_api_gauntlet healthHandler
+exportOperation app.http_api_gauntlet methodReflectHandler
+exportOperation app.http_api_gauntlet pathReflectHandler
+exportOperation app.http_api_gauntlet headerReflectHandler
+exportOperation app.http_api_gauntlet requiredHeaderHandler
+exportOperation app.http_api_gauntlet queryReflectHandler
+exportOperation app.http_api_gauntlet queryEmptyHandler
+exportOperation app.http_api_gauntlet queryRepeatHandler
+exportOperation app.http_api_gauntlet bodyReflectHandler
+exportOperation app.http_api_gauntlet bodyBytesReflectHandler
+exportOperation app.http_api_gauntlet bodySizeHandler
+exportOperation app.http_api_gauntlet multipartTextHandler
+exportOperation app.http_api_gauntlet multipartFileNameHandler
+exportOperation app.http_api_gauntlet multipartFileTypeHandler
+exportOperation app.http_api_gauntlet multipartFileBytesHandler
+exportOperation app.http_api_gauntlet sseOneEventHandler
+exportOperation app.http_api_gauntlet capabilitiesOptionsHandler
+exportOperation app.http_api_gauntlet customContentHandler
+exportOperation app.http_api_gauntlet redirectHandler
+exportOperation app.http_api_gauntlet emptyDeleteHandler
+exportOperation app.http_api_gauntlet patchHandler
+exportOperation app.http_api_gauntlet shortCircuitProbeHandler
+exportOperation app.http_api_gauntlet shortCircuitProbeMiddleware
+exportOperation app.http_api_gauntlet gauntletMiddleware
+exportOperation app.http_api_gauntlet writeTextResponse
+exportOperation app.http_api_gauntlet addGauntletHeaders
 
 # rationale: This app deliberately challenges every native HTTP feature the
 # reference compiler currently lowers (route dispatch, request reads,
@@ -11,7 +56,8 @@ module app.http_api_gauntlet
 # /reflect/required-header-or-fail is the one route that intentionally
 # still pins the legacy 500 contract so the gauntlet keeps coverage of
 # that runtime edge. The unguardedHttpInput linter rule is the contract
-# enforcer for that split.
+# enforcer for that split. project / target / runtime live in build.sem;
+# this file owns the module's executable contract.
 
 webServer httpApiGauntletServer
 purpose httpApiGauntletServer "Challenge every currently implemented native HTTP request, response, routing, and middleware edge"
@@ -40,6 +86,7 @@ route httpApiGauntletServer GET "/content/custom" customContentHandler
 route httpApiGauntletServer GET "/redirect" redirectHandler
 route httpApiGauntletServer DELETE "/empty" emptyDeleteHandler
 route httpApiGauntletServer PATCH "/patch" patchHandler
+route httpApiGauntletServer GET "/middleware-short-circuit" shortCircuitProbeHandler
 
 timeoutBudget requestTimeoutBudget DurationMilliseconds 2000
 purpose requestTimeoutBudget "Document the desired per-route timeout budget; the blocking native adapter does not enforce it yet"
@@ -69,6 +116,7 @@ routeTimeout httpApiGauntletServer "/content/custom" requestTimeoutBudget
 routeTimeout httpApiGauntletServer "/redirect" requestTimeoutBudget
 routeTimeout httpApiGauntletServer "/empty" requestTimeoutBudget
 routeTimeout httpApiGauntletServer "/patch" requestTimeoutBudget
+routeTimeout httpApiGauntletServer "/middleware-short-circuit" requestTimeoutBudget
 # invariant: routeMiddleware is path-scoped AND now actually executes —
 # semsc.py wires the middleware function pointer into the dispatcher so
 # gauntletMiddleware fires before each handler. The
@@ -96,6 +144,7 @@ routeMiddleware httpApiGauntletServer "/content/custom" gauntletMiddleware
 routeMiddleware httpApiGauntletServer "/redirect" gauntletMiddleware
 routeMiddleware httpApiGauntletServer "/empty" gauntletMiddleware
 routeMiddleware httpApiGauntletServer "/patch" gauntletMiddleware
+routeMiddleware httpApiGauntletServer "/middleware-short-circuit" shortCircuitProbeMiddleware
 
 capability httpRequestReader http.request read
 purpose httpRequestReader "Authority to inspect current request method, path, header, query, body, and multipart values"
@@ -155,8 +204,12 @@ arg versionHeaderCall value versionHeaderValue
 run versionHeaderCall
 ignoreValue versionHeaderCall CSignedInt32
 
-storage local immutable headersOkStatus CSignedInt32 0
-returnValue headersOkStatus
+# `returnVoid` is the explicit "no caller-actionable status" return form
+# matching this op's `output addGauntletHeaders Void` declaration. Codegen
+# lowers it to the i32 zero sentinel expected by the user-op ABI, but the
+# source says exactly what it means — no fake-status const that a reader
+# would have to recognise as a Void-ABI quirk.
+returnVoid
 
 operation writeTextResponse
 input writeTextResponse response HttpResponse
@@ -168,7 +221,7 @@ memory writeTextResponse arena request
 async writeTextResponse no
 useCapability writeTextResponse httpResponseWriter
 purpose writeTextResponse "Write a plain text response through the native HTTP adapter, with the gauntlet's common headers attached first"
-invariant writeTextResponse "The body argument is forwarded unchanged to http.responseText; the caller is responsible for ensuring it is non-null. The responseBodyForwarder declaration below tells semlint2 SS3603 to treat callers of this helper the same as callers of http.responseText, so the null-guard contract is preserved across the wrapper layer rather than relying on a `body` arg-name string match."
+invariant writeTextResponse "The body argument is forwarded unchanged to http.responseText; the caller is responsible for ensuring it is non-null. The responseBodyForwarder declaration below tells semlint SS3603 to treat callers of this helper the same as callers of http.responseText, so the null-guard contract is preserved across the wrapper layer rather than relying on a `body` arg-name string match."
 responseBodyForwarder writeTextResponse body
 
 label startWriteTextResponse
@@ -201,7 +254,7 @@ invariant indexHandler "The route map lists every current API family covered by 
 
 label startIndexHandler
 
-storage local immutable indexBody CNullTerminatedByteString "http api gauntlet\nroutes: /health /reflect/method /reflect/path /reflect/header /reflect/required-header-or-fail /reflect/query /reflect/query-empty /reflect/query-repeat /reflect/body /reflect/body-bytes /reflect/body-size /multipart/text /multipart/file-name /multipart/file-type /multipart/file-bytes /events/one /capabilities /content/custom /redirect /empty /patch\nmissing-input routes respond 400; /reflect/required-header-or-fail intentionally still 500s on missing X-Gauntlet-Required to keep coverage of the null-body failure path\n"
+storage local immutable indexBody CNullTerminatedByteString "http api gauntlet\nroutes: /health /reflect/method /reflect/path /reflect/header /reflect/required-header-or-fail /reflect/query /reflect/query-empty /reflect/query-repeat /reflect/body /reflect/body-bytes /reflect/body-size /multipart/text /multipart/file-name /multipart/file-type /multipart/file-bytes /events/one /capabilities /content/custom /redirect /empty /patch /middleware-short-circuit\nmissing-input routes respond 400; /reflect/required-header-or-fail intentionally still 500s on missing X-Gauntlet-Required; /middleware-short-circuit returns 418 from its middleware (the route's handler is intentionally skipped by the MiddlewareControl short-circuit contract)\n"
 call indexResponseCall writeTextResponse
 arg indexResponseCall response response
 arg indexResponseCall status okStatus
@@ -310,7 +363,7 @@ arg headerReadCall name tokenHeaderName
 run headerReadCall
 bind tokenHeaderValue CNullTerminatedByteString headerReadCall
 
-rationale tokenMissingCheckCall "pointer.isNull is the only typed null detector — the default branchIfError convention (result < 0) cannot inspect a returned NULL pointer. semsc lowers this to a real `icmp_unsigned eq ptr, null` (semsc.py:3674) so the branchIf below has a real Bool to read. The rationale is attached to the call via SS3608 instead of a proximity `# rationale:` comment so a refactor that renames or removes the call also surfaces this context as orphaned."
+rationale tokenMissingCheckCall "pointer.isNull is the only typed null detector — the default branchIfError convention (result < 0) cannot inspect a returned NULL pointer. semsc's pointer.isNull lowering emits a real `icmp_unsigned eq ptr, null` so the branchIf below has a real Bool to read. The rationale is attached to the call via SS3608 instead of a proximity `# rationale:` comment so a refactor that renames or removes the call also surfaces this context as orphaned."
 call tokenMissingCheckCall pointer.isNull
 arg tokenMissingCheckCall pointer tokenHeaderValue
 run tokenMissingCheckCall
@@ -346,8 +399,8 @@ useCapability requiredHeaderHandler httpRequestReader
 useCapability requiredHeaderHandler httpResponseWriter
 purpose requiredHeaderHandler "Negative-test route: returns the required header value with 200 when X-Gauntlet-Required is present, and intentionally exposes the adapter's null-body 500 failure path when absent"
 invariant requiredHeaderHandler "This is the gauntlet's one route that intentionally omits a pointer.isNull guard. The absent-header case binds null to requiredHeaderValue, passes it to writeTextResponse → http.responseText, and the runtime rejects the null body with a 500. This pins the adapter's `handler failed` contract for regression detection."
-pinsNullBodyFailurePath requiredHeaderHandler "The /reflect/required-header-or-fail route is the gauntlet's deliberate coverage of the adapter's null-body 500 path. semlint2 SS3603 treats the presence of this verb as the canonical opt-out; the rationale string here documents WHY the route is shaped this way so a future agent removing the verb has to first prove the runtime contract has changed and the coverage is no longer needed."
-warning requiredHeaderHandler "Do not add a pointer.isNull guard to this handler. The 500-on-missing-X-Gauntlet-Required behavior is asserted at test_http_api_gauntlet.py:273-279 as the gauntlet's only check that the native adapter still returns `handler failed\\n` when a handler hands a null body to http.responseText. If the runtime contract for null bodies changes, update both the test and this op together — do not silence the assertion by adding a guard here."
+pinsNullBodyFailurePath requiredHeaderHandler "The /reflect/required-header-or-fail route is the gauntlet's deliberate coverage of the adapter's null-body 500 path. semlint SS3603 treats the presence of this verb as the canonical opt-out; the rationale string here documents WHY the route is shaped this way so a future agent removing the verb has to first prove the runtime contract has changed and the coverage is no longer needed."
+warning requiredHeaderHandler "Do not add a pointer.isNull guard to this handler. The 500-on-missing-X-Gauntlet-Required behavior is asserted by the `required_missing_headers` block of `test_http_api_gauntlet.py` (grep for `/reflect/required-header-or-fail` to find the assertion) as the gauntlet's only check that the native adapter still returns `handler failed\\n` when a handler hands a null body to http.responseText. If the runtime contract for null bodies changes, update both the test and this op together — do not silence the assertion by adding a guard here."
 
 label startRequiredHeaderHandler
 
@@ -809,7 +862,7 @@ async multipartFileBytesHandler no
 useCapability multipartFileBytesHandler httpRequestReader
 useCapability multipartFileBytesHandler httpResponseWriter
 purpose multipartFileBytesHandler "Echo the uploaded file bytes from multipart `upload` with that part's reported content type, or 400 when the part is absent"
-invariant multipartFileBytesHandler "Success-leg response length comes from http.multipartPartLength (not strlen on uploadFileBytes), so file bytes are not truncated at embedded NUL bytes — the round-trip preserves arbitrary binary. The content type comes from the part's declared Content-Type; passing it back as the response Content-Type mirrors typical file-store echo behavior."
+invariant multipartFileBytesHandler "Success-leg response length comes from http.multipartPartLength (not strlen on uploadFileBytes), so file bytes are not truncated at embedded NUL bytes — the round-trip preserves arbitrary binary. The content type comes from the part's declared Content-Type and is passed back as the response Content-Type. http.multipartPartContentType returns NULL when the part exists but has no Content-Type header; the native ss_http_response_bytes runtime defaults a NULL contentType to `application/octet-stream`, so no pointer.isNull guard is needed here — but a future refactor that uses the value for anything OTHER than passing straight to http.responseBytes MUST add a guard. The gauntlet's multipart fixture sends an explicit Content-Type, so the test assertion (expected_content_type=`application/x-gauntlet`) verifies the non-NULL path; a separate fixture without the part header would exercise the NULL → default path."
 warning multipartFileBytesHandler "The 400 leg uses http.responseText for plain-text error reporting; this intentionally differs from the success leg's http.responseBytes path. Reusing http.responseBytes for the error leg would require constructing a body length for a static string and risk content-type ambiguity in the error response."
 
 label startMultipartFileBytesHandler
@@ -1057,10 +1110,61 @@ run patchResponseCall
 bind patchResponseStatus CSignedInt32 patchResponseCall
 returnValue patchResponseStatus
 
+operation shortCircuitProbeHandler
+input shortCircuitProbeHandler request HttpRequest
+input shortCircuitProbeHandler response HttpResponse
+output shortCircuitProbeHandler CSignedInt32
+effect shortCircuitProbeHandler write http.response
+memory shortCircuitProbeHandler arena request
+async shortCircuitProbeHandler no
+useCapability shortCircuitProbeHandler httpResponseWriter
+purpose shortCircuitProbeHandler "Negative-test handler whose body MUST NEVER RUN — the route's middleware returns shortCircuitMiddlewareControl so the dispatcher should skip this handler entirely"
+invariant shortCircuitProbeHandler "If a test ever observes this handler's body in the response, the MiddlewareControl short-circuit contract has regressed. The handler writes a sentinel body so the regression is visible at the client (expected response is the middleware-written body, NOT this one)."
+warning shortCircuitProbeHandler "Do not call this handler from other ops. It exists solely to prove that the dispatcher honors `shortCircuitMiddlewareControl` by NOT calling it during a real request. Removing it requires also removing the `/middleware-short-circuit` route and the matching test assertion in test_http_api_gauntlet.py."
+
+label startShortCircuitProbeHandler
+
+storage local immutable handlerRanStatus CSignedInt32 200
+storage local immutable handlerRanBody CNullTerminatedByteString "handler ran (this body should NEVER appear at the client when middleware short-circuits)\n"
+call shortCircuitProbeHandlerWriteCall writeTextResponse
+arg shortCircuitProbeHandlerWriteCall response response
+arg shortCircuitProbeHandlerWriteCall status handlerRanStatus
+arg shortCircuitProbeHandlerWriteCall body handlerRanBody
+run shortCircuitProbeHandlerWriteCall
+bind shortCircuitProbeHandlerWriteStatus CSignedInt32 shortCircuitProbeHandlerWriteCall
+returnValue shortCircuitProbeHandlerWriteStatus
+
+operation shortCircuitProbeMiddleware
+input shortCircuitProbeMiddleware request HttpRequest
+input shortCircuitProbeMiddleware response HttpResponse
+output shortCircuitProbeMiddleware MiddlewareControl
+effect shortCircuitProbeMiddleware write http.response
+memory shortCircuitProbeMiddleware arena request
+async shortCircuitProbeMiddleware no
+useCapability shortCircuitProbeMiddleware httpResponseWriter
+purpose shortCircuitProbeMiddleware "Test fixture for the MiddlewareControl short-circuit contract: write a fully-formed response with a teapot-flavoured status, then return shortCircuitMiddlewareControl so sem_http_runtime.c sends the response as-is and skips the route's handler entirely"
+invariant shortCircuitProbeMiddleware "Returns shortCircuitMiddlewareControl unconditionally. The dispatcher reads the i32 return value and matches it against SS_HTTP_MIDDLEWARE_SHORT_CIRCUIT (= 1) in sem_http_runtime.c. The bound handler (`shortCircuitProbeHandler`) MUST NEVER run when this middleware fires; if a test sees the handler's body, the contract has regressed."
+warning shortCircuitProbeMiddleware "Do not bind this middleware to any other route. The `/middleware-short-circuit` route exists solely to exercise the shortCircuitMiddlewareControl arm of the dispatcher contract. Reusing this middleware on a real route would 418 every request."
+
+label startShortCircuitProbeMiddleware
+
+storage local immutable teapotStatus CSignedInt32 418
+storage local immutable shortCircuitBody CNullTerminatedByteString "middleware short-circuited; handler skipped by dispatcher\n"
+storage local immutable shortCircuitContentType CNullTerminatedByteString "text/plain; charset=utf-8"
+call shortCircuitWriteCall http.responseText
+arg shortCircuitWriteCall response response
+arg shortCircuitWriteCall status teapotStatus
+arg shortCircuitWriteCall body shortCircuitBody
+arg shortCircuitWriteCall contentType shortCircuitContentType
+run shortCircuitWriteCall
+ignoreValue shortCircuitWriteCall CSignedInt32
+
+returnValue shortCircuitMiddlewareControl
+
 operation gauntletMiddleware
 input gauntletMiddleware request HttpRequest
 input gauntletMiddleware response HttpResponse
-output gauntletMiddleware CSignedInt32
+output gauntletMiddleware MiddlewareControl
 effect gauntletMiddleware read http.request.path
 effect gauntletMiddleware write http.response
 memory gauntletMiddleware arena request
@@ -1068,8 +1172,9 @@ async gauntletMiddleware no
 useCapability gauntletMiddleware httpRequestReader
 useCapability gauntletMiddleware httpResponseWriter
 purpose gauntletMiddleware "Set diagnostic response headers (X-Gauntlet-Middleware, X-Gauntlet-Path) before each path-scoped route handler runs so the test can verify middleware actually executed and saw the right path"
-invariant gauntletMiddleware "Middleware runs synchronously before the route handler in the native dispatcher (semsc.py:2339-2354 wires the middleware pointer into per-route dispatch); returning zero continues to the handler. http.requestPath always returns a non-null pointer for any dispatched request so no guard is needed for middlewareRequestPath."
-warning gauntletMiddleware "The middlewareMissingResponseEffect lint rule enforces that any op bound via routeMiddleware declares `write http.response*`. If you split this middleware into a read-only variant that does not write headers, that route's middleware binding will start tripping the lint until you either add a write effect or rethink whether middleware is the right hook."
+invariant gauntletMiddleware "Middleware runs synchronously before the route handler in the native dispatcher (semsc.py wires the middleware pointer into per-route dispatch; sem_http_runtime.c reads the MiddlewareControl return value). This op always returns `continueMiddlewareControl` so every route's handler runs after the diagnostic headers are stamped. http.requestPath always returns a non-null pointer for any dispatched request so no guard is needed for middlewareRequestPath."
+warning gauntletMiddleware "Returning `shortCircuitMiddlewareControl` from any middleware tells the dispatcher to SKIP the route handler and ship the middleware-written response as-is. Do not introduce a short-circuit return here without also writing a complete response (status + body + content-type) — sem_http_runtime.c maps short-circuit with a null body to a 500 with `middleware short-circuited without writing a response\\n` so the dispatcher gap is visible at the client."
+warning gauntletMiddleware "The middlewareMissingResponseEffect (SS3602) and middlewareReturnNotMiddlewareControl (SS3610) lint rules enforce the two halves of the routeMiddleware contract: write effect declared, and output typed as MiddlewareControl. If you split this middleware into a read-only variant that does not write headers, that route's middleware binding will start tripping SS3602 until you either add a write effect or rethink whether middleware is the right hook."
 
 label startGauntletMiddleware
 
@@ -1095,5 +1200,10 @@ arg middlewarePathHeaderCall value middlewareRequestPath
 run middlewarePathHeaderCall
 ignoreValue middlewarePathHeaderCall CSignedInt32
 
-storage local immutable middlewareContinueStatus CSignedInt32 0
-returnValue middlewareContinueStatus
+# rationale tokenMissingCheckCall established the pattern: explicit named
+# cases are the contract, not bare integer sentinels. continueMiddlewareControl
+# is the auto-registered case-0 constant from the built-in MiddlewareControl
+# enum (see semsc.py:_register_builtin_middleware_control_enum); returning
+# it here tells the dispatcher to fall through to the route handler. A
+# returnValue of `shortCircuitMiddlewareControl` would skip the handler.
+returnValue continueMiddlewareControl

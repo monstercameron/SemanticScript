@@ -1205,7 +1205,43 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
 
     if (route->middleware != NULL) {
         handler_status = route->middleware(&request, &response);
+        if (handler_status == SS_HTTP_MIDDLEWARE_SHORT_CIRCUIT) {
+            /* Middleware took ownership of the response: skip the route
+             * handler and send what middleware wrote. This is the
+             * `shortCircuitMiddlewareControl` arm of the MiddlewareControl
+             * contract (see SYNTAX.md `MiddlewareControl`). If middleware
+             * returned short-circuit but never wrote a body, that's a
+             * silent dispatcher gap — surface it as a 500 with an
+             * explicit reason so the regression shows up at the client
+             * instead of producing an empty 200 (or worse, a malformed
+             * response from an uninitialized field). */
+            if (response.body == NULL) {
+                response_status = send_response(
+                    client_socket,
+                    500,
+                    "text/plain; charset=utf-8",
+                    "middleware short-circuited without writing a response\n",
+                    &response
+                );
+            } else {
+                response_status = send_response(
+                    client_socket,
+                    response.status,
+                    response.content_type,
+                    response.body,
+                    &response
+                );
+            }
+            clear_owned_response_body(&response);
+            free(request_storage);
+            return response_status;
+        }
         if (handler_status != SS_HTTP_OK) {
+            /* Any other non-zero return is an unhandled middleware
+             * failure. The 500 here is the legacy dispatcher behavior
+             * the gauntlet's `/reflect/required-header-or-fail` route
+             * pins via `pinsNullBodyFailurePath` — do not collapse it
+             * with the short-circuit arm above. */
             response_status = send_response(
                 client_socket,
                 500,

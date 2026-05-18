@@ -26,11 +26,28 @@ typedef struct SSHttpServerConfig {
     size_t route_count;
 } SSHttpServerConfig;
 
+/* ss_http_server_run() result codes. */
 enum {
     SS_HTTP_OK = 0,
     SS_HTTP_ERR_CONFIG = 1,
     SS_HTTP_ERR_RUNTIME_UNAVAILABLE = 2,
     SS_HTTP_ERR_ENGINE = 3
+};
+
+/* Middleware return values, surfaced in SemanticScript source as the
+ * built-in enum `MiddlewareControl` (repr CSignedInt32):
+ *   continueMiddlewareControl       == 0  (call the route handler)
+ *   shortCircuitMiddlewareControl   == 1  (skip handler; send the
+ *                                          middleware-written response)
+ * Any other non-zero value is treated as a middleware failure and the
+ * dispatcher emits a 500 with body "middleware failed\n". The new
+ * short-circuit return path additionally validates that middleware
+ * actually wrote a response body before sending — a bare short-circuit
+ * with response.body == NULL is itself a 500 with a descriptive body
+ * so the regression is visible at the client. */
+enum {
+    SS_HTTP_MIDDLEWARE_CONTINUE = 0,
+    SS_HTTP_MIDDLEWARE_SHORT_CIRCUIT = 1
 };
 
 int ss_http_server_run(const SSHttpServerConfig *config);

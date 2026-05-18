@@ -1,0 +1,62 @@
+# HTTP API gauntlet — project build tape.
+# This file owns project identity, runtime target, VERSIONINFO metadata, and
+# the module registry. The module file (http_api_gauntlet.sscript) owns the
+# routing surface, capabilities, module-scope storage constants, and every
+# operation body. Run from app/http-api-gauntlet/build so the executable lives
+# alongside its build artifacts; the binary itself is self-contained (no
+# sidecar files, unlike the todo app's todos.json).
+
+buildProject httpApiGauntlet
+project HttpApiGauntlet
+modulePath httpApiGauntlet github.com/monstercameron/SemanticScript/app/http-api-gauntlet
+languageVersion httpApiGauntlet "1.0"
+
+sourceRoot httpApiGauntlet "."
+registerModule httpApiGauntlet app.http_api_gauntlet "."
+mainFile httpApiGauntlet "http_api_gauntlet.sscript"
+testPattern httpApiGauntlet "*.test.sem"
+
+target webServer
+# rationale: `runtime native 1` matches the rest of the repo's executable
+# samples (todo, todo-web). The gauntlet is the conformance harness for the
+# native HTTP adapter, so changing this contract would invalidate the
+# external test assertions in app/http-api-gauntlet/test_http_api_gauntlet.py.
+runtime native 1
+
+# Project metadata embedded directly into build/http_api_gauntlet.exe at
+# --emit-exe time. On Windows the compiler generates a transient VERSIONINFO
+# resource that the linker bakes into the PE's resource section, readable via
+# File Explorer Properties, PowerShell `(Get-Item ...).VersionInfo`, and
+# version.dll's VerQueryValue.
+version "1.0.0.0"
+publisher "Earl Cameron"
+description "SemanticScript HTTP API gauntlet — native HTTP/1.1 adapter conformance harness exercising every routing, request-read, response-write, multipart, SSE, and middleware edge currently lowered by the reference compiler."
+copyright "Copyright (c) 2026 Earl Cameron. Licensed under the project LICENSE."
+productName "HTTP API Gauntlet"
+internalName "http_api_gauntlet"
+originalFilename "http_api_gauntlet.exe"
+comments "Built from app/http-api-gauntlet/http_api_gauntlet.sscript by the SemanticScript reference compiler. Conformance scope: routing | requestReads | responseWrites | multipart | sse | middleware | MiddlewareControl | pinsNullBodyFailurePath."
+metadata "BuildSource" "app/http-api-gauntlet/http_api_gauntlet.sscript"
+metadata "RuntimeContract" "native 1"
+metadata "ConformanceScope" "routing|requestReads|responseWrites|multipart|sse|middleware|MiddlewareControl|pinsNullBodyFailurePath"
+metadata "DispatcherPort" "18082"
+
+targetRuntime httpApiGauntlet webServer
+buildProfile httpApiGauntlet dev
+runtimeChecks httpApiGauntlet panic
+persistLlvmIr httpApiGauntlet yes
+# Basenames resolve into the compiler-managed build directory, so this emits
+# app/http-api-gauntlet/build/http_api_gauntlet.exe while keeping the
+# source-level executable name stable.
+nativeOutput httpApiGauntlet "http_api_gauntlet.exe"
+
+# Future comptime hook. Reserved for 2.0; not executed by the current compiler.
+comptimeOperation httpApiGauntlet configureHttpApiGauntletBuild
+
+# Current compiler bridge: inline the executable module registered above. The
+# module source owns its imports, exports, routing surface, capabilities, and
+# operation bodies; build.sem only registers where the module lives and
+# selects the build target. importModule keeps the path semantically equivalent
+# to a `mainOperation` selection for non-routed targets — the webserver target
+# instead has the compiler synthesize a main that calls ss_http_server_run.
+importModule app.http_api_gauntlet

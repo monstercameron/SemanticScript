@@ -524,6 +524,36 @@ returnVoid
         self.assertNotIn("SS2503", _codes(diagnostics))
         self.assertNotIn("SS2504", _codes(diagnostics))
         self.assertNotIn("SS2505", _codes(diagnostics))
+        self.assertNotIn("SS2506", _codes(diagnostics))
+
+    def test_exported_symbol_must_be_declared(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            (root / "build.sem").write_text("""buildProject todoTui
+registerModule todoTui app.todo "."
+mainFile todoTui "main.sem"
+""", encoding="utf-8")
+            modulePath = root / "main.sem"
+            modulePath.write_text("""module app.todo
+exportOperation app.todo missingMain
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(modulePath)
+        self.assertIn("SS2506", _codes(diagnostics))
+
+    def test_storage_constant_export_counts_as_declared(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            (root / "build.sem").write_text("""buildProject todoTui
+registerModule todoTui app.todo "."
+mainFile todoTui "main.sem"
+""", encoding="utf-8")
+            modulePath = root / "main.sem"
+            modulePath.write_text("""module app.todo
+exportConstant app.todo publicLimit
+storage module immutable publicLimit I64 5
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(modulePath)
+        self.assertNotIn("SS2506", _codes(diagnostics))
 
     def test_unregistered_module_declaration_is_flagged(self) -> None:
         with TemporaryDirectory() as tempDir:

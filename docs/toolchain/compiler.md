@@ -14,9 +14,9 @@ python compiler/semsc.py --version
 python compiler/semsc.py sem/fizzbuzz.sscript --parse-only
 python compiler/semsc.py sem/fizzbuzz.sscript --lint
 python compiler/semsc.py sem/fizzbuzz.sscript --run
-python compiler/semsc.py sem/fizzbuzz.sscript --emit-ir fizzbuzz.ll
+python compiler/semsc.py sem/fizzbuzz.sscript --emit-ir
 python compiler/semsc.py sem/fizzbuzz.sscript --emit-optimized-ir fizzbuzz.opt.ll --run
-python compiler/semsc.py sem/fizzbuzz.sscript --emit-exe fizzbuzz.exe
+python compiler/semsc.py sem/fizzbuzz.sscript --emit-exe
 ```
 
 CLI flags:
@@ -24,11 +24,14 @@ CLI flags:
 | Flag | Behavior |
 |---|---|
 | `--version` | Print compiler version. |
-| `--emit-ir PATH` | Write pre-optimization LLVM IR. |
-| `--persist-llvm-ir auto\|yes\|no` | Control LLVM IR persistence. `auto` is the default and persists only with `--emit-ir`; `yes` writes a `.ll` sidecar when no explicit path is provided; `no` disables IR persistence. |
+| `--build-dir PATH` | Set the exact compiler-managed artifact directory. Relative paths resolve beside the source file. Cannot be combined with `--build-root` or `--build-folder-name`. Defaults to `SOURCE_DIR/build`. |
+| `--build-root PATH` | Set the parent directory where the managed build folder should be created. Relative paths resolve beside the source file. For example, `--build-root ..` writes to `../build/` by default. |
+| `--build-folder-name NAME` | Rename the managed build folder created beside the source or under `--build-root`. Defaults to `build`; must be a single folder name, not a path. |
+| `--emit-ir [PATH]` | Write pre-optimization LLVM IR. With no path, writes to the managed build directory. |
+| `--persist-llvm-ir auto\|yes\|no` | Control LLVM IR persistence. `auto` is the default and persists only with `--emit-ir`; `yes` writes a `.ll` sidecar in the managed build directory when no explicit path is provided; `no` disables IR persistence. |
 | `--emit-optimized-ir PATH` | Write post-optimization LLVM IR during `--run`. |
 | `--run` | JIT-execute `main` and return its exit code. |
-| `--emit-exe PATH` | AOT compile with clang. |
+| `--emit-exe [PATH]` | AOT compile with clang. With no path, writes to the managed build directory. |
 | `--lint` | Run built-in compiler lint pass. |
 | `--strict` | Treat compiler lint diagnostics as fatal. |
 | `--parse-only` | Parse, optionally lint, and stop before codegen. |
@@ -40,13 +43,38 @@ CLI flags:
 Set `SEMSC_CLANG` to override the clang executable used by `--emit-exe`.
 Set `SEMSC_TRACEBACK=1` to print Python tracebacks for parse/codegen failures.
 
+Generated `.exe`, `.ll`, linker resource files, and temporary link inputs live
+under the managed build directory by default. A basename such as
+`--emit-exe todo.exe` also resolves into that directory; pass a path with a
+directory component to opt into a different output file location.
+
+Use `--build-root` when the build folder should live somewhere else but still
+be a managed folder:
+
+```powershell
+python compiler/semsc.py ..\app\todo\build.sem --emit-exe --build-root ..\artifacts
+# writes into app/artifacts/build/
+
+python compiler/semsc.py ..\app\todo\build.sem --emit-exe --build-root ..\artifacts --build-folder-name semantic-build
+# writes into app/artifacts/semantic-build/
+```
+
+Use `--build-dir` only when you want to name the exact artifact directory:
+
+```powershell
+python compiler/semsc.py ..\app\todo\build.sem --emit-exe --build-dir C:\sem-artifacts\todo-dev
+```
+
+The repository ignores `build/` folders, so app-local artifacts such as
+`app/todo/build/todo.exe` stay out of source control.
+
 ## 1.0 Support Matrix
 
 | Area | 1.0 status | Supported in 1.0 | Not a 1.0 guarantee |
 |---|---|---|---|
 | Python reference compiler | Supported | `SemanticScript/compiler/semsc.py` is the release compiler. It accepts `.sscript` and `.sem`, resolves `importModule`, emits LLVM IR, JIT-runs `entry console`, and can link native executables through clang. | It is not a general web server host and it is not replaced by the SemanticScript-written bootstrap compiler. |
 | Bootstrap and self-hosting | Preview, release-tested | `bootstrap/run_bootstrap_chain.py` and `tests/sem_compiler_parity.py` are valid release verification commands. The staged SemanticScript-written compilers demonstrate input-dependent IR generation for documented subsets. | Self-hosting is not complete. `bootstrap_general.sscript` is not the 1.0 production compiler and does not compile the whole language. |
-| VS Code extension | Supported editor tooling | `vscode-semanticscript/` registers `.sscript` and `.sem`, provides highlighting, hovers, semantic roles, and optional `semlint` / `semlint2` diagnostics. | Highlighted or hovered syntax is not automatically executable compiler support. The compiler and `SYNTAX.md` decide runtime support. |
+| VS Code extension | Supported editor tooling | `vscode-semanticscript/` registers `.sscript` and `.sem`, provides highlighting, hovers, semantic roles, and optional `semlint` / `semlint` diagnostics. | Highlighted or hovered syntax is not automatically executable compiler support. The compiler and `SYNTAX.md` decide runtime support. |
 | Refined syntax | Partial, inspectable | The parser accepts many refined declarative lines for AST, linter, and editor inspection. Pure metadata is preserved or skipped safely. Some concurrency and dataflow forms lower to documented synchronous fallbacks. | Refined syntax is not uniformly runtime-complete. Use `--parse-only` for forms whose backend is intentionally absent. |
 | Web / HTTP runtime | Preview, release-tested | Routed `target webServer` programs emit a native HTTP/1.1 listener with exact method/path dispatch. Handlers use `input request HttpRequest`, `input response HttpResponse`, and `output CSignedInt32`. The native adapter supports request method/path/header/query/body text/body bytes reads, bounded multipart part reads, response text/bytes/SSE-event/header writes, and one path-scoped middleware callback. | HTTP/2/H2O, path params, route timeout enforcement, static-file serving, graceful shutdown hooks, structured body decoders, long-lived streaming bodies, method-scoped middleware, and persistent state are not 1.0 guarantees. Unrouted webserver files still compile as library/stub programs. |
 | Partial syntax rows | Explicitly partial | Rows marked partial in `SYNTAX.md` may parse, lint, lower synchronously, or emit structural stubs exactly as documented there. | A partial row must not be treated as full application-runtime support. Unsupported runtime semantics should fail rather than silently disappear. |
@@ -55,7 +83,8 @@ Set `SEMSC_TRACEBACK=1` to print Python tracebacks for parse/codegen failures.
 ## Parse Pipeline
 
 1. Read source as UTF-8.
-2. Resolve `importModule` lines and inline imported files.
+2. Resolve `importModule` lines and inline imported files. For build tapes,
+   registered modules are resolved before legacy filesystem fallbacks.
 3. Tokenize line by line.
 4. Build the `Program` object and current-operation body tapes.
 5. Load external literals from `literalSource` metadata.
@@ -64,11 +93,19 @@ Set `SEMSC_TRACEBACK=1` to print Python tracebacks for parse/codegen failures.
 
 ## Import Resolution
 
-`importModule DOTTED.PATH [as ALIAS]` is resolved before parsing. The compiler
-searches source-relative paths, `stdlib_sem/`, and the project root. Imports are
-inlined with cycle detection.
+`importModule DOTTED.PATH [as ALIAS]` is resolved before parsing. If the root
+source declares modules with `registerModule PROJECT MODULE_PATH "PATH"`, the
+compiler resolves those registered module paths first. A registered path may
+point at a source file or a folder with `main.sem`, `index.sem`, the leaf module
+file, or exactly one non-test `.sem` / `.sscript`.
+
+If no registered module matches, the legacy resolver searches source-relative
+paths, `stdlib_sem/`, and the project root. Imports are inlined with cycle
+detection.
 
 The alias is recorded for tools; it is not currently a full namespace boundary.
+New project code should keep `registerModule` rows in `build.sem`; module files
+should keep their own `module`, `importModule`, and `export*` rows.
 
 ## Entry and Library Modes
 

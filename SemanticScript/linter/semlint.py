@@ -788,6 +788,7 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "mainFile", "mainOperation", "testPattern", "dependencySource",
     "dependencyIntegrity", "buildProfile", "runtimeChecks", "persistLlvmIr",
     "nativeOutput", "targetRuntime", "comptimeOperation", "registerModule",
+    "keepResources", "resourcesDir",
     "moduleFolder", "modulePurpose", "moduleOwns", "moduleDoesNotOwn",
     "moduleDependency", "moduleWarning", "moduleInvariant", "moduleSecurity",
     "moduleObservability",
@@ -7815,6 +7816,52 @@ MODULE_EXPORT_VERBS: frozenset = frozenset({
 })
 
 
+EXPORT_VERB_DECLARATION_KIND: Dict[str, str] = {
+    "exportType": "type",
+    "exportError": "error",
+    "exportOperation": "operation",
+    "exportCapability": "capability",
+    "exportConstant": "constant",
+}
+
+
+def _collect_declared_export_symbols(facts: ExtendedFacts) -> Dict[str, Set[str]]:
+    declared: Dict[str, Set[str]] = {
+        "type": set(),
+        "error": set(),
+        "operation": set(facts.base.operations.keys()),
+        "capability": set(facts.base.capabilities.keys()),
+        "constant": set(facts.base.consts.keys()),
+    }
+    for sourceLine in facts.base.lines:
+        if not sourceLine.tokens or is_comment(sourceLine):
+            continue
+        verb = sourceLine.verb
+        args = sourceLine.args
+        if not args:
+            continue
+        if verb in {
+            "type",
+            "enum",
+            "record",
+            "listType",
+            "arrayType",
+            "sliceType",
+            "smallListType",
+            "mapType",
+        }:
+            declared["type"].add(args[0])
+        elif verb == "error":
+            declared["error"].add(args[0])
+        elif verb == "capability":
+            declared["capability"].add(args[0])
+        elif verb in {"const", "domainLiteral", "literal"}:
+            declared["constant"].add(args[0])
+        elif verb in {"storage", "sharedState"} and len(args) >= 3:
+            declared["constant"].add(args[2])
+    return declared
+
+
 def _is_build_tape(facts: ExtendedFacts) -> bool:
     return any(
         line.verb in {"buildProject", "registerModule"}
@@ -7903,6 +7950,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
 
     registeredModules, mainFiles = _collect_registered_modules(buildFacts)
     registeredNames = set(registeredModules)
+    declaredExportSymbols = _collect_declared_export_symbols(facts)
     currentModuleNames = {
         sourceLine.args[0]
         for sourceLine in facts.base.lines
@@ -8100,6 +8148,52 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                         "move the row to that module or fix the module path"
                     ),
                 ))
+                continue
+
+            if len(args) >= 2:
+                exportKind = EXPORT_VERB_DECLARATION_KIND[verb]
+                exportedSymbol = args[1]
+                if exportedSymbol not in declaredExportSymbols.get(exportKind, set()):
+                    diagnostics.append(Diagnostic(
+                        tier=Tier.T1_SPEC,
+                        code="SS2506",
+                        kind="module.exportedSymbolNotDeclared",
+                        severity=Severity.ERROR,
+                        subjectName=exportedSymbol,
+                        subjectKind=verb,
+                        gapEdge="declaredBeforePublicContract",
+                        intentSlogan=(
+                            f"`{verb}` exports `{exportedSymbol}`, but this "
+                            f"module does not declare that {exportKind}"
+                        ),
+                        primary=span_of_line(sourceLine, "moduleExport"),
+                        invariantRule=(
+                            "Exports are never inferred. An `export*` row is "
+                            "allowed only when the same module source declares "
+                            "the exported type, error, operation, capability, "
+                            "or constant."
+                        ),
+                        specAnchor="SYNTAX.md#exportOperation",
+                        fixCandidates=[
+                            FixCandidate(
+                                name="declareExportedSymbol",
+                                shape=f"# add a {exportKind} declaration for `{exportedSymbol}`",
+                            ),
+                            FixCandidate(
+                                name="removeExport",
+                                shape=f"# remove `{verb} {moduleName} {exportedSymbol}`",
+                            ),
+                        ],
+                        confidence=Confidence.HIGH,
+                        blocksCompile=True,
+                        effort=Effort.TRIVIAL,
+                        passProvenance="check_registered_module_contract",
+                        agentHint=(
+                            "do not invent a public API from call sites or "
+                            "narrative; keep exports as explicit, backed "
+                            "module-contract rows only"
+                        ),
+                    ))
 
     return diagnostics
 

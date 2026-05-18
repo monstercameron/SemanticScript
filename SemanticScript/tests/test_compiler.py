@@ -166,6 +166,67 @@ def test_parser_module_namespace_contract():
           f"raised={raised} msg={msg!r}")
 
 
+def test_build_registry_imports_registered_module():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        build_path = root / "build.sem"
+        module_path = root / "main.sem"
+        build_path.write_text("\n".join([
+            "buildProject registrySmoke",
+            "project RegistrySmoke",
+            "target console",
+            "runtime native 1",
+            "entry console main",
+            "registerModule registrySmoke app.todo \".\"",
+            "mainFile registrySmoke \"main.sem\"",
+            "importModule app.todo",
+            "",
+        ]), encoding="utf-8", newline="\n")
+        module_path.write_text("\n".join([
+            "module app.todo",
+            "exportOperation app.todo main",
+            "operation main",
+            "output main ExitCode",
+            "memory main heap no",
+            "async main no",
+            "purpose main \"registry import smoke\"",
+            "returnValue 0",
+            "",
+        ]), encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(build_path), "--emit-ir", "--quiet"],
+            capture_output=True, text=True,
+        )
+    check("build registry: importModule resolves registered module",
+          proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_build_registry_missing_source_is_error():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        build_path = root / "build.sem"
+        build_path.write_text("\n".join([
+            "buildProject registryBad",
+            "project RegistryBad",
+            "target console",
+            "runtime native 1",
+            "entry console main",
+            "registerModule registryBad app.missing \"missing\"",
+            "importModule app.missing",
+            "",
+        ]), encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(build_path), "--parse-only", "--quiet"],
+            capture_output=True, text=True,
+        )
+    check("build registry: missing registered module source fails parse",
+          proc.returncode == 2 and "registered module `app.missing`" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
 def test_strict_rejects_missing_output_contract():
     src = "\n".join([
         "project MissingOutput",
@@ -434,22 +495,68 @@ def test_success_message_renderer():
 
 
 def test_persisted_ir_path_resolution():
+    build_dir = str(Path("sample-build"))
     check("persist llvm ir: auto without --emit-ir discards",
-          semsc._resolve_persisted_ir_path("sample.sscript") is None)
+          semsc._resolve_persisted_ir_path(
+              "sample.sscript", build_dir=build_dir) is None)
     check("persist llvm ir: explicit --emit-ir wins",
           semsc._resolve_persisted_ir_path(
-              "sample.sscript", emit_ir="custom.ll") == "custom.ll")
-    check("persist llvm ir: yes creates source sidecar",
+              "sample.sscript", emit_ir="custom.ll",
+              build_dir=build_dir) == str((Path("sample-build") / "custom.ll").resolve()))
+    check("persist llvm ir: yes creates build sidecar",
           semsc._resolve_persisted_ir_path(
-              "sample.sscript", persist_llvm_ir="yes") == "sample.ll")
+              "sample.sscript", persist_llvm_ir="yes",
+              build_dir=build_dir) == str((Path("sample-build") / "sample.ll").resolve()))
     check("persist llvm ir: yes prefers executable basename",
           semsc._resolve_persisted_ir_path(
               "sample.sscript", emit_exe="out.exe",
-              persist_llvm_ir="yes") == "out.ll")
+              persist_llvm_ir="yes", build_dir=build_dir) == str(Path("out.ll").resolve()))
     check("persist llvm ir: no suppresses even explicit path",
           semsc._resolve_persisted_ir_path(
               "sample.sscript", emit_ir="custom.ll",
-              persist_llvm_ir="no") is None)
+              persist_llvm_ir="no", build_dir=build_dir) is None)
+
+
+def test_build_dir_path_resolution():
+    source_path = str(Path("project") / "app" / "main.sem")
+    check("build dir: default is source-local build folder",
+          semsc._resolve_build_dir(source_path) == str(
+              (Path("project") / "app" / "build").resolve()))
+    check("build dir: exact relative override resolves beside source",
+          semsc._resolve_build_dir(source_path, build_dir="artifacts") == str(
+              (Path("project") / "app" / "artifacts").resolve()))
+    check("build dir: root keeps managed build folder name",
+          semsc._resolve_build_dir(source_path, build_root="..") == str(
+              (Path("project") / "build").resolve()))
+    check("build dir: root plus custom folder name",
+          semsc._resolve_build_dir(
+              source_path, build_root="..", build_folder_name="sem-build") == str(
+              (Path("project") / "sem-build").resolve()))
+
+    raised = False
+    msg = ""
+    try:
+        semsc._resolve_build_dir(
+            source_path,
+            build_dir="exact",
+            build_root="elsewhere")
+    except ValueError as e:
+        raised = True
+        msg = str(e)
+    check("build dir: exact override rejects build root",
+          raised and "cannot be combined" in msg,
+          f"raised={raised} msg={msg!r}")
+
+    raised = False
+    msg = ""
+    try:
+        semsc._resolve_build_dir(source_path, build_folder_name="nested/build")
+    except ValueError as e:
+        raised = True
+        msg = str(e)
+    check("build dir: folder name rejects paths",
+          raised and "single directory name" in msg,
+          f"raised={raised} msg={msg!r}")
 
 
 def test_cli_persist_llvm_ir_flag():
@@ -466,7 +573,8 @@ def test_cli_persist_llvm_ir_flag():
     ])
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = Path(tmpdir) / "persist_ir.sscript"
-        sidecar_path = Path(tmpdir) / "persist_ir.ll"
+        build_dir = Path(tmpdir) / "build"
+        sidecar_path = build_dir / "persist_ir.ll"
         src_path.write_text(src, encoding="utf-8", newline="\n")
         auto_proc = subprocess.run(
             [sys.executable, str(COMPILER_DIR / "semsc.py"),
@@ -493,6 +601,62 @@ def test_cli_persist_llvm_ir_flag():
         check("persist llvm ir: no leaves no sidecar",
               no_proc.returncode == 0 and not sidecar_path.exists(),
               f"rc={no_proc.returncode} stderr={no_proc.stderr!r}")
+
+
+def test_cli_emit_ir_without_path_uses_build_dir():
+    src = "\n".join([
+        "project EmitIrBuildDir",
+        "entry console main",
+        "operation main",
+        "output main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "returnValue 0",
+        "",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "emit_ir_build_dir.sem"
+        build_ir_path = Path(tmpdir) / "build" / "emit_ir_build_dir.ll"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-ir", "--quiet"],
+            capture_output=True, text=True,
+        )
+        check("emit-ir without path writes build dir artifact",
+              proc.returncode == 0 and build_ir_path.exists(),
+              f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_cli_build_root_and_folder_name():
+    src = "\n".join([
+        "project EmitIrBuildRoot",
+        "entry console main",
+        "operation main",
+        "output main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "returnValue 0",
+        "",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "emit_ir_build_root.sem"
+        build_ir_path = (
+            Path(tmpdir) / "outside-artifacts" / "sem-out" / "emit_ir_build_root.ll")
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-ir",
+             "--build-root", "outside-artifacts",
+             "--build-folder-name", "sem-out",
+             "--quiet"],
+            capture_output=True, text=True,
+        )
+        check("build root: emit-ir writes under custom managed build folder",
+              proc.returncode == 0 and build_ir_path.exists(),
+              f"rc={proc.returncode} stderr={proc.stderr!r}")
 
 
 def test_codegen_diagnostic_is_agent_readable():
@@ -903,6 +1067,8 @@ def main():
     test_parser_minimal()
     test_parser_syntax_error_has_line()
     test_parser_module_namespace_contract()
+    test_build_registry_imports_registered_module()
+    test_build_registry_missing_source_is_error()
     test_strict_rejects_missing_output_contract()
     test_strict_rejects_unknown_output_contract_type()
     test_strict_requires_effect_capability_or_authority()
@@ -914,7 +1080,10 @@ def main():
     test_cli_accepts_sem_alias()
     test_success_message_renderer()
     test_persisted_ir_path_resolution()
+    test_build_dir_path_resolution()
     test_cli_persist_llvm_ir_flag()
+    test_cli_emit_ir_without_path_uses_build_dir()
+    test_cli_build_root_and_folder_name()
     test_codegen_diagnostic_is_agent_readable()
     test_web_codegen_rejects_unsupported_http_target()
     test_backend_diagnostic_maps_symbol_to_source_call()

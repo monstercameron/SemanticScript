@@ -460,6 +460,24 @@ class Program:
         self.module_line = 0
         self.targets = []
         self.entry = None
+        # ---- project metadata (lowered to OS-native formats at emit-exe time) ----
+        # Standard fields map to Windows VERSIONINFO StringFileInfo entries when
+        # `--emit-exe` runs on Windows with a resource compiler available; other
+        # platforms still parse and store the values for future tooling.
+        # Keys: "version", "publisher", "description", "copyright",
+        # "productName", "internalName", "originalFilename", "trademark",
+        # "comments". Arbitrary user-supplied fields go into custom_metadata.
+        self.project_metadata = {}        # field_name -> string value
+        self.custom_metadata = {}         # arbitrary user key -> string value (insertion-ordered)
+        # ---- icon registry (declared in source / build.sem; lowered to native formats) ----
+        # Maximum explicitness: one row per fact. `iconRoleDefinition` names
+        # the role taxonomy, `icon` declares a group, `iconImage` declares a
+        # named image entity, and `iconImage*` rows attach each property of
+        # that image. Compiler walks these at emit-exe to build platform
+        # icons. See SYNTAX.md for the row schemas.
+        self.icon_role_definitions = {}   # role_token -> description text
+        self.icon_groups = {}             # group_name -> dict(role, purpose, line)
+        self.icon_images = {}             # image_name -> dict(group, path, format, width, height, scale, depth, platform, purpose, line)
         self.consts = {}              # name -> (type, value)
         # Module-scope mutable storage (`storage module mutable` and
         # `sharedState <scope> mutable`). Tracked separately from consts so
@@ -510,7 +528,7 @@ BODY_VERBS_CODEGEN = {
     "bind", "bindOk", "bindError", "ignoreOk", "ignoreValue",
     "makeError",
     "branch", "branchIf", "branchIfError",
-    "returnOk", "returnError", "returnValue",
+    "returnOk", "returnError", "returnValue", "returnVoid",
 }
 
 # Body verbs the parser stores into op.lines but codegen treats as metadata.
@@ -526,10 +544,16 @@ BODY_VERBS_RESERVED_SOFT = {
     "memoryAllocationSource",
     "useCapability",
     "importModule",
+    # `precondition OP "text"` — structured form of "Caller guarantees X"
+    # text that was historically written into `invariant` prose. Carries
+    # the caller-side proof obligation without claiming the body enforces
+    # it. Metadata-only at codegen; linters and agents read it to check
+    # call sites and to render the operation contract for review.
+    "precondition",
     # `pinsNullBodyFailurePath OP "rationale"` — explicit opt-in to the
     # native HTTP adapter's null-body 500 contract. Replaces a stringly-
     # typed marker phrase that used to live inside `warning OP "..."`
-    # text. semsc treats it as metadata; semlint2 SS3603 reads it as the
+    # text. semsc treats it as metadata; semlint SS3603 reads it as the
     # canonical opt-out. See SYNTAX.md#pinsNullBodyFailurePath.
     "pinsNullBodyFailurePath",
     # `responseBodyForwarder OP bodyArgName` — declares that an operation
@@ -583,9 +607,105 @@ _KNOWN_MODES = {
 
 _MODULE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
 
+# Top-level verbs that map 1:1 to Windows VERSIONINFO StringFileInfo entries.
+# Each verb takes one quoted-string argument. The ordering here also drives
+# the order entries are written into the generated .rc file.
+_PROJECT_METADATA_VERBS = (
+    "version",
+    "publisher",
+    "description",
+    "copyright",
+    "productName",
+    "internalName",
+    "originalFilename",
+    "trademark",
+    "comments",
+)
+
+# Version literal must be 1-4 dotted unsigned integers. Windows VERSIONINFO
+# wants exactly 4 components in FIXEDFILEINFO; missing parts are zero-padded
+# at .rc generation time.
+_PROJECT_VERSION_RE = re.compile(r"^\d+(\.\d+){0,3}$")
+
+# Recognised icon role tokens. The taxonomy is fixed so a typo can't
+# silently declare a new role no emitter knows about.
+_ICON_ROLES_RECOGNIZED = frozenset({
+    "applicationPrimary",
+    "applicationSecondary",
+    "documentType",
+    "cursor",
+    "notification",
+    "splash",
+})
+
+# Recognised image-format tokens for iconImageFormat. The compiler picks
+# the right resource-compiler invocation based on this value.
+_ICON_IMAGE_FORMATS = frozenset({"png", "ico", "icns", "svg", "jpeg"})
+
+# Recognised colour-depth tokens for iconImageDepth.
+_ICON_IMAGE_DEPTHS = frozenset({"bits1", "bits4", "bits8", "bits24", "bits32"})
+
+# Recognised platform tokens for iconImagePlatform. `any` means the image
+# is consumed by every platform that has an emitter; the three explicit
+# tokens limit the image to a single platform's lowering pass.
+_ICON_IMAGE_PLATFORMS = frozenset({"any", "windows", "darwin", "linux"})
+
+# Verb -> property name in the icon_images[name] dict.
+_ICON_IMAGE_PROPERTY_VERBS = {
+    "iconImageGroup":    "group",
+    "iconImagePath":     "path",
+    "iconImageFormat":   "format",
+    "iconImageWidth":    "width",
+    "iconImageHeight":   "height",
+    "iconImageScale":    "scale",
+    "iconImageDepth":    "depth",
+    "iconImagePlatform": "platform",
+    "iconImagePurpose":  "purpose",
+}
+
+
+def _register_builtin_middleware_control_enum(prog: Program) -> None:
+    """Pre-register the native HTTP ABI's `MiddlewareControl` enum so
+    every parsed program can reference its cases without declaring the
+    enum itself. The dispatcher in `sem_http_runtime.c` interprets
+    middleware return values according to this enum:
+
+      - `continueMiddlewareControl`     == 0 → call the route handler
+      - `shortCircuitMiddlewareControl` == 1 → skip handler; send the
+        middleware-written response as the final reply
+
+    The enum is `repr CSignedInt32` because middleware operations
+    return through the same i32 user-op ABI as handlers. Programs may
+    redeclare `enum MiddlewareControl …` (the existing enum-registry
+    code will overwrite); doing so is a footgun and tripped by
+    semlint SS3611 `redeclaredBuiltinEnum` separately.
+
+    The case names are intentionally verbose (`…MiddlewareControl`
+    suffix) so they read as full role identifiers at use sites
+    instead of bare `continue` / `shortCircuit` which would collide
+    with future control-flow verbs.
+    """
+    en = Enum("MiddlewareControl")
+    en.repr = "CSignedInt32"
+    en.cases.append(("continueMiddlewareControl", 0))
+    en.cases.append(("shortCircuitMiddlewareControl", 1))
+    prog.enums["MiddlewareControl"] = en
+    # Register the two case names as integer consts so `returnValue
+    # continueMiddlewareControl` (and the shortCircuit counterpart)
+    # resolve through the normal const-name path used by every other
+    # operation body. Type is the enum NAME (not the repr) so the
+    # `_check_result_contract` linter compares apples-to-apples when a
+    # middleware op declares `output OP MiddlewareControl`. Codegen
+    # resolves `MiddlewareControl` → `CSignedInt32` → i32 via
+    # `llvm_type_for`'s enum-repr unwrap, so the i32 user-op return
+    # slot still accepts the value without a cast.
+    prog.consts["continueMiddlewareControl"] = ("MiddlewareControl", 0)
+    prog.consts["shortCircuitMiddlewareControl"] = ("MiddlewareControl", 1)
+
 
 def parse(source: str) -> Program:
     prog = Program()
+    _register_builtin_middleware_control_enum(prog)
     for lineno, raw in enumerate(source.splitlines(), start=1):
         prog.source_lines[lineno] = raw
         toks = tokenize_line(raw)
@@ -706,6 +826,130 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
         return
     if verb == "entry":
         prog.entry = (args[0], args[1])
+        return
+
+    # ----- project metadata lowered to OS-native formats at emit time -----
+    if verb in _PROJECT_METADATA_VERBS:
+        if not args:
+            raise SyntaxError(f"{verb} requires: {verb} \"value\"")
+        value = _unwrap(args[0])
+        if not isinstance(value, str):
+            raise SyntaxError(
+                f"{verb} requires a quoted string value; got {value!r}")
+        if verb == "version" and not _PROJECT_VERSION_RE.match(value):
+            raise SyntaxError(
+                f"version: `{value}` is not a valid 4-part version number "
+                f"(expected dotted form like `1.0.0.0` or `1.2.3`)")
+        prog.project_metadata[verb] = value
+        return
+    if verb == "metadata":
+        if len(args) < 2:
+            raise SyntaxError("metadata requires: metadata \"key\" \"value\"")
+        key = _unwrap(args[0])
+        value = _unwrap(args[1])
+        if not isinstance(key, str) or not key:
+            raise SyntaxError("metadata: key must be a non-empty quoted string")
+        if not isinstance(value, str):
+            raise SyntaxError("metadata: value must be a quoted string")
+        prog.custom_metadata[key] = value
+        return
+
+    # ----- icon registry (build-time assets lowered to OS-native formats) -----
+    if verb == "iconRoleDefinition":
+        if len(args) < 2:
+            raise SyntaxError("iconRoleDefinition requires: iconRoleDefinition ROLE \"text\"")
+        role = args[0]
+        if role not in _ICON_ROLES_RECOGNIZED:
+            raise SyntaxError(
+                f"iconRoleDefinition: `{role}` is not a recognised role token; "
+                f"expected one of {sorted(_ICON_ROLES_RECOGNIZED)}")
+        prog.icon_role_definitions[role] = _unwrap(args[1])
+        return
+    if verb == "icon":
+        if not args:
+            raise SyntaxError("icon requires: icon GROUP_NAME")
+        group_name = args[0]
+        if group_name in prog.icon_groups:
+            raise SyntaxError(f"icon: group `{group_name}` already declared")
+        prog.icon_groups[group_name] = {
+            "role": None, "purpose": None, "line": lineno,
+        }
+        return
+    if verb == "iconRole":
+        if len(args) < 2:
+            raise SyntaxError("iconRole requires: iconRole GROUP ROLE")
+        group_name, role = args[0], args[1]
+        if group_name not in prog.icon_groups:
+            raise SyntaxError(f"iconRole: unknown icon group `{group_name}`")
+        prog.icon_groups[group_name]["role"] = role
+        return
+    if verb == "iconPurpose":
+        if len(args) < 2:
+            raise SyntaxError("iconPurpose requires: iconPurpose GROUP \"text\"")
+        group_name = args[0]
+        if group_name not in prog.icon_groups:
+            raise SyntaxError(f"iconPurpose: unknown icon group `{group_name}`")
+        prog.icon_groups[group_name]["purpose"] = _unwrap(args[1])
+        return
+    if verb == "iconImage":
+        if not args:
+            raise SyntaxError("iconImage requires: iconImage IMAGE_NAME")
+        image_name = args[0]
+        if image_name in prog.icon_images:
+            raise SyntaxError(f"iconImage: image `{image_name}` already declared")
+        prog.icon_images[image_name] = {
+            "group": None, "path": None, "format": None,
+            "width": None, "height": None, "scale": 1,
+            "depth": "bits32", "platform": "any", "purpose": None,
+            "line": lineno,
+        }
+        return
+    if verb in _ICON_IMAGE_PROPERTY_VERBS:
+        if len(args) < 2:
+            raise SyntaxError(f"{verb} requires: {verb} IMAGE_NAME VALUE")
+        image_name = args[0]
+        if image_name not in prog.icon_images:
+            raise SyntaxError(f"{verb}: unknown iconImage `{image_name}`")
+        property_key = _ICON_IMAGE_PROPERTY_VERBS[verb]
+        raw_value = args[1]
+        if property_key in ("path", "purpose"):
+            value = _unwrap(raw_value)
+            if not isinstance(value, str):
+                raise SyntaxError(f"{verb}: value must be a quoted string")
+        elif property_key in ("width", "height", "scale"):
+            try:
+                value = int(raw_value)
+            except (TypeError, ValueError):
+                raise SyntaxError(
+                    f"{verb}: value must be a positive integer; got {raw_value!r}")
+            if value <= 0:
+                raise SyntaxError(f"{verb}: value must be positive")
+        elif property_key == "format":
+            if raw_value not in _ICON_IMAGE_FORMATS:
+                raise SyntaxError(
+                    f"iconImageFormat: `{raw_value}` not in "
+                    f"{sorted(_ICON_IMAGE_FORMATS)}")
+            value = raw_value
+        elif property_key == "depth":
+            if raw_value not in _ICON_IMAGE_DEPTHS:
+                raise SyntaxError(
+                    f"iconImageDepth: `{raw_value}` not in "
+                    f"{sorted(_ICON_IMAGE_DEPTHS)}")
+            value = raw_value
+        elif property_key == "platform":
+            if raw_value not in _ICON_IMAGE_PLATFORMS:
+                raise SyntaxError(
+                    f"iconImagePlatform: `{raw_value}` not in "
+                    f"{sorted(_ICON_IMAGE_PLATFORMS)}")
+            value = raw_value
+        elif property_key == "group":
+            value = raw_value
+            if value not in prog.icon_groups:
+                raise SyntaxError(
+                    f"iconImageGroup: unknown icon group `{value}`")
+        else:
+            value = raw_value
+        prog.icon_images[image_name][property_key] = value
         return
 
     # ----- dependency contract -----
@@ -835,7 +1079,7 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
         # `routeTimeoutOptOut SERVER PATH "rationale"` /
         # `routeMiddlewareOptOut SERVER PATH "rationale"` — declares that
         # a route deliberately omits the cross-cutting timeout /
-        # middleware contract. semsc accepts as metadata; semlint2 SS3604
+        # middleware contract. semsc accepts as metadata; semlint SS3604
         # uses it to suppress the coverage-drift diagnostic. Stored under
         # the server's hard_metadata bucket so tooling can inspect it.
         if len(args) < 2:
@@ -1054,7 +1298,7 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
 HEADER_VERBS_WITH_OWNERSHIP = {
     "input", "output", "effect", "memory", "async",
     "memoryAllocationSource",
-    "purpose", "invariant", "warning",
+    "purpose", "invariant", "warning", "precondition",
     "guarantee", "failure", "security", "timing", "observability",
     # `pinsNullBodyFailurePath OP "rationale"` — first arg is the owning
     # operation; spec §9 ownership rule applies for checkability.
@@ -3192,6 +3436,48 @@ class Codegen:
                 builder.position_at_end(dead)
                 continue
 
+            if verb == "returnVoid":
+                # `returnVoid` is the explicit "no caller-actionable value"
+                # return form for operations declared `output OP Void` /
+                # `output OP CVoid`. The user-op ABI still uses an i32 return
+                # slot (see `_operation_output_contract` for the Void → I32
+                # mapping), so codegen emits a zero sentinel — but the source
+                # says exactly what it means, instead of forcing a fake
+                # `returnValue zeroSentinel` line that asks readers to
+                # understand the ABI quirk on their own. Rejected on
+                # non-Void outputs so the verb cannot become a backdoor
+                # around the result-contract checker.
+                if args:
+                    raise ValueError(
+                        f"returnVoid: line {_ln}: takes no arguments "
+                        f"(found {len(args)}). Use `returnValue NAME` for "
+                        f"operations that produce a typed value."
+                    )
+                output_contract = _operation_output_contract(self.prog, op)
+                resolved_ok = resolve_alias(self.prog, output_contract.ok_type) \
+                    if output_contract.ok_type else ""
+                if resolved_ok not in ("Void", "CVoid"):
+                    declared = output_contract.ok_type or "<missing output>"
+                    raise ValueError(
+                        f"returnVoid: line {_ln}: operation `{op.name}` "
+                        f"declares `output {op.name} {declared}` — use "
+                        f"`returnValue NAME` for non-Void outputs. "
+                        f"`returnVoid` is only legal when output is `Void`."
+                    )
+                emit_defers("returnVoid")
+                target_type = fn.function_type.return_type
+                if isinstance(target_type, ir.IntType):
+                    builder.ret(ir.Constant(target_type, 0))
+                else:
+                    # Defensive: the Void → i32 mapping is the documented
+                    # lowering; if a future ABI change made Void return a
+                    # different shape, this branch keeps codegen honest by
+                    # zero-initialising whatever the new shape is.
+                    builder.ret(ir.Constant(target_type, None))
+                dead = builder.function.append_basic_block("after_returnVoid")
+                builder.position_at_end(dead)
+                continue
+
             if verb in ("returnOk", "returnError", "returnValue"):
                 emit_defers(verb)
                 val = resolve(args[0])
@@ -4039,6 +4325,26 @@ class Codegen:
             call["result"] = buf_ptr
             return
 
+        # ===== Native HTTP target dispatch =====
+        # SOURCE-OF-TRUTH: this block is one of three places that
+        # enumerate the native HTTP call targets the routed webserver
+        # codegen lowers. Adding or removing a target here REQUIRES
+        # updating the other two sites in lockstep:
+        #
+        #   1. semsc.py (here) — the lowering dispatch.
+        #   2. SemanticScript/linter/semlint.py — the
+        #      NULLABLE_HTTP_REQUEST_READS / HTTP_RESPONSE_BODY_WRITERS
+        #      constants that drive SS3603 (unguardedHttpInput) and the
+        #      `_collect_transitive_response_body_writers` walk.
+        #   3. SYNTAX.md — the two `http.requestMethod, …` and
+        #      `http.responseText, …` umbrella rows.
+        #
+        # The drift between these three sources is asserted by the
+        # `TestHttpTargetSourceOfTruth` test class in
+        # SemanticScript/linter/test_semlint.py — if you add a target
+        # without updating all three sites, that test fails with a
+        # specific drift diff. Do not "fix" the test by hiding the
+        # drift; fix the drift.
         if target == "http.responseText":
             response = arg_val_named("response")
             status = arg_val_named("status")
@@ -4919,11 +5225,389 @@ def _optimize(mod, tm, opt_level: int):
     mpm.run(mod, pb)
 
 
+def _merge_build_file(prog: Program, build_path: str) -> None:
+    """Parse a build-time .sem / .sscript file and merge its declarations
+    into the main Program. Only build-time facts (project metadata, custom
+    metadata, icon registry) propagate. Conflicting redeclarations (same
+    metadata key or icon group/image name already set in the main source)
+    are rejected — a build file augments the main source, it does not
+    silently override."""
+    with open(build_path, "r", encoding="utf-8") as build_handle:
+        build_source = build_handle.read()
+    build_source = _resolve_imports(build_source, build_path)
+    build_prog = parse(build_source)
+
+    for field_name, value in build_prog.project_metadata.items():
+        if (field_name in prog.project_metadata
+                and prog.project_metadata[field_name] != value):
+            raise SyntaxError(
+                f"`{field_name}` declared in both main source and build file "
+                f"with different values "
+                f"({prog.project_metadata[field_name]!r} vs {value!r})")
+        prog.project_metadata.setdefault(field_name, value)
+
+    for key, value in build_prog.custom_metadata.items():
+        if key in prog.custom_metadata and prog.custom_metadata[key] != value:
+            raise SyntaxError(
+                f"metadata `{key}` declared in both main source and build "
+                f"file with different values")
+        prog.custom_metadata.setdefault(key, value)
+
+    for role, description in build_prog.icon_role_definitions.items():
+        prog.icon_role_definitions.setdefault(role, description)
+
+    for group_name, group_info in build_prog.icon_groups.items():
+        if group_name in prog.icon_groups:
+            raise SyntaxError(
+                f"icon group `{group_name}` declared in both main source "
+                f"and build file")
+        prog.icon_groups[group_name] = dict(group_info)
+
+    for image_name, image_info in build_prog.icon_images.items():
+        if image_name in prog.icon_images:
+            raise SyntaxError(
+                f"iconImage `{image_name}` declared in both main source "
+                f"and build file")
+        prog.icon_images[image_name] = dict(image_info)
+
+
+def _pack_png_list_to_ico(images_in_size_order, ico_output_path: str) -> None:
+    """Build a multi-image Windows .ico from a list of (size_pixels, png_path)
+    tuples. Each entry is embedded at its declared size as PNG-encoded data
+    (Vista+ supported, ubiquitous now — more compact than BMP entries and
+    preserves alpha channel without conversion). The caller is responsible
+    for ordering the list smallest-first."""
+    import struct
+    entries_bytes = b""
+    data_bytes = b""
+    count = len(images_in_size_order)
+    # ICONDIR header (6 bytes) + count * 16-byte ICONDIRENTRY then image data.
+    data_offset = 6 + count * 16
+    for size, png_path in images_in_size_order:
+        with open(png_path, "rb") as png_handle:
+            png_bytes = png_handle.read()
+        width_byte = size if size < 256 else 0   # zero means 256 in ICO spec
+        height_byte = size if size < 256 else 0
+        entries_bytes += struct.pack(
+            "<BBBBHHII",
+            width_byte, height_byte,
+            0,    # color count (0 for >256 colours / PNG-encoded)
+            0,    # reserved
+            1,    # color planes
+            32,   # bits per pixel
+            len(png_bytes),
+            data_offset,
+        )
+        data_bytes += png_bytes
+        data_offset += len(png_bytes)
+    header = struct.pack("<HHH", 0, 1, count)
+    with open(ico_output_path, "wb") as ico_handle:
+        ico_handle.write(header)
+        ico_handle.write(entries_bytes)
+        ico_handle.write(data_bytes)
+
+
+def _select_windows_icon_payload(prog: Program):
+    """Walk the program's icon registry and pick the .ico payload for the
+    `applicationPrimary` group. Returns one of:
+
+      ("prebuilt", "<path>.ico")   — a pre-built .ico from an
+                                      `iconImageFormat <name> ico` row;
+                                      pass to llvm-rc verbatim.
+      ("packed",   [(size, png_path), ...]) — PNG inputs that need packing
+                                               into a transient .ico.
+      None — no Windows-eligible icon to embed.
+    """
+    primary_group = None
+    for group_name, group_info in prog.icon_groups.items():
+        if group_info.get("role") == "applicationPrimary":
+            primary_group = group_name
+            break
+    if primary_group is None:
+        return None
+
+    source_dir = _source_dir(prog.source_path)
+
+    def resolve_icon_asset_path(path_text: str) -> str:
+        if os.path.isabs(path_text):
+            return path_text
+        return os.path.abspath(os.path.join(source_dir, path_text))
+
+    prebuilt_ico_path = None
+    png_inputs = []
+    for image_name, image_info in prog.icon_images.items():
+        if image_info.get("group") != primary_group:
+            continue
+        platform = image_info.get("platform", "any")
+        if platform not in ("any", "windows"):
+            continue
+        fmt = image_info.get("format")
+        path = image_info.get("path")
+        if not path:
+            continue
+        path = resolve_icon_asset_path(path)
+        if fmt == "ico" and prebuilt_ico_path is None:
+            prebuilt_ico_path = path
+        elif fmt == "png":
+            width = image_info.get("width") or 0
+            png_inputs.append((width, path, image_name))
+
+    if prebuilt_ico_path is not None:
+        return ("prebuilt", prebuilt_ico_path)
+    if png_inputs:
+        png_inputs.sort(key=lambda triple: triple[0])
+        return ("packed", [(size, path) for size, path, _name in png_inputs])
+    return None
+
+
+def _normalize_version_quad(version_text: str) -> str:
+    """Right-pad a SemanticScript version like `1.2.3` to the Windows
+    `FIXEDFILEINFO` four-component form `1,2,3,0`. The dotted source form
+    stays in the string-table entry alongside."""
+    parts = version_text.split(".")
+    while len(parts) < 4:
+        parts.append("0")
+    return ",".join(parts[:4])
+
+
+def _rc_escape(value: str) -> str:
+    """Escape a string for a Windows resource-compiler string literal.
+    `windres` and `llvm-rc` both accept the same C-style escaping for
+    backslashes and double-quotes; embedded newlines are dropped because
+    string-table entries are single-line by spec."""
+    cleaned = value.replace("\\", r"\\").replace("\"", r"\"")
+    cleaned = cleaned.replace("\r", "").replace("\n", " ")
+    return cleaned
+
+
+def _render_versioninfo_rc(prog: Program, exe_path: str,
+                            icon_path: str = None) -> str:
+    """Build the Windows .rc source for the program's project metadata.
+    Returns the .rc text. Standard StringFileInfo keys map directly from
+    the project metadata; custom_metadata adds arbitrary entries below the
+    fixed block so the user can attach any key/value pair."""
+    version_text = prog.project_metadata.get("version", "0.0.0.0")
+    version_quad = _normalize_version_quad(version_text)
+    company_name = prog.project_metadata.get("publisher", "")
+    file_description = prog.project_metadata.get("description",
+                                                  prog.project_name or "")
+    legal_copyright = prog.project_metadata.get("copyright", "")
+    product_name = prog.project_metadata.get("productName",
+                                              prog.project_name or "")
+    internal_name = prog.project_metadata.get("internalName",
+                                               prog.project_name or "")
+    original_filename = prog.project_metadata.get(
+        "originalFilename",
+        os.path.basename(exe_path) if exe_path else "")
+    trademark = prog.project_metadata.get("trademark", "")
+    comments = prog.project_metadata.get("comments", "")
+
+    # StringFileInfo block — keys in the conventional Windows order. Empty
+    # values are deliberately preserved so a downstream consumer can tell
+    # "field was declared empty" from "field was never declared."
+    string_entries = [
+        ("CompanyName",      company_name),
+        ("FileDescription",  file_description),
+        ("FileVersion",      version_text),
+        ("InternalName",     internal_name),
+        ("LegalCopyright",   legal_copyright),
+        ("LegalTrademarks",  trademark),
+        ("OriginalFilename", original_filename),
+        ("ProductName",      product_name),
+        ("ProductVersion",   version_text),
+    ]
+    if comments:
+        string_entries.append(("Comments", comments))
+    for custom_key, custom_value in prog.custom_metadata.items():
+        string_entries.append((custom_key, custom_value))
+
+    string_lines = [
+        f'      VALUE "{_rc_escape(key)}", "{_rc_escape(value)}"'
+        for key, value in string_entries
+    ]
+    string_table_body = "\n".join(string_lines)
+
+    icon_line = ""
+    if icon_path:
+        # llvm-rc / rc.exe parse `1 ICON "path"` and read the .ico file
+        # at resource-compile time. Forward slashes are valid in modern rc
+        # paths; we also escape backslashes defensively for absolute paths.
+        icon_path_rc = icon_path.replace("\\", "\\\\")
+        icon_line = f"1 ICON \"{icon_path_rc}\"\n"
+
+    return (
+        "// Auto-generated by SemanticScript compiler; do not edit by hand.\n"
+        "#pragma code_page(65001)\n"
+        + icon_line +
+        "1 VERSIONINFO\n"
+        f"FILEVERSION    {version_quad}\n"
+        f"PRODUCTVERSION {version_quad}\n"
+        "FILEFLAGSMASK  0x3fL\n"
+        "FILEFLAGS      0x0L\n"
+        "FILEOS         0x40004L\n"
+        "FILETYPE       0x1L\n"
+        "FILESUBTYPE    0x0L\n"
+        "BEGIN\n"
+        "  BLOCK \"StringFileInfo\"\n"
+        "  BEGIN\n"
+        "    BLOCK \"040904b0\"\n"
+        "    BEGIN\n"
+        f"{string_table_body}\n"
+        "    END\n"
+        "  END\n"
+        "  BLOCK \"VarFileInfo\"\n"
+        "  BEGIN\n"
+        "    VALUE \"Translation\", 0x0409, 0x04b0\n"
+        "  END\n"
+        "END\n"
+    )
+
+
+def _find_resource_compiler():
+    """Return (name, path) for the first resource compiler we can locate, or
+    None if none is available. Tries llvm-rc (ships with LLVM/clang) first,
+    then windres (MinGW/binutils). PATH lookup is checked, plus the common
+    Windows install location `C:\\Program Files\\LLVM\\bin\\llvm-rc.exe`
+    so the resource compiler resolves the same way clang does in
+    emit_executable. Honors $SEMSC_WINRC for explicit override."""
+    from shutil import which
+    override = os.environ.get("SEMSC_WINRC")
+    if override and os.path.exists(override):
+        lowered = override.lower()
+        if "llvm-rc" in lowered or "rc.exe" in lowered:
+            return ("llvm-rc", override)
+        return ("windres", override)
+    llvm_rc_candidates = [
+        which("llvm-rc"),
+        "C:/Program Files/LLVM/bin/llvm-rc.exe",
+        "C:/Program Files (x86)/LLVM/bin/llvm-rc.exe",
+    ]
+    for candidate in llvm_rc_candidates:
+        if candidate and os.path.exists(candidate):
+            return ("llvm-rc", candidate)
+    windres = which("windres")
+    if windres is not None:
+        return ("windres", windres)
+    return None
+
+
+def _compile_windows_resource(prog: Program, exe_path: str,
+                              resource_dir: str = None):
+    """Generate and compile a Windows VERSIONINFO resource for the program's
+    metadata. Returns the path to the linkable resource object (.res or .o)
+    plus any temp files to clean up, or (None, []) if metadata is empty,
+    we're not building for Windows, or no resource compiler is available."""
+    import subprocess
+
+    icon_selection = _select_windows_icon_payload(prog)
+    if not (prog.project_metadata or prog.custom_metadata or icon_selection):
+        return None, []
+    if sys.platform != "win32":
+        return None, []
+
+    compiler = _find_resource_compiler()
+    if compiler is None:
+        sys.stderr.write(
+            "semsc: warning: project metadata / icon resources were declared "
+            "but no Windows resource compiler is available (set SEMSC_WINRC "
+            "or install llvm-rc / windres); linking without resources\n")
+        return None, []
+    compiler_kind, compiler_path = compiler
+
+    temp_files = []
+    resource_stem = os.path.splitext(os.path.basename(exe_path))[0] or "program"
+    if resource_dir:
+        os.makedirs(resource_dir, exist_ok=True)
+    icon_path_for_rc = None
+    if icon_selection is not None:
+        kind, payload = icon_selection
+        if kind == "prebuilt":
+            # Resolve to absolute path so the rc-side reference works no
+            # matter where llvm-rc is invoked from.
+            icon_path_for_rc = os.path.abspath(payload)
+        else:
+            if resource_dir:
+                ico_path = os.path.join(resource_dir, f"{resource_stem}.icon.ico")
+            else:
+                import tempfile
+                ico_handle = tempfile.NamedTemporaryFile(
+                    suffix=".ico", delete=False)
+                ico_handle.close()
+                ico_path = ico_handle.name
+            try:
+                _pack_png_list_to_ico(payload, ico_path)
+            except Exception as exc:
+                sys.stderr.write(
+                    f"semsc: warning: failed to pack icon PNGs into a .ico "
+                    f"({exc}); linking without an embedded icon\n")
+                if not resource_dir:
+                    try:
+                        os.unlink(ico_path)
+                    except OSError:
+                        pass
+            else:
+                icon_path_for_rc = os.path.abspath(ico_path)
+                if not resource_dir:
+                    temp_files.append(ico_path)
+
+    rc_text = _render_versioninfo_rc(prog, exe_path, icon_path=icon_path_for_rc)
+    # Write UTF-8 with BOM. llvm-rc's preprocessor (clang-derived) reads
+    # UTF-8 directly with the BOM and the `#pragma code_page(65001)`
+    # already inside the .rc; rc.exe also handles UTF-8+BOM. UTF-16 LE
+    # is the traditional Windows form but llvm-rc rejects it because
+    # the underlying clang preprocessor only accepts UTF-8.
+    if resource_dir:
+        rc_path = os.path.join(resource_dir, f"{resource_stem}.versioninfo.rc")
+        with open(rc_path, "wb") as rc_file:
+            rc_file.write(b"\xef\xbb\xbf")
+            rc_file.write(rc_text.encode("utf-8"))
+    else:
+        import tempfile
+        rc_handle = tempfile.NamedTemporaryFile(
+            suffix=".rc", delete=False, mode="wb")
+        rc_handle.write(b"\xef\xbb\xbf")
+        rc_handle.write(rc_text.encode("utf-8"))
+        rc_handle.close()
+        rc_path = rc_handle.name
+        temp_files.append(rc_path)
+
+    if compiler_kind == "llvm-rc":
+        res_path = rc_path[:-3] + ".res"
+        # `/C 65001` forces the input-string codepage to UTF-8 so non-ASCII
+        # characters (em-dash, smart quotes, accented letters) in metadata
+        # string-table entries are interpreted correctly. Without it llvm-rc
+        # falls back to the system ANSI codepage and rejects high-bit bytes.
+        cmd = [compiler_path, "/C", "65001", "/FO", res_path, rc_path]
+    else:
+        # windres compiles directly to a COFF object clang can link.
+        # `--codepage=65001` is windres's equivalent of `/C 65001`.
+        res_path = rc_path[:-3] + ".o"
+        cmd = [compiler_path, "--codepage=65001",
+               "-O", "coff", "-i", rc_path, "-o", res_path]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        sys.stderr.write(
+            f"semsc: warning: resource compiler `{compiler_kind}` failed "
+            f"({proc.returncode}); linking without VERSIONINFO\n"
+            f"{proc.stderr}\n")
+        for path in temp_files:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+        return None, []
+    if not resource_dir:
+        temp_files.append(res_path)
+    return res_path, temp_files
+
+
 def emit_executable(module_ir: str, exe_path: str, opt_level: int = 2,
                     provenance: CompilerProvenance = None,
                     diagnostics_format: str = "agent",
                     extra_sources=None,
-                    extra_link_args=None) -> None:
+                    extra_link_args=None,
+                    link_work_dir: str = None,
+                    link_ir_path: str = None) -> None:
     """Ahead-of-time compile SemanticScript IR to a native executable.
 
     The SemanticScript runtime depends only on libc, so the same toolchain that
@@ -4953,11 +5637,26 @@ def emit_executable(module_ir: str, exe_path: str, opt_level: int = 2,
         raise RuntimeError(
             "could not find a clang executable; set SEMSC_CLANG=/path/to/clang")
 
-    with tempfile.NamedTemporaryFile(suffix=".ll", delete=False, mode="w",
-                                     encoding="utf-8") as f:
-        ll_path = f.name
-        f.write(module_ir)
+    remove_link_ir = link_ir_path is None
+    if link_ir_path is not None:
+        ll_path = link_ir_path
+    else:
+        if link_work_dir:
+            os.makedirs(link_work_dir, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            suffix=".ll",
+            prefix=".semsc-link-",
+            dir=link_work_dir,
+            delete=False,
+            mode="w",
+            encoding="utf-8",
+        ) as f:
+            ll_path = f.name
+            f.write(module_ir)
     try:
+        exe_dir = os.path.dirname(os.path.abspath(exe_path))
+        if exe_dir:
+            os.makedirs(exe_dir, exist_ok=True)
         cmd = [clang, f"-O{opt_level}", "-o", exe_path, ll_path]
         if extra_sources:
             cmd.extend(extra_sources)
@@ -4971,10 +5670,11 @@ def emit_executable(module_ir: str, exe_path: str, opt_level: int = 2,
             raise RuntimeError(
                 f"clang failed to compile SemanticScript IR:\n{proc.stderr}")
     finally:
-        try:
-            os.unlink(ll_path)
-        except OSError:
-            pass
+        if remove_link_ir:
+            try:
+                os.unlink(ll_path)
+            except OSError:
+                pass
 
 
 def _diagnostic_from_codegen_error(prog: Program, error: Exception) -> CompilerDiagnostic:
@@ -5108,21 +5808,198 @@ def _render_success_message(code: str, title: str, source_path: str,
     return "\n".join(lines)
 
 
-def _default_ir_sidecar_path(source_path: str, exe_path: str = None) -> str:
-    basis = exe_path or source_path
-    root, _ext = os.path.splitext(basis)
-    return (root or basis) + ".ll"
+def _source_dir(source_path: str) -> str:
+    if source_path:
+        return os.path.dirname(os.path.abspath(source_path)) or os.getcwd()
+    return os.getcwd()
+
+
+def _default_build_dir(source_path: str, build_folder_name: str = "build") -> str:
+    return os.path.join(_source_dir(source_path), build_folder_name)
+
+
+def _resolve_build_dir(source_path: str, build_dir: str = None,
+                       build_root: str = None,
+                       build_folder_name: str = None) -> str:
+    folder_name = build_folder_name or "build"
+    normalized_folder = folder_name.replace("\\", os.sep).replace("/", os.sep)
+    if (os.path.isabs(normalized_folder)
+            or os.path.dirname(normalized_folder)
+            or normalized_folder in ("", ".", "..")):
+        raise ValueError(
+            "--build-folder-name must be a single directory name, not a path")
+    if build_dir:
+        if build_root or build_folder_name:
+            raise ValueError(
+                "--build-dir is an exact artifact directory and cannot be "
+                "combined with --build-root or --build-folder-name")
+        if os.path.isabs(build_dir):
+            return os.path.abspath(build_dir)
+        return os.path.abspath(os.path.join(_source_dir(source_path), build_dir))
+    if build_root:
+        if os.path.isabs(build_root):
+            root = os.path.abspath(build_root)
+        else:
+            root = os.path.abspath(os.path.join(_source_dir(source_path), build_root))
+        return os.path.join(root, normalized_folder)
+    return _default_build_dir(source_path, normalized_folder)
+
+
+def _path_has_directory(path_text: str) -> bool:
+    normalized = path_text.replace("\\", os.sep).replace("/", os.sep)
+    return bool(os.path.dirname(normalized))
+
+
+def _build_metadata_bool(prog: Program, key: str):
+    """Read a yes/no/true/false/on/off/1/0 flag from build-tape metadata.
+    Returns None if the key isn't declared; otherwise returns the parsed
+    boolean. Used by `keepResources` and similar build-tape switches."""
+    raw_value = _build_metadata_value(prog, key)
+    if raw_value is None:
+        return None
+    normalized = str(raw_value).strip().lower()
+    if normalized in ("yes", "true", "on", "1"):
+        return True
+    if normalized in ("no", "false", "off", "0"):
+        return False
+    return None
+
+
+def _resolve_resource_dir(prog: Program, source_path: str, build_dir: str,
+                           cli_keep, cli_resource_dir):
+    """Compute the directory the resource compiler writes its intermediate
+    `.rc`/`.res`/`.ico` files to. Returns `None` to use a tempdir (the
+    `_compile_windows_resource` machinery cleans up automatically), or a
+    real path to keep the files for debugging.
+
+    Precedence:
+      1. CLI `--resource-dir PATH` — explicit path, implies keep.
+      2. CLI `--keep-resources`    — boolean override; uses
+                                     `<build_dir>/resources/` when on.
+      3. build.sem `resourcesDir PROJECT "path"` — explicit path.
+      4. build.sem `keepResources PROJECT yes`  — boolean; uses
+                                                   `<build_dir>/resources/`.
+      5. Default: None (tempdir + cleanup, no filesystem residue).
+    """
+    if cli_resource_dir is not None:
+        if os.path.isabs(cli_resource_dir):
+            return os.path.abspath(cli_resource_dir)
+        return os.path.abspath(
+            os.path.join(_source_dir(source_path), cli_resource_dir))
+
+    if cli_keep is True:
+        return os.path.join(build_dir, "resources")
+
+    build_path = _build_metadata_value(prog, "resourcesDir")
+    if build_path:
+        if os.path.isabs(build_path):
+            return os.path.abspath(build_path)
+        return os.path.abspath(
+            os.path.join(_source_dir(source_path), build_path))
+
+    if _build_metadata_bool(prog, "keepResources") is True:
+        return os.path.join(build_dir, "resources")
+
+    return None
+
+
+def _build_metadata_value(prog: Program, key: str) -> str:
+    for metadata in prog.hard_metadata.values():
+        rows = metadata.get(key)
+        if not rows:
+            continue
+        first_row = rows[0]
+        if first_row:
+            return str(first_row[0])
+    return None
+
+
+def _resolve_choice_from_build(prog: Program, key: str, cli_value: str,
+                               default_value: str, choices) -> str:
+    value = cli_value
+    if value is None:
+        value = _build_metadata_value(prog, key)
+    if value is None:
+        value = default_value
+    if value not in choices:
+        raise ValueError(
+            f"{key}: `{value}` is not valid; expected one of {sorted(choices)}")
+    return value
+
+
+def _resolve_build_output_path(source_path: str, build_dir: str,
+                               output_text: str) -> str:
+    if os.path.isabs(output_text):
+        return os.path.abspath(output_text)
+    normalized = output_text.replace("\\", os.sep).replace("/", os.sep)
+    if _path_has_directory(normalized):
+        return os.path.abspath(os.path.join(_source_dir(source_path), normalized))
+    return os.path.abspath(os.path.join(build_dir, normalized))
+
+
+def _default_exe_name(prog: Program, source_path: str) -> str:
+    configured_output = _build_metadata_value(prog, "nativeOutput")
+    if configured_output:
+        return configured_output
+    original_filename = prog.project_metadata.get("originalFilename")
+    if original_filename:
+        return original_filename
+    internal_name = prog.project_metadata.get("internalName")
+    if internal_name:
+        base = internal_name
+    elif prog.project_name:
+        base = prog.project_name
+    else:
+        base = os.path.splitext(os.path.basename(source_path))[0] or "program"
+    if os.path.splitext(base)[1]:
+        return base
+    return base + (".exe" if os.name == "nt" else "")
+
+
+def _resolve_emit_exe_path(source_path: str, emit_exe: str,
+                           prog: Program, build_dir: str) -> str:
+    if emit_exe is None:
+        return None
+    if emit_exe == "":
+        return _resolve_build_output_path(
+            source_path, build_dir, _default_exe_name(prog, source_path))
+    return _resolve_build_output_path(source_path, build_dir, emit_exe)
+
+
+def _default_ir_sidecar_path(source_path: str, exe_path: str = None,
+                             build_dir: str = None) -> str:
+    if exe_path:
+        basis = exe_path
+        root, _ext = os.path.splitext(basis)
+        return os.path.abspath((root or basis) + ".ll")
+    target_dir = build_dir or _default_build_dir(source_path)
+    source_stem = os.path.splitext(os.path.basename(source_path))[0] or "program"
+    return os.path.abspath(os.path.join(target_dir, source_stem + ".ll"))
+
+
+def _resolve_emit_ir_path(source_path: str, emit_ir: str = None,
+                          emit_exe: str = None,
+                          build_dir: str = None) -> str:
+    if emit_ir is None:
+        return None
+    if emit_ir == "":
+        return _default_ir_sidecar_path(source_path, emit_exe, build_dir)
+    return _resolve_build_output_path(
+        source_path, build_dir or _default_build_dir(source_path), emit_ir)
 
 
 def _resolve_persisted_ir_path(source_path: str, emit_exe: str = None,
                                emit_ir: str = None,
-                               persist_llvm_ir: str = "auto") -> str:
+                               persist_llvm_ir: str = "auto",
+                               build_dir: str = None) -> str:
     if persist_llvm_ir == "no":
         return None
-    if emit_ir:
-        return emit_ir
+    resolved_emit_ir = _resolve_emit_ir_path(
+        source_path, emit_ir=emit_ir, emit_exe=emit_exe, build_dir=build_dir)
+    if resolved_emit_ir:
+        return resolved_emit_ir
     if persist_llvm_ir == "yes":
-        return _default_ir_sidecar_path(source_path, emit_exe)
+        return _default_ir_sidecar_path(source_path, emit_exe, build_dir)
     return None
 
 
@@ -5147,6 +6024,88 @@ def jit_run(module_ir: str, opt_level: int = 2,
     return cmain()
 
 
+def _collect_module_registry(source: str, source_path: str):
+    """Read build-tape module registrations from ``source``.
+
+    ``registerModule PROJECT MODULE_PATH "PATH"`` is the canonical project
+    model row. ``moduleFolder MODULE_PATH "PATH"`` remains a compatibility
+    alias for older build tapes. Paths resolve relative to the source file
+    that declares the registry.
+    """
+    source_dir = os.path.dirname(os.path.abspath(source_path))
+    registry = {}
+    main_files = []
+    for raw in source.splitlines():
+        toks = tokenize_line(raw)
+        if not toks or toks[0] == "#":
+            continue
+        verb = toks[0]
+        args = toks[1:]
+        module_name = None
+        folder_text = None
+        if verb == "registerModule" and len(args) >= 3:
+            module_name = args[1]
+            folder_text = _unwrap(args[2])
+        elif verb == "moduleFolder" and len(args) >= 2:
+            module_name = args[0]
+            folder_text = _unwrap(args[1])
+        elif verb == "mainFile" and len(args) >= 2:
+            main_file = _unwrap(args[1])
+            if isinstance(main_file, str) and main_file:
+                main_files.append(main_file)
+        if module_name is None or folder_text is None:
+            continue
+        if not isinstance(folder_text, str):
+            continue
+        if os.path.isabs(folder_text):
+            registered_path = folder_text
+        else:
+            registered_path = os.path.join(source_dir, folder_text)
+        registry[module_name] = os.path.abspath(registered_path)
+    return registry, main_files
+
+
+def _resolve_registered_module_file(module_name: str, registered_path: str,
+                                    main_files) -> str:
+    if os.path.isfile(registered_path):
+        return registered_path
+    if not os.path.isdir(registered_path):
+        return None
+
+    leaf_name = module_name.rsplit(".", 1)[-1]
+    candidate_names = []
+    candidate_names.extend(main_files)
+    candidate_names.extend([
+        "main.sem",
+        "main.sscript",
+        "index.sem",
+        "index.sscript",
+        f"{leaf_name}.sem",
+        f"{leaf_name}.sscript",
+    ])
+    seen_names = set()
+    for candidate_name in candidate_names:
+        if candidate_name in seen_names:
+            continue
+        seen_names.add(candidate_name)
+        candidate = os.path.join(registered_path, candidate_name)
+        if os.path.isfile(candidate):
+            return os.path.abspath(candidate)
+
+    module_sources = []
+    for entry_name in sorted(os.listdir(registered_path)):
+        lower_name = entry_name.lower()
+        if lower_name == "build.sem" or lower_name == "build.sscript":
+            continue
+        if lower_name.endswith(".test.sem") or lower_name.endswith(".test.sscript"):
+            continue
+        if lower_name.endswith(".sem") or lower_name.endswith(".sscript"):
+            module_sources.append(os.path.join(registered_path, entry_name))
+    if len(module_sources) == 1:
+        return os.path.abspath(module_sources[0])
+    return None
+
+
 def _resolve_imports(source: str, source_path: str) -> str:
     src_dir = os.path.dirname(os.path.abspath(source_path))
     def find_project_root(start_dir: str) -> str:
@@ -5164,12 +6123,25 @@ def _resolve_imports(source: str, source_path: str) -> str:
 
     project_root = find_project_root(src_dir)
     stdlib_dir = os.path.join(project_root, "stdlib_sem")
+    module_registry, registry_main_files = _collect_module_registry(
+        source, source_path)
 
     seen: set = set()
     out_lines: list = []
     pending: list = [(source, src_dir)]
 
     def find_module_file(dotted: str, from_dir: str):
+        registered_path = module_registry.get(dotted)
+        if registered_path is not None:
+            resolved = _resolve_registered_module_file(
+                dotted, registered_path, registry_main_files)
+            if resolved is None:
+                raise SyntaxError(
+                    f"importModule: registered module `{dotted}` points at "
+                    f"`{registered_path}`, but no module source file could "
+                    "be selected (expected main.sem, index.sem, the leaf "
+                    "module file, or exactly one non-test .sem/.sscript)")
+            return resolved
         rel_base = dotted.replace(".", os.sep)
         for ext in (".sscript", ".sem"):
             rel = rel_base + ext
@@ -5281,9 +6253,24 @@ def main():
     ap.add_argument("source", nargs="?", help="path to .sscript or .sem source file")
     ap.add_argument("--version", action="version",
                     version=f"semsc {__version__}")
-    ap.add_argument("--emit-ir", help="write LLVM IR to this path")
+    ap.add_argument("--build-dir",
+                    help=("directory for compiler-managed artifacts; relative "
+                          "paths resolve beside the source file. This is an "
+                          "exact directory override and cannot be combined "
+                          "with --build-root or --build-folder-name"))
+    ap.add_argument("--build-root",
+                    help=("parent directory where the compiler should create "
+                          "the managed build folder. Relative paths resolve "
+                          "beside the source file"))
+    ap.add_argument("--build-folder-name",
+                    help=("name of the managed build folder created under "
+                          "the source directory or --build-root; default "
+                          "`build`"))
+    ap.add_argument("--emit-ir", nargs="?", const="",
+                    help=("write LLVM IR. With no path, writes to the "
+                          "compiler-managed build directory"))
     ap.add_argument("--persist-llvm-ir", choices=("auto", "yes", "no"),
-                    default="auto",
+                    default=None,
                     help=("control whether generated LLVM IR is kept on disk. "
                           "auto keeps current behavior and persists only with "
                           "--emit-ir, yes writes a .ll sidecar when needed, "
@@ -5299,15 +6286,35 @@ def main():
                     help="LLVM optimization level for the JIT (0..3); default 2")
     ap.add_argument("--emit-optimized-ir",
                     help="write the post-optimization LLVM IR to this path (after --opt-level passes run)")
-    ap.add_argument("--emit-exe",
+    ap.add_argument("--emit-exe", nargs="?", const="",
                     help="ahead-of-time compile to a native executable at this path "
-                         "(uses clang on PATH or $SEMSC_CLANG to link)")
+                         "(uses clang on PATH or $SEMSC_CLANG to link). With no "
+                         "path, writes to the compiler-managed build directory")
+    ap.add_argument("--build-file", default=None,
+                    help="merge build-time declarations (project metadata, icon "
+                         "registry) from this .sem / .sscript file into the main "
+                         "Program before codegen. Conflicting redeclarations are "
+                         "rejected.")
+    ap.add_argument("--keep-resources", dest="keep_resources",
+                    action="store_true", default=None,
+                    help="retain the intermediate Windows resource files "
+                         "(.rc/.res/.ico) next to the executable for debugging. "
+                         "Default behavior is to write them to a temp directory "
+                         "and delete after linking — the resource bytes survive "
+                         "only inside the .exe's PE resource section. Can also "
+                         "be set in build.sem via `keepResources PROJECT yes`.")
+    ap.add_argument("--resource-dir", dest="resource_dir", default=None,
+                    help="explicit directory for intermediate resource files. "
+                         "Implies --keep-resources. Path is resolved relative "
+                         "to the source file's directory unless absolute. Can "
+                         "also be set in build.sem via "
+                         "`resourcesDir PROJECT \"path\"`.")
     ap.add_argument("--quiet", action="store_true",
                     help="suppress informational messages on success")
     ap.add_argument("--diagnostics-format", choices=("agent", "json", "raw"),
                     default="agent",
                     help="format for compiler/backend errors; default agent")
-    ap.add_argument("--build-profile", choices=("dev", "prod"), default="dev",
+    ap.add_argument("--build-profile", choices=("dev", "prod"), default=None,
                     help=("compiled runtime profile; dev embeds SemanticScript "
                           "panic context, prod hides source context and traps; "
                           "default dev"))
@@ -5318,18 +6325,9 @@ def main():
                           "message then llvm.trap. Defaults to panic for "
                           "--build-profile dev and traps for --build-profile prod"))
     args = ap.parse_args()
-    if args.emit_ir and args.persist_llvm_ir == "no":
-        ap.error("--emit-ir cannot be used with --persist-llvm-ir no")
-    runtime_checks = _resolve_runtime_checks(
-        args.build_profile, args.runtime_checks)
 
     if not args.source:
         ap.error("the following arguments are required: source")
-    persisted_ir_path = _resolve_persisted_ir_path(
-        args.source,
-        emit_exe=args.emit_exe,
-        emit_ir=args.emit_ir,
-        persist_llvm_ir=args.persist_llvm_ir)
 
     try:
         with open(args.source, "r", encoding="utf-8") as f:
@@ -5343,14 +6341,13 @@ def main():
         print("semsc: source file must use .sscript or .sem", file=sys.stderr)
         sys.exit(2)
 
-    # Resolve cross-file imports. `importModule DOTTED.PATH [as ALIAS]`
-    # lines reference module files. Convert the dotted path to a file
-    # path (X.Y.Z -> X/Y/Z.sscript or X/Y/Z.sem) and search the source-file's
-    # directory and the project's stdlib_sem/ directory. Imported file content is
-    # inlined; transitive imports are followed (with cycle detection).
-    source = _resolve_imports(source, args.source)
-
     try:
+        # Resolve cross-file imports. `importModule DOTTED.PATH [as ALIAS]`
+        # lines reference module files. Build tapes resolve registered
+        # modules before legacy filesystem/std-lib fallback. Imported file
+        # content is inlined; transitive imports are followed with cycle
+        # detection.
+        source = _resolve_imports(source, args.source)
         prog = parse(source)
         prog.source_path = args.source
     except SyntaxError as e:
@@ -5359,6 +6356,14 @@ def main():
         if os.environ.get("SEMSC_TRACEBACK"):
             _tb.print_exc(file=sys.stderr)
         sys.exit(2)
+
+    if args.build_file:
+        try:
+            _merge_build_file(prog, args.build_file)
+        except SyntaxError as e:
+            print(f"semsc: build-file error in {args.build_file}: {e}",
+                  file=sys.stderr)
+            sys.exit(2)
 
     # External literal asset loading. `literal NAME TYPE` declares the
     # binding; `literalSource NAME "path"` names the bytes' source file.
@@ -5369,6 +6374,47 @@ def main():
 
     if args.lint or args.strict:
         lint(prog, strict=args.strict)
+
+    try:
+        build_dir = _resolve_build_dir(
+            args.source,
+            build_dir=args.build_dir,
+            build_root=args.build_root,
+            build_folder_name=args.build_folder_name)
+        build_profile = _resolve_choice_from_build(
+            prog, "buildProfile", args.build_profile, "dev", {"dev", "prod"})
+        persist_llvm_ir = _resolve_choice_from_build(
+            prog, "persistLlvmIr", args.persist_llvm_ir, "auto",
+            {"auto", "yes", "no"})
+        runtime_checks_override = args.runtime_checks
+        if runtime_checks_override is None:
+            runtime_checks_override = _build_metadata_value(prog, "runtimeChecks")
+            if runtime_checks_override is not None and runtime_checks_override not in {"off", "traps", "panic"}:
+                raise ValueError(
+                    "runtimeChecks: "
+                    f"`{runtime_checks_override}` is not valid; expected one "
+                    "of ['off', 'panic', 'traps']")
+        runtime_checks = _resolve_runtime_checks(
+            build_profile, runtime_checks_override)
+        emit_exe_path = _resolve_emit_exe_path(
+            args.source, args.emit_exe, prog, build_dir)
+        ir_sidecar_basis_path = emit_exe_path
+        if ir_sidecar_basis_path is None and (
+            _build_metadata_value(prog, "nativeOutput")
+            or prog.project_metadata.get("originalFilename")
+        ):
+            ir_sidecar_basis_path = _resolve_emit_exe_path(
+                args.source, "", prog, build_dir)
+        if args.emit_ir is not None and persist_llvm_ir == "no":
+            ap.error("--emit-ir cannot be used with --persist-llvm-ir no")
+        persisted_ir_path = _resolve_persisted_ir_path(
+            args.source,
+            emit_exe=ir_sidecar_basis_path,
+            emit_ir=args.emit_ir,
+            persist_llvm_ir=persist_llvm_ir,
+            build_dir=build_dir)
+    except ValueError as e:
+        ap.error(str(e))
 
     if args.parse_only:
         if not args.quiet:
@@ -5407,19 +6453,40 @@ def main():
     did_output = False
     outputs = []
     if persisted_ir_path:
+        persisted_ir_dir = os.path.dirname(os.path.abspath(persisted_ir_path))
+        if persisted_ir_dir:
+            os.makedirs(persisted_ir_dir, exist_ok=True)
         with open(persisted_ir_path, "w", encoding="utf-8") as f:
             f.write(ir_text)
         did_output = True
         outputs.append(("llvm ir", persisted_ir_path))
 
-    if args.emit_exe:
+    if emit_exe_path:
         try:
             extra_sources, extra_link_args = _native_http_link_inputs(prog)
-            emit_executable(ir_text, args.emit_exe, opt_level=args.opt_level,
-                            provenance=cg.provenance,
-                            diagnostics_format=args.diagnostics_format,
-                            extra_sources=extra_sources,
-                            extra_link_args=extra_link_args)
+            resolved_resource_dir = _resolve_resource_dir(
+                prog, args.source, build_dir,
+                args.keep_resources, args.resource_dir)
+            resource_path, resource_temp_files = _compile_windows_resource(
+                prog, emit_exe_path, resource_dir=resolved_resource_dir)
+            if resource_path is not None:
+                extra_sources = list(extra_sources or [])
+                extra_sources.append(resource_path)
+                outputs.append(("resource", resource_path))
+            try:
+                emit_executable(ir_text, emit_exe_path, opt_level=args.opt_level,
+                                provenance=cg.provenance,
+                                diagnostics_format=args.diagnostics_format,
+                                extra_sources=extra_sources,
+                                extra_link_args=extra_link_args,
+                                link_work_dir=build_dir,
+                                link_ir_path=persisted_ir_path)
+            finally:
+                for path in resource_temp_files:
+                    try:
+                        os.unlink(path)
+                    except OSError:
+                        pass
         except CompilerDiagnosticError as e:
             print(e.diagnostic.render(args.diagnostics_format), file=sys.stderr)
             sys.exit(4)
@@ -5427,7 +6494,7 @@ def main():
             print(f"semsc: {e}", file=sys.stderr)
             sys.exit(4)
         did_output = True
-        outputs.append(("executable", args.emit_exe))
+        outputs.append(("executable", emit_exe_path))
 
     if did_output and not args.quiet and not args.run:
         print(_render_success_message(
@@ -5436,9 +6503,10 @@ def main():
             args.source,
             outputs=outputs,
             details=[
-                ("profile", args.build_profile),
+                ("profile", build_profile),
                 ("runtime checks", runtime_checks),
                 ("llvm ir", "persisted" if persisted_ir_path else "discarded"),
+                ("build dir", build_dir if did_output else ""),
                 ("opt level", args.opt_level),
             ],
         ))
@@ -5457,7 +6525,7 @@ def main():
             "SemanticScript compile complete",
             args.source,
             details=[
-                ("profile", args.build_profile),
+                ("profile", build_profile),
                 ("runtime checks", runtime_checks),
                 ("llvm ir", "persisted" if persisted_ir_path else "discarded"),
                 ("opt level", args.opt_level),

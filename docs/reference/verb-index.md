@@ -23,8 +23,12 @@ partial       mixed behavior; see owning language doc
 | `module` | `module DOTTED.PATH` | metadata |
 | `mode` | `mode capturedOutputReplay` | metadata |
 | `entry` | `entry console OPERATION` | lowered |
+| `registerModule` | `registerModule PROJECT MODULE_PATH "PATH"` | partial |
 | `importModule` | `importModule DOTTED.PATH [as ALIAS]` | lowered pre-parse |
 | `section` | `section NAME` | metadata |
+
+Module export rows are module-local metadata: `exportType`, `exportError`,
+`exportOperation`, `exportCapability`, and `exportConstant`.
 
 ## Types, Records, Enums
 
@@ -149,7 +153,7 @@ listLiteral listLiteralLength listLiteralIndexBase listLiteralIndexPolicy listLi
 Collection declarations are metadata/runtime-contract surface today. They do
 not create executable methods by themselves: calls like `TaskList.append`,
 `TaskMap.get`, or a declared `collectionOperation` target still need an
-explicit operation/runtime binding. `semlint2.py` reports these as collection
+explicit operation/runtime binding. `semlint.py` reports these as collection
 runtime gaps while the compiler would otherwise use the zero-stub external
 fallback.
 

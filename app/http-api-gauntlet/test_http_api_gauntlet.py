@@ -8,7 +8,14 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "app" / "http-api-gauntlet" / "http_api_gauntlet.sscript"
+# The gauntlet is compiled via its project-mode build tape (build.sem) per the
+# new SYNTAX.md build-tape rows (buildProject / registerModule / mainFile /
+# importModule …). build.sem inlines http_api_gauntlet.sscript as the module
+# source; passing build.sem to semsc applies the project metadata (VERSIONINFO
+# embedded into the PE), the build settings (profile / runtime-checks / native
+# output), and the module registry in one compilation unit.
+SOURCE = ROOT / "app" / "http-api-gauntlet" / "build.sem"
+MODULE_SOURCE = ROOT / "app" / "http-api-gauntlet" / "http_api_gauntlet.sscript"
 HOST = "127.0.0.1"
 PORT = 18082
 
@@ -242,7 +249,7 @@ def main():
             index_headers = assert_response(
                 "/",
                 200,
-                "http api gauntlet\nroutes: /health /reflect/method /reflect/path /reflect/header /reflect/required-header-or-fail /reflect/query /reflect/query-empty /reflect/query-repeat /reflect/body /reflect/body-bytes /reflect/body-size /multipart/text /multipart/file-name /multipart/file-type /multipart/file-bytes /events/one /capabilities /content/custom /redirect /empty /patch\nmissing-input routes respond 400; /reflect/required-header-or-fail intentionally still 500s on missing X-Gauntlet-Required to keep coverage of the null-body failure path\n",
+                "http api gauntlet\nroutes: /health /reflect/method /reflect/path /reflect/header /reflect/required-header-or-fail /reflect/query /reflect/query-empty /reflect/query-repeat /reflect/body /reflect/body-bytes /reflect/body-size /multipart/text /multipart/file-name /multipart/file-type /multipart/file-bytes /events/one /capabilities /content/custom /redirect /empty /patch /middleware-short-circuit\nmissing-input routes respond 400; /reflect/required-header-or-fail intentionally still 500s on missing X-Gauntlet-Required; /middleware-short-circuit returns 418 from its middleware (the route's handler is intentionally skipped by the MiddlewareControl short-circuit contract)\n",
                 common_path="/",
             )
             assert index_headers.get("connection") == "close", index_headers
@@ -258,7 +265,7 @@ def main():
                 common_path="/reflect/header",
             )
             # /reflect/header now guards with pointer.isNull and returns 400 on
-            # missing X-Gauntlet-Token (pinned by semlint2 SS3603). The legacy
+            # missing X-Gauntlet-Token (pinned by semlint SS3603). The legacy
             # null-body 500 contract still lives on /reflect/required-header-or-fail
             # below — that's the one route whose `warning` line opts out of the
             # SS3603 lint and keeps the gauntlet's coverage of the adapter's
@@ -416,6 +423,27 @@ def main():
 
             assert_response("/empty", 204, "", method="DELETE", common_path="/empty")
             assert_response("/patch", 200, "patched\n", method="PATCH", common_path="/patch")
+
+            # MiddlewareControl short-circuit contract: the dispatcher
+            # honours `shortCircuitMiddlewareControl` by skipping the
+            # route handler. We expect the middleware-written body
+            # (status 418, "middleware short-circuited…") and NOT the
+            # handler-written body ("handler ran…"). If the handler
+            # body ever shows up here, the dispatcher regressed.
+            short_circuit_status, short_circuit_payload, short_circuit_headers = request(
+                "/middleware-short-circuit"
+            )
+            assert short_circuit_status == 418, (
+                short_circuit_status, short_circuit_payload, short_circuit_headers
+            )
+            assert short_circuit_payload == "middleware short-circuited; handler skipped by dispatcher\n", (
+                short_circuit_payload, short_circuit_headers
+            )
+            assert "handler ran" not in short_circuit_payload, (
+                "MiddlewareControl short-circuit regression: dispatcher invoked the route "
+                "handler even though middleware returned shortCircuitMiddlewareControl. "
+                "Payload was: " + short_circuit_payload
+            )
 
             assert_response("/reflect/method", 404, "not found\n", method="POST")
             assert_response("/missing", 404, "not found\n")
