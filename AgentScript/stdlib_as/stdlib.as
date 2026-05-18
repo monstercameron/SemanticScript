@@ -782,6 +782,181 @@ branchIf clampOk clampHolds
 branch smokeAssertionFailed
 label clampHolds
 
+# ============================================================
+# Extended unit tests: boundary cases for each existing op.
+# ============================================================
+
+const zeroSignedSm CSignedInt64 0
+const oneSignedSm CSignedInt64 1
+const negFiveSignedSm CSignedInt64 -5
+const fiveSignedSm CSignedInt64 5
+const zeroStr CNullTerminatedByteString "0"
+const hexZeroStr CNullTerminatedByteString "0x0"
+const oneHundredSm CSignedInt64 100
+
+# parseDecimal("0") == 0
+call parseZeroCall parseDecimalCStringToSignedInt64
+arg parseZeroCall inputText zeroStr
+run parseZeroCall
+bind parseZeroResult CSignedInt64 parseZeroCall
+call checkParseZeroCall math.equalI64
+arg checkParseZeroCall left parseZeroResult
+arg checkParseZeroCall right zeroSignedSm
+run checkParseZeroCall
+bind parseZeroOk Bool checkParseZeroCall
+branchIf parseZeroOk parseZeroHolds
+branch smokeAssertionFailed
+label parseZeroHolds
+
+# parseHex("0x0") == 0
+call parseHexZeroCall parseHexCStringToSignedInt64
+arg parseHexZeroCall inputText hexZeroStr
+run parseHexZeroCall
+bind parseHexZeroResult CSignedInt64 parseHexZeroCall
+call checkParseHexZeroCall math.equalI64
+arg checkParseHexZeroCall left parseHexZeroResult
+arg checkParseHexZeroCall right zeroSignedSm
+run checkParseHexZeroCall
+bind parseHexZeroOk Bool checkParseHexZeroCall
+branchIf parseHexZeroOk parseHexZeroHolds
+branch smokeAssertionFailed
+label parseHexZeroHolds
+
+# absoluteSignedInt64(0) == 0
+call absZeroCall absoluteSignedInt64
+arg absZeroCall inputValue zeroSignedSm
+run absZeroCall
+bind absZeroResult CSignedInt64 absZeroCall
+call checkAbsZeroCall math.equalI64
+arg checkAbsZeroCall left absZeroResult
+arg checkAbsZeroCall right zeroSignedSm
+run checkAbsZeroCall
+bind absZeroOk Bool checkAbsZeroCall
+branchIf absZeroOk absZeroHolds
+branch smokeAssertionFailed
+label absZeroHolds
+
+# absoluteSignedInt64(99) == 99 (positive identity)
+call absPositiveCall absoluteSignedInt64
+arg absPositiveCall inputValue ninetyNine
+run absPositiveCall
+bind absPositiveResult CSignedInt64 absPositiveCall
+call checkAbsPositiveCall math.equalI64
+arg checkAbsPositiveCall left absPositiveResult
+arg checkAbsPositiveCall right ninetyNine
+run checkAbsPositiveCall
+bind absPositiveOk Bool checkAbsPositiveCall
+branchIf absPositiveOk absPositiveHolds
+branch smokeAssertionFailed
+label absPositiveHolds
+
+# minimum(5, 5) == 5 (reflexive)
+call minSameCall minimumSignedInt64
+arg minSameCall leftValue fiveSignedSm
+arg minSameCall rightValue fiveSignedSm
+run minSameCall
+bind minSameResult CSignedInt64 minSameCall
+call checkMinSameCall math.equalI64
+arg checkMinSameCall left minSameResult
+arg checkMinSameCall right fiveSignedSm
+run checkMinSameCall
+bind minSameOk Bool checkMinSameCall
+branchIf minSameOk minSameHolds
+branch smokeAssertionFailed
+label minSameHolds
+
+# maximum(-5, 5) == 5 (negative vs positive)
+call maxSignCall maximumSignedInt64
+arg maxSignCall leftValue negFiveSignedSm
+arg maxSignCall rightValue fiveSignedSm
+run maxSignCall
+bind maxSignResult CSignedInt64 maxSignCall
+call checkMaxSignCall math.equalI64
+arg checkMaxSignCall left maxSignResult
+arg checkMaxSignCall right fiveSignedSm
+run checkMaxSignCall
+bind maxSignOk Bool checkMaxSignCall
+branchIf maxSignOk maxSignHolds
+branch smokeAssertionFailed
+label maxSignHolds
+
+# power(2, 0) == 1 (zero exponent)
+call powZeroExpCall powerSignedInt64
+arg powZeroExpCall baseValue twoBaseValue
+arg powZeroExpCall exponentValue zeroSignedSm
+run powZeroExpCall
+bindOk powZeroExpResult CSignedInt64 powZeroExpCall
+call checkPowZeroExpCall math.equalI64
+arg checkPowZeroExpCall left powZeroExpResult
+arg checkPowZeroExpCall right oneSignedSm
+run checkPowZeroExpCall
+bind powZeroExpOk Bool checkPowZeroExpCall
+branchIf powZeroExpOk powZeroExpHolds
+branch smokeAssertionFailed
+label powZeroExpHolds
+
+# power(1, 100) == 1 (one to any power)
+call powOneBaseCall powerSignedInt64
+arg powOneBaseCall baseValue oneSignedSm
+arg powOneBaseCall exponentValue oneHundredSm
+run powOneBaseCall
+bindOk powOneBaseResult CSignedInt64 powOneBaseCall
+call checkPowOneBaseCall math.equalI64
+arg checkPowOneBaseCall left powOneBaseResult
+arg checkPowOneBaseCall right oneSignedSm
+run checkPowOneBaseCall
+bind powOneBaseOk Bool checkPowOneBaseCall
+branchIf powOneBaseOk powOneBaseHolds
+branch smokeAssertionFailed
+label powOneBaseHolds
+
+# gcd(7, 5) == 1 (coprime)
+call gcdCoprimeCall greatestCommonDivisorSignedInt64
+arg gcdCoprimeCall leftValue sevenInt
+arg gcdCoprimeCall rightValue fiveSignedSm
+run gcdCoprimeCall
+bind gcdCoprimeResult CSignedInt64 gcdCoprimeCall
+call checkGcdCoprimeCall math.equalI64
+arg checkGcdCoprimeCall left gcdCoprimeResult
+arg checkGcdCoprimeCall right oneSignedSm
+run checkGcdCoprimeCall
+bind gcdCoprimeOk Bool checkGcdCoprimeCall
+branchIf gcdCoprimeOk gcdCoprimeHolds
+branch smokeAssertionFailed
+label gcdCoprimeHolds
+
+# clamp(5, 0, 10) == 5 (already in range)
+call clampInRangeCall clampSignedInt64ToInclusiveRange
+arg clampInRangeCall inputValue fiveSignedSm
+arg clampInRangeCall lowerBound zeroLowerBoundForClamp
+arg clampInRangeCall upperBound tenUpperBoundForClamp
+run clampInRangeCall
+bind clampInRangeResult CSignedInt64 clampInRangeCall
+call checkClampInRangeCall math.equalI64
+arg checkClampInRangeCall left clampInRangeResult
+arg checkClampInRangeCall right fiveSignedSm
+run checkClampInRangeCall
+bind clampInRangeOk Bool checkClampInRangeCall
+branchIf clampInRangeOk clampInRangeHolds
+branch smokeAssertionFailed
+label clampInRangeHolds
+
+# clamp(-5, 0, 10) == 0 (clamped to lower bound)
+call clampBelowCall clampSignedInt64ToInclusiveRange
+arg clampBelowCall inputValue negFiveSignedSm
+arg clampBelowCall lowerBound zeroLowerBoundForClamp
+arg clampBelowCall upperBound tenUpperBoundForClamp
+run clampBelowCall
+bind clampBelowResult CSignedInt64 clampBelowCall
+call checkClampBelowCall math.equalI64
+arg checkClampBelowCall left clampBelowResult
+arg checkClampBelowCall right zeroLowerBoundForClamp
+run checkClampBelowCall
+bind clampBelowOk Bool checkClampBelowCall
+branchIf clampBelowOk clampBelowHolds
+branch smokeAssertionFailed
+label clampBelowHolds
+
 const successMessageText CNullTerminatedByteString "OK"
 call writeSuccessLineCall console.writeLine
 arg writeSuccessLineCall console console

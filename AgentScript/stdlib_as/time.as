@@ -351,6 +351,125 @@ branchIf leap2024Result leap2024Holds
 branch smokeAssertionFailed
 label leap2024Holds
 
+# ============================================================
+# Extended unit tests: coverage for the 3 ops the smoke previously
+# omitted (convertSecondsToWholeMinutes, convertMinutesToSeconds,
+# convertUnixEpochSecondsToDays) plus boundary leap-year cases.
+# ============================================================
+
+const zeroSecondsValue CSignedInt64 0
+const oneTwentySeconds CSignedInt64 120
+const twoMinutes CSignedInt64 2
+const fiftyNineSeconds CSignedInt64 59
+const threeMinutes CSignedInt64 3
+const oneEightyValue CSignedInt64 180
+const oneFullDaySeconds CSignedInt64 86400
+const oneDayCount CSignedInt64 1
+const yearTwentyTwentyThree CSignedInt64 2023
+const yearTwoFourHundred CSignedInt64 2400
+
+# convertSecondsToWholeMinutes(120) == 2
+call minFromSecCall convertSecondsToWholeMinutes
+arg minFromSecCall secondCount oneTwentySeconds
+run minFromSecCall
+bind minFromSecResult CSignedInt64 minFromSecCall
+call checkMinFromSecCall math.equalI64
+arg checkMinFromSecCall left minFromSecResult
+arg checkMinFromSecCall right twoMinutes
+run checkMinFromSecCall
+bind minFromSecOk Bool checkMinFromSecCall
+branchIf minFromSecOk minFromSecHolds
+branch smokeAssertionFailed
+label minFromSecHolds
+
+# convertSecondsToWholeMinutes(59) == 0 (truncation boundary)
+call minFromSecZeroCall convertSecondsToWholeMinutes
+arg minFromSecZeroCall secondCount fiftyNineSeconds
+run minFromSecZeroCall
+bind minFromSecZeroResult CSignedInt64 minFromSecZeroCall
+call checkMinFromSecZeroCall math.equalI64
+arg checkMinFromSecZeroCall left minFromSecZeroResult
+arg checkMinFromSecZeroCall right zeroSecondsValue
+run checkMinFromSecZeroCall
+bind minFromSecZeroOk Bool checkMinFromSecZeroCall
+branchIf minFromSecZeroOk minFromSecZeroHolds
+branch smokeAssertionFailed
+label minFromSecZeroHolds
+
+# convertMinutesToSeconds(3) == 180
+call secFromMinCall convertMinutesToSeconds
+arg secFromMinCall minuteCount threeMinutes
+run secFromMinCall
+bind secFromMinResult CSignedInt64 secFromMinCall
+call checkSecFromMinCall math.equalI64
+arg checkSecFromMinCall left secFromMinResult
+arg checkSecFromMinCall right oneEightyValue
+run checkSecFromMinCall
+bind secFromMinOk Bool checkSecFromMinCall
+branchIf secFromMinOk secFromMinHolds
+branch smokeAssertionFailed
+label secFromMinHolds
+
+# convertMinutesToSeconds(0) == 0
+call secFromZeroMinCall convertMinutesToSeconds
+arg secFromZeroMinCall minuteCount zeroSecondsValue
+run secFromZeroMinCall
+bind secFromZeroMinResult CSignedInt64 secFromZeroMinCall
+call checkSecFromZeroMinCall math.equalI64
+arg checkSecFromZeroMinCall left secFromZeroMinResult
+arg checkSecFromZeroMinCall right zeroSecondsValue
+run checkSecFromZeroMinCall
+bind secFromZeroMinOk Bool checkSecFromZeroMinCall
+branchIf secFromZeroMinOk secFromZeroMinHolds
+branch smokeAssertionFailed
+label secFromZeroMinHolds
+
+# convertUnixEpochSecondsToDays(86400) == 1
+call daysCall convertUnixEpochSecondsToDays
+arg daysCall unixEpochSeconds oneFullDaySeconds
+run daysCall
+bind daysResult CSignedInt64 daysCall
+call checkDaysCall math.equalI64
+arg checkDaysCall left daysResult
+arg checkDaysCall right oneDayCount
+run checkDaysCall
+bind daysOk Bool checkDaysCall
+branchIf daysOk daysHolds
+branch smokeAssertionFailed
+label daysHolds
+
+# convertSecondsToWholeHours(0) == 0
+call hoursZeroCall convertSecondsToWholeHours
+arg hoursZeroCall secondCount zeroSecondsValue
+run hoursZeroCall
+bind hoursZeroResult CSignedInt64 hoursZeroCall
+call checkHoursZeroCall math.equalI64
+arg checkHoursZeroCall left hoursZeroResult
+arg checkHoursZeroCall right zeroSecondsValue
+run checkHoursZeroCall
+bind hoursZeroOk Bool checkHoursZeroCall
+branchIf hoursZeroOk hoursZeroHolds
+branch smokeAssertionFailed
+label hoursZeroHolds
+
+# isGregorianLeapYear(2023) == false (typical non-leap)
+call leap2023Call isGregorianLeapYear
+arg leap2023Call candidateYear yearTwentyTwentyThree
+run leap2023Call
+bind leap2023Result Bool leap2023Call
+branchIf leap2023Result smokeAssertionFailed
+branch leap2023Holds
+label leap2023Holds
+
+# isGregorianLeapYear(2400) == true (divisible by 400, the century leap rule)
+call leap2400Call isGregorianLeapYear
+arg leap2400Call candidateYear yearTwoFourHundred
+run leap2400Call
+bind leap2400Result Bool leap2400Call
+branchIf leap2400Result leap2400Holds
+branch smokeAssertionFailed
+label leap2400Holds
+
 # Exercise the OS-time wrappers. We don't assert their values
 # (non-deterministic across runs), but we DO branchIf on each
 # returned value so the bind is "used" — the linter would otherwise

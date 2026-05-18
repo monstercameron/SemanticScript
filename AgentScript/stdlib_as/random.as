@@ -654,10 +654,99 @@ branchIf secondDrawOk secondDrawHolds
 branch smokeAssertionFailed
 label secondDrawHolds
 
+# Read the LCG state mid-sequence and verify it equals the last draw.
+# After two draws the state should equal the second draw value (the
+# LCG stores state[k] = x_k where the most recently produced value is
+# the current state).
+call readStateCall readDeterministicRandomState
+arg readStateCall randomState randomStateSlot
+run readStateCall
+bind readStateResult CSignedInt64 readStateCall
+call checkReadStateCall math.equalI64
+arg checkReadStateCall left readStateResult
+arg checkReadStateCall right expectedSecondRandom
+run checkReadStateCall
+bind readStateOk Bool checkReadStateCall
+branchIf readStateOk readStateHolds
+branch smokeAssertionFailed
+label readStateHolds
+
+# Draw 3: continue the sequence — verify it doesn't repeat the first.
+call drawThirdRandomCall nextDeterministicRandomSignedInt64
+arg drawThirdRandomCall randomState randomStateSlot
+run drawThirdRandomCall
+bind thirdRandomValue CSignedInt64 drawThirdRandomCall
+call checkThirdDistinctCall math.notEqualI64
+arg checkThirdDistinctCall left thirdRandomValue
+arg checkThirdDistinctCall right firstRandomValue
+run checkThirdDistinctCall
+bind thirdDistinctOk Bool checkThirdDistinctCall
+branchIf thirdDistinctOk thirdDistinctHolds
+branch smokeAssertionFailed
+label thirdDistinctHolds
+
+# loadUnsignedByteFromBufferOffset: 'h' is byte 104 at offset 0 of "hello".
+const helloForRandom CNullTerminatedByteString "hello"
+const offsetZeroForRandom CSignedInt64 0
+const expectedHByte CSignedInt64 104
+call loadByteCall loadUnsignedByteFromBufferOffset
+arg loadByteCall byteBuffer helloForRandom
+arg loadByteCall byteOffset offsetZeroForRandom
+run loadByteCall
+bind loadedByteResult CSignedInt64 loadByteCall
+call checkLoadByteCall math.equalI64
+arg checkLoadByteCall left loadedByteResult
+arg checkLoadByteCall right expectedHByte
+run checkLoadByteCall
+bind loadByteOk Bool checkLoadByteCall
+branchIf loadByteOk loadByteHolds
+branch smokeAssertionFailed
+label loadByteHolds
+
+# loadUnsignedByteFromBufferOffset at non-zero offset: byte at offset 4 of "hello" = 'o' = 111
+const offsetFourForRandom CSignedInt64 4
+const expectedOByte CSignedInt64 111
+call loadByteOffCall loadUnsignedByteFromBufferOffset
+arg loadByteOffCall byteBuffer helloForRandom
+arg loadByteOffCall byteOffset offsetFourForRandom
+run loadByteOffCall
+bind loadedByteOffResult CSignedInt64 loadByteOffCall
+call checkLoadByteOffCall math.equalI64
+arg checkLoadByteOffCall left loadedByteOffResult
+arg checkLoadByteOffCall right expectedOByte
+run checkLoadByteOffCall
+bind loadByteOffOk Bool checkLoadByteOffCall
+branchIf loadByteOffOk loadByteOffHolds
+branch smokeAssertionFailed
+label loadByteOffHolds
+
 call releaseStateCall releaseDeterministicRandomState
 arg releaseStateCall randomState randomStateSlot
 run releaseStateCall
 ignoreValue releaseStateCall CSignedInt32
+
+# Property: a fresh seed-1 LCG produces the same first value (48271).
+# This verifies determinism across state instances.
+call createStateAgainCall createDeterministicRandomState
+arg createStateAgainCall randomSeed seedOneInteger
+run createStateAgainCall
+bindOk randomStateAgainSlot COpaqueMemoryAddress createStateAgainCall
+call drawAgainCall nextDeterministicRandomSignedInt64
+arg drawAgainCall randomState randomStateAgainSlot
+run drawAgainCall
+bind firstRandomAgainValue CSignedInt64 drawAgainCall
+call checkDeterministicCall math.equalI64
+arg checkDeterministicCall left firstRandomAgainValue
+arg checkDeterministicCall right expectedFirstRandom
+run checkDeterministicCall
+bind deterministicOk Bool checkDeterministicCall
+branchIf deterministicOk deterministicHolds
+branch smokeAssertionFailed
+label deterministicHolds
+call releaseStateAgainCall releaseDeterministicRandomState
+arg releaseStateAgainCall randomState randomStateAgainSlot
+run releaseStateAgainCall
+ignoreValue releaseStateAgainCall CSignedInt32
 
 const successMessageText CNullTerminatedByteString "OK"
 call writeSuccessLineCall console.writeLine
