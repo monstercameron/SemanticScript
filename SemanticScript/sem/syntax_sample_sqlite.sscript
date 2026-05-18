@@ -1,0 +1,316 @@
+# syntax_sample_sqlite.sscript
+#
+# Refined-syntax sample for the proposed `standard.sqlite` standard module.
+# This file is the canonical reference for what SQLite usage looks like in
+# SemanticScript source: it pins the call surface, type universe, capability
+# grant, error domain, and effect taxonomy that semsc / semlint / SYNTAX.md
+# must agree on once the compiler wiring lands.
+#
+# Status: the lowering for `sqlite.*` targets is not in semsc.py yet. The
+# vendored amalgamation at third_party/sqlite/ and the C ABI at
+# SemanticScript/runtime/native_sqlite/ are the runtime half; once the
+# compiler half is wired, this sample becomes the executable smoke for the
+# integration (mirrors how syntax_sample_web_server.sscript pins the
+# http.* surface today).
+#
+# Design principles (all inherited from the existing http standard module):
+#
+#   1. Built-in like standard.http — the user writes one
+#      `dependency standard.sqlite version 0.1 source standard` line; the
+#      compiler resolves `SqliteDatabase`, `SqliteStatement`, the
+#      `SqliteStepResult` / `SqliteColumnType` / `SqliteOpenMode` enums,
+#      and the `sqlite.*` calls itself. No dependencyFunction rows are
+#      required at the call site, parallel to how http needs none.
+#
+#   2. Descriptive identifiers, no upstream-SQLite abbreviations —
+#      `errmsg` becomes `errorMessage`, `column_bytes` becomes
+#      `columnByteCount`, `bind_*` becomes `bind*`. Each name reads
+#      cleanly out of context.
+#
+#   3. ABI-faithful semantics. The SS_SQLITE_OPEN_* flag bits and the
+#      SS_SQLITE_STEP_ROW / DONE / SS_SQLITE_COLUMN_* tags from
+#      `sem_sqlite_runtime.h` surface as built-in enums whose case values
+#      match the C ABI by hand, so lowering is a direct call without a
+#      translation table.
+
+project SqliteSyntaxSample
+target console
+runtime AgentRuntime 0.1
+
+importModule standard.sqlite as sqlite
+
+dependency standard.sqlite version 0.1 source standard
+dependencyEffect standard.sqlite readWrite database
+dependencyEffect standard.sqlite read filesystem
+
+module app.sqlite_syntax_sample
+
+# ----- proposed built-in types -----
+#
+# type SqliteDatabase    — opaque connection handle (lowers to i8*)
+# type SqliteStatement   — opaque prepared-statement handle (lowers to i8*)
+# type SqliteRowId       — CSignedInt64 alias for last-insert-rowid values
+#
+# enum SqliteOpenMode repr CSignedInt32
+#   enumCase SqliteOpenMode ReadOnly          1   # SS_SQLITE_OPEN_READONLY
+#   enumCase SqliteOpenMode ReadWrite         2   # SS_SQLITE_OPEN_READWRITE
+#   enumCase SqliteOpenMode ReadWriteCreate   6   # READWRITE | CREATE
+#   enumCase SqliteOpenMode InMemory         14   # READWRITE | CREATE | MEMORY
+#
+# enum SqliteStepResult repr CSignedInt32
+#   enumCase SqliteStepResult Row    100         # SS_SQLITE_STEP_ROW
+#   enumCase SqliteStepResult Done   101         # SS_SQLITE_STEP_DONE
+#
+# enum SqliteColumnType repr CSignedInt32
+#   enumCase SqliteColumnType Integer  1
+#   enumCase SqliteColumnType Float    2
+#   enumCase SqliteColumnType Text     3
+#   enumCase SqliteColumnType Blob     4
+#   enumCase SqliteColumnType Null     5
+
+# Current parser/linter compatibility declarations. Once `standard.sqlite`
+# is compiler-wired, semsc should provide these same symbols as built-ins.
+type SqliteDatabase COpaqueMemoryAddress
+type SqliteStatement COpaqueMemoryAddress
+type SqliteRowId CSignedInt64
+
+enum SqliteOpenMode repr CSignedInt32
+enumCase SqliteOpenMode ReadOnly 1
+enumCase SqliteOpenMode ReadWrite 2
+enumCase SqliteOpenMode ReadWriteCreate 6
+enumCase SqliteOpenMode InMemory 14
+
+enum SqliteStepResult repr CSignedInt32
+enumCase SqliteStepResult Row 100
+enumCase SqliteStepResult Done 101
+
+enum SqliteColumnType repr CSignedInt32
+enumCase SqliteColumnType Integer 1
+enumCase SqliteColumnType Float 2
+enumCase SqliteColumnType Text 3
+enumCase SqliteColumnType Blob 4
+enumCase SqliteColumnType Null 5
+
+# ----- error domain -----
+#
+# Every failing sqlite.* call returns Result<OK, SqliteError>, where
+# SqliteError carries the phase that failed and the connection-scoped
+# error message (string borrowed from SQLite, valid until the next call
+# on the same database — same lifetime contract as the C ABI).
+
+error SqliteError
+errorCase SqliteError DatabaseOpenFailed SqliteDatabaseOpenFailure
+errorCase SqliteError StatementPrepareFailed SqliteStatementPrepareFailure
+errorCase SqliteError StatementBindFailed SqliteStatementBindFailure
+errorCase SqliteError StatementStepFailed SqliteStatementStepFailure
+errorCase SqliteError StatementResetFailed SqliteStatementResetFailure
+errorCase SqliteError StatementFinalizeFailed SqliteStatementFinalizeFailure
+errorCase SqliteError DatabaseExecFailed SqliteDatabaseExecFailure
+errorCase SqliteError DatabaseCloseFailed SqliteDatabaseCloseFailure
+errorCase SqliteError ConsoleWriteFailed ConsoleWriteFailure
+
+# ----- capability -----
+#
+# A single capability grants the authority to open/read/write a SQLite
+# database. Apps that should only read the database (admin scripts,
+# read-replicas, healthchecks) can request a narrower `sqliteRead` instead
+# once that's wired; the dependencyEffect surface above is the source of
+# truth for which authorities are even available.
+
+capability sqliteReadWrite database readWrite
+purpose sqliteReadWrite "Authority to open SQLite databases and execute reads and writes against them"
+
+capability sqliteSampleStdoutWrite console.stdout write
+purpose sqliteSampleStdoutWrite "Authority to write the selected row body to standard output as a visible smoke marker"
+
+# ----- constants -----
+
+const sqliteSampleDatabasePath CNullTerminatedByteString ":memory:"
+const sqliteSampleCreateTableStatement CNullTerminatedByteString "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)"
+const sqliteSampleInsertStatement CNullTerminatedByteString "INSERT INTO notes (body) VALUES (?)"
+const sqliteSampleSelectStatement CNullTerminatedByteString "SELECT id, body FROM notes WHERE id = ?"
+const sqliteSampleInsertBodyText CNullTerminatedByteString "hello from sqlite syntax sample"
+const sqliteSampleFirstBindParameterIndex CSignedInt32 1
+const sqliteSampleIdentifierColumnIndex CSignedInt32 0
+const sqliteSampleBodyColumnIndex CSignedInt32 1
+
+# ----- end-to-end operation -----
+
+entry console runSqliteSyntaxSample
+
+operation runSqliteSyntaxSample
+output runSqliteSyntaxSample Result CSignedInt32 SqliteError
+effect runSqliteSyntaxSample readWrite database
+effect runSqliteSyntaxSample write console.stdout
+memory runSqliteSyntaxSample arena request
+async runSqliteSyntaxSample no
+
+useCapability runSqliteSyntaxSample sqliteReadWrite
+useCapability runSqliteSyntaxSample sqliteSampleStdoutWrite
+
+purpose runSqliteSyntaxSample "Demonstrate the full proposed sqlite.* surface: open, exec(CREATE), prepare(INSERT), bind, step, finalize, prepare(SELECT), bind, step, read columns, finalize, close — all on an in-memory database so the sample is hermetic"
+invariant runSqliteSyntaxSample "Every prepared statement is finalized before the database is closed; every successful open is paired with a close on every exit path via defer"
+guarantee runSqliteSyntaxSample "On any failure the original SqliteError is propagated unchanged so callers can attribute the failure to a specific phase"
+warning runSqliteSyntaxSample "Text returned by sqlite.columnText points into SQLite-owned memory and is only valid until the next call on the same statement; copy if it must outlive the row"
+
+label startRunSqliteSyntaxSample
+
+# rationale: Open an in-memory database in read-write-create mode. The
+# in-memory mode keeps the sample hermetic for tests and CI.
+call openDatabaseCall sqlite.openDatabase
+arg openDatabaseCall path sqliteSampleDatabasePath
+arg openDatabaseCall mode InMemory
+run openDatabaseCall
+bindOk sampleDatabase SqliteDatabase openDatabaseCall
+bindError sampleDatabaseOpenError SqliteDatabaseOpenFailure openDatabaseCall
+branchIfError openDatabaseCall sampleDatabaseOpenFailed
+
+# rationale: Pair every successful open with a guaranteed close on all
+# return paths via the defer cleanup verb.
+defer sampleDatabaseCloseDefer sqlite.closeDatabase sampleDatabase
+
+# rationale: Create the schema with a one-shot exec — no parameters, no
+# result rows, so the prepare/step/finalize cycle is unnecessary.
+call createNotesTableCall sqlite.exec
+arg createNotesTableCall database sampleDatabase
+arg createNotesTableCall sql sqliteSampleCreateTableStatement
+run createNotesTableCall
+ignoreOk createNotesTableCall Void
+bindError createNotesTableError SqliteDatabaseExecFailure createNotesTableCall
+branchIfError createNotesTableCall sampleCreateTableFailed
+
+# rationale: Prepare the parameterized INSERT once so it can be reused
+# (here it's only stepped once, but the cycle illustrates the shape).
+call prepareInsertCall sqlite.prepareStatement
+arg prepareInsertCall database sampleDatabase
+arg prepareInsertCall sql sqliteSampleInsertStatement
+run prepareInsertCall
+bindOk insertStatement SqliteStatement prepareInsertCall
+bindError insertPrepareError SqliteStatementPrepareFailure prepareInsertCall
+branchIfError prepareInsertCall sampleInsertPrepareFailed
+
+defer insertStatementFinalizeDefer sqlite.finalizeStatement insertStatement
+
+call bindInsertBodyCall sqlite.bindText
+arg bindInsertBodyCall statement insertStatement
+arg bindInsertBodyCall parameterIndex sqliteSampleFirstBindParameterIndex
+arg bindInsertBodyCall value sqliteSampleInsertBodyText
+run bindInsertBodyCall
+ignoreOk bindInsertBodyCall Void
+bindError bindInsertBodyError SqliteStatementBindFailure bindInsertBodyCall
+branchIfError bindInsertBodyCall sampleInsertBindFailed
+
+# rationale: An INSERT step is expected to return SqliteStepResult.done
+# (no result rows). Stepping past the boundary is a runtime error.
+call stepInsertCall sqlite.stepStatement
+arg stepInsertCall statement insertStatement
+run stepInsertCall
+ignoreOk stepInsertCall SqliteStepResult
+bindError insertStepError SqliteStatementStepFailure stepInsertCall
+branchIfError stepInsertCall sampleInsertStepFailed
+
+# rationale: Capture the rowid before preparing the SELECT so the SELECT
+# can bind against the inserted row even after the insert statement is
+# finalized.
+call lastInsertRowIdCall sqlite.lastInsertRowId
+arg lastInsertRowIdCall database sampleDatabase
+run lastInsertRowIdCall
+bind insertedRowId CSignedInt64 lastInsertRowIdCall
+
+call prepareSelectCall sqlite.prepareStatement
+arg prepareSelectCall database sampleDatabase
+arg prepareSelectCall sql sqliteSampleSelectStatement
+run prepareSelectCall
+bindOk selectStatement SqliteStatement prepareSelectCall
+bindError selectPrepareError SqliteStatementPrepareFailure prepareSelectCall
+branchIfError prepareSelectCall sampleSelectPrepareFailed
+
+defer selectStatementFinalizeDefer sqlite.finalizeStatement selectStatement
+
+call bindSelectRowIdCall sqlite.bindInt64
+arg bindSelectRowIdCall statement selectStatement
+arg bindSelectRowIdCall parameterIndex sqliteSampleFirstBindParameterIndex
+arg bindSelectRowIdCall value insertedRowId
+run bindSelectRowIdCall
+ignoreOk bindSelectRowIdCall Void
+bindError bindSelectRowIdError SqliteStatementBindFailure bindSelectRowIdCall
+branchIfError bindSelectRowIdCall sampleSelectBindFailed
+
+call stepSelectCall sqlite.stepStatement
+arg stepSelectCall statement selectStatement
+run stepSelectCall
+ignoreOk stepSelectCall SqliteStepResult
+bindError selectStepError SqliteStatementStepFailure stepSelectCall
+branchIfError stepSelectCall sampleSelectStepFailed
+
+# rationale: Read the columns by index. The text pointer is borrowed
+# from SQLite-owned memory; the warning attached to this operation
+# documents that callers must copy if they need it past the next step.
+call readSelectRowIdCall sqlite.columnInt64
+arg readSelectRowIdCall statement selectStatement
+arg readSelectRowIdCall columnIndex sqliteSampleIdentifierColumnIndex
+run readSelectRowIdCall
+bind selectedRowId CSignedInt64 readSelectRowIdCall
+
+call readSelectBodyCall sqlite.columnText
+arg readSelectBodyCall statement selectStatement
+arg readSelectBodyCall columnIndex sqliteSampleBodyColumnIndex
+run readSelectBodyCall
+bind selectedBodyText CNullTerminatedByteString readSelectBodyCall
+
+# rationale: Surface the result to stdout so the sample doubles as a
+# visible smoke. Real apps would marshal these into a record/codec.
+call writeSelectedBodyCall console.writeLine
+arg writeSelectedBodyCall line selectedBodyText
+run writeSelectedBodyCall
+ignoreOk writeSelectedBodyCall Void
+bindError writeSelectedBodyError ConsoleWriteFailure writeSelectedBodyCall
+branchIfError writeSelectedBodyCall sampleConsoleWriteFailed
+
+const sqliteSampleSuccessExitCode CSignedInt32 0
+returnValue sqliteSampleSuccessExitCode
+
+# ----- failure labels: every branch returns the original error so the
+# caller can attribute the failure to a specific phase. -----
+
+label sampleDatabaseOpenFailed
+makeError sampleDatabaseOpenUmbrellaFailure SqliteError.DatabaseOpenFailed sampleDatabaseOpenError
+returnError sampleDatabaseOpenUmbrellaFailure
+
+label sampleCreateTableFailed
+makeError sampleCreateTableUmbrellaFailure SqliteError.DatabaseExecFailed createNotesTableError
+returnError sampleCreateTableUmbrellaFailure
+
+label sampleInsertPrepareFailed
+makeError sampleInsertPrepareUmbrellaFailure SqliteError.StatementPrepareFailed insertPrepareError
+returnError sampleInsertPrepareUmbrellaFailure
+
+label sampleInsertBindFailed
+makeError sampleInsertBindUmbrellaFailure SqliteError.StatementBindFailed bindInsertBodyError
+returnError sampleInsertBindUmbrellaFailure
+
+label sampleInsertStepFailed
+makeError sampleInsertStepUmbrellaFailure SqliteError.StatementStepFailed insertStepError
+returnError sampleInsertStepUmbrellaFailure
+
+label sampleSelectPrepareFailed
+makeError sampleSelectPrepareUmbrellaFailure SqliteError.StatementPrepareFailed selectPrepareError
+returnError sampleSelectPrepareUmbrellaFailure
+
+label sampleSelectBindFailed
+makeError sampleSelectBindUmbrellaFailure SqliteError.StatementBindFailed bindSelectRowIdError
+returnError sampleSelectBindUmbrellaFailure
+
+label sampleSelectStepFailed
+makeError sampleSelectStepUmbrellaFailure SqliteError.StatementStepFailed selectStepError
+returnError sampleSelectStepUmbrellaFailure
+
+label sampleConsoleWriteFailed
+makeError sampleConsoleWriteUmbrellaFailure SqliteError.ConsoleWriteFailed writeSelectedBodyError
+returnError sampleConsoleWriteUmbrellaFailure
+
+# ----- tests cross-link the operation by name -----
+
+testCovers runSqliteSyntaxSampleHappyPathTest runSqliteSyntaxSample
+testCovers runSqliteSyntaxSampleOpenFailureTest runSqliteSyntaxSample
+testCovers runSqliteSyntaxSampleStepFailureTest runSqliteSyntaxSample
