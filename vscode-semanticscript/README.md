@@ -227,7 +227,12 @@ Then reload VS Code.
   "semanticScript.compiler.outputDirectory": "",
   "semanticScript.compiler.buildProfile": "dev",
   "semanticScript.compiler.runtimeChecks": "default",
-  "semanticScript.compiler.persistLlvmIr": "auto"
+  "semanticScript.compiler.persistLlvmIr": "auto",
+  "semanticScript.compiler.optLevel": "default",
+  "semanticScript.compiler.emitLlvmIr": false,
+  "semanticScript.compiler.buildDir": "",
+  "semanticScript.compiler.buildRoot": "",
+  "semanticScript.compiler.buildFolderName": ""
 }
 ```
 
@@ -244,3 +249,9 @@ Then reload VS Code.
 `panic`.
 
 `semanticScript.compiler.persistLlvmIr` can be `auto`, `yes`, or `no`.
+
+`semanticScript.compiler.optLevel` can be `default`, `0`, `1`, `2`, or `3`.
+
+When a `.sem` file is inside a project, compile and lint commands use the
+nearest `build.sem` as the project root. `buildDir`, `buildRoot`, and
+`buildFolderName` pass through the matching compiler artifact-directory flags.

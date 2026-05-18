@@ -11,8 +11,12 @@ const declarationVerbs = new Set([
   'dependencyExports', 'dependencyFunction', 'dependencyFunctionInput',
   'dependencyFunctionOutput', 'dependencyFunctionEffect', 'dependencyFunctionAsync',
   'buildProject', 'modulePath', 'languageVersion', 'sourceRoot', 'registerModule',
-  'mainFile', 'mainOperation', 'testPattern', 'dependencySource', 'dependencyIntegrity',
-  'targetRuntime', 'buildProfile', 'runtimeChecks', 'persistLlvmIr', 'nativeOutput',
+  'projectVersion', 'projectLicense', 'mainFile', 'mainOperation', 'testPattern', 'testRoot',
+  'dependencySource', 'dependencyIntegrity',
+  'targetRuntime', 'buildProfile', 'runtimeChecks', 'optLevel', 'persistLlvmIr',
+  'emitLlvmIr', 'llvmIrOutput', 'emitOptimizedLlvmIr', 'optimizedLlvmIrOutput',
+  'buildDir', 'buildRoot', 'buildFolderName', 'nativeOutput',
+  'nativeHttpHost', 'nativeHttpPort', 'formatterSetting', 'linterSetting', 'docsOutput',
   'comptimeOperation', 'moduleFolder', 'modulePurpose', 'moduleOwns',
   'moduleDoesNotOwn', 'moduleDependency', 'moduleWarning', 'moduleInvariant',
   'moduleSecurity', 'moduleObservability', 'exportType', 'exportError',
@@ -342,7 +346,34 @@ const verbHoverText = new Map([
   ['module', 'Top-level module declaration. Validated as a dotted namespace and recorded in compiler metadata.'],
   ['mode', 'Top-level mode declaration such as mode capturedOutputReplay.'],
   ['buildProject', 'Build tape declaration: buildProject PROJECT.'],
+  ['modulePath', 'Build tape project path: modulePath PROJECT MODULE_PATH.'],
+  ['languageVersion', 'Build tape language contract: languageVersion PROJECT "VERSION".'],
+  ['projectVersion', 'Build tape release metadata: projectVersion PROJECT "VERSION".'],
+  ['projectLicense', 'Build tape license metadata: projectLicense PROJECT LICENSE.'],
+  ['sourceRoot', 'Build tape source root: sourceRoot PROJECT "PATH".'],
   ['registerModule', 'Build tape module registry: registerModule PROJECT MODULE_PATH "PATH". Module imports should target registered modules.'],
+  ['mainFile', 'Build tape executable source: mainFile PROJECT "main.sem".'],
+  ['mainOperation', 'Build tape native executable entry: mainOperation PROJECT OPERATION.'],
+  ['testRoot', 'Build tape test root: testRoot PROJECT "PATH".'],
+  ['testPattern', 'Build tape test glob: testPattern PROJECT "*.test.sem".'],
+  ['targetRuntime', 'Build tape runtime target: targetRuntime PROJECT nativeExe|webServer|library.'],
+  ['buildProfile', 'Build tape profile: buildProfile PROJECT dev|prod.'],
+  ['runtimeChecks', 'Build tape runtime checks: runtimeChecks PROJECT off|traps|panic.'],
+  ['optLevel', 'Build tape LLVM optimization level: optLevel PROJECT 0|1|2|3.'],
+  ['persistLlvmIr', 'Build tape LLVM IR persistence: persistLlvmIr PROJECT auto|yes|no.'],
+  ['emitLlvmIr', 'Build tape pre-optimization LLVM IR switch: emitLlvmIr PROJECT auto|yes|no.'],
+  ['llvmIrOutput', 'Build tape pre-optimization LLVM IR output path. Basenames use the managed build folder.'],
+  ['emitOptimizedLlvmIr', 'Build tape optimized LLVM IR switch for run/JIT: emitOptimizedLlvmIr PROJECT yes|no.'],
+  ['optimizedLlvmIrOutput', 'Build tape optimized LLVM IR output path. Basenames use the managed build folder.'],
+  ['buildDir', 'Build tape exact artifact directory: buildDir PROJECT "PATH".'],
+  ['buildRoot', 'Build tape artifact parent directory: buildRoot PROJECT "PATH".'],
+  ['buildFolderName', 'Build tape managed artifact folder name: buildFolderName PROJECT NAME.'],
+  ['nativeOutput', 'Build tape native executable output: nativeOutput PROJECT "PATH". Basenames use the managed build folder.'],
+  ['nativeHttpHost', 'Build tape native webserver host metadata: nativeHttpHost PROJECT "HOST".'],
+  ['nativeHttpPort', 'Build tape native webserver port metadata: nativeHttpPort PROJECT PORT.'],
+  ['formatterSetting', 'Build tape formatter setting: formatterSetting PROJECT KEY VALUE.'],
+  ['linterSetting', 'Build tape linter setting: linterSetting PROJECT KEY VALUE.'],
+  ['docsOutput', 'Build tape documentation output: docsOutput PROJECT "PATH".'],
   ['moduleFolder', 'Compatibility module registry alias. Prefer registerModule PROJECT MODULE_PATH "PATH".'],
   ['exportType', 'Module-local export contract: exportType MODULE_PATH TYPE. Belongs in the module source.'],
   ['exportError', 'Module-local export contract: exportError MODULE_PATH ERROR. Belongs in the module source.'],
@@ -643,6 +674,11 @@ let compilerOutputDirectory = '';
 let compilerBuildProfile = 'dev';
 let compilerRuntimeChecks = 'default';
 let compilerPersistLlvmIr = 'auto';
+let compilerOptLevel = 'default';
+let compilerEmitLlvmIr = false;
+let compilerBuildDir = '';
+let compilerBuildRoot = '';
+let compilerBuildFolderName = '';
 let diagnosticCollection = null;
 let lintStatusBarItem = null;
 let compilerOutputChannel = null;
@@ -1049,7 +1085,8 @@ const namedDeclarationVerbs = new Set([
   'mutex', 'shared', 'channel', 'section', 'domainLiteral', 'literal',
   'listLiteral', 'listType', 'arrayType', 'sliceType', 'smallListType',
   'mapType', 'collectionOperation', 'interval', 'workerPool', 'work',
-  'buildProject', 'registerModule',
+  'buildProject', 'registerModule', 'modulePath', 'mainFile', 'mainOperation',
+  'targetRuntime', 'buildProfile', 'optLevel', 'nativeOutput',
 ]);
 
 const singleCallReferenceVerbs = new Set([
@@ -2914,7 +2951,12 @@ const provideDocumentSymbols = (document) => {
   const symbols = [];
   const symbolVerbs = new Set([
     'section', 'project', 'target', 'runtime', 'entry', 'module',
-    'buildProject', 'registerModule', 'exportOperation', 'exportType',
+    'buildProject', 'modulePath', 'projectVersion', 'projectLicense',
+    'sourceRoot', 'registerModule', 'mainFile', 'mainOperation',
+    'targetRuntime', 'buildProfile', 'runtimeChecks', 'optLevel',
+    'persistLlvmIr', 'emitLlvmIr', 'llvmIrOutput', 'buildDir',
+    'buildRoot', 'buildFolderName', 'nativeOutput', 'docsOutput',
+    'exportOperation', 'exportType',
     'exportError', 'exportCapability', 'exportConstant',
     'operation', 'input', 'webServer', 'route', 'record', 'field',
     'enum', 'enumCase', 'error', 'errorCase', 'type', 'capability',
@@ -3067,11 +3109,56 @@ const syncConfiguration = () => {
   compilerBuildProfile = compilerConfig.get('buildProfile', 'dev');
   compilerRuntimeChecks = compilerConfig.get('runtimeChecks', 'default');
   compilerPersistLlvmIr = compilerConfig.get('persistLlvmIr', 'auto');
+  compilerOptLevel = compilerConfig.get('optLevel', 'default');
+  compilerEmitLlvmIr = compilerConfig.get('emitLlvmIr', false);
+  compilerBuildDir = compilerConfig.get('buildDir', '');
+  compilerBuildRoot = compilerConfig.get('buildRoot', '');
+  compilerBuildFolderName = compilerConfig.get('buildFolderName', '');
 };
 
 const isSemanticScriptDocument = (document) => (
   document && document.languageId === 'semanticscript' && document.uri.scheme === 'file'
 );
+
+const isBuildTapePath = (filePath) => {
+  const baseName = path.basename(filePath || '').toLowerCase();
+  return baseName === 'build.sem' || baseName === 'build.sscript';
+};
+
+const findNearestBuildTapePath = (startPath) => {
+  if (!startPath) {
+    return null;
+  }
+
+  let currentPath = path.resolve(startPath);
+  if (fs.existsSync(currentPath) && fs.statSync(currentPath).isFile()) {
+    if (isBuildTapePath(currentPath)) {
+      return currentPath;
+    }
+    currentPath = path.dirname(currentPath);
+  }
+
+  const rootPath = path.parse(currentPath).root;
+  while (currentPath && currentPath !== rootPath) {
+    for (const buildName of ['build.sem', 'build.sscript']) {
+      const candidate = path.join(currentPath, buildName);
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+    currentPath = path.dirname(currentPath);
+  }
+
+  return null;
+};
+
+const projectRootForDocument = (document) => {
+  const buildTapePath = document && document.fileName ? findNearestBuildTapePath(document.fileName) : null;
+  if (buildTapePath) {
+    return path.dirname(buildTapePath);
+  }
+  return document && document.fileName ? path.dirname(document.fileName) : undefined;
+};
 
 const documentUsesFutureSyntax = (document) => {
   const text = document.getText();
@@ -3331,7 +3418,9 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
     linterPythonPath,
     linterArgs,
     {
-      cwd: vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath || path.dirname(document.fileName),
+      cwd: projectRootForDocument(document)
+        || vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
+        || path.dirname(document.fileName),
       windowsHide: true,
     }
   );
@@ -3572,12 +3661,16 @@ const runCompilerForDocument = async (document) => {
     return;
   }
 
-  const useCompilerManagedOutput = path.basename(document.fileName).toLowerCase() === 'build.sem';
+  const buildTapePath = findNearestBuildTapePath(document.fileName);
+  const compileSourcePath = buildTapePath || document.fileName;
+  const useCompilerManagedOutput = Boolean(buildTapePath) || isBuildTapePath(document.fileName);
   const outputPath = useCompilerManagedOutput ? null : compilerOutputPath(document);
-  const cwd = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath || path.dirname(document.fileName);
+  const cwd = buildTapePath
+    ? path.dirname(buildTapePath)
+    : (vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath || path.dirname(document.fileName));
   const args = [
     compilerPath,
-    document.fileName,
+    compileSourcePath,
     '--emit-exe',
     '--build-profile',
     compilerBuildProfile,
@@ -3593,8 +3686,30 @@ const runCompilerForDocument = async (document) => {
     args.push('--runtime-checks', compilerRuntimeChecks);
   }
 
+  if (compilerOptLevel !== 'default') {
+    args.push('--opt-level', String(compilerOptLevel));
+  }
+
+  if (compilerEmitLlvmIr) {
+    args.push('--emit-ir');
+  }
+
+  if (compilerBuildDir) {
+    args.push('--build-dir', compilerBuildDir);
+  } else {
+    if (compilerBuildRoot) {
+      args.push('--build-root', compilerBuildRoot);
+    }
+    if (compilerBuildFolderName) {
+      args.push('--build-folder-name', compilerBuildFolderName);
+    }
+  }
+
   compilerOutputChannel.clear();
-  compilerOutputChannel.appendLine(`SemanticScript compile: ${document.fileName}`);
+  compilerOutputChannel.appendLine(`SemanticScript compile: ${compileSourcePath}`);
+  if (buildTapePath && buildTapePath !== document.fileName) {
+    compilerOutputChannel.appendLine(`project source: ${document.fileName}`);
+  }
   compilerOutputChannel.appendLine(`${compilerPythonPath} ${args.map((arg) => (arg.includes(' ') ? `"${arg}"` : arg)).join(' ')}`);
 
   const compileProcess = childProcess.spawn(

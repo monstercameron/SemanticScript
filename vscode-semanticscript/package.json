@@ -172,6 +172,38 @@
             "no"
           ],
           "description": "Controls semsc.py --persist-llvm-ir while compiling from VS Code."
+        },
+        "semanticScript.compiler.optLevel": {
+          "type": "string",
+          "default": "default",
+          "enum": [
+            "default",
+            "0",
+            "1",
+            "2",
+            "3"
+          ],
+          "description": "Optional semsc.py --opt-level override. default lets build.sem choose optLevel."
+        },
+        "semanticScript.compiler.emitLlvmIr": {
+          "type": "boolean",
+          "default": false,
+          "description": "Also pass --emit-ir while compiling from VS Code, writing LLVM IR through the compiler-managed build folder unless build.sem overrides the path."
+        },
+        "semanticScript.compiler.buildDir": {
+          "type": "string",
+          "default": "",
+          "description": "Optional exact semsc.py --build-dir artifact directory override."
+        },
+        "semanticScript.compiler.buildRoot": {
+          "type": "string",
+          "default": "",
+          "description": "Optional semsc.py --build-root parent directory override."
+        },
+        "semanticScript.compiler.buildFolderName": {
+          "type": "string",
+          "default": "",
+          "description": "Optional semsc.py --build-folder-name override. Must be one folder name."
         }
       }
     },
