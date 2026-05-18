@@ -1,15 +1,54 @@
 # AgentScript
 
-AgentScript is an experimental language and toolchain for writing programs as a
-flat, explicit semantic tape. The current implementation is a real compiler
-that emits LLVM IR through `llvmlite`, can JIT-run programs, and can link native
-executables through `clang`.
+AgentScript is an agent-first application language and toolchain. It is built
+around a flat, line-oriented, high-context program tape where every executable
+line is an atomic semantic record with a strict schema.
+
+The design goal is not short source. The design goal is source that remains
+locally understandable inside an agent attention window. AgentScript spends
+tokens on names, effects, types, failure paths, timing, cleanup, and comments so
+an agent can edit code without guessing through hidden runtime behavior.
+
+The current implementation is already a real compiler: it emits LLVM IR through
+`llvmlite`, can JIT-run programs, and can link native executables through
+`clang`. The long-term target is application development in the same problem
+space as Node, Python, Bun, Deno, Express, FastAPI, and Go services, but with a
+source format optimized for agentic maintenance rather than human terseness.
 
 The repository also contains active syntax research in `experiments/`. Those
-files explore a refined AgentScript surface designed for agent-generated code:
-atomic lines, fixed schemas, explicit dataflow, high-context names, typed
-failure edges, guarded mutation, and syntax that is easier for transformer
-attention to recover and edit.
+files explore the next AgentScript surface: fixed schemas, explicit dataflow,
+typed failure edges, guarded mutation, structured async, trust-boundary
+metadata, and syntax that is easier for transformer attention to recover and
+edit.
+
+## Technical Pitch
+
+AgentScript makes source code a checkable contract tape:
+
+- Every line does one semantic thing.
+- Every meaningful element is name-addressable.
+- Failure is explicit dataflow, not an implicit exception path.
+- Effects are declared next to the operation that performs them.
+- Types carry intent, trust, memory, and layout information.
+- Cleanup, async, time, and shared-state access are visible in source.
+- Comments are semantic context for tools, not just prose.
+- Abstractions are valid only when they add contract, checks, or traceability.
+
+The spec's deepest rule is simple:
+
+```text
+AgentScript does not minimize code.
+AgentScript maximizes recoverable context.
+```
+
+That means AgentScript deliberately repeats operation names, argument names,
+types, call names, branch labels, and failure values. The compiler can remove
+redundancy from generated code; the source preserves redundancy where agents,
+linters, review tools, and humans need it.
+
+This is the core bet: as software becomes more agent-authored, the winning
+source format is not the shortest one. It is the one where the next correct edit
+is easiest to infer, verify, and review.
 
 ## Current vs Proposed Syntax
 
@@ -50,8 +89,9 @@ experiments/
   refined_syntax_example.as     Broad refined syntax showcase
   refined_syntax_graph.md       Mermaid graph of refined sample edges
 
-javascript/                     JavaScript oracle programs
-python/                         Python comparison programs
+samples/javascript/             JavaScript comparison and oracle programs
+samples/python/                 Python comparison programs
+python/                         Earlier Python comparison programs
 vscode-agentscript/             Local VS Code extension
 ```
 
@@ -74,6 +114,279 @@ The Python reference compiler currently supports the implemented surface in
 
 Use `AgentScript/README.md` for the exact current status, command matrix, and
 bootstrap notes.
+
+## Conceptual Model
+
+AgentScript is deliberately less compact than JavaScript. JavaScript optimizes
+for human authoring speed by compressing meaning into expressions, lexical
+scope, exceptions, library conventions, object shape, and event-loop behavior.
+AgentScript expands the same behavior into named records so tools and agents can
+inspect it without reconstructing hidden context.
+
+The tradeoff is intentional:
+
+- JavaScript says "do this" with a compact expression or function body.
+- AgentScript says "declare the operation, its effects, every call object,
+  every argument edge, every result binding, and every failure branch."
+- JavaScript often discovers failure at runtime through exceptions or returned
+  values.
+- AgentScript makes failure a named dataflow edge with `bindError`,
+  `branchIfError`, and a labeled handler.
+- JavaScript depends on convention for side effects.
+- AgentScript declares effects and capabilities in source.
+
+The spec frames this as a source-level data problem: context is not decoration.
+Declared effects, failures, async behavior, memory behavior, and cleanup
+behavior should be checked when possible. A program is not just instructions for
+the CPU; it is also a graph of claims for compilers, linters, indexers, review
+summaries, and future agents.
+
+That gives AgentScript a different optimization target:
+
+```text
+JavaScript:   compress meaning into syntax and runtime conventions.
+AgentScript: preserve meaning as explicit, line-addressable facts.
+```
+
+This is why an AgentScript call is not `target(arg)`. It is a small dataflow
+record cluster:
+
+```agentscript
+call scoreCall calculateWeightedScore
+arg scoreCall baseCount baseCount
+arg scoreCall multiplier multiplier
+arg scoreCall bonusPoints bonusPoints
+run scoreCall
+bind computedScore I64 scoreCall
+```
+
+Each line can be retrieved, indexed, linted, patched, or cited independently.
+That is the top-level value proposition: AgentScript turns source into a
+machine-checkable review surface without giving up native compilation.
+
+## Spec Notes
+
+The root spec is opinionated because agent-authored software needs guardrails.
+These are the high-level rules that most directly shape the language:
+
+```text
+1. Abstraction must increase context.
+2. Every line does one semantic thing.
+3. Hidden behavior is illegal by default.
+4. Failure is explicit dataflow.
+5. Cleanup lives next to acquisition.
+6. Async is structured, bounded, and cancellable.
+7. Types encode intent, trust, memory, and layout.
+8. Comments are semantic context.
+9. Control flow is graphable.
+10. Dependencies expose contracts.
+11. Trust boundaries are explicit.
+12. Observability is semantic.
+```
+
+Those rules are technical, not aesthetic. They make specific tooling possible:
+
+- `agentIndex` can build effect, failure, memory, call, and dependency graphs
+  from source lines.
+- `agentSlice` can retrieve one operation or one failure path without needing a
+  whole project in context.
+- `agentLintNames` can reject vague symbols before they become ambiguous edit
+  targets.
+- `agentCheckLaws` can flag undeclared effects, hidden failure paths, missing
+  cleanup, unbounded async, or trust-boundary drift.
+- `agentReviewSummary` can summarize effects changed, routes changed, memory
+  changed, async changed, dependencies changed, and risk changed.
+
+In a conventional language, many of those facts are inferred after parsing a
+nested tree and applying framework knowledge. In AgentScript, they are intended
+to be source-level records from the start.
+
+## Example: Hello World
+
+JavaScript keeps the program small:
+
+```javascript
+console.log("hello world");
+process.exit(0);
+```
+
+AgentScript expands the same behavior into effect, capability, call, result,
+and failure records:
+
+```agentscript
+project HelloWorldExplicit
+target console
+runtime native 1
+module examples.helloWorldExplicit
+entry console main
+
+error ConsoleWriteError
+errorCase ConsoleWriteError ConsoleWriteFailed CSignedInt32
+capability stdoutWriter console.stdout write
+
+operation main
+output main ExitCode
+effect main write console.stdout
+memory main noHeapAllocation
+async main no
+purpose main "Print hello world and return a clear status code"
+invariant main "The console write is checked before success is returned"
+useCapability main stdoutWriter
+
+const helloWorldMessage CNullTerminatedByteString "hello world"
+call writeHelloWorldCall console.writeLine
+arg writeHelloWorldCall text helloWorldMessage
+run writeHelloWorldCall
+ignoreOk writeHelloWorldCall Void
+bindError writeHelloWorldError ConsoleWriteError writeHelloWorldCall
+branchIfError writeHelloWorldCall writeHelloWorldFailed
+
+const successExitCode ExitCode 0
+returnValue successExitCode
+
+label writeHelloWorldFailed
+makeError writeHelloWorldFailure ConsoleWriteError.ConsoleWriteFailed writeHelloWorldError
+const writeFailedExitCode ExitCode 1
+returnValue writeFailedExitCode
+```
+
+The extra lines are not ceremony for their own sake. They answer questions that
+are implicit in the JavaScript version: what external resource is written, which
+capability permits it, what call can fail, where failure goes, and what exit
+status is returned.
+
+## Example: Helper Operation and Branching
+
+JavaScript can compress arithmetic, branching, and output into one function:
+
+```javascript
+function calculateWeightedScore(baseCount, multiplier, bonusPoints) {
+  return baseCount * multiplier + bonusPoints;
+}
+
+const computedScore = calculateWeightedScore(7, 6, 5);
+if (computedScore >= 40) {
+  console.log("score meets threshold");
+} else {
+  console.log("score below threshold");
+}
+console.log(computedScore);
+process.exit(0);
+```
+
+AgentScript names the helper operation, every intermediate value, the threshold
+branch, and each fallible console write:
+
+```agentscript
+project ScoreThreshold
+target console
+runtime native 1
+module examples.scoreThreshold
+entry console main
+
+error ConsoleWriteError
+errorCase ConsoleWriteError ConsoleWriteFailed CSignedInt32
+capability stdoutWriter console.stdout write
+
+operation calculateWeightedScore
+input calculateWeightedScore baseCount I64
+input calculateWeightedScore multiplier I64
+input calculateWeightedScore bonusPoints I64
+output calculateWeightedScore I64
+memory calculateWeightedScore noHeapAllocation
+async calculateWeightedScore no
+purpose calculateWeightedScore "Calculate baseCount times multiplier plus bonusPoints"
+invariant calculateWeightedScore "This helper performs deterministic integer arithmetic only"
+
+call weightedScoreCall math.multiplyI64
+arg weightedScoreCall left baseCount
+arg weightedScoreCall right multiplier
+run weightedScoreCall
+bind weightedScore I64 weightedScoreCall
+
+call totalScoreCall math.addI64
+arg totalScoreCall left weightedScore
+arg totalScoreCall right bonusPoints
+run totalScoreCall
+bind totalScore I64 totalScoreCall
+returnValue totalScore
+
+operation main
+output main ExitCode
+effect main write console.stdout
+memory main noHeapAllocation
+async main no
+purpose main "Compute a score and print whether it meets the threshold"
+invariant main "Every console write is checked before success is returned"
+useCapability main stdoutWriter
+
+const baseCount I64 7
+const multiplier I64 6
+const bonusPoints I64 5
+call scoreCall calculateWeightedScore
+arg scoreCall baseCount baseCount
+arg scoreCall multiplier multiplier
+arg scoreCall bonusPoints bonusPoints
+run scoreCall
+bind computedScore I64 scoreCall
+
+const passingScore I64 40
+call scorePassedCall math.greaterThanOrEqualI64
+arg scorePassedCall left computedScore
+arg scorePassedCall right passingScore
+run scorePassedCall
+bind scorePassed Bool scorePassedCall
+branchIf scorePassed printPassed
+
+const failedText CNullTerminatedByteString "score below threshold"
+call failedWriteCall console.writeLine
+arg failedWriteCall text failedText
+run failedWriteCall
+ignoreOk failedWriteCall Void
+bindError failedWriteError ConsoleWriteError failedWriteCall
+branchIfError failedWriteCall failedTextWriteFailed
+branch printScore
+
+label printPassed
+const passedText CNullTerminatedByteString "score meets threshold"
+call passedWriteCall console.writeLine
+arg passedWriteCall text passedText
+run passedWriteCall
+ignoreOk passedWriteCall Void
+bindError passedWriteError ConsoleWriteError passedWriteCall
+branchIfError passedWriteCall passedTextWriteFailed
+
+label printScore
+call scoreWriteCall console.writeIntegerLine
+arg scoreWriteCall value computedScore
+run scoreWriteCall
+ignoreOk scoreWriteCall Void
+bindError scoreWriteError ConsoleWriteError scoreWriteCall
+branchIfError scoreWriteCall scoreWriteFailed
+
+const successExitCode ExitCode 0
+returnValue successExitCode
+
+label failedTextWriteFailed
+makeError failedTextWriteFailure ConsoleWriteError.ConsoleWriteFailed failedWriteError
+const failedTextWriteExitCode ExitCode 1
+returnValue failedTextWriteExitCode
+
+label passedTextWriteFailed
+makeError passedTextWriteFailure ConsoleWriteError.ConsoleWriteFailed passedWriteError
+const passedTextWriteExitCode ExitCode 1
+returnValue passedTextWriteExitCode
+
+label scoreWriteFailed
+makeError scoreWriteFailure ConsoleWriteError.ConsoleWriteFailed scoreWriteError
+const scoreWriteFailedExitCode ExitCode 1
+returnValue scoreWriteFailedExitCode
+```
+
+The AgentScript version is longer, but it gives the compiler, linter, editor,
+and review tools stable hooks: `calculateWeightedScore` has no fake effect,
+`main` declares stdout access, each call has a name, each branch has a label,
+and every console failure has a distinct handler.
 
 ## Refined Syntax Direction
 

@@ -101,6 +101,85 @@ purpose writeLine "owner matches operation"
 The repetition is deliberate. A single retrieved line is independently
 checkable.
 
+## Test Companion Files
+
+A library-like source file `foo.as` exports operations for other programs to
+consume. Its tests live in a sibling `foo.test.as` so the implementation file
+is not crowded by smoke / unit-test prose.
+
+```text
+stdlib_as/bit.as        # impl: project StdBit, no operation main, no smoke
+stdlib_as/bit.test.as   # tests: importModule bit + operation main + asserts
+```
+
+`foo.as` (impl):
+
+```agentscript
+project StdBit
+target console
+runtime AgentRuntime 0.1
+entry console shiftSignedInt64BitsLeft
+
+# Pure-module file: operations only. The entry line points at the
+# first exported operation rather than a removed `main` so the
+# module still compiles and lints standalone.
+
+domainLiteral ...
+operation shiftSignedInt64BitsLeft
+...
+```
+
+`foo.test.as` (companion):
+
+```agentscript
+project StdBitTest
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+importModule bit
+
+error MainError
+errorCase MainError BitSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+capability stdoutWriteCapability console.stdout write
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+...
+returnOk exitOkCode
+```
+
+Rules:
+
+- `foo.test.as` lives in the same directory as `foo.as` and bears the suffix
+  `.test.as` so tooling can identify it by filename alone.
+- It has its own `project` block (`StdFooTest` by convention), `entry console
+  main`, and `importModule foo` directive. The imported file's header lines
+  are stripped by the import resolver, so the test owns the executable.
+- Move every smoke-only declaration to the test: the `error MainError`
+  domain, `errorCase` variants, and the `capability` declarations the smoke
+  uses (`stdoutWriteCapability`, `heapAllocationCapability`, etc.).
+- **Capabilities used by impl operations stay in `foo.as`.** If any
+  non-`main` operation declares `useCapability X stdoutWriteCapability`, the
+  module's writers need it themselves; keep the capability declaration in
+  `foo.as` rather than moving it to the test. `stdio.as` and `assert.as`
+  follow this rule.
+- Module-level `error` domains referenced in operation signatures (e.g.
+  `NumericArithmeticError` in `stdlib.as`) stay in `foo.as`.
+- The `bind X Ordering …` form (or any type alias declared in `foo.as`) is
+  not resolvable through the linter's per-file view of the test. Bind the
+  underlying primitive instead — `bind X CSignedInt32 …` — when a test file
+  consumes a typed alias from its imported module.
+
+The harness `tests/test_stdlib.py` prefers `foo.test.as` over `foo.as` when
+the test file exists, so adding a new companion does not require runner
+changes. The legacy `foo.as` form (with smoke inline) is still supported
+during migration: any module without a companion test file uses its own
+inline smoke.
+
 ## Sections and Groups
 
 `section` and `group*` lines are retrieval/indexing aids. They do not create a
