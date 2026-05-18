@@ -363,6 +363,75 @@ arg assertNotEqualCall rightValue twoInt
 run assertNotEqualCall
 branchIfError assertNotEqualCall smokeAssertionFailed
 
+# ============================================================
+# Extended unit tests: covers the 5 require* ops the smoke
+# previously omitted (requireConditionTrue,
+# requireSignedInt64LeftGreaterThanRight,
+# requireSignedInt64LeftLessThanRight,
+# requireSignedInt64ValueWithinInclusiveRange,
+# requireOpaquePointerNotNull). The diagnostic writers
+# (emitAssertionFailureBanner / writeAssertionByteToStandardOutput)
+# are NOT exercised in this smoke because they would corrupt the
+# expected "OK\n" stdout — they're indirectly verified by the
+# requireX failure paths.
+# ============================================================
+
+const trueBoolForAssert Bool true
+const tenIntForAssert CSignedInt64 10
+const fiveIntForAssert CSignedInt64 5
+const zeroIntForAssert CSignedInt64 0
+const helloPtrLiteral CNullTerminatedByteString "hello"
+
+# requireConditionTrue(true) — should succeed
+call assertConditionTrueCall requireConditionTrue
+arg assertConditionTrueCall conditionValue trueBoolForAssert
+run assertConditionTrueCall
+branchIfError assertConditionTrueCall smokeAssertionFailed
+
+# requireSignedInt64LeftGreaterThanRight(10, 5) — should succeed
+call assertLeftGreaterCall requireSignedInt64LeftGreaterThanRight
+arg assertLeftGreaterCall leftValue tenIntForAssert
+arg assertLeftGreaterCall rightValue fiveIntForAssert
+run assertLeftGreaterCall
+branchIfError assertLeftGreaterCall smokeAssertionFailed
+
+# requireSignedInt64LeftLessThanRight(5, 10) — should succeed
+call assertLeftLessCall requireSignedInt64LeftLessThanRight
+arg assertLeftLessCall leftValue fiveIntForAssert
+arg assertLeftLessCall rightValue tenIntForAssert
+run assertLeftLessCall
+branchIfError assertLeftLessCall smokeAssertionFailed
+
+# requireSignedInt64ValueWithinInclusiveRange(5, 0, 10) — should succeed
+call assertWithinRangeCall requireSignedInt64ValueWithinInclusiveRange
+arg assertWithinRangeCall inputValue fiveIntForAssert
+arg assertWithinRangeCall lowerBound zeroIntForAssert
+arg assertWithinRangeCall upperBound tenIntForAssert
+run assertWithinRangeCall
+branchIfError assertWithinRangeCall smokeAssertionFailed
+
+# requireSignedInt64ValueWithinInclusiveRange boundary: lowerBound itself ok
+call assertBoundaryLowerCall requireSignedInt64ValueWithinInclusiveRange
+arg assertBoundaryLowerCall inputValue zeroIntForAssert
+arg assertBoundaryLowerCall lowerBound zeroIntForAssert
+arg assertBoundaryLowerCall upperBound tenIntForAssert
+run assertBoundaryLowerCall
+branchIfError assertBoundaryLowerCall smokeAssertionFailed
+
+# requireSignedInt64ValueWithinInclusiveRange boundary: upperBound itself ok
+call assertBoundaryUpperCall requireSignedInt64ValueWithinInclusiveRange
+arg assertBoundaryUpperCall inputValue tenIntForAssert
+arg assertBoundaryUpperCall lowerBound zeroIntForAssert
+arg assertBoundaryUpperCall upperBound tenIntForAssert
+run assertBoundaryUpperCall
+branchIfError assertBoundaryUpperCall smokeAssertionFailed
+
+# requireOpaquePointerNotNull on a literal string pointer — should succeed
+call assertNotNullCall requireOpaquePointerNotNull
+arg assertNotNullCall pointerValue helloPtrLiteral
+run assertNotNullCall
+branchIfError assertNotNullCall smokeAssertionFailed
+
 const successMessageText CNullTerminatedByteString "OK"
 call writeSuccessLineCall console.writeLine
 arg writeSuccessLineCall console console
