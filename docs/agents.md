@@ -316,6 +316,13 @@ c.*:
 c.* signatures: compiler/libc_registry.py. Prefer AS camelCase aliases for C
 names with underscores.
 
+Heap edge: avoid c.malloc/c.free in demo apps unless the user asks for heap.
+If used, declare effect allocate heap, effect free heap, memoryHeap OP yes,
+memoryAllocationSource OP ALLOC_CALL, capabilities for heap allocate/free, and
+handle c.malloc as fallible with bindError + branchIfError. Add linter-required
+`defer NAME c.free allocatedPointer`; current compiler treats non-user-op defer
+targets as cleanup metadata, so do not claim this proves runtime leak freedom.
+
 Domain method:
   type CountdownValue I64
   call nextCall CountdownValue.subtractPositiveStep
