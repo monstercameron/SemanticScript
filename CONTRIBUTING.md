@@ -55,9 +55,11 @@ toolchain. Set `SEMSC_CLANG` if clang is not discoverable on PATH.
 - Do not commit generated outputs such as `.exe`, `.ll`, `.pyc`, build folders,
   packaged `.vsix` files, or `__pycache__/`.
 - Do not introduce public `.as` source-extension support.
-- Do not choose or imply a project license in code or docs.
+- Do not change the project license posture without a release-owner decision.
 
 ## License
 
-TODO: choose and document the project license before publishing public release
-artifacts.
+The root `LICENSE` is currently a no-license notice. It does not grant
+open-source reuse permission. Public artifact publishing requires either an
+explicit decision to distribute under that notice or a replacement license chosen
+by the release owner.

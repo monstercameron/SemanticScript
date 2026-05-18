@@ -2,8 +2,8 @@
 
 ## Supported Versions
 
-This repository is pre-1.0. Security fixes are applied to the active default
-branch unless a release branch is explicitly announced.
+Security fixes are applied to the active default branch unless a release branch
+is explicitly announced.
 
 ## Reporting a Vulnerability
 
@@ -25,5 +25,5 @@ Python dependencies are declared in `requirements.txt`. Keep the dependency set
 small and review changes to compiler/runtime packages carefully because CI and
 release validation install from this file.
 
-Do not publish release artifacts until the license TODO in `CONTRIBUTING.md` and
-`RELEASE.md` is resolved.
+Do not publish public release artifacts until the release owner confirms the
+current no-license posture or replaces it with a public distribution license.

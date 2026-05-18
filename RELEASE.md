@@ -1,12 +1,16 @@
 # Release Process
 
 This file defines the repeatable validation path for SemanticScript release
-candidates. It does not choose a legal license.
+candidates. Repository-state and artifact policies live in
+`docs/reference/release-hygiene.md`.
 
 ## Release Blockers
 
-- TODO: choose and document the project license before publishing public release
-  artifacts.
+- Confirm the release license posture. The current root `LICENSE` is a
+  no-license notice; public artifact publishing still requires an explicit
+  release-owner decision.
+- Confirm the VS Code publisher target. `semanticscript-local` is valid only for
+  local VSIX packaging.
 - CI must pass on the release commit.
 - Generated files must not be committed unless they are intentionally tracked
   source artifacts.
@@ -58,8 +62,8 @@ python SemanticScript/tests/feature_coverage.py
 python SemanticScript/bootstrap/run_bootstrap_chain.py
 ```
 
-Package the VS Code extension only after validation passes and the license TODO
-is resolved:
+Package the VS Code extension only after validation passes and the release owner
+accepts the current extension metadata:
 
 ```powershell
 npm --prefix vscode-semanticscript run check
@@ -71,6 +75,25 @@ Pop-Location
 Do not commit the generated `.vsix` unless the project later decides to track
 release artifacts.
 
+## Repository Policy Checks
+
+Before tagging, confirm the release hygiene policies:
+
+- `samples/python/` is the canonical Python comparison-sample tree.
+- top-level `python/` remains a 1.0 compatibility mirror and must stay aligned
+  when mirrored files change.
+- `.sem` files directly under `SemanticScript/sem/` are intentionally tracked
+  alias fixtures, not generated outputs.
+- `vscode-semanticscript/package.json` version matches the release tag.
+- `vscode-semanticscript/package.json` publisher is changed away from
+  `semanticscript-local` before any Marketplace publish.
+
+Run the alias mirror check when `.sscript` / `.sem` examples change:
+
+```powershell
+python SemanticScript/tests/sem_alias_parity.py
+```
+
 ## Release Checklist
 
 1. Confirm `git status --short` contains only intentional release changes.
@@ -81,3 +104,5 @@ release artifacts.
 5. Confirm docs and command examples use current SemanticScript names.
 6. Confirm package outputs are ignored or attached outside the repository.
 7. Record skipped checks and the reason in the release notes.
+8. Confirm `docs/reference/release-hygiene.md` still matches the release
+   decision.

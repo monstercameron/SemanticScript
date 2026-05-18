@@ -1,6 +1,9 @@
 __pycache__/
 *.pyc
 *.pyo
+.venv/
+venv/
+.env/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -29,6 +32,12 @@ node_modules/
 out/
 dist/
 coverage/
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+build.ninja
+cmake_install.cmake
 
 SemanticScript/tests/sem_compiler_build/
 SemanticScript/tests/feature_coverage/
