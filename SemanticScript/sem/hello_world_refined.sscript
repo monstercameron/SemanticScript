@@ -2,7 +2,7 @@
 #
 # Migration of sem/hello_world.sscript to refined syntax. Same behavior — print
 # `Hello, world!` on one line — but rewritten with the transformer-friendly
-# verb forms from experiments/refined_syntax_example.sscript.
+# verb forms from refined_syntax_demo.sscript.
 #
 # Changes from the V0 source:
 #   - `section` anchors for retrieval / attention.

@@ -2,7 +2,7 @@
 #
 # Migration of sem/countdown.sscript to refined syntax. Same behavior — print
 # 5, 4, 3, 2, 1 each on their own line — but rewritten to use the
-# transformer-friendly verb forms from experiments/refined_syntax_example.sscript.
+# transformer-friendly verb forms from refined_syntax_demo.sscript.
 #
 # Changes from the V0 source:
 #   - `section …` anchors for retrieval / attention.

@@ -18,6 +18,17 @@ Do not infer compiler support from VS Code highlighting alone. The editor
 tracks syntax and hover semantics for both surfaces; the compiler is the
 authority for executable lowering.
 
+## Contents
+
+This folder contains the language explanation layer: lexical rules, program
+structure, types, operations/dataflow, effects/errors, memory/state, records,
+codecs, cleanup, concurrency, and time-related syntax.
+
+## Current Status
+
+Active language docs. They should explain current executable behavior and label
+future/refined runtime work clearly when lowering is incomplete.
+
 ## Minimal Executable Program
 
 ```semanticscript
@@ -62,4 +73,3 @@ SemanticScript source should remain:
 - boring: clever expression compression is a defect.
 
 These docs describe the concrete schemas that make those invariants enforceable.
-

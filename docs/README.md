@@ -22,11 +22,39 @@ vscode-semanticscript/                editor syntax, hovers, semantic tokens
 When behavior changes, update the implementation first, then update the narrow
 doc file that owns that behavior. Avoid giant catch-all edits.
 
+## Contents
+
+- `agents.md` is the compact agent-facing guide.
+- `optimization-guide.md` records optimization and app-boundary rules.
+- `language/` explains the language model and schemas.
+- `reference/` contains target, verb, and maintenance references.
+- `toolchain/` documents compiler, linter, and editor tooling.
+
+## Current Status
+
+Active documentation set. Some docs describe executable behavior, while others
+mark refined or future runtime work explicitly.
+
+## 1.0 Support Boundary
+
+Use [toolchain/compiler.md](toolchain/compiler.md) as the detailed support
+matrix. The release-level boundary is:
+
+| Surface | 1.0 support level | Source of truth |
+|---|---|---|
+| Python reference compiler | Supported release compiler for `.sscript` and `.sem`, console entry, LLVM IR, JIT run, and clang-linked executables. | `SemanticScript/compiler/semsc.py`, [toolchain/compiler.md](toolchain/compiler.md) |
+| Bootstrap / self-hosting | Preview and release-tested, but not the production compiler. | `SemanticScript/bootstrap/README.md`, `tests/sem_compiler_parity.py` |
+| VS Code extension | Supported editor tooling for `.sscript` / `.sem`; syntax visibility is not executable support. | [toolchain/vscode-extension.md](toolchain/vscode-extension.md) |
+| Refined syntax and partial rows | Inspectable and documented as metadata, fallback, partial, or implemented. | `SYNTAX.md`, [toolchain/compiler.md](toolchain/compiler.md) |
+| Web / HTTP runtime | Route metadata and handler IR only; no 1.0 HTTP listener runtime. | [toolchain/compiler.md](toolchain/compiler.md) |
+| Runtime flags | Supported compiler interface for build profile, runtime checks, diagnostics format, IR persistence, and optimization level. | [toolchain/compiler.md](toolchain/compiler.md) |
+
 ## Reading Order
 
 | File | Purpose |
 |---|---|
 | [agents.md](agents.md) | Compact agent-facing language guide with dense schemas and examples. |
+| [optimization-guide.md](optimization-guide.md) | Optimization rules that preserve semantic return and failure contracts. |
 | [language/README.md](language/README.md) | Language model, executable vs refined surfaces, minimal program. |
 | [language/lexical-model.md](language/lexical-model.md) | Tokenization, comments, strings, identifiers, rejected syntax. |
 | [language/program-structure.md](language/program-structure.md) | Project headers, imports, entries, operations, ownership. |

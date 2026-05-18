@@ -24,6 +24,18 @@ current SemanticScript-written compiler used by `tests/sem_compiler_parity.py`; 
 reads the target program from `SEMANTIC_SCRIPT_INPUT`, emits LLVM IR to stdout, and
 passes 23 oracle-backed programs today.
 
+## Contents
+
+- `bootstrap*.sscript` files are staged SemanticScript-written compiler programs.
+- `input*.sscript` files are source fixtures consumed by those stages.
+- `bootstrap_general.sscript` is the broader line-dispatch compiler experiment.
+- `run_bootstrap_chain.py` drives and verifies the staged chain.
+
+## Current Status
+
+Active self-hosting research area. The numbered chain demonstrates increasing
+compiler capability; `bootstrap_general.sscript` is broader but still partial.
+
 ## bootstrap_general.sscript — the real general-purpose compiler
 
 `bootstrap_general.sscript` is the first SemanticScript-written compiler to use **real

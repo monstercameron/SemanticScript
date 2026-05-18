@@ -3,6 +3,12 @@
 This directory is reserved for future SemanticScript mirrors of the programs in
 `../../python/`.
 
+## Contents
+
+No mirror source files are committed here yet.
+
+## Current Status
+
 Current state: no `.sscript` mirror programs are committed here, and there is no
 active `tests/python_parity.py` harness in this tree. Earlier notes about
 math-only mirrors and bootstrap-general parity were experimental planning

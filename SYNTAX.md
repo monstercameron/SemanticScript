@@ -9,13 +9,13 @@ Implementation status enum values:
 - `Impl'd` means implemented in the Python reference compiler.
 - `Partial` means parsed, stubbed, metadata-only, linter-only, or incomplete.
 - `Not impl'd` means committed current syntax or runtime surface with no meaningful implementation yet.
-- `Proposed` means extracted from `experiments/` as candidate syntax, not committed to the compiler surface yet.
+- `Proposed` means carried by refined examples as candidate syntax, not committed to the compiler surface yet.
 
 Compiler coverage note: statuses refer to `SemanticScript/compiler/semsc.py` unless
 a row explicitly says otherwise. `SemanticScript/bootstrap/bootstrap_general.sscript` is
 a smaller bootstrap compiler and does not yet cover the same surface. The
-refined syntax showcase in `experiments/refined_syntax_example.sscript` is a syntax
-research and tooling target, not a fully executable program.
+refined syntax examples in `SemanticScript/sem/` are syntax research and tooling
+targets, not a blanket guarantee that every refined form is executable.
 
 Intentionally rejected forms are not syntax rows: infix operators, semicolons,
 brace blocks, parenthesized call expressions, comma argument lists, generic

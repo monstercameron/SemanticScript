@@ -11,6 +11,18 @@ there is no useful pure-SemanticScript substitute yet, such as `c.putchar`, `c.m
 `c.free`, `c.clock`, `c.time`, `c.getenv`, `c.exit`, `c.abort`, and
 `c.raise`.
 
+## Contents
+
+Each `*.sscript` file is a standalone standard-library-shaped module. Most
+`*.test.sscript` files are companion smoke or unit-style tests for the module
+with the same base name.
+
+## Current Status
+
+Active stdlib implementation surface. Low-level `c.*` calls are still accepted
+here as bootstrap/runtime implementation details; app-facing code should move
+toward SemanticScript API operations as they become available.
+
 ## Coverage
 
 The current tree has 318 `operation` blocks across 28 runnable `.sscript` files,

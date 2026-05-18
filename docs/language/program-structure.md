@@ -1,6 +1,6 @@
 # Program Structure
 
-An SemanticScript file is a sequence of top-level declarations followed by one or
+A SemanticScript file is a sequence of top-level declarations followed by one or
 more `operation` bodies. The parser keeps a current operation pointer; after
 `operation NAME`, operation-scope lines are appended to that operation until a
 new `operation` starts.

@@ -2,6 +2,16 @@
 
 Standard-library-only Python examples for benchmarking against SemanticScript.
 
+## Contents
+
+This folder mirrors the top-level `python/` example set under `samples/` for
+language-comparison organization.
+
+## Current Status
+
+Reference examples only. Keep this folder aligned with `python/` when the same
+sample is intentionally duplicated in both locations.
+
 Run everything:
 
 ```text

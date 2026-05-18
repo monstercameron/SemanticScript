@@ -15,11 +15,11 @@ The current implementation is already a real compiler: it emits LLVM IR through
 space as Node, Python, Bun, Deno, Express, FastAPI, and Go services, but with a
 source format optimized for agentic maintenance rather than human terseness.
 
-The repository also contains active syntax research in `experiments/`. Those
-files explore the next SemanticScript surface: fixed schemas, explicit dataflow,
-typed failure edges, guarded mutation, structured async, trust-boundary
-metadata, and syntax that is easier for transformer attention to recover and
-edit.
+The repository also contains refined syntax examples under `SemanticScript/sem/`.
+Those files explore the next SemanticScript surface: fixed schemas, explicit
+dataflow, typed failure edges, guarded mutation, structured async,
+trust-boundary metadata, and syntax that is easier for transformer attention to
+recover and edit.
 
 ## Technical Pitch
 
@@ -57,9 +57,11 @@ There are two important surfaces in this repo:
 - Current executable SemanticScript lives under `SemanticScript/` and is documented by
   `SemanticScript/AST.md`. This is what `compiler/semsc.py`, `linter/semlint.py`,
   tests, and bootstrap programs use today.
-- Refined future syntax lives under `experiments/`, especially
-  `experiments/refined_syntax_example.sscript`. This is a syntax showcase and design
-  target. It is not current executable SemanticScript.
+- Refined future syntax examples live under `SemanticScript/sem/`, including
+  `SemanticScript/sem/refined_syntax_demo.sscript`,
+  `SemanticScript/sem/syntax_sample_web_server.sscript`, and the
+  `*_refined.sscript` examples. These are syntax showcases and design targets,
+  not a blanket guarantee that every refined form is executable.
 
 The VS Code extension understands both surfaces for highlighting, hovers, and
 semantic roles. The compiler should not be assumed to accept refined future
@@ -83,11 +85,6 @@ SemanticScript/
   stdlib_sem/                    SemanticScript-shaped standard-library modules
   bootstrap/                    SemanticScript-written compiler bootstrap stages
   tests/                        Compiler, parity, bootstrap, and stdlib tests
-
-experiments/
-  whatsneeded.md                Research and syntax refinement notes
-  refined_syntax_example.sscript     Broad refined syntax showcase
-  refined_syntax_graph.md       Mermaid graph of refined sample edges
 
 samples/javascript/             JavaScript comparison and oracle programs
 samples/python/                 Python comparison programs
@@ -148,7 +145,7 @@ JavaScript:   compress meaning into syntax and runtime conventions.
 SemanticScript: preserve meaning as explicit, line-addressable facts.
 ```
 
-This is why an SemanticScript call is not `target(arg)`. It is a small dataflow
+This is why a SemanticScript call is not `target(arg)`. It is a small dataflow
 record cluster:
 
 ```semanticscript
@@ -427,10 +424,25 @@ python compiler/semsc.py --version
 python compiler/semsc.py sem/fizzbuzz.sscript --run
 python compiler/semsc.py sem/fizzbuzz.sscript --emit-ir fizzbuzz.ll
 python compiler/semsc.py sem/fizzbuzz.sscript --emit-exe fizzbuzz.exe
+python compiler/semsc.py sem/fizzbuzz.sscript --emit-exe fizzbuzz.exe --persist-llvm-ir yes
+python compiler/semsc.py sem/fizzbuzz.sscript --emit-exe fizzbuzz-prod.exe --build-profile prod
 python linter/semlint.py sem/fizzbuzz.sscript --summary
 ```
 
-Run the main test groups:
+Run the focused CI checks:
+
+```powershell
+python -m pip install -r requirements.txt
+python -m compileall -q SemanticScript python samples
+python -m unittest SemanticScript/linter/test_semlint2.py -v
+python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sscript --parse-only
+python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sem --parse-only
+python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sscript --fail-on none --summary
+python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sem --fail-on none --summary
+npm --prefix vscode-semanticscript run check
+```
+
+Run the full release validation groups:
 
 ```powershell
 cd SemanticScript
@@ -438,6 +450,8 @@ python tests/compare.py
 python tests/sem_compiler_parity.py
 python tests/test_compiler.py
 python tests/test_stdlib.py
+python tests/sem_alias_parity.py
+python tests/feature_coverage.py
 python bootstrap/run_bootstrap_chain.py
 ```
 
@@ -445,7 +459,7 @@ python bootstrap/run_bootstrap_chain.py
 
 The local extension is in `vscode-semanticscript/`. It provides:
 
-- language registration for `.sscript` and `.sscript`;
+- language registration for `.sscript` and `.sem`;
 - TextMate and semantic highlighting for current and refined syntax;
 - context-aware hovers for concrete line schemas, same-file symbols,
   operation metadata, primitive targets, generated targets, schema values,
@@ -455,8 +469,8 @@ The local extension is in `vscode-semanticscript/`. It provides:
 - optional `semlint.py` or `semlint2.py` diagnostics.
 
 The extension skips current-linter diagnostics for refined future syntax by
-default because `experiments/refined_syntax_example.sscript` is not current
-executable SemanticScript.
+default because some refined examples under `SemanticScript/sem/` are syntax
+showcases rather than current executable SemanticScript.
 
 Package the extension with:
 
@@ -475,17 +489,18 @@ The current packaged artifact is `vscode-semanticscript/semanticscript-vscode-0.
 - `SemanticScript.md` - language specification and design intent.
 - `SemanticScript/AST.md` - implemented compiler syntax and lowering behavior.
 - `SemanticScript/README.md` - reference implementation guide.
-- `SemanticScript/CHANGELOG.md` - toolchain release notes.
+- `CHANGELOG.md` - repository-level changelog and release notes.
 - `STDLIB.md` - standard-library module and operation inventory.
-- `experiments/whatsneeded.md` - refined syntax research and recommendations.
-- `experiments/refined_syntax_example.sscript` - full syntax showcase.
-- `experiments/refined_syntax_graph.md` - graph of the showcase dataflow.
+- `SemanticScript/sem/refined_syntax_demo.sscript` - refined syntax showcase.
+- `SemanticScript/sem/syntax_sample_web_server.sscript` - web-server-shaped refined sample.
+- `SemanticScript/sem/*_refined.sscript` - paired refined variants of executable examples.
 - `vscode-semanticscript/README.md` - extension-specific usage notes.
 
 ## Development Notes
 
 - Treat `SemanticScript/` as the executable implementation track.
-- Treat `experiments/` as the syntax research track.
+- Treat refined examples in `SemanticScript/sem/` as the syntax research track
+  unless their behavior is explicitly covered by compiler tests.
 - Do not confuse plugin syntax recognition with compiler support.
 - Keep refined syntax lines atomic: one verb, one schema, one edge.
 - Prefer explicit names and typed failure paths over compact expression syntax.

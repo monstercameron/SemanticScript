@@ -452,15 +452,16 @@ typeMemory        TYPE inline|heap|arena
 typeLayout        TYPE row|column|packed
 ```
 
-### 2.12.5 Refined-syntax surface (experimental)
+### 2.12.5 Refined-syntax surface
 
 The "refined-syntax" surface in
-`experiments/refined_syntax_example.sscript` is a broader, more declarative
-variant of SemanticScript designed for transformer-friendly attention. The
-parser accepts the verbs below as soft metadata; the codegen lowers a
-named subset to real LLVM IR. Verbs not specifically handled are stored
-under `prog.hard_metadata` keyed by their first argument and silently
-dropped at codegen.
+`SemanticScript/sem/refined_syntax_demo.sscript`,
+`SemanticScript/sem/syntax_sample_web_server.sscript`, and the paired
+`*_refined.sscript` examples is a broader, more declarative variant of
+SemanticScript designed for transformer-friendly attention. The parser accepts
+the verbs below as soft metadata; the codegen lowers a named subset to real
+LLVM IR. Verbs not specifically handled are stored under `prog.hard_metadata`
+keyed by their first argument and silently dropped at codegen.
 
 Top-level declarative verbs (catch-all metadata unless noted):
 
@@ -598,7 +599,7 @@ A program with `target webServer` and no `entry` line compiles in
 "library mode": every operation becomes a real LLVM function (callable
 from external hosts) and a stub `int main() { return 0; }` is emitted so
 the program links. The same path handles the refined-syntax showcase
-files in `experiments/`.
+files in `SemanticScript/sem/`.
 
 ### 2.13 Hard metadata at top level OR in an operation body
 
@@ -1001,10 +1002,8 @@ The compiler distinguishes four kinds of body verbs:
 A program declaring `target webServer` with no `entry` line enters
 **library mode**: every operation compiles to a callable LLVM function
 and a stub `int main() { return 0; }` is emitted. This is how
-`sem/syntax_sample_web_server.sscript` and
-`experiments/refined_syntax_example.sscript` (1659 lines, ~100 new verbs,
-36 operations with five distinct `operationBody` modes) compile to
-runnable executables today.
+`sem/syntax_sample_web_server.sscript` and related refined examples under
+`sem/` compile far enough for tooling and library-mode inspection today.
 
 ## 9. Linter (agent-safety checks)
 

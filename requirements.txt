@@ -1,0 +1,3 @@
+# Python runtime dependency for the SemanticScript reference compiler.
+# The rest of the Python tooling currently uses the standard library.
+llvmlite>=0.43,<0.48

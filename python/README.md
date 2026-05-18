@@ -2,6 +2,17 @@
 
 Standard-library-only Python examples for benchmarking against SemanticScript.
 
+## Contents
+
+This folder contains standalone Python programs covering threading, asyncio,
+multiprocessing, scheduling, race-condition demonstrations, watchdog logic, and
+Python `math` API coverage.
+
+## Current Status
+
+Reference examples only. These scripts are not SemanticScript runtime code; they
+are useful as comparison targets and future mirror candidates.
+
 Run everything:
 
 ```text
