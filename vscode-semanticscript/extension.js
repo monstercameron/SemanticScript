@@ -10,12 +10,22 @@ const declarationVerbs = new Set([
   'project', 'target', 'runtime', 'entry', 'module', 'mode', 'dependency', 'dependencyEffect',
   'dependencyExports', 'dependencyFunction', 'dependencyFunctionInput',
   'dependencyFunctionOutput', 'dependencyFunctionEffect', 'dependencyFunctionAsync',
+  'buildProject', 'modulePath', 'languageVersion', 'sourceRoot', 'registerModule',
+  'mainFile', 'mainOperation', 'testPattern', 'dependencySource', 'dependencyIntegrity',
+  'targetRuntime', 'buildProfile', 'runtimeChecks', 'persistLlvmIr', 'nativeOutput',
+  'comptimeOperation', 'moduleFolder', 'modulePurpose', 'moduleOwns',
+  'moduleDoesNotOwn', 'moduleDependency', 'moduleWarning', 'moduleInvariant',
+  'moduleSecurity', 'moduleObservability', 'exportType', 'exportError',
+  'exportOperation', 'exportCapability', 'exportConstant',
+  'version', 'publisher', 'description', 'copyright', 'productName',
+  'internalName', 'originalFilename', 'trademark', 'comments', 'metadata',
   'importModule', 'type', 'typeParameter', 'typeInvariant', 'typeRepresentation', 'typeTrust',
   'typeMemory', 'typeLayout', 'typeLiteralEncoding', 'typeLiteralTerminator',
   'record', 'recordLayout', 'recordAlign', 'field', 'fieldDefault', 'fieldInvariant',
   'enum', 'enumCase', 'error',
   'errorCase', 'operation', 'webServer', 'serverHost', 'serverPort', 'route',
-  'routeTimeout', 'routeMiddleware', 'storage', 'sharedState', 'domainLiteral',
+  'routeTimeout', 'routeMiddleware', 'routeTimeoutOptOut', 'routeMiddlewareOptOut',
+  'storage', 'sharedState', 'domainLiteral',
   'literal', 'listLiteral', 'jsonCodec', 'policy', 'errorPolicy',
   'validator', 'codec', 'schema', 'unknownFields', 'resource', 'resourceKey',
   'resourceValue', 'resourceKind', 'adapter', 'boundary', 'mapper', 'retryPolicy',
@@ -28,8 +38,9 @@ const declarationVerbs = new Set([
 const contextVerbs = new Set([
   'input', 'output', 'effect', 'memory', 'memoryHeap', 'memoryArena',
   'memoryAllocationSource', 'memoryStackLimit', 'async', 'operationBody',
-  'purpose', 'invariant', 'warning', 'failure', 'guarantee', 'security',
+  'purpose', 'invariant', 'warning', 'precondition', 'failure', 'guarantee', 'security',
   'timing', 'observability',
+  'pinsNullBodyFailurePath', 'responseBodyForwarder', 'rationale',
   'dependencyPath', 'dependencyFailure', 'intrinsicName',
   'runtimeBinding', 'runtimeBindingPrecondition', 'runtimeBindingFailure',
   'recordConstructor', 'recordConstructorFailure', 'recordBuildFailure',
@@ -109,7 +120,16 @@ const primitiveTargets = new Map([
   ['math.floatToInt', 'F64 to signed integer conversion, rounding toward zero.'],
   ['math.convertSignedInt64ToFloat64', 'Alias for math.intToFloat.'],
   ['math.convertFloat64ToSignedInt64', 'Alias for math.floatToInt.'],
+  ['math.convertSignedInt32ToSignedInt64', 'Alias for math.signExtendCSignedInt32ToCSignedInt64.'],
+  ['math.convertSignedInt64ToSignedInt32', 'Alias for math.truncateCSignedInt64ToCSignedInt32.'],
+  ['math.signExtendCSignedInt32ToCSignedInt64', 'Explicit signed i32 to i64 conversion.'],
+  ['math.truncateCSignedInt64ToCSignedInt32', 'Explicit signed i64 to i32 truncation. Caller owns range safety.'],
   ['math.equalCSignedInt32', 'C signed 32-bit equality comparison returning Bool.'],
+  ['math.notEqualCSignedInt32', 'C signed 32-bit inequality comparison returning Bool.'],
+  ['math.lessThanCSignedInt32', 'C signed 32-bit less-than comparison returning Bool.'],
+  ['math.lessThanOrEqualCSignedInt32', 'C signed 32-bit less-than-or-equal comparison returning Bool.'],
+  ['math.greaterThanCSignedInt32', 'C signed 32-bit greater-than comparison returning Bool.'],
+  ['math.greaterThanOrEqualCSignedInt32', 'C signed 32-bit greater-than-or-equal comparison returning Bool.'],
   ['math.greaterThanOrEqualCByteCount', 'C byte-count greater-than-or-equal comparison returning Bool.'],
   ['math.checkedMultiplyI64', 'i64 signed multiply with overflow detection. Fallible target; use bindOk, bindError, and branchIfError.'],
   ['pointer.loadByte', 'Reads one byte from buffer + offset. Requires declared memory read effects for checked lint paths.'],
@@ -120,6 +140,22 @@ const primitiveTargets = new Map([
   ['scheduler.sleep', 'Async typed-duration sleep target. Use cancelOn, start, await, bindError, and branchIfError.'],
   ['retryPolicy.delayForAttempt', 'Retry-policy delay calculation target. Fallible when policy or attempt state is invalid.'],
   ['metrics.computeIncrementI64', 'Metrics-owned counter increment calculation. Fallible target; bind success and error explicitly.'],
+  ['http.responseText', 'Native HTTP writer: response, status, body, optional contentType -> CSignedInt32. Body must be non-null.'],
+  ['http.responseBytes', 'Native HTTP binary writer: response, status, body, bodyLength, optional contentType -> CSignedInt32. Preserves embedded NUL bytes.'],
+  ['http.responseSseEvent', 'Native one-shot SSE writer: response, status, event, data -> CSignedInt32. Emits text/event-stream and closes the response.'],
+  ['http.responseHeader', 'Native HTTP header writer: response, name, value -> CSignedInt32. Must run before the response body is sent.'],
+  ['http.requestMethod', 'Native HTTP request reader: request -> non-null method string.'],
+  ['http.requestPath', 'Native HTTP request reader: request -> non-null path string without query.'],
+  ['http.requestHeader', 'Native nullable HTTP request header reader: request, name -> string or NULL. Guard before response body use.'],
+  ['http.requestQueryParam', 'Native nullable query reader: request, name -> raw first matching value or NULL. Percent decoding is future work.'],
+  ['http.requestBodyText', 'Native nullable body-text reader for bounded request bodies. Guard missing/empty bodies explicitly.'],
+  ['http.requestBodyBytes', 'Native nullable body-bytes reader for bounded request bodies. Pair with http.requestBodyLength.'],
+  ['http.requestBodyLength', 'Native body length reader: request -> CByteCount. Zero means no bytes.'],
+  ['http.multipartPartText', 'Native nullable multipart text-part reader: request, name -> string or NULL.'],
+  ['http.multipartPartBytes', 'Native nullable multipart binary-part reader: request, name -> pointer or NULL. Pair with http.multipartPartLength.'],
+  ['http.multipartPartLength', 'Native multipart part length reader: request, name -> CByteCount.'],
+  ['http.multipartPartFilename', 'Native nullable multipart filename reader: request, name -> string or NULL.'],
+  ['http.multipartPartContentType', 'Native nullable multipart content-type reader: request, name -> string or NULL.'],
   ['math.subI64', 'Alias for math.subtractI64.'],
   ['math.mulI64', 'Alias for math.multiplyI64.'],
   ['math.divI64', 'Alias for math.divideI64.'],
@@ -283,6 +319,8 @@ const primitiveTypes = new Map([
   ['Process', 'Opaque process dependency token.'],
   ['Environment', 'Opaque environment dependency token.'],
   ['HttpRequest', 'Opaque HTTP request dependency token.'],
+  ['HttpResponse', 'Opaque HTTP response dependency token. Native web handlers receive this explicitly.'],
+  ['HttpStatus', 'HTTP status value, currently represented by a C signed 32-bit integer in native calls.'],
   ['DatabaseClient', 'Opaque database client dependency token.'],
   ['Clock', 'Opaque clock dependency token.'],
   ['Void', 'No useful success value. Used with ignoreOk/ignoreValue to make explicit discards visible.'],
@@ -301,8 +339,26 @@ const verbHoverText = new Map([
   ['target', 'Top-level declaration: target NAME.'],
   ['runtime', 'Top-level declaration: runtime NAME VERSION.'],
   ['entry', 'Top-level declaration: entry MODE OPERATION.'],
-  ['module', 'Top-level module declaration. Parsed as project context by the current compiler.'],
+  ['module', 'Top-level module declaration. Validated as a dotted namespace and recorded in compiler metadata.'],
   ['mode', 'Top-level mode declaration such as mode capturedOutputReplay.'],
+  ['buildProject', 'Build tape declaration: buildProject PROJECT.'],
+  ['registerModule', 'Build tape module registry: registerModule PROJECT MODULE_PATH "PATH". Module imports should target registered modules.'],
+  ['moduleFolder', 'Compatibility module registry alias. Prefer registerModule PROJECT MODULE_PATH "PATH".'],
+  ['exportType', 'Module-local export contract: exportType MODULE_PATH TYPE. Belongs in the module source.'],
+  ['exportError', 'Module-local export contract: exportError MODULE_PATH ERROR. Belongs in the module source.'],
+  ['exportOperation', 'Module-local export contract: exportOperation MODULE_PATH OPERATION. Belongs in the module source.'],
+  ['exportCapability', 'Module-local export contract: exportCapability MODULE_PATH CAPABILITY. Belongs in the module source.'],
+  ['exportConstant', 'Module-local export contract: exportConstant MODULE_PATH CONSTANT. Belongs in the module source.'],
+  ['version', 'Project metadata: version "A.B.C.D". Lowered to OS-native VERSIONINFO when emitting an executable.'],
+  ['publisher', 'Project metadata: publisher/company name for executable VERSIONINFO.'],
+  ['description', 'Project metadata: file description for executable VERSIONINFO.'],
+  ['copyright', 'Project metadata: legal copyright for executable VERSIONINFO.'],
+  ['productName', 'Project metadata: product name for executable VERSIONINFO.'],
+  ['internalName', 'Project metadata: internal executable name for VERSIONINFO.'],
+  ['originalFilename', 'Project metadata: original executable filename for VERSIONINFO.'],
+  ['trademark', 'Project metadata: legal trademark for executable VERSIONINFO.'],
+  ['comments', 'Project metadata: comments field for executable VERSIONINFO.'],
+  ['metadata', 'Project metadata: metadata "key" "value" adds a custom VERSIONINFO string-table entry.'],
   ['dependency', 'Dependency declaration. Dependency contract metadata is parsed for tooling context.'],
   ['dependencyEffect', 'Dependency effect declaration.'],
   ['dependencyExports', 'Dependency export declaration.'],
@@ -325,12 +381,14 @@ const verbHoverText = new Map([
   ['error', 'Error type declaration: error NAME.'],
   ['errorCase', 'Error variant declaration: errorCase ERROR_TYPE VARIANT [CAUSE_TYPE].'],
   ['operation', 'Operation declaration. Header/context lines attach to this operation.'],
-  ['webServer', 'Web server declaration: webServer NAME. Parsed as metadata.'],
+  ['webServer', 'Web server declaration: webServer NAME. Native codegen can lower this target into an HTTP/1.1 executable.'],
   ['serverHost', 'Web server metadata: serverHost SERVER_NAME "host".'],
   ['serverPort', 'Web server metadata: serverPort SERVER_NAME PORT.'],
   ['route', 'Web server route: route SERVER METHOD PATH HANDLER_OPERATION.'],
-  ['routeTimeout', 'Web server route timeout metadata.'],
-  ['routeMiddleware', 'Web server route middleware metadata.'],
+  ['routeTimeout', 'Web server route timeout metadata keyed by exact route path. Parsed today; preemptive enforcement is future runtime work.'],
+  ['routeMiddleware', 'Web server route middleware metadata keyed by exact route path. Native codegen invokes the middleware before the handler.'],
+  ['routeTimeoutOptOut', 'Web server route timeout opt-out: routeTimeoutOptOut SERVER PATH "rationale". Used by semlint route coverage checks.'],
+  ['routeMiddlewareOptOut', 'Web server route middleware opt-out: routeMiddlewareOptOut SERVER PATH "rationale". Used by semlint route coverage checks.'],
   ['jsonCodec', 'Contract-heavy JSON codec declaration.'],
   ['codec', 'Contract-heavy codec declaration.'],
   ['schema', 'Codec schema attachment: schema CODEC_NAME RECORD_NAME.'],
@@ -364,11 +422,15 @@ const verbHoverText = new Map([
   ['purpose', 'Hard metadata: declares what an operation or abstraction is for.'],
   ['invariant', 'Hard metadata: declares a condition future edits must preserve.'],
   ['warning', 'Hard metadata: declares a hazard future agents must read before editing.'],
+  ['precondition', 'Hard metadata: declares a caller-side proof obligation that the operation body does not enforce.'],
   ['failure', 'Hard metadata: declares a named failure and explanation.'],
   ['guarantee', 'Hard metadata: declares a guarantee attached to an operation or abstraction.'],
   ['security', 'Hard metadata: declares security context agents must preserve.'],
   ['timing', 'Hard metadata: declares timing behavior or constraints.'],
   ['observability', 'Hard metadata: declares trace/log/metric context.'],
+  ['pinsNullBodyFailurePath', 'Operation metadata: explicit opt-in to the native HTTP null-body failure path. Requires a rationale string.'],
+  ['responseBodyForwarder', 'Operation metadata: declares that an operation forwards a named body input into an http.response* writer.'],
+  ['rationale', 'Call-site rationale: rationale CALL "text". Attaches context to one call so diagnostics survive refactors.'],
   ['const', 'Body declaration statement: const NAME TYPE VALUE.'],
   ['var', 'Body declaration statement: var NAME TYPE INITIAL_VALUE.'],
   ['label', 'Control-flow statement: label NAME. Labels are first-class basic blocks.'],
@@ -573,10 +635,17 @@ let linterEnabled = true;
 let linterRunMode = 'onSave';
 let linterPythonPath = 'python';
 let linterConfiguredPath = '';
-let linterSkipFutureSyntax = true;
+let linterSkipFutureSyntax = false;
 let linterEngine = 'semlint';
+let compilerPythonPath = 'python';
+let compilerConfiguredPath = '';
+let compilerOutputDirectory = '';
+let compilerBuildProfile = 'dev';
+let compilerRuntimeChecks = 'default';
+let compilerPersistLlvmIr = 'auto';
 let diagnosticCollection = null;
 let lintStatusBarItem = null;
+let compilerOutputChannel = null;
 const lintUpdateTimeouts = new Map();
 const runningLintProcesses = new Map();
 
@@ -914,8 +983,9 @@ const isDomainTarget = (text) => {
 const operationReferenceVerbs = new Set([
   'input', 'output', 'effect', 'memory', 'memoryHeap', 'memoryArena',
   'memoryAllocationSource', 'memoryStackLimit', 'async', 'operationBody',
-  'purpose', 'invariant', 'warning', 'failure', 'guarantee', 'security',
+  'purpose', 'invariant', 'warning', 'precondition', 'failure', 'guarantee', 'security',
   'timing', 'observability', 'authority', 'runtimeBinding',
+  'pinsNullBodyFailurePath', 'responseBodyForwarder',
   'runtimeBindingPrecondition', 'runtimeBindingFailure', 'intrinsicName',
   'dependencyPath', 'dependencyFailure', 'recordConstructor',
   'recordConstructorFailure', 'jsonCodecStrict', 'jsonCodecUnknownFields',
@@ -948,8 +1018,9 @@ const operationReferenceVerbs = new Set([
 const operationMetadataVerbs = new Set([
   'input', 'output', 'effect', 'memory', 'memoryHeap', 'memoryArena',
   'memoryAllocationSource', 'memoryStackLimit', 'async', 'operationBody',
-  'purpose', 'invariant', 'warning', 'failure', 'guarantee', 'security',
+  'purpose', 'invariant', 'warning', 'precondition', 'failure', 'guarantee', 'security',
   'timing', 'observability', 'authority', 'runtimeBinding',
+  'pinsNullBodyFailurePath', 'responseBodyForwarder',
   'runtimeBindingPrecondition', 'runtimeBindingFailure', 'intrinsicName',
   'dependencyPath', 'dependencyFailure', 'recordConstructor',
   'recordConstructorFailure', 'recordBuildFailure',
@@ -978,11 +1049,12 @@ const namedDeclarationVerbs = new Set([
   'mutex', 'shared', 'channel', 'section', 'domainLiteral', 'literal',
   'listLiteral', 'listType', 'arrayType', 'sliceType', 'smallListType',
   'mapType', 'collectionOperation', 'interval', 'workerPool', 'work',
+  'buildProject', 'registerModule',
 ]);
 
 const singleCallReferenceVerbs = new Set([
   'run', 'start', 'await', 'timeout', 'cancelOn', 'ignoreOk', 'ignoreValue',
-  'useRetry', 'recordBuild',
+  'useRetry', 'recordBuild', 'rationale',
 ]);
 
 const branchLabelPositions = new Map([
@@ -1654,6 +1726,10 @@ const domainTargetHoverText = (text) => {
     return 'AST.md: domain `square` is a semantic method for multiplying a value by itself while keeping the source domain context visible.';
   }
 
+  if (['equal', 'notEqual', 'lessThan', 'lessThanOrEqual', 'greaterThan', 'greaterThanOrEqual'].includes(methodName)) {
+    return 'SYNTAX.md: enum/domain comparison methods preserve the declared type in source. For repr-backed enums the compiler resolves this to the matching width-specific math target, with no implicit widening at the call site.';
+  }
+
   return 'AST.md: `TypeName.methodName` lowers to an underlying primitive based on the alias type while preserving domain context in source.';
 };
 
@@ -1937,6 +2013,7 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
     case 'purpose':
     case 'invariant':
     case 'warning':
+    case 'precondition':
     case 'failure':
     case 'guarantee':
     case 'security':
@@ -2209,6 +2286,16 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
     case 'entry':
     case 'module':
     case 'mode':
+    case 'version':
+    case 'publisher':
+    case 'description':
+    case 'copyright':
+    case 'productName':
+    case 'internalName':
+    case 'originalFilename':
+    case 'trademark':
+    case 'comments':
+    case 'metadata':
     case 'importModule':
     case 'type':
     case 'record':
@@ -2709,6 +2796,257 @@ const registerHovers = (context) => {
   );
 };
 
+const declarationRange = (document, declaration) => {
+  const line = document.lineAt(declaration.lineIndex);
+  const start = Math.max(0, line.text.indexOf(declaration.name));
+  return new vscode.Range(
+    declaration.lineIndex,
+    start,
+    declaration.lineIndex,
+    Math.min(line.text.length, start + declaration.name.length)
+  );
+};
+
+const provideDefinition = (document, position) => {
+  const tokenInfo = getTokenAtPosition(document, position);
+
+  if (!tokenInfo || tokenInfo.tokenIndex === 0) {
+    return null;
+  }
+
+  const text = tokenInfo.token.text;
+
+  if (!isSymbolLike(text) || schemaValues.has(text)) {
+    return null;
+  }
+
+  const index = getDocumentSymbolIndex(document);
+  const currentOperation = index.lineOperations.get(position.line) || null;
+  const entry = index.symbols.get(text);
+  const declaration = chooseSymbolDeclaration(entry, currentOperation);
+
+  if (!declaration) {
+    return null;
+  }
+
+  return new vscode.Location(document.uri, declarationRange(document, declaration));
+};
+
+const documentSymbolNameIndex = (verb, tokens) => {
+  switch (verb) {
+    case 'input':
+      return 2;
+    case 'field':
+    case 'enumCase':
+    case 'errorCase':
+      return 2;
+    case 'route':
+      return 2;
+    case 'storage':
+    case 'sharedState':
+      return 3;
+    default:
+      return 1;
+  }
+};
+
+const documentSymbolKind = (verb) => {
+  switch (verb) {
+    case 'operation':
+      return vscode.SymbolKind.Function;
+    case 'webServer':
+      return vscode.SymbolKind.Namespace;
+    case 'route':
+      return vscode.SymbolKind.Event;
+    case 'record':
+      return vscode.SymbolKind.Struct;
+    case 'field':
+      return vscode.SymbolKind.Field;
+    case 'enum':
+    case 'enumCase':
+      return vscode.SymbolKind.Enum;
+    case 'error':
+    case 'errorCase':
+      return vscode.SymbolKind.EnumMember;
+    case 'type':
+      return vscode.SymbolKind.TypeParameter;
+    case 'capability':
+    case 'authority':
+      return vscode.SymbolKind.Key;
+    case 'const':
+      return vscode.SymbolKind.Constant;
+    case 'var':
+    case 'storage':
+    case 'sharedState':
+      return vscode.SymbolKind.Variable;
+    case 'call':
+      return vscode.SymbolKind.Object;
+    case 'label':
+      return vscode.SymbolKind.Boolean;
+    case 'section':
+      return vscode.SymbolKind.Module;
+    default:
+      return vscode.SymbolKind.String;
+  }
+};
+
+const symbolDetailText = (verb, tokens) => {
+  if (verb === 'route') {
+    return `${tokenText(tokens, 3)} -> ${tokenText(tokens, 4)}`;
+  }
+
+  if (verb === 'call') {
+    return tokenText(tokens, 2);
+  }
+
+  if (verb === 'input') {
+    return `${tokenText(tokens, 1)}: ${tokenText(tokens, 3)}`;
+  }
+
+  if (verb === 'const' || verb === 'var') {
+    return tokenText(tokens, 2);
+  }
+
+  return tokenTailText(tokens, 2);
+};
+
+const provideDocumentSymbols = (document) => {
+  const symbols = [];
+  const symbolVerbs = new Set([
+    'section', 'project', 'target', 'runtime', 'entry', 'module',
+    'buildProject', 'registerModule', 'exportOperation', 'exportType',
+    'exportError', 'exportCapability', 'exportConstant',
+    'operation', 'input', 'webServer', 'route', 'record', 'field',
+    'enum', 'enumCase', 'error', 'errorCase', 'type', 'capability',
+    'authority', 'timeoutBudget', 'storage', 'sharedState', 'const',
+    'var', 'call', 'label', 'jsonCodec', 'policy', 'retryPolicy',
+    'workerPool', 'work', 'interval',
+  ]);
+
+  for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex += 1) {
+    const line = document.lineAt(lineIndex);
+    const tokens = tokenizeLine(line.text);
+
+    if (tokens.length === 0 || tokens[0].text.startsWith('#')) {
+      continue;
+    }
+
+    const verb = tokens[0].text;
+
+    if (!symbolVerbs.has(verb)) {
+      continue;
+    }
+
+    const nameToken = verb === 'route' ? tokens[3] : tokens[documentSymbolNameIndex(verb, tokens)];
+
+    if (!nameToken) {
+      continue;
+    }
+
+    const displayName = verb === 'route'
+      ? `${tokenText(tokens, 2)} ${tokenText(tokens, 3)}`
+      : nameToken.text;
+
+    const selectionRange = new vscode.Range(
+      lineIndex,
+      nameToken.start,
+      lineIndex,
+      nameToken.start + nameToken.length
+    );
+    symbols.push(new vscode.DocumentSymbol(
+      displayName,
+      symbolDetailText(verb, tokens),
+      documentSymbolKind(verb),
+      line.range,
+      selectionRange
+    ));
+  }
+
+  return symbols;
+};
+
+const completionItem = (label, kind, detail, documentation = '') => {
+  const item = new vscode.CompletionItem(label, kind);
+  item.detail = detail;
+
+  if (documentation) {
+    item.documentation = documentation;
+  }
+
+  return item;
+};
+
+const verbCompletionItems = () => {
+  const items = [];
+  const addVerbs = (verbs, kind, detail) => {
+    Array.from(verbs).sort().forEach((verb) => {
+      items.push(completionItem(verb, kind, detail, verbHoverText.get(verb) || ''));
+    });
+  };
+
+  addVerbs(declarationVerbs, vscode.CompletionItemKind.Keyword, 'SemanticScript declaration verb');
+  addVerbs(contextVerbs, vscode.CompletionItemKind.Property, 'SemanticScript context verb');
+  addVerbs(actionVerbs, vscode.CompletionItemKind.Function, 'SemanticScript action verb');
+  addVerbs(controlVerbs, vscode.CompletionItemKind.Event, 'SemanticScript control-flow verb');
+
+  return items;
+};
+
+const primitiveCompletionItems = () => (
+  Array.from(primitiveTargets.entries()).sort(([left], [right]) => left.localeCompare(right)).map(([target, detail]) => (
+    completionItem(target, vscode.CompletionItemKind.Function, 'SemanticScript primitive target', detail)
+  ))
+);
+
+const symbolCompletionItems = (document, position) => {
+  const index = getDocumentSymbolIndex(document);
+  const currentOperation = index.lineOperations.get(position.line) || null;
+  const items = [];
+
+  Array.from(index.symbols.entries()).sort(([left], [right]) => left.localeCompare(right)).forEach(([name, entry]) => {
+    const declaration = chooseSymbolDeclaration(entry, currentOperation);
+
+    if (!declaration) {
+      return;
+    }
+
+    items.push(completionItem(
+      name,
+      vscode.CompletionItemKind.Variable,
+      declarationKindTitle(declaration),
+      declaration.text || ''
+    ));
+  });
+
+  return items;
+};
+
+const provideCompletions = (document, position) => {
+  const line = document.lineAt(position.line);
+  const prefix = line.text.slice(0, position.character);
+  const tokens = tokenizeLine(line.text);
+
+  if (/^\s*[A-Za-z_]*$/.test(prefix)) {
+    return verbCompletionItems();
+  }
+
+  if (tokens[0] && tokens[0].text === 'call' && tokens.length <= 3) {
+    return primitiveCompletionItems();
+  }
+
+  return symbolCompletionItems(document, position);
+};
+
+const registerLanguageNavigation = (context) => {
+  const selector = { language: 'semanticscript' };
+
+  context.subscriptions.push(
+    vscode.languages.registerDefinitionProvider(selector, { provideDefinition }),
+    vscode.languages.registerDocumentSymbolProvider(selector, { provideDocumentSymbols }),
+    vscode.languages.registerCompletionItemProvider(selector, { provideCompletionItems: provideCompletions }, '.', '"')
+  );
+};
+
 const syncConfiguration = () => {
   const segmentConfig = vscode.workspace.getConfiguration('semanticScript.segmentColors');
   segmentColoringEnabled = segmentConfig.get('enabled', true);
@@ -2719,8 +3057,16 @@ const syncConfiguration = () => {
   linterRunMode = linterConfig.get('run', 'onSave');
   linterPythonPath = linterConfig.get('pythonPath', 'python');
   linterConfiguredPath = linterConfig.get('path', '');
-  linterSkipFutureSyntax = linterConfig.get('skipFutureSyntax', true);
+  linterSkipFutureSyntax = linterConfig.get('skipFutureSyntax', false);
   linterEngine = linterConfig.get('engine', 'semlint');
+
+  const compilerConfig = vscode.workspace.getConfiguration('semanticScript.compiler');
+  compilerPythonPath = compilerConfig.get('pythonPath', 'python');
+  compilerConfiguredPath = compilerConfig.get('path', '');
+  compilerOutputDirectory = compilerConfig.get('outputDirectory', '');
+  compilerBuildProfile = compilerConfig.get('buildProfile', 'dev');
+  compilerRuntimeChecks = compilerConfig.get('runtimeChecks', 'default');
+  compilerPersistLlvmIr = compilerConfig.get('persistLlvmIr', 'auto');
 };
 
 const isSemanticScriptDocument = (document) => (
@@ -2749,7 +3095,7 @@ const documentUsesFutureSyntax = (document) => {
   });
 };
 
-const linterScriptName = () => (linterEngine === 'semlint2' ? 'semlint2.py' : 'semlint.py');
+const linterScriptName = () => 'semlint.py';
 
 const candidateLinterPaths = (document) => {
   const candidates = [];
@@ -2842,7 +3188,7 @@ const diagnosticRange = (document, lineNumber, columnNumber) => {
   );
 };
 
-const semlint2Message = (record) => {
+const semlintMessage = (record) => {
   const parts = [];
 
   if (record.code || record.kind) {
@@ -2866,19 +3212,19 @@ const semlint2Message = (record) => {
   return parts.join(' - ') || 'SemanticScript lint diagnostic';
 };
 
-const diagnosticFromSemlint2Record = (document, record) => {
+const diagnosticFromSemlintRecord = (document, record) => {
   const primary = record.primary || {};
   const diagnostic = new vscode.Diagnostic(
     diagnosticRange(document, primary.line, primary.column),
-    semlint2Message(record),
+    semlintMessage(record),
     severityFromLinter(record.severity)
   );
-  diagnostic.source = 'semlint2';
+  diagnostic.source = 'semlint';
   diagnostic.code = record.code || undefined;
   return diagnostic;
 };
 
-const diagnosticFromSemlintRecord = (document, record) => {
+const diagnosticFromSimpleSemlintRecord = (document, record) => {
   const diagnostic = new vscode.Diagnostic(
     diagnosticRange(document, record.line, record.column),
     record.message || String(record.rule || 'SemanticScript lint diagnostic'),
@@ -2910,10 +3256,10 @@ const parseLinterDiagnostics = (document, stdout) => {
 
   return records.map((record) => {
     if (record && record.primary) {
-      return diagnosticFromSemlint2Record(document, record);
+      return diagnosticFromSemlintRecord(document, record);
     }
 
-    return diagnosticFromSemlintRecord(document, record || {});
+    return diagnosticFromSimpleSemlintRecord(document, record || {});
   });
 };
 
@@ -2957,9 +3303,9 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
     runningLintProcesses.delete(documentKey);
   }
 
-  if (linterSkipFutureSyntax && documentUsesFutureSyntax(document)) {
+  if (linterSkipFutureSyntax && linterEngine === 'semlint' && documentUsesFutureSyntax(document)) {
     diagnosticCollection.delete(document.uri);
-    setLinterStatus('$(info) SemanticScript future syntax', `${linterEngine} is skipped for refined future syntax.`);
+    setLinterStatus('$(info) SemanticScript future syntax', 'stable semlint is skipped for refined future syntax.');
     clearLinterStatusLater();
     return;
   }
@@ -2979,9 +3325,7 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
   }
 
   setLinterStatus('$(sync~spin) SemanticScript lint', document.fileName);
-  const linterArgs = linterEngine === 'semlint2'
-    ? [linterPath, document.fileName, '--format', 'json']
-    : [linterPath, document.fileName, '--format', 'json', '--fail-on', 'none'];
+  const linterArgs = [linterPath, document.fileName, '--format', 'json'];
 
   const lintProcess = childProcess.spawn(
     linterPythonPath,
@@ -3125,6 +3469,198 @@ const registerLinter = (context) => {
   });
 };
 
+const candidateCompilerPaths = (document) => {
+  const candidates = [];
+  const workspaceFolder = document ? vscode.workspace.getWorkspaceFolder(document.uri) : null;
+  const addAncestorCandidates = (startPath) => {
+    let currentPath = path.resolve(startPath);
+    const rootPath = path.parse(currentPath).root;
+
+    while (currentPath && currentPath !== rootPath) {
+      candidates.push(path.join(currentPath, 'SemanticScript', 'compiler', 'semsc.py'));
+      candidates.push(path.join(currentPath, 'compiler', 'semsc.py'));
+      currentPath = path.dirname(currentPath);
+    }
+  };
+
+  if (compilerConfiguredPath) {
+    if (path.isAbsolute(compilerConfiguredPath)) {
+      candidates.push(compilerConfiguredPath);
+    } else if (workspaceFolder) {
+      candidates.push(path.join(workspaceFolder.uri.fsPath, compilerConfiguredPath));
+    }
+  }
+
+  const workspaceFolders = vscode.workspace.workspaceFolders || [];
+  workspaceFolders.forEach((folder) => {
+    candidates.push(path.join(folder.uri.fsPath, 'SemanticScript', 'compiler', 'semsc.py'));
+    candidates.push(path.join(folder.uri.fsPath, 'compiler', 'semsc.py'));
+    candidates.push(path.join(folder.uri.fsPath, '..', 'SemanticScript', 'compiler', 'semsc.py'));
+    addAncestorCandidates(folder.uri.fsPath);
+  });
+
+  if (document && document.fileName) {
+    addAncestorCandidates(path.dirname(document.fileName));
+  }
+
+  candidates.push(path.join(__dirname, 'tools', 'semsc.py'));
+
+  return candidates;
+};
+
+const findCompilerPath = (document) => {
+  const seen = new Set();
+
+  for (const candidate of candidateCompilerPaths(document)) {
+    const normalized = path.normalize(candidate);
+
+    if (seen.has(normalized)) {
+      continue;
+    }
+
+    seen.add(normalized);
+
+    if (fs.existsSync(normalized)) {
+      return normalized;
+    }
+  }
+
+  return null;
+};
+
+const compilerOutputPath = (document) => {
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+  const sourceDirectory = path.dirname(document.fileName);
+  const outputBase = `${path.basename(document.fileName, path.extname(document.fileName))}${process.platform === 'win32' ? '.exe' : ''}`;
+  let outputDirectory = path.join(sourceDirectory, 'build');
+
+  if (compilerOutputDirectory) {
+    outputDirectory = path.isAbsolute(compilerOutputDirectory)
+      ? compilerOutputDirectory
+      : path.join(workspaceFolder ? workspaceFolder.uri.fsPath : sourceDirectory, compilerOutputDirectory);
+  }
+
+  fs.mkdirSync(outputDirectory, { recursive: true });
+  return path.join(outputDirectory, outputBase);
+};
+
+const appendCompilerOutput = (label, text) => {
+  if (!compilerOutputChannel || !text.trim()) {
+    return;
+  }
+
+  compilerOutputChannel.appendLine(label);
+  compilerOutputChannel.appendLine(text.trim());
+};
+
+const runCompilerForDocument = async (document) => {
+  if (!isSemanticScriptDocument(document)) {
+    vscode.window.showInformationMessage('Open a SemanticScript file to compile.');
+    return;
+  }
+
+  syncConfiguration();
+
+  if (document.isDirty) {
+    await document.save();
+  }
+
+  const compilerPath = findCompilerPath(document);
+
+  if (!compilerPath) {
+    vscode.window.showWarningMessage('SemanticScript compiler not found. Set semanticScript.compiler.path or open the SemanticScript repo root.');
+    return;
+  }
+
+  const useCompilerManagedOutput = path.basename(document.fileName).toLowerCase() === 'build.sem';
+  const outputPath = useCompilerManagedOutput ? null : compilerOutputPath(document);
+  const cwd = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath || path.dirname(document.fileName);
+  const args = [
+    compilerPath,
+    document.fileName,
+    '--emit-exe',
+    '--build-profile',
+    compilerBuildProfile,
+    '--persist-llvm-ir',
+    compilerPersistLlvmIr,
+  ];
+
+  if (outputPath) {
+    args.splice(3, 0, outputPath);
+  }
+
+  if (compilerRuntimeChecks !== 'default') {
+    args.push('--runtime-checks', compilerRuntimeChecks);
+  }
+
+  compilerOutputChannel.clear();
+  compilerOutputChannel.appendLine(`SemanticScript compile: ${document.fileName}`);
+  compilerOutputChannel.appendLine(`${compilerPythonPath} ${args.map((arg) => (arg.includes(' ') ? `"${arg}"` : arg)).join(' ')}`);
+
+  const compileProcess = childProcess.spawn(
+    compilerPythonPath,
+    args,
+    {
+      cwd,
+      windowsHide: true,
+    }
+  );
+
+  let stdout = '';
+  let stderr = '';
+
+  compileProcess.stdout.on('data', (chunk) => {
+    stdout += chunk.toString();
+  });
+
+  compileProcess.stderr.on('data', (chunk) => {
+    stderr += chunk.toString();
+  });
+
+  compileProcess.on('error', (error) => {
+    compilerOutputChannel.show(true);
+    appendCompilerOutput('error:', error.message);
+    vscode.window.showErrorMessage(`SemanticScript compile failed: ${error.message}`);
+  });
+
+  compileProcess.on('close', (code) => {
+    appendCompilerOutput('stdout:', stdout);
+    appendCompilerOutput('stderr:', stderr);
+
+    if (code === 0) {
+      const compiledTarget = outputPath || 'compiler-managed build output';
+      compilerOutputChannel.appendLine(`ok: ${compiledTarget}`);
+      vscode.window.showInformationMessage(
+        outputPath
+          ? `SemanticScript compiled: ${path.basename(outputPath)}`
+          : 'SemanticScript compiled to build output'
+      );
+      return;
+    }
+
+    compilerOutputChannel.show(true);
+    vscode.window.showErrorMessage(`SemanticScript compile failed with exit code ${code}.`);
+  });
+};
+
+const registerCompiler = (context) => {
+  compilerOutputChannel = vscode.window.createOutputChannel('SemanticScript Compiler');
+  context.subscriptions.push(compilerOutputChannel);
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('semanticscript.compileCurrentFile', () => {
+      const editor = vscode.window.activeTextEditor;
+
+      if (!editor || !isSemanticScriptDocument(editor.document)) {
+        vscode.window.showInformationMessage('Open a SemanticScript file to compile.');
+        return;
+      }
+
+      runCompilerForDocument(editor.document);
+    })
+  );
+};
+
 const activate = (context) => {
   syncConfiguration();
   disposeDecorations();
@@ -3132,7 +3668,9 @@ const activate = (context) => {
   verbDecorations = createVerbDecorations();
   registerSemanticTokens(context);
   registerHovers(context);
+  registerLanguageNavigation(context);
   registerLinter(context);
+  registerCompiler(context);
 
   context.subscriptions.push({
     dispose: disposeDecorations,
@@ -3167,7 +3705,11 @@ const activate = (context) => {
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration('semanticScript.segmentColors') || event.affectsConfiguration('semanticScript.linter')) {
+      if (
+        event.affectsConfiguration('semanticScript.segmentColors')
+        || event.affectsConfiguration('semanticScript.linter')
+        || event.affectsConfiguration('semanticScript.compiler')
+      ) {
         disposeDecorations();
         syncConfiguration();
         decorations = createDecorations();

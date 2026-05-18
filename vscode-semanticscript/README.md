@@ -2,11 +2,10 @@
 
 Local VS Code extension for SemanticScript `.sscript` and `.sem` files.
 
-This extension is editor tooling. It recognizes both the current executable
-SemanticScript surface and the refined future syntax used in
-`../SemanticScript/sem/refined_syntax_demo.sscript`. The refined syntax support is for
-highlighting, hovers, semantic roles, and drift detection; it does not make the
-current compiler accept those future forms.
+This extension is editor tooling. It recognizes the current executable
+SemanticScript surface plus the design/spec syntax used across the repository,
+including native HTTP server APIs, route metadata, explicit runtime checks, and
+refinement-only documentation forms.
 
 ## Contents
 
@@ -18,20 +17,20 @@ current compiler accept those future forms.
 
 ## Current Status
 
-Active editor tooling. It supports both current executable syntax and refined
-future syntax for highlighting, hovers, semantic roles, and lint integration.
+Active editor tooling. Version `1.0.1` supports highlighting, semantic tokens,
+hovers, same-file navigation, completions, lint integration, and direct
+`semsc.py` executable builds from VS Code.
 
 ## Release Readiness
 
 The package is 1.0 local-release oriented. Before a public Marketplace release,
 the release owner must decide:
 
-- the real Marketplace `publisher` value to replace `semanticscript-local`;
-- whether the root no-license notice is accepted for private/source-available
-  distribution, or a public license should replace `UNLICENSED`.
+- the real Marketplace `publisher` value to replace `semanticscript-local`.
 
+The extension package is licensed as MIT, matching the root repository license.
 Run `npm run check` before packaging. Use `npm run package:vsix` for local VSIX
-builds only after accepting those metadata constraints for the target release.
+builds after accepting the publisher metadata constraint for the target release.
 
 ## Features
 
@@ -51,10 +50,15 @@ builds only after accepting those metadata constraints for the target release.
 - Identifier hovers resolve same-file symbols such as constants, variables,
   inputs, storage slots, call objects, labels, bindings, failures, fields,
   groups, collection declarations, and work items.
-- Optional diagnostics from `semlint.py`, with current-linter diagnostics skipped
-  by default for refined future syntax files.
-- Optional structured diagnostics from `semlint2.py` via
-  `semanticScript.linter.engine`.
+- Go to Definition for same-file SemanticScript symbols.
+- Outline/Breadcrumb support through document symbols for operations, routes,
+  records, fields, capabilities, constants, storage, calls, labels, and key
+  project declarations.
+- Completion suggestions for verbs, primitive/native call targets, and same-file
+  symbols.
+- Optional diagnostics from the canonical `semlint.py` engine.
+- `SemanticScript: Compile Current File` runs `semsc.py --emit-exe` with
+  configurable build profile, runtime checks, and LLVM IR persistence.
 
 ## Refined Syntax Coverage
 
@@ -65,10 +69,26 @@ The extension recognizes the recent syntax families from the refined example:
   `set module`, `set sharedState`.
 - Program mode:
   `mode capturedOutputReplay`.
+- Project metadata:
+  `version`, `publisher`, `description`, `copyright`, `productName`,
+  `internalName`, `originalFilename`, `trademark`, `comments`, and repeatable
+  `metadata "key" "value"` rows used by executable VERSIONINFO emission.
 - Operation contracts:
   `operationBody`, `runtimeBinding`, `runtimeBindingPrecondition`,
   `runtimeBindingFailure`, `intrinsicName`, `dependencyPath`,
-  `dependencyFailure`.
+  `dependencyFailure`, `precondition`, `pinsNullBodyFailurePath`,
+  `responseBodyForwarder`, and `rationale`.
+- Native web server declarations:
+  `webServer`, `serverHost`, `serverPort`, `route`, `routeTimeout`,
+  `routeMiddleware`, `routeTimeoutOptOut`, and `routeMiddlewareOptOut`.
+- Native HTTP call targets:
+  `http.requestMethod`, `http.requestPath`, `http.requestHeader`,
+  `http.requestQueryParam`, `http.requestBodyText`, `http.requestBodyBytes`,
+  `http.requestBodyLength`, `http.responseText`, `http.responseBytes`,
+  `http.responseHeader`, `http.responseSseEvent`, and multipart helpers such as
+  `http.multipartPartText`, `http.multipartPartBytes`,
+  `http.multipartPartLength`, `http.multipartPartFilename`, and
+  `http.multipartPartContentType`.
 - Memory contracts:
   `memoryHeap`, `memoryArena`, `memoryAllocationSource`, `memoryStackLimit`.
 - Trust and literals:
@@ -124,22 +144,39 @@ suffix fragments.
 
 ## Linting
 
-Linting uses `../SemanticScript/linter/semlint.py` by default. Set
-`semanticScript.linter.engine` to `semlint2` to use the structured refinement
-diagnostics from `../SemanticScript/linter/semlint2.py`. The extension
+Linting uses the structured diagnostics from
+`../SemanticScript/linter/semlint.py`. The extension
 auto-discovers the selected linter from the workspace root, the `SemanticScript`
 folder, or ancestors of the open `.sscript` file. Set `semanticScript.linter.path` if
 your checkout layout is different.
 
-Files using the refined future syntax are skipped by the current linter by
-default because that syntax is a mock/spec showcase and is not current
-executable SemanticScript. Turn off `semanticScript.linter.skipFutureSyntax` if you
-want to force current `semlint.py` diagnostics anyway.
+`semanticScript.linter.skipFutureSyntax` defaults to `false`. When enabled, it
+skips linter diagnostics on refinement-only files that are not executable by the
+current compiler yet.
+
+## Compiling
+
+`SemanticScript: Compile Current File` runs the current file through `semsc.py`
+with `--emit-exe`. The extension auto-discovers the compiler from common repo
+layouts:
+
+```text
+SemanticScript/compiler/semsc.py
+compiler/semsc.py
+../SemanticScript/compiler/semsc.py
+```
+
+Set `semanticScript.compiler.path` for custom layouts. The emitted executable is
+placed in a `build/` directory beside the source file unless
+`semanticScript.compiler.outputDirectory` is set. When compiling `build.sem`,
+the extension lets `semsc.py` choose the compiler-managed output path from the
+build tape.
 
 ## Commands
 
 - `SemanticScript: Toggle Segment Colors`
 - `SemanticScript: Run Linter`
+- `SemanticScript: Compile Current File`
 
 ## Run Locally
 
@@ -184,13 +221,26 @@ Then reload VS Code.
   "semanticScript.linter.run": "onSave",
   "semanticScript.linter.pythonPath": "python",
   "semanticScript.linter.path": "",
-  "semanticScript.linter.skipFutureSyntax": true
+  "semanticScript.linter.skipFutureSyntax": false,
+  "semanticScript.compiler.pythonPath": "python",
+  "semanticScript.compiler.path": "",
+  "semanticScript.compiler.outputDirectory": "",
+  "semanticScript.compiler.buildProfile": "dev",
+  "semanticScript.compiler.runtimeChecks": "default",
+  "semanticScript.compiler.persistLlvmIr": "auto"
 }
 ```
 
 `semanticScript.segmentColors.colorMode` can be `background`, `overview`, or
 `both`.
 
-`semanticScript.linter.engine` can be `semlint` or `semlint2`.
+`semanticScript.linter.engine` currently accepts `semlint`.
 
 `semanticScript.linter.run` can be `onSave`, `onType`, or `manual`.
+
+`semanticScript.compiler.buildProfile` can be `dev` or `prod`.
+
+`semanticScript.compiler.runtimeChecks` can be `default`, `off`, `traps`, or
+`panic`.
+
+`semanticScript.compiler.persistLlvmIr` can be `auto`, `yes`, or `no`.

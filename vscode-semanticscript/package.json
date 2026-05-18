@@ -1,10 +1,15 @@
 {
   "name": "semanticscript-vscode",
   "displayName": "SemanticScript",
-  "description": "Syntax highlighting, segment coloring, and lint integration for SemanticScript .sscript and .sem files.",
-  "version": "1.0.0",
+  "description": "Syntax highlighting, navigation, completion, linting, and compiler integration for SemanticScript .sscript and .sem files.",
+  "version": "1.0.1",
   "publisher": "semanticscript-local",
-  "license": "UNLICENSED",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/monstercameron/SemanticScript.git",
+    "directory": "vscode-semanticscript"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -21,7 +26,8 @@
   "activationEvents": [
     "onLanguage:semanticscript",
     "onCommand:semanticscript.toggleSegmentColors",
-    "onCommand:semanticscript.runLinter"
+    "onCommand:semanticscript.runLinter",
+    "onCommand:semanticscript.compileCurrentFile"
   ],
   "main": "./extension.js",
   "scripts": {
@@ -60,6 +66,10 @@
       {
         "command": "semanticscript.runLinter",
         "title": "SemanticScript: Run Linter"
+      },
+      {
+        "command": "semanticscript.compileCurrentFile",
+        "title": "SemanticScript: Compile Current File"
       }
     ],
     "configuration": {
@@ -89,10 +99,9 @@
           "type": "string",
           "default": "semlint",
           "enum": [
-            "semlint",
-            "semlint2"
+            "semlint"
           ],
-          "description": "Select the SemanticScript linter engine. semlint is stable; semlint2 emits structured refinement diagnostics."
+          "description": "Select the SemanticScript linter engine. semlint is the canonical structured diagnostics engine."
         },
         "semanticScript.linter.run": {
           "type": "string",
@@ -112,12 +121,57 @@
         "semanticScript.linter.path": {
           "type": "string",
           "default": "",
-          "description": "Optional path to semlint.py or semlint2.py. Leave empty to auto-discover the selected linter from the workspace."
+          "description": "Optional path to semlint.py. Leave empty to auto-discover the linter from the workspace."
         },
         "semanticScript.linter.skipFutureSyntax": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Skip current semlint diagnostics for proposed refined syntax files that are not executable by the current compiler yet."
+        },
+        "semanticScript.compiler.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Python executable used to run semsc.py."
+        },
+        "semanticScript.compiler.path": {
+          "type": "string",
+          "default": "",
+          "description": "Optional path to semsc.py. Leave empty to auto-discover the compiler from the workspace."
+        },
+        "semanticScript.compiler.outputDirectory": {
+          "type": "string",
+          "default": "",
+          "description": "Optional directory for compiled executables. Leave empty to use a build directory beside the source file."
+        },
+        "semanticScript.compiler.buildProfile": {
+          "type": "string",
+          "default": "dev",
+          "enum": [
+            "dev",
+            "prod"
+          ],
+          "description": "Build profile passed to semsc.py when compiling an executable."
+        },
+        "semanticScript.compiler.runtimeChecks": {
+          "type": "string",
+          "default": "default",
+          "enum": [
+            "default",
+            "off",
+            "traps",
+            "panic"
+          ],
+          "description": "Runtime check mode passed to semsc.py. default lets the compiler choose from the build profile."
+        },
+        "semanticScript.compiler.persistLlvmIr": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "yes",
+            "no"
+          ],
+          "description": "Controls semsc.py --persist-llvm-ir while compiling from VS Code."
         }
       }
     },

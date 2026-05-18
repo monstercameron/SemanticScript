@@ -82,7 +82,7 @@ Accepted values:
 
 ```text
 semanticScript.segmentColors.colorMode: background | overview | both
-semanticScript.linter.engine: semlint | semlint2
+semanticScript.linter.engine: semlint
 semanticScript.linter.run: onSave | onType | manual
 ```
 
