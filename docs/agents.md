@@ -322,6 +322,12 @@ memoryAllocationSource OP ALLOC_CALL, capabilities for heap allocate/free, and
 handle c.malloc as fallible with bindError + branchIfError. Add linter-required
 `defer NAME c.free allocatedPointer`; current compiler treats non-user-op defer
 targets as cleanup metadata, so do not claim this proves runtime leak freedom.
+There is no general stdlib free wrapper today; stdlib_as/README explicitly says
+c.free is one of the host C calls with no useful pure-AS substitute. Prefer a
+domain-specific stdlib release op when the matching allocator provides one
+(example: createDeterministicRandomState -> releaseDeterministicRandomState).
+For generic heap buffers or duplicateCStringIntoOwnedMemory output, current
+stdlib examples still use c.free / defer NAME c.free POINTER.
 
 Domain method:
   type CountdownValue I64
