@@ -45,7 +45,7 @@ blocks, and dynamic object or array literals.
 | `trademark "text"` | Declares the legal trademark string. Lowers to VERSIONINFO `LegalTrademarks`. | Impl'd |
 | `comments "text"` | Declares an arbitrary comments block. Lowers to VERSIONINFO `Comments`. | Impl'd |
 | `metadata "key" "value"` | Declares an arbitrary user-defined metadata pair. Lowers to a custom VERSIONINFO StringFileInfo entry with the given key — readable via `version.dll`'s `VerQueryValue`. May be repeated; insertion order is preserved. | Impl'd |
-| `buildProject PROJECT` | Starts a project build tape in `build.sem`; project-mode validation requires exactly one active build project. | Partial |
+| `buildProject PROJECT` | Starts a strict project build tape in `build.sem`; exactly one active build project is allowed. | Partial |
 | `modulePath PROJECT MODULE_PATH` | Declares the Go-style canonical module path for the project. | Partial |
 | `languageVersion PROJECT "VERSION"` | Pins the SemanticScript language version expected by the build tape. | Partial |
 | `projectVersion PROJECT "VERSION"` | Pins the project/package version expected by the build tape. | Partial |
@@ -64,9 +64,9 @@ blocks, and dynamic object or array literals.
 | `runtimeChecks PROJECT off|traps|panic` | Declares runtime-check policy for project-mode builds. | Partial |
 | `persistLlvmIr PROJECT auto|yes|no` | Declares whether project-mode builds keep generated LLVM IR artifacts. | Partial |
 | `emitLlvmIr PROJECT auto|yes|no` | Requests pre-optimization LLVM IR emission from the build tape. | Impl'd |
-| `llvmIrOutput PROJECT "PATH"` | Declares the pre-optimization LLVM IR output path. Relative paths resolve into the compiler-managed build directory. | Impl'd |
+| `llvmIrOutput PROJECT "PATH"` | Declares the pre-optimization LLVM IR output path. Basenames resolve into the compiler-managed build directory; paths with directories resolve relative to `build.sem`. | Impl'd |
 | `emitOptimizedLlvmIr PROJECT yes|no` | Requests post-optimization LLVM IR emission from the build tape. | Impl'd |
-| `optimizedLlvmIrOutput PROJECT "PATH"` | Declares the post-optimization LLVM IR output path. Relative paths resolve into the compiler-managed build directory. | Impl'd |
+| `optimizedLlvmIrOutput PROJECT "PATH"` | Declares the post-optimization LLVM IR output path. Basenames resolve into the compiler-managed build directory; paths with directories resolve relative to `build.sem`. | Impl'd |
 | `buildDir PROJECT "PATH"` | Overrides the exact compiler-managed build output directory. | Impl'd |
 | `buildRoot PROJECT "PATH"` | Overrides the root that contains the compiler-managed build folder. | Impl'd |
 | `buildFolderName PROJECT NAME` | Overrides the managed build folder name used with `buildRoot`. Must be a single folder name, not a path. | Impl'd |
