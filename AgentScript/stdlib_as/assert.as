@@ -1,334 +1,305 @@
+# ============================================================
+# AGENTSCRIPT STANDARD LIBRARY: typed assertions
+# ============================================================
+#
+# # rationale: C's <assert.h> macro raises SIGABRT on failure with
+#   no structured information. The refined surface defines a typed
+#   AssertionError domain (ConditionWasFalse / ValuesWereNotEqual /
+#   ValuesShouldNotMatch / OrderingViolated / OutOfRange /
+#   PointerWasNull) so a failing assertion surfaces in the typed
+#   error system rather than terminating the process. Callers that
+#   want the abort-on-failure shape can wrap any require* op with
+#   `branchIfError ... -> c.abort`.
+#
+# # invariant: every require* operation returns Result Void
+#   AssertionError. Success path is a clean `returnOk` with no
+#   side effect; failure path writes a short message via
+#   writeAssertionByteToStandardOutput and returns an AssertionError
+#   variant carrying the structured failure reason.
+#
+# # security: assertion messages are written to stdout — keep
+#   sensitive values out of conditions when assertions might
+#   trigger in production.
+#
+# # timing: each assertion is O(1) on the success path; failure
+#   adds ~8 putchar calls for the "assert!\n" diagnostic.
+
 project StdAssertSelfTest
 target console
 runtime AgentRuntime 0.1
-
 entry console main
 
-error MainError
-errorCase MainError AssertionFailed CSignedInt32
-errorCase MainError TestFailed CSignedInt32
+# Typed error domain for failed assertions.
+error AssertionError
+errorCase AssertionError ConditionWasFalse
+errorCase AssertionError ValuesWereNotEqual
+errorCase AssertionError ValuesShouldNotMatch
+errorCase AssertionError OrderingViolated
+errorCase AssertionError OutOfRange
+errorCase AssertionError PointerWasNull
 
-# ============================================================
-# AGENTSCRIPT STANDARD LIBRARY: <assert.h>-style runtime checks.
-#
-# Operations:
-#   requireConditionTrue(condition)         - if condition == 0, abort with code 1
-#                                    (and a message to stdout). Returns 0
-#                                    when the assertion holds.
-#   requireSignedInt64ValuesEqual(a, b)             - requireConditionTrue(a == b)
-#   requireSignedInt64ValuesNotEqual(a, b)          - requireConditionTrue(a != b)
-#
-# Pure AS atop writeAssertionByteToStandardOutput for the failure-message bytes.
-# ============================================================
+error MainError
+errorCase MainError AssertSmokeFailed
+
+# section assert.diagnosticBytes
 
 operation writeAssertionByteToStandardOutput
 input writeAssertionByteToStandardOutput characterCode CSignedInt32
-output writeAssertionByteToStandardOutput Result CSignedInt32 Void
+output writeAssertionByteToStandardOutput CSignedInt32
 effect writeAssertionByteToStandardOutput write console.stdout
-memory writeAssertionByteToStandardOutput heap no
-memory writeAssertionByteToStandardOutput stack max 1KiB
+memoryHeap writeAssertionByteToStandardOutput no
+memoryStackLimit writeAssertionByteToStandardOutput 1024
 async writeAssertionByteToStandardOutput no
-purpose writeAssertionByteToStandardOutput "Single-byte writer used by assertion failure printing. Wraps the floor primitive c.putchar."
+purpose writeAssertionByteToStandardOutput "Single-byte writer wrapping c.putchar for assertion-failure diagnostics."
+invariant writeAssertionByteToStandardOutput "Writes exactly one byte; returns the libc putchar return value (typically the character itself or EOF on error)."
+guarantee writeAssertionByteToStandardOutput "Always returns."
 label startWriteAssertionByteToStandardOutput
-call libcCall c.putchar
-arg libcCall c characterCode
-run libcCall
-bind result CSignedInt32 libcCall
-returnOk result
+call libcPutcharCall c.putchar
+arg libcPutcharCall c characterCode
+run libcPutcharCall
+bind libcPutcharResult CSignedInt32 libcPutcharCall
+returnValue libcPutcharResult
 
+# section assert.diagnosticHelpers
+
+operation emitAssertionFailureBanner
+output emitAssertionFailureBanner CSignedInt32
+effect emitAssertionFailureBanner write console.stdout
+memoryHeap emitAssertionFailureBanner no
+memoryStackLimit emitAssertionFailureBanner 1024
+async emitAssertionFailureBanner no
+purpose emitAssertionFailureBanner "Emit the literal 'assert!\\n' on stdout. Internal helper used by every assertion-failure path."
+invariant emitAssertionFailureBanner "Exactly eight bytes written: 'a', 's', 's', 'e', 'r', 't', '!', '\\n'."
+guarantee emitAssertionFailureBanner "Always returns."
+label startEmitAssertionFailureBanner
+const asciiLowerA CSignedInt32 97
+const asciiLowerS CSignedInt32 115
+const asciiLowerE CSignedInt32 101
+const asciiLowerR CSignedInt32 114
+const asciiLowerT CSignedInt32 116
+const asciiExclamation CSignedInt32 33
+const asciiNewline CSignedInt32 10
+call wA writeAssertionByteToStandardOutput
+arg wA characterCode asciiLowerA
+run wA
+ignoreValue wA CSignedInt32
+call wS1 writeAssertionByteToStandardOutput
+arg wS1 characterCode asciiLowerS
+run wS1
+ignoreValue wS1 CSignedInt32
+call wS2 writeAssertionByteToStandardOutput
+arg wS2 characterCode asciiLowerS
+run wS2
+ignoreValue wS2 CSignedInt32
+call wE writeAssertionByteToStandardOutput
+arg wE characterCode asciiLowerE
+run wE
+ignoreValue wE CSignedInt32
+call wR writeAssertionByteToStandardOutput
+arg wR characterCode asciiLowerR
+run wR
+ignoreValue wR CSignedInt32
+call wT writeAssertionByteToStandardOutput
+arg wT characterCode asciiLowerT
+run wT
+ignoreValue wT CSignedInt32
+call wEx writeAssertionByteToStandardOutput
+arg wEx characterCode asciiExclamation
+run wEx
+ignoreValue wEx CSignedInt32
+call wNl writeAssertionByteToStandardOutput
+arg wNl characterCode asciiNewline
+run wNl
+ignoreValue wNl CSignedInt32
+const bannerReturnCode CSignedInt32 0
+returnValue bannerReturnCode
+
+# section assert.predicates
 
 operation requireConditionTrue
-input requireConditionTrue conditionValue CSignedInt64
-output requireConditionTrue Result CSignedInt32 CSignedInt32
-memory requireConditionTrue heap no
-memory requireConditionTrue stack max 1KiB
+input requireConditionTrue conditionValue Bool
+output requireConditionTrue Result CSignedInt32 AssertionError
+effect requireConditionTrue write console.stdout
+memoryHeap requireConditionTrue no
+memoryStackLimit requireConditionTrue 1024
 async requireConditionTrue no
-purpose requireConditionTrue "Abort the program (returning error code 1) when condition is zero. Returns 0 on success."
-
+purpose requireConditionTrue "Succeeds when conditionValue is true; emits an 'assert!\\n' banner and returns AssertionError.ConditionWasFalse otherwise."
+invariant requireConditionTrue "Success returns 0; failure returns a typed AssertionError variant."
+failure requireConditionTrue ConditionWasFalse "Returned when conditionValue is false."
+guarantee requireConditionTrue "Total — every input produces either an Ok or an Error."
 label startRequireConditionTrue
-const zeroAt I64 0
-const okAt CSignedInt32 0
-const failCode CSignedInt32 1
-
-call checkCall math.equalI64
-arg checkCall left conditionValue
-arg checkCall right zeroAt
-run checkCall
-bind isFalse Bool checkCall
-branchIf isFalse assertFail
-returnOk okAt
-
-label assertFail
-# Print "assert!\n" via writeAssertionByteToStandardOutput.
-const charAU CSignedInt32 97
-const charSU CSignedInt32 115
-const charSU2 CSignedInt32 115
-const charEU CSignedInt32 101
-const charRU CSignedInt32 114
-const charTU CSignedInt32 116
-const charBang CSignedInt32 33
-const charNlA CSignedInt32 10
-call pAa writeAssertionByteToStandardOutput
-arg pAa c charAU
-run pAa
-ignoreOk pAa CSignedInt32
-call pAs writeAssertionByteToStandardOutput
-arg pAs c charSU
-run pAs
-ignoreOk pAs CSignedInt32
-call pAs2 writeAssertionByteToStandardOutput
-arg pAs2 c charSU2
-run pAs2
-ignoreOk pAs2 CSignedInt32
-call pAe writeAssertionByteToStandardOutput
-arg pAe c charEU
-run pAe
-ignoreOk pAe CSignedInt32
-call pAr writeAssertionByteToStandardOutput
-arg pAr c charRU
-run pAr
-ignoreOk pAr CSignedInt32
-call pAt writeAssertionByteToStandardOutput
-arg pAt c charTU
-run pAt
-ignoreOk pAt CSignedInt32
-call pAb writeAssertionByteToStandardOutput
-arg pAb c charBang
-run pAb
-ignoreOk pAb CSignedInt32
-call pAnl writeAssertionByteToStandardOutput
-arg pAnl c charNlA
-run pAnl
-ignoreOk pAnl CSignedInt32
-returnError failCode
-
+branchIf conditionValue returnAssertionOk
+call emitBannerCall emitAssertionFailureBanner
+run emitBannerCall
+ignoreValue emitBannerCall CSignedInt32
+makeError conditionFailure AssertionError.ConditionWasFalse
+returnError conditionFailure
+label returnAssertionOk
+const assertionOkCode CSignedInt32 0
+returnOk assertionOkCode
 
 operation requireSignedInt64ValuesEqual
 input requireSignedInt64ValuesEqual leftValue CSignedInt64
 input requireSignedInt64ValuesEqual rightValue CSignedInt64
-output requireSignedInt64ValuesEqual Result CSignedInt32 CSignedInt32
-memory requireSignedInt64ValuesEqual heap no
-memory requireSignedInt64ValuesEqual stack max 1KiB
+output requireSignedInt64ValuesEqual Result CSignedInt32 AssertionError
+effect requireSignedInt64ValuesEqual write console.stdout
+memoryHeap requireSignedInt64ValuesEqual no
+memoryStackLimit requireSignedInt64ValuesEqual 1024
 async requireSignedInt64ValuesEqual no
-purpose requireSignedInt64ValuesEqual "Assert a == b. Delegates to requireConditionTrue."
+purpose requireSignedInt64ValuesEqual "Asserts leftValue == rightValue."
+failure requireSignedInt64ValuesEqual ValuesWereNotEqual "Returned when the two CSignedInt64 inputs do not match."
+guarantee requireSignedInt64ValuesEqual "Total."
 label startRequireSignedInt64ValuesEqual
-call eqCall math.equalI64
-arg eqCall left leftValue
-arg eqCall right rightValue
-run eqCall
-bind eqB Bool eqCall
-var asInt I64 0
-branchIf eqB aeMakeTrue
-branch aeMakeFalse
-label aeMakeTrue
-const oneAe I64 1
-set asInt oneAe
-branch aeCall
-label aeMakeFalse
-const zeroAe I64 0
-set asInt zeroAe
-branch aeCall
-label aeCall
-call asCall requireConditionTrue
-arg asCall condition asInt
-run asCall
-bindOk asOkRes CSignedInt32 asCall
-bindError asErrRes CSignedInt32 asCall
-branchIfError asCall aePropagateErr
-const okAe CSignedInt32 0
-returnOk okAe
-label aePropagateErr
-returnError asErrRes
-
+call detectEqualityCall math.equalI64
+arg detectEqualityCall left leftValue
+arg detectEqualityCall right rightValue
+run detectEqualityCall
+bind valuesEqual Bool detectEqualityCall
+branchIf valuesEqual returnEqualityOk
+call emitEqualityBannerCall emitAssertionFailureBanner
+run emitEqualityBannerCall
+ignoreValue emitEqualityBannerCall CSignedInt32
+makeError equalityFailure AssertionError.ValuesWereNotEqual
+returnError equalityFailure
+label returnEqualityOk
+const equalityOkCode CSignedInt32 0
+returnOk equalityOkCode
 
 operation requireSignedInt64ValuesNotEqual
 input requireSignedInt64ValuesNotEqual leftValue CSignedInt64
 input requireSignedInt64ValuesNotEqual rightValue CSignedInt64
-output requireSignedInt64ValuesNotEqual Result CSignedInt32 CSignedInt32
-memory requireSignedInt64ValuesNotEqual heap no
-memory requireSignedInt64ValuesNotEqual stack max 1KiB
+output requireSignedInt64ValuesNotEqual Result CSignedInt32 AssertionError
+effect requireSignedInt64ValuesNotEqual write console.stdout
+memoryHeap requireSignedInt64ValuesNotEqual no
+memoryStackLimit requireSignedInt64ValuesNotEqual 1024
 async requireSignedInt64ValuesNotEqual no
-purpose requireSignedInt64ValuesNotEqual "Assert a != b."
+purpose requireSignedInt64ValuesNotEqual "Asserts leftValue != rightValue."
+failure requireSignedInt64ValuesNotEqual ValuesShouldNotMatch "Returned when the two CSignedInt64 inputs are equal."
+guarantee requireSignedInt64ValuesNotEqual "Total."
 label startRequireSignedInt64ValuesNotEqual
-call neCall math.notEqualI64
-arg neCall left leftValue
-arg neCall right rightValue
-run neCall
-bind neB Bool neCall
-var asInt2 I64 0
-branchIf neB anMakeTrue
-branch anMakeFalse
-label anMakeTrue
-const oneAn I64 1
-set asInt2 oneAn
-branch anCall
-label anMakeFalse
-const zeroAn I64 0
-set asInt2 zeroAn
-branch anCall
-label anCall
-call asCall2 requireConditionTrue
-arg asCall2 condition asInt2
-run asCall2
-bindOk asOk2 CSignedInt32 asCall2
-bindError asErr2 CSignedInt32 asCall2
-branchIfError asCall2 anPropagateErr
-const okAn CSignedInt32 0
-returnOk okAn
-label anPropagateErr
-returnError asErr2
-
+call detectInequalityCall math.notEqualI64
+arg detectInequalityCall left leftValue
+arg detectInequalityCall right rightValue
+run detectInequalityCall
+bind valuesDiffer Bool detectInequalityCall
+branchIf valuesDiffer returnInequalityOk
+call emitInequalityBannerCall emitAssertionFailureBanner
+run emitInequalityBannerCall
+ignoreValue emitInequalityBannerCall CSignedInt32
+makeError inequalityFailure AssertionError.ValuesShouldNotMatch
+returnError inequalityFailure
+label returnInequalityOk
+const inequalityOkCode CSignedInt32 0
+returnOk inequalityOkCode
 
 operation requireSignedInt64LeftGreaterThanRight
 input requireSignedInt64LeftGreaterThanRight leftValue CSignedInt64
 input requireSignedInt64LeftGreaterThanRight rightValue CSignedInt64
-output requireSignedInt64LeftGreaterThanRight Result CSignedInt32 CSignedInt32
-memory requireSignedInt64LeftGreaterThanRight heap no
+output requireSignedInt64LeftGreaterThanRight Result CSignedInt32 AssertionError
+effect requireSignedInt64LeftGreaterThanRight write console.stdout
+memoryHeap requireSignedInt64LeftGreaterThanRight no
 async requireSignedInt64LeftGreaterThanRight no
-purpose requireSignedInt64LeftGreaterThanRight "Assert a > b. Returns 0 on success; error code 1 (via requireConditionTrue) on failure."
+purpose requireSignedInt64LeftGreaterThanRight "Asserts leftValue > rightValue (strict)."
+failure requireSignedInt64LeftGreaterThanRight OrderingViolated "Returned when leftValue is not strictly greater than rightValue."
+guarantee requireSignedInt64LeftGreaterThanRight "Total."
 label startRequireSignedInt64LeftGreaterThanRight
-call cmp math.greaterThanI64
-arg cmp left leftValue
-arg cmp right rightValue
-run cmp
-bind r Bool cmp
-var asInt I64 0
-branchIf r agtMakeTrue
-branch agtMakeFalse
-label agtMakeTrue
-const one I64 1
-set asInt one
-branch agtCall
-label agtMakeFalse
-const zero I64 0
-set asInt zero
-branch agtCall
-label agtCall
-call asCall requireConditionTrue
-arg asCall condition asInt
-run asCall
-bindOk asOkRes CSignedInt32 asCall
-bindError asErrRes CSignedInt32 asCall
-branchIfError asCall agtPropErr
-const okAgt CSignedInt32 0
-returnOk okAgt
-label agtPropErr
-returnError asErrRes
-
+call detectGreaterThanForAssertCall math.greaterThanI64
+arg detectGreaterThanForAssertCall left leftValue
+arg detectGreaterThanForAssertCall right rightValue
+run detectGreaterThanForAssertCall
+bind orderingHoldsGreater Bool detectGreaterThanForAssertCall
+branchIf orderingHoldsGreater returnGreaterThanOk
+call emitGreaterThanBannerCall emitAssertionFailureBanner
+run emitGreaterThanBannerCall
+ignoreValue emitGreaterThanBannerCall CSignedInt32
+makeError greaterThanFailure AssertionError.OrderingViolated
+returnError greaterThanFailure
+label returnGreaterThanOk
+const greaterThanOkCode CSignedInt32 0
+returnOk greaterThanOkCode
 
 operation requireSignedInt64LeftLessThanRight
 input requireSignedInt64LeftLessThanRight leftValue CSignedInt64
 input requireSignedInt64LeftLessThanRight rightValue CSignedInt64
-output requireSignedInt64LeftLessThanRight Result CSignedInt32 CSignedInt32
-memory requireSignedInt64LeftLessThanRight heap no
+output requireSignedInt64LeftLessThanRight Result CSignedInt32 AssertionError
+effect requireSignedInt64LeftLessThanRight write console.stdout
+memoryHeap requireSignedInt64LeftLessThanRight no
 async requireSignedInt64LeftLessThanRight no
-purpose requireSignedInt64LeftLessThanRight "Assert a < b."
+purpose requireSignedInt64LeftLessThanRight "Asserts leftValue < rightValue (strict)."
+failure requireSignedInt64LeftLessThanRight OrderingViolated "Returned when leftValue is not strictly less than rightValue."
+guarantee requireSignedInt64LeftLessThanRight "Total."
 label startRequireSignedInt64LeftLessThanRight
-call cmp math.lessThanI64
-arg cmp left leftValue
-arg cmp right rightValue
-run cmp
-bind r Bool cmp
-var asInt I64 0
-branchIf r altMakeTrue
-branch altMakeFalse
-label altMakeTrue
-const one I64 1
-set asInt one
-branch altCall
-label altMakeFalse
-const zero I64 0
-set asInt zero
-branch altCall
-label altCall
-call asCall requireConditionTrue
-arg asCall condition asInt
-run asCall
-bindOk asOkRes CSignedInt32 asCall
-bindError asErrRes CSignedInt32 asCall
-branchIfError asCall altPropErr
-const okAlt CSignedInt32 0
-returnOk okAlt
-label altPropErr
-returnError asErrRes
-
+call detectLessThanForAssertCall math.lessThanI64
+arg detectLessThanForAssertCall left leftValue
+arg detectLessThanForAssertCall right rightValue
+run detectLessThanForAssertCall
+bind orderingHoldsLess Bool detectLessThanForAssertCall
+branchIf orderingHoldsLess returnLessThanOk
+call emitLessThanBannerCall emitAssertionFailureBanner
+run emitLessThanBannerCall
+ignoreValue emitLessThanBannerCall CSignedInt32
+makeError lessThanFailure AssertionError.OrderingViolated
+returnError lessThanFailure
+label returnLessThanOk
+const lessThanOkCode CSignedInt32 0
+returnOk lessThanOkCode
 
 operation requireSignedInt64ValueWithinInclusiveRange
 input requireSignedInt64ValueWithinInclusiveRange inputValue CSignedInt64
 input requireSignedInt64ValueWithinInclusiveRange lowerBound CSignedInt64
 input requireSignedInt64ValueWithinInclusiveRange upperBound CSignedInt64
-output requireSignedInt64ValueWithinInclusiveRange Result CSignedInt32 CSignedInt32
-memory requireSignedInt64ValueWithinInclusiveRange heap no
+output requireSignedInt64ValueWithinInclusiveRange Result CSignedInt32 AssertionError
+effect requireSignedInt64ValueWithinInclusiveRange write console.stdout
+memoryHeap requireSignedInt64ValueWithinInclusiveRange no
 async requireSignedInt64ValueWithinInclusiveRange no
-purpose requireSignedInt64ValueWithinInclusiveRange "Assert lo <= x <= hi."
+purpose requireSignedInt64ValueWithinInclusiveRange "Asserts lowerBound <= inputValue <= upperBound (inclusive on both ends)."
+failure requireSignedInt64ValueWithinInclusiveRange OutOfRange "Returned when inputValue lies outside the inclusive range."
+guarantee requireSignedInt64ValueWithinInclusiveRange "Total."
 label startRequireSignedInt64ValueWithinInclusiveRange
-call belowLo math.lessThanI64
-arg belowLo left inputValue
-arg belowLo right lowerBound
-run belowLo
-bind below Bool belowLo
-branchIf below airFalseBranch
-call aboveHi math.greaterThanI64
-arg aboveHi left inputValue
-arg aboveHi right upperBound
-run aboveHi
-bind above Bool aboveHi
-branchIf above airFalseBranch
-var asInt I64 1
-branch airCall
-label airFalseBranch
-var asInt2 I64 0
-branch airCallFalse
-label airCall
-call asCall requireConditionTrue
-arg asCall condition asInt
-run asCall
-bindOk asOkRes CSignedInt32 asCall
-bindError asErrRes CSignedInt32 asCall
-branchIfError asCall airPropErr
-const okAir CSignedInt32 0
-returnOk okAir
-label airCallFalse
-call asCall2 requireConditionTrue
-arg asCall2 condition asInt2
-run asCall2
-bindOk asOkRes2 CSignedInt32 asCall2
-bindError asErrRes2 CSignedInt32 asCall2
-returnError asErrRes2
-label airPropErr
-returnError asErrRes
-
+call detectBelowLowerBoundCall math.lessThanI64
+arg detectBelowLowerBoundCall left inputValue
+arg detectBelowLowerBoundCall right lowerBound
+run detectBelowLowerBoundCall
+bind inputBelowLowerBound Bool detectBelowLowerBoundCall
+branchIf inputBelowLowerBound raiseRangeFailure
+call detectAboveUpperBoundCall math.greaterThanI64
+arg detectAboveUpperBoundCall left inputValue
+arg detectAboveUpperBoundCall right upperBound
+run detectAboveUpperBoundCall
+bind inputAboveUpperBound Bool detectAboveUpperBoundCall
+branchIf inputAboveUpperBound raiseRangeFailure
+const rangeOkCode CSignedInt32 0
+returnOk rangeOkCode
+label raiseRangeFailure
+call emitRangeBannerCall emitAssertionFailureBanner
+run emitRangeBannerCall
+ignoreValue emitRangeBannerCall CSignedInt32
+makeError rangeFailure AssertionError.OutOfRange
+returnError rangeFailure
 
 operation requireOpaquePointerNotNull
 input requireOpaquePointerNotNull pointerValue COpaqueMemoryAddress
-output requireOpaquePointerNotNull Result CSignedInt32 CSignedInt32
-memory requireOpaquePointerNotNull heap no
+output requireOpaquePointerNotNull Result CSignedInt32 AssertionError
+effect requireOpaquePointerNotNull write console.stdout
+memoryHeap requireOpaquePointerNotNull no
 async requireOpaquePointerNotNull no
-purpose requireOpaquePointerNotNull "Assert that p is not the NULL pointer."
+purpose requireOpaquePointerNotNull "Asserts that pointerValue is not NULL."
+failure requireOpaquePointerNotNull PointerWasNull "Returned when pointerValue is the NULL pointer."
+guarantee requireOpaquePointerNotNull "Total."
 label startRequireOpaquePointerNotNull
-call np pointer.isNull
-arg np pointer pointerValue
-run np
-bind isNull Bool np
-var asInt I64 1
-branchIf isNull annSetZero
-branch annCall
-label annSetZero
-const zeroAnn I64 0
-set asInt zeroAnn
-branch annCall
-label annCall
-call asCall requireConditionTrue
-arg asCall condition asInt
-run asCall
-bindOk asOkRes CSignedInt32 asCall
-bindError asErrRes CSignedInt32 asCall
-branchIfError asCall annPropErr
-const okAnn CSignedInt32 0
-returnOk okAnn
-label annPropErr
-returnError asErrRes
-
+call detectPointerIsNullCall pointer.isNull
+arg detectPointerIsNullCall pointer pointerValue
+run detectPointerIsNullCall
+bind pointerIsNull Bool detectPointerIsNullCall
+branchIf pointerIsNull raisePointerNullFailure
+const pointerOkCode CSignedInt32 0
+returnOk pointerOkCode
+label raisePointerNullFailure
+call emitPointerBannerCall emitAssertionFailureBanner
+run emitPointerBannerCall
+ignoreValue emitPointerBannerCall CSignedInt32
+makeError pointerNullFailure AssertionError.PointerWasNull
+returnError pointerNullFailure
 
 # ============================================================
 # Smoke test
@@ -338,56 +309,48 @@ operation main
 input main console Console
 output main Result ExitCode MainError
 effect main write console.stdout
-memory main heap no
+memoryHeap main no
 async main no
-purpose main "Smoke-test assertion ports."
+purpose main "Smoke-test the typed-error assertion ports."
+invariant main "Every assertion that should hold returns Ok; final exit is 0."
 
 label startMain
 
 # requireSignedInt64ValuesEqual(2 + 2, 4)
-const twoTest CSignedInt64 2
-const fourTest CSignedInt64 4
-call sumCall math.addI64
-arg sumCall left twoTest
-arg sumCall right twoTest
-run sumCall
-bind sumRes I64 sumCall
-call a1 requireSignedInt64ValuesEqual
-arg a1 a sumRes
-arg a1 b fourTest
-run a1
-bindOk a1Ok CSignedInt32 a1
-bindError a1Err CSignedInt32 a1
-branchIfError a1 testFailed
+const twoInt CSignedInt64 2
+const fourInt CSignedInt64 4
+call addTwoPlusTwoCall math.addI64
+arg addTwoPlusTwoCall left twoInt
+arg addTwoPlusTwoCall right twoInt
+run addTwoPlusTwoCall
+bind twoPlusTwo I64 addTwoPlusTwoCall
+call assertEqualCall requireSignedInt64ValuesEqual
+arg assertEqualCall leftValue twoPlusTwo
+arg assertEqualCall rightValue fourInt
+run assertEqualCall
+bindOk assertEqualOkSlot CSignedInt32 assertEqualCall
+bindError assertEqualErrSlot CSignedInt32 assertEqualCall
+branchIfError assertEqualCall smokeAssertionFailed
 
 # requireSignedInt64ValuesNotEqual(1, 2)
-const oneT CSignedInt64 1
-const twoT CSignedInt64 2
-call a2 requireSignedInt64ValuesNotEqual
-arg a2 a oneT
-arg a2 b twoT
-run a2
-bindOk a2Ok CSignedInt32 a2
-bindError a2Err CSignedInt32 a2
-branchIfError a2 testFailed
+const oneInt CSignedInt64 1
+call assertNotEqualCall requireSignedInt64ValuesNotEqual
+arg assertNotEqualCall leftValue oneInt
+arg assertNotEqualCall rightValue twoInt
+run assertNotEqualCall
+bindOk assertNotEqualOkSlot CSignedInt32 assertNotEqualCall
+bindError assertNotEqualErrSlot CSignedInt32 assertNotEqualCall
+branchIfError assertNotEqualCall smokeAssertionFailed
 
-const charO CSignedInt32 79
-const charK CSignedInt32 75
-const charNl CSignedInt32 10
-call putOmain c.putchar
-arg putOmain c charO
-run putOmain
-call putKmain c.putchar
-arg putKmain c charK
-run putKmain
-call putNlmain c.putchar
-arg putNlmain c charNl
-run putNlmain
+const successMessageText CNullTerminatedByteString "OK"
+call writeSuccessLineCall console.writeLine
+arg writeSuccessLineCall console console
+arg writeSuccessLineCall text successMessageText
+run writeSuccessLineCall
+ignoreOk writeSuccessLineCall Void
+const exitOkCode ExitCode 0
+returnOk exitOkCode
 
-const exitOk ExitCode 0
-returnOk exitOk
-
-label testFailed
-const exitFail CSignedInt32 1
-makeError testFailure MainError.TestFailed exitFail
-returnError testFailure
+label smokeAssertionFailed
+makeError assertSmokeFailure MainError.AssertSmokeFailed
+returnError assertSmokeFailure

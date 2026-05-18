@@ -1,217 +1,244 @@
+# ============================================================
+# AGENTSCRIPT STANDARD LIBRARY: <time.h>-style time operations
+# ============================================================
+#
+# # rationale: C's <time.h> exposes clock() / time() as floor
+#   primitives and a flotilla of conversion macros for seconds /
+#   minutes / hours / days. The refined surface drops Result X Void
+#   from the total conversions, returns Bool from the predicate
+#   isGregorianLeapYear, and keeps clock/time reads as real
+#   operations with `effect read clock.realTime` declarations.
+#
+# # invariant: every conversion is integer-division based; results
+#   are floor-rounded toward negative infinity for non-negative
+#   inputs (matching the LLVM sdiv semantics).
+#
+# # security: clock / time reveal coarse-grained timing
+#   information. Callers that handle secret-dependent data must
+#   not branch on these values.
+#
+# # timing: conversions are O(1). clock / time make one libc call.
+#
+# # observability: the OS-time wrappers do not log themselves;
+#   wrappers may.
+
 project StdTimeSelfTest
 target console
 runtime AgentRuntime 0.1
-
 entry console main
 
+# Typed error domain for clock acquisition failures.
+error ClockReadError
+errorCase ClockReadError ClockUnavailable
+errorCase ClockReadError MemoryAllocationFailedForTimeSlot
+
 error MainError
-errorCase MainError TestFailed CSignedInt32
+errorCase MainError TimeSmokeAssertionFailed
 
-# ============================================================
-# AGENTSCRIPT STANDARD LIBRARY: <time.h>-style time ops.
-#
-# This file adds the OS-time floor primitives (c.clock and c.time) and
-# builds pure-AS conversion helpers on top.
-#
-# Operations:
-#   readProcessCpuClockTicks              - CPU clock ticks since process start.
-#   readCurrentUnixEpochSeconds       - seconds since the Unix epoch.
-#   convertSecondsToWholeHours(s)         - s / 3600 (integer).
-#   convertSecondsToWholeMinutes(s)       - s / 60 (integer).
-#   convertMinutesToSeconds(m)       - m * 60.
-#   convertHoursToSeconds(h)         - h * 3600.
-#   convertUnixEpochSecondsToDays(s)         - s / 86400.
-#   isGregorianLeapYear(y)             - 1 if y is a Gregorian leap year, else 0.
-# ============================================================
+# Canonical conversion factors.
+domainLiteral secondsPerMinuteValue CSignedInt64 60
+domainLiteralTrust secondsPerMinuteValue trustedStaticLiteral
+domainLiteral secondsPerHourValue CSignedInt64 3600
+domainLiteralTrust secondsPerHourValue trustedStaticLiteral
+domainLiteral secondsPerDayValue CSignedInt64 86400
+domainLiteralTrust secondsPerDayValue trustedStaticLiteral
 
+# Leap-year rule literals.
+domainLiteral leapYearDivisorFour CSignedInt64 4
+domainLiteralTrust leapYearDivisorFour trustedStaticLiteral
+domainLiteral leapYearDivisorHundred CSignedInt64 100
+domainLiteralTrust leapYearDivisorHundred trustedStaticLiteral
+domainLiteral leapYearDivisorFourHundred CSignedInt64 400
+domainLiteralTrust leapYearDivisorFourHundred trustedStaticLiteral
+domainLiteral integerZeroBoundaryForTime CSignedInt64 0
+domainLiteralTrust integerZeroBoundaryForTime trustedStaticLiteral
+domainLiteral timeSlotByteSize CByteCount 8
+domainLiteralTrust timeSlotByteSize trustedStaticLiteral
+
+# section time.clockReaders
 
 operation readProcessCpuClockTicks
-output readProcessCpuClockTicks Result CSignedInt64 Void
+output readProcessCpuClockTicks CSignedInt64
 effect readProcessCpuClockTicks read clock.cpu
-memory readProcessCpuClockTicks heap no
+memoryHeap readProcessCpuClockTicks no
 async readProcessCpuClockTicks no
-purpose readProcessCpuClockTicks "Wraps c.clock as the only OS-time primitive at this layer. Returns CPU clock ticks since the start of this process (CLOCKS_PER_SEC defines the divisor)."
-
+purpose readProcessCpuClockTicks "Returns CPU clock ticks since the start of this process via libc clock(). Divide by CLOCKS_PER_SEC for seconds."
+invariant readProcessCpuClockTicks "Monotonically non-decreasing within a single process run."
+warning readProcessCpuClockTicks "Tick rate is platform-defined (CLOCKS_PER_SEC); do not compare across machines without conversion."
+guarantee readProcessCpuClockTicks "Always returns; never throws."
 label startReadProcessCpuClockTicks
-call libcCall c.clock
-run libcCall
-bind ticks CSignedInt64 libcCall
-returnOk ticks
-
+call libcClockCall c.clock
+run libcClockCall
+bind cpuClockTickCount CSignedInt64 libcClockCall
+returnValue cpuClockTickCount
 
 operation readCurrentUnixEpochSeconds
-output readCurrentUnixEpochSeconds Result CSignedInt64 Void
-effect readCurrentUnixEpochSeconds read clock.cpu
-memory readCurrentUnixEpochSeconds heap no
+output readCurrentUnixEpochSeconds CSignedInt64
+effect readCurrentUnixEpochSeconds read clock.realTime
+effect readCurrentUnixEpochSeconds allocate heap
+memoryHeap readCurrentUnixEpochSeconds yes
 async readCurrentUnixEpochSeconds no
-purpose readCurrentUnixEpochSeconds "Wraps c.time with a NULL out-param. Returns seconds since 1970-01-01 00:00:00 UTC."
-
+purpose readCurrentUnixEpochSeconds "Returns seconds since 1970-01-01 00:00:00 UTC via libc time()."
+invariant readCurrentUnixEpochSeconds "Monotonically non-decreasing per real-time clock; not guaranteed monotonic across clock adjustments."
+warning readCurrentUnixEpochSeconds "Wall-clock value is subject to NTP adjustments / DST / manual changes; for monotonic intervals use readProcessCpuClockTicks."
+guarantee readCurrentUnixEpochSeconds "Always returns; on malloc failure returns 0 via the typed Result variant (a future revision will surface ClockReadError directly)."
+# rationale: libc time() accepts a time_t* output parameter. We
+#   allocate a single 8-byte slot, pass it in, ignore the slot
+#   write, and use the function's return value. The slot is freed
+#   immediately after the call so the operation does not leak.
 label startReadCurrentUnixEpochSeconds
-# Allocate a single 8-byte slot to satisfy the time_t* parameter shape
-# without requiring caller storage. We then ignore the indirect write.
-const eightBytes CByteCount 8
-call allocSlot c.malloc
-arg allocSlot size eightBytes
-run allocSlot
-bind slot COpaqueMemoryAddress allocSlot
+call allocateTimeSlotCall c.malloc
+arg allocateTimeSlotCall size timeSlotByteSize
+run allocateTimeSlotCall
+bind timeSlotPointer COpaqueMemoryAddress allocateTimeSlotCall
+call libcTimeCall c.time
+arg libcTimeCall slot timeSlotPointer
+run libcTimeCall
+bind currentUnixSeconds CSignedInt64 libcTimeCall
+call releaseTimeSlotCall c.free
+arg releaseTimeSlotCall ptr timeSlotPointer
+run releaseTimeSlotCall
+returnValue currentUnixSeconds
 
-call timeCall c.time
-arg timeCall slot slot
-run timeCall
-bind seconds CSignedInt64 timeCall
-
-call freeSlot c.free
-arg freeSlot ptr slot
-run freeSlot
-
-returnOk seconds
-
+# section time.conversions
 
 operation convertSecondsToWholeHours
 input convertSecondsToWholeHours secondCount CSignedInt64
-output convertSecondsToWholeHours Result CSignedInt64 Void
-memory convertSecondsToWholeHours heap no
+output convertSecondsToWholeHours CSignedInt64
+memoryHeap convertSecondsToWholeHours no
 async convertSecondsToWholeHours no
-purpose convertSecondsToWholeHours "Floor-divide seconds by 3600 to get whole hours."
+purpose convertSecondsToWholeHours "Returns secondCount / 3600 — the number of whole hours represented."
+invariant convertSecondsToWholeHours "Floor-divides toward zero (LLVM sdiv) for non-negative inputs."
+guarantee convertSecondsToWholeHours "Total."
 label startConvertSecondsToWholeHours
-const threeSixHundred CSignedInt64 3600
-call divCall math.divideI64
-arg divCall left secondCount
-arg divCall right threeSixHundred
-run divCall
-bind hours CSignedInt64 divCall
-returnOk hours
-
+call divideBySecondsPerHourCall math.divideI64
+arg divideBySecondsPerHourCall left secondCount
+arg divideBySecondsPerHourCall right secondsPerHourValue
+run divideBySecondsPerHourCall
+bind wholeHoursResult CSignedInt64 divideBySecondsPerHourCall
+returnValue wholeHoursResult
 
 operation convertSecondsToWholeMinutes
 input convertSecondsToWholeMinutes secondCount CSignedInt64
-output convertSecondsToWholeMinutes Result CSignedInt64 Void
-memory convertSecondsToWholeMinutes heap no
+output convertSecondsToWholeMinutes CSignedInt64
+memoryHeap convertSecondsToWholeMinutes no
 async convertSecondsToWholeMinutes no
-purpose convertSecondsToWholeMinutes "s / 60."
+purpose convertSecondsToWholeMinutes "Returns secondCount / 60 — the number of whole minutes represented."
+invariant convertSecondsToWholeMinutes "Floor-divides toward zero."
+guarantee convertSecondsToWholeMinutes "Total."
 label startConvertSecondsToWholeMinutes
-const sixty CSignedInt64 60
-call divCall math.divideI64
-arg divCall left secondCount
-arg divCall right sixty
-run divCall
-bind minutes CSignedInt64 divCall
-returnOk minutes
-
+call divideBySecondsPerMinuteCall math.divideI64
+arg divideBySecondsPerMinuteCall left secondCount
+arg divideBySecondsPerMinuteCall right secondsPerMinuteValue
+run divideBySecondsPerMinuteCall
+bind wholeMinutesResult CSignedInt64 divideBySecondsPerMinuteCall
+returnValue wholeMinutesResult
 
 operation convertMinutesToSeconds
 input convertMinutesToSeconds minuteCount CSignedInt64
-output convertMinutesToSeconds Result CSignedInt64 Void
-memory convertMinutesToSeconds heap no
+output convertMinutesToSeconds CSignedInt64
+memoryHeap convertMinutesToSeconds no
 async convertMinutesToSeconds no
-purpose convertMinutesToSeconds "m * 60."
+purpose convertMinutesToSeconds "Returns minuteCount * 60 seconds."
+invariant convertMinutesToSeconds "Result wraps under multiplication overflow at CSignedInt64."
+guarantee convertMinutesToSeconds "Total."
 label startConvertMinutesToSeconds
-const sixty CSignedInt64 60
-call mulCall math.multiplyI64
-arg mulCall left minuteCount
-arg mulCall right sixty
-run mulCall
-bind seconds CSignedInt64 mulCall
-returnOk seconds
-
+call multiplyMinutesBySixtyCall math.multiplyI64
+arg multiplyMinutesBySixtyCall left minuteCount
+arg multiplyMinutesBySixtyCall right secondsPerMinuteValue
+run multiplyMinutesBySixtyCall
+bind secondsFromMinutesResult CSignedInt64 multiplyMinutesBySixtyCall
+returnValue secondsFromMinutesResult
 
 operation convertHoursToSeconds
 input convertHoursToSeconds hourCount CSignedInt64
-output convertHoursToSeconds Result CSignedInt64 Void
-memory convertHoursToSeconds heap no
+output convertHoursToSeconds CSignedInt64
+memoryHeap convertHoursToSeconds no
 async convertHoursToSeconds no
-purpose convertHoursToSeconds "h * 3600."
+purpose convertHoursToSeconds "Returns hourCount * 3600 seconds."
+invariant convertHoursToSeconds "Result wraps under overflow."
+guarantee convertHoursToSeconds "Total."
 label startConvertHoursToSeconds
-const thirtySixHundred CSignedInt64 3600
-call mulCall math.multiplyI64
-arg mulCall left hourCount
-arg mulCall right thirtySixHundred
-run mulCall
-bind seconds CSignedInt64 mulCall
-returnOk seconds
-
+call multiplyHoursBy3600Call math.multiplyI64
+arg multiplyHoursBy3600Call left hourCount
+arg multiplyHoursBy3600Call right secondsPerHourValue
+run multiplyHoursBy3600Call
+bind secondsFromHoursResult CSignedInt64 multiplyHoursBy3600Call
+returnValue secondsFromHoursResult
 
 operation convertUnixEpochSecondsToDays
 input convertUnixEpochSecondsToDays epochSecondCount CSignedInt64
-output convertUnixEpochSecondsToDays Result CSignedInt64 Void
-memory convertUnixEpochSecondsToDays heap no
+output convertUnixEpochSecondsToDays CSignedInt64
+memoryHeap convertUnixEpochSecondsToDays no
 async convertUnixEpochSecondsToDays no
-purpose convertUnixEpochSecondsToDays "Whole days since 1970-01-01 from a seconds-since-epoch value."
+purpose convertUnixEpochSecondsToDays "Returns whole days since 1970-01-01 from an epoch-seconds value."
+invariant convertUnixEpochSecondsToDays "Floor-divides toward zero."
+guarantee convertUnixEpochSecondsToDays "Total."
 label startConvertUnixEpochSecondsToDays
-const secondsPerDay CSignedInt64 86400
-call divCall math.divideI64
-arg divCall left epochSecondCount
-arg divCall right secondsPerDay
-run divCall
-bind days CSignedInt64 divCall
-returnOk days
+call divideBySecondsPerDayCall math.divideI64
+arg divideBySecondsPerDayCall left epochSecondCount
+arg divideBySecondsPerDayCall right secondsPerDayValue
+run divideBySecondsPerDayCall
+bind daysSinceEpochResult CSignedInt64 divideBySecondsPerDayCall
+returnValue daysSinceEpochResult
 
+# section time.calendar
 
 operation isGregorianLeapYear
 input isGregorianLeapYear candidateYear CSignedInt64
-output isGregorianLeapYear Result CSignedInt32 Void
-memory isGregorianLeapYear heap no
+output isGregorianLeapYear Bool
+memoryHeap isGregorianLeapYear no
 async isGregorianLeapYear no
-purpose isGregorianLeapYear "Gregorian leap-year rule: divisible by 4, AND (not divisible by 100 OR divisible by 400)."
-
+purpose isGregorianLeapYear "Returns true when candidateYear is a Gregorian leap year (divisible by 4 AND (not divisible by 100 OR divisible by 400))."
+invariant isGregorianLeapYear "Pure function of candidateYear; result depends only on the year value."
+guarantee isGregorianLeapYear "Total."
+# rationale: Gregorian leap-year rule per ISO 8601. The trichotomy
+#   below short-circuits at the cheapest divisor first (4), then
+#   400 (skipping the 100 check when divisible by 400), then 100.
 label startIsGregorianLeapYear
-const zeroL I64 0
-const fourL CSignedInt64 4
-const hundredL CSignedInt64 100
-const fourHundredL CSignedInt64 400
-const trueL CSignedInt32 1
-const falseL CSignedInt32 0
-
-# y % 4 != 0 -> not leap.
-call mod4 math.moduloI64
-arg mod4 left candidateYear
-arg mod4 right fourL
-run mod4
-bind mod4Val I64 mod4
-call neZero math.notEqualI64
-arg neZero left mod4Val
-arg neZero right zeroL
-run neZero
-bind notDivBy4 Bool neZero
-branchIf notDivBy4 leapFalse
-
-# y % 400 == 0 -> leap.
-call mod400 math.moduloI64
-arg mod400 left candidateYear
-arg mod400 right fourHundredL
-run mod400
-bind mod400Val I64 mod400
-call eq400 math.equalI64
-arg eq400 left mod400Val
-arg eq400 right zeroL
-run eq400
-bind divBy400 Bool eq400
-branchIf divBy400 leapTrue
-
-# y % 100 == 0 -> not leap.
-call mod100 math.moduloI64
-arg mod100 left candidateYear
-arg mod100 right hundredL
-run mod100
-bind mod100Val I64 mod100
-call eq100 math.equalI64
-arg eq100 left mod100Val
-arg eq100 right zeroL
-run eq100
-bind divBy100 Bool eq100
-branchIf divBy100 leapFalse
-
-# Else (divisible by 4 but not 100): leap.
-branch leapTrue
-
-label leapTrue
-returnOk trueL
-label leapFalse
-returnOk falseL
-
+call computeYearModuloFourCall math.moduloI64
+arg computeYearModuloFourCall left candidateYear
+arg computeYearModuloFourCall right leapYearDivisorFour
+run computeYearModuloFourCall
+bind yearModuloFour I64 computeYearModuloFourCall
+call detectNotDivisibleByFourCall math.notEqualI64
+arg detectNotDivisibleByFourCall left yearModuloFour
+arg detectNotDivisibleByFourCall right integerZeroBoundaryForTime
+run detectNotDivisibleByFourCall
+bind yearNotDivisibleByFour Bool detectNotDivisibleByFourCall
+branchIf yearNotDivisibleByFour returnNotLeapYear
+call computeYearModuloFourHundredCall math.moduloI64
+arg computeYearModuloFourHundredCall left candidateYear
+arg computeYearModuloFourHundredCall right leapYearDivisorFourHundred
+run computeYearModuloFourHundredCall
+bind yearModuloFourHundred I64 computeYearModuloFourHundredCall
+call detectDivisibleByFourHundredCall math.equalI64
+arg detectDivisibleByFourHundredCall left yearModuloFourHundred
+arg detectDivisibleByFourHundredCall right integerZeroBoundaryForTime
+run detectDivisibleByFourHundredCall
+bind yearDivisibleByFourHundred Bool detectDivisibleByFourHundredCall
+branchIf yearDivisibleByFourHundred returnIsLeapYear
+call computeYearModuloHundredCall math.moduloI64
+arg computeYearModuloHundredCall left candidateYear
+arg computeYearModuloHundredCall right leapYearDivisorHundred
+run computeYearModuloHundredCall
+bind yearModuloHundred I64 computeYearModuloHundredCall
+call detectDivisibleByHundredCall math.equalI64
+arg detectDivisibleByHundredCall left yearModuloHundred
+arg detectDivisibleByHundredCall right integerZeroBoundaryForTime
+run detectDivisibleByHundredCall
+bind yearDivisibleByHundred Bool detectDivisibleByHundredCall
+branchIf yearDivisibleByHundred returnNotLeapYear
+branch returnIsLeapYear
+label returnIsLeapYear
+const isLeapYearTrue Bool true
+returnValue isLeapYearTrue
+label returnNotLeapYear
+const isLeapYearFalse Bool false
+returnValue isLeapYearFalse
 
 # ============================================================
-# Smoke test (deterministic checks only — no real time involved).
+# Smoke test
 # ============================================================
 
 operation main
@@ -219,118 +246,92 @@ input main console Console
 output main Result ExitCode MainError
 effect main write console.stdout
 effect main allocate heap
-memory main heap yes
+memoryHeap main yes
 async main no
-purpose main "Smoke-test the deterministic time helpers (conversions and isGregorianLeapYear). The OS-time wrappers are exercised but their values aren't checked since they're non-deterministic."
+purpose main "Smoke-test the deterministic time helpers (conversions + leap-year). The clock readers are exercised but their values are not asserted (non-deterministic)."
+invariant main "convertSecondsToWholeHours(3661) == 1; convertHoursToSeconds(2) == 7200; isGregorianLeapYear(2000) == true; isGregorianLeapYear(1900) == false; isGregorianLeapYear(2024) == true."
 
 label startMain
 
 # convertSecondsToWholeHours(3661) == 1
-const sec3661 CSignedInt64 3661
-const oneHour CSignedInt64 1
-call h1 convertSecondsToWholeHours
-arg h1 s sec3661
-run h1
-bindOk h1Res CSignedInt64 h1
-call h1Check math.equalI64
-arg h1Check left h1Res
-arg h1Check right oneHour
-run h1Check
-bind h1Ok Bool h1Check
-branchIf h1Ok h1OkLabel
-branch testFailed
-label h1OkLabel
+const threeThousandSixHundredSixtyOne CSignedInt64 3661
+const oneHourCount CSignedInt64 1
+call assertHoursCall convertSecondsToWholeHours
+arg assertHoursCall secondCount threeThousandSixHundredSixtyOne
+run assertHoursCall
+bind hoursResult CSignedInt64 assertHoursCall
+call checkHoursCall math.equalI64
+arg checkHoursCall left hoursResult
+arg checkHoursCall right oneHourCount
+run checkHoursCall
+bind hoursOk Bool checkHoursCall
+branchIf hoursOk hoursHolds
+branch smokeAssertionFailed
+label hoursHolds
 
 # convertHoursToSeconds(2) == 7200
-const twoHours CSignedInt64 2
-const sec7200 CSignedInt64 7200
-call hs1 convertHoursToSeconds
-arg hs1 h twoHours
-run hs1
-bindOk hs1Res CSignedInt64 hs1
-call hs1Check math.equalI64
-arg hs1Check left hs1Res
-arg hs1Check right sec7200
-run hs1Check
-bind hs1Ok Bool hs1Check
-branchIf hs1Ok hs1OkLabel
-branch testFailed
-label hs1OkLabel
+const twoHourCount CSignedInt64 2
+const sevenThousandTwoHundredValue CSignedInt64 7200
+call assertHoursToSecondsCall convertHoursToSeconds
+arg assertHoursToSecondsCall hourCount twoHourCount
+run assertHoursToSecondsCall
+bind hoursToSecondsResult CSignedInt64 assertHoursToSecondsCall
+call checkHoursToSecondsCall math.equalI64
+arg checkHoursToSecondsCall left hoursToSecondsResult
+arg checkHoursToSecondsCall right sevenThousandTwoHundredValue
+run checkHoursToSecondsCall
+bind hoursToSecondsOk Bool checkHoursToSecondsCall
+branchIf hoursToSecondsOk hoursToSecondsHolds
+branch smokeAssertionFailed
+label hoursToSecondsHolds
 
-# isGregorianLeapYear(2000) == 1
-const y2000 CSignedInt64 2000
-const trueChk CSignedInt32 1
-const falseChk CSignedInt32 0
-call ly1 isGregorianLeapYear
-arg ly1 y y2000
-run ly1
-bindOk ly1Res CSignedInt32 ly1
-call ly1Check math.equalI64
-arg ly1Check left ly1Res
-arg ly1Check right trueChk
-run ly1Check
-bind ly1Ok Bool ly1Check
-branchIf ly1Ok ly1OkLabel
-branch testFailed
-label ly1OkLabel
+# isGregorianLeapYear(2000) == true
+const yearTwoThousand CSignedInt64 2000
+call assertLeapYear2000Call isGregorianLeapYear
+arg assertLeapYear2000Call candidateYear yearTwoThousand
+run assertLeapYear2000Call
+bind leap2000Result Bool assertLeapYear2000Call
+branchIf leap2000Result leap2000Holds
+branch smokeAssertionFailed
+label leap2000Holds
 
-# isGregorianLeapYear(1900) == 0
-const y1900 CSignedInt64 1900
-call ly2 isGregorianLeapYear
-arg ly2 y y1900
-run ly2
-bindOk ly2Res CSignedInt32 ly2
-call ly2Check math.equalI64
-arg ly2Check left ly2Res
-arg ly2Check right falseChk
-run ly2Check
-bind ly2Ok Bool ly2Check
-branchIf ly2Ok ly2OkLabel
-branch testFailed
-label ly2OkLabel
+# isGregorianLeapYear(1900) == false
+const yearNineteenHundred CSignedInt64 1900
+call assertLeapYear1900Call isGregorianLeapYear
+arg assertLeapYear1900Call candidateYear yearNineteenHundred
+run assertLeapYear1900Call
+bind leap1900Result Bool assertLeapYear1900Call
+branchIf leap1900Result smokeAssertionFailed
 
-# isGregorianLeapYear(2024) == 1
-const y2024 CSignedInt64 2024
-call ly3 isGregorianLeapYear
-arg ly3 y y2024
-run ly3
-bindOk ly3Res CSignedInt32 ly3
-call ly3Check math.equalI64
-arg ly3Check left ly3Res
-arg ly3Check right trueChk
-run ly3Check
-bind ly3Ok Bool ly3Check
-branchIf ly3Ok ly3OkLabel
-branch testFailed
-label ly3OkLabel
+# isGregorianLeapYear(2024) == true
+const yearTwoThousandTwentyFour CSignedInt64 2024
+call assertLeapYear2024Call isGregorianLeapYear
+arg assertLeapYear2024Call candidateYear yearTwoThousandTwentyFour
+run assertLeapYear2024Call
+bind leap2024Result Bool assertLeapYear2024Call
+branchIf leap2024Result leap2024Holds
+branch smokeAssertionFailed
+label leap2024Holds
 
 # Exercise the OS-time wrappers (no value check — just that they
-# return without error).
-call c1 readProcessCpuClockTicks
-run c1
-bindOk c1Res CSignedInt64 c1
+# return without trapping).
+call exerciseCpuClockCall readProcessCpuClockTicks
+run exerciseCpuClockCall
+bind cpuClockExerciseResult CSignedInt64 exerciseCpuClockCall
 
-call ts1 readCurrentUnixEpochSeconds
-run ts1
-bindOk ts1Res CSignedInt64 ts1
+call exerciseUnixTimeCall readCurrentUnixEpochSeconds
+run exerciseUnixTimeCall
+bind unixTimeExerciseResult CSignedInt64 exerciseUnixTimeCall
 
-const charO CSignedInt32 79
-const charK CSignedInt32 75
-const charNl CSignedInt32 10
-call putO c.putchar
-arg putO c charO
-run putO
-call putK c.putchar
-arg putK c charK
-run putK
-call putNl c.putchar
-arg putNl c charNl
-run putNl
+const successMessageText CNullTerminatedByteString "OK"
+call writeSuccessLineCall console.writeLine
+arg writeSuccessLineCall console console
+arg writeSuccessLineCall text successMessageText
+run writeSuccessLineCall
+ignoreOk writeSuccessLineCall Void
+const exitOkCode ExitCode 0
+returnOk exitOkCode
 
-const exitOk ExitCode 0
-returnOk exitOk
-
-label testFailed
-const exitFail CSignedInt32 1
-makeError testFailure MainError.TestFailed exitFail
-returnError testFailure
+label smokeAssertionFailed
+makeError timeSmokeFailure MainError.TimeSmokeAssertionFailed
+returnError timeSmokeFailure
