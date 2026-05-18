@@ -26,6 +26,11 @@ entry console stdlibImportSmokeMetadataMain
 
 error MainError
 errorCase MainError StdlibImportMetadataSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+# section capability
+# rationale: smoke writes a single OK line to stdout.
+capability stdoutWriteCapability console.stdout write
 
 # ----- imports under test (eight metadata-cluster modules) -----
 importModule char
@@ -40,6 +45,7 @@ importModule bit
 operation stdlibImportSmokeMetadataMain
 input stdlibImportSmokeMetadataMain console Console
 output stdlibImportSmokeMetadataMain Result ExitCode MainError
+useCapability stdlibImportSmokeMetadataMain stdoutWriteCapability
 effect stdlibImportSmokeMetadataMain write console.stdout
 memoryHeap stdlibImportSmokeMetadataMain no
 async stdlibImportSmokeMetadataMain no
@@ -246,9 +252,15 @@ call writeMetadataImportSuccessCall console.writeLine
 arg writeMetadataImportSuccessCall console console
 arg writeMetadataImportSuccessCall text metadataImportSuccessMessage
 run writeMetadataImportSuccessCall
-ignoreOk writeMetadataImportSuccessCall Void
+ignoreOk writeMetadataImportSuccessCall CSignedInt32
+bindError metadataImportConsoleWriteError CSignedInt32 writeMetadataImportSuccessCall
+branchIfError writeMetadataImportSuccessCall metadataImportConsoleWriteFailed
 const metadataImportExitOk ExitCode 0
 returnOk metadataImportExitOk
+
+label metadataImportConsoleWriteFailed
+makeError metadataImportConsoleWriteFailure MainError.ConsoleWriteFailed metadataImportConsoleWriteError
+returnError metadataImportConsoleWriteFailure
 
 label stdlibImportMetadataAssertionFailed
 makeError stdlibImportMetadataFailure MainError.StdlibImportMetadataSmokeAssertionFailed

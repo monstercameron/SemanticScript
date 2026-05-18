@@ -30,6 +30,16 @@ entry console stdlibImportSmokeBuffersMain
 
 error MainError
 errorCase MainError StdlibImportBuffersSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+errorCase MainError MemoryAllocationFailed
+
+# section capability
+# rationale: smoke writes an OK line to stdout and allocates / frees
+# scratch buffers for sort + LCG state setup transitively through
+# imported stdlib modules.
+capability stdoutWriteCapability console.stdout write
+capability heapAllocationCapability heap allocate
+capability heapFreeCapability heap free
 
 # ----- imports under test (different stochastic sample of seven modules) -----
 importModule array
@@ -44,9 +54,14 @@ importModule signal
 operation stdlibImportSmokeBuffersMain
 input stdlibImportSmokeBuffersMain console Console
 output stdlibImportSmokeBuffersMain Result ExitCode MainError
+useCapability stdlibImportSmokeBuffersMain stdoutWriteCapability
+useCapability stdlibImportSmokeBuffersMain heapAllocationCapability
+useCapability stdlibImportSmokeBuffersMain heapFreeCapability
 effect stdlibImportSmokeBuffersMain write console.stdout
 effect stdlibImportSmokeBuffersMain allocate heap
+effect stdlibImportSmokeBuffersMain free heap
 memoryHeap stdlibImportSmokeBuffersMain yes
+memoryAllocationSource stdlibImportSmokeBuffersMain allocateSortBufferImportCall
 async stdlibImportSmokeBuffersMain no
 purpose stdlibImportSmokeBuffersMain "Exercise one operation from each of array, sort, memory, inttypes, stdlib, random, limits, signal — proving the buffer-and-runtime tier of stdlib_as is importable."
 invariant stdlibImportSmokeBuffersMain "Every imported assertion holds; final exit 0; stdout is 'OK\\n'."
@@ -86,10 +101,13 @@ label countLowercaseLHolds
 
 # ---- memory + sort: allocate buffer, fill with {5,2,8,1,9}, bubble-sort, verify ascending ----
 const eightBytesAllocImport CByteCount 8
-call allocateSortBufferImport c.malloc
-arg allocateSortBufferImport size eightBytesAllocImport
-run allocateSortBufferImport
-bind sortBufferImport COpaqueMemoryAddress allocateSortBufferImport
+call allocateSortBufferImportCall c.malloc
+arg allocateSortBufferImportCall size eightBytesAllocImport
+run allocateSortBufferImportCall
+bind sortBufferImport COpaqueMemoryAddress allocateSortBufferImportCall
+bindError sortBufferAllocError CSignedInt32 allocateSortBufferImportCall
+branchIfError allocateSortBufferImportCall sortBufferAllocFailed
+defer releaseAllocateSortBufferImportCall c.free sortBufferImport
 
 const byteFiveLiteralImport CSignedInt32 5
 const byteTwoLiteralImport CSignedInt32 2
@@ -103,31 +121,31 @@ const offsetThreeByte CByteCount 3
 const offsetFourByte CByteCount 4
 const totalSortLength CByteCount 5
 
-call storeByteZeroForSortImport pointer.storeByte
-arg storeByteZeroForSortImport buffer sortBufferImport
-arg storeByteZeroForSortImport offset offsetZeroByte
-arg storeByteZeroForSortImport value byteFiveLiteralImport
-run storeByteZeroForSortImport
-call storeByteOneForSortImport pointer.storeByte
-arg storeByteOneForSortImport buffer sortBufferImport
-arg storeByteOneForSortImport offset offsetOneByte
-arg storeByteOneForSortImport value byteTwoLiteralImport
-run storeByteOneForSortImport
-call storeByteTwoForSortImport pointer.storeByte
-arg storeByteTwoForSortImport buffer sortBufferImport
-arg storeByteTwoForSortImport offset offsetTwoByte
-arg storeByteTwoForSortImport value byteEightLiteralImport
-run storeByteTwoForSortImport
-call storeByteThreeForSortImport pointer.storeByte
-arg storeByteThreeForSortImport buffer sortBufferImport
-arg storeByteThreeForSortImport offset offsetThreeByte
-arg storeByteThreeForSortImport value byteOneLiteralImport
-run storeByteThreeForSortImport
-call storeByteFourForSortImport pointer.storeByte
-arg storeByteFourForSortImport buffer sortBufferImport
-arg storeByteFourForSortImport offset offsetFourByte
-arg storeByteFourForSortImport value byteNineLiteralImport
-run storeByteFourForSortImport
+call storeByteZeroForSortImportCall pointer.storeByte
+arg storeByteZeroForSortImportCall buffer sortBufferImport
+arg storeByteZeroForSortImportCall offset offsetZeroByte
+arg storeByteZeroForSortImportCall value byteFiveLiteralImport
+run storeByteZeroForSortImportCall
+call storeByteOneForSortImportCall pointer.storeByte
+arg storeByteOneForSortImportCall buffer sortBufferImport
+arg storeByteOneForSortImportCall offset offsetOneByte
+arg storeByteOneForSortImportCall value byteTwoLiteralImport
+run storeByteOneForSortImportCall
+call storeByteTwoForSortImportCall pointer.storeByte
+arg storeByteTwoForSortImportCall buffer sortBufferImport
+arg storeByteTwoForSortImportCall offset offsetTwoByte
+arg storeByteTwoForSortImportCall value byteEightLiteralImport
+run storeByteTwoForSortImportCall
+call storeByteThreeForSortImportCall pointer.storeByte
+arg storeByteThreeForSortImportCall buffer sortBufferImport
+arg storeByteThreeForSortImportCall offset offsetThreeByte
+arg storeByteThreeForSortImportCall value byteOneLiteralImport
+run storeByteThreeForSortImportCall
+call storeByteFourForSortImportCall pointer.storeByte
+arg storeByteFourForSortImportCall buffer sortBufferImport
+arg storeByteFourForSortImportCall offset offsetFourByte
+arg storeByteFourForSortImportCall value byteNineLiteralImport
+run storeByteFourForSortImportCall
 
 call runImportedBubbleSortCall sortBytesWithBubbleSortInPlace
 arg runImportedBubbleSortCall byteBuffer sortBufferImport
@@ -147,36 +165,38 @@ label sortedAfterImportHolds
 # ---- memory: compareMemoryByteRanges of the just-sorted buffer against the byte sequence {1,2,5,8,9} should return 0 ----
 # The expected literal is built byte-by-byte because the sorted buffer
 # contains raw byte values (0x01..0x09), NOT ASCII characters '1'..'9'.
-const memoryComparisonExpectedBuffer COpaqueMemoryAddress 0
-call allocateExpectedSortedImport c.malloc
-arg allocateExpectedSortedImport size eightBytesAllocImport
-run allocateExpectedSortedImport
-bind expectedSortedBufferImport COpaqueMemoryAddress allocateExpectedSortedImport
-call storeExpectedByteZero pointer.storeByte
-arg storeExpectedByteZero buffer expectedSortedBufferImport
-arg storeExpectedByteZero offset offsetZeroByte
-arg storeExpectedByteZero value byteOneLiteralImport
-run storeExpectedByteZero
-call storeExpectedByteOne pointer.storeByte
-arg storeExpectedByteOne buffer expectedSortedBufferImport
-arg storeExpectedByteOne offset offsetOneByte
-arg storeExpectedByteOne value byteTwoLiteralImport
-run storeExpectedByteOne
-call storeExpectedByteTwo pointer.storeByte
-arg storeExpectedByteTwo buffer expectedSortedBufferImport
-arg storeExpectedByteTwo offset offsetTwoByte
-arg storeExpectedByteTwo value byteFiveLiteralImport
-run storeExpectedByteTwo
-call storeExpectedByteThree pointer.storeByte
-arg storeExpectedByteThree buffer expectedSortedBufferImport
-arg storeExpectedByteThree offset offsetThreeByte
-arg storeExpectedByteThree value byteEightLiteralImport
-run storeExpectedByteThree
-call storeExpectedByteFour pointer.storeByte
-arg storeExpectedByteFour buffer expectedSortedBufferImport
-arg storeExpectedByteFour offset offsetFourByte
-arg storeExpectedByteFour value byteNineLiteralImport
-run storeExpectedByteFour
+call allocateExpectedSortedImportCall c.malloc
+arg allocateExpectedSortedImportCall size eightBytesAllocImport
+run allocateExpectedSortedImportCall
+bind expectedSortedBufferImport COpaqueMemoryAddress allocateExpectedSortedImportCall
+bindError expectedSortedAllocError CSignedInt32 allocateExpectedSortedImportCall
+branchIfError allocateExpectedSortedImportCall expectedSortedAllocFailed
+defer releaseAllocateExpectedSortedImportCall c.free expectedSortedBufferImport
+call storeExpectedByteZeroCall pointer.storeByte
+arg storeExpectedByteZeroCall buffer expectedSortedBufferImport
+arg storeExpectedByteZeroCall offset offsetZeroByte
+arg storeExpectedByteZeroCall value byteOneLiteralImport
+run storeExpectedByteZeroCall
+call storeExpectedByteOneCall pointer.storeByte
+arg storeExpectedByteOneCall buffer expectedSortedBufferImport
+arg storeExpectedByteOneCall offset offsetOneByte
+arg storeExpectedByteOneCall value byteTwoLiteralImport
+run storeExpectedByteOneCall
+call storeExpectedByteTwoCall pointer.storeByte
+arg storeExpectedByteTwoCall buffer expectedSortedBufferImport
+arg storeExpectedByteTwoCall offset offsetTwoByte
+arg storeExpectedByteTwoCall value byteFiveLiteralImport
+run storeExpectedByteTwoCall
+call storeExpectedByteThreeCall pointer.storeByte
+arg storeExpectedByteThreeCall buffer expectedSortedBufferImport
+arg storeExpectedByteThreeCall offset offsetThreeByte
+arg storeExpectedByteThreeCall value byteEightLiteralImport
+run storeExpectedByteThreeCall
+call storeExpectedByteFourCall pointer.storeByte
+arg storeExpectedByteFourCall buffer expectedSortedBufferImport
+arg storeExpectedByteFourCall offset offsetFourByte
+arg storeExpectedByteFourCall value byteNineLiteralImport
+run storeExpectedByteFourCall
 const zeroSentinelForCompareImport CSignedInt64 0
 call assertCompareAfterSortCall compareMemoryByteRanges
 arg assertCompareAfterSortCall leftBuffer sortBufferImport
@@ -192,13 +212,6 @@ bind compareAfterSortOk Bool checkCompareAfterSortCall
 branchIf compareAfterSortOk compareAfterSortHolds
 branch stdlibImportBuffersAssertionFailed
 label compareAfterSortHolds
-
-call releaseSortBufferImport c.free
-arg releaseSortBufferImport ptr sortBufferImport
-run releaseSortBufferImport
-call releaseExpectedSortedImport c.free
-arg releaseExpectedSortedImport ptr expectedSortedBufferImport
-run releaseExpectedSortedImport
 
 # ---- inttypes: absoluteMaxWidthSignedInt(-9) == 9 ----
 const negativeNineForAbsImport CSignedInt64 -9
@@ -234,14 +247,14 @@ label parseDecimalImportHolds
 
 # ---- random: seed with 1, draw, verify 48271 (MINSTD canonical) ----
 const seedOneForLcgImport CSignedInt64 1
-call createLcgStateImport createDeterministicRandomState
-arg createLcgStateImport randomSeed seedOneForLcgImport
-run createLcgStateImport
-bindOk lcgStateSlotImport COpaqueMemoryAddress createLcgStateImport
-call drawFromLcgImport nextDeterministicRandomSignedInt64
-arg drawFromLcgImport randomState lcgStateSlotImport
-run drawFromLcgImport
-bind lcgFirstDrawImport CSignedInt64 drawFromLcgImport
+call createLcgStateImportCall createDeterministicRandomState
+arg createLcgStateImportCall randomSeed seedOneForLcgImport
+run createLcgStateImportCall
+bindOk lcgStateSlotImport COpaqueMemoryAddress createLcgStateImportCall
+call drawFromLcgImportCall nextDeterministicRandomSignedInt64
+arg drawFromLcgImportCall randomState lcgStateSlotImport
+run drawFromLcgImportCall
+bind lcgFirstDrawImport CSignedInt64 drawFromLcgImportCall
 const minstdFirstDrawExpected CSignedInt64 48271
 call checkLcgDrawImportCall math.equalI64
 arg checkLcgDrawImportCall left lcgFirstDrawImport
@@ -252,10 +265,10 @@ branchIf lcgDrawImportOk lcgDrawImportHolds
 branch stdlibImportBuffersAssertionFailed
 label lcgDrawImportHolds
 
-call releaseLcgStateImport releaseDeterministicRandomState
-arg releaseLcgStateImport randomState lcgStateSlotImport
-run releaseLcgStateImport
-ignoreValue releaseLcgStateImport CSignedInt32
+call releaseLcgStateImportCall releaseDeterministicRandomState
+arg releaseLcgStateImportCall randomState lcgStateSlotImport
+run releaseLcgStateImportCall
+ignoreValue releaseLcgStateImportCall CSignedInt32
 
 # ---- limits: maximumSignedInt32Value == 2147483647 ----
 const expectedMaximumSignedInt32 CSignedInt64 2147483647
@@ -285,9 +298,25 @@ call writeBuffersImportSuccessCall console.writeLine
 arg writeBuffersImportSuccessCall console console
 arg writeBuffersImportSuccessCall text buffersImportSuccessMessage
 run writeBuffersImportSuccessCall
-ignoreOk writeBuffersImportSuccessCall Void
+ignoreOk writeBuffersImportSuccessCall CSignedInt32
+bindError buffersImportConsoleWriteError CSignedInt32 writeBuffersImportSuccessCall
+branchIfError writeBuffersImportSuccessCall buffersImportConsoleWriteFailed
 const buffersImportExitOk ExitCode 0
 returnOk buffersImportExitOk
+
+label buffersImportConsoleWriteFailed
+makeError buffersImportConsoleWriteFailure MainError.ConsoleWriteFailed buffersImportConsoleWriteError
+returnError buffersImportConsoleWriteFailure
+
+# Heap-allocation failure handlers — surface MemoryAllocationFailed
+# with the per-call bindError as cause. Each handler is dedicated to
+# one malloc so the bindError value is referenced (per AS0106).
+label sortBufferAllocFailed
+makeError sortBufferAllocFailure MainError.MemoryAllocationFailed sortBufferAllocError
+returnError sortBufferAllocFailure
+label expectedSortedAllocFailed
+makeError expectedSortedAllocFailure MainError.MemoryAllocationFailed expectedSortedAllocError
+returnError expectedSortedAllocFailure
 
 label stdlibImportBuffersAssertionFailed
 makeError stdlibImportBuffersFailure MainError.StdlibImportBuffersSmokeAssertionFailed

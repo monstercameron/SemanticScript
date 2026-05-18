@@ -35,6 +35,16 @@ entry console stdlibImportSmokeRuntimeMain
 
 error MainError
 errorCase MainError StdlibImportRuntimeSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+# section capability
+# rationale: smoke writes integer-writer output + an OK line to stdout.
+# stdio.writeSignedInt64DecimalToStandardOutput allocates a small heap
+# scratch buffer, so this smoke transitively needs heap allocate/free
+# capabilities (memoryHeap stdlibImportSmokeRuntimeMain yes below).
+capability stdoutWriteCapability console.stdout write
+capability heapAllocationCapability heap allocate
+capability heapFreeCapability heap free
 
 # ----- imports under test (last four modules) -----
 importModule convert
@@ -45,8 +55,14 @@ importModule process
 operation stdlibImportSmokeRuntimeMain
 input stdlibImportSmokeRuntimeMain console Console
 output stdlibImportSmokeRuntimeMain Result ExitCode MainError
+useCapability stdlibImportSmokeRuntimeMain stdoutWriteCapability
+useCapability stdlibImportSmokeRuntimeMain heapAllocationCapability
+useCapability stdlibImportSmokeRuntimeMain heapFreeCapability
 effect stdlibImportSmokeRuntimeMain write console.stdout
+effect stdlibImportSmokeRuntimeMain allocate heap
+effect stdlibImportSmokeRuntimeMain free heap
 memoryHeap stdlibImportSmokeRuntimeMain yes
+memoryAllocationSource stdlibImportSmokeRuntimeMain assertDecimalWriterCall
 async stdlibImportSmokeRuntimeMain no
 purpose stdlibImportSmokeRuntimeMain "Verify the last four stdlib modules (convert / assert / stdio / process) are reachable through importModule. process is imported but not invoked because its terminators would kill the test."
 invariant stdlibImportSmokeRuntimeMain "convert + assert + stdio all return their declared values. process imports cleanly. Exit 0; stdout includes the integer-writer output then 'OK\\n'."
@@ -105,8 +121,6 @@ const conditionTrueForAssertImport Bool true
 call assertImportedConditionTrueCall requireConditionTrue
 arg assertImportedConditionTrueCall conditionValue conditionTrueForAssertImport
 run assertImportedConditionTrueCall
-bindOk requireOkResult CSignedInt32 assertImportedConditionTrueCall
-bindError requireErrResult CSignedInt32 assertImportedConditionTrueCall
 branchIfError assertImportedConditionTrueCall stdlibImportRuntimeAssertionFailed
 
 # ---- assert: requireSignedInt64ValuesEqual(42, 42) succeeds ----
@@ -115,8 +129,6 @@ call assertImportedRequireEqualCall requireSignedInt64ValuesEqual
 arg assertImportedRequireEqualCall leftValue fortyTwoForRequireEqualImport
 arg assertImportedRequireEqualCall rightValue fortyTwoForRequireEqualImport
 run assertImportedRequireEqualCall
-bindOk requireEqualOkResult CSignedInt32 assertImportedRequireEqualCall
-bindError requireEqualErrResult CSignedInt32 assertImportedRequireEqualCall
 branchIfError assertImportedRequireEqualCall stdlibImportRuntimeAssertionFailed
 
 # ---- stdio: writeSignedInt64DecimalToStandardOutput(12345) writes the digits + newline.
@@ -159,9 +171,15 @@ call writeRuntimeImportSuccessCall console.writeLine
 arg writeRuntimeImportSuccessCall console console
 arg writeRuntimeImportSuccessCall text runtimeImportSuccessMessage
 run writeRuntimeImportSuccessCall
-ignoreOk writeRuntimeImportSuccessCall Void
+ignoreOk writeRuntimeImportSuccessCall CSignedInt32
+bindError runtimeImportConsoleWriteError CSignedInt32 writeRuntimeImportSuccessCall
+branchIfError writeRuntimeImportSuccessCall runtimeImportConsoleWriteFailed
 const runtimeImportExitOk ExitCode 0
 returnOk runtimeImportExitOk
+
+label runtimeImportConsoleWriteFailed
+makeError runtimeImportConsoleWriteFailure MainError.ConsoleWriteFailed runtimeImportConsoleWriteError
+returnError runtimeImportConsoleWriteFailure
 
 label stdlibImportRuntimeAssertionFailed
 makeError stdlibImportRuntimeFailure MainError.StdlibImportRuntimeSmokeAssertionFailed

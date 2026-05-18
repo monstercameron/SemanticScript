@@ -35,6 +35,11 @@ entry console stdlibImportSmokeMain
 
 error MainError
 errorCase MainError StdlibImportSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+# section capability
+# rationale: smoke writes a single OK line to stdout.
+capability stdoutWriteCapability console.stdout write
 
 # ----- imports under test (stochastic sample of seven modules) -----
 importModule bool
@@ -49,6 +54,7 @@ importModule time
 operation stdlibImportSmokeMain
 input stdlibImportSmokeMain console Console
 output stdlibImportSmokeMain Result ExitCode MainError
+useCapability stdlibImportSmokeMain stdoutWriteCapability
 effect stdlibImportSmokeMain write console.stdout
 memoryHeap stdlibImportSmokeMain no
 async stdlibImportSmokeMain no
@@ -249,9 +255,15 @@ call writeStdlibImportSuccessCall console.writeLine
 arg writeStdlibImportSuccessCall console console
 arg writeStdlibImportSuccessCall text stdlibImportSuccessMessage
 run writeStdlibImportSuccessCall
-ignoreOk writeStdlibImportSuccessCall Void
+ignoreOk writeStdlibImportSuccessCall CSignedInt32
+bindError stdlibImportConsoleWriteError CSignedInt32 writeStdlibImportSuccessCall
+branchIfError writeStdlibImportSuccessCall stdlibImportConsoleWriteFailed
 const stdlibImportExitOk ExitCode 0
 returnOk stdlibImportExitOk
+
+label stdlibImportConsoleWriteFailed
+makeError stdlibImportConsoleWriteFailure MainError.ConsoleWriteFailed stdlibImportConsoleWriteError
+returnError stdlibImportConsoleWriteFailure
 
 label stdlibImportAssertionFailed
 makeError stdlibImportSmokeFailure MainError.StdlibImportSmokeAssertionFailed
