@@ -31,6 +31,7 @@ syntax until that work is explicitly implemented.
 ```text
 AgentScript.md                  Root language/specification document
 CHANGELOG.md                    Repository-level changelog
+docs/                           Maintainable developer documentation
 
 AgentScript/
   README.md                     Current implementation guide
@@ -133,11 +134,12 @@ The local extension is in `vscode-agentscript/`. It provides:
 
 - language registration for `.as` and `.agentscript`;
 - TextMate and semantic highlighting for current and refined syntax;
-- hovers for verbs, primitive targets, generated targets, schema values,
+- context-aware hovers for concrete line schemas, same-file symbols,
+  operation metadata, primitive targets, generated targets, schema values,
   primitive types, opaque inputs, call objects, and role suffixes;
 - whole-line segment coloring for declaration/context/action/control/comment
   lines and unknown verbs;
-- optional `aslint.py` diagnostics.
+- optional `aslint.py` or `aslint2.py` diagnostics.
 
 The extension skips current-linter diagnostics for refined future syntax by
 default because `experiments/refined_syntax_example.as` is not current
@@ -151,14 +153,17 @@ npm run check
 npx --yes @vscode/vsce package
 ```
 
-The current packaged artifact is `vscode-agentscript/agentscript-vscode-0.1.6.vsix`.
+The current packaged artifact is `vscode-agentscript/agentscript-vscode-0.1.9.vsix`.
 
 ## Documentation Map
 
+- `docs/README.md` - maintainable developer documentation entry point.
+- `SYNTAX.md` - complete syntax inventory and implementation status table.
 - `AgentScript.md` - language specification and design intent.
 - `AgentScript/AST.md` - implemented compiler syntax and lowering behavior.
 - `AgentScript/README.md` - reference implementation guide.
 - `AgentScript/CHANGELOG.md` - toolchain release notes.
+- `STDLIB.md` - standard-library module and operation inventory.
 - `experiments/whatsneeded.md` - refined syntax research and recommendations.
 - `experiments/refined_syntax_example.as` - full syntax showcase.
 - `experiments/refined_syntax_graph.md` - graph of the showcase dataflow.

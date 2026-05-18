@@ -1,0 +1,140 @@
+# Records, Codecs, and Boundaries
+
+Records, codecs, validators, and trust boundaries describe data shape and
+cross-boundary guarantees. Some forms already lower to LLVM field operations;
+many refined forms are metadata that linters and editor hovers can inspect.
+
+## Records
+
+```agentscript
+record Task
+recordLayout Task packed
+recordAlign Task 8
+field Task taskId TaskId
+field Task title ValidatedText
+field Task completed Bool
+```
+
+Schemas:
+
+```text
+record NAME
+field RECORD FIELD TYPE
+recordLayout RECORD KIND
+recordAlign RECORD N
+```
+
+`field` currently requires the record to have been declared first.
+`recordAlign` should be a power of two; `aslint2.py` checks that rule.
+
+## Field Operations
+
+```agentscript
+new taskValue Task
+fieldSet taskValue title validatedTaskTitle
+fieldSet taskValue completed false
+fieldGet taskTitle ValidatedText taskValue title
+```
+
+Schemas:
+
+```text
+new VALUE RECORD
+fieldSet RECORD_VALUE FIELD VALUE
+fieldGet OUT TYPE RECORD_VALUE FIELD
+```
+
+Current lowering supports record paths used by feature tests. For
+record-typed params, field reads can alias flattened parameter SSA values.
+
+## Builders
+
+Builders keep large record construction explicit and named.
+
+```agentscript
+recordBuilder taskBuilder Task
+recordSet taskBuilder title validatedTaskTitle
+recordSet taskBuilder completed false
+recordBuild buildTaskCall taskBuilder
+recordBuildFailure buildTaskCall TaskError.InvalidTitle
+```
+
+Schemas:
+
+```text
+recordBuilder BUILDER RECORD
+recordSet BUILDER FIELD VALUE
+recordBuild CALL BUILDER
+recordBuildFailure CALL ERROR.VARIANT
+```
+
+`recordBuild` registers a synthetic call so downstream binding and failure
+patterns stay consistent with normal call flow.
+
+## JSON Codecs
+
+```agentscript
+jsonCodec taskJsonCodec
+jsonCodecStrict taskJsonCodec yes
+jsonCodecUnknownFields taskJsonCodec reject
+jsonCodecInput taskJsonCodec RawJson
+jsonCodecOutput taskJsonCodec Task
+jsonCodecDecodeTarget taskJsonCodec json.decode.Task
+jsonCodecEncodeTarget taskJsonCodec json.encode.Task
+jsonCodecRequiredField taskJsonCodec title
+jsonCodecDecodeFailure taskJsonCodec TaskDecodeError.MissingTitle
+jsonCodecLimit taskJsonCodec maximumBytes 65536
+```
+
+JSON codec declarations are parsed and indexed. Primitive generated targets such
+as `json.encode.Bool`, `json.decode.Bool`, and selected scalar codec targets
+have direct compiler support. Record-level generated codecs are still primarily
+metadata unless a backing operation/runtime binding is present.
+
+`aslint2.py` checks incomplete JSON codecs.
+
+## Generic Codecs
+
+```agentscript
+codec taskBinaryCodec binary
+schema taskBinaryCodec Task
+unknownFields taskBinaryCodec reject
+```
+
+Generic codecs are contract metadata. Use them when a runtime-specific codec
+backend is not part of the source yet.
+
+## Validators, Mappers, Adapters, Boundaries
+
+```agentscript
+validator taskTitleValidator
+mapper taskRowToResponseMapper
+adapter postgresTaskRowAdapter
+boundary publicHttpBoundary
+```
+
+These declarations name transformation and validation concepts. Attach purpose,
+input, output, failure, and trust metadata so they are not empty labels.
+
+## Trust Boundaries
+
+```agentscript
+trustBoundary ValidatedText
+trustBoundaryKind ValidatedText rawUtf8ToValidatedText
+trustBoundaryInput ValidatedText RawText
+trustBoundaryOutput ValidatedText TrustedText
+trustBoundaryValidator ValidatedText validateTaskTitle
+trustBoundarySource ValidatedText httpRequest.body
+```
+
+Trust-boundary declarations should answer:
+
+- What raw type enters?
+- What trusted type leaves?
+- Which validator proves the transition?
+- Which source is permitted?
+
+`aslint2.py` checks partial trust boundaries. Treat that diagnostic as design
+pressure: a partial boundary is usually worse than no boundary because it
+implies safety without enough evidence.
+
