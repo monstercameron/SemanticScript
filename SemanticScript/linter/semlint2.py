@@ -137,6 +137,13 @@ KNOWN_FALLIBLE_CALL_TARGETS: frozenset = frozenset({
     "c.open", "c.read", "c.write", "c.close",
 })
 
+C_SENTINEL_FALLIBLE_CALL_TARGETS: frozenset = frozenset({
+    "c.fopen", "c.fread", "c.fwrite", "c.fclose",
+    "c.fputs", "c.fputc", "c.putchar",
+    "c.fgets", "c.fseek", "c.ftell",
+    "c.open", "c.read", "c.write", "c.close",
+})
+
 
 # Metadata edges that should be consistent across sibling operations in
 # the same file. If 60%+ of operations declare an edge and any sibling
@@ -194,8 +201,9 @@ CALL_TARGET_IMPLIED_EFFECTS: Dict[str, Tuple[str, str]] = {
     "c.putchar":                 ("write", "console.stdout"),
     "c.fputs":                   ("write", "console.stdout"),
     "c.fputc":                   ("write", "console.stdout"),
-    # Console reads
-    "c.fgets":                   ("read",  "console.stdin"),
+    # File data I/O. `file` is reserved for handle lifecycle; filesystem
+    # covers bytes read/written through an opened handle.
+    "c.fgets":                   ("read",  "filesystem"),
     # Heap allocation
     "c.malloc":                  ("allocate", "heap"),
     "c.calloc":                  ("allocate", "heap"),
@@ -207,8 +215,8 @@ CALL_TARGET_IMPLIED_EFFECTS: Dict[str, Tuple[str, str]] = {
     # File I/O
     "c.fopen":                   ("open",  "file"),
     "c.fclose":                  ("close", "file"),
-    "c.fread":                   ("read",  "file"),
-    "c.fwrite":                  ("write", "file"),
+    "c.fread":                   ("read",  "filesystem"),
+    "c.fwrite":                  ("write", "filesystem"),
     "c.fseek":                   ("seek",  "file"),
     "c.ftell":                   ("read",  "file"),
     "c.open":                    ("open",  "file"),
@@ -220,14 +228,13 @@ CALL_TARGET_IMPLIED_EFFECTS: Dict[str, Tuple[str, str]] = {
 
 # Primitive types that are interchangeable at the SemanticScript surface — `I64` and
 # `CSignedInt64` are the same shape, `String` and `CNullTerminatedByteString`
-# are the same wire form, etc. Used by the arg-type-mismatch check to avoid
-# false-positive complaints about width-equivalent aliases.
+# are the same wire form, etc. Used by broad arg-type-mismatch checks to avoid
+# false-positive complaints about role-equivalent aliases. Math calls get a
+# stricter width pass below because their lowering is intentionally exact.
 _PRIMITIVE_TYPE_EQUIVALENCE_GROUPS: Tuple[frozenset, ...] = (
-    # All signed integer widths AND Bool are treated as interchangeable
-    # at the SemanticScript surface — the compiler emits the necessary sext/trunc/
-    # zext automatically at call boundaries (Bool widens to integer
-    # via zext), so flagging width mismatches here would only produce
-    # noise that doesn't track real bugs.
+    # All signed integer widths AND Bool are treated as interchangeable for
+    # legacy/user-op compatibility; strict math width diagnostics are handled
+    # separately by SS4303.
     frozenset({"I64", "CSignedInt64",
                "I32", "CSignedInt32", "ExitCode",
                "I16", "CSignedInt16",
@@ -287,7 +294,15 @@ BUILTIN_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
     "math.lessThanOrEqualI64":    [("left", "I64"), ("right", "I64")],
     "math.greaterThanI64":        [("left", "I64"), ("right", "I64")],
     "math.greaterThanOrEqualI64": [("left", "I64"), ("right", "I64")],
+    "math.equalCSignedInt32":              [("left", "CSignedInt32"), ("right", "CSignedInt32")],
+    "math.notEqualCSignedInt32":           [("left", "CSignedInt32"), ("right", "CSignedInt32")],
+    "math.lessThanCSignedInt32":           [("left", "CSignedInt32"), ("right", "CSignedInt32")],
+    "math.lessThanOrEqualCSignedInt32":    [("left", "CSignedInt32"), ("right", "CSignedInt32")],
+    "math.greaterThanCSignedInt32":        [("left", "CSignedInt32"), ("right", "CSignedInt32")],
+    "math.greaterThanOrEqualCSignedInt32": [("left", "CSignedInt32"), ("right", "CSignedInt32")],
     "math.checkedMultiplyI64":    [("left", "I64"), ("right", "I64")],
+    "math.signExtendCSignedInt32ToCSignedInt64": [("inputValue", "CSignedInt32")],
+    "math.truncateCSignedInt64ToCSignedInt32":   [("inputValue", "I64")],
     # Float arithmetic
     "math.addF64":                [("left", "F64"), ("right", "F64")],
     "math.subtractF64":           [("left", "F64"), ("right", "F64")],
@@ -318,6 +333,38 @@ BUILTIN_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
 # Minimum argument count per verb. SemanticScript lines are `verb arg1 arg2 …`; verbs
 # with too few args can't be interpreted by any downstream pass. Ported
 # from semlint.py and extended for refined-syntax surfaces.
+SUPPORTED_JSON_PRIMITIVE_TARGETS: frozenset = frozenset({
+    "json.encode.I64", "json.encode.CSignedInt64",
+    "json.encode.CSignedInt32", "json.encode.CUnsignedInt32",
+    "json.encode.CSignedInt16", "json.encode.CUnsignedInt16",
+    "json.encode.CSignedByte", "json.encode.CUnsignedByte",
+    "json.encode.DurationMilliseconds",
+    "json.encode.MonotonicMilliseconds",
+    "json.encode.UtcMilliseconds",
+    "json.encode.Bool",
+    "json.encode.F64", "json.encode.CFloat64", "json.encode.CFloat32",
+    "json.encode.String", "json.encode.CNullTerminatedByteString",
+    "json.decode.I64", "json.decode.CSignedInt64",
+    "json.decode.CSignedInt32", "json.decode.CUnsignedInt32",
+    "json.decode.CSignedInt16", "json.decode.CUnsignedInt16",
+    "json.decode.CSignedByte", "json.decode.CUnsignedByte",
+    "json.decode.DurationMilliseconds",
+    "json.decode.MonotonicMilliseconds",
+    "json.decode.UtcMilliseconds",
+    "json.decode.Bool",
+    "json.decode.F64", "json.decode.CFloat64", "json.decode.CFloat32",
+})
+
+COLLECTION_RUNTIME_METHODS: frozenset = frozenset({
+    "append", "get", "set", "insert", "remove", "length", "clear",
+    "contains", "slice", "borrow", "capacity", "reserve",
+})
+
+COLLECTION_TYPE_SUFFIXES: Tuple[str, ...] = (
+    "List", "Map", "Array", "Slice",
+)
+
+
 VERB_MINIMUM_ARITY: Dict[str, int] = {
     # Project structure
     "project": 1, "target": 1, "runtime": 2, "entry": 2, "mode": 1,
@@ -424,6 +471,9 @@ OPERATION_ATTACHMENT_VERBS: frozenset = frozenset({
     "memory", "memoryHeap", "memoryArena",
     "memoryAllocationSource", "memoryStackLimit",
     "operationBody", "useCapability", "authority",
+    # SS36xx explicit contract verbs — args[0] is the owning operation.
+    "pinsNullBodyFailurePath",
+    "responseBodyForwarder",
 })
 
 
@@ -496,6 +546,18 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     # Web
     "webServer", "serverHost", "serverPort", "route",
     "routeTimeout", "routeMiddleware",
+    # SS3604 coverage opt-outs — declare a route's intentional omission
+    # of the cross-cutting timeout / middleware contract.
+    "routeTimeoutOptOut", "routeMiddlewareOptOut",
+    # SS36xx explicit contract verbs (per-operation declarations that the
+    # webserver-discipline checkers cite instead of inferring from
+    # arg-name shapes or warning-text marker phrases)
+    "pinsNullBodyFailurePath",
+    "responseBodyForwarder",
+    # `rationale CALL "text"` — call-site rationale; sister to the
+    # `# rationale:` typed comment, but explicit enough that diagnostics
+    # can cite it by call-name reference.
+    "rationale",
     # Defer / cleanup
     "defer", "deferLog", "deferLogSink", "deferRunOn", "deferOrder",
     "deferFailurePolicy", "deferConsumes",
@@ -728,6 +790,7 @@ class SharedStateAccessFact:
     accessKind: str                    # "set" | "read"
     slotName: str
     hasProtection: bool                # whether `protectedBy <token>` clause present
+    protectedByToken: Optional[str] = None
 
 
 @dataclass
@@ -779,6 +842,7 @@ class ExtendedFacts:
     selectCasesBySelectName: Dict[str, List[SourceLine]] = field(default_factory=dict)
     # Guard token paired tracking
     guardTokenSourceDeclarations: Dict[str, SourceLine] = field(default_factory=dict)
+    guardTokenProtectsDeclarations: Dict[str, Set[str]] = field(default_factory=dict)
     guardTokenReleaseDeclarations: Set[str] = field(default_factory=set)
     # JSON codec tracking
     jsonCodecDeclarations: Dict[str, SourceLine] = field(default_factory=dict)
@@ -786,6 +850,10 @@ class ExtendedFacts:
     jsonCodecHasOutput: Set[str] = field(default_factory=set)
     jsonCodecHasDecodeTarget: Set[str] = field(default_factory=set)
     jsonCodecHasEncodeTarget: Set[str] = field(default_factory=set)
+    jsonCodecGeneratedTargets: Dict[str, SourceLine] = field(default_factory=dict)
+    codecDeclarations: Dict[str, SourceLine] = field(default_factory=dict)
+    collectionTypeDeclarations: Dict[str, SourceLine] = field(default_factory=dict)
+    collectionOperationDeclarations: Dict[str, SourceLine] = field(default_factory=dict)
 
 
 def gather_extended(baseFacts: ProgramFacts) -> ExtendedFacts:
@@ -895,21 +963,25 @@ def gather_extended(baseFacts: ProgramFacts) -> ExtendedFacts:
             # set SCOPE NAME VALUE [ownedBy|protectedBy …]
             facts.storageWrites.add(args[1])
             if args[0] == "sharedState":
+                protectedByToken = _metadata_value(args, "protectedBy")
                 facts.sharedStateAccesses.append(SharedStateAccessFact(
                     line=sourceLine,
                     accessKind="set",
                     slotName=args[1],
-                    hasProtection="protectedBy" in args,
+                    hasProtection=protectedByToken is not None,
+                    protectedByToken=protectedByToken,
                 ))
         elif verb == "read" and len(args) >= 4:
             # read sharedState BINDING TYPE BACKING [protectedBy GUARD]
             facts.storageReads.add(args[3])
             if args[0] == "sharedState":
+                protectedByToken = _metadata_value(args, "protectedBy")
                 facts.sharedStateAccesses.append(SharedStateAccessFact(
                     line=sourceLine,
                     accessKind="read",
                     slotName=args[3],
-                    hasProtection="protectedBy" in args,
+                    hasProtection=protectedByToken is not None,
+                    protectedByToken=protectedByToken,
                 ))
         elif verb == "literal" and len(args) >= 2:
             facts.literals[args[0]] = LiteralFact(args[0], sourceLine, args[1])
@@ -1002,21 +1074,44 @@ def gather_extended(baseFacts: ProgramFacts) -> ExtendedFacts:
         # Guard token source/release pairing
         elif verb == "guardTokenSource" and args:
             facts.guardTokenSourceDeclarations[args[0]] = sourceLine
+        elif verb == "guardTokenProtects" and len(args) >= 2:
+            facts.guardTokenProtectsDeclarations.setdefault(args[0], set()).add(args[1])
         elif verb == "guardTokenRelease" and args:
             facts.guardTokenReleaseDeclarations.add(args[0])
         # JSON codec completeness tracking
         elif verb == "jsonCodec" and args:
             facts.jsonCodecDeclarations[args[0]] = sourceLine
+        elif verb == "codec" and args:
+            facts.codecDeclarations[args[0]] = sourceLine
         elif verb == "jsonCodecInput" and args:
             facts.jsonCodecHasInput.add(args[0])
         elif verb == "jsonCodecOutput" and args:
             facts.jsonCodecHasOutput.add(args[0])
         elif verb == "jsonCodecDecodeTarget" and args:
             facts.jsonCodecHasDecodeTarget.add(args[0])
+            if len(args) >= 2:
+                facts.jsonCodecGeneratedTargets[args[1]] = sourceLine
         elif verb == "jsonCodecEncodeTarget" and args:
             facts.jsonCodecHasEncodeTarget.add(args[0])
+            if len(args) >= 2:
+                facts.jsonCodecGeneratedTargets[args[1]] = sourceLine
+        elif verb in {"listType", "arrayType", "sliceType", "smallListType", "mapType"} and args:
+            facts.collectionTypeDeclarations[args[0]] = sourceLine
+        elif verb == "collectionOperation" and args:
+            facts.collectionOperationDeclarations[args[0]] = sourceLine
 
     return facts
+
+
+def _metadata_value(args: Sequence[str], key: str) -> Optional[str]:
+    try:
+        keyIndex = args.index(key)
+    except ValueError:
+        return None
+    valueIndex = keyIndex + 1
+    if valueIndex >= len(args):
+        return None
+    return args[valueIndex]
 
 
 def narrative_citations_for_operation(facts: ExtendedFacts, operationName: str) -> List[Citation]:
@@ -1095,6 +1190,53 @@ def collect_operation_calls(operation: OperationFact) -> Dict[str, CallFact]:
     return operationCalls
 
 
+def call_success_value_names(callFact: CallFact) -> Set[str]:
+    """Names that carry a call's successful return value in this operation."""
+    names: Set[str] = set()
+    for bindLine in callFact.bind_lines + callFact.bind_ok_lines:
+        if bindLine.args:
+            names.add(bindLine.args[0])
+    return names
+
+
+def call_has_value_disposition(callFact: CallFact) -> bool:
+    """Whether a non-Result C-style call return is bound or explicitly ignored."""
+    return bool(
+        callFact.bind_lines
+        or callFact.bind_ok_lines
+        or callFact.ignore_value_lines
+        or callFact.ignore_ok_lines
+    )
+
+
+def call_consumes_any_value(callFact: CallFact, valueNames: Set[str]) -> bool:
+    if not valueNames:
+        return False
+    for argLine in callFact.arg_lines:
+        if len(argLine.args) >= 3 and argLine.args[2] in valueNames:
+            return True
+    return False
+
+
+def call_has_later_cleanup_call(
+    resourceCall: CallFact,
+    operationCalls: Dict[str, CallFact],
+    cleanupTargets: Set[str],
+) -> bool:
+    """Return true when a later cleanup call consumes this call's bound value."""
+    resourceValueNames = call_success_value_names(resourceCall)
+    if not resourceValueNames:
+        return False
+    for cleanupCall in operationCalls.values():
+        if cleanupCall.target not in cleanupTargets:
+            continue
+        if cleanupCall.line.number <= resourceCall.line.number:
+            continue
+        if call_consumes_any_value(cleanupCall, resourceValueNames):
+            return True
+    return False
+
+
 # ==========================================================================
 # Checkers
 #
@@ -1111,6 +1253,7 @@ def collect_operation_calls(operation: OperationFact) -> Dict[str, CallFact]:
 #            SS3101 missing purpose, SS3102 missing invariant,
 #            SS3104 capabilityCoverage, SS3105 unprotectedSharedState,
 #            SS3106 hiddenFailure, SS3107 siblingMetadataDrift,
+#            SS3108 unsupportedSharedStateScope,
 #            SS3111 undeclaredBodyEffect, SS3112 unknownErrorVariant
 #   AS32xx — performance discipline           (T3 refinement)
 #            SS3201 deadStore, SS3202 allocationInLoop,
@@ -1127,13 +1270,41 @@ def collect_operation_calls(operation: OperationFact) -> Dict[str, CallFact]:
 #            SS3506 unawaitedSubmitWork, SS3507 selectWithoutCases,
 #            SS3508 selectCaseReferencesUnknownSelect,
 #            SS3510 asyncCallMissingBoundary
+#   SS36xx — webserver discipline             (T3 refinement / T1 spec)
+#            SS3601 invalidRouteMethod (whitelist: GET/HEAD/POST/PUT/PATCH/
+#                   DELETE/OPTIONS; the native dispatcher silently never
+#                   matches anything outside this set),
+#            SS3602 middlewareMissingResponseEffect (ops bound via
+#                   routeMiddleware must declare write http.response*),
+#            SS3603 unguardedHttpInput (values bound from nullable
+#                   http.request* reads passed to body of http.response*
+#                   without a pointer.isNull guard; opt out per-op with
+#                   `pinsNullBodyFailurePath OP "rationale"`),
+#            SS3604 routeCoverageDrift (every route should have matching
+#                   routeTimeout + routeMiddleware OR an explicit
+#                   routeTimeoutOptOut / routeMiddlewareOptOut),
+#            SS3605 legacyNullBodyMarker (deprecation pointer: the
+#                   stringly-typed `null-body failure path` marker inside
+#                   a `warning` line is the legacy form of the SS3603
+#                   opt-out and should migrate to the verb; fires only
+#                   when the marker is load-bearing, i.e. removing it
+#                   would trip SS3603),
+#            SS3606 pinsNullBodyFailurePathMissingRationale (the verb
+#                   requires a non-empty rationale string),
+#            SS3607 forwarderDeclarationNotHonored (responseBodyForwarder
+#                   declarations must actually wire `arg <call> body
+#                   <declaredArgName>` against a known writer)
 #   SS37xx — type system discipline           (T3 refinement)
 #            SS3701 circularAlias
 #   SS38xx — codec discipline                 (T3 refinement)
-#            SS3801 jsonCodecIncomplete
+#            SS3801 jsonCodecIncomplete,
+#            SS3802 generatedJsonRuntimeMissing,
+#            SS3803 genericCodecRuntimeMissing,
+#            SS3804 collectionRuntimeMissing
 #   SS39xx — resource lifecycle               (T3 refinement)
 #            SS3901 fileHandleNotClosed,
-#            SS3903 guardTokenSourceWithoutRelease
+#            SS3903 guardTokenSourceWithoutRelease,
+#            SS3904 guardTokenDoesNotProtectSharedState
 #   AS40xx — style discipline                 (T4 style)
 #            SS4001 callObjectSuffix, SS4002 bindErrorSuffix,
 #            SS4003 makeErrorSuffix, SS4004 vagueName,
@@ -1620,6 +1791,61 @@ def check_shared_state_protection(facts: ExtendedFacts) -> List[Diagnostic]:
     return diagnostics
 
 
+def check_supported_shared_state_scope(facts: ExtendedFacts) -> List[Diagnostic]:
+    """Current codegen only implements process-scoped shared state. Other
+    scopes would overstate the runtime boundary because they still lower to
+    an in-process LLVM global."""
+    diagnostics: List[Diagnostic] = []
+    for storageName, storageFact in facts.storageSlots.items():
+        if not storageFact.scope.startswith("sharedState."):
+            continue
+        sharedStateScope = storageFact.scope.split(".", 1)[1]
+        if sharedStateScope == "process":
+            continue
+        replacementShape = (
+            "sharedState process " + " ".join(storageFact.line.args[1:])
+            if len(storageFact.line.args) >= 4
+            else "sharedState process <mutability> <name> <type> [initial]"
+        )
+        diagnostics.append(Diagnostic(
+            tier=Tier.T3_REFINEMENT,
+            code="SS3108",
+            kind="stateSemantics.unsupportedSharedStateScope",
+            severity=Severity.WARNING,
+            subjectName=storageName,
+            subjectKind="sharedState",
+            gapEdge="processScopeOnly",
+            intentSlogan="sharedState scope exceeds current runtime",
+            primary=span_of_line(storageFact.line, "sharedStateDeclaration"),
+            invariantRule=(
+                "SemanticScript 1.0 codegen implements sharedState as an LLVM "
+                "module global visible within one process; cross-process or "
+                "cluster state requires an external runtime not wired today"
+            ),
+            specAnchor="SYNTAX.md#sharedState",
+            fixCandidates=[
+                FixCandidate(
+                    name="useProcessScope",
+                    shape=replacementShape,
+                    evidence=[span_of_line(storageFact.line)],
+                ),
+                FixCandidate(
+                    name="documentExternalStateRuntime",
+                    shape='warning <operationName> "sharedState uses an external cross-process runtime"',
+                    autoApplicable=False,
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            effort=Effort.LOCAL,
+            passProvenance="check_supported_shared_state_scope",
+            agentHint=(
+                "do not rely on the compiler for cross-process sharing; only "
+                "`sharedState process` has a concrete 1.0 lowering"
+            ),
+        ))
+    return diagnostics
+
+
 def _build_capability_coverage_fix_candidates(
     operationName: str,
     effectAction: str,
@@ -2019,6 +2245,47 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
         operationCalls = collect_operation_calls(operation)
         for callFact in operationCalls.values():
             if callFact.target not in KNOWN_FALLIBLE_CALL_TARGETS:
+                continue
+            if callFact.target in C_SENTINEL_FALLIBLE_CALL_TARGETS:
+                if call_has_value_disposition(callFact):
+                    continue
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS3106",
+                    kind="errorPathCoverage.hiddenFailure",
+                    severity=Severity.WARNING,
+                    subjectName=callFact.name,
+                    subjectKind="call",
+                    gapEdge="bindOrIgnoreValue",
+                    intentSlogan="C-style fallible call without value disposition",
+                    primary=span_of_line(callFact.line, "callDeclaration"),
+                    related=[span_of_line(operation.line, "enclosingOperation")],
+                    invariantRule=(
+                        f"C-style fallible target `{callFact.target}` returns a "
+                        "sentinel/status value; bind it for checking or explicitly "
+                        "discard it with `ignoreValue`"
+                    ),
+                    specAnchor="SYNTAX.md#ignoreValue",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="bindOrIgnoreStatus",
+                            shape=(
+                                f"bind {callFact.name}Status <ReturnType> {callFact.name}\n"
+                                f"# ...check status...\n"
+                                f"# or: ignoreValue {callFact.name} <ReturnType>"
+                            ),
+                            evidence=[span_of_line(callFact.line)],
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_hidden_failure",
+                    agentHint=(
+                        f"`{callFact.target}` is not Result-shaped; use a bound "
+                        "sentinel/status check or an explicit ignoreValue"
+                    ),
+                ))
                 continue
             missingDisposition: List[str] = []
             if not callFact.bind_error_lines:
@@ -2579,6 +2846,603 @@ def check_dead_store(facts: ExtendedFacts) -> List[Diagnostic]:
     return diagnostics
 
 
+_DUPLICATE_LOCAL_IMMUTABLE_THRESHOLD = 3
+
+
+def _scan_op_local_immutables(
+    operation: OperationFact,
+) -> List[Tuple[str, str, str, SourceLine]]:
+    """Return every `storage local immutable NAME TYPE INIT` declaration in an
+    operation as ``(name, typeName, initValue, sourceLine)``. Storage rows that
+    don't carry an init token (rare; legal only for some types) record an empty
+    init string so the duplicate-detection key collapses by shape alone."""
+    declarations: List[Tuple[str, str, str, SourceLine]] = []
+    for sourceLine in operation.lines:
+        if is_comment(sourceLine) or not sourceLine.tokens:
+            continue
+        if sourceLine.verb != "storage" or len(sourceLine.args) < 4:
+            continue
+        scope, mutability = sourceLine.args[0], sourceLine.args[1]
+        if scope != "local" or mutability != "immutable":
+            continue
+        name = sourceLine.args[2]
+        typeName = sourceLine.args[3]
+        initValue = sourceLine.args[4] if len(sourceLine.args) >= 5 else ""
+        declarations.append((name, typeName, initValue, sourceLine))
+    return declarations
+
+
+def _preceding_comment_block_text(
+    facts: ExtendedFacts,
+    sourceLine: SourceLine,
+) -> str:
+    """Return concatenated text of the nearest `# …` comment block above
+    ``sourceLine``, walking past contiguous sibling ``storage`` rows so a
+    rationale block placed above a block of related declarations counts for
+    every row in that block. Lower-cased and joined by whitespace. Blank
+    lines terminate the search. Returns "" if no comment block is reachable."""
+    if sourceLine.number < 2:
+        return ""
+    lines = facts.base.lines
+    cursor = sourceLine.number - 2
+    fragments: List[str] = []
+    sawComment = False
+    while cursor >= 0:
+        candidate = lines[cursor]
+        if not candidate.tokens:
+            break
+        if is_comment(candidate):
+            fragments.append(comment_text(candidate))
+            sawComment = True
+            cursor -= 1
+            continue
+        if not sawComment and candidate.verb == "storage":
+            # Walk past a contiguous block of sibling storage rows; the
+            # rationale block that introduces them applies to the whole group.
+            cursor -= 1
+            continue
+        break
+    return " ".join(reversed(fragments)).lower()
+
+
+def _rationale_names_ascii_char(commentText: str, codepoint: int) -> bool:
+    """The rationale comment is acceptable evidence for an ASCII byte literal
+    if it (a) mentions ascii/codepoint/character/byte/char vocabulary, or
+    (b) contains the glyph itself (e.g. the `"` character for codepoint 34)."""
+    if not commentText:
+        return False
+    if any(kw in commentText for kw in ("ascii", "codepoint", "character", "byte ", "char")):
+        return True
+    glyph = chr(codepoint)
+    if glyph in commentText:
+        return True
+    return False
+
+
+def check_duplicate_local_immutable_across_ops(facts: ExtendedFacts) -> List[Diagnostic]:
+    """``storage local immutable NAME TYPE VALUE`` declared identically in three
+    or more operations is a hoist signal. The same value across the file is no
+    longer per-operation context — it is a shared protocol or convention and
+    belongs in ``storage module immutable`` so the project has one source of
+    truth. Reported as T4_STYLE info, not warning, because the right balance
+    between local convenience and module hoist is a judgement call."""
+    diagnostics: List[Diagnostic] = []
+    occurrences: Dict[Tuple[str, str, str], List[Tuple[str, SourceLine]]] = {}
+    for operationName, operation in facts.base.operations.items():
+        for name, typeName, initValue, sourceLine in _scan_op_local_immutables(operation):
+            key = (name, typeName, initValue)
+            occurrences.setdefault(key, []).append((operationName, sourceLine))
+
+    for (name, typeName, initValue), declarations in occurrences.items():
+        uniqueOperations = sorted({opName for opName, _ in declarations})
+        if len(uniqueOperations) < _DUPLICATE_LOCAL_IMMUTABLE_THRESHOLD:
+            continue
+        sampleOpsText = ", ".join(uniqueOperations[:5])
+        if len(uniqueOperations) > 5:
+            sampleOpsText = f"{sampleOpsText}, +{len(uniqueOperations) - 5} more"
+        moduleScopeShape = f"storage module immutable {name} {typeName} {initValue}".rstrip()
+        for _opName, sourceLine in declarations:
+            diagnostics.append(Diagnostic(
+                tier=Tier.T4_STYLE,
+                code="SS4401",
+                kind="styleDiscipline.duplicateLocalImmutableAcrossOps",
+                severity=Severity.INFO,
+                subjectName=name,
+                subjectKind="storageSlot",
+                gapEdge="storage module immutable",
+                intentSlogan="shared scalar repeated across operations",
+                primary=span_of_line(sourceLine, "storageDeclaration"),
+                invariantRule=(
+                    f"`storage local immutable {name} {typeName} {initValue}` is "
+                    f"declared in {len(uniqueOperations)} operations "
+                    f"({sampleOpsText}); a value repeated across operations is a "
+                    "shared protocol and belongs at module scope."
+                ),
+                specAnchor="docs/optimization-guide.md#hoist-shared-immutables-to-module-scope",
+                fixCandidates=[
+                    FixCandidate(
+                        name="hoistToModuleImmutable",
+                        shape=moduleScopeShape,
+                    ),
+                    FixCandidate(
+                        name="renameAndKeepLocal",
+                        shape=(
+                            f"# keep `{name}` local only if it carries operation-specific "
+                            "meaning; rename to something operation-scoped"
+                        ),
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                effort=Effort.LOCAL,
+                passProvenance="check_duplicate_local_immutable_across_ops",
+                agentHint=(
+                    "delete the per-operation declarations and add one module-scope "
+                    "row; references resolve to the module value without rename"
+                ),
+            ))
+    return diagnostics
+
+
+def check_magic_ascii_byte_literal(facts: ExtendedFacts) -> List[Diagnostic]:
+    """``storage local immutable NAME CSignedInt32 V`` where ``V`` is a
+    printable-ASCII codepoint (32..126) but the preceding line is not a
+    ``# rationale:`` comment naming the character. Either hoist to
+    ``storage module immutable`` with a rationale, or add a rationale comment
+    so the codepoint-to-character mapping is visible at the declaration site.
+    Hoist candidates already flagged by SS4401 are skipped to avoid stacking
+    diagnostics on the same line."""
+    diagnostics: List[Diagnostic] = []
+    duplicateNames: Set[str] = set()
+    occurrenceCounts: Dict[Tuple[str, str, str], int] = {}
+    for operation in facts.base.operations.values():
+        seenInThisOperation: Set[Tuple[str, str, str]] = set()
+        for name, typeName, initValue, _line in _scan_op_local_immutables(operation):
+            key = (name, typeName, initValue)
+            if key in seenInThisOperation:
+                continue
+            seenInThisOperation.add(key)
+            occurrenceCounts[key] = occurrenceCounts.get(key, 0) + 1
+    for (name, _typeName, _initValue), count in occurrenceCounts.items():
+        if count >= _DUPLICATE_LOCAL_IMMUTABLE_THRESHOLD:
+            duplicateNames.add(name)
+
+    for operation in facts.base.operations.values():
+        for name, typeName, initValue, sourceLine in _scan_op_local_immutables(operation):
+            if typeName != "CSignedInt32":
+                continue
+            try:
+                codepoint = int(initValue)
+            except ValueError:
+                continue
+            if not (32 <= codepoint <= 126):
+                continue
+            if name in duplicateNames:
+                continue
+            rationaleText = _preceding_comment_block_text(facts, sourceLine)
+            if _rationale_names_ascii_char(rationaleText, codepoint):
+                continue
+            glyph = chr(codepoint)
+            glyphDisplay = "space" if codepoint == 32 else repr(glyph)
+            diagnostics.append(Diagnostic(
+                tier=Tier.T4_STYLE,
+                code="SS4402",
+                kind="styleDiscipline.magicAsciiByteLiteral",
+                severity=Severity.INFO,
+                subjectName=name,
+                subjectKind="storageSlot",
+                gapEdge="# rationale: comment",
+                intentSlogan="printable-ASCII byte without rationale",
+                primary=span_of_line(sourceLine, "storageDeclaration"),
+                invariantRule=(
+                    f"`{name}` holds printable-ASCII codepoint {codepoint} "
+                    f"({glyphDisplay}); the preceding line is not a "
+                    "`# rationale:` comment naming the character."
+                ),
+                specAnchor="docs/optimization-guide.md#ascii-byte-literals",
+                fixCandidates=[
+                    FixCandidate(
+                        name="addRationaleComment",
+                        shape=f"# rationale: {codepoint} = ASCII {glyphDisplay}.",
+                    ),
+                    FixCandidate(
+                        name="hoistToModuleImmutable",
+                        shape=f"storage module immutable ascii<Role> CSignedInt32 {codepoint}",
+                    ),
+                ],
+                confidence=Confidence.MEDIUM,
+                effort=Effort.TRIVIAL,
+                passProvenance="check_magic_ascii_byte_literal",
+                agentHint=(
+                    "ASCII byte literals are protocol values, not arithmetic "
+                    "constants; name the character role at the declaration site"
+                ),
+            ))
+    return diagnostics
+
+
+def check_dead_storage_initializer(facts: ExtendedFacts) -> List[Diagnostic]:
+    """``storage local mutable NAME TYPE INIT`` immediately followed (skipping
+    comments and adjacent storage rows) by ``set local NAME NEW`` with no
+    intervening read of NAME is a dead initializer — the declared starting
+    value is overwritten before any operation reads it. Replace the
+    initializer with the real first value."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        bodyLines = [
+            sourceLine for sourceLine in operation.lines
+            if sourceLine.tokens and not is_comment(sourceLine)
+        ]
+        for lineIndex, sourceLine in enumerate(bodyLines):
+            if sourceLine.verb != "storage" or len(sourceLine.args) < 4:
+                continue
+            scope, mutability = sourceLine.args[0], sourceLine.args[1]
+            if scope != "local" or mutability != "mutable":
+                continue
+            name = sourceLine.args[2]
+            initToken = sourceLine.args[4] if len(sourceLine.args) >= 5 else ""
+            # Skip ahead through any contiguous storage rows (a block of
+            # `storage local immutable …` declarations doesn't count as a read).
+            cursor = lineIndex + 1
+            while cursor < len(bodyLines):
+                candidate = bodyLines[cursor]
+                if candidate.verb == "storage":
+                    cursor += 1
+                    continue
+                break
+            if cursor >= len(bodyLines):
+                continue
+            nextLine = bodyLines[cursor]
+            if nextLine.verb != "set" or len(nextLine.args) < 3:
+                continue
+            if nextLine.args[0] != "local" or nextLine.args[1] != name:
+                continue
+            # The set-after-init pattern is real — but only flag if no
+            # intervening body line touched the name. Storage rows skipped
+            # above never read the name (they introduce fresh slots).
+            diagnostics.append(Diagnostic(
+                tier=Tier.T4_STYLE,
+                code="SS4403",
+                kind="styleDiscipline.deadStorageInitializer",
+                severity=Severity.INFO,
+                subjectName=name,
+                subjectKind="storageSlot",
+                gapEdge="meaningful initializer",
+                intentSlogan="initializer overwritten before any read",
+                primary=span_of_line(sourceLine, "storageDeclaration"),
+                related=[span_of_line(nextLine, "shadowingSet")],
+                invariantRule=(
+                    f"`storage local mutable {name}` initializer `{initToken}` is "
+                    f"overwritten by `set local {name}` on line {nextLine.number} "
+                    "with no read in between"
+                ),
+                specAnchor="docs/optimization-guide.md#dead-initializers",
+                fixCandidates=[
+                    FixCandidate(
+                        name="seedWithRealFirstValue",
+                        shape=(
+                            f"storage local mutable {name} <type> {nextLine.args[2]}"
+                        ),
+                        autoApplicable=False,
+                        evidence=[span_of_line(nextLine)],
+                    ),
+                    FixCandidate(
+                        name="moveInitializationDown",
+                        shape=(
+                            f"# move `storage local mutable {name} <type> <init>` to where "
+                            "the first meaningful value is computed"
+                        ),
+                    ),
+                ],
+                confidence=Confidence.MEDIUM,
+                effort=Effort.TRIVIAL,
+                passProvenance="check_dead_storage_initializer",
+                agentHint=(
+                    "the declared initial value lies about where the loop or block "
+                    "actually starts; seed with the real first value or move the "
+                    "declaration closer to the use"
+                ),
+            ))
+    return diagnostics
+
+
+_FIXED_OFFSET_NAME_SUFFIXES: Tuple[str, ...] = ("Offset", "OFFSET")
+_FIXED_OFFSET_BLOCK_THRESHOLD = 2
+_EMITTER_REFERENCE_TOKENS: Tuple[str, ...] = (
+    "format", "emit", "writes", "serializ", "encoder", "produces",
+    "lockstep", "coupled", "saveTodos", "produced by", "emitted by",
+)
+
+
+def check_fixed_offset_parser_needs_rationale(facts: ExtendedFacts) -> List[Diagnostic]:
+    """An operation that declares two or more ``storage local immutable
+    NAME TYPE V`` rows whose names end in ``Offset`` is using the fixed-offset
+    parser pattern — a known fragile coupling to whichever emitter produces the
+    bytes being indexed. The block must be introduced by a ``# rationale:``
+    comment that either names the emitter operation or describes the format
+    fragment whose bytes are being counted, so future edits to the emitter
+    can update the offsets in lockstep. Without that rationale a downstream
+    agent could change either side and silently misparse."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        bodyLines = [
+            sourceLine for sourceLine in operation.lines
+            if sourceLine.tokens and not is_comment(sourceLine)
+        ]
+        if not bodyLines:
+            continue
+        # Walk the body looking for contiguous blocks of offset storage rows.
+        index = 0
+        while index < len(bodyLines):
+            current = bodyLines[index]
+            if not _is_offset_storage_row(current):
+                index += 1
+                continue
+            blockStart = index
+            while index < len(bodyLines) and _is_offset_storage_row(bodyLines[index]):
+                index += 1
+            blockSize = index - blockStart
+            if blockSize < _FIXED_OFFSET_BLOCK_THRESHOLD:
+                continue
+            firstRow = bodyLines[blockStart]
+            rationaleText = _preceding_comment_block_text(facts, firstRow)
+            if any(token.lower() in rationaleText for token in _EMITTER_REFERENCE_TOKENS):
+                continue
+            offsetNames = sorted({
+                bodyLines[i].args[2] for i in range(blockStart, blockStart + blockSize)
+                if len(bodyLines[i].args) >= 3
+            })
+            sampleNames = ", ".join(offsetNames[:4])
+            if len(offsetNames) > 4:
+                sampleNames = f"{sampleNames}, +{len(offsetNames) - 4} more"
+            diagnostics.append(Diagnostic(
+                tier=Tier.T4_STYLE,
+                code="SS4404",
+                kind="styleDiscipline.fixedOffsetParserNeedsRationale",
+                severity=Severity.INFO,
+                subjectName=operation.name,
+                subjectKind="operation",
+                gapEdge="# rationale: comment naming emitter",
+                intentSlogan="fixed-offset block missing emitter rationale",
+                primary=span_of_line(firstRow, "firstOffsetDeclaration"),
+                related=[span_of_line(operation.line, "enclosingOperation")],
+                invariantRule=(
+                    f"operation `{operation.name}` declares {blockSize} `*Offset` "
+                    f"storage rows ({sampleNames}) without a preceding `# rationale:` "
+                    "comment naming the emitter operation or the format-string "
+                    "derivation; fixed-offset parsing silently drifts when the "
+                    "emitter's format changes."
+                ),
+                specAnchor="docs/optimization-guide.md#implicit-format-coupling",
+                fixCandidates=[
+                    FixCandidate(
+                        name="addEmitterRationale",
+                        shape=(
+                            "# rationale: Offsets count bytes into the line written "
+                            "by <emitterOperation>'s <formatConstant>; any edit to "
+                            "<formatConstant> must update these offsets in lockstep."
+                        ),
+                    ),
+                    FixCandidate(
+                        name="addInvariantNamingCoupling",
+                        shape=(
+                            f"invariant {operation.name} \"Offset constants are coupled "
+                            "to <emitterOperation>'s format string.\""
+                        ),
+                    ),
+                ],
+                confidence=Confidence.MEDIUM,
+                effort=Effort.TRIVIAL,
+                passProvenance="check_fixed_offset_parser_needs_rationale",
+                agentHint=(
+                    "the offset block is the parser side of a producer/consumer "
+                    "pair; name the producer at the declaration site so a future "
+                    "edit to the format string is reviewable"
+                ),
+            ))
+    return diagnostics
+
+
+def _is_offset_storage_row(sourceLine: SourceLine) -> bool:
+    if sourceLine.verb != "storage" or len(sourceLine.args) < 4:
+        return False
+    if sourceLine.args[0] != "local" or sourceLine.args[1] != "immutable":
+        return False
+    name = sourceLine.args[2]
+    return any(name.endswith(suffix) for suffix in _FIXED_OFFSET_NAME_SUFFIXES)
+
+
+_INT_COMPARISON_TARGET_TO_ENUM_METHOD: Dict[str, str] = {
+    "math.equalI64":                       "equal",
+    "math.notEqualI64":                    "notEqual",
+    "math.lessThanI64":                    "lessThan",
+    "math.lessThanOrEqualI64":             "lessThanOrEqual",
+    "math.greaterThanI64":                 "greaterThan",
+    "math.greaterThanOrEqualI64":          "greaterThanOrEqual",
+    "math.equalCSignedInt32":              "equal",
+    "math.notEqualCSignedInt32":           "notEqual",
+    "math.lessThanCSignedInt32":           "lessThan",
+    "math.lessThanOrEqualCSignedInt32":    "lessThanOrEqual",
+    "math.greaterThanCSignedInt32":        "greaterThan",
+    "math.greaterThanOrEqualCSignedInt32": "greaterThanOrEqual",
+}
+
+
+def check_enum_repr_comparison(facts: ExtendedFacts) -> List[Diagnostic]:
+    """A `math.equal*` / `math.notEqual*` / `math.lessThan*` /
+    `math.greaterThan*` call whose operand binds, inputs, storage values,
+    enum cases, or module-scope values resolve to an enum type is leaking
+    the enum's repr into the call site. Use the typed `EnumName.equal`
+    domain-method form instead so the source-level call expresses the
+    enum identity, not the underlying integer width."""
+    diagnostics: List[Diagnostic] = []
+    enumReprs, _enumCasesByType, _enumCaseValuesByType, enumTypeByCase = _enum_context(facts)
+    enumNames: Set[str] = set(enumReprs.keys())
+    if not enumNames:
+        return diagnostics
+
+    moduleScopeValueTypes: Dict[str, str] = {}
+    insideOperation = False
+    for sourceLine in facts.base.lines:
+        if not sourceLine.tokens or is_comment(sourceLine):
+            continue
+        verb = sourceLine.verb
+        args = sourceLine.args
+        if verb == "operation" and args:
+            insideOperation = True
+            continue
+        if insideOperation:
+            continue
+        if verb == "storage" and len(args) >= 5:
+            moduleScopeValueTypes[args[2]] = args[3]
+        elif verb == "sharedState" and len(args) >= 5:
+            moduleScopeValueTypes[args[2]] = args[3]
+        elif verb == "enumCase" and len(args) >= 2:
+            moduleScopeValueTypes[args[1]] = args[0]
+
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        valueTypesInScope: Dict[str, str] = dict(moduleScopeValueTypes)
+        callTargetByCallName: Dict[str, Tuple[SourceLine, str]] = {}
+        argLinesByCallName: Dict[str, List[SourceLine]] = {}
+
+        for sourceLine in operation.lines:
+            if not sourceLine.tokens or is_comment(sourceLine):
+                continue
+            verb = sourceLine.verb
+            args = sourceLine.args
+            if verb == "input" and len(args) >= 3 and args[0] == operation.name:
+                valueTypesInScope[args[1]] = args[2]
+            elif verb == "storage" and len(args) >= 5:
+                valueTypesInScope[args[2]] = args[3]
+            elif verb in {"bind", "bindOk", "bindError"} and len(args) >= 3:
+                valueTypesInScope[args[0]] = args[1]
+            elif verb == "call" and len(args) >= 2:
+                callTargetByCallName[args[0]] = (sourceLine, args[1])
+            elif verb == "arg" and len(args) >= 3:
+                argLinesByCallName.setdefault(args[0], []).append(sourceLine)
+
+        for callName, (callLine, targetName) in callTargetByCallName.items():
+            enumMethod = _INT_COMPARISON_TARGET_TO_ENUM_METHOD.get(targetName)
+            if enumMethod is None:
+                continue
+            enumOperandTypes: Set[str] = set()
+            for argLine in argLinesByCallName.get(callName, []):
+                operandName = argLine.args[2]
+                operandType = valueTypesInScope.get(operandName)
+                if operandType is None and operandName in enumTypeByCase:
+                    operandType = enumTypeByCase[operandName]
+                if operandType in enumNames:
+                    enumOperandTypes.add(operandType)
+            if not enumOperandTypes:
+                continue
+            enumName = sorted(enumOperandTypes)[0]
+            suggestedTarget = f"{enumName}.{enumMethod}"
+            diagnostics.append(Diagnostic(
+                tier=Tier.T4_STYLE,
+                code="SS4405",
+                kind="styleDiscipline.enumReprComparison",
+                severity=Severity.INFO,
+                subjectName=callName,
+                subjectKind="call",
+                gapEdge="EnumName.<method> domain target",
+                intentSlogan="enum compared via raw-width math target",
+                primary=span_of_line(callLine, "rawWidthCompareCall"),
+                related=[span_of_line(operation.line, "enclosingOperation")],
+                invariantRule=(
+                    f"`{targetName}` is comparing values of enum type "
+                    f"`{enumName}` directly. The enum's repr is leaking into "
+                    f"the call site; use `{suggestedTarget}` instead so the "
+                    f"source compare expresses the enum, not the integer width."
+                ),
+                specAnchor="SYNTAX.md#enum-domain-methods",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="useEnumDomainMethod",
+                        shape=f"call {callName} {suggestedTarget}",
+                        autoApplicable=True,
+                        evidence=[span_of_line(callLine)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                effort=Effort.TRIVIAL,
+                passProvenance="check_enum_repr_comparison",
+                agentHint=(
+                    "rename the call target only; argument lines stay the "
+                    "same — the compiler resolves the enum's repr"
+                ),
+            ))
+    return diagnostics
+
+
+def check_enum_result_discarded(facts: ExtendedFacts) -> List[Diagnostic]:
+    """`ignoreValue CALL TYPE` where TYPE is the name of a declared enum is
+    silently dropping a value that carries semantic alternatives. Enum
+    returns are not raw scalars: each case is a distinct outcome the
+    caller chose not to act on. Bind the result and either branch on the
+    cases or add a `# rationale:` line explaining why every case is
+    acceptable."""
+    diagnostics: List[Diagnostic] = []
+    enumReprs, _enumCasesByType, _enumCaseValuesByType, _enumTypeByCase = _enum_context(facts)
+    enumNames: Set[str] = set(enumReprs.keys())
+    if not enumNames:
+        return diagnostics
+
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        for sourceLine in operation.lines:
+            if not sourceLine.tokens or is_comment(sourceLine):
+                continue
+            if sourceLine.verb != "ignoreValue" or len(sourceLine.args) < 2:
+                continue
+            callName = sourceLine.args[0]
+            discardedType = sourceLine.args[1]
+            if discardedType not in enumNames:
+                continue
+            diagnostics.append(Diagnostic(
+                tier=Tier.T4_STYLE,
+                code="SS4406",
+                kind="styleDiscipline.enumResultDiscarded",
+                severity=Severity.INFO,
+                subjectName=callName,
+                subjectKind="call",
+                gapEdge="bind + branch (or # rationale:)",
+                intentSlogan="enum result silently discarded",
+                primary=span_of_line(sourceLine, "ignoreValueRow"),
+                related=[span_of_line(operation.line, "enclosingOperation")],
+                invariantRule=(
+                    f"`ignoreValue {callName} {discardedType}` discards an "
+                    f"enum-typed return. Each enum case is a distinct outcome; "
+                    "the discard claims every case is equally acceptable. "
+                    "Bind the result and branch on the cases, or add a "
+                    "preceding `# rationale:` comment justifying the discard."
+                ),
+                specAnchor="docs/optimization-guide.md#enum-result-discipline",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="bindAndBranchOnEnum",
+                        shape=f"bind {callName}Result {discardedType} {callName}",
+                    ),
+                    FixCandidate(
+                        name="documentDiscardRationale",
+                        shape=(
+                            f"# rationale: every {discardedType} case is acceptable "
+                            "here because <state why>."
+                        ),
+                    ),
+                ],
+                confidence=Confidence.MEDIUM,
+                effort=Effort.TRIVIAL,
+                passProvenance="check_enum_result_discarded",
+                agentHint=(
+                    "an enum return is the call's contract — discarding it "
+                    "with no rationale claims all cases are interchangeable"
+                ),
+            ))
+    return diagnostics
+
+
 def _is_top_level_sem_sample(path: Path) -> bool:
     return path.suffix == ".sem" and path.parent.name == "sem"
 
@@ -2972,11 +3836,11 @@ def check_allocation_source_missing(facts: ExtendedFacts) -> List[Diagnostic]:
 
 
 def check_allocate_free_unpaired(facts: ExtendedFacts) -> List[Diagnostic]:
-    """Op body calls `c.malloc`/`c.calloc`/`c.realloc` but has no `defer`
-    whose target is `c.free`. Likely leak."""
+    """Op body allocates heap memory but has no paired cleanup in the same op."""
     diagnostics: List[Diagnostic] = []
     for operation in facts.base.operations.values():
         operationCitations = narrative_citations_for_operation(facts, operation.name)
+        operationCalls = collect_operation_calls(operation)
         operationDefers = facts.operationDefers.get(operation.name, [])
         hasFreeDefer = any(
             target in HEAP_DEALLOCATION_CALL_TARGETS
@@ -2984,12 +3848,14 @@ def check_allocate_free_unpaired(facts: ExtendedFacts) -> List[Diagnostic]:
         )
         if hasFreeDefer:
             continue
-        for sourceLine in operation.lines:
-            if is_comment(sourceLine) or not sourceLine.tokens:
+        for callFact in operationCalls.values():
+            if callFact.target not in HEAP_ALLOCATION_CALL_TARGETS:
                 continue
-            if sourceLine.verb != "call" or len(sourceLine.args) < 2:
-                continue
-            if sourceLine.args[1] not in HEAP_ALLOCATION_CALL_TARGETS:
+            if call_has_later_cleanup_call(
+                callFact,
+                operationCalls,
+                set(HEAP_DEALLOCATION_CALL_TARGETS),
+            ):
                 continue
             # Skip ops whose declared purpose IS to allocate-and-return (the
             # alloc moves ownership to the caller). Heuristic: op output type
@@ -3012,23 +3878,24 @@ def check_allocate_free_unpaired(facts: ExtendedFacts) -> List[Diagnostic]:
                 code="SS3303",
                 kind="resourceLifecycle.allocateFreeUnpaired",
                 severity=Severity.WARNING,
-                subjectName=sourceLine.args[0],
+                subjectName=callFact.name,
                 subjectKind="call",
                 gapEdge="defer",
                 intentSlogan="heap allocation without paired free defer",
-                primary=span_of_line(sourceLine, "allocatingCall"),
+                primary=span_of_line(callFact.line, "allocatingCall"),
                 related=[span_of_line(operation.line, "enclosingOperation")],
                 invariantRule=(
-                    f"every `{sourceLine.args[1]}` should be paired with a "
-                    f"`defer NAME c.free <pointerArg>` in the same operation"
+                    f"every `{callFact.target}` should be paired with a "
+                    f"`defer NAME c.free <pointerArg>` or explicit `c.free` "
+                    "cleanup in the same operation"
                 ),
                 specAnchor="SYNTAX.md#defer",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
                         name="addFreeDefer",
-                        shape=f"defer release{sourceLine.args[0][:1].upper()}{sourceLine.args[0][1:]} c.free <allocatedPointer>",
-                        evidence=[span_of_line(sourceLine)],
+                        shape=f"defer release{callFact.name[:1].upper()}{callFact.name[1:]} c.free <allocatedPointer>",
+                        evidence=[span_of_line(callFact.line)],
                     ),
                 ],
                 confidence=Confidence.HIGH,
@@ -3594,6 +4461,7 @@ def check_file_handle_not_closed(facts: ExtendedFacts) -> List[Diagnostic]:
     fileCloseTargets: Set[str] = {"c.fclose", "c.close"}
     for operation in facts.base.operations.values():
         operationCitations = narrative_citations_for_operation(facts, operation.name)
+        operationCalls = collect_operation_calls(operation)
         operationDefers = facts.operationDefers.get(operation.name, [])
         hasCloseDefer = any(
             deferTarget in fileCloseTargets
@@ -3601,13 +4469,11 @@ def check_file_handle_not_closed(facts: ExtendedFacts) -> List[Diagnostic]:
         )
         if hasCloseDefer:
             continue
-        for sourceLine in operation.lines:
-            if is_comment(sourceLine) or not sourceLine.tokens:
-                continue
-            if sourceLine.verb != "call" or len(sourceLine.args) < 2:
-                continue
-            callTarget = sourceLine.args[1]
+        for callFact in operationCalls.values():
+            callTarget = callFact.target
             if callTarget not in fileOpenTargets:
+                continue
+            if call_has_later_cleanup_call(callFact, operationCalls, fileCloseTargets):
                 continue
             # Suppress when the op's output type IS CFileHandle — caller owns lifetime
             outputLine = None
@@ -3626,15 +4492,16 @@ def check_file_handle_not_closed(facts: ExtendedFacts) -> List[Diagnostic]:
                 code="SS3901",
                 kind="resourceLifecycle.fileHandleNotClosed",
                 severity=Severity.WARNING,
-                subjectName=sourceLine.args[0],
+                subjectName=callFact.name,
                 subjectKind="call",
                 gapEdge="defer",
                 intentSlogan="file handle opened without paired close defer",
-                primary=span_of_line(sourceLine, "openCall"),
+                primary=span_of_line(callFact.line, "openCall"),
                 related=[span_of_line(operation.line, "enclosingOperation")],
                 invariantRule=(
                     f"every `{callTarget}` should be paired with a "
-                    f"`defer NAME {closeTargetSuggestion} <handle>` in the same operation"
+                    f"`defer NAME {closeTargetSuggestion} <handle>` or explicit "
+                    f"`{closeTargetSuggestion}` cleanup in the same operation"
                 ),
                 specAnchor="SYNTAX.md#defer",
                 citations=operationCitations,
@@ -3642,10 +4509,10 @@ def check_file_handle_not_closed(facts: ExtendedFacts) -> List[Diagnostic]:
                     FixCandidate(
                         name="addCloseDefer",
                         shape=(
-                            f"defer release{sourceLine.args[0][:1].upper()}{sourceLine.args[0][1:]} "
+                            f"defer release{callFact.name[:1].upper()}{callFact.name[1:]} "
                             f"{closeTargetSuggestion} <openedHandle>"
                         ),
-                        evidence=[span_of_line(sourceLine)],
+                        evidence=[span_of_line(callFact.line)],
                     ),
                 ],
                 confidence=Confidence.HIGH,
@@ -3692,6 +4559,51 @@ def check_guard_token_source_without_release(facts: ExtendedFacts) -> List[Diagn
             effort=Effort.TRIVIAL,
             passProvenance="check_guard_token_source_without_release",
             agentHint="release op should match the lifetime of the protected resource",
+        ))
+    return diagnostics
+
+
+def check_guard_token_protects_shared_state_access(facts: ExtendedFacts) -> List[Diagnostic]:
+    """A `protectedBy TOKEN` access should have a matching
+    `guardTokenProtects TOKEN RESOURCE` edge. The current compiler does not
+    enforce tokens at runtime, so the metadata graph must be explicit."""
+    diagnostics: List[Diagnostic] = []
+    for accessFact in facts.sharedStateAccesses:
+        tokenName = accessFact.protectedByToken
+        if not tokenName:
+            continue
+        protectedResources = facts.guardTokenProtectsDeclarations.get(tokenName, set())
+        if accessFact.slotName in protectedResources:
+            continue
+        diagnostics.append(Diagnostic(
+            tier=Tier.T3_REFINEMENT,
+            code="SS3904",
+            kind="resourceLifecycle.guardTokenDoesNotProtectSharedState",
+            severity=Severity.WARNING,
+            subjectName=tokenName,
+            subjectKind="guardToken",
+            gapEdge="guardTokenProtects",
+            intentSlogan="protectedBy token lacks matching guardTokenProtects edge",
+            primary=span_of_line(accessFact.line, "sharedStateAccess"),
+            invariantRule=(
+                f"`protectedBy {tokenName}` on sharedState `{accessFact.slotName}` "
+                f"requires `guardTokenProtects {tokenName} {accessFact.slotName}`"
+            ),
+            specAnchor="SYNTAX.md#guardTokenProtects",
+            fixCandidates=[
+                FixCandidate(
+                    name="declareGuardTokenProtectsResource",
+                    shape=f"guardTokenProtects {tokenName} {accessFact.slotName}",
+                    evidence=[span_of_line(accessFact.line)],
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            effort=Effort.TRIVIAL,
+            passProvenance="check_guard_token_protects_shared_state_access",
+            agentHint=(
+                "guard tokens are metadata in the 1.0 runtime; the linter can "
+                "only verify the declared protection graph"
+            ),
         ))
     return diagnostics
 
@@ -3814,6 +4726,162 @@ def check_json_codec_incomplete(facts: ExtendedFacts) -> List[Diagnostic]:
 # upstream of every refinement-level check.
 # ==========================================================================
 
+def _is_generated_json_codec_target(targetName: str) -> bool:
+    return targetName.startswith("json.encode.") or targetName.startswith("json.decode.")
+
+
+def _collection_type_name_from_target(targetName: str) -> Optional[str]:
+    if "." not in targetName:
+        return None
+    typeName, methodName = targetName.split(".", 1)
+    if methodName not in COLLECTION_RUNTIME_METHODS:
+        return None
+    if typeName.endswith(COLLECTION_TYPE_SUFFIXES):
+        return typeName
+    return None
+
+
+def check_runtime_backing_missing(facts: ExtendedFacts) -> List[Diagnostic]:
+    """Flag calls whose current compiler path is the zero-value external
+    fallback, not a real codec or collection runtime."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        for callFact in collect_operation_calls(operation).values():
+            targetName = callFact.target
+            if targetName in SUPPORTED_JSON_PRIMITIVE_TARGETS:
+                continue
+
+            if _is_generated_json_codec_target(targetName):
+                related: List[Span] = [span_of_line(operation.line, "enclosingOperation")]
+                codecTargetLine = facts.jsonCodecGeneratedTargets.get(targetName)
+                if codecTargetLine:
+                    related.append(span_of_line(codecTargetLine, "jsonCodecTargetDeclaration"))
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS3802",
+                    kind="codec.generatedJsonRuntimeMissing",
+                    severity=Severity.WARNING,
+                    subjectName=targetName,
+                    subjectKind="callTarget",
+                    gapEdge="runtimeBinding",
+                    intentSlogan="generated JSON runtime missing",
+                    primary=span_of_line(callFact.line, "callTarget"),
+                    related=related,
+                    invariantRule=(
+                        f"`{targetName}` is not one of the primitive JSON targets "
+                        "with direct compiler lowering; current codegen returns a "
+                        "zero stub unless a real runtime binding or user operation exists"
+                    ),
+                    specAnchor="docs/language/records-codecs-boundaries.md#json-codecs",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="provideRuntimeBinding",
+                            shape=f"runtimeBinding {targetName} <nativeOrSemanticScriptImplementation>",
+                        ),
+                        FixCandidate(
+                            name="replaceWithPrimitiveCodec",
+                            shape="# use json.encode.I64/json.decode.I64/json.encode.Bool/etc. when the value is scalar",
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    effort=Effort.CROSS_FILE,
+                    passProvenance="check_runtime_backing_missing",
+                    agentHint="do not treat record-level generated JSON codecs as executable until a backing runtime is wired",
+                ))
+                continue
+
+            if "." in targetName:
+                targetPrefix = targetName.split(".", 1)[0]
+                codecLine = facts.codecDeclarations.get(targetPrefix)
+                if codecLine:
+                    diagnostics.append(Diagnostic(
+                        tier=Tier.T3_REFINEMENT,
+                        code="SS3803",
+                        kind="codec.genericRuntimeMissing",
+                        severity=Severity.WARNING,
+                        subjectName=targetName,
+                        subjectKind="callTarget",
+                        gapEdge="runtimeBinding",
+                        intentSlogan="generic codec runtime missing",
+                        primary=span_of_line(callFact.line, "callTarget"),
+                        related=[
+                            span_of_line(operation.line, "enclosingOperation"),
+                            span_of_line(codecLine, "codecDeclaration"),
+                        ],
+                        invariantRule=(
+                            f"`{targetName}` references generic codec `{targetPrefix}`, "
+                            "but generic codecs are contract metadata until a backend "
+                            "operation or runtime binding is provided"
+                        ),
+                        specAnchor="docs/language/records-codecs-boundaries.md#generic-codecs",
+                        citations=operationCitations,
+                        fixCandidates=[
+                            FixCandidate(
+                                name="provideCodecRuntimeBinding",
+                                shape=f"runtimeBinding {targetName} <codecBackendImplementation>",
+                            ),
+                            FixCandidate(
+                                name="replaceWithUserOperation",
+                                shape=f"operation <descriptive{targetPrefix[0].upper()}{targetPrefix[1:]}Operation>",
+                            ),
+                        ],
+                        confidence=Confidence.HIGH,
+                        effort=Effort.CROSS_FILE,
+                        passProvenance="check_runtime_backing_missing",
+                        agentHint="generic codec declarations do not create encode/decode functions by themselves",
+                    ))
+                    continue
+
+            collectionTypeName = _collection_type_name_from_target(targetName)
+            collectionLine = (
+                facts.collectionOperationDeclarations.get(targetName)
+                or (
+                    facts.collectionTypeDeclarations.get(collectionTypeName)
+                    if collectionTypeName else None
+                )
+            )
+            if collectionTypeName:
+                related = [span_of_line(operation.line, "enclosingOperation")]
+                if collectionLine:
+                    related.append(span_of_line(collectionLine, "collectionDeclaration"))
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS3804",
+                    kind="collection.runtimeMissing",
+                    severity=Severity.WARNING,
+                    subjectName=targetName,
+                    subjectKind="callTarget",
+                    gapEdge="runtimeBinding",
+                    intentSlogan="collection runtime missing",
+                    primary=span_of_line(callFact.line, "callTarget"),
+                    related=related,
+                    invariantRule=(
+                        f"`{targetName}` is a typed collection operation, but "
+                        "collectionOperation/listType/mapType metadata does not "
+                        "create executable storage behavior yet"
+                    ),
+                    specAnchor="docs/reference/verb-index.md#collections",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="provideCollectionRuntimeBinding",
+                            shape=f"runtimeBinding {targetName} <collectionBackendImplementation>",
+                        ),
+                        FixCandidate(
+                            name="replaceWithExplicitOperation",
+                            shape="# implement the append/get behavior as a named operation and call it directly",
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    effort=Effort.CROSS_FILE,
+                    passProvenance="check_runtime_backing_missing",
+                    agentHint="TaskList.append and TaskMap.get currently compile through the zero-stub fallback",
+                ))
+    return diagnostics
+
+
 def check_argument_arity(facts: ExtendedFacts) -> List[Diagnostic]:
     """Verb appears with fewer arguments than its declared minimum arity.
     Lines below the threshold can't be interpreted by any downstream pass
@@ -3871,6 +4939,25 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
     # Build per-op sets of declared call objects + labels.
     operationCallsByOperationName: Dict[str, Set[str]] = {}
     operationLabelsByOperationName: Dict[str, Set[str]] = {}
+    moduleScopeValueNames: Set[str] = set(OPAQUE_DEPENDENCY_INPUT_NAMES)
+    currentOperationDuringValueScan: Optional[str] = None
+    for sourceLine in facts.base.lines:
+        if not sourceLine.tokens or is_comment(sourceLine):
+            continue
+        verb = sourceLine.verb
+        args = sourceLine.args
+        if verb == "operation" and args:
+            currentOperationDuringValueScan = args[0]
+            continue
+        if currentOperationDuringValueScan is not None:
+            continue
+        if verb in {"domainLiteral", "literal", "const"} and args:
+            moduleScopeValueNames.add(args[0])
+        elif verb == "enumCase" and len(args) >= 2:
+            moduleScopeValueNames.add(args[1])
+        elif verb in {"storage", "sharedState"} and len(args) >= 5:
+            moduleScopeValueNames.add(args[2])
+
     for operation in facts.base.operations.values():
         operationCallsByOperationName[operation.name] = set(
             collect_operation_calls(operation).keys()
@@ -3887,6 +4974,27 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
         operationCitations = narrative_citations_for_operation(facts, operation.name)
         declaredCallNames = operationCallsByOperationName.get(operation.name, set())
         declaredLabelNames = operationLabelsByOperationName.get(operation.name, set())
+        declaredValueNames: Set[str] = set(moduleScopeValueNames)
+        for declarationLine in operation.lines:
+            if not declarationLine.tokens or is_comment(declarationLine):
+                continue
+            declarationVerb = declarationLine.verb
+            declarationArgs = declarationLine.args
+            if (declarationVerb == "input" and len(declarationArgs) >= 3
+                    and declarationArgs[0] == operation.name):
+                declaredValueNames.add(declarationArgs[1])
+            elif declarationVerb in {"const", "var", "literal"} and declarationArgs:
+                declaredValueNames.add(declarationArgs[0])
+            elif declarationVerb == "storage" and len(declarationArgs) >= 5:
+                declaredValueNames.add(declarationArgs[2])
+            elif declarationVerb in {"bind", "bindOk", "bindError"} and declarationArgs:
+                declaredValueNames.add(declarationArgs[0])
+            elif declarationVerb == "read" and len(declarationArgs) >= 2:
+                declaredValueNames.add(declarationArgs[1])
+            elif declarationVerb == "receive" and declarationArgs:
+                declaredValueNames.add(declarationArgs[0])
+            elif declarationVerb == "makeError" and declarationArgs:
+                declaredValueNames.add(declarationArgs[0])
 
         for sourceLine in operation.lines:
             if not sourceLine.tokens or is_comment(sourceLine) or not sourceLine.args:
@@ -3910,6 +5018,22 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
                     code="SS4101",
                     declarationShape=f"call {referencedCallName} <target>",
                 ))
+
+            if verb == "arg" and len(sourceLine.args) >= 3:
+                referencedValueName = sourceLine.args[2]
+                if (referencedValueName not in declaredValueNames
+                        and not _is_integer_literal(referencedValueName)
+                        and referencedValueName not in {"true", "false"}):
+                    diagnostics.append(_unresolved_reference_diagnostic(
+                        sourceLine=sourceLine,
+                        operation=operation,
+                        operationCitations=operationCitations,
+                        referencedName=referencedValueName,
+                        referencedKind="value",
+                        verbThatReferenced=verb,
+                        code="SS4105",
+                        declarationShape=f"const {referencedValueName} <type> <value>",
+                    ))
 
             # Label references
             referencedLabelName: Optional[str] = None
@@ -3959,47 +5083,135 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
                         declarationShape=f"capability {referencedCapabilityName} <effectPath> <action>",
                     ))
 
-    # Module-scope: attachment verbs reference operations at args[0]
+    # Module-scope: narrative-attachment verbs reference a declared subject
+    # at args[0]. The subject may be an operation OR any other declarable
+    # top-level kind (webServer, capability, timeoutBudget, type alias,
+    # storage slot, enum, error domain, literal, domainLiteral,
+    # trustBoundary, retryPolicy, jsonCodec, etc.) — `purpose`,
+    # `invariant`, `warning`, and friends are not operation-only verbs.
+    #
+    # SS4104 fires only when the subject is undeclared anywhere; SS4104b
+    # (a new structural counterpart) fires when an operation-only verb
+    # (`input`, `output`, `effect`, `memory*`, `async`, `useCapability`,
+    # `authority`, `operationBody`) attaches to a subject that exists but
+    # isn't an operation.
+    validAttachmentSubjects: Set[str] = set()
+    validAttachmentSubjects.update(facts.base.operations.keys())
+    validAttachmentSubjects.update(facts.base.abstractions.keys())
+    validAttachmentSubjects.update(facts.base.capabilities.keys())
+    validAttachmentSubjects.update(facts.base.type_aliases.keys())
+    validAttachmentSubjects.update(facts.storageSlots.keys())
+    validAttachmentSubjects.update(facts.literals.keys())
+    validAttachmentSubjects.update(facts.retryPolicies.keys())
+    validAttachmentSubjects.update(facts.trustBoundaries.keys())
+    validAttachmentSubjects.update(facts.codecDeclarations.keys())
+    validAttachmentSubjects.update(facts.jsonCodecDeclarations.keys())
+    validAttachmentSubjects.update(facts.collectionTypeDeclarations.keys())
+    validAttachmentSubjects.update(facts.collectionOperationDeclarations.keys())
+    # Module-scope verbs not already tracked by ExtendedFacts but legal
+    # narrative-attachment subjects per SYNTAX.md.
+    for sourceLine in facts.base.lines:
+        if not sourceLine.tokens or is_comment(sourceLine) or not sourceLine.args:
+            continue
+        if sourceLine.verb in {
+            "enum", "error", "domainLiteral", "policy", "errorPolicy",
+            "resource", "validator", "mapper", "adapter", "boundary",
+        }:
+            validAttachmentSubjects.add(sourceLine.args[0])
+
+    # Operation-only attachment verbs — these MUST resolve to an operation
+    # (a webServer or capability cannot legitimately carry `input` or
+    # `effect`, even though it can carry `purpose`).
+    OPERATION_BODY_ONLY_VERBS = frozenset({
+        "input", "output", "effect", "async", "operationBody",
+        "memory", "memoryHeap", "memoryArena",
+        "memoryAllocationSource", "memoryStackLimit",
+        "useCapability", "authority",
+    })
+
     for sourceLine in facts.base.lines:
         if not sourceLine.tokens or is_comment(sourceLine) or not sourceLine.args:
             continue
         if sourceLine.verb not in OPERATION_ATTACHMENT_VERBS:
             continue
-        referencedOperationName = sourceLine.args[0]
-        if referencedOperationName in facts.base.operations:
+        referencedSubjectName = sourceLine.args[0]
+        # Subject doesn't exist anywhere — true unresolved-attachment.
+        if referencedSubjectName not in validAttachmentSubjects:
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS4104",
+                kind="referenceIntegrity.unresolvedAttachmentSubject",
+                severity=Severity.ERROR,
+                subjectName=referencedSubjectName,
+                subjectKind="declaration",
+                gapEdge="subjectDeclaration",
+                intentSlogan=f"`{sourceLine.verb}` attaches to undeclared subject",
+                primary=span_of_line(sourceLine, "attachmentSite"),
+                invariantRule=(
+                    f"`{sourceLine.verb} {referencedSubjectName} …` requires a prior "
+                    f"declaration of `{referencedSubjectName}` (operation, webServer, "
+                    f"capability, type, enum, error, storage, literal, retryPolicy, "
+                    f"trustBoundary, jsonCodec, codec, validator, mapper, adapter, "
+                    f"boundary, policy, errorPolicy, resource, timeoutBudget, or "
+                    f"collection declaration)"
+                ),
+                specAnchor="SYNTAX.md#operation",
+                fixCandidates=[
+                    FixCandidate(
+                        name="declareSubject",
+                        shape=f"# add a declaration line for `{referencedSubjectName}` (operation/webServer/capability/…)",
+                    ),
+                    FixCandidate(
+                        name="correctSubjectName",
+                        shape=f"# verify `{referencedSubjectName}` spelling against your declarations",
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.LOCAL,
+                passProvenance="check_unresolved_references",
+                agentHint="attachment-verb typos are the #1 source of silent narrative drift",
+            ))
             continue
-        # Don't double-emit for ops that simply don't exist — emit one SS4104
-        diagnostics.append(Diagnostic(
-            tier=Tier.T1_SPEC,
-            code="SS4104",
-            kind="referenceIntegrity.unresolvedOperationAttachment",
-            severity=Severity.ERROR,
-            subjectName=referencedOperationName,
-            subjectKind="operation",
-            gapEdge="operationDeclaration",
-            intentSlogan=f"`{sourceLine.verb}` attaches to undeclared operation",
-            primary=span_of_line(sourceLine, "attachmentSite"),
-            invariantRule=(
-                f"`{sourceLine.verb} {referencedOperationName} …` requires a prior "
-                f"`operation {referencedOperationName}` declaration"
-            ),
-            specAnchor="SYNTAX.md#operation",
-            fixCandidates=[
-                FixCandidate(
-                    name="declareOperation",
-                    shape=f"operation {referencedOperationName}",
+        # Subject exists but isn't an operation — only operation-body verbs
+        # care about that distinction. `purpose` / `invariant` / `warning`
+        # legitimately attach to any subject kind.
+        if (sourceLine.verb in OPERATION_BODY_ONLY_VERBS
+                and referencedSubjectName not in facts.base.operations):
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS4105",
+                kind="referenceIntegrity.attachmentSubjectKindMismatch",
+                severity=Severity.ERROR,
+                subjectName=referencedSubjectName,
+                subjectKind="operation",
+                gapEdge="operationDeclaration",
+                intentSlogan=f"`{sourceLine.verb}` requires an operation subject",
+                primary=span_of_line(sourceLine, "attachmentSite"),
+                invariantRule=(
+                    f"`{sourceLine.verb} {referencedSubjectName} …` attaches "
+                    f"operation-body metadata (input/output/effect/memory/async/"
+                    f"useCapability/authority/operationBody) — those verbs are "
+                    f"meaningful only for `operation` subjects, not for the kind "
+                    f"of `{referencedSubjectName}` that is actually declared"
                 ),
-                FixCandidate(
-                    name="correctOperationName",
-                    shape=f"# verify `{referencedOperationName}` spelling against your operation declarations",
-                ),
-            ],
-            confidence=Confidence.HIGH,
-            blocksCompile=True,
-            effort=Effort.LOCAL,
-            passProvenance="check_unresolved_references",
-            agentHint="attachment-verb typos are the #1 source of silent narrative drift",
-        ))
+                specAnchor="SYNTAX.md#operation",
+                fixCandidates=[
+                    FixCandidate(
+                        name="renameSubjectToActualOperation",
+                        shape=f"# replace `{referencedSubjectName}` with the operation name that owns this {sourceLine.verb} edge",
+                    ),
+                    FixCandidate(
+                        name="removeOperationBodyAttachment",
+                        shape=f"# remove `{sourceLine.verb} {referencedSubjectName} …` — this verb is operation-only",
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.TRIVIAL,
+                passProvenance="check_unresolved_references",
+                agentHint="operation-body verbs like `input`/`effect` are not valid on webServer/capability/storage subjects",
+            ))
 
     return diagnostics
 
@@ -4053,17 +5265,168 @@ def _unresolved_reference_diagnostic(
     )
 
 
-def _resolve_type_to_canonical(typeName: Optional[str], typeAliases: Dict[str, str]) -> Optional[str]:
+def _resolve_type_to_canonical(
+    typeName: Optional[str],
+    typeAliases: Dict[str, str],
+    enumReprs: Optional[Dict[str, str]] = None,
+) -> Optional[str]:
     """Chase a name through `type X Y` aliases, then collapse to a canonical
     primitive when the alias terminus is one of the equivalence groups."""
     if typeName is None:
         return None
+    enumReprs = enumReprs or {}
     visited: Set[str] = set()
     currentName = typeName
     while currentName in typeAliases and currentName not in visited:
         visited.add(currentName)
         currentName = typeAliases[currentName]
+    if currentName in enumReprs and currentName not in visited:
+        visited.add(currentName)
+        currentName = enumReprs[currentName]
+        while currentName in typeAliases and currentName not in visited:
+            visited.add(currentName)
+            currentName = typeAliases[currentName]
     return PRIMITIVE_CANONICAL_BY_TYPE.get(currentName, currentName)
+
+
+def _resolve_type_head(
+    typeName: Optional[str],
+    typeAliases: Dict[str, str],
+    enumReprs: Optional[Dict[str, str]] = None,
+) -> Optional[str]:
+    if typeName is None:
+        return None
+    enumReprs = enumReprs or {}
+    visited: Set[str] = set()
+    currentName = typeName
+    while currentName in typeAliases and currentName not in visited:
+        visited.add(currentName)
+        currentName = typeAliases[currentName]
+    if currentName in enumReprs and currentName not in visited:
+        visited.add(currentName)
+        currentName = enumReprs[currentName]
+        while currentName in typeAliases and currentName not in visited:
+            visited.add(currentName)
+            currentName = typeAliases[currentName]
+    return currentName
+
+
+def _strict_numeric_shape(typeName: Optional[str]) -> Optional[str]:
+    if typeName is None:
+        return None
+    signed8 = {"I8", "CSignedByte", "CChar", "CSchar", "CByte"}
+    signed16 = {"I16", "CSignedInt16", "CShort"}
+    signed32 = {"I32", "CSignedInt32", "ExitCode"}
+    signed64 = {
+        "I64", "CSignedInt64", "CByteCount", "CSignedByteCount",
+        "CAddressOffset", "CUnixSecondsSinceEpoch", "CCpuClockTicks",
+        "CFileByteOffset", "DurationMilliseconds", "MonotonicMilliseconds",
+        "UtcMilliseconds",
+    }
+    unsigned8 = {"CUnsignedByte", "CUchar"}
+    unsigned16 = {"CUnsignedInt16", "CUshort"}
+    unsigned32 = {"CUnsignedInt32", "CUint"}
+    unsigned64 = {"CUnsignedInt64", "CMaxUnsignedInt", "CUintmax"}
+    float32 = {"F32", "CFloat32", "CFloat"}
+    float64 = {"F64", "CFloat64", "CDouble"}
+    if typeName == "Bool":
+        return "bool"
+    if typeName in signed8:
+        return "signed8"
+    if typeName in signed16:
+        return "signed16"
+    if typeName in signed32:
+        return "signed32"
+    if typeName in signed64:
+        return "signed64"
+    if typeName in unsigned8:
+        return "unsigned8"
+    if typeName in unsigned16:
+        return "unsigned16"
+    if typeName in unsigned32:
+        return "unsigned32"
+    if typeName in unsigned64:
+        return "unsigned64"
+    if typeName in float32:
+        return "float32"
+    if typeName in float64:
+        return "float64"
+    return typeName
+
+
+def _enum_arg_shape_mismatch(
+    expectedType: str,
+    actualType: str,
+    typeAliases: Dict[str, str],
+    enumReprs: Dict[str, str],
+) -> bool:
+    if actualType not in enumReprs and expectedType not in enumReprs:
+        return False
+    if expectedType in enumReprs and actualType in enumReprs:
+        return expectedType != actualType
+    expectedHead = _resolve_type_head(expectedType, typeAliases, enumReprs)
+    actualHead = _resolve_type_head(actualType, typeAliases, enumReprs)
+    return _strict_numeric_shape(expectedHead) != _strict_numeric_shape(actualHead)
+
+
+I64_COMPARISON_TARGETS: Dict[str, str] = {
+    "math.equalI64": "math.equalCSignedInt32",
+    "math.notEqualI64": "math.notEqualCSignedInt32",
+    "math.lessThanI64": "math.lessThanCSignedInt32",
+    "math.lessThanOrEqualI64": "math.lessThanOrEqualCSignedInt32",
+    "math.greaterThanI64": "math.greaterThanCSignedInt32",
+    "math.greaterThanOrEqualI64": "math.greaterThanOrEqualCSignedInt32",
+}
+
+I32_COMPARISON_TARGETS: Dict[str, str] = {
+    value: key for key, value in I64_COMPARISON_TARGETS.items()
+}
+
+MATH_EXACT_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
+    targetName: signature
+    for targetName, signature in BUILTIN_TARGET_SIGNATURES.items()
+    if targetName.startswith("math.")
+}
+
+
+def _enum_context(
+    facts: ExtendedFacts,
+) -> Tuple[Dict[str, str], Dict[str, List[str]], Dict[str, Dict[str, str]], Dict[str, str]]:
+    enumReprs: Dict[str, str] = {}
+    enumCasesByType: Dict[str, List[str]] = {}
+    enumCaseValuesByType: Dict[str, Dict[str, str]] = {}
+    enumTypeByCase: Dict[str, str] = {}
+
+    nextValueByEnum: Dict[str, int] = {}
+    for sourceLine in facts.base.lines:
+        if not sourceLine.tokens or is_comment(sourceLine):
+            continue
+        if sourceLine.verb == "enum" and sourceLine.args:
+            enumName = sourceLine.args[0]
+            reprName = "CSignedInt32"
+            if len(sourceLine.args) >= 3 and sourceLine.args[1] == "repr":
+                reprName = sourceLine.args[2]
+            enumReprs[enumName] = reprName
+            enumCasesByType.setdefault(enumName, [])
+            enumCaseValuesByType.setdefault(enumName, {})
+            nextValueByEnum.setdefault(enumName, 0)
+        elif sourceLine.verb == "enumCase" and len(sourceLine.args) >= 2:
+            enumName = sourceLine.args[0]
+            caseName = sourceLine.args[1]
+            enumCasesByType.setdefault(enumName, []).append(caseName)
+            enumTypeByCase[caseName] = enumName
+            nextValue = nextValueByEnum.get(enumName, 0)
+            if len(sourceLine.args) >= 3:
+                try:
+                    caseValue = int(sourceLine.args[2])
+                except ValueError:
+                    caseValue = nextValue
+            else:
+                caseValue = nextValue
+            enumCaseValuesByType.setdefault(enumName, {}).setdefault(str(caseValue), caseName)
+            nextValueByEnum[enumName] = caseValue + 1
+
+    return enumReprs, enumCasesByType, enumCaseValuesByType, enumTypeByCase
 
 
 def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
@@ -4076,6 +5439,8 @@ def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
     typeAliases = facts.base.type_aliases
 
     # Build per-user-op signature: argName → declared type
+    enumReprs, _enumCasesByType, _enumCaseValuesByType, _enumTypeByCase = _enum_context(facts)
+
     userOperationSignatures: Dict[str, Dict[str, str]] = {}
     for operation in facts.base.operations.values():
         signature: Dict[str, str] = {}
@@ -4107,6 +5472,8 @@ def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
             moduleScopeValueTypes[args[0]] = args[1]
         elif verb in {"const"} and len(args) >= 2:
             moduleScopeValueTypes[args[0]] = args[1]
+        elif verb == "enumCase" and len(args) >= 2:
+            moduleScopeValueTypes[args[1]] = args[0]
         elif verb == "storage" and len(args) >= 5:
             # `storage SCOPE MUTABILITY NAME TYPE INIT`
             moduleScopeValueTypes[args[2]] = args[3]
@@ -4165,10 +5532,11 @@ def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
                 # or a name the linter hasn't yet learned.
                 continue
 
-            resolvedExpected = _resolve_type_to_canonical(expectedType, typeAliases)
-            resolvedActual = _resolve_type_to_canonical(actualType, typeAliases)
+            resolvedExpected = _resolve_type_to_canonical(expectedType, typeAliases, enumReprs)
+            resolvedActual = _resolve_type_to_canonical(actualType, typeAliases, enumReprs)
             if resolvedExpected == resolvedActual:
-                continue
+                if not _enum_arg_shape_mismatch(expectedType, actualType, typeAliases, enumReprs):
+                    continue
 
             diagnostics.append(Diagnostic(
                 tier=Tier.T1_SPEC,
@@ -4212,6 +5580,250 @@ def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"downstream lowering failures; resolve at the source"
                 ),
             ))
+    return diagnostics
+
+
+def check_math_operand_width_drift(facts: ExtendedFacts) -> List[Diagnostic]:
+    diagnostics: List[Diagnostic] = []
+    typeAliases = facts.base.type_aliases
+    enumReprs, _enumCasesByType, _enumCaseValuesByType, enumTypeByCase = _enum_context(facts)
+
+    moduleScopeValueTypes: Dict[str, str] = {}
+    currentOperationDuringScan: Optional[str] = None
+    for sourceLine in facts.base.lines:
+        if not sourceLine.tokens or is_comment(sourceLine):
+            continue
+        verb = sourceLine.verb
+        args = sourceLine.args
+        if verb == "operation" and args:
+            currentOperationDuringScan = args[0]
+            continue
+        if currentOperationDuringScan is not None:
+            continue
+        if verb == "domainLiteral" and len(args) >= 2:
+            moduleScopeValueTypes[args[0]] = args[1]
+        elif verb == "literal" and len(args) >= 2:
+            moduleScopeValueTypes[args[0]] = args[1]
+        elif verb in {"const"} and len(args) >= 2:
+            moduleScopeValueTypes[args[0]] = args[1]
+        elif verb == "enumCase" and len(args) >= 2:
+            moduleScopeValueTypes[args[1]] = args[0]
+        elif verb == "storage" and len(args) >= 5:
+            moduleScopeValueTypes[args[2]] = args[3]
+        elif verb == "sharedState" and len(args) >= 5:
+            moduleScopeValueTypes[args[2]] = args[3]
+
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        valueTypesInScope: Dict[str, str] = dict(moduleScopeValueTypes)
+        callTargetByCallName: Dict[str, str] = {}
+        argLinesByCallName: Dict[str, List[SourceLine]] = {}
+
+        for sourceLine in operation.lines:
+            if not sourceLine.tokens or is_comment(sourceLine):
+                continue
+            verb = sourceLine.verb
+            args = sourceLine.args
+            if verb == "input" and len(args) >= 3 and args[0] == operation.name:
+                valueTypesInScope[args[1]] = args[2]
+            elif verb in {"const", "var"} and len(args) >= 2:
+                valueTypesInScope[args[0]] = args[1]
+            elif verb == "storage" and len(args) >= 5:
+                valueTypesInScope[args[2]] = args[3]
+            elif verb in {"bind", "bindOk", "bindError"} and len(args) >= 3:
+                valueTypesInScope[args[0]] = args[1]
+            elif verb == "call" and len(args) >= 2:
+                callTargetByCallName[args[0]] = args[1]
+            elif verb == "arg" and len(args) >= 3:
+                argLinesByCallName.setdefault(args[0], []).append(sourceLine)
+
+        for callName, targetName in callTargetByCallName.items():
+            targetSignature = MATH_EXACT_TARGET_SIGNATURES.get(targetName)
+            if targetSignature is None:
+                continue
+            expectedTypesByArgName = {
+                argName: expectedType for argName, expectedType in targetSignature
+            }
+            mismatchedArgs: List[Tuple[SourceLine, str, str, str, str, str, str]] = []
+            for argLine in argLinesByCallName.get(callName, []):
+                argumentName = argLine.args[1]
+                suppliedValue = argLine.args[2]
+                expectedType = expectedTypesByArgName.get(argumentName)
+                if expectedType is None:
+                    continue
+                actualType = valueTypesInScope.get(suppliedValue)
+                if actualType is None:
+                    continue
+                expectedHead = _resolve_type_head(expectedType, typeAliases, enumReprs)
+                actualHead = _resolve_type_head(actualType, typeAliases, enumReprs)
+                expectedShape = _strict_numeric_shape(expectedHead)
+                actualShape = _strict_numeric_shape(actualHead)
+                if expectedShape != actualShape:
+                    mismatchedArgs.append((
+                        argLine,
+                        suppliedValue,
+                        actualType,
+                        expectedType,
+                        expectedShape or expectedHead or expectedType,
+                        actualShape or actualHead or actualType,
+                        argumentName,
+                    ))
+
+            if not mismatchedArgs:
+                continue
+
+            (
+                firstArgLine,
+                firstValue,
+                firstType,
+                expectedType,
+                expectedShape,
+                actualShape,
+                argumentName,
+            ) = mismatchedArgs[0]
+            suggestedTarget: Optional[str] = None
+            if targetName in I64_COMPARISON_TARGETS and actualShape == "signed32":
+                suggestedTarget = I64_COMPARISON_TARGETS[targetName]
+            elif targetName in I32_COMPARISON_TARGETS and actualShape == "signed64":
+                suggestedTarget = I32_COMPARISON_TARGETS[targetName]
+            fixCandidates = [
+                FixCandidate(
+                    name="makeConversionExplicit",
+                    shape=(
+                        f"# convert `{firstValue}` to `{expectedType}` with an explicit "
+                        f"conversion before `arg {callName} {argumentName} ...`"
+                    ),
+                ),
+            ]
+            if suggestedTarget is not None:
+                fixCandidates.insert(0, FixCandidate(
+                    name="useWidthSpecificMathTarget",
+                    shape=f"call {callName} {suggestedTarget}",
+                ))
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS4303",
+                kind="typeIntegrity.mathOperandWidthDrift",
+                severity=Severity.ERROR,
+                subjectName=callName,
+                subjectKind="call",
+                gapEdge="exactMathOperandWidth",
+                intentSlogan="math operand width must be explicit",
+                primary=span_of_line(firstArgLine, "widthDriftArg"),
+                related=[span_of_line(operation.line, "enclosingOperation")],
+                invariantRule=(
+                    f"`{targetName}` argument `{argumentName}` expects "
+                    f"`{expectedType}`-shaped math input (`{expectedShape}`); "
+                    f"`{firstValue}` is `{firstType}` (`{actualShape}`). "
+                    "Math lowering does not widen or narrow implicitly; use a "
+                    "width-specific math target or an explicit conversion."
+                ),
+                specAnchor="docs/toolchain/linter.md#width-checks",
+                citations=operationCitations,
+                fixCandidates=fixCandidates,
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.LOCAL,
+                passProvenance="check_math_operand_width_drift",
+                agentHint=(
+                    "math lowering requires exact operand widths; insert an "
+                    "explicit conversion operation instead of relying on codegen"
+                ),
+            ))
+
+    return diagnostics
+
+
+def _is_integer_literal(token: str) -> bool:
+    stripped = token.lstrip("-")
+    return bool(stripped) and stripped.isdigit()
+
+
+def _operation_success_output_type(
+    operation: OperationFact,
+) -> Tuple[Optional[str], Optional[str], Optional[SourceLine]]:
+    for sourceLine in operation.lines:
+        if (sourceLine.tokens and not is_comment(sourceLine)
+                and sourceLine.verb == "output" and len(sourceLine.args) >= 2
+                and sourceLine.args[0] == operation.name):
+            if sourceLine.args[1] == "Result":
+                if len(sourceLine.args) >= 3:
+                    return sourceLine.args[2], "returnOk", sourceLine
+                return None, None, sourceLine
+            return sourceLine.args[1], "returnValue", sourceLine
+    return None, None, None
+
+
+def check_enum_return_uses_case(facts: ExtendedFacts) -> List[Diagnostic]:
+    diagnostics: List[Diagnostic] = []
+    typeAliases = facts.base.type_aliases
+    _enumReprs, enumCasesByType, enumCaseValuesByType, enumTypeByCase = _enum_context(facts)
+
+    for operation in facts.base.operations.values():
+        outputType, expectedReturnVerb, outputLine = _operation_success_output_type(operation)
+        if outputType is None or expectedReturnVerb is None:
+            continue
+        enumType = _resolve_type_head(outputType, typeAliases, {})
+        if enumType not in enumCasesByType:
+            continue
+
+        validCases = set(enumCasesByType.get(enumType, []))
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        for sourceLine in operation.lines:
+            if (not sourceLine.tokens or is_comment(sourceLine)
+                    or sourceLine.verb != expectedReturnVerb or not sourceLine.args):
+                continue
+            returnedValue = sourceLine.args[0]
+            if returnedValue in validCases:
+                continue
+
+            returnedEnumType = enumTypeByCase.get(returnedValue)
+            isWrongEnumCase = returnedEnumType is not None and returnedEnumType != enumType
+            if not _is_integer_literal(returnedValue) and not isWrongEnumCase:
+                continue
+
+            suggestedCase = enumCaseValuesByType.get(enumType, {}).get(returnedValue)
+            if suggestedCase is None:
+                suggestedCase = enumCasesByType.get(enumType, [f"<{enumType}Case>"])[0]
+                autoApplicable = False
+            else:
+                autoApplicable = True
+
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS4302",
+                kind="typeIntegrity.enumReturnUsesRawValue",
+                severity=Severity.ERROR,
+                subjectName=returnedValue,
+                subjectKind="returnValue",
+                gapEdge="enumCase",
+                intentSlogan="enum return uses raw value",
+                primary=span_of_line(sourceLine, "enumReturnSite"),
+                related=[span_of_line(outputLine, "enumOutputContract")] if outputLine else [],
+                invariantRule=(
+                    f"operation `{operation.name}` returns enum `{enumType}`; "
+                    f"`{expectedReturnVerb}` must use one of its enum cases"
+                ),
+                specAnchor="SYNTAX.md#enumCase",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="returnEnumCase",
+                        shape=f"{expectedReturnVerb} {suggestedCase}",
+                        autoApplicable=autoApplicable,
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.TRIVIAL,
+                passProvenance="check_enum_return_uses_case",
+                agentHint=(
+                    "closed enum outputs should preserve their semantic case "
+                    "names at operation boundaries; raw repr values erase the "
+                    "status domain the enum was created to expose"
+                ),
+            ))
+
     return diagnostics
 
 
@@ -4315,12 +5927,782 @@ def check_duplicate_declarations(facts: ExtendedFacts) -> List[Diagnostic]:
     return diagnostics
 
 
+# ==========================================================================
+# SS36xx — webserver discipline
+# ==========================================================================
+
+# RFC 7231 / 5789 verbs the native webserver dispatcher pattern-matches on.
+# CONNECT and TRACE are excluded on purpose: the blocking adapter has no
+# tunneling semantics, and TRACE would echo opaque request bytes back to
+# the client which is a known information-disclosure footgun. A handler
+# bound to a route whose METHOD is outside this set is dead code — the
+# dispatcher silently never matches it.
+HTTP_METHOD_WHITELIST: frozenset = frozenset({
+    "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS",
+})
+
+# http.* call targets that return a pointer which may legitimately be null
+# when the named header / query / multipart part is absent. Values bound
+# from these calls are a footgun when handed straight back into a response
+# body writer without a null guard, because the response writer rejects a
+# null pointer with the adapter's `handler failed` 500 path.
+NULLABLE_HTTP_REQUEST_READS: frozenset = frozenset({
+    "http.requestHeader",
+    "http.requestQueryParam",
+    "http.requestBodyText",
+    "http.requestBodyBytes",
+    "http.multipartPartText",
+    "http.multipartPartBytes",
+    "http.multipartPartFilename",
+    "http.multipartPartContentType",
+})
+
+# Response writers that reject a null `body` argument at runtime. Passing
+# a nullable bind to any of these surfaces the adapter's null-body 500
+# unless the handler has guarded the pointer first OR explicitly opted
+# into the failure-path contract via a warning text marker.
+HTTP_RESPONSE_BODY_WRITERS: frozenset = frozenset({
+    "http.responseText",
+    "http.responseBytes",
+    "http.responseSseEvent",
+})
+
+# Legacy substring markers that, when present in an operation's `warning`
+# text, used to opt the operation out of the unguardedHttpInput lint. The
+# canonical opt-out is now the `pinsNullBodyFailurePath OP "rationale"`
+# verb (see SYNTAX.md); these substrings are still honored for one
+# deprecation cycle, but their use trips SS3605 `legacyNullBodyMarker`
+# pointing the agent at the verb-based replacement.
+LEGACY_HTTP_NULL_GUARD_OPT_OUT_MARKERS: Tuple[str, ...] = (
+    "null-body failure path",
+    "null-body 500",
+)
+
+
+def _collect_transitive_response_body_writers(facts: ExtendedFacts) -> Set[str]:
+    """Return HTTP_RESPONSE_BODY_WRITERS expanded with every user op that
+    declares `responseBodyForwarder OP bodyArgName` and actually forwards
+    that input to one of the writers (or to another forwarder).
+
+    The verb is the contract: an op that wraps a response writer MUST
+    declare it explicitly so the lint can cite the declaration rather
+    than infer the wrapper role from a magic `body` arg-name match. The
+    walk still iterates to a fixed point so a wrapper-of-a-wrapper is
+    recognized — but only when each layer carries the verb.
+
+    A `responseBodyForwarder` declaration that does NOT actually forward
+    the named input to a writer trips SS3607 (forwarderDeclarationNotHonored,
+    checked separately) — that keeps the verb from being a no-op claim.
+    """
+    writers: Set[str] = set(HTTP_RESPONSE_BODY_WRITERS)
+    # Build the declared (op_name -> body_arg_name) map once. Ops without
+    # the verb are never added to `writers` regardless of their shape.
+    declaredForwarderArgNameByOp: Dict[str, str] = {}
+    for sourceLine in facts.base.lines:
+        if (is_comment(sourceLine) or not sourceLine.tokens
+                or sourceLine.verb != "responseBodyForwarder"
+                or len(sourceLine.args) < 2):
+            continue
+        declaredForwarderArgNameByOp[sourceLine.args[0]] = sourceLine.args[1]
+    if not declaredForwarderArgNameByOp:
+        return writers
+    changed = True
+    while changed:
+        changed = False
+        for operationName, declaredBodyArgName in declaredForwarderArgNameByOp.items():
+            if operationName in writers:
+                continue
+            operationFact = facts.base.operations.get(operationName)
+            if operationFact is None:
+                continue
+            # Build the op's call-target map fresh each pass so newly-
+            # promoted wrappers feed the next iteration.
+            callTargetsByCallName: Dict[str, str] = {
+                sl.args[0]: sl.args[1]
+                for sl in operationFact.lines
+                if (not is_comment(sl) and sl.tokens
+                    and sl.verb == "call" and len(sl.args) >= 2)
+            }
+            forwardsDeclaredArg = False
+            for sourceLine in operationFact.lines:
+                if (is_comment(sourceLine) or not sourceLine.tokens
+                        or sourceLine.verb != "arg"
+                        or len(sourceLine.args) < 3):
+                    continue
+                if (sourceLine.args[1] == "body"
+                        and sourceLine.args[2] == declaredBodyArgName
+                        and callTargetsByCallName.get(sourceLine.args[0]) in writers):
+                    forwardsDeclaredArg = True
+                    break
+            if forwardsDeclaredArg:
+                writers.add(operationName)
+                changed = True
+    return writers
+
+
+def check_response_body_forwarder_declaration_honored(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3607 — `responseBodyForwarder OP bodyArgName` claims the op
+    forwards `bodyArgName` to an http.response* writer (or another
+    forwarder). If the op never actually wires `arg <writerCall> body
+    bodyArgName` against a known writer, the declaration is a false
+    claim — the lint would treat callers as forwarders without basis."""
+    diagnostics: List[Diagnostic] = []
+    # Compute writers WITHOUT trusting unverified forwarder declarations:
+    # start from the runtime writers and only count ops as forwarders
+    # after this check has accepted them. So for THIS check we just need
+    # to verify the forwarding shape against the runtime writers + any
+    # other op whose declaration ALSO honors its claim (fixed point).
+    runtimeWriters: Set[str] = set(HTTP_RESPONSE_BODY_WRITERS)
+    declaredForwarderRows: List[Tuple[SourceLine, str, str]] = []  # (line, op, argName)
+    for sourceLine in facts.base.lines:
+        if (is_comment(sourceLine) or not sourceLine.tokens
+                or sourceLine.verb != "responseBodyForwarder"
+                or len(sourceLine.args) < 2):
+            continue
+        declaredForwarderRows.append(
+            (sourceLine, sourceLine.args[0], sourceLine.args[1])
+        )
+    honoredForwarders: Set[str] = set()
+    changed = True
+    while changed:
+        changed = False
+        for sourceLine, operationName, declaredBodyArgName in declaredForwarderRows:
+            if operationName in honoredForwarders:
+                continue
+            operationFact = facts.base.operations.get(operationName)
+            if operationFact is None:
+                continue
+            callTargetsByCallName: Dict[str, str] = {
+                sl.args[0]: sl.args[1]
+                for sl in operationFact.lines
+                if (not is_comment(sl) and sl.tokens
+                    and sl.verb == "call" and len(sl.args) >= 2)
+            }
+            acceptedWriters = runtimeWriters | honoredForwarders
+            for innerLine in operationFact.lines:
+                if (is_comment(innerLine) or not innerLine.tokens
+                        or innerLine.verb != "arg"
+                        or len(innerLine.args) < 3):
+                    continue
+                if (innerLine.args[1] == "body"
+                        and innerLine.args[2] == declaredBodyArgName
+                        and callTargetsByCallName.get(innerLine.args[0]) in acceptedWriters):
+                    honoredForwarders.add(operationName)
+                    changed = True
+                    break
+    for sourceLine, operationName, declaredBodyArgName in declaredForwarderRows:
+        if operationName in honoredForwarders:
+            continue
+        diagnostics.append(Diagnostic(
+            tier=Tier.T3_REFINEMENT,
+            code="SS3607",
+            kind="webserver.forwarderDeclarationNotHonored",
+            severity=Severity.WARNING,
+            subjectName=operationName,
+            subjectKind="operation",
+            gapEdge="forwarderImplementation",
+            intentSlogan=f"`{declaredBodyArgName}` is not actually forwarded to a response writer",
+            primary=span_of_line(sourceLine, "responseBodyForwarderDeclaration"),
+            invariantRule=(
+                f"`responseBodyForwarder {operationName} {declaredBodyArgName}` "
+                f"claims this op forwards its `{declaredBodyArgName}` input to "
+                f"an http.response* writer (or another declared forwarder); the "
+                f"op body must contain `arg <writerCall> body {declaredBodyArgName}` "
+                f"against a known writer for the claim to hold"
+            ),
+            specAnchor="SYNTAX.md#responseBodyForwarder",
+            citations=narrative_citations_for_operation(facts, operationName),
+            fixCandidates=[
+                FixCandidate(
+                    name="wireForwardingCall",
+                    shape=(
+                        f"# inside `operation {operationName}`:\n"
+                        f"# arg <writerCallName> body {declaredBodyArgName}"
+                    ),
+                ),
+                FixCandidate(
+                    name="removeFalseForwarderClaim",
+                    shape=f"# remove `responseBodyForwarder {operationName} {declaredBodyArgName}`",
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            effort=Effort.LOCAL,
+            passProvenance="check_response_body_forwarder_declaration_honored",
+            agentHint="the forwarder verb is the explicit alternative to the magic `body` arg-name match; an unhonored declaration is worse than no declaration",
+        ))
+    return diagnostics
+
+
+def check_invalid_route_method(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3601 — `route SERVER METHOD PATH HANDLER` METHOD must be in the
+    native dispatcher's whitelist. Unrecognized verbs never match at
+    runtime and the handler binding becomes dead code."""
+    diagnostics: List[Diagnostic] = []
+    allowedList = ", ".join(sorted(HTTP_METHOD_WHITELIST))
+    for routeFact in facts.base.routes:
+        if routeFact.method in HTTP_METHOD_WHITELIST:
+            continue
+        diagnostics.append(Diagnostic(
+            tier=Tier.T3_REFINEMENT,
+            code="SS3601",
+            kind="webserver.invalidRouteMethod",
+            severity=Severity.WARNING,
+            subjectName=routeFact.path,
+            subjectKind="route",
+            gapEdge="route.method",
+            intentSlogan=f"method `{routeFact.method}` not in dispatcher whitelist",
+            primary=span_of_line(routeFact.line, "routeDeclaration"),
+            invariantRule=(
+                "route SERVER METHOD PATH HANDLER — METHOD must be one of "
+                "GET/HEAD/POST/PUT/PATCH/DELETE/OPTIONS; the native dispatcher "
+                "silently never matches anything else, leaving the handler dead"
+            ),
+            specAnchor="SYNTAX.md#route",
+            fixCandidates=[
+                FixCandidate(
+                    name="useWhitelistedMethod",
+                    shape=f"route <server> <METHOD-from: {allowedList}> {routeFact.path} {routeFact.handler}",
+                ),
+                FixCandidate(
+                    name="removeRouteEntry",
+                    shape=f"# remove `route <server> {routeFact.method} {routeFact.path} {routeFact.handler}` (dead binding)",
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            effort=Effort.TRIVIAL,
+            passProvenance="check_invalid_route_method",
+            agentHint=(
+                "CONNECT and TRACE are intentionally excluded from the "
+                "whitelist; if the route is meant to be a custom verb, that "
+                "is not currently supported by the native dispatcher"
+            ),
+        ))
+    return diagnostics
+
+
+def check_middleware_missing_response_effect(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3602 — an operation bound via `routeMiddleware` must declare
+    `effect OP write http.response*`. The native dispatcher invokes
+    middleware before the route handler specifically so it can stamp
+    response headers / write response state; without a declared write
+    effect the linter cannot prove the middleware honored its capability
+    contract (§2 checkability law) and a future agent edit could quietly
+    delete the writes."""
+    diagnostics: List[Diagnostic] = []
+    for sourceLine in facts.base.lines:
+        if (is_comment(sourceLine) or not sourceLine.tokens
+                or sourceLine.verb != "routeMiddleware"
+                or len(sourceLine.args) < 3):
+            continue
+        routePath = sourceLine.args[1]
+        middlewareName = sourceLine.args[2]
+        middlewareOp = facts.base.operations.get(middlewareName)
+        if middlewareOp is None:
+            # Unresolved op reference is caught by SS4104; nothing to add here.
+            continue
+        declaresResponseWrite = False
+        responseEffectLine: Optional[SourceLine] = None
+        for opLine in middlewareOp.lines:
+            if is_comment(opLine) or opLine.verb != "effect" or len(opLine.args) < 3:
+                continue
+            if (opLine.args[0] == middlewareName
+                    and opLine.args[1] == "write"
+                    and opLine.args[2].startswith("http.response")):
+                declaresResponseWrite = True
+                responseEffectLine = opLine
+                break
+        if declaresResponseWrite:
+            continue
+        diagnostics.append(Diagnostic(
+            tier=Tier.T3_REFINEMENT,
+            code="SS3602",
+            kind="webserver.middlewareMissingResponseEffect",
+            severity=Severity.WARNING,
+            subjectName=middlewareName,
+            subjectKind="operation.middleware",
+            gapEdge="effect.write.http.response",
+            intentSlogan="middleware op lacks `write http.response*` effect",
+            primary=span_of_line(sourceLine, "routeMiddlewareBinding"),
+            related=[span_of_line(middlewareOp.line, "middlewareOperationHeader")],
+            invariantRule=(
+                "every op bound via `routeMiddleware` must declare "
+                "`effect <op> write http.response*` because the dispatcher "
+                "invokes middleware specifically so it can write response "
+                "state before the handler runs"
+            ),
+            specAnchor="SYNTAX.md#routeMiddleware",
+            citations=narrative_citations_for_operation(facts, middlewareName),
+            fixCandidates=[
+                FixCandidate(
+                    name="addResponseWriteEffect",
+                    shape=f"effect {middlewareName} write http.response",
+                ),
+                FixCandidate(
+                    name="removeMiddlewareBinding",
+                    shape=f"# remove `routeMiddleware <server> {routePath} {middlewareName}` if this op is not actually a middleware",
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            effort=Effort.TRIVIAL,
+            passProvenance="check_middleware_missing_response_effect",
+            agentHint=(
+                "middleware that only reads request state without writing "
+                "anything is usually a logging/metrics op that belongs in a "
+                "different hook; if this one truly is write-free, the "
+                "routeMiddleware binding is the wrong shape"
+            ),
+        ))
+    return diagnostics
+
+
+def check_unguarded_http_input(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3603 — a value bound from a nullable http.request* read must not
+    flow into the `body` argument of an http.response* writer (or a
+    transitive wrapper) without an intervening `pointer.isNull` guard.
+
+    Opt-out (per-operation): include the phrase `null-body failure path`
+    or `null-body 500` in a `warning OP "..."` line. This matches the
+    AgentScript convention of pinning intentional negative-test surfaces
+    in the source rather than the linter config — a future refactor that
+    silently adds a guard would erase the pinned coverage, and the marker
+    text is the contract that prevents that.
+    """
+    diagnostics: List[Diagnostic] = []
+    responseBodyWriters = _collect_transitive_response_body_writers(facts)
+    for operationName, operationFact in facts.base.operations.items():
+        callTargetsByCallName: Dict[str, str] = {}
+        bindLineByCallName: Dict[str, SourceLine] = {}
+        for sourceLine in operationFact.lines:
+            if is_comment(sourceLine) or not sourceLine.tokens:
+                continue
+            if sourceLine.verb == "call" and len(sourceLine.args) >= 2:
+                callTargetsByCallName[sourceLine.args[0]] = sourceLine.args[1]
+
+        # Index nullable binds: name -> declaring SourceLine
+        nullableBoundValueLines: Dict[str, SourceLine] = {}
+        for sourceLine in operationFact.lines:
+            if (is_comment(sourceLine) or sourceLine.verb != "bind"
+                    or len(sourceLine.args) < 3):
+                continue
+            callName = sourceLine.args[2]
+            if callTargetsByCallName.get(callName) in NULLABLE_HTTP_REQUEST_READS:
+                nullableBoundValueLines[sourceLine.args[0]] = sourceLine
+        if not nullableBoundValueLines:
+            continue
+
+        # Canonical opt-out: `pinsNullBodyFailurePath OP "rationale"`.
+        # Walk the op's lines for the verb; any presence (regardless of
+        # rationale text) satisfies the opt-in. The rationale is required
+        # by SS3606 `pinsNullBodyFailurePathMissingRationale` separately
+        # so the explicit-context bar isn't lowered.
+        optOut = False
+        for sourceLine in operationFact.lines:
+            if (is_comment(sourceLine) or not sourceLine.tokens
+                    or sourceLine.verb != "pinsNullBodyFailurePath"
+                    or not sourceLine.args
+                    or sourceLine.args[0] != operationName):
+                continue
+            optOut = True
+            break
+        if optOut:
+            continue
+        # Legacy: fall back to the deprecated warning-text marker so the
+        # one-cycle deprecation window doesn't break existing programs.
+        # If the legacy form matches, the per-op SS3605 emitted by
+        # `check_legacy_null_body_marker` will steer the agent to migrate.
+        for sourceLine in operationFact.lines:
+            if (is_comment(sourceLine) or sourceLine.verb != "warning"
+                    or len(sourceLine.args) < 2):
+                continue
+            if sourceLine.args[0] != operationName:
+                continue
+            warningText = " ".join(sourceLine.args[1:])
+            if any(marker in warningText for marker in LEGACY_HTTP_NULL_GUARD_OPT_OUT_MARKERS):
+                optOut = True
+                break
+        if optOut:
+            continue
+
+        # Walk in source order so a pointer.isNull guard that runs BEFORE
+        # the body usage marks the bound value as inspected. We collect
+        # `arg <pointerIsNullCall> pointer <boundValue>` pairs and treat
+        # everything passed through such a check as guarded thereafter.
+        guardedBoundValues: Set[str] = set()
+        pointerIsNullCallNames: Set[str] = set()
+        for sourceLine in operationFact.lines:
+            if is_comment(sourceLine) or not sourceLine.tokens:
+                continue
+            verb = sourceLine.verb
+            args = sourceLine.args
+            if verb == "call" and len(args) >= 2 and args[1] == "pointer.isNull":
+                pointerIsNullCallNames.add(args[0])
+            elif (verb == "arg" and len(args) >= 3
+                    and args[0] in pointerIsNullCallNames
+                    and args[1] == "pointer"
+                    and args[2] in nullableBoundValueLines):
+                guardedBoundValues.add(args[2])
+            elif verb == "arg" and len(args) >= 3:
+                callName = args[0]
+                argName = args[1]
+                valueName = args[2]
+                if (argName == "body"
+                        and callTargetsByCallName.get(callName) in responseBodyWriters
+                        and valueName in nullableBoundValueLines
+                        and valueName not in guardedBoundValues):
+                    bindSourceLine = nullableBoundValueLines[valueName]
+                    targetCallTarget = callTargetsByCallName[callName]
+                    diagnostics.append(Diagnostic(
+                        tier=Tier.T3_REFINEMENT,
+                        code="SS3603",
+                        kind="webserver.unguardedHttpInput",
+                        severity=Severity.WARNING,
+                        subjectName=valueName,
+                        subjectKind="bind",
+                        gapEdge="pointer.isNull",
+                        intentSlogan=f"nullable bind `{valueName}` reaches response body unguarded",
+                        primary=span_of_line(sourceLine, "responseBodyArg"),
+                        related=[
+                            span_of_line(bindSourceLine, "nullableBindSite"),
+                        ],
+                        invariantRule=(
+                            "values bound from nullable http.request* reads "
+                            "must pass a `pointer.isNull` guard before "
+                            "reaching the `body` argument of http.response* "
+                            "(or a wrapper that forwards body to one); the "
+                            "adapter rejects a null body pointer with a 500"
+                        ),
+                        specAnchor="SYNTAX.md#pointer.isNull",
+                        citations=narrative_citations_for_operation(facts, operationName),
+                        fixCandidates=[
+                            FixCandidate(
+                                name="addPointerIsNullGuardThenBranch",
+                                shape=(
+                                    f"call {valueName}MissingCheckCall pointer.isNull\n"
+                                    f"arg {valueName}MissingCheckCall pointer {valueName}\n"
+                                    f"run {valueName}MissingCheckCall\n"
+                                    f"bind {valueName}Missing Bool {valueName}MissingCheckCall\n"
+                                    f"branchIf {valueName}Missing <missingPathLabel>"
+                                ),
+                            ),
+                            FixCandidate(
+                                name="optInToNullBodyFailurePath",
+                                shape=(
+                                    f"warning {operationName} \"... null-body "
+                                    f"failure path ... (intentional)\""
+                                ),
+                            ),
+                        ],
+                        confidence=Confidence.HIGH,
+                        effort=Effort.LOCAL,
+                        passProvenance="check_unguarded_http_input",
+                        agentHint=(
+                            "either guard with pointer.isNull and branch to a "
+                            "400 reply, or accept the null-body 500 contract "
+                            "and document it with the opt-out marker phrase; "
+                            "silently routing nullable reads to response body "
+                            "exposes adapter internals to clients"
+                        ),
+                    ))
+    return diagnostics
+
+
+def check_route_coverage_drift(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3604 — every declared route SHOULD have a matching
+    `routeTimeout SERVER PATH BUDGET` and `routeMiddleware SERVER PATH MW`,
+    OR an explicit per-path opt-out:
+    `routeTimeoutOptOut SERVER PATH "rationale"` /
+    `routeMiddlewareOptOut SERVER PATH "rationale"`.
+
+    The native dispatcher accepts routes without timeouts or middleware
+    bindings, but coverage drift is exactly the kind of silent gap the
+    spec calls out: missing routeTimeout means the future preemptive
+    runtime will dispatch the route without a budget; missing
+    routeMiddleware means a route slipped past whatever cross-cutting
+    contract (tracing, auth header stamp) the other routes share. Make
+    the omission a declared choice instead of a quiet gap.
+    """
+    diagnostics: List[Diagnostic] = []
+    routesPerServer: Dict[str, Dict[str, SourceLine]] = {}
+    for routeFact in facts.base.routes:
+        routesPerServer.setdefault(routeFact.server, {})[routeFact.path] = routeFact.line
+    timeoutCoverage: Dict[Tuple[str, str], SourceLine] = {}
+    middlewareCoverage: Dict[Tuple[str, str], SourceLine] = {}
+    timeoutOptOuts: Dict[Tuple[str, str], SourceLine] = {}
+    middlewareOptOuts: Dict[Tuple[str, str], SourceLine] = {}
+    for sourceLine in facts.base.lines:
+        if (is_comment(sourceLine) or not sourceLine.tokens
+                or len(sourceLine.args) < 2):
+            continue
+        verb = sourceLine.verb
+        if verb == "routeTimeout" and len(sourceLine.args) >= 3:
+            timeoutCoverage[(sourceLine.args[0], sourceLine.args[1])] = sourceLine
+        elif verb == "routeMiddleware" and len(sourceLine.args) >= 3:
+            middlewareCoverage[(sourceLine.args[0], sourceLine.args[1])] = sourceLine
+        elif verb == "routeTimeoutOptOut" and len(sourceLine.args) >= 2:
+            timeoutOptOuts[(sourceLine.args[0], sourceLine.args[1])] = sourceLine
+        elif verb == "routeMiddlewareOptOut" and len(sourceLine.args) >= 2:
+            middlewareOptOuts[(sourceLine.args[0], sourceLine.args[1])] = sourceLine
+
+    for serverName, pathsByName in routesPerServer.items():
+        for routePath, routeLine in pathsByName.items():
+            key = (serverName, routePath)
+            if key not in timeoutCoverage and key not in timeoutOptOuts:
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS3604",
+                    kind="webserver.routeTimeoutCoverageDrift",
+                    severity=Severity.WARNING,
+                    subjectName=routePath,
+                    subjectKind="route",
+                    gapEdge="routeTimeout",
+                    intentSlogan=f"route `{routePath}` has no timeout coverage",
+                    primary=span_of_line(routeLine, "routeDeclaration"),
+                    invariantRule=(
+                        "every declared `route SERVER METHOD PATH HANDLER` should "
+                        "either have a matching `routeTimeout SERVER PATH BUDGET` "
+                        "row OR an explicit `routeTimeoutOptOut SERVER PATH "
+                        "\"rationale\"` so future preemptive-runtime coverage is "
+                        "not a silent gap"
+                    ),
+                    specAnchor="SYNTAX.md#routeTimeout",
+                    fixCandidates=[
+                        FixCandidate(
+                            name="addRouteTimeout",
+                            shape=f"routeTimeout {serverName} \"{routePath}\" <yourTimeoutBudgetName>",
+                        ),
+                        FixCandidate(
+                            name="declareRouteTimeoutOptOut",
+                            shape=(
+                                f"routeTimeoutOptOut {serverName} \"{routePath}\" "
+                                f"\"<why this route has no timeout>\""
+                            ),
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    effort=Effort.TRIVIAL,
+                    passProvenance="check_route_coverage_drift",
+                    agentHint="the native runtime does not enforce route timeouts yet, but declaring them now lets a preemptive runtime inherit complete coverage without a sweep",
+                ))
+            if key not in middlewareCoverage and key not in middlewareOptOuts:
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS3604",
+                    kind="webserver.routeMiddlewareCoverageDrift",
+                    severity=Severity.WARNING,
+                    subjectName=routePath,
+                    subjectKind="route",
+                    gapEdge="routeMiddleware",
+                    intentSlogan=f"route `{routePath}` has no middleware coverage",
+                    primary=span_of_line(routeLine, "routeDeclaration"),
+                    invariantRule=(
+                        "every declared `route SERVER METHOD PATH HANDLER` should "
+                        "either have a matching `routeMiddleware SERVER PATH MW` "
+                        "row OR an explicit `routeMiddlewareOptOut SERVER PATH "
+                        "\"rationale\"` so cross-cutting middleware contracts "
+                        "(tracing headers, auth checks, etc.) are not silently "
+                        "skipped on the missed route"
+                    ),
+                    specAnchor="SYNTAX.md#routeMiddleware",
+                    fixCandidates=[
+                        FixCandidate(
+                            name="addRouteMiddleware",
+                            shape=f"routeMiddleware {serverName} \"{routePath}\" <yourMiddlewareOpName>",
+                        ),
+                        FixCandidate(
+                            name="declareRouteMiddlewareOptOut",
+                            shape=(
+                                f"routeMiddlewareOptOut {serverName} \"{routePath}\" "
+                                f"\"<why this route skips middleware (e.g., bare healthcheck)>\""
+                            ),
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    effort=Effort.TRIVIAL,
+                    passProvenance="check_route_coverage_drift",
+                    agentHint="dropping a route from the middleware list silently bypasses any cross-cutting contract the other routes share; opt out explicitly if that's the intent",
+                ))
+    return diagnostics
+
+
+def check_legacy_null_body_marker(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3605 — a `warning OP "... null-body failure path ..."` line opts an
+    operation out of SS3603 via a stringly-typed marker. This is the
+    deprecated form; the canonical opt-out is
+    `pinsNullBodyFailurePath OP "rationale"`.
+
+    To avoid false-positives on warnings that *discuss* the contract
+    (e.g., "do not switch this back to the null-body failure path"), the
+    rule only fires when the marker is LOAD-BEARING — i.e., the operation
+    has at least one nullable http.request* bind flowing into an
+    http.response* body that would trip SS3603 if the marker were
+    removed. A warning text that only references the contract for
+    documentation purposes (because the op is actually guarded with
+    pointer.isNull) is not flagged.
+    """
+    diagnostics: List[Diagnostic] = []
+    # Reuse SS3603's machinery to know which ops are actually relying on
+    # the marker. Build the set of ops that have unguarded nullable binds
+    # passed to response body — those are the only ops where SS3605
+    # would matter.
+    responseBodyWriters = _collect_transitive_response_body_writers(facts)
+    opsWithUnguardedNullableBind: Set[str] = set()
+    for operationName, operationFact in facts.base.operations.items():
+        callTargetsByCallName: Dict[str, str] = {
+            sourceLine.args[0]: sourceLine.args[1]
+            for sourceLine in operationFact.lines
+            if (not is_comment(sourceLine) and sourceLine.tokens
+                and sourceLine.verb == "call" and len(sourceLine.args) >= 2)
+        }
+        nullableBoundValueNames: Set[str] = set()
+        for sourceLine in operationFact.lines:
+            if (is_comment(sourceLine) or sourceLine.verb != "bind"
+                    or len(sourceLine.args) < 3):
+                continue
+            if callTargetsByCallName.get(sourceLine.args[2]) in NULLABLE_HTTP_REQUEST_READS:
+                nullableBoundValueNames.add(sourceLine.args[0])
+        if not nullableBoundValueNames:
+            continue
+        guardedBoundValueNames: Set[str] = set()
+        pointerIsNullCallNames: Set[str] = set()
+        for sourceLine in operationFact.lines:
+            if is_comment(sourceLine) or not sourceLine.tokens:
+                continue
+            verb = sourceLine.verb
+            args = sourceLine.args
+            if verb == "call" and len(args) >= 2 and args[1] == "pointer.isNull":
+                pointerIsNullCallNames.add(args[0])
+            elif (verb == "arg" and len(args) >= 3
+                    and args[0] in pointerIsNullCallNames
+                    and args[1] == "pointer"
+                    and args[2] in nullableBoundValueNames):
+                guardedBoundValueNames.add(args[2])
+            elif (verb == "arg" and len(args) >= 3
+                    and args[1] == "body"
+                    and callTargetsByCallName.get(args[0]) in responseBodyWriters
+                    and args[2] in nullableBoundValueNames
+                    and args[2] not in guardedBoundValueNames):
+                opsWithUnguardedNullableBind.add(operationName)
+                break
+
+    for operationName, operationFact in facts.base.operations.items():
+        # The marker only matters if the op would have tripped SS3603 without it.
+        if operationName not in opsWithUnguardedNullableBind:
+            continue
+        hasNewVerb = False
+        legacyWarningLine: Optional[SourceLine] = None
+        for sourceLine in operationFact.lines:
+            if is_comment(sourceLine) or not sourceLine.tokens:
+                continue
+            if (sourceLine.verb == "pinsNullBodyFailurePath"
+                    and sourceLine.args
+                    and sourceLine.args[0] == operationName):
+                hasNewVerb = True
+            elif (sourceLine.verb == "warning"
+                    and len(sourceLine.args) >= 2
+                    and sourceLine.args[0] == operationName):
+                warningText = " ".join(sourceLine.args[1:])
+                if any(marker in warningText
+                       for marker in LEGACY_HTTP_NULL_GUARD_OPT_OUT_MARKERS):
+                    legacyWarningLine = sourceLine
+        if legacyWarningLine is None or hasNewVerb:
+            continue
+        diagnostics.append(Diagnostic(
+            tier=Tier.T4_STYLE,
+            code="SS3605",
+            kind="webserver.legacyNullBodyMarker",
+            severity=Severity.WARNING,
+            subjectName=operationName,
+            subjectKind="operation",
+            gapEdge="pinsNullBodyFailurePath",
+            intentSlogan="legacy null-body opt-out via warning text",
+            primary=span_of_line(legacyWarningLine, "legacyMarkerWarning"),
+            invariantRule=(
+                "the canonical SS3603 opt-out is "
+                "`pinsNullBodyFailurePath OP \"rationale\"`; the stringly-"
+                "typed `null-body failure path` marker inside `warning` text "
+                "is still honored for one deprecation cycle but should be "
+                "replaced with the explicit verb"
+            ),
+            specAnchor="SYNTAX.md#pinsNullBodyFailurePath",
+            citations=narrative_citations_for_operation(facts, operationName),
+            fixCandidates=[
+                FixCandidate(
+                    name="addPinsNullBodyFailurePathVerb",
+                    shape=(
+                        f"pinsNullBodyFailurePath {operationName} "
+                        f"\"why this route deliberately exercises the adapter's "
+                        f"null-body 500 path\""
+                    ),
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            effort=Effort.TRIVIAL,
+            passProvenance="check_legacy_null_body_marker",
+            agentHint=(
+                "after adding the new verb, the warning line can keep its "
+                "human-readable text but should drop the literal phrase "
+                "`null-body failure path` to make the contract single-sourced"
+            ),
+        ))
+    return diagnostics
+
+
+def check_pins_null_body_failure_path_missing_rationale(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3606 — `pinsNullBodyFailurePath OP` without a rationale string is
+    the form that's just as opaque as a bare ignore. Require a non-empty
+    quoted rationale so the contract is human-readable AND machine-
+    detectable, not just one or the other."""
+    diagnostics: List[Diagnostic] = []
+    for sourceLine in facts.base.lines:
+        if (is_comment(sourceLine) or not sourceLine.tokens
+                or sourceLine.verb != "pinsNullBodyFailurePath"
+                or not sourceLine.args):
+            continue
+        operationName = sourceLine.args[0]
+        rationaleText = " ".join(sourceLine.args[1:]).strip()
+        if rationaleText:
+            continue
+        diagnostics.append(Diagnostic(
+            tier=Tier.T3_REFINEMENT,
+            code="SS3606",
+            kind="webserver.pinsNullBodyFailurePathMissingRationale",
+            severity=Severity.WARNING,
+            subjectName=operationName,
+            subjectKind="operation",
+            gapEdge="rationaleText",
+            intentSlogan="pinsNullBodyFailurePath needs a rationale",
+            primary=span_of_line(sourceLine, "pinsVerbWithoutRationale"),
+            invariantRule=(
+                "`pinsNullBodyFailurePath OP \"rationale\"` requires a non-"
+                "empty rationale string explaining WHY this route is "
+                "intentionally exercising the adapter's null-body 500 path"
+            ),
+            specAnchor="SYNTAX.md#pinsNullBodyFailurePath",
+            fixCandidates=[
+                FixCandidate(
+                    name="addRationaleString",
+                    shape=(
+                        f"pinsNullBodyFailurePath {operationName} "
+                        f"\"<why this route deliberately pins the adapter's null-body 500 contract>\""
+                    ),
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            effort=Effort.TRIVIAL,
+            passProvenance="check_pins_null_body_failure_path_missing_rationale",
+            agentHint="the rationale is the operation's contract; a bare verb without it is no better than the legacy marker",
+        ))
+    return diagnostics
+
+
 CHECKERS = [
     # Foundational basics — run first so reference / arity / duplicate
     # errors surface before any refinement-level diagnostic.
     check_argument_arity,
     check_unresolved_references,
     check_argument_type_mismatch,
+    check_enum_return_uses_case,
+    check_math_operand_width_drift,
     check_duplicate_declarations,
     check_unknown_verbs,
     check_unused_calls,
@@ -4334,6 +6716,7 @@ CHECKERS = [
     check_literal_without_digest,
     check_operation_metadata_gaps,
     check_shared_state_protection,
+    check_supported_shared_state_scope,
     check_effect_without_capability,
     check_hidden_failure,
     check_sibling_metadata_drift,
@@ -4356,6 +6739,13 @@ CHECKERS = [
     check_array_length_zero,
     check_inline_capacity_without_spill_allocator,
     check_literal_encoding_missing,
+    # Style discipline (SS44xx) — info-severity hoist/rationale/dead-init signals
+    check_duplicate_local_immutable_across_ops,
+    check_magic_ascii_byte_literal,
+    check_dead_storage_initializer,
+    check_fixed_offset_parser_needs_rationale,
+    check_enum_repr_comparison,
+    check_enum_result_discarded,
     # Concurrency / type system / codec / resource (SS35xx, SS37xx, SS38xx, SS39xx)
     check_unawaited_task_group,
     check_lock_without_cleanup,
@@ -4365,8 +6755,20 @@ CHECKERS = [
     check_async_call_missing_boundary,
     check_file_handle_not_closed,
     check_guard_token_source_without_release,
+    check_guard_token_protects_shared_state_access,
     check_circular_type_alias,
     check_json_codec_incomplete,
+    check_runtime_backing_missing,
+    # Webserver discipline (SS36xx) — route methods, middleware contracts,
+    # nullable-input footgun detection, coverage drift, and
+    # explicit-verb migrations
+    check_invalid_route_method,
+    check_middleware_missing_response_effect,
+    check_unguarded_http_input,
+    check_route_coverage_drift,
+    check_legacy_null_body_marker,
+    check_pins_null_body_failure_path_missing_rationale,
+    check_response_body_forwarder_declaration_honored,
 ]
 
 

@@ -34,12 +34,52 @@ DECLARATION_VERBS = {
     "policy", "errorPolicy", "retryPolicy", "timeoutBudget", "resource",
     "resourceKey", "resourceValue", "resourceKind", "capability", "authority",
     "mutex", "shared", "channel", "const", "var", "storage", "testCovers",
+    "section",
+    "operationBody", "runtimeBinding", "intrinsicName",
+    "domainLiteral", "domainLiteralSource", "domainLiteralTrust",
+    "domainLiteralValidation",
+    "literal", "literalSource", "literalTrust", "literalBytes",
+    "literalPreview", "literalDigest",
+    "typeParameter", "typeLiteralEncoding", "typeLiteralTerminator",
+    "recordLayout", "recordAlign",
+    "arrayType", "arrayLength", "sliceType", "listType", "listAllocator",
+    "listLiteral", "listLiteralLength", "listLiteralIndexBase",
+    "listLiteralIndexPolicy",
+    "smallListType", "smallListInlineCapacity", "smallListSpillAllocator",
+    "mapType", "mapKey", "mapValue", "mapAllocator",
+    "collectionOperation", "collectionOperationArg",
+    "collectionOperationOutput", "collectionOperationEffect",
+    "collectionOperationFailure", "collectionOperationMutation",
+    "collectionOperationAllocation", "collectionOperationCapacitySource",
+    "collectionOperationLengthSource", "collectionOperationBorrowSource",
+    "collectionOperationSpillAllocator", "collectionOperationSpillFailure",
+    "collectionOperationIndexPolicy",
+    "jsonCodecStrict", "jsonCodecUnknownFields", "jsonCodecInput",
+    "jsonCodecOutput", "jsonCodecDecodeTarget", "jsonCodecEncodeTarget",
+    "jsonCodecRequiredField", "jsonCodecLimit", "jsonCodecDecodeFailure",
+    "jsonCodecEncodeFailure",
+    "trustBoundary", "trustBoundaryKind", "trustBoundaryInput",
+    "trustBoundaryOutput", "trustBoundarySource", "trustBoundaryValidator",
+    "retryMaxAttempts", "retryInitialDelay", "retryMaximumDelay",
+    "retryJitter",
+    "workerPool", "work", "workArg",
+    "group", "groupInput", "groupOutput", "groupPurpose", "groupTiming",
+    "sharedState", "sharedStateOwner", "sharedStateGuard",
+    "interval",
 }
 
 CONTEXT_VERBS = {
     "input", "output", "effect", "memory", "async", "purpose", "invariant",
     "warning", "guarantee", "failure", "security", "timing", "observability",
     "memoryHeap", "memoryArena", "memoryStackLimit",
+    "memoryAllocationSource",
+    # SS36xx explicit contract verbs (op-attached metadata; semlint2's
+    # SS3603/SS3604/SS3606 cite them by walking op.lines)
+    "pinsNullBodyFailurePath",
+    "responseBodyForwarder",
+    # `rationale CALL "text"` — call-site rationale; operation body verb
+    # (sister to the `# rationale:` typed comment, more explicit).
+    "rationale",
 }
 
 ACTION_VERBS = {
@@ -49,6 +89,8 @@ ACTION_VERBS = {
     "deferLog", "deferAwaitLog", "deferWhenExitLog", "new", "fieldGet",
     "fieldSet", "send", "receive", "lock", "unlock", "select", "selectCase",
     "runSelect", "useRetry", "useCapability",
+    "deferRunOn", "startInterval", "awaitIntervalTick",
+    "submitWork", "awaitWork",
 }
 
 CONTROL_VERBS = {
@@ -76,6 +118,12 @@ PRIMITIVE_TARGETS = {
     "math.lessThanOrEqualI64",
     "math.greaterThanI64",
     "math.greaterThanOrEqualI64",
+    "math.equalCSignedInt32",
+    "math.notEqualCSignedInt32",
+    "math.lessThanCSignedInt32",
+    "math.lessThanOrEqualCSignedInt32",
+    "math.greaterThanCSignedInt32",
+    "math.greaterThanOrEqualCSignedInt32",
     "math.checkedMultiplyI64",
     "math.subI64",
     "math.mulI64",
@@ -111,6 +159,44 @@ LIBC_POSITIVE_SUCCESS_TARGETS = {
     "puts", "fputs", "putchar", "fputc", "putc",
     "scanf", "fscanf", "sscanf", "vscanf", "vfscanf", "vsscanf",
     "fread", "fwrite",
+}
+
+HTTP_CALL_TARGET_EFFECTS = {
+    "http.requestCancellationToken": ("read", "http.request.cancellationToken"),
+    "http.requestMethod": ("read", "http.request.method"),
+    "http.requestPath": ("read", "http.request.path"),
+    "http.requestHeader": ("read", "http.request.header"),
+    "http.requestQueryParam": ("read", "http.request.query"),
+    "http.requestBodyText": ("read", "http.request.body"),
+    "http.requestBodyBytes": ("read", "http.request.body"),
+    "http.requestBodyLength": ("read", "http.request.body"),
+    "http.multipartPartText": ("read", "http.request.multipart"),
+    "http.multipartPartBytes": ("read", "http.request.multipart"),
+    "http.multipartPartLength": ("read", "http.request.multipart"),
+    "http.multipartPartFilename": ("read", "http.request.multipart"),
+    "http.multipartPartContentType": ("read", "http.request.multipart"),
+    "http.responseJson": ("write", "http.response"),
+    "http.responseText": ("write", "http.response"),
+    "http.responseBytes": ("write", "http.response"),
+    "http.responseSseEvent": ("write", "http.response"),
+    "http.responseHeader": ("write", "http.response.header"),
+}
+
+NULLABLE_HTTP_READER_TARGETS = {
+    "http.requestHeader",
+    "http.requestQueryParam",
+    "http.multipartPartText",
+    "http.multipartPartBytes",
+    "http.multipartPartFilename",
+    "http.multipartPartContentType",
+}
+
+NON_NULL_HTTP_SINK_ARG_NAMES = {
+    "body",
+    "value",
+    "contentType",
+    "event",
+    "data",
 }
 
 CONTRACT_HEAVY_KINDS = {
@@ -176,6 +262,13 @@ MIN_ARITY = {
 }
 
 SEVERITY_ORDER = {"info": 0, "warning": 1, "error": 2}
+
+INTEGER_WIDTH_TYPES = {
+    "CSignedInt32": 32,
+    "I32": 32,
+    "CSignedInt64": 64,
+    "I64": 64,
+}
 
 
 @dataclass
@@ -275,6 +368,23 @@ class AbstractionFact:
 
 
 @dataclass
+class CapabilityFact:
+    name: str
+    effect_path: str
+    access: str
+    line: SourceLine
+
+
+@dataclass
+class RouteFact:
+    server: str
+    method: str
+    path: str
+    handler: str
+    line: SourceLine
+
+
+@dataclass
 class ProgramFacts:
     path: Path
     lines: List[SourceLine] = field(default_factory=list)
@@ -286,6 +396,9 @@ class ProgramFacts:
     type_metadata: Dict[str, Set[str]] = field(default_factory=dict)
     type_aliases: Dict[str, str] = field(default_factory=dict)
     module_group_anchors: List[Tuple[str, str, SourceLine]] = field(default_factory=list)
+    capabilities: Dict[str, CapabilityFact] = field(default_factory=dict)
+    routes: List[RouteFact] = field(default_factory=list)
+    imports: Set[str] = field(default_factory=set)
 
 
 def tokenize_line(raw: str) -> List[Token]:
@@ -387,12 +500,18 @@ def parse_file(path: Path) -> ProgramFacts:
 
             if verb == "mode" and args:
                 program.modes.add(args[0])
+            elif verb == "importModule" and args:
+                program.imports.add(args[0])
             elif verb == "const" and len(args) >= 3:
                 program.consts[args[0]] = ConstFact(args[0], args[1], args[2], line)
             elif verb == "type" and len(args) >= 2:
                 program.type_aliases[args[0]] = args[1]
             elif verb.startswith("type") and len(args) >= 1 and verb != "type":
                 program.type_metadata.setdefault(args[0], set()).add(verb)
+            elif verb == "capability" and len(args) >= 3:
+                program.capabilities[args[0]] = CapabilityFact(args[0], args[1], args[2], line)
+            elif verb == "route" and len(args) >= 4:
+                program.routes.append(RouteFact(args[0], args[1], args[2], args[3], line))
             elif verb in CONTRACT_HEAVY_KINDS and args:
                 program.abstractions.setdefault(args[0], AbstractionFact(verb, args[0], line))
             elif verb in {"purpose", "invariant", "warning", "guarantee", "failure", "security", "timing", "observability"} and args:
@@ -431,10 +550,16 @@ def add_diag(diags: List[Diagnostic], severity: str, rule: str, line: SourceLine
 
 def lint_program(program: ProgramFacts) -> List[Diagnostic]:
     diags: List[Diagnostic] = []
+    relaxed_operation_profile = uses_relaxed_operation_lint_profile(program.path)
 
     lint_line_shape(program, diags)
     lint_group_balance(program.module_group_anchors, diags, "module")
     lint_duplicate_literals(program, diags)
+    lint_route_metadata(program, diags)
+    lint_webserver_native_abi(program, diags)
+    if relaxed_operation_profile:
+        return sorted(diags, key=lambda item: (str(item.path), item.line, item.column, item.rule))
+
     lint_abstractions(program, diags)
 
     for operation in program.operations.values():
@@ -444,7 +569,292 @@ def lint_program(program: ProgramFacts) -> List[Diagnostic]:
     return sorted(diags, key=lambda item: (str(item.path), item.line, item.column, item.rule))
 
 
+def uses_relaxed_operation_lint_profile(path: Path) -> bool:
+    normalized_parts = [part.lower() for part in path.parts]
+    if "semanticscript" not in normalized_parts:
+        return False
+    return "sem" in normalized_parts or "bootstrap" in normalized_parts
+
+
+def effect_path_covers(scope_path: str, effect_path: str) -> bool:
+    return effect_path == scope_path or effect_path.startswith(scope_path + ".")
+
+
+def capability_authorizes(capability: CapabilityFact, action: str, effect_path: str) -> bool:
+    return access_action_covers(capability.access, action) and effect_path_covers(capability.effect_path, effect_path)
+
+
+def declared_effect_covers_actual(declared_effects: Set[Tuple[str, str]], action: str, effect_path: str) -> bool:
+    return any(
+        declared_action == action and effect_path_covers(declared_path, effect_path)
+        for declared_action, declared_path in declared_effects
+    )
+
+
+def actual_effect_satisfies_declared(actual_effects: Dict[Tuple[str, str], List[SourceLine]], action: str, effect_path: str) -> bool:
+    return any(
+        actual_action == action and effect_path_covers(effect_path, actual_path)
+        for actual_action, actual_path in actual_effects
+    )
+
+
+def lint_route_metadata(program: ProgramFacts, diags: List[Diagnostic]) -> None:
+    route_paths_by_server: Dict[str, Set[str]] = {}
+    for route in program.routes:
+        route_paths_by_server.setdefault(route.server, set()).add(route.path)
+
+    for line in program.lines:
+        if line.verb not in {"routeTimeout", "routeMiddleware"} or len(line.args) < 2:
+            continue
+
+        server, selector = line.args[0], line.args[1]
+        known_paths = route_paths_by_server.get(server, set())
+        if selector in known_paths:
+            continue
+
+        selector_hint = "path selector" if selector.startswith("/") else "non-path selector"
+        add_diag(
+            diags,
+            "warning",
+            "danglingRouteMetadata",
+            line,
+            (
+                f"`{line.verb}` references {selector_hint} `{selector}` on server `{server}`, "
+                "but no declared route path matches it. Current route syntax exposes paths; "
+                "use an existing path such as `/` or add named-route syntax before using route IDs."
+            ),
+            line.arg_column(1),
+        )
+
+
+def lint_webserver_native_abi(program: ProgramFacts, diags: List[Diagnostic]) -> None:
+    for operation in program.operations.values():
+        for line in operation.lines:
+            if line.verb == "call" and len(line.args) >= 2 and line.args[1] in {
+                "http.responseText",
+                "http.responseBytes",
+                "http.responseSseEvent",
+                "http.responseJson",
+                "http.responseHeader",
+            }:
+                lint_http_response_call_args(operation, line, operation.lines, diags)
+            if line.verb == "call" and len(line.args) >= 2 and line.args[1] in {
+                "http.requestMethod",
+                "http.requestPath",
+                "http.requestHeader",
+                "http.requestQueryParam",
+                "http.requestBodyText",
+                "http.requestBodyBytes",
+                "http.requestBodyLength",
+                "http.multipartPartText",
+                "http.multipartPartBytes",
+                "http.multipartPartLength",
+                "http.multipartPartFilename",
+                "http.multipartPartContentType",
+            }:
+                lint_http_request_call_args(operation, line, operation.lines, diags)
+
+    if not program.routes:
+        return
+
+    for route in program.routes:
+        operation = program.operations.get(route.handler)
+        if operation is None:
+            add_diag(
+                diags,
+                "error",
+                "webRouteHandlerMissing",
+                route.line,
+                f"route `{route.method} {route.path}` references missing handler `{route.handler}`",
+                route.line.arg_column(3),
+            )
+            continue
+
+        input_types: List[str] = []
+        output_types: List[str] = []
+        for line in operation.lines:
+            if line.verb == "input" and len(line.args) >= 3 and line.args[0] == operation.name:
+                input_types.append(line.args[2])
+            elif line.verb == "output" and len(line.args) >= 2 and line.args[0] == operation.name:
+                output_types = line.args[1:]
+
+        if input_types != ["HttpRequest", "HttpResponse"]:
+            add_diag(
+                diags,
+                "error",
+                "webRouteHandlerAbi",
+                operation.line,
+                (
+                    f"routed handler `{operation.name}` must declare exactly "
+                    "`input <handler> request HttpRequest` and "
+                    "`input <handler> response HttpResponse` for the native HTTP ABI"
+                ),
+                operation.line.arg_column(0),
+            )
+        if output_types != ["CSignedInt32"]:
+            add_diag(
+                diags,
+                "error",
+                "webRouteHandlerAbi",
+                operation.line,
+                f"routed handler `{operation.name}` must declare `output {operation.name} CSignedInt32`",
+                operation.line.arg_column(0),
+            )
+
+
+def lint_http_response_call_args(
+    operation: OperationFact,
+    call_line: SourceLine,
+    operation_lines: List[SourceLine],
+    diags: List[Diagnostic],
+) -> None:
+    call_name = call_line.args[0]
+    arg_names = {
+        line.args[1]
+        for line in operation_lines
+        if line.verb == "arg" and len(line.args) >= 3 and line.args[0] == call_name
+    }
+    required_args = {
+        "http.responseText": ("response", "status", "body"),
+        "http.responseBytes": ("response", "status", "body", "bodyLength"),
+        "http.responseSseEvent": ("response", "status", "event", "data"),
+        "http.responseJson": ("response", "status", "body"),
+        "http.responseHeader": ("response", "name", "value"),
+    }.get(call_line.args[1], ())
+    missing = [arg for arg in required_args if arg not in arg_names]
+    if not missing:
+        return
+    add_diag(
+        diags,
+        "error",
+        "httpResponseCallAbi",
+        call_line,
+        (
+            f"call `{call_name}` targets `{call_line.args[1]}` but is missing "
+            f"required arg(s): {', '.join(missing)}"
+        ),
+        call_line.arg_column(0),
+    )
+
+
+def lint_http_request_call_args(
+    operation: OperationFact,
+    call_line: SourceLine,
+    operation_lines: List[SourceLine],
+    diags: List[Diagnostic],
+) -> None:
+    call_name = call_line.args[0]
+    arg_names = {
+        line.args[1]
+        for line in operation_lines
+        if line.verb == "arg" and len(line.args) >= 3 and line.args[0] == call_name
+    }
+    required_args = {
+        "http.requestMethod": ("request",),
+        "http.requestPath": ("request",),
+        "http.requestHeader": ("request", "name"),
+        "http.requestQueryParam": ("request", "name"),
+        "http.requestBodyText": ("request",),
+        "http.requestBodyBytes": ("request",),
+        "http.requestBodyLength": ("request",),
+        "http.multipartPartText": ("request", "name"),
+        "http.multipartPartBytes": ("request", "name"),
+        "http.multipartPartLength": ("request", "name"),
+        "http.multipartPartFilename": ("request", "name"),
+        "http.multipartPartContentType": ("request", "name"),
+    }.get(call_line.args[1], ())
+    missing = [arg for arg in required_args if arg not in arg_names]
+    if not missing:
+        return
+    add_diag(
+        diags,
+        "error",
+        "httpRequestCallAbi",
+        call_line,
+        (
+            f"call `{call_name}` targets `{call_line.args[1]}` but is missing "
+            f"required arg(s): {', '.join(missing)}"
+        ),
+        call_line.arg_column(0),
+    )
+
+
+def lint_nullable_http_value_flow(
+    operation: OperationFact,
+    calls: Dict[str, CallFact],
+    bind_sources: Dict[str, str],
+    operation_contract_text: str,
+    diags: List[Diagnostic],
+) -> None:
+    nullable_values = {
+        symbol
+        for symbol, call_name in bind_sources.items()
+        if call_name in calls and calls[call_name].target in NULLABLE_HTTP_READER_TARGETS
+    }
+    if not nullable_values:
+        return
+
+    contract_documents_null_flow = any(
+        marker in operation_contract_text
+        for marker in ("null", "missing", "absent", "negative", "guard")
+    )
+    if contract_documents_null_flow:
+        return
+
+    guarded_nullable_values: Set[str] = set()
+    for call in calls.values():
+        if call.target != "pointer.isNull":
+            continue
+        guarded_values_for_call = {
+            arg_line.args[2]
+            for arg_line in call.arg_lines
+            if len(arg_line.args) >= 3 and arg_line.args[2] in nullable_values
+        }
+        if not guarded_values_for_call:
+            continue
+        guard_result_symbols = {
+            symbol
+            for symbol, call_name in bind_sources.items()
+            if call_name == call.name
+        }
+        if not guard_result_symbols:
+            continue
+        guard_is_branched = any(
+            line.verb == "branchIf" and line.args and line.args[0] in guard_result_symbols
+            for line in operation.lines
+        )
+        if guard_is_branched:
+            guarded_nullable_values.update(guarded_values_for_call)
+
+    for call in calls.values():
+        for arg_line in call.arg_lines:
+            if len(arg_line.args) < 3:
+                continue
+            arg_name = arg_line.args[1]
+            arg_value = arg_line.args[2]
+            if (
+                arg_value not in nullable_values
+                or arg_value in guarded_nullable_values
+                or arg_name not in NON_NULL_HTTP_SINK_ARG_NAMES
+            ):
+                continue
+            add_diag(
+                diags,
+                "warning",
+                "nullableHttpValueFlow",
+                arg_line,
+                (
+                    f"nullable HTTP reader result `{arg_value}` flows into "
+                    f"`{call.name}` arg `{arg_name}` without a documented null guard; "
+                    "use `pointer.isNull` or add an explicit warning/invariant for "
+                    "the intentional negative behavior"
+                ),
+                arg_line.arg_column(2),
+            )
+
+
 def lint_line_shape(program: ProgramFacts, diags: List[Diagnostic]) -> None:
+    relaxed_operation_profile = uses_relaxed_operation_lint_profile(program.path)
     for line in program.lines:
         if not line.tokens:
             continue
@@ -467,24 +877,36 @@ def lint_line_shape(program: ProgramFacts, diags: List[Diagnostic]) -> None:
         if any(("{" in token.text or "}" in token.text) for token in line.tokens if not token.quoted):
             add_diag(diags, "warning", "nestedSyntax", line, "brace syntax conflicts with SemanticScript's semantic tape model")
 
-        vague_positions = vague_name_positions(line)
-        for arg_index in vague_positions:
-            arg = line.args[arg_index]
-            if arg in BAD_NAMES:
+        for token in line.tokens:
+            if token.quoted and looks_like_raw_json_string_interpolation(token.text):
                 add_diag(
                     diags,
                     "warning",
-                    "vagueName",
+                    "rawJsonStringInterpolation",
                     line,
-                    f"`{arg}` is too vague for SemanticScript semantic context",
-                    line.arg_column(arg_index),
+                    "JSON-like string literal interpolates `%s` inside quotes; use a JSON encoder, escaping writer, or input validator",
+                    token.start + 1,
                 )
 
-        if verb == "type" and line.args and not is_pascal_case(line.args[0]):
-            add_diag(diags, "warning", "typeNameCase", line, f"type alias `{line.args[0]}` should be PascalCase", line.arg_column(0))
+        if not relaxed_operation_profile:
+            vague_positions = vague_name_positions(line)
+            for arg_index in vague_positions:
+                arg = line.args[arg_index]
+                if arg in BAD_NAMES:
+                    add_diag(
+                        diags,
+                        "warning",
+                        "vagueName",
+                        line,
+                        f"`{arg}` is too vague for SemanticScript semantic context",
+                        line.arg_column(arg_index),
+                    )
 
-        if verb == "operation" and line.args and not is_camel_case(line.args[0]):
-            add_diag(diags, "warning", "operationNameCase", line, f"operation `{line.args[0]}` should be camelCase", line.arg_column(0))
+            if verb == "type" and line.args and not is_pascal_case(line.args[0]):
+                add_diag(diags, "warning", "typeNameCase", line, f"type alias `{line.args[0]}` should be PascalCase", line.arg_column(0))
+
+            if verb == "operation" and line.args and not is_camel_case(line.args[0]):
+                add_diag(diags, "warning", "operationNameCase", line, f"operation `{line.args[0]}` should be camelCase", line.arg_column(0))
 
 
 def lint_comment(line: SourceLine, diags: List[Diagnostic]) -> None:
@@ -500,6 +922,15 @@ def lint_comment(line: SourceLine, diags: List[Diagnostic]) -> None:
         line,
         "comment does not use a semantic prefix such as rationale:, invariant:, warning:, failure:, agent:, group, or endGroup",
     )
+
+
+def looks_like_raw_json_string_interpolation(value: str) -> bool:
+    if "%s" not in value:
+        return False
+    compact = re.sub(r"\s+", "", value)
+    if "{" not in compact and "[" not in compact:
+        return False
+    return bool(re.search(r'"\w+"\s*:\s*"%s"', compact) or re.search(r'"\%s"\s*[,}\]]', compact))
 
 
 def vague_name_positions(line: SourceLine) -> List[int]:
@@ -589,7 +1020,19 @@ def lint_operation(program: ProgramFacts, operation: OperationFact, diags: List[
     has_memory = False
     has_async = False
     has_return = False
+    has_return_error = False
+    output_tokens: List[str] = []
     effect_tuples: Set[Tuple[str, str]] = set()
+    effect_lines: Dict[Tuple[str, str], SourceLine] = {}
+    actual_effects: Dict[Tuple[str, str], List[SourceLine]] = {}
+    used_capabilities: Set[str] = set()
+    use_capability_lines: Dict[str, SourceLine] = {}
+    symbol_types: Dict[str, str] = {}
+    literal_values: Dict[str, str] = {}
+    invariant_texts: List[str] = []
+    operation_contract_texts: List[str] = []
+    fixed_offset_lines: List[SourceLine] = []
+    scalar_assignment_checks: List[Tuple[str, str, SourceLine]] = []
     uses_console_write = False
 
     for line in operation.lines:
@@ -599,10 +1042,37 @@ def lint_operation(program: ProgramFacts, operation: OperationFact, diags: List[
         verb = line.verb
         args = line.args
 
+        if verb == "input" and len(args) >= 3 and args[0] == operation.name:
+            symbol_types[args[1]] = args[2]
+        elif verb == "const" and len(args) >= 2:
+            symbol_types[args[0]] = args[1]
+            if len(args) >= 3:
+                literal_values[args[0]] = args[2]
+        elif verb == "storage" and len(args) >= 4:
+            symbol_types[args[2]] = args[3]
+            if len(args) >= 5:
+                literal_values[args[2]] = args[4]
+            if (
+                len(args) >= 5
+                and (args[2].endswith("ValueOffset") or args[2].endswith("FieldOffset"))
+                and re.fullmatch(r"-?\d+", args[4])
+            ):
+                fixed_offset_lines.append(line)
+
         if verb == "purpose" and args and args[0] == operation.name:
             has_purpose = True
+            if len(args) >= 2:
+                operation_contract_texts.append(args[1])
+        elif verb == "invariant" and args and args[0] == operation.name:
+            if len(args) >= 2:
+                invariant_texts.append(args[1])
+                operation_contract_texts.append(args[1])
+        elif verb in {"guarantee", "warning", "failure", "security", "timing", "observability"} and args and args[0] == operation.name:
+            if len(args) >= 2:
+                operation_contract_texts.append(args[1])
         elif verb == "output" and args and args[0] == operation.name:
             has_output = True
+            output_tokens = args[1:]
         elif verb == "memory" and args and args[0] == operation.name:
             has_memory = True
         elif verb in {"memoryHeap", "memoryArena", "memoryStackLimit"} and args and args[0] == operation.name:
@@ -610,7 +1080,12 @@ def lint_operation(program: ProgramFacts, operation: OperationFact, diags: List[
         elif verb == "async" and args and args[0] == operation.name:
             has_async = True
         elif verb == "effect" and len(args) >= 3 and args[0] == operation.name:
-            effect_tuples.add((args[1], args[2]))
+            effect_tuple = (args[1], args[2])
+            effect_tuples.add(effect_tuple)
+            effect_lines.setdefault(effect_tuple, line)
+        elif verb == "useCapability" and len(args) >= 2 and args[0] == operation.name:
+            used_capabilities.add(args[1])
+            use_capability_lines[args[1]] = line
 
         if verb == "label" and args:
             label = args[0]
@@ -629,10 +1104,12 @@ def lint_operation(program: ProgramFacts, operation: OperationFact, diags: List[
             label = args[1]
             label_refs.append((label, line, "branchIfError"))
             branch_error_targets.setdefault(label, []).append((call_name, line))
-            if not (label.endswith("Failed") or label.endswith("ed")):
+            if not failure_label_name_is_clear(label):
                 add_diag(diags, "warning", "roleSuffixMismatch", line, f"failure label `{label}` should end with Failed or a past-tense -ed suffix", line.arg_column(1))
         elif verb in {"returnOk", "returnError", "returnValue"}:
             has_return = True
+            if verb == "returnError":
+                has_return_error = True
             if verb == "returnValue" and args:
                 returned_values.append((args[0], line))
 
@@ -643,6 +1120,9 @@ def lint_operation(program: ProgramFacts, operation: OperationFact, diags: List[
                 add_diag(diags, "warning", "vagueCallName", line, f"call object `{call_name}` should end with Call", line.arg_column(0))
             if target in CONSOLE_WRITE_TARGETS:
                 uses_console_write = True
+            implied_effect = HTTP_CALL_TARGET_EFFECTS.get(target)
+            if implied_effect:
+                actual_effects.setdefault(implied_effect, []).append(line)
         elif verb == "arg" and len(args) >= 1:
             call = calls.get(args[0])
             if call:
@@ -668,15 +1148,23 @@ def lint_operation(program: ProgramFacts, operation: OperationFact, diags: List[
             else:
                 add_diag(diags, "error", "unknownCallReference", line, f"await references unknown call `{args[0]}`", line.arg_column(0))
         elif verb == "bind" and len(args) >= 3:
+            symbol_types[args[0]] = args[1]
             bind_sources[args[0]] = args[2]
             attach_call_line(calls, args[2], line, "bind", diags)
         elif verb == "bindOk" and len(args) >= 3:
+            symbol_types[args[0]] = args[1]
             bind_sources[args[0]] = args[2]
             attach_call_line(calls, args[2], line, "bindOk", diags)
         elif verb == "bindError" and len(args) >= 3:
+            symbol_types[args[0]] = args[1]
             if not args[0].endswith("Error"):
                 add_diag(diags, "warning", "vagueErrorName", line, f"error binding `{args[0]}` should end with Error", line.arg_column(0))
             attach_call_line(calls, args[2], line, "bindError", diags)
+        elif verb == "set" and len(args) >= 2:
+            if args[0] == "local" and len(args) >= 3:
+                scalar_assignment_checks.append((args[1], args[2], line))
+            else:
+                scalar_assignment_checks.append((args[0], args[1], line))
         elif verb == "ignoreOk" and args:
             attach_call_line(calls, args[0], line, "ignoreOk", diags)
         elif verb == "ignoreValue" and args:
@@ -714,10 +1202,32 @@ def lint_operation(program: ProgramFacts, operation: OperationFact, diags: List[
         add_diag(diags, "warning", "missingMemory", operation.line, f"operation `{operation.name}` should declare memory behavior")
     if not has_async:
         add_diag(diags, "warning", "missingAsync", operation.line, f"operation `{operation.name}` should declare async yes|no")
-    if not has_return:
+    operation_contract_text = " ".join(operation_contract_texts).lower()
+    operation_is_nonreturning = "does not return" in operation_contract_text or "terminates the process" in operation_contract_text
+    if not has_return and not operation_is_nonreturning:
         add_diag(diags, "warning", "missingReturn", operation.line, f"operation `{operation.name}` has no explicit return line")
+    if len(output_tokens) >= 3 and output_tokens[0] == "Result" and output_tokens[2] == "Void" and not has_return_error:
+        add_diag(
+            diags,
+            "warning",
+            "resultVoidErrorWithoutFailurePath",
+            operation.line,
+            (
+                f"operation `{operation.name}` declares `Result {output_tokens[1]} Void` but has no "
+                "returnError path; use a plain output type for infallible helpers"
+            ),
+            operation.line.arg_column(0),
+        )
     if uses_console_write and ("write", "console.stdout") not in effect_tuples:
         add_diag(diags, "warning", "missingEffectDeclaration", operation.line, f"operation `{operation.name}` writes console output but lacks `effect {operation.name} write console.stdout`")
+
+    lint_nullable_http_value_flow(operation, calls, bind_sources, operation_contract_text, diags)
+    lint_effect_capability_coverage(program, operation, effect_tuples, effect_lines, used_capabilities, use_capability_lines, diags)
+    lint_http_effect_precision(operation, effect_tuples, effect_lines, actual_effects, diags)
+    lint_filesystem_effect_precision(program, operation, effect_tuples, effect_lines, calls, literal_values, diags)
+    lint_printf_format_widths(calls, symbol_types, literal_values, diags)
+    lint_fixed_offset_contract(operation, fixed_offset_lines, invariant_texts, diags)
+    lint_scalar_width_drift(symbol_types, scalar_assignment_checks, diags)
 
     for label, ref_line, kind in label_refs:
         if label not in labels:
@@ -727,19 +1237,418 @@ def lint_operation(program: ProgramFacts, operation: OperationFact, diags: List[
         for label, callers in branch_error_targets.items():
             distinct_calls = {call_name for call_name, _line in callers}
             if len(distinct_calls) > 1:
+                if failure_label_name_is_clear(label):
+                    continue
                 first_line = callers[0][1]
                 add_diag(diags, "warning", "failureLabelAggregation", first_line, f"label `{label}` receives {len(distinct_calls)} distinct branchIfError sources; split labels to preserve failure cause")
 
     for call in calls.values():
         lint_call(call, diags)
 
-    lint_raw_libc_return_escape(operation, calls, bind_sources, returned_values, diags)
+    lint_raw_libc_return_escape(operation, calls, bind_sources, returned_values, operation_contract_texts, diags)
 
     for group_name in sorted(start_groups - awaited_groups):
         line = next((call_line for call in calls.values() for call_line in call.group_start_lines if len(call_line.args) >= 2 and call_line.args[1] == group_name), operation.line)
         add_diag(diags, "warning", "unawaitedTaskGroup", line, f"task group `{group_name}` is started but not awaited")
 
     lint_resource_cleanup(calls, deferred_lines, diags)
+    lint_terminal_state_cleanup(operation, calls, deferred_lines, diags)
+
+
+def access_action_covers(capability_access: str, effect_action: str) -> bool:
+    if capability_access == effect_action:
+        return True
+    return capability_access == "readWrite" and effect_action in {"read", "write"}
+
+
+def lint_effect_capability_coverage(
+    program: ProgramFacts,
+    operation: OperationFact,
+    effect_tuples: Set[Tuple[str, str]],
+    effect_lines: Dict[Tuple[str, str], SourceLine],
+    used_capabilities: Set[str],
+    use_capability_lines: Dict[str, SourceLine],
+    diags: List[Diagnostic],
+) -> None:
+    available_capabilities = dict(program.capabilities)
+    available_capabilities.update(load_imported_capabilities(program))
+
+    if not available_capabilities and not used_capabilities:
+        return
+
+    used_capability_facts = [
+        available_capabilities[capability_name]
+        for capability_name in used_capabilities
+        if capability_name in available_capabilities
+    ]
+
+    for capability_name in sorted(used_capabilities - set(available_capabilities)):
+        line = use_capability_lines.get(capability_name, operation.line)
+        add_diag(
+            diags,
+            "warning",
+            "unknownCapabilityReference",
+            line,
+            (
+                f"operation `{operation.name}` uses capability `{capability_name}`, "
+                "but no local or resolved imported capability declaration defines it"
+            ),
+            line.arg_column(1),
+        )
+
+    for action, effect_path in sorted(effect_tuples):
+        if any(capability_authorizes(capability, action, effect_path) for capability in used_capability_facts):
+            continue
+
+        candidate = next(
+            (
+                capability.name
+                for capability in available_capabilities.values()
+                if access_action_covers(capability.access, action) and effect_path_covers(capability.effect_path, effect_path)
+            ),
+            None,
+        )
+        fix_hint = (
+            f"add `useCapability {operation.name} {candidate}`"
+            if candidate
+            else f"declare a capability for `{effect_path} {action}` and use it in `{operation.name}`"
+        )
+        effect_line = effect_lines.get((action, effect_path), operation.line)
+        add_diag(
+            diags,
+            "warning",
+            "missingCapabilityUse",
+            effect_line,
+            (
+                f"operation `{operation.name}` declares effect `{action} {effect_path}` "
+                f"without an authorizing used capability; {fix_hint}"
+            ),
+            effect_line.arg_column(1),
+        )
+
+
+def load_imported_capabilities(program: ProgramFacts) -> Dict[str, CapabilityFact]:
+    imported: Dict[str, CapabilityFact] = {}
+    if not program.imports:
+        return imported
+
+    visited: Set[Path] = set()
+    for module_name in sorted(program.imports):
+        module_path = resolve_import_module_path(program.path, module_name)
+        if module_path is None:
+            continue
+        collect_capabilities_from_file(module_path, imported, visited)
+    return imported
+
+
+def resolve_import_module_path(source_path: Path, dotted: str) -> Optional[Path]:
+    rel_base = Path(*dotted.split("."))
+    candidate_roots: List[Path] = [source_path.parent]
+
+    for parent in [source_path.parent, *source_path.parents]:
+        if (parent / "stdlib_sem").is_dir():
+            candidate_roots.extend([parent / "stdlib_sem", parent])
+            break
+
+    semantic_root = Path(__file__).resolve().parents[1]
+    candidate_roots.extend([semantic_root / "stdlib_sem", semantic_root])
+
+    seen_roots: Set[Path] = set()
+    for root in candidate_roots:
+        resolved_root = root.resolve()
+        if resolved_root in seen_roots:
+            continue
+        seen_roots.add(resolved_root)
+        for suffix in SUPPORTED_SOURCE_SUFFIXES:
+            candidate = resolved_root / rel_base.with_suffix(suffix)
+            if candidate.is_file():
+                return candidate
+    return None
+
+
+def collect_capabilities_from_file(path: Path, imported: Dict[str, CapabilityFact], visited: Set[Path]) -> None:
+    resolved_path = path.resolve()
+    if resolved_path in visited:
+        return
+    visited.add(resolved_path)
+
+    try:
+        raw_lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+
+    for line_number, raw in enumerate(raw_lines, start=1):
+        line = SourceLine(path=path, number=line_number, raw=raw, tokens=tokenize_line(raw))
+        if not line.tokens or is_comment(line):
+            continue
+        if line.verb == "capability" and len(line.args) >= 3:
+            imported[line.args[0]] = CapabilityFact(line.args[0], line.args[1], line.args[2], line)
+        elif line.verb == "importModule" and line.args:
+            nested_path = resolve_import_module_path(path, line.args[0])
+            if nested_path is not None:
+                collect_capabilities_from_file(nested_path, imported, visited)
+
+
+def lint_http_effect_precision(
+    operation: OperationFact,
+    effect_tuples: Set[Tuple[str, str]],
+    effect_lines: Dict[Tuple[str, str], SourceLine],
+    actual_effects: Dict[Tuple[str, str], List[SourceLine]],
+    diags: List[Diagnostic],
+) -> None:
+    for (action, effect_path), lines in sorted(actual_effects.items()):
+        if declared_effect_covers_actual(effect_tuples, action, effect_path):
+            continue
+        add_diag(
+            diags,
+            "warning",
+            "missingEffectDeclaration",
+            lines[0],
+            (
+                f"operation `{operation.name}` calls a native HTTP target that performs "
+                f"`{action} {effect_path}` but does not declare a matching effect"
+            ),
+            lines[0].arg_column(1),
+        )
+
+    for action, effect_path in sorted(effect_tuples):
+        if action != "read" or not (effect_path == "http.request" or effect_path.startswith("http.request.")):
+            continue
+        if actual_effect_satisfies_declared(actual_effects, action, effect_path):
+            continue
+        effect_line = effect_lines.get((action, effect_path), operation.line)
+        add_diag(
+            diags,
+            "warning",
+            "overdeclaredEffect",
+            effect_line,
+            (
+                f"operation `{operation.name}` declares `{action} {effect_path}` but its body "
+                "does not call a matching HTTP request reader such as `http.requestMethod` or `http.requestPath`"
+            ),
+            effect_line.arg_column(1),
+        )
+
+
+def operation_declared_effects(operation: OperationFact) -> Set[Tuple[str, str]]:
+    effects: Set[Tuple[str, str]] = set()
+    for line in operation.lines:
+        if line.verb == "effect" and len(line.args) >= 3 and line.args[0] == operation.name:
+            effects.add((line.args[1], line.args[2]))
+    return effects
+
+
+def resolve_literal_value(token: str, literal_values: Dict[str, str]) -> str:
+    return literal_values.get(token, token).strip('"')
+
+
+def looks_like_fopen_mode(mode: str) -> bool:
+    return bool(mode) and mode[0] in {"r", "w", "a"} and all(char in {"b", "+"} for char in mode[1:])
+
+
+def call_arg_value(call: CallFact, arg_name: str) -> Optional[str]:
+    for arg_line in call.arg_lines:
+        if len(arg_line.args) >= 3 and arg_line.args[1] == arg_name:
+            return arg_line.args[2]
+    return None
+
+
+def fopen_mode_effects(call: CallFact, literal_values: Dict[str, str]) -> List[Tuple[str, str]]:
+    mode_token = call_arg_value(call, "mode")
+    if mode_token is None:
+        return [("open", "file"), ("read", "filesystem"), ("write", "filesystem")]
+
+    mode = resolve_literal_value(mode_token, literal_values).lower()
+    if not looks_like_fopen_mode(mode):
+        return [("open", "file"), ("read", "filesystem"), ("write", "filesystem")]
+
+    effects: List[Tuple[str, str]] = [("open", "file")]
+    if mode[0] == "r" or "+" in mode:
+        effects.append(("read", "filesystem"))
+    if mode[0] in {"w", "a"} or "+" in mode:
+        effects.append(("write", "filesystem"))
+    return effects
+
+
+def filesystem_actual_effects(
+    program: ProgramFacts,
+    calls: Dict[str, CallFact],
+    literal_values: Dict[str, str],
+) -> Dict[Tuple[str, str], List[SourceLine]]:
+    actual_effects: Dict[Tuple[str, str], List[SourceLine]] = {}
+    read_targets = {"c.fread", "c.fgets"}
+    write_targets = {"c.fwrite", "c.fprintf", "c.fputs", "c.fputc", "c.putc"}
+
+    for call in calls.values():
+        if call.target in program.operations:
+            for action, effect_path in operation_declared_effects(program.operations[call.target]):
+                if (
+                    (effect_path == "filesystem" and action in {"read", "write"})
+                    or (effect_path == "file" and action in {"open", "close"})
+                ):
+                    actual_effects.setdefault((action, effect_path), []).append(call.line)
+            continue
+
+        if call.target in {"c.fopen", "c.freopen"}:
+            for effect in fopen_mode_effects(call, literal_values):
+                actual_effects.setdefault(effect, []).append(call.line)
+            continue
+
+        if call.target in read_targets:
+            actual_effects.setdefault(("read", "filesystem"), []).append(call.line)
+        elif call.target in write_targets:
+            actual_effects.setdefault(("write", "filesystem"), []).append(call.line)
+        elif call.target == "c.fclose":
+            actual_effects.setdefault(("close", "file"), []).append(call.line)
+
+    return actual_effects
+
+
+def lint_filesystem_effect_precision(
+    program: ProgramFacts,
+    operation: OperationFact,
+    effect_tuples: Set[Tuple[str, str]],
+    effect_lines: Dict[Tuple[str, str], SourceLine],
+    calls: Dict[str, CallFact],
+    literal_values: Dict[str, str],
+    diags: List[Diagnostic],
+) -> None:
+    actual_effects = filesystem_actual_effects(program, calls, literal_values)
+    for (action, effect_path), lines in sorted(actual_effects.items()):
+        if not (
+            (effect_path == "filesystem" and action in {"read", "write"})
+            or (effect_path == "file" and action in {"open", "close"})
+        ):
+            continue
+        if declared_effect_covers_actual(effect_tuples, action, effect_path):
+            continue
+        add_diag(
+            diags,
+            "warning",
+            "missingEffectDeclaration",
+            lines[0],
+            (
+                f"operation `{operation.name}` performs `{action} {effect_path}` "
+                "but does not declare a matching effect"
+            ),
+            lines[0].arg_column(1),
+        )
+
+    for action, effect_path in sorted(effect_tuples):
+        if not (
+            (effect_path == "filesystem" and action in {"read", "write"})
+            or (effect_path == "file" and action in {"open", "close"})
+        ):
+            continue
+        if actual_effect_satisfies_declared(actual_effects, action, effect_path):
+            continue
+        effect_line = effect_lines.get((action, effect_path), operation.line)
+        add_diag(
+            diags,
+            "warning",
+            "overAuthorizedEffect",
+            effect_line,
+            (
+                f"operation `{operation.name}` declares `{action} {effect_path}` but its body "
+                "does not justify that access through a matching file mode, file I/O call, or local operation call"
+            ),
+            effect_line.arg_column(1),
+        )
+
+
+def lint_fixed_offset_contract(
+    operation: OperationFact,
+    fixed_offset_lines: List[SourceLine],
+    invariant_texts: List[str],
+    diags: List[Diagnostic],
+) -> None:
+    if not fixed_offset_lines:
+        return
+    contract_text = " ".join(invariant_texts).lower()
+    names_exact_format = (
+        "exact" in contract_text
+        and any(marker in contract_text for marker in ("format", "emitted", "producer", "schema", "object key order"))
+    )
+    names_fixed_offsets = "fixed" in contract_text and "offset" in contract_text
+    if names_exact_format or names_fixed_offsets:
+        return
+
+    first_offset_line = fixed_offset_lines[0]
+    add_diag(
+        diags,
+        "warning",
+        "fixedOffsetParserContract",
+        first_offset_line,
+        (
+            f"operation `{operation.name}` declares numeric `*Offset` constants but no invariant names "
+            "the exact fixed format or producer shape it accepts"
+        ),
+        first_offset_line.arg_column(2),
+    )
+
+
+def lint_printf_format_widths(
+    calls: Dict[str, CallFact],
+    symbol_types: Dict[str, str],
+    literal_values: Dict[str, str],
+    diags: List[Diagnostic],
+) -> None:
+    printf_targets = {"c.printf", "c.fprintf", "c.sprintf", "c.snprintf"}
+    narrow_integer_types = {"CSignedInt32", "CUnsignedInt32", "I32", "U32"}
+    for call in calls.values():
+        if call.target not in printf_targets:
+            continue
+        format_token = call_arg_value(call, "format")
+        if not format_token:
+            continue
+        format_text = resolve_literal_value(format_token, literal_values)
+        if "%lld" not in format_text and "%lli" not in format_text:
+            continue
+        for arg_line in call.arg_lines:
+            if len(arg_line.args) < 3 or arg_line.args[1] in {"stream", "format", "buffer", "size"}:
+                continue
+            value_name = arg_line.args[2]
+            value_type = symbol_types.get(value_name)
+            if value_type not in narrow_integer_types:
+                continue
+            add_diag(
+                diags,
+                "warning",
+                "printfFormatWidthMismatch",
+                arg_line,
+                (
+                    f"`{call.target}` format uses a 64-bit integer conversion but argument "
+                    f"`{value_name}` is `{value_type}`; widen explicitly or use a matching format"
+                ),
+                arg_line.arg_column(1),
+            )
+
+
+def lint_scalar_width_drift(
+    symbol_types: Dict[str, str],
+    scalar_assignment_checks: List[Tuple[str, str, SourceLine]],
+    diags: List[Diagnostic],
+) -> None:
+    for target_name, source_name, line in scalar_assignment_checks:
+        target_type = symbol_types.get(target_name)
+        source_type = symbol_types.get(source_name)
+        if not target_type or not source_type:
+            continue
+        target_width = INTEGER_WIDTH_TYPES.get(target_type)
+        source_width = INTEGER_WIDTH_TYPES.get(source_type)
+        if target_width is None or source_width is None or target_width == source_width:
+            continue
+        add_diag(
+            diags,
+            "warning",
+            "implicitScalarWidthDrift",
+            line,
+            (
+                f"`set` assigns `{source_name}` ({source_type}) to `{target_name}` ({target_type}); "
+                "use matching scalar widths or an explicit widening/narrowing operation"
+            ),
+            line.arg_column(1 if line.args and line.args[0] == "local" else 0),
+        )
 
 
 def canonical_target_name(target: str) -> str:
@@ -753,8 +1662,11 @@ def lint_raw_libc_return_escape(
     calls: Dict[str, CallFact],
     bind_sources: Dict[str, str],
     returned_values: List[Tuple[str, SourceLine]],
+    operation_contract_texts: List[str],
     diags: List[Diagnostic],
 ) -> None:
+    contract_text = " ".join(operation_contract_texts).lower()
+    raw_return_is_contractual = "libc" in contract_text and "return" in contract_text
     for returned_value, return_line in returned_values:
         call_name = bind_sources.get(returned_value)
         if call_name is None and returned_value in calls:
@@ -766,6 +1678,8 @@ def lint_raw_libc_return_escape(
             continue
         target_name = canonical_target_name(call.target)
         if target_name not in LIBC_POSITIVE_SUCCESS_TARGETS:
+            continue
+        if raw_return_is_contractual:
             continue
         add_diag(
             diags,
@@ -780,6 +1694,12 @@ def lint_raw_libc_return_escape(
             ),
             return_line.arg_column(0),
         )
+
+
+def failure_label_name_is_clear(label: str) -> bool:
+    if label.endswith("Failed") or label.endswith("ed"):
+        return True
+    return any(marker in label for marker in ("Failed", "Failure", "Error"))
 
 
 def attach_call_line(calls: Dict[str, CallFact], call_name: str, line: SourceLine, kind: str, diags: List[Diagnostic]) -> None:
@@ -813,7 +1733,7 @@ def lint_call(call: CallFact, diags: List[Diagnostic]) -> None:
     if call.bind_error_lines and not call.branch_error_lines:
         add_diag(diags, "warning", "unbranchedFailure", call.line, f"call `{call.name}` binds an error but has no branchIfError")
 
-    if call.bind_error_lines and not (call.bind_ok_lines or call.ignore_ok_lines):
+    if call.bind_error_lines and not (call.bind_ok_lines or call.ignore_ok_lines or call.bind_lines):
         add_diag(diags, "warning", "missingSuccessDisposition", call.line, f"fallible call `{call.name}` binds an error but does not bindOk or ignoreOk the success value")
 
     if target_kind == "consoleWrite":
@@ -856,7 +1776,54 @@ def lint_resource_cleanup(calls: Dict[str, CallFact], deferred_lines: List[Sourc
             continue
         if call.name in defer_text or ("close" in defer_text.lower() and deferred_lines):
             continue
+        if resource_call_has_explicit_close(call, calls):
+            continue
         add_diag(diags, "info", "cleanupNotProven", call.line, f"resource-like call `{call.name}` may need a defer/deferAwaitLog cleanup next to acquisition")
+
+
+def lint_terminal_state_cleanup(operation: OperationFact, calls: Dict[str, CallFact], deferred_lines: List[SourceLine], diags: List[Diagnostic]) -> None:
+    hide_calls = [call for call in calls.values() if call.target in {"hideCursor", "terminal.hideCursor"}]
+    if not hide_calls:
+        return
+    has_show_call = any(call.target in {"showCursor", "terminal.showCursor"} for call in calls.values())
+    has_show_defer = any(
+        len(line.args) >= 2 and line.args[1] in {"showCursor", "terminal.showCursor"}
+        for line in deferred_lines
+    )
+    if has_show_call or has_show_defer:
+        return
+    first_hide_call = hide_calls[0]
+    add_diag(
+        diags,
+        "warning",
+        "terminalStateCleanup.missing",
+        first_hide_call.line,
+        (
+            f"operation `{operation.name}` calls `{first_hide_call.target}` without a matching "
+            "`showCursor`/`terminal.showCursor` cleanup call"
+        ),
+        first_hide_call.line.arg_column(1),
+    )
+
+
+def resource_call_has_explicit_close(resource_call: CallFact, calls: Dict[str, CallFact]) -> bool:
+    handle_names = {
+        bind_line.args[0]
+        for bind_line in [*resource_call.bind_lines, *resource_call.bind_ok_lines]
+        if bind_line.args
+    }
+    if not handle_names:
+        return False
+
+    for close_call in calls.values():
+        if "close" not in close_call.target.lower():
+            continue
+        if not close_call.run_lines:
+            continue
+        for arg_line in close_call.arg_lines:
+            if len(arg_line.args) >= 3 and arg_line.args[2] in handle_names:
+                return True
+    return False
 
 
 def classify_target(target: str) -> str:
