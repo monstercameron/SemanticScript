@@ -1,0 +1,1593 @@
+# Simple terminal todo app for the current SemanticScript compiler.
+# Run from app/todo so todos.json lives beside todo.exe.
+project TodoTuiApp
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+type CAllocationError CSignedInt32
+type CFileOpenError CSignedInt32
+
+error MainError
+errorCase MainError StartupAllocationFailed CAllocationError
+
+operation readTuiKey
+output readTuiKey CSignedInt32
+effect readTuiKey read console.stdin
+authority readTuiKey console.stdin read
+memoryHeap readTuiKey no
+async readTuiKey no
+purpose readTuiKey "Read one no-echo console key and normalize Windows extended arrow key sequences."
+invariant readTuiKey "Arrow keys return stable app-local key codes; ordinary keys return their raw byte."
+label startReadTuiKey
+storage local immutable extendedZeroPrefix CSignedInt32 0
+storage local immutable extendedArrowPrefix CSignedInt32 224
+storage local immutable rawArrowUpByte CSignedInt32 72
+storage local immutable rawArrowDownByte CSignedInt32 80
+storage local immutable rawArrowLeftByte CSignedInt32 75
+storage local immutable rawArrowRightByte CSignedInt32 77
+storage local immutable normalizedArrowUp CSignedInt32 1001
+storage local immutable normalizedArrowDown CSignedInt32 1002
+storage local immutable normalizedArrowLeft CSignedInt32 1003
+storage local immutable normalizedArrowRight CSignedInt32 1004
+call firstKeyCall c.consoleGetch
+run firstKeyCall
+bind firstKeyCode CSignedInt32 firstKeyCall
+call zeroPrefixCheckCall math.equalI64
+arg zeroPrefixCheckCall left firstKeyCode
+arg zeroPrefixCheckCall right extendedZeroPrefix
+run zeroPrefixCheckCall
+bind isZeroPrefix Bool zeroPrefixCheckCall
+branchIf isZeroPrefix readExtendedTuiKey
+call arrowPrefixCheckCall math.equalI64
+arg arrowPrefixCheckCall left firstKeyCode
+arg arrowPrefixCheckCall right extendedArrowPrefix
+run arrowPrefixCheckCall
+bind isArrowPrefix Bool arrowPrefixCheckCall
+branchIf isArrowPrefix readExtendedTuiKey
+returnValue firstKeyCode
+label readExtendedTuiKey
+call secondKeyCall c.consoleGetch
+run secondKeyCall
+bind secondKeyCode CSignedInt32 secondKeyCall
+call upArrowCheckCall math.equalI64
+arg upArrowCheckCall left secondKeyCode
+arg upArrowCheckCall right rawArrowUpByte
+run upArrowCheckCall
+bind isUpArrow Bool upArrowCheckCall
+branchIf isUpArrow returnArrowUpKey
+call downArrowCheckCall math.equalI64
+arg downArrowCheckCall left secondKeyCode
+arg downArrowCheckCall right rawArrowDownByte
+run downArrowCheckCall
+bind isDownArrow Bool downArrowCheckCall
+branchIf isDownArrow returnArrowDownKey
+call leftArrowCheckCall math.equalI64
+arg leftArrowCheckCall left secondKeyCode
+arg leftArrowCheckCall right rawArrowLeftByte
+run leftArrowCheckCall
+bind isLeftArrow Bool leftArrowCheckCall
+branchIf isLeftArrow returnArrowLeftKey
+call rightArrowCheckCall math.equalI64
+arg rightArrowCheckCall left secondKeyCode
+arg rightArrowCheckCall right rawArrowRightByte
+run rightArrowCheckCall
+bind isRightArrow Bool rightArrowCheckCall
+branchIf isRightArrow returnArrowRightKey
+returnValue secondKeyCode
+label returnArrowUpKey
+returnValue normalizedArrowUp
+label returnArrowDownKey
+returnValue normalizedArrowDown
+label returnArrowLeftKey
+returnValue normalizedArrowLeft
+label returnArrowRightKey
+returnValue normalizedArrowRight
+
+operation readLineIntoBuffer
+input readLineIntoBuffer targetBuffer COpaqueMemoryAddress
+input readLineIntoBuffer bufferCapacity CSignedInt64
+output readLineIntoBuffer Result CSignedInt64 Void
+effect readLineIntoBuffer read console.stdin
+effect readLineIntoBuffer write memory.buffer
+authority readLineIntoBuffer console.stdin read
+authority readLineIntoBuffer memory.buffer write
+memoryHeap readLineIntoBuffer no
+async readLineIntoBuffer no
+purpose readLineIntoBuffer "Read one stdin line into targetBuffer, bounded by bufferCapacity."
+invariant readLineIntoBuffer "The target buffer is always null-terminated before returning."
+label startReadLineIntoBuffer
+storage local immutable zeroIndex CSignedInt64 0
+storage local immutable oneStep CSignedInt64 1
+storage local immutable newlineByteForLine CSignedInt32 10
+storage local immutable carriageReturnByteForLine CSignedInt32 13
+storage local immutable eofByte CSignedInt32 -1
+storage local immutable nulByte CSignedInt32 0
+storage local mutable writeIndex CSignedInt64 zeroIndex
+storage local mutable currentByte CSignedInt32 nulByte
+call maxWritableIndexCall math.subtractI64
+arg maxWritableIndexCall left bufferCapacity
+arg maxWritableIndexCall right oneStep
+run maxWritableIndexCall
+bind maxWritableIndex CSignedInt64 maxWritableIndexCall
+label skipLeadingLineTerminators
+call firstReadCall c.getchar
+run firstReadCall
+bind firstReadByte CSignedInt32 firstReadCall
+set local currentByte firstReadByte
+call firstNewlineCheckCall math.equalI64
+arg firstNewlineCheckCall left currentByte
+arg firstNewlineCheckCall right newlineByteForLine
+run firstNewlineCheckCall
+bind firstIsNewline Bool firstNewlineCheckCall
+branchIf firstIsNewline skipLeadingLineTerminators
+call firstCarriageReturnCheckCall math.equalI64
+arg firstCarriageReturnCheckCall left currentByte
+arg firstCarriageReturnCheckCall right carriageReturnByteForLine
+run firstCarriageReturnCheckCall
+bind firstIsCarriageReturn Bool firstCarriageReturnCheckCall
+branchIf firstIsCarriageReturn skipLeadingLineTerminators
+branch storeCurrentByteIfNeeded
+label readRemainingBytes
+call nextReadCall c.getchar
+run nextReadCall
+bind nextReadByte CSignedInt32 nextReadCall
+set local currentByte nextReadByte
+label storeCurrentByteIfNeeded
+call eofCheckCall math.equalI64
+arg eofCheckCall left currentByte
+arg eofCheckCall right eofByte
+run eofCheckCall
+bind isEof Bool eofCheckCall
+branchIf isEof finishLineRead
+call newlineCheckCall math.equalI64
+arg newlineCheckCall left currentByte
+arg newlineCheckCall right newlineByteForLine
+run newlineCheckCall
+bind isNewline Bool newlineCheckCall
+branchIf isNewline finishLineRead
+call carriageReturnCheckCall math.equalI64
+arg carriageReturnCheckCall left currentByte
+arg carriageReturnCheckCall right carriageReturnByteForLine
+run carriageReturnCheckCall
+bind isCarriageReturn Bool carriageReturnCheckCall
+branchIf isCarriageReturn finishLineRead
+call capacityCheckCall math.greaterThanOrEqualI64
+arg capacityCheckCall left writeIndex
+arg capacityCheckCall right maxWritableIndex
+run capacityCheckCall
+bind bufferFull Bool capacityCheckCall
+branchIf bufferFull finishLineRead
+call storeByteCall pointer.storeByte
+arg storeByteCall buffer targetBuffer
+arg storeByteCall offset writeIndex
+arg storeByteCall value currentByte
+run storeByteCall
+call incrementIndexCall math.addI64
+arg incrementIndexCall left writeIndex
+arg incrementIndexCall right oneStep
+run incrementIndexCall
+bind nextWriteIndex CSignedInt64 incrementIndexCall
+set local writeIndex nextWriteIndex
+branch readRemainingBytes
+label finishLineRead
+call terminateBufferCall pointer.storeByte
+arg terminateBufferCall buffer targetBuffer
+arg terminateBufferCall offset writeIndex
+arg terminateBufferCall value nulByte
+run terminateBufferCall
+returnOk writeIndex
+
+operation clearScreen
+output clearScreen CSignedInt32
+effect clearScreen write console.stdout
+authority clearScreen console.stdout write
+memoryHeap clearScreen no
+async clearScreen no
+purpose clearScreen "Send ANSI clear-screen and cursor-home controls for a simple terminal redraw."
+invariant clearScreen "Writes ESC [2J then ESC [H without touching application state."
+label startClearScreen
+storage local immutable escapeByte CSignedInt32 27
+storage local immutable clearCode CNullTerminatedByteString "[2J"
+storage local immutable homeCode CNullTerminatedByteString "[H"
+storage local immutable clearSucceededCode CSignedInt32 0
+call clearEscapeCall c.putchar
+arg clearEscapeCall character escapeByte
+run clearEscapeCall
+ignoreValue clearEscapeCall CSignedInt32
+call clearCodeCall c.printf
+arg clearCodeCall format clearCode
+run clearCodeCall
+ignoreValue clearCodeCall CSignedInt32
+call homeEscapeCall c.putchar
+arg homeEscapeCall character escapeByte
+run homeEscapeCall
+ignoreValue homeEscapeCall CSignedInt32
+call homeCodeCall c.printf
+arg homeCodeCall format homeCode
+run homeCodeCall
+ignoreValue homeCodeCall CSignedInt32
+returnValue clearSucceededCode
+
+operation writeDashBuffer
+input writeDashBuffer targetBuffer COpaqueMemoryAddress
+output writeDashBuffer Result CSignedInt64 Void
+effect writeDashBuffer write memory.buffer
+authority writeDashBuffer memory.buffer write
+memoryHeap writeDashBuffer no
+async writeDashBuffer no
+purpose writeDashBuffer "Store dash plus NUL so persisted inactive titles are non-empty JSON strings."
+invariant writeDashBuffer "After success targetBuffer contains the C string '-' exactly."
+label startWriteDashBuffer
+storage local immutable zeroOffset CSignedInt64 0
+storage local immutable oneOffset CSignedInt64 1
+storage local immutable dashByte CSignedInt32 45
+storage local immutable nulByte CSignedInt32 0
+call storeDashCall pointer.storeByte
+arg storeDashCall buffer targetBuffer
+arg storeDashCall offset zeroOffset
+arg storeDashCall value dashByte
+run storeDashCall
+call storeNulCall pointer.storeByte
+arg storeNulCall buffer targetBuffer
+arg storeNulCall offset oneOffset
+arg storeNulCall value nulByte
+run storeNulCall
+returnOk oneOffset
+
+operation closeFileHandleIfOpen
+input closeFileHandleIfOpen fileHandle CFileHandle
+output closeFileHandleIfOpen CSignedInt32
+effect closeFileHandleIfOpen close file
+effect closeFileHandleIfOpen write filesystem
+authority closeFileHandleIfOpen file close
+authority closeFileHandleIfOpen filesystem write
+memoryHeap closeFileHandleIfOpen no
+async closeFileHandleIfOpen no
+purpose closeFileHandleIfOpen "Close a C file handle when it is non-null."
+invariant closeFileHandleIfOpen "Null file handles are treated as already closed."
+label startCloseFileHandleIfOpen
+storage local immutable closeSkippedCode CSignedInt32 0
+call fileHandleNullCheckCall pointer.isNull
+arg fileHandleNullCheckCall pointer fileHandle
+run fileHandleNullCheckCall
+bind fileHandleIsNull Bool fileHandleNullCheckCall
+branchIf fileHandleIsNull skipCloseFileHandle
+call closeFileHandleCall c.fclose
+arg closeFileHandleCall stream fileHandle
+run closeFileHandleCall
+bind closeFileHandleResult CSignedInt32 closeFileHandleCall
+returnValue closeFileHandleResult
+label skipCloseFileHandle
+returnValue closeSkippedCode
+
+operation readFixedTodoJsonLine
+input readFixedTodoJsonLine fileHandle CFileHandle
+input readFixedTodoJsonLine lineBuffer COpaqueMemoryAddress
+input readFixedTodoJsonLine lineBufferCapacity CSignedInt32
+output readFixedTodoJsonLine CSignedInt32
+effect readFixedTodoJsonLine read filesystem
+effect readFixedTodoJsonLine write memory.buffer
+authority readFixedTodoJsonLine filesystem read
+authority readFixedTodoJsonLine memory.buffer write
+memoryHeap readFixedTodoJsonLine no
+async readFixedTodoJsonLine no
+purpose readFixedTodoJsonLine "Read one fixed-schema todo JSON line into a caller-owned buffer."
+invariant readFixedTodoJsonLine "Returns one on a non-null fgets result and zero at EOF or read failure."
+label startReadFixedTodoJsonLine
+storage local immutable readFailedCode CSignedInt32 0
+storage local immutable readSucceededCode CSignedInt32 1
+call fgetsLineCall c.fgets
+arg fgetsLineCall string lineBuffer
+arg fgetsLineCall count lineBufferCapacity
+arg fgetsLineCall stream fileHandle
+run fgetsLineCall
+bind fgetsLineResult CNullTerminatedByteString fgetsLineCall
+call fgetsNullCheckCall pointer.isNull
+arg fgetsNullCheckCall pointer fgetsLineResult
+run fgetsNullCheckCall
+bind fgetsReturnedNull Bool fgetsNullCheckCall
+branchIf fgetsReturnedNull fixedTodoJsonLineReadFailed
+returnValue readSucceededCode
+label fixedTodoJsonLineReadFailed
+returnValue readFailedCode
+
+operation parseFixedTodoJsonFlagAtOffset
+input parseFixedTodoJsonFlagAtOffset sourceLine COpaqueMemoryAddress
+input parseFixedTodoJsonFlagAtOffset valueOffset CSignedInt64
+output parseFixedTodoJsonFlagAtOffset CSignedInt64
+effect parseFixedTodoJsonFlagAtOffset read memory.buffer
+authority parseFixedTodoJsonFlagAtOffset memory.buffer read
+memoryHeap parseFixedTodoJsonFlagAtOffset no
+async parseFixedTodoJsonFlagAtOffset no
+purpose parseFixedTodoJsonFlagAtOffset "Parse a zero-or-one flag from a fixed todo JSON field offset."
+invariant parseFixedTodoJsonFlagAtOffset "Only ASCII '1' maps to one; every other byte maps to zero."
+label startParseFixedTodoJsonFlagAtOffset
+storage local immutable zeroFlag CSignedInt64 0
+storage local immutable oneFlag CSignedInt64 1
+storage local immutable oneAsciiByte CSignedInt32 49
+call loadFlagByteCall pointer.loadByte
+arg loadFlagByteCall buffer sourceLine
+arg loadFlagByteCall offset valueOffset
+run loadFlagByteCall
+bind flagByte CSignedInt32 loadFlagByteCall
+call flagOneCheckCall math.equalI64
+arg flagOneCheckCall left flagByte
+arg flagOneCheckCall right oneAsciiByte
+run flagOneCheckCall
+bind flagIsOne Bool flagOneCheckCall
+branchIf flagIsOne parsedOneFlag
+returnValue zeroFlag
+label parsedOneFlag
+returnValue oneFlag
+
+operation copyFixedTodoJsonTitleAtOffset
+input copyFixedTodoJsonTitleAtOffset sourceLine COpaqueMemoryAddress
+input copyFixedTodoJsonTitleAtOffset titleBuffer COpaqueMemoryAddress
+input copyFixedTodoJsonTitleAtOffset valueOffset CSignedInt64
+input copyFixedTodoJsonTitleAtOffset titleBufferCapacity CSignedInt64
+output copyFixedTodoJsonTitleAtOffset Result CSignedInt64 Void
+effect copyFixedTodoJsonTitleAtOffset read memory.buffer
+effect copyFixedTodoJsonTitleAtOffset write memory.buffer
+authority copyFixedTodoJsonTitleAtOffset memory.buffer read
+authority copyFixedTodoJsonTitleAtOffset memory.buffer write
+memoryHeap copyFixedTodoJsonTitleAtOffset no
+async copyFixedTodoJsonTitleAtOffset no
+purpose copyFixedTodoJsonTitleAtOffset "Copy a fixed todo JSON title value into a caller-owned C string buffer."
+invariant copyFixedTodoJsonTitleAtOffset "Stops at quote, line ending, NUL, or the final writable byte and always terminates the title."
+label startCopyFixedTodoJsonTitleAtOffset
+storage local immutable zeroIndex CSignedInt64 0
+storage local immutable oneStep CSignedInt64 1
+storage local immutable quoteByte CSignedInt32 34
+storage local immutable newlineByte CSignedInt32 10
+storage local immutable carriageReturnByte CSignedInt32 13
+storage local immutable nulByte CSignedInt32 0
+storage local mutable readIndex CSignedInt64 zeroIndex
+storage local mutable writeIndex CSignedInt64 zeroIndex
+set local readIndex valueOffset
+call maxWritableIndexCall math.subtractI64
+arg maxWritableIndexCall left titleBufferCapacity
+arg maxWritableIndexCall right oneStep
+run maxWritableIndexCall
+bind maxWritableIndex CSignedInt64 maxWritableIndexCall
+label copyTitleLoop
+call loadTitleByteCall pointer.loadByte
+arg loadTitleByteCall buffer sourceLine
+arg loadTitleByteCall offset readIndex
+run loadTitleByteCall
+bind titleByte CSignedInt32 loadTitleByteCall
+call quoteCheckCall math.equalI64
+arg quoteCheckCall left titleByte
+arg quoteCheckCall right quoteByte
+run quoteCheckCall
+bind titleByteIsQuote Bool quoteCheckCall
+branchIf titleByteIsQuote finishCopyTitle
+call newlineCheckCall math.equalI64
+arg newlineCheckCall left titleByte
+arg newlineCheckCall right newlineByte
+run newlineCheckCall
+bind titleByteIsNewline Bool newlineCheckCall
+branchIf titleByteIsNewline finishCopyTitle
+call carriageReturnCheckCall math.equalI64
+arg carriageReturnCheckCall left titleByte
+arg carriageReturnCheckCall right carriageReturnByte
+run carriageReturnCheckCall
+bind titleByteIsCarriageReturn Bool carriageReturnCheckCall
+branchIf titleByteIsCarriageReturn finishCopyTitle
+call nulCheckCall math.equalI64
+arg nulCheckCall left titleByte
+arg nulCheckCall right nulByte
+run nulCheckCall
+bind titleByteIsNul Bool nulCheckCall
+branchIf titleByteIsNul finishCopyTitle
+call capacityCheckCall math.greaterThanOrEqualI64
+arg capacityCheckCall left writeIndex
+arg capacityCheckCall right maxWritableIndex
+run capacityCheckCall
+bind titleBufferFull Bool capacityCheckCall
+branchIf titleBufferFull finishCopyTitle
+call storeTitleByteCall pointer.storeByte
+arg storeTitleByteCall buffer titleBuffer
+arg storeTitleByteCall offset writeIndex
+arg storeTitleByteCall value titleByte
+run storeTitleByteCall
+call incrementReadIndexCall math.addI64
+arg incrementReadIndexCall left readIndex
+arg incrementReadIndexCall right oneStep
+run incrementReadIndexCall
+bind nextReadIndex CSignedInt64 incrementReadIndexCall
+set local readIndex nextReadIndex
+call incrementWriteIndexCall math.addI64
+arg incrementWriteIndexCall left writeIndex
+arg incrementWriteIndexCall right oneStep
+run incrementWriteIndexCall
+bind nextWriteIndex CSignedInt64 incrementWriteIndexCall
+set local writeIndex nextWriteIndex
+branch copyTitleLoop
+label finishCopyTitle
+call terminateTitleCall pointer.storeByte
+arg terminateTitleCall buffer titleBuffer
+arg terminateTitleCall offset writeIndex
+arg terminateTitleCall value nulByte
+run terminateTitleCall
+returnOk writeIndex
+
+operation printTodoSlot
+input printTodoSlot slotNumber CSignedInt64
+input printTodoSlot selectedSlot CSignedInt64
+input printTodoSlot isActive CSignedInt64
+input printTodoSlot isDone CSignedInt64
+input printTodoSlot titleBuffer CNullTerminatedByteString
+output printTodoSlot CSignedInt32
+effect printTodoSlot write console.stdout
+authority printTodoSlot console.stdout write
+memoryHeap printTodoSlot no
+async printTodoSlot no
+purpose printTodoSlot "Print one fixed table row for a todo slot."
+invariant printTodoSlot "Inactive slots print an empty row; active slots print one status row."
+label startPrintTodoSlot
+storage local immutable oneFlag CSignedInt64 1
+storage local immutable normalMarkerText CNullTerminatedByteString " "
+storage local immutable selectedMarkerText CNullTerminatedByteString ">"
+storage local immutable openStatusText CNullTerminatedByteString "[ ]"
+storage local immutable doneStatusText CNullTerminatedByteString "[x]"
+storage local immutable emptyTitleText CNullTerminatedByteString "(empty slot)"
+storage local immutable emptyTodoFormatText CNullTerminatedByteString "  %s %lld  %s  %s\n"
+storage local immutable todoFormatText CNullTerminatedByteString "  %s %lld  %s  %s\n"
+storage local immutable printSucceededCode CSignedInt32 0
+storage local mutable markerText CNullTerminatedByteString normalMarkerText
+storage local mutable statusText CNullTerminatedByteString openStatusText
+call selectedCheckCall math.equalI64
+arg selectedCheckCall left slotNumber
+arg selectedCheckCall right selectedSlot
+run selectedCheckCall
+bind slotIsSelected Bool selectedCheckCall
+branchIf slotIsSelected markSelectedSlot
+branch chooseSlotActivity
+label markSelectedSlot
+set local markerText selectedMarkerText
+branch chooseSlotActivity
+label chooseSlotActivity
+call activeCheckCall math.equalI64
+arg activeCheckCall left isActive
+arg activeCheckCall right oneFlag
+run activeCheckCall
+bind slotIsActive Bool activeCheckCall
+branchIf slotIsActive chooseSlotStatus
+call printfEmptySlotCall c.printf
+arg printfEmptySlotCall format emptyTodoFormatText
+arg printfEmptySlotCall marker markerText
+arg printfEmptySlotCall slot slotNumber
+arg printfEmptySlotCall status openStatusText
+arg printfEmptySlotCall title emptyTitleText
+run printfEmptySlotCall
+ignoreValue printfEmptySlotCall CSignedInt32
+returnValue printSucceededCode
+label chooseSlotStatus
+call doneCheckCall math.equalI64
+arg doneCheckCall left isDone
+arg doneCheckCall right oneFlag
+run doneCheckCall
+bind slotIsDone Bool doneCheckCall
+branchIf slotIsDone setDoneStatus
+branch printSlotLine
+label setDoneStatus
+set local statusText doneStatusText
+branch printSlotLine
+label printSlotLine
+call printfSlotCall c.printf
+arg printfSlotCall format todoFormatText
+arg printfSlotCall marker markerText
+arg printfSlotCall slot slotNumber
+arg printfSlotCall status statusText
+arg printfSlotCall title titleBuffer
+run printfSlotCall
+ignoreValue printfSlotCall CSignedInt32
+returnValue printSucceededCode
+
+operation printActionChoice
+input printActionChoice actionNumber CSignedInt64
+input printActionChoice selectedAction CSignedInt64
+input printActionChoice actionText CNullTerminatedByteString
+output printActionChoice CSignedInt32
+effect printActionChoice write console.stdout
+authority printActionChoice console.stdout write
+memoryHeap printActionChoice no
+async printActionChoice no
+purpose printActionChoice "Print one action menu row with a selected marker."
+invariant printActionChoice "Exactly one visible marker is printed for the selected action."
+label startPrintActionChoice
+storage local immutable normalMarkerText CNullTerminatedByteString " "
+storage local immutable selectedMarkerText CNullTerminatedByteString ">"
+storage local immutable actionFormatText CNullTerminatedByteString "  %s %s\n"
+storage local immutable printSucceededCode CSignedInt32 0
+storage local mutable markerText CNullTerminatedByteString normalMarkerText
+call selectedActionCheckCall math.equalI64
+arg selectedActionCheckCall left actionNumber
+arg selectedActionCheckCall right selectedAction
+run selectedActionCheckCall
+bind actionIsSelected Bool selectedActionCheckCall
+branchIf actionIsSelected markSelectedAction
+branch printActionLine
+label markSelectedAction
+set local markerText selectedMarkerText
+branch printActionLine
+label printActionLine
+call printActionLineCall c.printf
+arg printActionLineCall format actionFormatText
+arg printActionLineCall marker markerText
+arg printActionLineCall text actionText
+run printActionLineCall
+ignoreValue printActionLineCall CSignedInt32
+returnValue printSucceededCode
+
+operation renderScreen
+input renderScreen slotOneActive CSignedInt64
+input renderScreen slotOneDone CSignedInt64
+input renderScreen slotOneTitleBuffer CNullTerminatedByteString
+input renderScreen slotTwoActive CSignedInt64
+input renderScreen slotTwoDone CSignedInt64
+input renderScreen slotTwoTitleBuffer CNullTerminatedByteString
+input renderScreen slotThreeActive CSignedInt64
+input renderScreen slotThreeDone CSignedInt64
+input renderScreen slotThreeTitleBuffer CNullTerminatedByteString
+input renderScreen selectedSlot CSignedInt64
+input renderScreen screenMode CSignedInt64
+input renderScreen selectedAction CSignedInt64
+input renderScreen statusText CNullTerminatedByteString
+output renderScreen CSignedInt32
+effect renderScreen write console.stdout
+authority renderScreen console.stdout write
+memoryHeap renderScreen no
+async renderScreen no
+purpose renderScreen "Redraw the complete todo terminal UI."
+invariant renderScreen "Every loop iteration clears the terminal and prints all visible state once."
+label startRenderScreen
+storage local immutable oneSlotNumber CSignedInt64 1
+storage local immutable twoSlotNumber CSignedInt64 2
+storage local immutable threeSlotNumber CSignedInt64 3
+storage local immutable actionModeValue CSignedInt64 1
+storage local immutable addActionNumber CSignedInt64 1
+storage local immutable toggleActionNumber CSignedInt64 2
+storage local immutable deleteActionNumber CSignedInt64 3
+storage local immutable backActionNumber CSignedInt64 4
+storage local immutable topFrameText CNullTerminatedByteString "\n  TODO TUI\n  todos.json persistence\n\n  Sel #  Done  Title\n  -----  ----  --------------------------------"
+storage local immutable bottomFrameText CNullTerminatedByteString "  -----  ----  --------------------------------"
+storage local immutable statusFormatText CNullTerminatedByteString "\n  Status  %s\n"
+storage local immutable navigationText CNullTerminatedByteString "  Move rows, open actions, or leave from the list screen."
+storage local immutable actionHeaderText CNullTerminatedByteString "\n  Actions"
+storage local immutable actionAddText CNullTerminatedByteString "Add or replace title"
+storage local immutable actionToggleText CNullTerminatedByteString "Toggle done"
+storage local immutable actionDeleteText CNullTerminatedByteString "Delete todo"
+storage local immutable actionBackText CNullTerminatedByteString "Back to list"
+storage local immutable renderSucceededCode CSignedInt32 0
+call clearScreenCall clearScreen
+run clearScreenCall
+ignoreValue clearScreenCall CSignedInt32
+call topFrameCall c.puts
+arg topFrameCall text topFrameText
+run topFrameCall
+ignoreValue topFrameCall CSignedInt32
+call printSlotOneCall printTodoSlot
+arg printSlotOneCall slotNumber oneSlotNumber
+arg printSlotOneCall selectedSlot selectedSlot
+arg printSlotOneCall isActive slotOneActive
+arg printSlotOneCall isDone slotOneDone
+arg printSlotOneCall titleBuffer slotOneTitleBuffer
+run printSlotOneCall
+ignoreValue printSlotOneCall CSignedInt32
+call printSlotTwoCall printTodoSlot
+arg printSlotTwoCall slotNumber twoSlotNumber
+arg printSlotTwoCall selectedSlot selectedSlot
+arg printSlotTwoCall isActive slotTwoActive
+arg printSlotTwoCall isDone slotTwoDone
+arg printSlotTwoCall titleBuffer slotTwoTitleBuffer
+run printSlotTwoCall
+ignoreValue printSlotTwoCall CSignedInt32
+call printSlotThreeCall printTodoSlot
+arg printSlotThreeCall slotNumber threeSlotNumber
+arg printSlotThreeCall selectedSlot selectedSlot
+arg printSlotThreeCall isActive slotThreeActive
+arg printSlotThreeCall isDone slotThreeDone
+arg printSlotThreeCall titleBuffer slotThreeTitleBuffer
+run printSlotThreeCall
+ignoreValue printSlotThreeCall CSignedInt32
+call bottomFrameCall c.puts
+arg bottomFrameCall text bottomFrameText
+run bottomFrameCall
+ignoreValue bottomFrameCall CSignedInt32
+call statusLineCall c.printf
+arg statusLineCall format statusFormatText
+arg statusLineCall status statusText
+run statusLineCall
+ignoreValue statusLineCall CSignedInt32
+call actionModeCheckCall math.equalI64
+arg actionModeCheckCall left screenMode
+arg actionModeCheckCall right actionModeValue
+run actionModeCheckCall
+bind isActionMode Bool actionModeCheckCall
+branchIf isActionMode renderActionMenu
+call navigationCall c.puts
+arg navigationCall text navigationText
+run navigationCall
+ignoreValue navigationCall CSignedInt32
+returnValue renderSucceededCode
+label renderActionMenu
+call actionHeaderCall c.puts
+arg actionHeaderCall text actionHeaderText
+run actionHeaderCall
+ignoreValue actionHeaderCall CSignedInt32
+call printAddActionCall printActionChoice
+arg printAddActionCall actionNumber addActionNumber
+arg printAddActionCall selectedAction selectedAction
+arg printAddActionCall actionText actionAddText
+run printAddActionCall
+ignoreValue printAddActionCall CSignedInt32
+call printToggleActionCall printActionChoice
+arg printToggleActionCall actionNumber toggleActionNumber
+arg printToggleActionCall selectedAction selectedAction
+arg printToggleActionCall actionText actionToggleText
+run printToggleActionCall
+ignoreValue printToggleActionCall CSignedInt32
+call printDeleteActionCall printActionChoice
+arg printDeleteActionCall actionNumber deleteActionNumber
+arg printDeleteActionCall selectedAction selectedAction
+arg printDeleteActionCall actionText actionDeleteText
+run printDeleteActionCall
+ignoreValue printDeleteActionCall CSignedInt32
+call printBackActionCall printActionChoice
+arg printBackActionCall actionNumber backActionNumber
+arg printBackActionCall selectedAction selectedAction
+arg printBackActionCall actionText actionBackText
+run printBackActionCall
+ignoreValue printBackActionCall CSignedInt32
+returnValue renderSucceededCode
+
+operation saveTodosToJson
+input saveTodosToJson slotOneActive CSignedInt64
+input saveTodosToJson slotOneDone CSignedInt64
+input saveTodosToJson slotOneTitleBuffer CNullTerminatedByteString
+input saveTodosToJson slotTwoActive CSignedInt64
+input saveTodosToJson slotTwoDone CSignedInt64
+input saveTodosToJson slotTwoTitleBuffer CNullTerminatedByteString
+input saveTodosToJson slotThreeActive CSignedInt64
+input saveTodosToJson slotThreeDone CSignedInt64
+input saveTodosToJson slotThreeTitleBuffer CNullTerminatedByteString
+output saveTodosToJson CSignedInt32
+effect saveTodosToJson read filesystem
+effect saveTodosToJson write filesystem
+effect saveTodosToJson open file
+effect saveTodosToJson close file
+authority saveTodosToJson filesystem read
+authority saveTodosToJson filesystem write
+authority saveTodosToJson file open
+authority saveTodosToJson file close
+memoryHeap saveTodosToJson no
+async saveTodosToJson no
+purpose saveTodosToJson "Persist the three fixed todo slots as a JSON array in todos.json."
+invariant saveTodosToJson "Writes three todo objects in the exact array order that the loader expects."
+label startSaveTodosToJson
+storage local immutable dataFilePath CNullTerminatedByteString "todos.json"
+storage local immutable writeMode CNullTerminatedByteString "w"
+storage local immutable saveFormat CNullTerminatedByteString "[\n{\"active\":%lld,\"done\":%lld,\"title\":\"%s\"},\n{\"active\":%lld,\"done\":%lld,\"title\":\"%s\"},\n{\"active\":%lld,\"done\":%lld,\"title\":\"%s\"}\n]\n"
+storage local immutable saveFailedCode CSignedInt32 1
+storage local immutable saveSucceededCode CSignedInt32 0
+call openSaveFileCall c.fopen
+arg openSaveFileCall path dataFilePath
+arg openSaveFileCall mode writeMode
+run openSaveFileCall
+bindOk saveFileHandle CFileHandle openSaveFileCall
+bindError openSaveFileError CFileOpenError openSaveFileCall
+branchIfError openSaveFileCall saveOpenFailed
+defer releaseOpenSaveFileCall closeFileHandleIfOpen saveFileHandle
+call writeJsonCall c.fprintf
+arg writeJsonCall stream saveFileHandle
+arg writeJsonCall format saveFormat
+arg writeJsonCall slotOneActive slotOneActive
+arg writeJsonCall slotOneDone slotOneDone
+arg writeJsonCall slotOneTitle slotOneTitleBuffer
+arg writeJsonCall slotTwoActive slotTwoActive
+arg writeJsonCall slotTwoDone slotTwoDone
+arg writeJsonCall slotTwoTitle slotTwoTitleBuffer
+arg writeJsonCall slotThreeActive slotThreeActive
+arg writeJsonCall slotThreeDone slotThreeDone
+arg writeJsonCall slotThreeTitle slotThreeTitleBuffer
+run writeJsonCall
+ignoreValue writeJsonCall CSignedInt32
+returnValue saveSucceededCode
+label saveOpenFailed
+returnValue saveFailedCode
+
+operation loadTodosFromJsonIntoBuffers
+input loadTodosFromJsonIntoBuffers flagBuffer COpaqueMemoryAddress
+input loadTodosFromJsonIntoBuffers lineBuffer COpaqueMemoryAddress
+input loadTodosFromJsonIntoBuffers lineBufferCapacity CSignedInt32
+input loadTodosFromJsonIntoBuffers slotOneTitleBuffer COpaqueMemoryAddress
+input loadTodosFromJsonIntoBuffers slotTwoTitleBuffer COpaqueMemoryAddress
+input loadTodosFromJsonIntoBuffers slotThreeTitleBuffer COpaqueMemoryAddress
+output loadTodosFromJsonIntoBuffers CSignedInt32
+effect loadTodosFromJsonIntoBuffers read filesystem
+effect loadTodosFromJsonIntoBuffers write filesystem
+effect loadTodosFromJsonIntoBuffers open file
+effect loadTodosFromJsonIntoBuffers close file
+effect loadTodosFromJsonIntoBuffers read memory.buffer
+effect loadTodosFromJsonIntoBuffers write memory.buffer
+authority loadTodosFromJsonIntoBuffers filesystem read
+authority loadTodosFromJsonIntoBuffers filesystem write
+authority loadTodosFromJsonIntoBuffers file open
+authority loadTodosFromJsonIntoBuffers file close
+authority loadTodosFromJsonIntoBuffers memory.buffer read
+authority loadTodosFromJsonIntoBuffers memory.buffer write
+memoryHeap loadTodosFromJsonIntoBuffers no
+async loadTodosFromJsonIntoBuffers no
+purpose loadTodosFromJsonIntoBuffers "Load the fixed todo JSON array into caller-owned flag and title buffers."
+invariant loadTodosFromJsonIntoBuffers "Returns one when the fixed three-object array was opened and scanned, zero when loading is skipped."
+label startLoadTodosFromJsonIntoBuffers
+storage local immutable dataFilePath CNullTerminatedByteString "todos.json"
+storage local immutable readMode CNullTerminatedByteString "r"
+storage local immutable flagOffsetOneActive CSignedInt64 0
+storage local immutable flagOffsetOneDone CSignedInt64 4
+storage local immutable flagOffsetTwoActive CSignedInt64 8
+storage local immutable flagOffsetTwoDone CSignedInt64 12
+storage local immutable flagOffsetThreeActive CSignedInt64 16
+storage local immutable flagOffsetThreeDone CSignedInt64 20
+storage local immutable activeValueOffset CSignedInt64 10
+storage local immutable doneValueOffset CSignedInt64 19
+storage local immutable titleValueOffset CSignedInt64 30
+storage local immutable titleBufferCapacity CSignedInt64 128
+storage local immutable loadSkippedCode CSignedInt32 0
+storage local immutable loadSucceededCode CSignedInt32 1
+call openLoadFileCall c.fopen
+arg openLoadFileCall path dataFilePath
+arg openLoadFileCall mode readMode
+run openLoadFileCall
+bindOk loadFileHandle CFileHandle openLoadFileCall
+bindError openLoadFileError CFileOpenError openLoadFileCall
+branchIfError openLoadFileCall loadTodosSkipped
+defer releaseOpenLoadFileCall closeFileHandleIfOpen loadFileHandle
+
+call readOpenArrayLineCall readFixedTodoJsonLine
+arg readOpenArrayLineCall fileHandle loadFileHandle
+arg readOpenArrayLineCall lineBuffer lineBuffer
+arg readOpenArrayLineCall lineBufferCapacity lineBufferCapacity
+run readOpenArrayLineCall
+bind readOpenArrayStatus CSignedInt32 readOpenArrayLineCall
+call openArrayReadFailedCheckCall math.equalI64
+arg openArrayReadFailedCheckCall left readOpenArrayStatus
+arg openArrayReadFailedCheckCall right loadSkippedCode
+run openArrayReadFailedCheckCall
+bind openArrayReadFailed Bool openArrayReadFailedCheckCall
+branchIf openArrayReadFailed loadTodosSkipped
+
+call readSlotOneLineCall readFixedTodoJsonLine
+arg readSlotOneLineCall fileHandle loadFileHandle
+arg readSlotOneLineCall lineBuffer lineBuffer
+arg readSlotOneLineCall lineBufferCapacity lineBufferCapacity
+run readSlotOneLineCall
+bind readSlotOneStatus CSignedInt32 readSlotOneLineCall
+call slotOneReadFailedCheckCall math.equalI64
+arg slotOneReadFailedCheckCall left readSlotOneStatus
+arg slotOneReadFailedCheckCall right loadSkippedCode
+run slotOneReadFailedCheckCall
+bind slotOneReadFailed Bool slotOneReadFailedCheckCall
+branchIf slotOneReadFailed loadTodosSkipped
+call parseSlotOneActiveCall parseFixedTodoJsonFlagAtOffset
+arg parseSlotOneActiveCall sourceLine lineBuffer
+arg parseSlotOneActiveCall valueOffset activeValueOffset
+run parseSlotOneActiveCall
+bind parsedSlotOneActive CSignedInt64 parseSlotOneActiveCall
+call storeSlotOneActiveFlagCall pointer.storeByte
+arg storeSlotOneActiveFlagCall buffer flagBuffer
+arg storeSlotOneActiveFlagCall offset flagOffsetOneActive
+arg storeSlotOneActiveFlagCall value parsedSlotOneActive
+run storeSlotOneActiveFlagCall
+call parseSlotOneDoneCall parseFixedTodoJsonFlagAtOffset
+arg parseSlotOneDoneCall sourceLine lineBuffer
+arg parseSlotOneDoneCall valueOffset doneValueOffset
+run parseSlotOneDoneCall
+bind parsedSlotOneDone CSignedInt64 parseSlotOneDoneCall
+call storeSlotOneDoneFlagCall pointer.storeByte
+arg storeSlotOneDoneFlagCall buffer flagBuffer
+arg storeSlotOneDoneFlagCall offset flagOffsetOneDone
+arg storeSlotOneDoneFlagCall value parsedSlotOneDone
+run storeSlotOneDoneFlagCall
+call copySlotOneTitleCall copyFixedTodoJsonTitleAtOffset
+arg copySlotOneTitleCall sourceLine lineBuffer
+arg copySlotOneTitleCall titleBuffer slotOneTitleBuffer
+arg copySlotOneTitleCall valueOffset titleValueOffset
+arg copySlotOneTitleCall titleBufferCapacity titleBufferCapacity
+run copySlotOneTitleCall
+ignoreOk copySlotOneTitleCall CSignedInt64
+
+call readSlotTwoLineCall readFixedTodoJsonLine
+arg readSlotTwoLineCall fileHandle loadFileHandle
+arg readSlotTwoLineCall lineBuffer lineBuffer
+arg readSlotTwoLineCall lineBufferCapacity lineBufferCapacity
+run readSlotTwoLineCall
+bind readSlotTwoStatus CSignedInt32 readSlotTwoLineCall
+call slotTwoReadFailedCheckCall math.equalI64
+arg slotTwoReadFailedCheckCall left readSlotTwoStatus
+arg slotTwoReadFailedCheckCall right loadSkippedCode
+run slotTwoReadFailedCheckCall
+bind slotTwoReadFailed Bool slotTwoReadFailedCheckCall
+branchIf slotTwoReadFailed loadTodosSkipped
+call parseSlotTwoActiveCall parseFixedTodoJsonFlagAtOffset
+arg parseSlotTwoActiveCall sourceLine lineBuffer
+arg parseSlotTwoActiveCall valueOffset activeValueOffset
+run parseSlotTwoActiveCall
+bind parsedSlotTwoActive CSignedInt64 parseSlotTwoActiveCall
+call storeSlotTwoActiveFlagCall pointer.storeByte
+arg storeSlotTwoActiveFlagCall buffer flagBuffer
+arg storeSlotTwoActiveFlagCall offset flagOffsetTwoActive
+arg storeSlotTwoActiveFlagCall value parsedSlotTwoActive
+run storeSlotTwoActiveFlagCall
+call parseSlotTwoDoneCall parseFixedTodoJsonFlagAtOffset
+arg parseSlotTwoDoneCall sourceLine lineBuffer
+arg parseSlotTwoDoneCall valueOffset doneValueOffset
+run parseSlotTwoDoneCall
+bind parsedSlotTwoDone CSignedInt64 parseSlotTwoDoneCall
+call storeSlotTwoDoneFlagCall pointer.storeByte
+arg storeSlotTwoDoneFlagCall buffer flagBuffer
+arg storeSlotTwoDoneFlagCall offset flagOffsetTwoDone
+arg storeSlotTwoDoneFlagCall value parsedSlotTwoDone
+run storeSlotTwoDoneFlagCall
+call copySlotTwoTitleCall copyFixedTodoJsonTitleAtOffset
+arg copySlotTwoTitleCall sourceLine lineBuffer
+arg copySlotTwoTitleCall titleBuffer slotTwoTitleBuffer
+arg copySlotTwoTitleCall valueOffset titleValueOffset
+arg copySlotTwoTitleCall titleBufferCapacity titleBufferCapacity
+run copySlotTwoTitleCall
+ignoreOk copySlotTwoTitleCall CSignedInt64
+
+call readSlotThreeLineCall readFixedTodoJsonLine
+arg readSlotThreeLineCall fileHandle loadFileHandle
+arg readSlotThreeLineCall lineBuffer lineBuffer
+arg readSlotThreeLineCall lineBufferCapacity lineBufferCapacity
+run readSlotThreeLineCall
+bind readSlotThreeStatus CSignedInt32 readSlotThreeLineCall
+call slotThreeReadFailedCheckCall math.equalI64
+arg slotThreeReadFailedCheckCall left readSlotThreeStatus
+arg slotThreeReadFailedCheckCall right loadSkippedCode
+run slotThreeReadFailedCheckCall
+bind slotThreeReadFailed Bool slotThreeReadFailedCheckCall
+branchIf slotThreeReadFailed loadTodosSkipped
+call parseSlotThreeActiveCall parseFixedTodoJsonFlagAtOffset
+arg parseSlotThreeActiveCall sourceLine lineBuffer
+arg parseSlotThreeActiveCall valueOffset activeValueOffset
+run parseSlotThreeActiveCall
+bind parsedSlotThreeActive CSignedInt64 parseSlotThreeActiveCall
+call storeSlotThreeActiveFlagCall pointer.storeByte
+arg storeSlotThreeActiveFlagCall buffer flagBuffer
+arg storeSlotThreeActiveFlagCall offset flagOffsetThreeActive
+arg storeSlotThreeActiveFlagCall value parsedSlotThreeActive
+run storeSlotThreeActiveFlagCall
+call parseSlotThreeDoneCall parseFixedTodoJsonFlagAtOffset
+arg parseSlotThreeDoneCall sourceLine lineBuffer
+arg parseSlotThreeDoneCall valueOffset doneValueOffset
+run parseSlotThreeDoneCall
+bind parsedSlotThreeDone CSignedInt64 parseSlotThreeDoneCall
+call storeSlotThreeDoneFlagCall pointer.storeByte
+arg storeSlotThreeDoneFlagCall buffer flagBuffer
+arg storeSlotThreeDoneFlagCall offset flagOffsetThreeDone
+arg storeSlotThreeDoneFlagCall value parsedSlotThreeDone
+run storeSlotThreeDoneFlagCall
+call copySlotThreeTitleCall copyFixedTodoJsonTitleAtOffset
+arg copySlotThreeTitleCall sourceLine lineBuffer
+arg copySlotThreeTitleCall titleBuffer slotThreeTitleBuffer
+arg copySlotThreeTitleCall valueOffset titleValueOffset
+arg copySlotThreeTitleCall titleBufferCapacity titleBufferCapacity
+run copySlotThreeTitleCall
+ignoreOk copySlotThreeTitleCall CSignedInt64
+
+call readCloseArrayLineCall readFixedTodoJsonLine
+arg readCloseArrayLineCall fileHandle loadFileHandle
+arg readCloseArrayLineCall lineBuffer lineBuffer
+arg readCloseArrayLineCall lineBufferCapacity lineBufferCapacity
+run readCloseArrayLineCall
+bind readCloseArrayStatus CSignedInt32 readCloseArrayLineCall
+call closeArrayReadFailedCheckCall math.equalI64
+arg closeArrayReadFailedCheckCall left readCloseArrayStatus
+arg closeArrayReadFailedCheckCall right loadSkippedCode
+run closeArrayReadFailedCheckCall
+bind closeArrayReadFailed Bool closeArrayReadFailedCheckCall
+branchIf closeArrayReadFailed loadTodosSkipped
+returnValue loadSucceededCode
+label loadTodosSkipped
+returnValue loadSkippedCode
+
+operation main
+output main Result ExitCode MainError
+effect main read console.stdin
+effect main write console.stdout
+effect main read memory.buffer
+effect main write memory.buffer
+effect main allocate heap
+effect main free heap
+effect main read filesystem
+effect main write filesystem
+effect main open file
+effect main close file
+authority main console.stdin read
+authority main console.stdout write
+authority main memory.buffer read
+authority main memory.buffer write
+authority main heap allocate
+authority main heap free
+authority main filesystem read
+authority main filesystem write
+authority main file open
+authority main file close
+memoryHeap main auto
+async main no
+purpose main "Run a three-slot terminal todo app with JSON persistence."
+invariant main "Todo state is process-local while running and is saved to todos.json after changes and on quit."
+label startMain
+storage local immutable zeroValue CSignedInt64 0
+storage local immutable oneValue CSignedInt64 1
+storage local immutable twoValue CSignedInt64 2
+storage local immutable threeValue CSignedInt64 3
+storage local immutable fourValue CSignedInt64 4
+storage local immutable titleBufferCapacity CByteCount 128
+storage local immutable flagBufferBytes CByteCount 24
+storage local immutable loadLineBufferBytes CByteCount 256
+storage local immutable loadLineBufferCapacity CSignedInt32 256
+storage local immutable flagOffsetOneActive CSignedInt64 0
+storage local immutable flagOffsetOneDone CSignedInt64 4
+storage local immutable flagOffsetTwoActive CSignedInt64 8
+storage local immutable flagOffsetTwoDone CSignedInt64 12
+storage local immutable flagOffsetThreeActive CSignedInt64 16
+storage local immutable flagOffsetThreeDone CSignedInt64 20
+storage local immutable keyEnter CSignedInt32 13
+storage local immutable keyEscape CSignedInt32 27
+storage local immutable keyArrowUp CSignedInt32 1001
+storage local immutable keyArrowDown CSignedInt32 1002
+storage local immutable keyArrowLeft CSignedInt32 1003
+storage local immutable keyArrowRight CSignedInt32 1004
+storage local immutable titlePromptText CNullTerminatedByteString "Title: "
+storage local immutable readyStatusText CNullTerminatedByteString "Ready."
+storage local immutable loadedStatusText CNullTerminatedByteString "Loaded todos.json."
+storage local immutable chooseActionText CNullTerminatedByteString "Choose an action."
+storage local immutable addedOneText CNullTerminatedByteString "Added #1."
+storage local immutable addedTwoText CNullTerminatedByteString "Added #2."
+storage local immutable addedThreeText CNullTerminatedByteString "Added #3."
+storage local immutable toggledText CNullTerminatedByteString "Toggled."
+storage local immutable deletedText CNullTerminatedByteString "Deleted."
+storage local immutable missingTodoText CNullTerminatedByteString "No todo in that slot."
+storage local immutable ignoredKeyText CNullTerminatedByteString "No action for that key."
+storage local immutable goodbyeText CNullTerminatedByteString "Goodbye."
+storage local immutable allocationFailedText CNullTerminatedByteString "Could not allocate todo buffers."
+storage local mutable slotOneActive CSignedInt64 zeroValue
+storage local mutable slotOneDone CSignedInt64 zeroValue
+storage local mutable slotTwoActive CSignedInt64 zeroValue
+storage local mutable slotTwoDone CSignedInt64 zeroValue
+storage local mutable slotThreeActive CSignedInt64 zeroValue
+storage local mutable slotThreeDone CSignedInt64 zeroValue
+storage local mutable statusMessage CNullTerminatedByteString readyStatusText
+storage local mutable selectedSlot CSignedInt64 oneValue
+storage local mutable screenMode CSignedInt64 zeroValue
+storage local mutable selectedAction CSignedInt64 oneValue
+
+call allocateSlotOneCall c.malloc
+arg allocateSlotOneCall size titleBufferCapacity
+run allocateSlotOneCall
+bindOk slotOneTitleBuffer COpaqueMemoryAddress allocateSlotOneCall
+bindError allocateSlotOneError CAllocationError allocateSlotOneCall
+branchIfError allocateSlotOneCall slotOneAllocationFailed
+call allocateSlotTwoCall c.malloc
+arg allocateSlotTwoCall size titleBufferCapacity
+run allocateSlotTwoCall
+bindOk slotTwoTitleBuffer COpaqueMemoryAddress allocateSlotTwoCall
+bindError allocateSlotTwoError CAllocationError allocateSlotTwoCall
+branchIfError allocateSlotTwoCall slotTwoAllocationFailed
+call allocateSlotThreeCall c.malloc
+arg allocateSlotThreeCall size titleBufferCapacity
+run allocateSlotThreeCall
+bindOk slotThreeTitleBuffer COpaqueMemoryAddress allocateSlotThreeCall
+bindError allocateSlotThreeError CAllocationError allocateSlotThreeCall
+branchIfError allocateSlotThreeCall slotThreeAllocationFailed
+
+call initSlotOneTitleCall writeDashBuffer
+arg initSlotOneTitleCall targetBuffer slotOneTitleBuffer
+run initSlotOneTitleCall
+ignoreOk initSlotOneTitleCall CSignedInt64
+call initSlotTwoTitleCall writeDashBuffer
+arg initSlotTwoTitleCall targetBuffer slotTwoTitleBuffer
+run initSlotTwoTitleCall
+ignoreOk initSlotTwoTitleCall CSignedInt64
+call initSlotThreeTitleCall writeDashBuffer
+arg initSlotThreeTitleCall targetBuffer slotThreeTitleBuffer
+run initSlotThreeTitleCall
+ignoreOk initSlotThreeTitleCall CSignedInt64
+
+call allocateFlagBufferCall c.malloc
+arg allocateFlagBufferCall size flagBufferBytes
+run allocateFlagBufferCall
+bindOk flagBuffer COpaqueMemoryAddress allocateFlagBufferCall
+bindError allocateFlagBufferError CAllocationError allocateFlagBufferCall
+branchIfError allocateFlagBufferCall loadTodosSkipped
+call allocateLoadLineBufferCall c.malloc
+arg allocateLoadLineBufferCall size loadLineBufferBytes
+run allocateLoadLineBufferCall
+bindOk loadLineBuffer COpaqueMemoryAddress allocateLoadLineBufferCall
+bindError allocateLoadLineBufferError CAllocationError allocateLoadLineBufferCall
+branchIfError allocateLoadLineBufferCall freeFlagBufferAfterLineBufferAllocationFailed
+call loadTodosCall loadTodosFromJsonIntoBuffers
+arg loadTodosCall flagBuffer flagBuffer
+arg loadTodosCall lineBuffer loadLineBuffer
+arg loadTodosCall lineBufferCapacity loadLineBufferCapacity
+arg loadTodosCall slotOneTitleBuffer slotOneTitleBuffer
+arg loadTodosCall slotTwoTitleBuffer slotTwoTitleBuffer
+arg loadTodosCall slotThreeTitleBuffer slotThreeTitleBuffer
+run loadTodosCall
+bind loadTodosStatus CSignedInt32 loadTodosCall
+call freeLoadLineBufferCall c.free
+arg freeLoadLineBufferCall ptr loadLineBuffer
+run freeLoadLineBufferCall
+ignoreValue freeLoadLineBufferCall Void
+call loadSucceededCheckCall math.equalI64
+arg loadSucceededCheckCall left loadTodosStatus
+arg loadSucceededCheckCall right oneValue
+run loadSucceededCheckCall
+bind loadSucceeded Bool loadSucceededCheckCall
+branchIf loadSucceeded readLoadedTodoFlags
+call freeFlagBufferAfterSkippedLoadCall c.free
+arg freeFlagBufferAfterSkippedLoadCall ptr flagBuffer
+run freeFlagBufferAfterSkippedLoadCall
+ignoreValue freeFlagBufferAfterSkippedLoadCall Void
+branch loadTodosSkipped
+label readLoadedTodoFlags
+call loadSlotOneActiveByteCall pointer.loadByte
+arg loadSlotOneActiveByteCall buffer flagBuffer
+arg loadSlotOneActiveByteCall offset flagOffsetOneActive
+run loadSlotOneActiveByteCall
+bind loadedSlotOneActive CSignedInt32 loadSlotOneActiveByteCall
+set local slotOneActive loadedSlotOneActive
+call loadSlotOneDoneByteCall pointer.loadByte
+arg loadSlotOneDoneByteCall buffer flagBuffer
+arg loadSlotOneDoneByteCall offset flagOffsetOneDone
+run loadSlotOneDoneByteCall
+bind loadedSlotOneDone CSignedInt32 loadSlotOneDoneByteCall
+set local slotOneDone loadedSlotOneDone
+call loadSlotTwoActiveByteCall pointer.loadByte
+arg loadSlotTwoActiveByteCall buffer flagBuffer
+arg loadSlotTwoActiveByteCall offset flagOffsetTwoActive
+run loadSlotTwoActiveByteCall
+bind loadedSlotTwoActive CSignedInt32 loadSlotTwoActiveByteCall
+set local slotTwoActive loadedSlotTwoActive
+call loadSlotTwoDoneByteCall pointer.loadByte
+arg loadSlotTwoDoneByteCall buffer flagBuffer
+arg loadSlotTwoDoneByteCall offset flagOffsetTwoDone
+run loadSlotTwoDoneByteCall
+bind loadedSlotTwoDone CSignedInt32 loadSlotTwoDoneByteCall
+set local slotTwoDone loadedSlotTwoDone
+call loadSlotThreeActiveByteCall pointer.loadByte
+arg loadSlotThreeActiveByteCall buffer flagBuffer
+arg loadSlotThreeActiveByteCall offset flagOffsetThreeActive
+run loadSlotThreeActiveByteCall
+bind loadedSlotThreeActive CSignedInt32 loadSlotThreeActiveByteCall
+set local slotThreeActive loadedSlotThreeActive
+call loadSlotThreeDoneByteCall pointer.loadByte
+arg loadSlotThreeDoneByteCall buffer flagBuffer
+arg loadSlotThreeDoneByteCall offset flagOffsetThreeDone
+run loadSlotThreeDoneByteCall
+bind loadedSlotThreeDone CSignedInt32 loadSlotThreeDoneByteCall
+set local slotThreeDone loadedSlotThreeDone
+call freeFlagBufferCall c.free
+arg freeFlagBufferCall ptr flagBuffer
+run freeFlagBufferCall
+ignoreValue freeFlagBufferCall Void
+set local statusMessage loadedStatusText
+branch replLoop
+label freeFlagBufferAfterLineBufferAllocationFailed
+call freeFlagBufferAfterLineBufferAllocationFailureCall c.free
+arg freeFlagBufferAfterLineBufferAllocationFailureCall ptr flagBuffer
+run freeFlagBufferAfterLineBufferAllocationFailureCall
+ignoreValue freeFlagBufferAfterLineBufferAllocationFailureCall Void
+branch loadTodosSkipped
+label loadTodosSkipped
+
+label replLoop
+call renderScreenCall renderScreen
+arg renderScreenCall slotOneActive slotOneActive
+arg renderScreenCall slotOneDone slotOneDone
+arg renderScreenCall slotOneTitleBuffer slotOneTitleBuffer
+arg renderScreenCall slotTwoActive slotTwoActive
+arg renderScreenCall slotTwoDone slotTwoDone
+arg renderScreenCall slotTwoTitleBuffer slotTwoTitleBuffer
+arg renderScreenCall slotThreeActive slotThreeActive
+arg renderScreenCall slotThreeDone slotThreeDone
+arg renderScreenCall slotThreeTitleBuffer slotThreeTitleBuffer
+arg renderScreenCall selectedSlot selectedSlot
+arg renderScreenCall screenMode screenMode
+arg renderScreenCall selectedAction selectedAction
+arg renderScreenCall statusText statusMessage
+run renderScreenCall
+ignoreValue renderScreenCall CSignedInt32
+call readKeyCall readTuiKey
+run readKeyCall
+bind pressedKey CSignedInt32 readKeyCall
+call listModeCheckCall math.equalI64
+arg listModeCheckCall left screenMode
+arg listModeCheckCall right zeroValue
+run listModeCheckCall
+bind isListMode Bool listModeCheckCall
+branchIf isListMode handleListKey
+branch handleActionKey
+
+label handleListKey
+call listUpKeyCheckCall math.equalI64
+arg listUpKeyCheckCall left pressedKey
+arg listUpKeyCheckCall right keyArrowUp
+run listUpKeyCheckCall
+bind listUpPressed Bool listUpKeyCheckCall
+branchIf listUpPressed moveSelectedSlotUp
+call listDownKeyCheckCall math.equalI64
+arg listDownKeyCheckCall left pressedKey
+arg listDownKeyCheckCall right keyArrowDown
+run listDownKeyCheckCall
+bind listDownPressed Bool listDownKeyCheckCall
+branchIf listDownPressed moveSelectedSlotDown
+call listEnterKeyCheckCall math.equalI64
+arg listEnterKeyCheckCall left pressedKey
+arg listEnterKeyCheckCall right keyEnter
+run listEnterKeyCheckCall
+bind listEnterPressed Bool listEnterKeyCheckCall
+branchIf listEnterPressed openActionsForSelectedSlot
+call listRightKeyCheckCall math.equalI64
+arg listRightKeyCheckCall left pressedKey
+arg listRightKeyCheckCall right keyArrowRight
+run listRightKeyCheckCall
+bind listRightPressed Bool listRightKeyCheckCall
+branchIf listRightPressed openActionsForSelectedSlot
+call listEscapeKeyCheckCall math.equalI64
+arg listEscapeKeyCheckCall left pressedKey
+arg listEscapeKeyCheckCall right keyEscape
+run listEscapeKeyCheckCall
+bind listEscapePressed Bool listEscapeKeyCheckCall
+branchIf listEscapePressed quitProgram
+set local statusMessage ignoredKeyText
+branch replLoop
+
+label moveSelectedSlotUp
+call selectedSlotIsOneForUpCall math.equalI64
+arg selectedSlotIsOneForUpCall left selectedSlot
+arg selectedSlotIsOneForUpCall right oneValue
+run selectedSlotIsOneForUpCall
+bind selectedSlotIsOneForUp Bool selectedSlotIsOneForUpCall
+branchIf selectedSlotIsOneForUp wrapSelectedSlotToThree
+call decrementSelectedSlotCall math.subtractI64
+arg decrementSelectedSlotCall left selectedSlot
+arg decrementSelectedSlotCall right oneValue
+run decrementSelectedSlotCall
+bind previousSelectedSlot CSignedInt64 decrementSelectedSlotCall
+set local selectedSlot previousSelectedSlot
+set local statusMessage readyStatusText
+branch replLoop
+label wrapSelectedSlotToThree
+set local selectedSlot threeValue
+set local statusMessage readyStatusText
+branch replLoop
+
+label moveSelectedSlotDown
+call selectedSlotIsThreeForDownCall math.equalI64
+arg selectedSlotIsThreeForDownCall left selectedSlot
+arg selectedSlotIsThreeForDownCall right threeValue
+run selectedSlotIsThreeForDownCall
+bind selectedSlotIsThreeForDown Bool selectedSlotIsThreeForDownCall
+branchIf selectedSlotIsThreeForDown wrapSelectedSlotToOne
+call incrementSelectedSlotCall math.addI64
+arg incrementSelectedSlotCall left selectedSlot
+arg incrementSelectedSlotCall right oneValue
+run incrementSelectedSlotCall
+bind nextSelectedSlot CSignedInt64 incrementSelectedSlotCall
+set local selectedSlot nextSelectedSlot
+set local statusMessage readyStatusText
+branch replLoop
+label wrapSelectedSlotToOne
+set local selectedSlot oneValue
+set local statusMessage readyStatusText
+branch replLoop
+
+label openActionsForSelectedSlot
+set local screenMode oneValue
+set local selectedAction oneValue
+set local statusMessage chooseActionText
+branch replLoop
+
+label handleActionKey
+call actionUpKeyCheckCall math.equalI64
+arg actionUpKeyCheckCall left pressedKey
+arg actionUpKeyCheckCall right keyArrowUp
+run actionUpKeyCheckCall
+bind actionUpPressed Bool actionUpKeyCheckCall
+branchIf actionUpPressed moveSelectedActionUp
+call actionDownKeyCheckCall math.equalI64
+arg actionDownKeyCheckCall left pressedKey
+arg actionDownKeyCheckCall right keyArrowDown
+run actionDownKeyCheckCall
+bind actionDownPressed Bool actionDownKeyCheckCall
+branchIf actionDownPressed moveSelectedActionDown
+call actionEscapeKeyCheckCall math.equalI64
+arg actionEscapeKeyCheckCall left pressedKey
+arg actionEscapeKeyCheckCall right keyEscape
+run actionEscapeKeyCheckCall
+bind actionEscapePressed Bool actionEscapeKeyCheckCall
+branchIf actionEscapePressed closeActionMenu
+call actionLeftKeyCheckCall math.equalI64
+arg actionLeftKeyCheckCall left pressedKey
+arg actionLeftKeyCheckCall right keyArrowLeft
+run actionLeftKeyCheckCall
+bind actionLeftPressed Bool actionLeftKeyCheckCall
+branchIf actionLeftPressed closeActionMenu
+call actionEnterKeyCheckCall math.equalI64
+arg actionEnterKeyCheckCall left pressedKey
+arg actionEnterKeyCheckCall right keyEnter
+run actionEnterKeyCheckCall
+bind actionEnterPressed Bool actionEnterKeyCheckCall
+branchIf actionEnterPressed executeSelectedAction
+call actionRightKeyCheckCall math.equalI64
+arg actionRightKeyCheckCall left pressedKey
+arg actionRightKeyCheckCall right keyArrowRight
+run actionRightKeyCheckCall
+bind actionRightPressed Bool actionRightKeyCheckCall
+branchIf actionRightPressed executeSelectedAction
+set local statusMessage ignoredKeyText
+branch replLoop
+
+label moveSelectedActionUp
+call selectedActionIsOneForUpCall math.equalI64
+arg selectedActionIsOneForUpCall left selectedAction
+arg selectedActionIsOneForUpCall right oneValue
+run selectedActionIsOneForUpCall
+bind selectedActionIsOneForUp Bool selectedActionIsOneForUpCall
+branchIf selectedActionIsOneForUp wrapSelectedActionToFour
+call decrementSelectedActionCall math.subtractI64
+arg decrementSelectedActionCall left selectedAction
+arg decrementSelectedActionCall right oneValue
+run decrementSelectedActionCall
+bind previousSelectedAction CSignedInt64 decrementSelectedActionCall
+set local selectedAction previousSelectedAction
+set local statusMessage chooseActionText
+branch replLoop
+label wrapSelectedActionToFour
+set local selectedAction fourValue
+set local statusMessage chooseActionText
+branch replLoop
+
+label moveSelectedActionDown
+call selectedActionIsFourForDownCall math.equalI64
+arg selectedActionIsFourForDownCall left selectedAction
+arg selectedActionIsFourForDownCall right fourValue
+run selectedActionIsFourForDownCall
+bind selectedActionIsFourForDown Bool selectedActionIsFourForDownCall
+branchIf selectedActionIsFourForDown wrapSelectedActionToOne
+call incrementSelectedActionCall math.addI64
+arg incrementSelectedActionCall left selectedAction
+arg incrementSelectedActionCall right oneValue
+run incrementSelectedActionCall
+bind nextSelectedAction CSignedInt64 incrementSelectedActionCall
+set local selectedAction nextSelectedAction
+set local statusMessage chooseActionText
+branch replLoop
+label wrapSelectedActionToOne
+set local selectedAction oneValue
+set local statusMessage chooseActionText
+branch replLoop
+
+label executeSelectedAction
+call addActionCheckCall math.equalI64
+arg addActionCheckCall left selectedAction
+arg addActionCheckCall right oneValue
+run addActionCheckCall
+bind addActionSelected Bool addActionCheckCall
+branchIf addActionSelected addSelectedTodo
+call toggleActionCheckCall math.equalI64
+arg toggleActionCheckCall left selectedAction
+arg toggleActionCheckCall right twoValue
+run toggleActionCheckCall
+bind toggleActionSelected Bool toggleActionCheckCall
+branchIf toggleActionSelected toggleSelectedTodo
+call deleteActionCheckCall math.equalI64
+arg deleteActionCheckCall left selectedAction
+arg deleteActionCheckCall right threeValue
+run deleteActionCheckCall
+bind deleteActionSelected Bool deleteActionCheckCall
+branchIf deleteActionSelected deleteSelectedTodo
+branch closeActionMenu
+
+label closeActionMenu
+set local screenMode zeroValue
+set local selectedAction oneValue
+set local statusMessage readyStatusText
+branch replLoop
+
+label addSelectedTodo
+call addSelectedOneCheckCall math.equalI64
+arg addSelectedOneCheckCall left selectedSlot
+arg addSelectedOneCheckCall right oneValue
+run addSelectedOneCheckCall
+bind addSlotOneSelected Bool addSelectedOneCheckCall
+branchIf addSlotOneSelected addTodoSlotOne
+call addSelectedTwoCheckCall math.equalI64
+arg addSelectedTwoCheckCall left selectedSlot
+arg addSelectedTwoCheckCall right twoValue
+run addSelectedTwoCheckCall
+bind addSlotTwoSelected Bool addSelectedTwoCheckCall
+branchIf addSlotTwoSelected addTodoSlotTwo
+branch addTodoSlotThree
+
+label addTodoSlotOne
+call titlePromptOneCall c.printf
+arg titlePromptOneCall format titlePromptText
+run titlePromptOneCall
+ignoreValue titlePromptOneCall CSignedInt32
+call readSlotOneTitleCall readLineIntoBuffer
+arg readSlotOneTitleCall targetBuffer slotOneTitleBuffer
+arg readSlotOneTitleCall bufferCapacity titleBufferCapacity
+run readSlotOneTitleCall
+ignoreOk readSlotOneTitleCall CSignedInt64
+set local slotOneActive oneValue
+set local slotOneDone zeroValue
+set local statusMessage addedOneText
+branch persistTodosThenLoop
+label addTodoSlotTwo
+call titlePromptTwoCall c.printf
+arg titlePromptTwoCall format titlePromptText
+run titlePromptTwoCall
+ignoreValue titlePromptTwoCall CSignedInt32
+call readSlotTwoTitleCall readLineIntoBuffer
+arg readSlotTwoTitleCall targetBuffer slotTwoTitleBuffer
+arg readSlotTwoTitleCall bufferCapacity titleBufferCapacity
+run readSlotTwoTitleCall
+ignoreOk readSlotTwoTitleCall CSignedInt64
+set local slotTwoActive oneValue
+set local slotTwoDone zeroValue
+set local statusMessage addedTwoText
+branch persistTodosThenLoop
+label addTodoSlotThree
+call titlePromptThreeCall c.printf
+arg titlePromptThreeCall format titlePromptText
+run titlePromptThreeCall
+ignoreValue titlePromptThreeCall CSignedInt32
+call readSlotThreeTitleCall readLineIntoBuffer
+arg readSlotThreeTitleCall targetBuffer slotThreeTitleBuffer
+arg readSlotThreeTitleCall bufferCapacity titleBufferCapacity
+run readSlotThreeTitleCall
+ignoreOk readSlotThreeTitleCall CSignedInt64
+set local slotThreeActive oneValue
+set local slotThreeDone zeroValue
+set local statusMessage addedThreeText
+branch persistTodosThenLoop
+
+label toggleSelectedTodo
+call toggleSelectedOneCheckCall math.equalI64
+arg toggleSelectedOneCheckCall left selectedSlot
+arg toggleSelectedOneCheckCall right oneValue
+run toggleSelectedOneCheckCall
+bind toggleSlotOneSelected Bool toggleSelectedOneCheckCall
+branchIf toggleSlotOneSelected toggleSlotOne
+call toggleSelectedTwoCheckCall math.equalI64
+arg toggleSelectedTwoCheckCall left selectedSlot
+arg toggleSelectedTwoCheckCall right twoValue
+run toggleSelectedTwoCheckCall
+bind toggleSlotTwoSelected Bool toggleSelectedTwoCheckCall
+branchIf toggleSlotTwoSelected toggleSlotTwo
+branch toggleSlotThree
+label toggleSlotOne
+call toggleSlotOneActiveCheckCall math.equalI64
+arg toggleSlotOneActiveCheckCall left slotOneActive
+arg toggleSlotOneActiveCheckCall right oneValue
+run toggleSlotOneActiveCheckCall
+bind canToggleSlotOne Bool toggleSlotOneActiveCheckCall
+branchIf canToggleSlotOne toggleSlotOneState
+branch missingTodoForToggle
+label toggleSlotOneState
+call slotOneDoneIsZeroCall math.equalI64
+arg slotOneDoneIsZeroCall left slotOneDone
+arg slotOneDoneIsZeroCall right zeroValue
+run slotOneDoneIsZeroCall
+bind slotOneDoneIsZero Bool slotOneDoneIsZeroCall
+branchIf slotOneDoneIsZero setSlotOneDone
+set local slotOneDone zeroValue
+branch toggledTodo
+label setSlotOneDone
+set local slotOneDone oneValue
+branch toggledTodo
+label toggleSlotTwo
+call toggleSlotTwoActiveCheckCall math.equalI64
+arg toggleSlotTwoActiveCheckCall left slotTwoActive
+arg toggleSlotTwoActiveCheckCall right oneValue
+run toggleSlotTwoActiveCheckCall
+bind canToggleSlotTwo Bool toggleSlotTwoActiveCheckCall
+branchIf canToggleSlotTwo toggleSlotTwoState
+branch missingTodoForToggle
+label toggleSlotTwoState
+call slotTwoDoneIsZeroCall math.equalI64
+arg slotTwoDoneIsZeroCall left slotTwoDone
+arg slotTwoDoneIsZeroCall right zeroValue
+run slotTwoDoneIsZeroCall
+bind slotTwoDoneIsZero Bool slotTwoDoneIsZeroCall
+branchIf slotTwoDoneIsZero setSlotTwoDone
+set local slotTwoDone zeroValue
+branch toggledTodo
+label setSlotTwoDone
+set local slotTwoDone oneValue
+branch toggledTodo
+label toggleSlotThree
+call toggleSlotThreeActiveCheckCall math.equalI64
+arg toggleSlotThreeActiveCheckCall left slotThreeActive
+arg toggleSlotThreeActiveCheckCall right oneValue
+run toggleSlotThreeActiveCheckCall
+bind canToggleSlotThree Bool toggleSlotThreeActiveCheckCall
+branchIf canToggleSlotThree toggleSlotThreeState
+branch missingTodoForToggle
+label toggleSlotThreeState
+call slotThreeDoneIsZeroCall math.equalI64
+arg slotThreeDoneIsZeroCall left slotThreeDone
+arg slotThreeDoneIsZeroCall right zeroValue
+run slotThreeDoneIsZeroCall
+bind slotThreeDoneIsZero Bool slotThreeDoneIsZeroCall
+branchIf slotThreeDoneIsZero setSlotThreeDone
+set local slotThreeDone zeroValue
+branch toggledTodo
+label setSlotThreeDone
+set local slotThreeDone oneValue
+branch toggledTodo
+label missingTodoForToggle
+set local statusMessage missingTodoText
+branch replLoop
+label toggledTodo
+set local statusMessage toggledText
+branch persistTodosThenLoop
+
+label deleteSelectedTodo
+call deleteSelectedOneCheckCall math.equalI64
+arg deleteSelectedOneCheckCall left selectedSlot
+arg deleteSelectedOneCheckCall right oneValue
+run deleteSelectedOneCheckCall
+bind deleteSlotOneSelected Bool deleteSelectedOneCheckCall
+branchIf deleteSlotOneSelected deleteSlotOne
+call deleteSelectedTwoCheckCall math.equalI64
+arg deleteSelectedTwoCheckCall left selectedSlot
+arg deleteSelectedTwoCheckCall right twoValue
+run deleteSelectedTwoCheckCall
+bind deleteSlotTwoSelected Bool deleteSelectedTwoCheckCall
+branchIf deleteSlotTwoSelected deleteSlotTwo
+branch deleteSlotThree
+label deleteSlotOne
+call deleteSlotOneActiveCheckCall math.equalI64
+arg deleteSlotOneActiveCheckCall left slotOneActive
+arg deleteSlotOneActiveCheckCall right oneValue
+run deleteSlotOneActiveCheckCall
+bind canDeleteSlotOne Bool deleteSlotOneActiveCheckCall
+branchIf canDeleteSlotOne deleteSlotOneState
+branch missingTodoForDelete
+label deleteSlotOneState
+set local slotOneActive zeroValue
+set local slotOneDone zeroValue
+call clearSlotOneAfterDeleteCall writeDashBuffer
+arg clearSlotOneAfterDeleteCall targetBuffer slotOneTitleBuffer
+run clearSlotOneAfterDeleteCall
+ignoreOk clearSlotOneAfterDeleteCall CSignedInt64
+branch deletedTodo
+label deleteSlotTwo
+call deleteSlotTwoActiveCheckCall math.equalI64
+arg deleteSlotTwoActiveCheckCall left slotTwoActive
+arg deleteSlotTwoActiveCheckCall right oneValue
+run deleteSlotTwoActiveCheckCall
+bind canDeleteSlotTwo Bool deleteSlotTwoActiveCheckCall
+branchIf canDeleteSlotTwo deleteSlotTwoState
+branch missingTodoForDelete
+label deleteSlotTwoState
+set local slotTwoActive zeroValue
+set local slotTwoDone zeroValue
+call clearSlotTwoAfterDeleteCall writeDashBuffer
+arg clearSlotTwoAfterDeleteCall targetBuffer slotTwoTitleBuffer
+run clearSlotTwoAfterDeleteCall
+ignoreOk clearSlotTwoAfterDeleteCall CSignedInt64
+branch deletedTodo
+label deleteSlotThree
+call deleteSlotThreeActiveCheckCall math.equalI64
+arg deleteSlotThreeActiveCheckCall left slotThreeActive
+arg deleteSlotThreeActiveCheckCall right oneValue
+run deleteSlotThreeActiveCheckCall
+bind canDeleteSlotThree Bool deleteSlotThreeActiveCheckCall
+branchIf canDeleteSlotThree deleteSlotThreeState
+branch missingTodoForDelete
+label deleteSlotThreeState
+set local slotThreeActive zeroValue
+set local slotThreeDone zeroValue
+call clearSlotThreeAfterDeleteCall writeDashBuffer
+arg clearSlotThreeAfterDeleteCall targetBuffer slotThreeTitleBuffer
+run clearSlotThreeAfterDeleteCall
+ignoreOk clearSlotThreeAfterDeleteCall CSignedInt64
+branch deletedTodo
+label missingTodoForDelete
+set local statusMessage missingTodoText
+branch replLoop
+label deletedTodo
+set local statusMessage deletedText
+branch persistTodosThenLoop
+
+label persistTodosThenLoop
+set local screenMode zeroValue
+set local selectedAction oneValue
+call saveTodosAfterChangeCall saveTodosToJson
+arg saveTodosAfterChangeCall slotOneActive slotOneActive
+arg saveTodosAfterChangeCall slotOneDone slotOneDone
+arg saveTodosAfterChangeCall slotOneTitleBuffer slotOneTitleBuffer
+arg saveTodosAfterChangeCall slotTwoActive slotTwoActive
+arg saveTodosAfterChangeCall slotTwoDone slotTwoDone
+arg saveTodosAfterChangeCall slotTwoTitleBuffer slotTwoTitleBuffer
+arg saveTodosAfterChangeCall slotThreeActive slotThreeActive
+arg saveTodosAfterChangeCall slotThreeDone slotThreeDone
+arg saveTodosAfterChangeCall slotThreeTitleBuffer slotThreeTitleBuffer
+run saveTodosAfterChangeCall
+ignoreValue saveTodosAfterChangeCall CSignedInt32
+branch replLoop
+
+label slotOneAllocationFailed
+call allocationFailedOneCall c.puts
+arg allocationFailedOneCall text allocationFailedText
+run allocationFailedOneCall
+ignoreValue allocationFailedOneCall CSignedInt32
+makeError slotOneAllocationFailure MainError.StartupAllocationFailed allocateSlotOneError
+returnError slotOneAllocationFailure
+label slotTwoAllocationFailed
+call allocationFailedTwoCall c.puts
+arg allocationFailedTwoCall text allocationFailedText
+run allocationFailedTwoCall
+ignoreValue allocationFailedTwoCall CSignedInt32
+call freeSlotOneAfterTwoFailureCall c.free
+arg freeSlotOneAfterTwoFailureCall ptr slotOneTitleBuffer
+run freeSlotOneAfterTwoFailureCall
+ignoreValue freeSlotOneAfterTwoFailureCall Void
+makeError slotTwoAllocationFailure MainError.StartupAllocationFailed allocateSlotTwoError
+returnError slotTwoAllocationFailure
+label slotThreeAllocationFailed
+call allocationFailedThreeCall c.puts
+arg allocationFailedThreeCall text allocationFailedText
+run allocationFailedThreeCall
+ignoreValue allocationFailedThreeCall CSignedInt32
+call freeSlotOneAfterThreeFailureCall c.free
+arg freeSlotOneAfterThreeFailureCall ptr slotOneTitleBuffer
+run freeSlotOneAfterThreeFailureCall
+ignoreValue freeSlotOneAfterThreeFailureCall Void
+call freeSlotTwoAfterThreeFailureCall c.free
+arg freeSlotTwoAfterThreeFailureCall ptr slotTwoTitleBuffer
+run freeSlotTwoAfterThreeFailureCall
+ignoreValue freeSlotTwoAfterThreeFailureCall Void
+makeError slotThreeAllocationFailure MainError.StartupAllocationFailed allocateSlotThreeError
+returnError slotThreeAllocationFailure
+
+label quitProgram
+call saveTodosOnQuitCall saveTodosToJson
+arg saveTodosOnQuitCall slotOneActive slotOneActive
+arg saveTodosOnQuitCall slotOneDone slotOneDone
+arg saveTodosOnQuitCall slotOneTitleBuffer slotOneTitleBuffer
+arg saveTodosOnQuitCall slotTwoActive slotTwoActive
+arg saveTodosOnQuitCall slotTwoDone slotTwoDone
+arg saveTodosOnQuitCall slotTwoTitleBuffer slotTwoTitleBuffer
+arg saveTodosOnQuitCall slotThreeActive slotThreeActive
+arg saveTodosOnQuitCall slotThreeDone slotThreeDone
+arg saveTodosOnQuitCall slotThreeTitleBuffer slotThreeTitleBuffer
+run saveTodosOnQuitCall
+ignoreValue saveTodosOnQuitCall CSignedInt32
+call goodbyeCall c.puts
+arg goodbyeCall text goodbyeText
+run goodbyeCall
+ignoreValue goodbyeCall CSignedInt32
+call freeSlotOneCall c.free
+arg freeSlotOneCall ptr slotOneTitleBuffer
+run freeSlotOneCall
+ignoreValue freeSlotOneCall Void
+call freeSlotTwoCall c.free
+arg freeSlotTwoCall ptr slotTwoTitleBuffer
+run freeSlotTwoCall
+ignoreValue freeSlotTwoCall Void
+call freeSlotThreeCall c.free
+arg freeSlotThreeCall ptr slotThreeTitleBuffer
+run freeSlotThreeCall
+ignoreValue freeSlotThreeCall Void
+storage local immutable successfulExitCode ExitCode 0
+returnOk successfulExitCode
