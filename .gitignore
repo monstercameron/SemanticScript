@@ -12,6 +12,8 @@ htmlcov/
 *.obj
 *.pdb
 *.o
+*.ll
+*.bc
 *.a
 *.so
 *.dylib
@@ -28,21 +30,18 @@ out/
 dist/
 coverage/
 
-AgentScript/tests/as_compiler_build/
-AgentScript/tests/feature_coverage/
-AgentScript/bootstrap/bootstrap_general.ll
-
 SemanticScript/tests/sem_compiler_build/
 SemanticScript/tests/feature_coverage/
 SemanticScript/bootstrap/bootstrap_general.ll
 
 .claude/
 
+app/todo/todos.json
+
 .DS_Store
 Thumbs.db
 
 
 # Subagent probe / scratch files
-.tmp_*.as
 .tmp_*.sscript
 .tmp_*.sem
