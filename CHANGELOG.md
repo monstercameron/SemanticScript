@@ -2,6 +2,8 @@
 
 ## 2026-05-18
 
+- `ecb095735fd23db51e12a2c6caa65dc10b69d040` - `linter: document rationale diagnostics`
+  - Documents the semlint2 `SS3608` rationale diagnostics in the diagnostic-code map for call-level rationale metadata.
 - `14c43065ff720d9d5cc1bfb285f7bffc6d6cb1bf` - `linter: track call-level rationales`
   - Adds semlint2 support for `rationale CALL "text"` metadata so diagnostics can cite call-specific rationale records in addition to operation-level rationale comments.
 - `ec1f24db27d45dd54cda9d060002249bd776f015` - `linter: cover route metadata drift checks`
