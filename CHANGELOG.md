@@ -2,6 +2,10 @@
 
 ## 2026-05-18
 
+- `c31104f377583ca2a03a5b8730eb809aeb3162bc` - `app: attach gauntlet null-check rationale`
+  - Replaces a proximity rationale comment in the HTTP API gauntlet with call-attached `rationale` metadata for the nullable header guard.
+- `bd131ca85f6423385b19bfdffd3be4b6b9882205` - `linter: cover rationale metadata checks`
+  - Adds semlint2 tests for call-level rationale metadata, missing rationale text, unknown rationale call references, and broad-to-narrow capability hierarchy coverage.
 - `ecb095735fd23db51e12a2c6caa65dc10b69d040` - `linter: document rationale diagnostics`
   - Documents the semlint2 `SS3608` rationale diagnostics in the diagnostic-code map for call-level rationale metadata.
 - `14c43065ff720d9d5cc1bfb285f7bffc6d6cb1bf` - `linter: track call-level rationales`
