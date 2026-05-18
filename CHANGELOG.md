@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-05-18
+
+- `575e3526d443eba6dd4e0b323898d7c440cd1b88` - `stdlib: every stdlib_as file passes aslint2 with zero diagnostics`
+  - All 28 stdlib_as modules now lint cleanly under aslint2 AND all 28 smoke tests continue to pass via `test_stdlib.py`. Per-file additions: module-scope capabilities (`stdoutWriteCapability` / `heapAllocationCapability` / `heapFreeCapability` / `processLifecycleCapability` / `processSignalCapability` / `clockCpuReadCapability` / `clockRealTimeReadCapability` / `memoryBufferReadCapability` / `memoryBufferWriteCapability`) wired to every operation via `useCapability`; gold console.writeLine smoke pattern (ignoreOk + bindError + branchIfError + typed MainError.ConsoleWriteFailed translation handler carrying the raw negative status as the makeError SOURCE_VALUE cause); defer-based heap cleanup (every c.malloc → bindError + branchIfError + `defer releaseXCall c.free <pointerBind>`); dead-store false-positive workaround via self-branchIf inserted between disjoint-branch sets; missing-invariant lines describing actual iteration / numerical bounds; removed unused errorCase variants, unused consts, and parameter-as-channel effect declarations.
+- `98d655333b8016100d53d3996717529c04101ab6` - `linter: add aslint2 with relaxed primitive-type equivalence`
+  - First commit of `AgentScript/linter/aslint2.py` (the structured-diagnostics linter — every warning ships subject / gap / invariant / citations / fix candidates / spec anchor / pass provenance / agent hint, tier-classified T1 spec / T2 contract / T3 refinement / T4 naming) plus the companion `test_aslint2.py` suite. Primitive-type equivalence groups merge widths the compiler already auto-coerces: signed integers + Bool (I8/I16/I32/I64 + C* aliases + CByteCount + Bool) and 8-byte pointer-shaped types (CNullTerminatedByteString / COpaqueMemoryAddress / CFileHandle / String). Without this widening AS4301 fires on every byte-load + write pattern in the stdlib that the compiler accepts via sext/trunc/zext/bitcast.
+- `414fb61dc7251b97c559cd4c272f53edcb21fdfb` - `compiler: branchIfError distinguishes pointer vs integer failure`
+  - The default `branchIfError` convention emitted `icmp slt result, 0` unconditionally, which clang rejects when the call's result is a pointer (e.g. `c.malloc` returning `i8*`). New behavior: integer return → `icmp slt result, 0` (negative = failure); pointer return → `icmp eq result, null` (NULL = failure). Required so stdlib smoke tests can wire bindError + branchIfError on `c.malloc` for proper out-of-memory handling.
+
 ## 2026-05-17
 
 - `28e7ec6717a645931524809b10fd8e07345256f2` - `tests: align stdio.as expected output with stdlib operation rename`
