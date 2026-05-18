@@ -770,6 +770,54 @@ def test_build_tape_llvm_flags_drive_outputs():
           f"rc={proc.returncode} stderr={proc.stderr!r} path={build_ir_path}")
 
 
+def test_sem_build_driver_discovers_build_tape():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        build_path = root / "build.sem"
+        module_path = root / "main.sem"
+        build_path.write_text("\n".join([
+            "buildProject semDriver",
+            "project SemDriver",
+            "modulePath semDriver github.com/example/sem-driver",
+            "languageVersion semDriver \"1.0\"",
+            "projectVersion semDriver \"1.0.0\"",
+            "projectLicense semDriver MIT",
+            "sourceRoot semDriver \".\"",
+            "registerModule semDriver app.sem_driver \".\"",
+            "mainFile semDriver \"main.sem\"",
+            "mainOperation semDriver main",
+            "targetRuntime semDriver nativeExe",
+            "buildProfile semDriver dev",
+            "runtimeChecks semDriver panic",
+            "persistLlvmIr semDriver auto",
+            "optLevel semDriver 2",
+            "target console",
+            "runtime native 1",
+            "entry console main",
+            "importModule app.sem_driver",
+            "",
+        ]), encoding="utf-8", newline="\n")
+        module_path.write_text("\n".join([
+            "module app.sem_driver",
+            "exportOperation app.sem_driver main",
+            "operation main",
+            "output main ExitCode",
+            "memory main heap no",
+            "async main no",
+            "purpose main \"sem build discovery smoke\"",
+            "returnValue 0",
+            "",
+        ]), encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(ROOT / "tools" / "sem.py"),
+             "build", str(root), "--parse-only", "--quiet"],
+            capture_output=True, text=True,
+        )
+    check("sem build: discovers build.sem and passes compiler flags",
+          proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r} stdout={proc.stdout!r}")
+
+
 def test_codegen_diagnostic_is_agent_readable():
     src = "\n".join([
         "project BadDiagnostic",
@@ -1198,6 +1246,7 @@ def main():
     test_build_tape_path_normalization()
     test_build_tape_validation_rejects_missing_required_rows()
     test_build_tape_llvm_flags_drive_outputs()
+    test_sem_build_driver_discovers_build_tape()
     test_codegen_diagnostic_is_agent_readable()
     test_web_codegen_rejects_unsupported_http_target()
     test_backend_diagnostic_maps_symbol_to_source_call()

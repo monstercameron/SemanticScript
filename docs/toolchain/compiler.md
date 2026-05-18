@@ -5,6 +5,10 @@ line-oriented SemanticScript, resolves imports and external literals, builds an
 AST, emits LLVM IR with `llvmlite`, can JIT-run, and can call `clang` for
 native executables.
 
+`SemanticScript/tools/sem.py` is the thin project driver. It discovers
+`build.sem` from the requested path and delegates to `semsc.py`; it does not
+implement a second build engine.
+
 ## Commands
 
 Run from the repository's `SemanticScript/` directory unless paths are explicit:
@@ -17,6 +21,8 @@ python compiler/semsc.py sem/fizzbuzz.sscript --run
 python compiler/semsc.py sem/fizzbuzz.sscript --emit-ir
 python compiler/semsc.py sem/fizzbuzz.sscript --emit-optimized-ir fizzbuzz.opt.ll --run
 python compiler/semsc.py sem/fizzbuzz.sscript --emit-exe
+python tools/sem.py build ../app/todo --parse-only --quiet
+python tools/sem.py check ../app/todo --quiet
 ```
 
 CLI flags:

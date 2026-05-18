@@ -664,7 +664,7 @@ workstreams.
   - [ ] Reject network dependency refs in prod/release builds unless locked.
 - [ ] Integrate `build.sem` with `semsc.py`.
   - [ ] Add `semsc.py build.sem --project-build` or equivalent project mode.
-  - [ ] Make `sem build` call compiler project mode once the `sem` driver
+  - [x] Make `sem build` call compiler project mode once the `sem` driver
         exists.
   - [ ] Resolve all source roots before parsing application modules.
   - [x] Resolve build profile from `build.sem`.
@@ -1114,7 +1114,7 @@ order.
   - [ ] Add `sem --help`.
   - [ ] Add useful non-zero exit codes for scripting.
 - [ ] Wrap compiler commands.
-  - [ ] Add `sem build`.
+- [x] Add `sem build`.
   - [ ] Add `sem run`.
   - [ ] Add `sem check` for parse, lint, and type/codegen validation.
   - [ ] Add `sem emit-ir`.
@@ -1184,7 +1184,7 @@ order.
   - [ ] Add path normalization on Windows and POSIX.
   - [ ] Add tests for relative and absolute paths.
 - [ ] Integrate project build tapes with existing tools.
-  - [ ] `semsc.py` can accept a `build.sem`-driven build through `sem build`.
+- [x] `semsc.py` can accept a `build.sem`-driven build through `sem build`.
   - [ ] `semlint.py` can lint a `build.sem` project.
   - [ ] VS Code extension can discover project settings from `build.sem`.
   - [ ] Future language server can use `build.sem` as the workspace root.
