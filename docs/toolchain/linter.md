@@ -20,7 +20,7 @@ python SemanticScript/linter/semlint.py SemanticScript/sem/fizzbuzz.sscript
 Run a directory:
 
 ```powershell
-python SemanticScript/linter/semlint.py SemanticScript/as --summary
+python SemanticScript/linter/semlint.py SemanticScript/sem --summary
 ```
 
 JSON output for editor integration:
@@ -32,7 +32,7 @@ python SemanticScript/linter/semlint.py SemanticScript/sem/fizzbuzz.sscript --fo
 Strict CI:
 
 ```powershell
-python SemanticScript/linter/semlint.py SemanticScript/as --strict
+python SemanticScript/linter/semlint.py SemanticScript/sem --strict
 ```
 
 Rule families include:
@@ -48,6 +48,7 @@ operation contract checks
 console effect declaration checks
 async timeout/cancellation checks
 resource cleanup hints
+raw libc return escape checks
 group/endGroup balance
 duplicate domain literals
 semantic comment prefix checks
@@ -76,13 +77,13 @@ python SemanticScript/linter/semlint2.py SemanticScript/sem/fizzbuzz.sscript --f
 Emit diagnostics as SemanticScript-shaped records:
 
 ```powershell
-python SemanticScript/linter/semlint2.py SemanticScript/sem/fizzbuzz.sscript --format as-record
+python SemanticScript/linter/semlint2.py SemanticScript/sem/fizzbuzz.sscript --format sem-record
 ```
 
 Filter:
 
 ```powershell
-python SemanticScript/linter/semlint2.py SemanticScript/as --tier T3 --code SS0101
+python SemanticScript/linter/semlint2.py SemanticScript/sem --tier T3 --code SS0101
 ```
 
 semlint2 tiers:
@@ -168,4 +169,3 @@ The extension parses both legacy JSON diagnostics and semlint2 structured JSON.
 For refined future syntax, the extension can skip current `semlint.py`
 diagnostics by default because the current executable linter intentionally lags
 some research syntax.
-

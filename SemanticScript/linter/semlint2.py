@@ -113,6 +113,11 @@ VAGUE_NAME_BLACKLIST: frozenset = frozenset({
     "f", "g", "h", "p", "q", "r", "s", "t", "u", "v", "w",
 })
 
+OPAQUE_DEPENDENCY_INPUT_NAMES: frozenset = frozenset({
+    "console", "environment", "process",
+    "httpRequest", "databaseClient", "clock",
+})
+
 
 # Call targets that return Result-shaped or can fail at the runtime level.
 # Calls to these MUST have both `bindError` and `branchIfError` (or be
@@ -1131,7 +1136,8 @@ def collect_operation_calls(operation: OperationFact) -> Dict[str, CallFact]:
 #            SS3903 guardTokenSourceWithoutRelease
 #   AS40xx — style discipline                 (T4 style)
 #            SS4001 callObjectSuffix, SS4002 bindErrorSuffix,
-#            SS4003 makeErrorSuffix, SS4004 vagueName
+#            SS4003 makeErrorSuffix, SS4004 vagueName,
+#            SS4005 semOneZeroLegacyForm, SS4006 declarationOnlySample
 #   AS41xx — reference integrity              (T1 spec — blocks compile)
 #            SS4101 unresolvedCall, SS4102 unresolvedLabel,
 #            SS4103 unresolvedCapability,
@@ -2374,6 +2380,8 @@ def check_unused_input(facts: ExtendedFacts) -> List[Diagnostic]:
                 inputDeclarations.append((sourceLine.args[1], sourceLine, lineIndex))
 
         for inputArgName, declarationLine, declarationIndex in inputDeclarations:
+            if inputArgName in OPAQUE_DEPENDENCY_INPUT_NAMES:
+                continue
             isReferenced = False
             for laterLine in operation.lines[declarationIndex + 1:]:
                 if is_comment(laterLine) or not laterLine.tokens:
@@ -2444,12 +2452,54 @@ def _normalize_set_target_name(setLine: SourceLine) -> Optional[str]:
     return args[0]
 
 
+def _branch_target_names(sourceLine: SourceLine) -> List[str]:
+    verb = sourceLine.verb
+    args = sourceLine.args
+    if verb == "branch" and args:
+        return [args[0]]
+    if verb == "branchIf" and len(args) >= 2:
+        targets = [args[1]]
+        if len(args) >= 3:
+            targets.append(args[2])
+        return targets
+    if verb in {"branchIfError", "branchIfGroupError", "branchIfChannelClosed"} and len(args) >= 2:
+        return [args[1]]
+    if verb == "branchSelected" and len(args) >= 3:
+        return [args[2]]
+    return []
+
+
+def _label_block_reads_name(
+    operation: OperationFact,
+    labelIndexByName: Dict[str, int],
+    labelName: str,
+    targetName: str,
+) -> bool:
+    labelIndex = labelIndexByName.get(labelName)
+    if labelIndex is None:
+        return False
+    for laterLine in operation.lines[labelIndex + 1:]:
+        if is_comment(laterLine) or not laterLine.tokens:
+            continue
+        if laterLine.verb == "label":
+            return False
+        if any(token.text == targetName for token in laterLine.tokens):
+            return True
+    return False
+
+
 def check_dead_store(facts: ExtendedFacts) -> List[Diagnostic]:
     """`set X val1` followed by `set X val2` with no read of X between is a
     dead store — the first write is overwritten before observation."""
     diagnostics: List[Diagnostic] = []
     for operation in facts.base.operations.values():
         operationCitations = narrative_citations_for_operation(facts, operation.name)
+        labelIndexByName: Dict[str, int] = {}
+        for lineIndex, sourceLine in enumerate(operation.lines):
+            if (not is_comment(sourceLine) and sourceLine.tokens
+                    and sourceLine.verb == "label" and sourceLine.args):
+                labelIndexByName[sourceLine.args[0]] = lineIndex
+
         # Walk lines in order, track per-name (lastSetIndex, lastSetLine)
         lastSetSeen: Dict[str, Tuple[int, SourceLine]] = {}
         for lineIndex, sourceLine in enumerate(operation.lines):
@@ -2466,10 +2516,23 @@ def check_dead_store(facts: ExtendedFacts) -> List[Diagnostic]:
                     # Check intervening lines for any read of targetName
                     intervening = operation.lines[priorIndex + 1:lineIndex]
                     isReadBetween = any(
-                        any(token.text == targetName for token in laterLine.tokens)
+                        (
+                            (
+                                laterLine.verb != "set"
+                                and any(token.text == targetName for token in laterLine.tokens)
+                            )
+                            or any(
+                                _label_block_reads_name(
+                                    operation,
+                                    labelIndexByName,
+                                    labelName,
+                                    targetName,
+                                )
+                                for labelName in _branch_target_names(laterLine)
+                            )
+                        )
                         for laterLine in intervening
                         if not is_comment(laterLine) and laterLine.tokens
-                        and laterLine.verb != "set"
                     )
                     if not isReadBetween:
                         diagnostics.append(Diagnostic(
@@ -2513,6 +2576,144 @@ def check_dead_store(facts: ExtendedFacts) -> List[Diagnostic]:
                 for token in sourceLine.tokens:
                     if token.text in lastSetSeen:
                         del lastSetSeen[token.text]
+    return diagnostics
+
+
+def _is_top_level_sem_sample(path: Path) -> bool:
+    return path.suffix == ".sem" and path.parent.name == "sem"
+
+
+def _declares_agent_runtime_one_zero(facts: ExtendedFacts) -> bool:
+    return any(
+        sourceLine.verb == "runtime"
+        and len(sourceLine.args) >= 2
+        and sourceLine.args[0] == "AgentRuntime"
+        and sourceLine.args[1] == "1.0"
+        for sourceLine in facts.base.lines
+        if sourceLine.tokens and not is_comment(sourceLine)
+    )
+
+
+def check_sem_one_zero_legacy_forms(facts: ExtendedFacts) -> List[Diagnostic]:
+    """Top-level `.sem` samples that declare AgentRuntime 1.0 should use the
+    current storage/memory forms, not legacy const/var/memory or scopeless set.
+    Feature tests and old `.sscript` sources are intentionally outside this
+    rule's scope."""
+    diagnostics: List[Diagnostic] = []
+    if not _is_top_level_sem_sample(facts.base.path):
+        return diagnostics
+    if not _declares_agent_runtime_one_zero(facts):
+        return diagnostics
+
+    for sourceLine in facts.base.lines:
+        if not sourceLine.tokens or is_comment(sourceLine):
+            continue
+        verb = sourceLine.verb
+        isLegacySet = (
+            verb == "set"
+            and sourceLine.args
+            and sourceLine.args[0] not in {"local", "module", "sharedState"}
+        )
+        if verb not in {"const", "var", "memory"} and not isLegacySet:
+            continue
+        diagnostics.append(Diagnostic(
+            tier=Tier.T4_STYLE,
+            code="SS4005",
+            kind="style.semOneZeroLegacyForm",
+            severity=Severity.INFO,
+            subjectName=verb,
+            subjectKind="verb",
+            gapEdge="oneZeroForm",
+            intentSlogan="AgentRuntime 1.0 .sem sample uses a legacy local form",
+            primary=span_of_line(sourceLine, "legacyForm"),
+            invariantRule=(
+                "top-level `.sem` samples declaring AgentRuntime 1.0 should use "
+                "`storage local immutable`, `storage local mutable`, `set local`, "
+                "`memoryHeap`, and `memoryStackLimit`"
+            ),
+            specAnchor="SYNTAX.md#storage",
+            fixCandidates=[
+                FixCandidate(
+                    name="convertToOneZeroForm",
+                    shape="# convert legacy declaration to the 1.0 storage/memory form",
+                    evidence=[span_of_line(sourceLine)],
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            effort=Effort.TRIVIAL,
+            passProvenance="check_sem_one_zero_legacy_forms",
+            agentHint="do not update benchmark sources just to satisfy this sample-style rule",
+        ))
+    return diagnostics
+
+
+def check_declaration_only_sample(facts: ExtendedFacts) -> List[Diagnostic]:
+    """Top-level `.sem` samples should contain an executable source tape.
+    This prevents parity samples from becoming constants-only fixtures that
+    accidentally match output while exercising no calls or control flow."""
+    diagnostics: List[Diagnostic] = []
+    if not _is_top_level_sem_sample(facts.base.path):
+        return diagnostics
+
+    executableVerbs = {
+        "call", "arg", "run", "start", "await",
+        "bind", "bindOk", "bindError", "ignoreOk", "ignoreValue",
+        "makeError", "declareFailure",
+        "branch", "branchIf", "branchIfError",
+        "returnOk", "returnError", "returnValue",
+        "set", "new", "fieldSet", "fieldGet", "recordBuild",
+    }
+    activeVerbs = [
+        sourceLine.verb
+        for sourceLine in facts.base.lines
+        if sourceLine.tokens and not is_comment(sourceLine)
+    ]
+    executableCount = sum(1 for verb in activeVerbs if verb in executableVerbs)
+    hasCall = "call" in activeVerbs
+    hasRun = "run" in activeVerbs
+    if hasCall and hasRun and executableCount >= 4:
+        return diagnostics
+
+    primaryLine = next(
+        (
+            sourceLine
+            for sourceLine in facts.base.lines
+            if sourceLine.tokens and not is_comment(sourceLine)
+        ),
+        None,
+    )
+    if primaryLine is None:
+        return diagnostics
+
+    diagnostics.append(Diagnostic(
+        tier=Tier.T4_STYLE,
+        code="SS4006",
+        kind="style.declarationOnlySample",
+        severity=Severity.INFO,
+        subjectName=facts.base.path.name,
+        subjectKind="sampleProgram",
+        gapEdge="executableSourceTape",
+        intentSlogan="top-level .sem sample has too little executable code",
+        primary=span_of_line(primaryLine, "sampleStart"),
+        invariantRule=(
+            "top-level `.sem` samples should include call/run/control-flow rows "
+            "so they exercise the compiler rather than only storing constants"
+        ),
+        specAnchor="SYNTAX.md#call",
+        fixCandidates=[
+            FixCandidate(
+                name="addExecutableSourceTape",
+                shape="# add call/run/bind/branch rows that compute or emit the sample behavior",
+            ),
+        ],
+        confidence=Confidence.HIGH,
+        effort=Effort.LOCAL,
+        passProvenance="check_declaration_only_sample",
+        agentHint=(
+            "capturedOutputReplay samples are allowed, but they still need an "
+            "honest executable write/error path"
+        ),
+    ))
     return diagnostics
 
 
@@ -4141,6 +4342,8 @@ CHECKERS = [
     check_unused_const,
     check_unused_input,
     check_vague_names,
+    check_sem_one_zero_legacy_forms,
+    check_declaration_only_sample,
     # C-style discipline (AS32xx perf, AS33xx memory, AS34xx layout)
     check_dead_store,
     check_allocation_in_loop,

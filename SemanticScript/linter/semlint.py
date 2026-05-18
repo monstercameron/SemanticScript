@@ -33,12 +33,13 @@ DECLARATION_VERBS = {
     "schema", "unknownFields", "validator", "mapper", "adapter", "boundary",
     "policy", "errorPolicy", "retryPolicy", "timeoutBudget", "resource",
     "resourceKey", "resourceValue", "resourceKind", "capability", "authority",
-    "mutex", "shared", "channel", "const", "var", "testCovers",
+    "mutex", "shared", "channel", "const", "var", "storage", "testCovers",
 }
 
 CONTEXT_VERBS = {
     "input", "output", "effect", "memory", "async", "purpose", "invariant",
     "warning", "guarantee", "failure", "security", "timing", "observability",
+    "memoryHeap", "memoryArena", "memoryStackLimit",
 }
 
 ACTION_VERBS = {
@@ -58,7 +59,7 @@ CONTROL_VERBS = {
 
 KNOWN_VERBS = DECLARATION_VERBS | CONTEXT_VERBS | ACTION_VERBS | CONTROL_VERBS
 
-BODY_VERBS = CONTEXT_VERBS | ACTION_VERBS | CONTROL_VERBS | {"const", "var", "importModule"}
+BODY_VERBS = CONTEXT_VERBS | ACTION_VERBS | CONTROL_VERBS | {"const", "var", "storage", "importModule"}
 
 PRIMITIVE_TARGETS = {
     "console.writeLine",
@@ -104,10 +105,18 @@ CONSOLE_WRITE_TARGETS = {
     "console.writeLine", "console.writeIntegerLine", "console.writeInteger",
 }
 
+LIBC_POSITIVE_SUCCESS_TARGETS = {
+    "printf", "fprintf", "sprintf", "snprintf",
+    "vprintf", "vfprintf", "vsprintf", "vsnprintf",
+    "puts", "fputs", "putchar", "fputc", "putc",
+    "scanf", "fscanf", "sscanf", "vscanf", "vfscanf", "vsscanf",
+    "fread", "fwrite",
+}
+
 CONTRACT_HEAVY_KINDS = {
     "record", "codec", "jsonCodec", "validator", "mapper", "adapter",
     "boundary", "policy", "errorPolicy", "retryPolicy", "timeoutBudget",
-    "resource", "capability", "webServer",
+    "resource", "webServer",
 }
 
 BAD_NAMES = {
@@ -134,12 +143,16 @@ MIN_ARITY = {
     "output": 2,
     "effect": 3,
     "memory": 3,
+    "memoryHeap": 2,
+    "memoryArena": 3,
+    "memoryStackLimit": 2,
     "async": 2,
     "purpose": 2,
     "invariant": 2,
     "warning": 2,
     "const": 3,
     "var": 3,
+    "storage": 4,
     "label": 1,
     "call": 2,
     "arg": 3,
@@ -568,6 +581,8 @@ def lint_operation(program: ProgramFacts, operation: OperationFact, diags: List[
     start_groups: Set[str] = set()
     awaited_groups: Set[str] = set()
     deferred_lines: List[SourceLine] = []
+    bind_sources: Dict[str, str] = {}
+    returned_values: List[Tuple[str, SourceLine]] = []
 
     has_purpose = False
     has_output = False
@@ -589,6 +604,8 @@ def lint_operation(program: ProgramFacts, operation: OperationFact, diags: List[
         elif verb == "output" and args and args[0] == operation.name:
             has_output = True
         elif verb == "memory" and args and args[0] == operation.name:
+            has_memory = True
+        elif verb in {"memoryHeap", "memoryArena", "memoryStackLimit"} and args and args[0] == operation.name:
             has_memory = True
         elif verb == "async" and args and args[0] == operation.name:
             has_async = True
@@ -616,6 +633,8 @@ def lint_operation(program: ProgramFacts, operation: OperationFact, diags: List[
                 add_diag(diags, "warning", "roleSuffixMismatch", line, f"failure label `{label}` should end with Failed or a past-tense -ed suffix", line.arg_column(1))
         elif verb in {"returnOk", "returnError", "returnValue"}:
             has_return = True
+            if verb == "returnValue" and args:
+                returned_values.append((args[0], line))
 
         if verb == "call" and len(args) >= 2:
             call_name, target = args[0], args[1]
@@ -649,8 +668,10 @@ def lint_operation(program: ProgramFacts, operation: OperationFact, diags: List[
             else:
                 add_diag(diags, "error", "unknownCallReference", line, f"await references unknown call `{args[0]}`", line.arg_column(0))
         elif verb == "bind" and len(args) >= 3:
+            bind_sources[args[0]] = args[2]
             attach_call_line(calls, args[2], line, "bind", diags)
         elif verb == "bindOk" and len(args) >= 3:
+            bind_sources[args[0]] = args[2]
             attach_call_line(calls, args[2], line, "bindOk", diags)
         elif verb == "bindError" and len(args) >= 3:
             if not args[0].endswith("Error"):
@@ -712,11 +733,53 @@ def lint_operation(program: ProgramFacts, operation: OperationFact, diags: List[
     for call in calls.values():
         lint_call(call, diags)
 
+    lint_raw_libc_return_escape(operation, calls, bind_sources, returned_values, diags)
+
     for group_name in sorted(start_groups - awaited_groups):
         line = next((call_line for call in calls.values() for call_line in call.group_start_lines if len(call_line.args) >= 2 and call_line.args[1] == group_name), operation.line)
         add_diag(diags, "warning", "unawaitedTaskGroup", line, f"task group `{group_name}` is started but not awaited")
 
     lint_resource_cleanup(calls, deferred_lines, diags)
+
+
+def canonical_target_name(target: str) -> str:
+    if target.startswith("c."):
+        return target[2:]
+    return target
+
+
+def lint_raw_libc_return_escape(
+    operation: OperationFact,
+    calls: Dict[str, CallFact],
+    bind_sources: Dict[str, str],
+    returned_values: List[Tuple[str, SourceLine]],
+    diags: List[Diagnostic],
+) -> None:
+    for returned_value, return_line in returned_values:
+        call_name = bind_sources.get(returned_value)
+        if call_name is None and returned_value in calls:
+            call_name = returned_value
+        if call_name is None:
+            continue
+        call = calls.get(call_name)
+        if call is None:
+            continue
+        target_name = canonical_target_name(call.target)
+        if target_name not in LIBC_POSITIVE_SUCCESS_TARGETS:
+            continue
+        add_diag(
+            diags,
+            "warning",
+            "rawLibcReturnEscapesOperation",
+            return_line,
+            (
+                f"operation `{operation.name}` returns `{returned_value}` from "
+                f"`{call.target}`; this libc target returns a byte/count/raw status, "
+                "not a canonical operation success value. Map success to an explicit "
+                "zero/status value or use `Result` with typed failure."
+            ),
+            return_line.arg_column(0),
+        )
 
 
 def attach_call_line(calls: Dict[str, CallFact], call_name: str, line: SourceLine, kind: str, diags: List[Diagnostic]) -> None:

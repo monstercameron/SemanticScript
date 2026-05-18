@@ -31,6 +31,14 @@ def _lint_source(sourceText: str) -> List[semlint2.Diagnostic]:
         return semlint2.lint_path(fixturePath)
 
 
+def _lint_source_at(relativePath: str, sourceText: str) -> List[semlint2.Diagnostic]:
+    with TemporaryDirectory() as tempDir:
+        fixturePath = Path(tempDir) / relativePath
+        fixturePath.parent.mkdir(parents=True, exist_ok=True)
+        fixturePath.write_text(sourceText, encoding="utf-8")
+        return semlint2.lint_path(fixturePath)
+
+
 def _codes(diagnostics: Sequence[semlint2.Diagnostic]) -> List[str]:
     return [diagnostic.code for diagnostic in diagnostics]
 
@@ -624,6 +632,57 @@ const tmp I64 zeroCount
 
 
 # ==========================================================================
+# SS4005 / SS4006  top-level .sem sample shape
+# ==========================================================================
+
+class TestSemOneZeroSampleShape(unittest.TestCase):
+    def test_agent_runtime_one_zero_sem_legacy_const_is_flagged(self) -> None:
+        diagnostics = _lint_source_at("sem/fixture.sem", """project Test
+target console
+runtime AgentRuntime 1.0
+entry console main
+operation main
+output main Void
+purpose main "sample"
+const legacyExitCode ExitCode 0
+call writeLineCall console.writeLine
+run writeLineCall
+returnOk legacyExitCode
+""")
+        self.assertIn("SS4005", _codes(diagnostics))
+
+    def test_declaration_only_sem_sample_is_flagged(self) -> None:
+        diagnostics = _lint_source_at("sem/fixture.sem", """project Test
+target console
+runtime AgentRuntime 1.0
+entry console main
+operation main
+output main Void
+purpose main "sample"
+storage local immutable successfulExitCode ExitCode 0
+returnOk successfulExitCode
+""")
+        self.assertIn("SS4006", _codes(diagnostics))
+
+    def test_executable_sem_sample_shape_not_flagged(self) -> None:
+        diagnostics = _lint_source_at("sem/fixture.sem", """project Test
+target console
+runtime AgentRuntime 1.0
+entry console main
+operation main
+output main Void
+purpose main "sample"
+storage local immutable messageText String "Hello"
+call writeLineCall console.writeLine
+arg writeLineCall text messageText
+run writeLineCall
+returnOk noResult
+""")
+        self.assertNotIn("SS4005", _codes(diagnostics))
+        self.assertNotIn("SS4006", _codes(diagnostics))
+
+
+# ==========================================================================
 # SS0107  unusedDeclaration.const
 # ==========================================================================
 
@@ -673,6 +732,16 @@ input main usedParameter I64
 output main I64
 purpose main "smoke"
 returnValue usedParameter
+""")
+        self.assertNotIn("SS0108", _codes(diagnostics))
+
+    def test_opaque_dependency_input_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+input main console Console
+output main Void
+purpose main "console dependency entry"
+effect main write console.stdout
 """)
         self.assertNotIn("SS0108", _codes(diagnostics))
 
@@ -784,6 +853,32 @@ purpose main "smoke"
 invariant main "counter mutates"
 set local counter firstValue
 returnValue counter
+""")
+        self.assertNotIn("SS3201", _codes(diagnostics))
+
+    def test_branch_to_failure_label_reads_set_before_next_set(self) -> None:
+        diagnostics = _lint_source("""project Test
+error MainError
+errorCase MainError WriteFailed ConsoleWriteError
+operation main
+output main Result Void MainError
+purpose main "smoke"
+invariant main "latest error is stored before failure branch"
+storage local mutable lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
+call firstWriteCall console.writeLine
+run firstWriteCall
+bindError firstWriteError ConsoleWriteError firstWriteCall
+set local lastConsoleWriteErrorCode firstWriteError
+branchIfError firstWriteCall consoleWriteFailed
+call secondWriteCall console.writeLine
+run secondWriteCall
+bindError secondWriteError ConsoleWriteError secondWriteCall
+set local lastConsoleWriteErrorCode secondWriteError
+branchIfError secondWriteCall consoleWriteFailed
+returnOk noResult
+label consoleWriteFailed
+makeError consoleWriteFailure MainError.WriteFailed lastConsoleWriteErrorCode
+returnError consoleWriteFailure
 """)
         self.assertNotIn("SS3201", _codes(diagnostics))
 

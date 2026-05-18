@@ -2,6 +2,18 @@
 
 Standalone SemanticScript source linter.
 
+## Contents
+
+- `semlint.py` is the current stable standalone linter.
+- `semlint2.py` is the structured/refined linter playground.
+- `test_semlint2.py` contains golden assertion tests for `semlint2.py`.
+- `__init__.py` marks the package for imports.
+
+## Current Status
+
+Active toolchain folder. `semlint.py` is the default editor/CLI linter surface;
+`semlint2.py` explores richer diagnostics and additional refined-syntax checks.
+
 Run one file:
 
 ```text
@@ -50,3 +62,13 @@ Current rule families:
 - abstraction purpose checks for contract-heavy declarations
 - semantic comment prefix checks (`rationale:`, `invariant:`, `warning:`,
   `failure:`, `agent:`, `group`, `endGroup`, etc.)
+
+Additional `semlint2.py` coverage:
+
+- branch-aware dead-store analysis for failure labels that read the most recent
+  stored error value
+- opaque dependency inputs such as `console` are not treated as unused scalar
+  parameters
+- top-level `.sem` samples declaring `AgentRuntime 1.0` are checked for the
+  current storage/memory forms and for an executable source tape instead of a
+  constants-only fixture
