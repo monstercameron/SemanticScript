@@ -1,4 +1,4 @@
-# expect.stdout: 14\n
+# expect.stdout: 17\n
 # expect.exit: 0
 project StringByteScanLoop
 target console
@@ -59,8 +59,8 @@ effect main read memory.buffer
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Search 'hello, semanticscript' for the letter 'r' starting at position 0. The 'r' lives at offset 14."
-invariant main "Output is 14 (offset of 'r')."
+purpose main "Search 'hello, semanticscript' for the letter 'r' starting at position 0. The 'r' lives at offset 17."
+invariant main "Output is 17 (offset of 'r')."
 label startMain
 const phrase CNullTerminatedByteString "hello, semanticscript"
 const letterR CSignedInt32 114

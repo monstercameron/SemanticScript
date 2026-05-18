@@ -50,11 +50,11 @@ effect main read memory.buffer
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "advanceBy('semanticscript', 8) should return a pointer to 'ipt' (offset 8 is 'i'). Then writeLine prints 'ipt'."
+purpose main "advanceBy('semanticscript', 11) should return a pointer to 'ipt' (offset 11 is 'i'). Then writeLine prints 'ipt'."
 invariant main "Verifies pointer-returning recursive user op + bind of its result + console.writeLine over a bind pointer."
 label startMain
 const phrase CNullTerminatedByteString "semanticscript"
-const skipCount CSignedInt64 8
+const skipCount CSignedInt64 11
 call advanceCall advanceBy
 arg advanceCall buffer phrase
 arg advanceCall steps skipCount

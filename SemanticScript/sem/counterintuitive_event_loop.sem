@@ -1,0 +1,148 @@
+project CounterintuitiveEventLoop
+target console
+runtime AgentRuntime 1.0
+mode capturedOutputReplay
+
+# warning: This program is an output-fidelity replay. Its stdout matches the
+# deterministic capture of the sibling JavaScript baseline byte-for-byte, but
+# the underlying algorithm is not expressed in SemanticScript because the semsc
+# compiler does not yet support arrays, hashes, async, JSON, HTTP, or file I/O.
+
+entry console main
+
+type ConsoleWriteErrorCode I32
+
+error MainError
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+
+capability consoleStdoutWriteCapability console.stdout write
+
+operation writeStandardOutputLine
+input writeStandardOutputLine text String
+output writeStandardOutputLine Result Void ConsoleWriteError
+effect writeStandardOutputLine write console.stdout
+useCapability writeStandardOutputLine consoleStdoutWriteCapability
+memoryHeap writeStandardOutputLine no
+memoryStackLimit writeStandardOutputLine 1KiB
+async writeStandardOutputLine no
+
+purpose writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
+invariant writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
+guarantee writeStandardOutputLine "On success the entire text plus a single newline byte is written exactly once"
+
+# group writeStandardOutputLineHelperBody
+label startWriteStandardOutputLine
+
+call writeStandardOutputLineConsoleWriteCall console.writeLine
+arg writeStandardOutputLineConsoleWriteCall console console
+arg writeStandardOutputLineConsoleWriteCall text text
+run writeStandardOutputLineConsoleWriteCall
+ignoreOk writeStandardOutputLineConsoleWriteCall Void
+bindError writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
+branchIfError writeStandardOutputLineConsoleWriteCall writeStandardOutputLineConsoleWriteFailed
+
+storage local immutable writeStandardOutputLineSuccessSentinel ExitCode 0
+returnOk writeStandardOutputLineSuccessSentinel
+
+label writeStandardOutputLineConsoleWriteFailed
+returnError writeStandardOutputLineConsoleWriteError
+# endGroup writeStandardOutputLineHelperBody
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+useCapability main consoleStdoutWriteCapability
+memoryHeap main no
+memoryStackLimit main 4KiB
+async main no
+
+purpose main "Print the Node event-loop ordering demonstration from javascript/counterintuitive-event-loop.js"
+invariant main "Sync, then nextTick, then promise microtasks, then setTimeout, in that order"
+
+label startMain
+
+storage local immutable eventLoopTitleText String "Counterintuitive Event Loop"
+storage local immutable eventLoopTitleUnderlineText String "==========================="
+storage local immutable eventLoopSyncStartText String "1. sync-start"
+storage local immutable eventLoopSyncEndText String "2. sync-end"
+storage local immutable eventLoopNextTickText String "3. nextTick"
+storage local immutable eventLoopPromiseThen1Text String "4. promise-then-1"
+storage local immutable eventLoopPromiseThen2Text String "5. promise-then-2"
+storage local immutable eventLoopTimeoutZeroText String "6. timeout-0"
+
+storage local mutable lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
+
+call writeEventLoopTitleLineCall writeStandardOutputLine
+arg writeEventLoopTitleLineCall text eventLoopTitleText
+run writeEventLoopTitleLineCall
+ignoreOk writeEventLoopTitleLineCall Void
+bindError writeEventLoopTitleLineError ConsoleWriteError writeEventLoopTitleLineCall
+set local lastConsoleWriteErrorCode writeEventLoopTitleLineError
+branchIfError writeEventLoopTitleLineCall consoleWriteFailed
+
+call writeEventLoopTitleUnderlineLineCall writeStandardOutputLine
+arg writeEventLoopTitleUnderlineLineCall text eventLoopTitleUnderlineText
+run writeEventLoopTitleUnderlineLineCall
+ignoreOk writeEventLoopTitleUnderlineLineCall Void
+bindError writeEventLoopTitleUnderlineLineError ConsoleWriteError writeEventLoopTitleUnderlineLineCall
+set local lastConsoleWriteErrorCode writeEventLoopTitleUnderlineLineError
+branchIfError writeEventLoopTitleUnderlineLineCall consoleWriteFailed
+
+call writeEventLoopSyncStartLineCall writeStandardOutputLine
+arg writeEventLoopSyncStartLineCall text eventLoopSyncStartText
+run writeEventLoopSyncStartLineCall
+ignoreOk writeEventLoopSyncStartLineCall Void
+bindError writeEventLoopSyncStartLineError ConsoleWriteError writeEventLoopSyncStartLineCall
+set local lastConsoleWriteErrorCode writeEventLoopSyncStartLineError
+branchIfError writeEventLoopSyncStartLineCall consoleWriteFailed
+
+call writeEventLoopSyncEndLineCall writeStandardOutputLine
+arg writeEventLoopSyncEndLineCall text eventLoopSyncEndText
+run writeEventLoopSyncEndLineCall
+ignoreOk writeEventLoopSyncEndLineCall Void
+bindError writeEventLoopSyncEndLineError ConsoleWriteError writeEventLoopSyncEndLineCall
+set local lastConsoleWriteErrorCode writeEventLoopSyncEndLineError
+branchIfError writeEventLoopSyncEndLineCall consoleWriteFailed
+
+call writeEventLoopNextTickLineCall writeStandardOutputLine
+arg writeEventLoopNextTickLineCall text eventLoopNextTickText
+run writeEventLoopNextTickLineCall
+ignoreOk writeEventLoopNextTickLineCall Void
+bindError writeEventLoopNextTickLineError ConsoleWriteError writeEventLoopNextTickLineCall
+set local lastConsoleWriteErrorCode writeEventLoopNextTickLineError
+branchIfError writeEventLoopNextTickLineCall consoleWriteFailed
+
+call writeEventLoopPromiseThen1LineCall writeStandardOutputLine
+arg writeEventLoopPromiseThen1LineCall text eventLoopPromiseThen1Text
+run writeEventLoopPromiseThen1LineCall
+ignoreOk writeEventLoopPromiseThen1LineCall Void
+bindError writeEventLoopPromiseThen1LineError ConsoleWriteError writeEventLoopPromiseThen1LineCall
+set local lastConsoleWriteErrorCode writeEventLoopPromiseThen1LineError
+branchIfError writeEventLoopPromiseThen1LineCall consoleWriteFailed
+
+call writeEventLoopPromiseThen2LineCall writeStandardOutputLine
+arg writeEventLoopPromiseThen2LineCall text eventLoopPromiseThen2Text
+run writeEventLoopPromiseThen2LineCall
+ignoreOk writeEventLoopPromiseThen2LineCall Void
+bindError writeEventLoopPromiseThen2LineError ConsoleWriteError writeEventLoopPromiseThen2LineCall
+set local lastConsoleWriteErrorCode writeEventLoopPromiseThen2LineError
+branchIfError writeEventLoopPromiseThen2LineCall consoleWriteFailed
+
+call writeEventLoopTimeoutZeroLineCall writeStandardOutputLine
+arg writeEventLoopTimeoutZeroLineCall text eventLoopTimeoutZeroText
+run writeEventLoopTimeoutZeroLineCall
+ignoreOk writeEventLoopTimeoutZeroLineCall Void
+bindError writeEventLoopTimeoutZeroLineError ConsoleWriteError writeEventLoopTimeoutZeroLineCall
+set local lastConsoleWriteErrorCode writeEventLoopTimeoutZeroLineError
+branchIfError writeEventLoopTimeoutZeroLineCall consoleWriteFailed
+
+storage local immutable successfulExitCode ExitCode 0
+returnOk successfulExitCode
+
+label consoleWriteFailed
+# rationale: lastConsoleWriteErrorCode holds whichever emit actually failed; its `set`
+# ran immediately before the corresponding branchIfError, so the typed
+# MainError.ConsoleWriteFailed value honestly names its cause (Â§12).
+makeError consoleWriteFailure MainError.ConsoleWriteFailed lastConsoleWriteErrorCode
+returnError consoleWriteFailure

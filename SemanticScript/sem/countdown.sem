@@ -1,0 +1,75 @@
+project Countdown
+target console
+runtime AgentRuntime 1.0
+
+entry console main
+
+type CountdownValue I64
+type PositiveCountdownStep I64
+
+error MainError
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+
+capability consoleStdoutWriteCapability console.stdout write
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+useCapability main consoleStdoutWriteCapability
+memoryHeap main no
+memoryStackLimit main 16KiB
+async main no
+
+purpose main "Print countdown values from countdownStartValue down to countdownEndValue, one value per output line"
+invariant main "The loop terminates because currentCountdownValue decreases by countdownStepValue every iteration"
+invariant main "The loop body runs only while currentCountdownValue is greater than or equal to countdownEndValue"
+invariant main "countdownStepValue is strictly greater than zero"
+
+label startMain
+
+storage local immutable countdownStartValue CountdownValue 5
+storage local immutable countdownEndValue CountdownValue 1
+storage local immutable countdownStepValue PositiveCountdownStep 1
+storage local mutable currentCountdownValue CountdownValue countdownStartValue
+
+label countdownLoopHead
+
+# rationale: Continue while currentCountdownValue is greater than or equal to countdownEndValue.
+call countdownRangeCheckCall CountdownValue.greaterThanOrEqual
+arg countdownRangeCheckCall left currentCountdownValue
+arg countdownRangeCheckCall right countdownEndValue
+run countdownRangeCheckCall
+bind countdownShouldContinue Bool countdownRangeCheckCall
+
+branchIf countdownShouldContinue countdownLoopBody
+branch countdownFinished
+
+label countdownLoopBody
+
+# rationale: Print the current countdown value with a newline; pass console explicitly.
+call printCurrentCountdownValueCall console.writeIntegerLine
+arg printCurrentCountdownValueCall console console
+arg printCurrentCountdownValueCall value currentCountdownValue
+run printCurrentCountdownValueCall
+ignoreOk printCurrentCountdownValueCall Void
+bindError printCurrentCountdownValueError ConsoleWriteError printCurrentCountdownValueCall
+branchIfError printCurrentCountdownValueCall consoleWriteFailed
+
+# rationale: Decrement after successful printing so failed output does not advance progress.
+call countdownValueDecrementCall CountdownValue.subtractPositiveStep
+arg countdownValueDecrementCall value currentCountdownValue
+arg countdownValueDecrementCall step countdownStepValue
+run countdownValueDecrementCall
+bind nextCountdownValue CountdownValue countdownValueDecrementCall
+
+set local currentCountdownValue nextCountdownValue
+branch countdownLoopHead
+
+label countdownFinished
+storage local immutable successfulExitCode ExitCode 0
+returnOk successfulExitCode
+
+label consoleWriteFailed
+makeError consoleWriteFailure MainError.ConsoleWriteFailed printCurrentCountdownValueError
+returnError consoleWriteFailure

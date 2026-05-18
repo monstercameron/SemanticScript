@@ -23,7 +23,8 @@ PROJECT_ROOT = os.path.dirname(ROOT)
 JS_DIR = os.path.join(PROJECT_ROOT, "samples", "javascript")
 SEM_DIR = os.path.join(ROOT, "sem")
 COMPILER = os.path.join(ROOT, "compiler", "semsc.py")
-LONG_RUNNING_PORT = "3149"
+CANONICAL_LONG_RUNNING_PORT = "3149"
+LONG_RUNNING_PORT = os.environ.get("SEMANTIC_SCRIPT_TEST_PORT", "0")
 
 
 # (js_basename, sem_basename, stdin_input, mode)
@@ -68,9 +69,9 @@ def run_js(js_basename, stdin, mode):
         # force-terminate. Preload a tiny shim that switches process.stdout
         # into synchronous (blocking) mode so the banner flushes as soon as
         # it is written, before the server starts blocking on accept.
-        # Port 3000 is reserved on this host; use a high free port that
-        # Node will print in the banner, and pin both the JS-side and the
-        # SemanticScript side to the same port via the LONG_RUNNING_PORT env var below.
+        # Use an ephemeral Node port by default so parallel validation jobs do
+        # not collide. The captured SemanticScript sample intentionally prints
+        # the canonical historical banner, so normalize the JS-side port below.
         shim = os.path.join(HERE, "stdout_blocking.js")
         env = dict(os.environ)
         env["PORT"] = LONG_RUNNING_PORT
@@ -108,7 +109,11 @@ def run_sem(sem_basename):
 
 
 def normalize(s):
-    return s.replace("\r\n", "\n").rstrip("\n")
+    text = s.replace("\r\n", "\n").rstrip("\n")
+    return text.replace(
+        f"http://127.0.0.1:{LONG_RUNNING_PORT}",
+        f"http://127.0.0.1:{CANONICAL_LONG_RUNNING_PORT}",
+    )
 
 
 def main():

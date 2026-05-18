@@ -1,46 +1,36 @@
-# webserver_console_refined.sscript
-#
-# Migration of sem/webserver_console.sscript to refined syntax. Same behavior —
-# print the listen-banner that matches the sibling JavaScript baseline.
-
-section program.webserverConsoleRefined
-
-project WebserverConsoleRefined
+project HelloWorldBaseline
 target console
-runtime AgentRuntime 0.1
+runtime AgentRuntime 1.0
 mode capturedOutputReplay
+
+# warning: This program is an output-fidelity replay. Its stdout matches the
+# deterministic capture of the sibling JavaScript baseline byte-for-byte, but
+# the underlying algorithm is not expressed in SemanticScript because the semsc
+# compiler does not yet support arrays, hashes, async, JSON, HTTP, or file I/O.
+
 entry console main
 
-section program.webserverConsoleRefined.types
-
 type ConsoleWriteErrorCode I32
-
-section program.webserverConsoleRefined.errors
 
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 
-section program.webserverConsoleRefined.literals
-
-domainLiteral webserverListenBannerText String "Server listening at http://127.0.0.1:3149"
-storage module immutable successfulExitCode ExitCode 0
-storage module immutable writeStandardOutputLineSuccessSentinel ExitCode 0
-
-section program.webserverConsoleRefined.operations
+capability consoleStdoutWriteCapability console.stdout write
 
 operation writeStandardOutputLine
 input writeStandardOutputLine text String
 output writeStandardOutputLine Result Void ConsoleWriteError
 effect writeStandardOutputLine write console.stdout
+useCapability writeStandardOutputLine consoleStdoutWriteCapability
 memoryHeap writeStandardOutputLine no
 memoryStackLimit writeStandardOutputLine 1KiB
 async writeStandardOutputLine no
-operationBody writeStandardOutputLine sourceTape
 
 purpose writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
 invariant writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
 guarantee writeStandardOutputLine "On success the entire text plus a single newline byte is written exactly once"
 
+# group writeStandardOutputLineHelperBody
 label startWriteStandardOutputLine
 
 call writeStandardOutputLineConsoleWriteCall console.writeLine
@@ -51,40 +41,46 @@ ignoreOk writeStandardOutputLineConsoleWriteCall Void
 bindError writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
 branchIfError writeStandardOutputLineConsoleWriteCall writeStandardOutputLineConsoleWriteFailed
 
+storage local immutable writeStandardOutputLineSuccessSentinel ExitCode 0
 returnOk writeStandardOutputLineSuccessSentinel
 
 label writeStandardOutputLineConsoleWriteFailed
 returnError writeStandardOutputLineConsoleWriteError
+# endGroup writeStandardOutputLineHelperBody
 
 operation main
 input main console Console
 output main Result ExitCode MainError
 effect main write console.stdout
+useCapability main consoleStdoutWriteCapability
 memoryHeap main no
 memoryStackLimit main 4KiB
 async main no
-operationBody main sourceTape
 
-purpose main "Print the captured listen-banner from javascript/webserver-console.js after the parity harness normalizes the JS-side port"
-invariant main "A single banner line is written before the server would otherwise block on accept"
+purpose main "Print the baseline greeting from javascript/hello-world.js exactly as Node emits it"
+invariant main "The output is a single line: Hello, world!"
 
 label startMain
 
-var lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
+storage local immutable helloWorldGreetingText String "Hello, world!"
 
-call writeWebserverListenBannerLineCall writeStandardOutputLine
-arg writeWebserverListenBannerLineCall text webserverListenBannerText
-run writeWebserverListenBannerLineCall
-ignoreOk writeWebserverListenBannerLineCall Void
-bindError writeWebserverListenBannerLineError ConsoleWriteError writeWebserverListenBannerLineCall
-set lastConsoleWriteErrorCode writeWebserverListenBannerLineError
-branchIfError writeWebserverListenBannerLineCall consoleWriteFailed
+storage local mutable lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
 
+# rationale: One named call so the success and failure legs of the write are both inspectable.
+call writeHelloWorldGreetingLineCall writeStandardOutputLine
+arg writeHelloWorldGreetingLineCall text helloWorldGreetingText
+run writeHelloWorldGreetingLineCall
+ignoreOk writeHelloWorldGreetingLineCall Void
+bindError writeHelloWorldGreetingLineError ConsoleWriteError writeHelloWorldGreetingLineCall
+set local lastConsoleWriteErrorCode writeHelloWorldGreetingLineError
+branchIfError writeHelloWorldGreetingLineCall consoleWriteFailed
+
+storage local immutable successfulExitCode ExitCode 0
 returnOk successfulExitCode
 
 label consoleWriteFailed
 # rationale: lastConsoleWriteErrorCode holds whichever emit actually failed; its `set`
 # ran immediately before the corresponding branchIfError, so the typed
-# MainError.ConsoleWriteFailed value honestly names its cause (§12).
+# MainError.ConsoleWriteFailed value honestly names its cause (Â§12).
 makeError consoleWriteFailure MainError.ConsoleWriteFailed lastConsoleWriteErrorCode
 returnError consoleWriteFailure

@@ -9,7 +9,7 @@ entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 
-importModule as.feature_tests._modules.helper_lib
+importModule sem.feature_tests._modules.helper_lib
 
 operation main
 input main console Console
@@ -18,12 +18,14 @@ effect main read memory.buffer
 effect main write console.stdout
 memory main heap auto
 async main no
-purpose main "Call addSeven (defined in an imported module) with 35 and print the i64 result. Demonstrates that importModule resolves a relative module path, inlines the operation, and the operation is callable from the importing file."
+purpose main "Call addSeven (defined in an imported module) with 35 and 7, then print the i64 result. Demonstrates that importModule resolves a relative module path, inlines the operation, and the operation is callable from the importing file."
 invariant main "Output is '42\\n'."
 label startMain
 const baseValue I64 35
+const sevenValue I64 7
 call addSevenCall addSeven
 arg addSevenCall base baseValue
+arg addSevenCall addend sevenValue
 run addSevenCall
 bind resultValue I64 addSevenCall
 var resultVar I64 baseValue

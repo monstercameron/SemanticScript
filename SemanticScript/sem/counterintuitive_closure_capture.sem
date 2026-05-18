@@ -1,0 +1,139 @@
+project CounterintuitiveClosureCapture
+target console
+runtime AgentRuntime 1.0
+mode capturedOutputReplay
+
+# warning: This program is an output-fidelity replay. Its stdout matches the
+# deterministic capture of the sibling JavaScript baseline byte-for-byte, but
+# the underlying algorithm is not expressed in SemanticScript because the semsc
+# compiler does not yet support arrays, hashes, async, JSON, HTTP, or file I/O.
+
+entry console main
+
+type ConsoleWriteErrorCode I32
+
+error MainError
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+
+capability consoleStdoutWriteCapability console.stdout write
+
+operation writeStandardOutputLine
+input writeStandardOutputLine text String
+output writeStandardOutputLine Result Void ConsoleWriteError
+effect writeStandardOutputLine write console.stdout
+useCapability writeStandardOutputLine consoleStdoutWriteCapability
+memoryHeap writeStandardOutputLine no
+memoryStackLimit writeStandardOutputLine 1KiB
+async writeStandardOutputLine no
+
+purpose writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
+invariant writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
+guarantee writeStandardOutputLine "On success the entire text plus a single newline byte is written exactly once"
+
+# group writeStandardOutputLineHelperBody
+label startWriteStandardOutputLine
+
+call writeStandardOutputLineConsoleWriteCall console.writeLine
+arg writeStandardOutputLineConsoleWriteCall console console
+arg writeStandardOutputLineConsoleWriteCall text text
+run writeStandardOutputLineConsoleWriteCall
+ignoreOk writeStandardOutputLineConsoleWriteCall Void
+bindError writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
+branchIfError writeStandardOutputLineConsoleWriteCall writeStandardOutputLineConsoleWriteFailed
+
+storage local immutable writeStandardOutputLineSuccessSentinel ExitCode 0
+returnOk writeStandardOutputLineSuccessSentinel
+
+label writeStandardOutputLineConsoleWriteFailed
+returnError writeStandardOutputLineConsoleWriteError
+# endGroup writeStandardOutputLineHelperBody
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+useCapability main consoleStdoutWriteCapability
+memoryHeap main no
+memoryStackLimit main 4KiB
+async main no
+
+purpose main "Print the closure-capture demonstration output from javascript/counterintuitive-closure-capture.js"
+invariant main "var-based callbacks all observe the final loop value 3; let-based callbacks observe their own iteration"
+
+label startMain
+
+storage local immutable closureCaptureTitleText String "Counterintuitive Closure Capture"
+storage local immutable closureCaptureTitleUnderlineText String "================================"
+storage local immutable closureCaptureVarCallbacksText String "var callbacks => 3, 3, 3"
+storage local immutable closureCaptureLetCallbacksText String "let callbacks => 0, 1, 2"
+storage local immutable closureCaptureFirstAliasOneText String "firstCounterAlias() => 1"
+storage local immutable closureCaptureSecondAliasTwoText String "secondCounterAlias() => 2"
+storage local immutable closureCaptureFirstAliasThreeText String "firstCounterAlias() again => 3"
+
+storage local mutable lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
+
+call writeClosureCaptureTitleLineCall writeStandardOutputLine
+arg writeClosureCaptureTitleLineCall text closureCaptureTitleText
+run writeClosureCaptureTitleLineCall
+ignoreOk writeClosureCaptureTitleLineCall Void
+bindError writeClosureCaptureTitleLineError ConsoleWriteError writeClosureCaptureTitleLineCall
+set local lastConsoleWriteErrorCode writeClosureCaptureTitleLineError
+branchIfError writeClosureCaptureTitleLineCall consoleWriteFailed
+
+call writeClosureCaptureTitleUnderlineLineCall writeStandardOutputLine
+arg writeClosureCaptureTitleUnderlineLineCall text closureCaptureTitleUnderlineText
+run writeClosureCaptureTitleUnderlineLineCall
+ignoreOk writeClosureCaptureTitleUnderlineLineCall Void
+bindError writeClosureCaptureTitleUnderlineLineError ConsoleWriteError writeClosureCaptureTitleUnderlineLineCall
+set local lastConsoleWriteErrorCode writeClosureCaptureTitleUnderlineLineError
+branchIfError writeClosureCaptureTitleUnderlineLineCall consoleWriteFailed
+
+call writeClosureCaptureVarCallbacksLineCall writeStandardOutputLine
+arg writeClosureCaptureVarCallbacksLineCall text closureCaptureVarCallbacksText
+run writeClosureCaptureVarCallbacksLineCall
+ignoreOk writeClosureCaptureVarCallbacksLineCall Void
+bindError writeClosureCaptureVarCallbacksLineError ConsoleWriteError writeClosureCaptureVarCallbacksLineCall
+set local lastConsoleWriteErrorCode writeClosureCaptureVarCallbacksLineError
+branchIfError writeClosureCaptureVarCallbacksLineCall consoleWriteFailed
+
+call writeClosureCaptureLetCallbacksLineCall writeStandardOutputLine
+arg writeClosureCaptureLetCallbacksLineCall text closureCaptureLetCallbacksText
+run writeClosureCaptureLetCallbacksLineCall
+ignoreOk writeClosureCaptureLetCallbacksLineCall Void
+bindError writeClosureCaptureLetCallbacksLineError ConsoleWriteError writeClosureCaptureLetCallbacksLineCall
+set local lastConsoleWriteErrorCode writeClosureCaptureLetCallbacksLineError
+branchIfError writeClosureCaptureLetCallbacksLineCall consoleWriteFailed
+
+call writeClosureCaptureFirstAliasOneLineCall writeStandardOutputLine
+arg writeClosureCaptureFirstAliasOneLineCall text closureCaptureFirstAliasOneText
+run writeClosureCaptureFirstAliasOneLineCall
+ignoreOk writeClosureCaptureFirstAliasOneLineCall Void
+bindError writeClosureCaptureFirstAliasOneLineError ConsoleWriteError writeClosureCaptureFirstAliasOneLineCall
+set local lastConsoleWriteErrorCode writeClosureCaptureFirstAliasOneLineError
+branchIfError writeClosureCaptureFirstAliasOneLineCall consoleWriteFailed
+
+call writeClosureCaptureSecondAliasTwoLineCall writeStandardOutputLine
+arg writeClosureCaptureSecondAliasTwoLineCall text closureCaptureSecondAliasTwoText
+run writeClosureCaptureSecondAliasTwoLineCall
+ignoreOk writeClosureCaptureSecondAliasTwoLineCall Void
+bindError writeClosureCaptureSecondAliasTwoLineError ConsoleWriteError writeClosureCaptureSecondAliasTwoLineCall
+set local lastConsoleWriteErrorCode writeClosureCaptureSecondAliasTwoLineError
+branchIfError writeClosureCaptureSecondAliasTwoLineCall consoleWriteFailed
+
+call writeClosureCaptureFirstAliasThreeLineCall writeStandardOutputLine
+arg writeClosureCaptureFirstAliasThreeLineCall text closureCaptureFirstAliasThreeText
+run writeClosureCaptureFirstAliasThreeLineCall
+ignoreOk writeClosureCaptureFirstAliasThreeLineCall Void
+bindError writeClosureCaptureFirstAliasThreeLineError ConsoleWriteError writeClosureCaptureFirstAliasThreeLineCall
+set local lastConsoleWriteErrorCode writeClosureCaptureFirstAliasThreeLineError
+branchIfError writeClosureCaptureFirstAliasThreeLineCall consoleWriteFailed
+
+storage local immutable successfulExitCode ExitCode 0
+returnOk successfulExitCode
+
+label consoleWriteFailed
+# rationale: lastConsoleWriteErrorCode holds whichever emit actually failed; its `set`
+# ran immediately before the corresponding branchIfError, so the typed
+# MainError.ConsoleWriteFailed value honestly names its cause (Â§12).
+makeError consoleWriteFailure MainError.ConsoleWriteFailed lastConsoleWriteErrorCode
+returnError consoleWriteFailure

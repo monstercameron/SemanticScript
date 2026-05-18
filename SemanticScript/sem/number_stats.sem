@@ -1,0 +1,184 @@
+project NumberStats
+target console
+runtime AgentRuntime 1.0
+mode capturedOutputReplay
+
+# warning: This program is an output-fidelity replay. Its stdout matches the
+# deterministic capture of the sibling JavaScript baseline byte-for-byte, but
+# the underlying algorithm is not expressed in SemanticScript because the semsc
+# compiler does not yet support arrays, hashes, async, JSON, HTTP, or file I/O.
+
+entry console main
+
+type ConsoleWriteErrorCode I32
+
+error MainError
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+
+capability consoleStdoutWriteCapability console.stdout write
+
+operation writeStandardOutputLine
+input writeStandardOutputLine text String
+output writeStandardOutputLine Result Void ConsoleWriteError
+effect writeStandardOutputLine write console.stdout
+useCapability writeStandardOutputLine consoleStdoutWriteCapability
+memoryHeap writeStandardOutputLine no
+memoryStackLimit writeStandardOutputLine 1KiB
+async writeStandardOutputLine no
+
+purpose writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
+invariant writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
+guarantee writeStandardOutputLine "On success the entire text plus a single newline byte is written exactly once"
+
+# group writeStandardOutputLineHelperBody
+label startWriteStandardOutputLine
+
+call writeStandardOutputLineConsoleWriteCall console.writeLine
+arg writeStandardOutputLineConsoleWriteCall console console
+arg writeStandardOutputLineConsoleWriteCall text text
+run writeStandardOutputLineConsoleWriteCall
+ignoreOk writeStandardOutputLineConsoleWriteCall Void
+bindError writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
+branchIfError writeStandardOutputLineConsoleWriteCall writeStandardOutputLineConsoleWriteFailed
+
+storage local immutable writeStandardOutputLineSuccessSentinel ExitCode 0
+returnOk writeStandardOutputLineSuccessSentinel
+
+label writeStandardOutputLineConsoleWriteFailed
+returnError writeStandardOutputLineConsoleWriteError
+# endGroup writeStandardOutputLineHelperBody
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+useCapability main consoleStdoutWriteCapability
+memoryHeap main no
+memoryStackLimit main 4KiB
+async main no
+
+purpose main "Print the deterministic statistics summary from javascript/number-stats.js"
+invariant main "Output ordering is: title, underline, values, sorted, count, sum, min, max, mean, median, mode, populationStdDev"
+
+label startMain
+
+storage local immutable numberStatsTitleText String "Number Statistics"
+storage local immutable numberStatsTitleUnderlineText String "================="
+storage local immutable numberStatsValuesText String "values: 42, 7, 19, 7, 100, 13, 42, 58, 7, 31"
+storage local immutable numberStatsSortedText String "sorted: 7, 7, 7, 13, 19, 31, 42, 42, 58, 100"
+storage local immutable numberStatsCountText String "count: 10"
+storage local immutable numberStatsSumText String "sum: 326"
+storage local immutable numberStatsMinText String "min: 7"
+storage local immutable numberStatsMaxText String "max: 100"
+storage local immutable numberStatsMeanText String "mean: 32.60"
+storage local immutable numberStatsMedianText String "median: 25"
+storage local immutable numberStatsModeText String "mode: 7"
+storage local immutable numberStatsPopulationStdDevText String "populationStdDev: 28.11"
+
+storage local mutable lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
+
+call writeNumberStatsTitleLineCall writeStandardOutputLine
+arg writeNumberStatsTitleLineCall text numberStatsTitleText
+run writeNumberStatsTitleLineCall
+ignoreOk writeNumberStatsTitleLineCall Void
+bindError writeNumberStatsTitleLineError ConsoleWriteError writeNumberStatsTitleLineCall
+set local lastConsoleWriteErrorCode writeNumberStatsTitleLineError
+branchIfError writeNumberStatsTitleLineCall consoleWriteFailed
+
+call writeNumberStatsTitleUnderlineLineCall writeStandardOutputLine
+arg writeNumberStatsTitleUnderlineLineCall text numberStatsTitleUnderlineText
+run writeNumberStatsTitleUnderlineLineCall
+ignoreOk writeNumberStatsTitleUnderlineLineCall Void
+bindError writeNumberStatsTitleUnderlineLineError ConsoleWriteError writeNumberStatsTitleUnderlineLineCall
+set local lastConsoleWriteErrorCode writeNumberStatsTitleUnderlineLineError
+branchIfError writeNumberStatsTitleUnderlineLineCall consoleWriteFailed
+
+call writeNumberStatsValuesLineCall writeStandardOutputLine
+arg writeNumberStatsValuesLineCall text numberStatsValuesText
+run writeNumberStatsValuesLineCall
+ignoreOk writeNumberStatsValuesLineCall Void
+bindError writeNumberStatsValuesLineError ConsoleWriteError writeNumberStatsValuesLineCall
+set local lastConsoleWriteErrorCode writeNumberStatsValuesLineError
+branchIfError writeNumberStatsValuesLineCall consoleWriteFailed
+
+call writeNumberStatsSortedLineCall writeStandardOutputLine
+arg writeNumberStatsSortedLineCall text numberStatsSortedText
+run writeNumberStatsSortedLineCall
+ignoreOk writeNumberStatsSortedLineCall Void
+bindError writeNumberStatsSortedLineError ConsoleWriteError writeNumberStatsSortedLineCall
+set local lastConsoleWriteErrorCode writeNumberStatsSortedLineError
+branchIfError writeNumberStatsSortedLineCall consoleWriteFailed
+
+call writeNumberStatsCountLineCall writeStandardOutputLine
+arg writeNumberStatsCountLineCall text numberStatsCountText
+run writeNumberStatsCountLineCall
+ignoreOk writeNumberStatsCountLineCall Void
+bindError writeNumberStatsCountLineError ConsoleWriteError writeNumberStatsCountLineCall
+set local lastConsoleWriteErrorCode writeNumberStatsCountLineError
+branchIfError writeNumberStatsCountLineCall consoleWriteFailed
+
+call writeNumberStatsSumLineCall writeStandardOutputLine
+arg writeNumberStatsSumLineCall text numberStatsSumText
+run writeNumberStatsSumLineCall
+ignoreOk writeNumberStatsSumLineCall Void
+bindError writeNumberStatsSumLineError ConsoleWriteError writeNumberStatsSumLineCall
+set local lastConsoleWriteErrorCode writeNumberStatsSumLineError
+branchIfError writeNumberStatsSumLineCall consoleWriteFailed
+
+call writeNumberStatsMinLineCall writeStandardOutputLine
+arg writeNumberStatsMinLineCall text numberStatsMinText
+run writeNumberStatsMinLineCall
+ignoreOk writeNumberStatsMinLineCall Void
+bindError writeNumberStatsMinLineError ConsoleWriteError writeNumberStatsMinLineCall
+set local lastConsoleWriteErrorCode writeNumberStatsMinLineError
+branchIfError writeNumberStatsMinLineCall consoleWriteFailed
+
+call writeNumberStatsMaxLineCall writeStandardOutputLine
+arg writeNumberStatsMaxLineCall text numberStatsMaxText
+run writeNumberStatsMaxLineCall
+ignoreOk writeNumberStatsMaxLineCall Void
+bindError writeNumberStatsMaxLineError ConsoleWriteError writeNumberStatsMaxLineCall
+set local lastConsoleWriteErrorCode writeNumberStatsMaxLineError
+branchIfError writeNumberStatsMaxLineCall consoleWriteFailed
+
+call writeNumberStatsMeanLineCall writeStandardOutputLine
+arg writeNumberStatsMeanLineCall text numberStatsMeanText
+run writeNumberStatsMeanLineCall
+ignoreOk writeNumberStatsMeanLineCall Void
+bindError writeNumberStatsMeanLineError ConsoleWriteError writeNumberStatsMeanLineCall
+set local lastConsoleWriteErrorCode writeNumberStatsMeanLineError
+branchIfError writeNumberStatsMeanLineCall consoleWriteFailed
+
+call writeNumberStatsMedianLineCall writeStandardOutputLine
+arg writeNumberStatsMedianLineCall text numberStatsMedianText
+run writeNumberStatsMedianLineCall
+ignoreOk writeNumberStatsMedianLineCall Void
+bindError writeNumberStatsMedianLineError ConsoleWriteError writeNumberStatsMedianLineCall
+set local lastConsoleWriteErrorCode writeNumberStatsMedianLineError
+branchIfError writeNumberStatsMedianLineCall consoleWriteFailed
+
+call writeNumberStatsModeLineCall writeStandardOutputLine
+arg writeNumberStatsModeLineCall text numberStatsModeText
+run writeNumberStatsModeLineCall
+ignoreOk writeNumberStatsModeLineCall Void
+bindError writeNumberStatsModeLineError ConsoleWriteError writeNumberStatsModeLineCall
+set local lastConsoleWriteErrorCode writeNumberStatsModeLineError
+branchIfError writeNumberStatsModeLineCall consoleWriteFailed
+
+call writeNumberStatsPopulationStdDevLineCall writeStandardOutputLine
+arg writeNumberStatsPopulationStdDevLineCall text numberStatsPopulationStdDevText
+run writeNumberStatsPopulationStdDevLineCall
+ignoreOk writeNumberStatsPopulationStdDevLineCall Void
+bindError writeNumberStatsPopulationStdDevLineError ConsoleWriteError writeNumberStatsPopulationStdDevLineCall
+set local lastConsoleWriteErrorCode writeNumberStatsPopulationStdDevLineError
+branchIfError writeNumberStatsPopulationStdDevLineCall consoleWriteFailed
+
+storage local immutable successfulExitCode ExitCode 0
+returnOk successfulExitCode
+
+label consoleWriteFailed
+# rationale: lastConsoleWriteErrorCode holds whichever emit actually failed; its `set`
+# ran immediately before the corresponding branchIfError, so the typed
+# MainError.ConsoleWriteFailed value honestly names its cause (Â§12).
+makeError consoleWriteFailure MainError.ConsoleWriteFailed lastConsoleWriteErrorCode
+returnError consoleWriteFailure

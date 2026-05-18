@@ -70,7 +70,7 @@ def compile_via_sem_compiler(source_path: Path) -> tuple[bool, str, str]:
     env["SEMANTIC_SCRIPT_INPUT"] = str(source_path)
     proc = subprocess.run(
         [sys.executable, str(SEMSC), str(BOOTSTRAP_GENERAL), "--run", "--quiet"],
-        capture_output=True, text=True, env=env, timeout=20,
+        capture_output=True, text=True, env=env, timeout=20, cwd=str(ROOT),
     )
     return (proc.returncode == 0, proc.stdout, proc.stderr)
 
@@ -81,7 +81,7 @@ def link_to_exe(ir_text: str, exe_path: Path) -> tuple[bool, str]:
     ir_path.write_text(ir_text, encoding="utf-8")
     proc = subprocess.run(
         [CLANG, str(ir_path), "-o", str(exe_path)],
-        capture_output=True, text=True, timeout=30,
+        capture_output=True, text=True, timeout=30, cwd=str(ROOT),
     )
     return (proc.returncode == 0 and exe_path.exists(), proc.stderr)
 
@@ -91,7 +91,7 @@ def execute_exe(exe_path: Path, stdin_text: str | None) -> tuple[int, str]:
     proc = subprocess.run(
         [str(exe_path)],
         input=stdin_text,
-        capture_output=True, text=True, timeout=10,
+        capture_output=True, text=True, timeout=10, cwd=str(ROOT),
     )
     actual_stdout = proc.stdout.replace("\r\n", "\n")
     return (proc.returncode, actual_stdout)

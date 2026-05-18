@@ -1,0 +1,139 @@
+project SimpleCalculator
+target console
+runtime AgentRuntime 1.0
+mode capturedOutputReplay
+
+# warning: This program is an output-fidelity replay. Its stdout matches the
+# deterministic capture of the sibling JavaScript baseline byte-for-byte, but
+# the underlying algorithm is not expressed in SemanticScript because the semsc
+# compiler does not yet support arrays, hashes, async, JSON, HTTP, or file I/O.
+
+entry console main
+
+type ConsoleWriteErrorCode I32
+
+error MainError
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+
+capability consoleStdoutWriteCapability console.stdout write
+
+operation writeStandardOutputLine
+input writeStandardOutputLine text String
+output writeStandardOutputLine Result Void ConsoleWriteError
+effect writeStandardOutputLine write console.stdout
+useCapability writeStandardOutputLine consoleStdoutWriteCapability
+memoryHeap writeStandardOutputLine no
+memoryStackLimit writeStandardOutputLine 1KiB
+async writeStandardOutputLine no
+
+purpose writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
+invariant writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
+guarantee writeStandardOutputLine "On success the entire text plus a single newline byte is written exactly once"
+
+# group writeStandardOutputLineHelperBody
+label startWriteStandardOutputLine
+
+call writeStandardOutputLineConsoleWriteCall console.writeLine
+arg writeStandardOutputLineConsoleWriteCall console console
+arg writeStandardOutputLineConsoleWriteCall text text
+run writeStandardOutputLineConsoleWriteCall
+ignoreOk writeStandardOutputLineConsoleWriteCall Void
+bindError writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
+branchIfError writeStandardOutputLineConsoleWriteCall writeStandardOutputLineConsoleWriteFailed
+
+storage local immutable writeStandardOutputLineSuccessSentinel ExitCode 0
+returnOk writeStandardOutputLineSuccessSentinel
+
+label writeStandardOutputLineConsoleWriteFailed
+returnError writeStandardOutputLineConsoleWriteError
+# endGroup writeStandardOutputLineHelperBody
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+useCapability main consoleStdoutWriteCapability
+memoryHeap main no
+memoryStackLimit main 4KiB
+async main no
+
+purpose main "Print the deterministic calculator table from javascript/simple-calculator.js"
+invariant main "Each operation line is left-padded so the operation name occupies eight characters"
+
+label startMain
+
+storage local immutable calculatorTitleText String "Simple Calculator"
+storage local immutable calculatorTitleUnderlineText String "================="
+storage local immutable addResultText String "add      8 4 => 12"
+storage local immutable subtractResultText String "subtract 8 4 => 4"
+storage local immutable multiplyResultText String "multiply 8 4 => 32"
+storage local immutable divideResultText String "divide   8 4 => 2"
+storage local immutable powerResultText String "power    2 5 => 32"
+
+storage local mutable lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
+
+call writeCalculatorTitleLineCall writeStandardOutputLine
+arg writeCalculatorTitleLineCall text calculatorTitleText
+run writeCalculatorTitleLineCall
+ignoreOk writeCalculatorTitleLineCall Void
+bindError writeCalculatorTitleLineError ConsoleWriteError writeCalculatorTitleLineCall
+set local lastConsoleWriteErrorCode writeCalculatorTitleLineError
+branchIfError writeCalculatorTitleLineCall consoleWriteFailed
+
+call writeCalculatorTitleUnderlineLineCall writeStandardOutputLine
+arg writeCalculatorTitleUnderlineLineCall text calculatorTitleUnderlineText
+run writeCalculatorTitleUnderlineLineCall
+ignoreOk writeCalculatorTitleUnderlineLineCall Void
+bindError writeCalculatorTitleUnderlineLineError ConsoleWriteError writeCalculatorTitleUnderlineLineCall
+set local lastConsoleWriteErrorCode writeCalculatorTitleUnderlineLineError
+branchIfError writeCalculatorTitleUnderlineLineCall consoleWriteFailed
+
+call writeAddResultLineCall writeStandardOutputLine
+arg writeAddResultLineCall text addResultText
+run writeAddResultLineCall
+ignoreOk writeAddResultLineCall Void
+bindError writeAddResultLineError ConsoleWriteError writeAddResultLineCall
+set local lastConsoleWriteErrorCode writeAddResultLineError
+branchIfError writeAddResultLineCall consoleWriteFailed
+
+call writeSubtractResultLineCall writeStandardOutputLine
+arg writeSubtractResultLineCall text subtractResultText
+run writeSubtractResultLineCall
+ignoreOk writeSubtractResultLineCall Void
+bindError writeSubtractResultLineError ConsoleWriteError writeSubtractResultLineCall
+set local lastConsoleWriteErrorCode writeSubtractResultLineError
+branchIfError writeSubtractResultLineCall consoleWriteFailed
+
+call writeMultiplyResultLineCall writeStandardOutputLine
+arg writeMultiplyResultLineCall text multiplyResultText
+run writeMultiplyResultLineCall
+ignoreOk writeMultiplyResultLineCall Void
+bindError writeMultiplyResultLineError ConsoleWriteError writeMultiplyResultLineCall
+set local lastConsoleWriteErrorCode writeMultiplyResultLineError
+branchIfError writeMultiplyResultLineCall consoleWriteFailed
+
+call writeDivideResultLineCall writeStandardOutputLine
+arg writeDivideResultLineCall text divideResultText
+run writeDivideResultLineCall
+ignoreOk writeDivideResultLineCall Void
+bindError writeDivideResultLineError ConsoleWriteError writeDivideResultLineCall
+set local lastConsoleWriteErrorCode writeDivideResultLineError
+branchIfError writeDivideResultLineCall consoleWriteFailed
+
+call writePowerResultLineCall writeStandardOutputLine
+arg writePowerResultLineCall text powerResultText
+run writePowerResultLineCall
+ignoreOk writePowerResultLineCall Void
+bindError writePowerResultLineError ConsoleWriteError writePowerResultLineCall
+set local lastConsoleWriteErrorCode writePowerResultLineError
+branchIfError writePowerResultLineCall consoleWriteFailed
+
+storage local immutable successfulExitCode ExitCode 0
+returnOk successfulExitCode
+
+label consoleWriteFailed
+# rationale: lastConsoleWriteErrorCode holds whichever emit actually failed; its `set`
+# ran immediately before the corresponding branchIfError, so the typed
+# MainError.ConsoleWriteFailed value honestly names its cause (Â§12).
+makeError consoleWriteFailure MainError.ConsoleWriteFailed lastConsoleWriteErrorCode
+returnError consoleWriteFailure

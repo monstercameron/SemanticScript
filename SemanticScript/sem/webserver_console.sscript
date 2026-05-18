@@ -53,7 +53,7 @@ memory main heap no
 memory main stack max 4KiB
 async main no
 
-purpose main "Print the listen-banner from javascript/webserver-console.js when the parity harness pins PORT to 3149"
+purpose main "Print the captured listen-banner from javascript/webserver-console.js after the parity harness normalizes the JS-side port"
 invariant main "A single banner line is written before the server would otherwise block on accept"
 
 label startMain

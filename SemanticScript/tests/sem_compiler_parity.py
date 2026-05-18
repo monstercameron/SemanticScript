@@ -35,7 +35,8 @@ BUILD_DIR = HERE / "sem_compiler_build"
 BUILD_DIR.mkdir(exist_ok=True)
 
 STDOUT_BLOCKING_SHIM = HERE / "stdout_blocking.js"
-LONG_RUNNING_PORT = "3149"
+CANONICAL_LONG_RUNNING_PORT = "3149"
+LONG_RUNNING_PORT = os.environ.get("SEMANTIC_SCRIPT_TEST_PORT", "0")
 
 CLANG = os.environ.get("SEMSC_CLANG") or shutil.which("clang") or r"C:/Program Files/LLVM/bin/clang.exe"
 if not Path(CLANG).exists():
@@ -180,7 +181,11 @@ def run_js(js_path: Path, mode: str = "normal", stdin_input: str = None):
 
 
 def normalize(s: str) -> str:
-    return s.replace("\r\n", "\n").rstrip("\n")
+    text = s.replace("\r\n", "\n").rstrip("\n")
+    return text.replace(
+        f"http://127.0.0.1:{LONG_RUNNING_PORT}",
+        f"http://127.0.0.1:{CANONICAL_LONG_RUNNING_PORT}",
+    )
 
 
 def main():
