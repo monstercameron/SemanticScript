@@ -158,6 +158,79 @@ class ProgramFacts:
     imports: Set[str] = field(default_factory=set)
 
 
+BUILTIN_VALUE_TYPES: Dict[str, str] = {
+    "continueMiddlewareControl": "MiddlewareControl",
+    "shortCircuitMiddlewareControl": "MiddlewareControl",
+    "readOnlySqliteOpenMode": "SqliteOpenMode",
+    "readWriteSqliteOpenMode": "SqliteOpenMode",
+    "readWriteCreateSqliteOpenMode": "SqliteOpenMode",
+    "inMemorySqliteOpenMode": "SqliteOpenMode",
+    "rowSqliteStepResult": "SqliteStepResult",
+    "doneSqliteStepResult": "SqliteStepResult",
+    "integerSqliteColumnType": "SqliteColumnType",
+    "floatSqliteColumnType": "SqliteColumnType",
+    "textSqliteColumnType": "SqliteColumnType",
+    "blobSqliteColumnType": "SqliteColumnType",
+    "nullSqliteColumnType": "SqliteColumnType",
+}
+
+BUILTIN_VALUE_LITERALS: Dict[str, str] = {
+    "continueMiddlewareControl": "0",
+    "shortCircuitMiddlewareControl": "1",
+    "readOnlySqliteOpenMode": "1",
+    "readWriteSqliteOpenMode": "2",
+    "readWriteCreateSqliteOpenMode": "6",
+    "inMemorySqliteOpenMode": "14",
+    "rowSqliteStepResult": "100",
+    "doneSqliteStepResult": "101",
+    "integerSqliteColumnType": "1",
+    "floatSqliteColumnType": "2",
+    "textSqliteColumnType": "3",
+    "blobSqliteColumnType": "4",
+    "nullSqliteColumnType": "5",
+}
+
+BUILTIN_TYPE_ALIASES: Dict[str, str] = {
+    "SqliteDatabase": "COpaqueMemoryAddress",
+    "SqliteStatement": "COpaqueMemoryAddress",
+    "SqliteRowId": "CSignedInt64",
+}
+
+BUILTIN_ABSTRACTIONS: Dict[str, str] = {
+    "MiddlewareControl": "enum",
+    "SqliteOpenMode": "enum",
+    "SqliteStepResult": "enum",
+    "SqliteColumnType": "enum",
+}
+
+
+def _builtin_line(path: Path, raw: str) -> SourceLine:
+    return SourceLine(path=path, number=0, raw=raw, tokens=tokenize_line(raw))
+
+
+def _register_builtin_surface(program: ProgramFacts) -> None:
+    for name, typeName in BUILTIN_TYPE_ALIASES.items():
+        program.type_aliases.setdefault(name, typeName)
+
+    for name, kind in BUILTIN_ABSTRACTIONS.items():
+        program.abstractions.setdefault(
+            name,
+            AbstractionFact(kind, name, _builtin_line(program.path, f"{kind} {name}")),
+        )
+
+    for name, typeName in BUILTIN_VALUE_TYPES.items():
+        literalValue = BUILTIN_VALUE_LITERALS.get(name, "")
+        program.consts.setdefault(
+            name,
+            ConstFact(
+                name=name,
+                type_name=typeName,
+                value=literalValue,
+                line=_builtin_line(program.path, f"const {name} {typeName} {literalValue}"),
+            ),
+        )
+
+
 # Verb classification — used by the parser to decide which lines attach to
 # the currently-open operation. The closed sets here are intentionally
 # narrow; this module's checker passes interpret unknown verbs as SS0001.
@@ -271,6 +344,7 @@ def parse_group_comment(line: SourceLine) -> Optional[Tuple[str, str, SourceLine
 
 def parse_file(path: Path) -> ProgramFacts:
     program = ProgramFacts(path=path)
+    _register_builtin_surface(program)
     current_op: Optional[OperationFact] = None
 
     with path.open("r", encoding="utf-8") as source_file:
@@ -663,6 +737,8 @@ VERB_MINIMUM_ARITY: Dict[str, int] = {
     "optLevel": 2, "emitLlvmIr": 2, "llvmIrOutput": 2,
     "emitOptimizedLlvmIr": 2, "optimizedLlvmIrOutput": 2,
     "buildDir": 2, "buildRoot": 2, "buildFolderName": 2,
+    "cpuBaseline": 2, "cpuTune": 2, "cpuFeature": 3,
+    "cpuFeatureCheck": 2,
     "keepResources": 2, "resourcesDir": 2,
     "registerModule": 3,
     "moduleFolder": 2, "modulePurpose": 2, "moduleOwns": 2,
@@ -799,6 +875,7 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "nativeHttpPort", "formatterSetting", "linterSetting", "docsOutput",
     "optLevel", "emitLlvmIr", "llvmIrOutput", "emitOptimizedLlvmIr",
     "optimizedLlvmIrOutput", "buildDir", "buildRoot", "buildFolderName",
+    "cpuBaseline", "cpuTune", "cpuFeature", "cpuFeatureCheck",
     "keepResources", "resourcesDir",
     "moduleFolder", "modulePurpose", "moduleOwns", "moduleDoesNotOwn",
     "moduleDependency", "moduleWarning", "moduleInvariant", "moduleSecurity",
@@ -3658,7 +3735,7 @@ def check_enum_repr_comparison(facts: ExtendedFacts) -> List[Diagnostic]:
     if not enumNames:
         return diagnostics
 
-    moduleScopeValueTypes: Dict[str, str] = {}
+    moduleScopeValueTypes: Dict[str, str] = dict(BUILTIN_VALUE_TYPES)
     insideOperation = False
     for sourceLine in facts.base.lines:
         if not sourceLine.tokens or is_comment(sourceLine):
@@ -5439,7 +5516,9 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
     # Build per-op sets of declared call objects + labels.
     operationCallsByOperationName: Dict[str, Set[str]] = {}
     operationLabelsByOperationName: Dict[str, Set[str]] = {}
-    moduleScopeValueNames: Set[str] = set(OPAQUE_DEPENDENCY_INPUT_NAMES)
+    moduleScopeValueNames: Set[str] = (
+        set(OPAQUE_DEPENDENCY_INPUT_NAMES) | set(BUILTIN_VALUE_TYPES)
+    )
     currentOperationDuringValueScan: Optional[str] = None
     for sourceLine in facts.base.lines:
         if not sourceLine.tokens or is_comment(sourceLine):
@@ -5953,7 +6032,7 @@ def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
 
     # Build module-scope value-name → type map from forms that survive
     # outside any operation body (domain literals, module storage, etc.).
-    moduleScopeValueTypes: Dict[str, str] = {}
+    moduleScopeValueTypes: Dict[str, str] = dict(BUILTIN_VALUE_TYPES)
     currentOperationDuringScan: Optional[str] = None
     for sourceLine in facts.base.lines:
         if not sourceLine.tokens or is_comment(sourceLine):
@@ -6088,7 +6167,7 @@ def check_math_operand_width_drift(facts: ExtendedFacts) -> List[Diagnostic]:
     typeAliases = facts.base.type_aliases
     enumReprs, _enumCasesByType, _enumCaseValuesByType, enumTypeByCase = _enum_context(facts)
 
-    moduleScopeValueTypes: Dict[str, str] = {}
+    moduleScopeValueTypes: Dict[str, str] = dict(BUILTIN_VALUE_TYPES)
     currentOperationDuringScan: Optional[str] = None
     for sourceLine in facts.base.lines:
         if not sourceLine.tokens or is_comment(sourceLine):
@@ -7967,6 +8046,7 @@ BUILD_TAPE_PROJECT_VERBS: Set[str] = {
     "optLevel", "emitLlvmIr", "llvmIrOutput",
     "emitOptimizedLlvmIr", "optimizedLlvmIrOutput",
     "buildDir", "buildRoot", "buildFolderName",
+    "cpuBaseline", "cpuTune", "cpuFeature", "cpuFeatureCheck",
     "registerModule",
     "dependency", "dependencySource", "dependencyIntegrity",
     "comptimeOperation",
@@ -7980,6 +8060,7 @@ BUILD_TAPE_SINGLETON_VERBS: Set[str] = {
     "docsOutput", "optLevel", "emitLlvmIr", "llvmIrOutput",
     "emitOptimizedLlvmIr", "optimizedLlvmIrOutput",
     "buildDir", "buildRoot", "buildFolderName", "comptimeOperation",
+    "cpuBaseline", "cpuTune", "cpuFeatureCheck",
 }
 
 BUILD_TAPE_REQUIRED_VERBS: Set[str] = {
@@ -7996,7 +8077,15 @@ BUILD_TAPE_CHOICES: Dict[str, Set[str]] = {
     "keepResources": {"yes", "no", "true", "false", "on", "off", "1", "0"},
     "emitLlvmIr": {"auto", "yes", "no"},
     "emitOptimizedLlvmIr": {"yes", "no"},
+    "cpuBaseline": {
+        "generic", "native",
+        "x86_64_v1", "x86_64_v2", "x86_64_v3", "x86_64_v4",
+        "arm64_generic", "arm64_v8_2",
+    },
+    "cpuFeatureCheck": {"auto", "off", "warn", "require"},
 }
+
+CPU_FEATURE_STATES: Set[str] = {"on", "off"}
 
 BUILD_TAPE_PATH_VERBS: Set[str] = {
     "sourceRoot", "mainFile", "testPattern", "testRoot", "nativeOutput",
@@ -8008,6 +8097,7 @@ BUILD_TAPE_MIN_ARITY: Dict[str, int] = {
     "dependency": 4,
     "dependencySource": 3,
     "dependencyIntegrity": 3,
+    "cpuFeature": 3,
     "formatterSetting": 3,
     "linterSetting": 3,
     "registerModule": 3,
@@ -8209,6 +8299,21 @@ def check_project_build_tape_schema(facts: ExtendedFacts) -> List[Diagnostic]:
                         f"{', '.join(sorted(BUILD_TAPE_CHOICES[verb]))}."
                     ),
                     f"{verb} {projectName} <valid-value>",
+                ))
+
+        if verb == "cpuFeature":
+            featureState = args[2] if len(args) >= 3 else ""
+            if featureState not in CPU_FEATURE_STATES:
+                diagnostics.append(_build_tape_diagnostic(
+                    sourceLine,
+                    "SS2525",
+                    "buildTape.invalidChoiceValue",
+                    featureState,
+                    "cpuFeature",
+                    "cpuFeatureState",
+                    "`cpuFeature` state must be on or off",
+                    "`cpuFeature PROJECT FEATURE STATE` accepts only `on` or `off`.",
+                    f"cpuFeature {projectName} avx2 on",
                 ))
 
         if verb == "optLevel":

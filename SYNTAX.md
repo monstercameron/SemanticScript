@@ -70,6 +70,10 @@ blocks, and dynamic object or array literals.
 | `buildDir PROJECT "PATH"` | Overrides the exact compiler-managed build output directory. | Impl'd |
 | `buildRoot PROJECT "PATH"` | Overrides the root that contains the compiler-managed build folder. | Impl'd |
 | `buildFolderName PROJECT NAME` | Overrides the managed build folder name used with `buildRoot`. Must be a single folder name, not a path. | Impl'd |
+| `cpuBaseline PROJECT generic\|native\|x86_64_v1\|x86_64_v2\|x86_64_v3\|x86_64_v4\|arm64_generic\|arm64_v8_2` | Declares the CPU instruction baseline for LLVM/clang lowering. Defaults to portable `generic`. | Impl'd |
+| `cpuTune PROJECT generic\|native\|CPU_NAME` | Declares an AOT scheduling tune token passed to clang as `-mtune`; `generic` emits no tune flag. | Impl'd |
+| `cpuFeature PROJECT FEATURE on\|off` | Adds or disables one CPU feature for LLVM/clang lowering. Required `on` features are checked against the host unless `cpuFeatureCheck off` is used. | Impl'd |
+| `cpuFeatureCheck PROJECT auto\|off\|warn\|require` | Controls the build-time host CPU feature check. `auto` fails local builds that request unavailable features; `off` is only for known non-host targets. | Impl'd |
 | `nativeOutput PROJECT "PATH"` | Declares the native executable output path for project-mode builds. A basename resolves into the compiler-managed `build/` artifact directory. | Partial |
 | `nativeHttpHost PROJECT "HOST"` | Declares the default native HTTP bind host for web-server project builds. | Partial |
 | `nativeHttpPort PROJECT PORT` | Declares the default native HTTP bind port for web-server project builds. | Partial |

@@ -475,6 +475,10 @@ emitOptimizedLlvmIr todoTui no
 optimizedLlvmIrOutput todoTui "build/todo.opt.ll"
 buildRoot todoTui "."
 buildFolderName todoTui build
+cpuBaseline todoTui generic
+cpuTune todoTui generic
+cpuFeature todoTui avx2 off
+cpuFeatureCheck todoTui auto
 nativeOutput todoTui "todo.exe"
 nativeHttpHost todoTui "127.0.0.1"
 nativeHttpPort todoTui 18080
@@ -532,6 +536,9 @@ optLevel todoTui 2
 emitLlvmIr todoTui auto
 emitOptimizedLlvmIr todoTui no
 buildFolderName todoTui build
+cpuBaseline todoTui generic
+cpuTune todoTui generic
+cpuFeatureCheck todoTui auto
 formatterSetting todoTui lineWidth 100
 linterSetting todoTui maxTier T4
 docsOutput todoTui "docs"
@@ -592,6 +599,15 @@ project TodoTuiApp
             )
             diagnostics = semlint.lint_path(buildPath)
         self.assertIn("SS2526", _codes(diagnostics))
+
+    def test_cpu_feature_state_is_flagged(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            buildPath = self._write_complete_project(
+                Path(tempDir),
+                extraRows="cpuFeature todoTui avx2 maybe\n",
+            )
+            diagnostics = semlint.lint_path(buildPath)
+        self.assertIn("SS2525", _codes(diagnostics))
 
 
 # ==========================================================================
@@ -4267,6 +4283,37 @@ class TestMiddlewareControlBuiltinEnum(unittest.TestCase):
         self.assertEqual(continueValue, 0)
         self.assertEqual(shortCircuitType, "MiddlewareControl")
         self.assertEqual(shortCircuitValue, 1)
+
+
+class TestSqliteBuiltinSurface(unittest.TestCase):
+    """The proposed standard.sqlite sample relies on compiler/linter built-ins
+    for enum case values and opaque handle aliases."""
+
+    def test_sqlite_builtin_values_are_registered_for_reference_checks(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            fixturePath = Path(tempDir) / "fixture.sscript"
+            fixturePath.write_text("project Trivial\n", encoding="utf-8")
+            facts = semlint.parse_file(fixturePath)
+
+        self.assertEqual(
+            facts.consts["inMemorySqliteOpenMode"].type_name,
+            "SqliteOpenMode",
+        )
+        self.assertEqual(facts.type_aliases["SqliteRowId"], "CSignedInt64")
+        self.assertIn("SqliteDatabase", facts.type_aliases)
+
+    def test_sqlite_builtin_case_is_not_an_unresolved_arg_value(self) -> None:
+        diagnostics = _lint_source("""project SqliteBuiltinSmoke
+operation openDatabase
+output openDatabase Void
+purpose openDatabase "prove sqlite enum cases are visible to semlint"
+storage local immutable sqlitePath CNullTerminatedByteString ":memory:"
+call openDatabaseCall sqlite.openDatabase
+arg openDatabaseCall path sqlitePath
+arg openDatabaseCall mode inMemorySqliteOpenMode
+run openDatabaseCall
+""")
+        self.assertNotIn("SS4105", _codes(diagnostics))
 
 
 # ==========================================================================

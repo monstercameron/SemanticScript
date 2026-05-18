@@ -113,6 +113,9 @@ persistLlvmIr todoTui yes
 emitLlvmIr todoTui auto
 emitOptimizedLlvmIr todoTui no
 buildFolderName todoTui build
+cpuBaseline todoTui generic
+cpuTune todoTui generic
+cpuFeatureCheck todoTui auto
 formatterSetting todoTui lineWidth 100
 linterSetting todoTui maxTier T4
 docsOutput todoTui "docs"

@@ -46,6 +46,10 @@ partial       mixed behavior; see owning language doc
 | `buildDir` | `buildDir PROJECT "PATH"` | partial |
 | `buildRoot` | `buildRoot PROJECT "PATH"` | partial |
 | `buildFolderName` | `buildFolderName PROJECT NAME` | partial |
+| `cpuBaseline` | `cpuBaseline PROJECT generic|native|x86_64_v2|...` | partial |
+| `cpuTune` | `cpuTune PROJECT generic|native|CPU_NAME` | partial |
+| `cpuFeature` | `cpuFeature PROJECT FEATURE on|off` | partial |
+| `cpuFeatureCheck` | `cpuFeatureCheck PROJECT auto|off|warn|require` | partial |
 | `nativeOutput` | `nativeOutput PROJECT "PATH"` | partial |
 | `nativeHttpHost` | `nativeHttpHost PROJECT "HOST"` | metadata |
 | `nativeHttpPort` | `nativeHttpPort PROJECT PORT` | metadata |

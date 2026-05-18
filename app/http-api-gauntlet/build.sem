@@ -52,6 +52,9 @@ persistLlvmIr httpApiGauntlet yes
 emitLlvmIr httpApiGauntlet auto
 emitOptimizedLlvmIr httpApiGauntlet no
 buildFolderName httpApiGauntlet build
+cpuBaseline httpApiGauntlet generic
+cpuTune httpApiGauntlet generic
+cpuFeatureCheck httpApiGauntlet auto
 nativeHttpHost httpApiGauntlet "127.0.0.1"
 nativeHttpPort httpApiGauntlet 18082
 formatterSetting httpApiGauntlet lineWidth 100

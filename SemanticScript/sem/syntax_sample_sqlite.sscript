@@ -52,44 +52,25 @@ module app.sqlite_syntax_sample
 # type SqliteRowId       — CSignedInt64 alias for last-insert-rowid values
 #
 # enum SqliteOpenMode repr CSignedInt32
-#   enumCase SqliteOpenMode ReadOnly          1   # SS_SQLITE_OPEN_READONLY
-#   enumCase SqliteOpenMode ReadWrite         2   # SS_SQLITE_OPEN_READWRITE
-#   enumCase SqliteOpenMode ReadWriteCreate   6   # READWRITE | CREATE
-#   enumCase SqliteOpenMode InMemory         14   # READWRITE | CREATE | MEMORY
+#   readOnlySqliteOpenMode          1     # SS_SQLITE_OPEN_READONLY
+#   readWriteSqliteOpenMode         2     # SS_SQLITE_OPEN_READWRITE
+#   readWriteCreateSqliteOpenMode   6     # READWRITE | CREATE
+#   inMemorySqliteOpenMode         14     # READWRITE | CREATE | MEMORY
 #
 # enum SqliteStepResult repr CSignedInt32
-#   enumCase SqliteStepResult Row    100         # SS_SQLITE_STEP_ROW
-#   enumCase SqliteStepResult Done   101         # SS_SQLITE_STEP_DONE
+#   rowSqliteStepResult    100               # SS_SQLITE_STEP_ROW
+#   doneSqliteStepResult   101               # SS_SQLITE_STEP_DONE
 #
 # enum SqliteColumnType repr CSignedInt32
-#   enumCase SqliteColumnType Integer  1
-#   enumCase SqliteColumnType Float    2
-#   enumCase SqliteColumnType Text     3
-#   enumCase SqliteColumnType Blob     4
-#   enumCase SqliteColumnType Null     5
-
-# Current parser/linter compatibility declarations. Once `standard.sqlite`
-# is compiler-wired, semsc should provide these same symbols as built-ins.
-type SqliteDatabase COpaqueMemoryAddress
-type SqliteStatement COpaqueMemoryAddress
-type SqliteRowId CSignedInt64
-
-enum SqliteOpenMode repr CSignedInt32
-enumCase SqliteOpenMode ReadOnly 1
-enumCase SqliteOpenMode ReadWrite 2
-enumCase SqliteOpenMode ReadWriteCreate 6
-enumCase SqliteOpenMode InMemory 14
-
-enum SqliteStepResult repr CSignedInt32
-enumCase SqliteStepResult Row 100
-enumCase SqliteStepResult Done 101
-
-enum SqliteColumnType repr CSignedInt32
-enumCase SqliteColumnType Integer 1
-enumCase SqliteColumnType Float 2
-enumCase SqliteColumnType Text 3
-enumCase SqliteColumnType Blob 4
-enumCase SqliteColumnType Null 5
+#   integerSqliteColumnType  1
+#   floatSqliteColumnType    2
+#   textSqliteColumnType     3
+#   blobSqliteColumnType     4
+#   nullSqliteColumnType     5
+#
+# Case names carry the enum role as a suffix (`inMemorySqliteOpenMode`
+# rather than bare `inMemory`) so a use site reads as a full role
+# identifier — same convention semsc uses for MiddlewareControl.
 
 # ----- error domain -----
 #
@@ -139,6 +120,7 @@ const sqliteSampleBodyColumnIndex CSignedInt32 1
 entry console runSqliteSyntaxSample
 
 operation runSqliteSyntaxSample
+input runSqliteSyntaxSample console Console
 output runSqliteSyntaxSample Result CSignedInt32 SqliteError
 effect runSqliteSyntaxSample readWrite database
 effect runSqliteSyntaxSample write console.stdout
@@ -159,7 +141,7 @@ label startRunSqliteSyntaxSample
 # in-memory mode keeps the sample hermetic for tests and CI.
 call openDatabaseCall sqlite.openDatabase
 arg openDatabaseCall path sqliteSampleDatabasePath
-arg openDatabaseCall mode InMemory
+arg openDatabaseCall mode inMemorySqliteOpenMode
 run openDatabaseCall
 bindOk sampleDatabase SqliteDatabase openDatabaseCall
 bindError sampleDatabaseOpenError SqliteDatabaseOpenFailure openDatabaseCall
@@ -261,7 +243,8 @@ bind selectedBodyText CNullTerminatedByteString readSelectBodyCall
 # rationale: Surface the result to stdout so the sample doubles as a
 # visible smoke. Real apps would marshal these into a record/codec.
 call writeSelectedBodyCall console.writeLine
-arg writeSelectedBodyCall line selectedBodyText
+arg writeSelectedBodyCall console console
+arg writeSelectedBodyCall text selectedBodyText
 run writeSelectedBodyCall
 ignoreOk writeSelectedBodyCall Void
 bindError writeSelectedBodyError ConsoleWriteFailure writeSelectedBodyCall

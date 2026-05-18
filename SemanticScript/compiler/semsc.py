@@ -637,6 +637,7 @@ _BUILD_TAPE_PROJECT_VERBS = frozenset({
     "optLevel", "emitLlvmIr", "llvmIrOutput",
     "emitOptimizedLlvmIr", "optimizedLlvmIrOutput",
     "buildDir", "buildRoot", "buildFolderName",
+    "cpuBaseline", "cpuTune", "cpuFeature", "cpuFeatureCheck",
     "registerModule",
     "dependency", "dependencySource", "dependencyIntegrity",
     "comptimeOperation",
@@ -650,6 +651,7 @@ _BUILD_TAPE_SINGLETON_VERBS = frozenset({
     "docsOutput", "optLevel", "emitLlvmIr", "llvmIrOutput",
     "emitOptimizedLlvmIr", "optimizedLlvmIrOutput",
     "buildDir", "buildRoot", "buildFolderName", "comptimeOperation",
+    "cpuBaseline", "cpuTune", "cpuFeatureCheck",
 })
 
 _BUILD_TAPE_REQUIRED_VERBS = frozenset({
@@ -668,6 +670,7 @@ _BUILD_TAPE_MIN_ARITY = {
     "dependency": 4,
     "dependencySource": 3,
     "dependencyIntegrity": 3,
+    "cpuFeature": 3,
     "formatterSetting": 3,
     "linterSetting": 3,
     "registerModule": 3,
@@ -681,6 +684,47 @@ _BUILD_TAPE_CHOICES = {
     "keepResources": {"yes", "no", "true", "false", "on", "off", "1", "0"},
     "emitLlvmIr": {"auto", "yes", "no"},
     "emitOptimizedLlvmIr": {"yes", "no"},
+    "cpuBaseline": {
+        "generic", "native",
+        "x86_64_v1", "x86_64_v2", "x86_64_v3", "x86_64_v4",
+        "arm64_generic", "arm64_v8_2",
+    },
+    "cpuFeatureCheck": {"auto", "off", "warn", "require"},
+}
+
+_CPU_FEATURE_STATES = frozenset({"on", "off"})
+_CPU_FEATURE_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+_CPU_BASELINE_FEATURES = {
+    "generic": frozenset(),
+    "native": frozenset(),
+    "x86_64_v1": frozenset(),
+    "x86_64_v2": frozenset({
+        "sse3", "ssse3", "sse4.1", "sse4.2", "popcnt", "cx16", "sahf",
+    }),
+    "x86_64_v3": frozenset({
+        "sse3", "ssse3", "sse4.1", "sse4.2", "popcnt", "cx16", "sahf",
+        "avx", "avx2", "bmi", "bmi2", "f16c", "fma", "lzcnt", "movbe",
+        "xsave",
+    }),
+    "x86_64_v4": frozenset({
+        "sse3", "ssse3", "sse4.1", "sse4.2", "popcnt", "cx16", "sahf",
+        "avx", "avx2", "bmi", "bmi2", "f16c", "fma", "lzcnt", "movbe",
+        "xsave", "avx512f", "avx512bw", "avx512cd", "avx512dq", "avx512vl",
+    }),
+    "arm64_generic": frozenset(),
+    "arm64_v8_2": frozenset({"v8.2a"}),
+}
+
+_CPU_BASELINE_CLANG_MARCH = {
+    "generic": None,
+    "native": "native",
+    "x86_64_v1": "x86-64",
+    "x86_64_v2": "x86-64-v2",
+    "x86_64_v3": "x86-64-v3",
+    "x86_64_v4": "x86-64-v4",
+    "arm64_generic": "armv8-a",
+    "arm64_v8_2": "armv8.2-a",
 }
 
 # Recognised icon role tokens. The taxonomy is fixed so a typo can't
@@ -759,9 +803,89 @@ def _register_builtin_middleware_control_enum(prog: Program) -> None:
     prog.consts["shortCircuitMiddlewareControl"] = ("MiddlewareControl", 1)
 
 
+def _register_builtin_sqlite_surface(prog: Program) -> None:
+    """Pre-register the `standard.sqlite` built-in enum / type surface so
+    callers can reference `inMemorySqliteOpenMode`, `rowSqliteStepResult`,
+    etc., without redeclaring them. The case values are hand-aligned with
+    the `SS_SQLITE_*` constants in `sem_sqlite_runtime.h`; mismatched
+    values would surface as a wrong-flag handed to sqlite3_open_v2() or a
+    misclassified step result, so any change here MUST be paired with a
+    matching change to the C ABI header.
+
+    Verbose case names (`inMemorySqliteOpenMode` instead of bare
+    `inMemory`) follow the existing MiddlewareControl convention: the
+    suffix carries the enum role so reading a use site does not require
+    looking up which enum the bare token belongs to.
+
+    `SqliteRowId` is registered as a type alias to `CSignedInt64` so
+    `lastInsertRowId` results bind to a descriptive role-typed value
+    instead of a generic integer.
+    """
+    open_mode_enum = Enum("SqliteOpenMode")
+    open_mode_enum.repr = "CSignedInt32"
+    # Values are the OR'd combinations of SS_SQLITE_OPEN_READONLY (1),
+    # READWRITE (2), CREATE (4), MEMORY (8) from sem_sqlite_runtime.h.
+    open_mode_enum.cases.append(("readOnlySqliteOpenMode", 1))
+    open_mode_enum.cases.append(("readWriteSqliteOpenMode", 2))
+    open_mode_enum.cases.append(("readWriteCreateSqliteOpenMode", 6))
+    open_mode_enum.cases.append(("inMemorySqliteOpenMode", 14))
+    prog.enums["SqliteOpenMode"] = open_mode_enum
+    prog.consts["readOnlySqliteOpenMode"] = ("SqliteOpenMode", 1)
+    prog.consts["readWriteSqliteOpenMode"] = ("SqliteOpenMode", 2)
+    prog.consts["readWriteCreateSqliteOpenMode"] = ("SqliteOpenMode", 6)
+    prog.consts["inMemorySqliteOpenMode"] = ("SqliteOpenMode", 14)
+
+    step_result_enum = Enum("SqliteStepResult")
+    step_result_enum.repr = "CSignedInt32"
+    step_result_enum.cases.append(("rowSqliteStepResult", 100))
+    step_result_enum.cases.append(("doneSqliteStepResult", 101))
+    prog.enums["SqliteStepResult"] = step_result_enum
+    prog.consts["rowSqliteStepResult"] = ("SqliteStepResult", 100)
+    prog.consts["doneSqliteStepResult"] = ("SqliteStepResult", 101)
+
+    column_type_enum = Enum("SqliteColumnType")
+    column_type_enum.repr = "CSignedInt32"
+    column_type_enum.cases.append(("integerSqliteColumnType", 1))
+    column_type_enum.cases.append(("floatSqliteColumnType", 2))
+    column_type_enum.cases.append(("textSqliteColumnType", 3))
+    column_type_enum.cases.append(("blobSqliteColumnType", 4))
+    column_type_enum.cases.append(("nullSqliteColumnType", 5))
+    prog.enums["SqliteColumnType"] = column_type_enum
+    prog.consts["integerSqliteColumnType"] = ("SqliteColumnType", 1)
+    prog.consts["floatSqliteColumnType"] = ("SqliteColumnType", 2)
+    prog.consts["textSqliteColumnType"] = ("SqliteColumnType", 3)
+    prog.consts["blobSqliteColumnType"] = ("SqliteColumnType", 4)
+    prog.consts["nullSqliteColumnType"] = ("SqliteColumnType", 5)
+
+    # Descriptive alias for the i64 rowid the native ABI returns from
+    # ss_sqlite_database_last_insert_rowid. Keeps role information on
+    # the binding instead of leaving a bare CSignedInt64.
+    prog.type_aliases["SqliteRowId"] = "CSignedInt64"
+
+    # Each Result-returning sqlite.* call surfaces its failure leg as a
+    # role-typed alias over the i32 status code the C ABI actually returns
+    # (SS_SQLITE_ERR_* from sem_sqlite_runtime.h). Aliasing to
+    # CSignedInt32 lets bindError consume the value with no extra
+    # conversion, while still keeping a distinct AS-level name per phase
+    # so error domains in user code stay legible. The eight names match
+    # the eight Result-returning entry points in the runtime header.
+    for failure_alias in (
+        "SqliteDatabaseOpenFailure",
+        "SqliteDatabaseCloseFailure",
+        "SqliteDatabaseExecFailure",
+        "SqliteStatementPrepareFailure",
+        "SqliteStatementBindFailure",
+        "SqliteStatementStepFailure",
+        "SqliteStatementResetFailure",
+        "SqliteStatementFinalizeFailure",
+    ):
+        prog.type_aliases[failure_alias] = "CSignedInt32"
+
+
 def parse(source: str) -> Program:
     prog = Program()
     _register_builtin_middleware_control_enum(prog)
+    _register_builtin_sqlite_surface(prog)
     for lineno, raw in enumerate(source.splitlines(), start=1):
         prog.source_lines[lineno] = raw
         toks = tokenize_line(raw)
@@ -896,6 +1020,22 @@ def _validate_build_tape_source(source: str, source_path: str) -> None:
                 raise SyntaxError(
                     f"line {lineno}: {verb} value `{value}` is invalid; "
                     f"expected one of {sorted(_BUILD_TAPE_CHOICES[verb])}")
+        if verb == "cpuTune":
+            value = str(_unwrap(args[1]))
+            if not _CPU_FEATURE_RE.match(value):
+                raise SyntaxError(
+                    f"line {lineno}: cpuTune value `{value}` must be a CPU "
+                    "name token such as generic, native, or alderlake")
+        if verb == "cpuFeature":
+            feature_name = str(_unwrap(args[1]))
+            feature_state = str(_unwrap(args[2])) if len(args) >= 3 else ""
+            if not _CPU_FEATURE_RE.match(feature_name):
+                raise SyntaxError(
+                    f"line {lineno}: cpuFeature name `{feature_name}` is invalid")
+            if feature_state not in _CPU_FEATURE_STATES:
+                raise SyntaxError(
+                    f"line {lineno}: cpuFeature state `{feature_state}` is "
+                    "invalid; expected on or off")
         if verb == "optLevel":
             try:
                 opt_level = int(str(_unwrap(args[1])))
@@ -1679,6 +1819,12 @@ def llvm_type_for(prog: Program, typename: str):
     ):
         return I8P
     if typename in ("HttpRequest", "HttpResponse"):
+        return I8P
+    # Opaque handles for the native sqlite runtime — the C ABI in
+    # `sem_sqlite_runtime.h` exposes both as `void *` typedefs and never
+    # lets generated code dereference them, so lowering as `i8*` is the
+    # correct shape (parallel to HttpRequest / HttpResponse above).
+    if typename in ("SqliteDatabase", "SqliteStatement"):
         return I8P
     return None
 
@@ -4770,6 +4916,367 @@ class Codegen:
                 f"unsupported native HTTP call target: {target!r}; "
                 "add an explicit compiler lowering before using it in a webServer executable")
 
+        # ------------------------------------------------------------
+        # standard.sqlite dispatch — mirrors the http.* block above.
+        # Every entry forwards to an ss_sqlite_* function defined in
+        # SemanticScript/runtime/native_sqlite/sem_sqlite_runtime.h. The
+        # Result-shaped calls populate call["result"], call["error_value"],
+        # and call["error_cond"] so bindOk / bindError / branchIfError fall
+        # through unchanged; the plain-value calls only set call["result"].
+        # The integer status convention is shared with the C ABI:
+        # SS_SQLITE_OK == 0, errors are 1..9, step results are 100/101.
+        # See third_party/sqlite/README.md for the vendored amalgamation
+        # and SemanticScript/runtime/native_sqlite/README.md for the
+        # adapter that owns these symbols.
+        # ------------------------------------------------------------
+
+        def _sqlite_simple_status_error_cond(status_value):
+            """Build the i1 error condition for a Result-returning sqlite.*
+            call that does NOT use the SS_SQLITE_STEP_* range. Anything
+            other than SS_SQLITE_OK (0) is an error."""
+            return builder.icmp_signed(
+                "!=", status_value, ir.Constant(I32, 0),
+                name=f"{call_name}_isError")
+
+        if target == "sqlite.openDatabase":
+            path = arg_val_named("path")
+            mode = arg_val_named("mode")
+            if isinstance(path.type, ir.IntType):
+                path = builder.inttoptr(path, I8P)
+            if isinstance(mode.type, ir.IntType) and mode.type.width != 32:
+                mode = (builder.trunc(mode, I32) if mode.type.width > 32
+                        else builder.sext(mode, I32))
+            db_slot = builder.alloca(I8P, name=f"{call_name}_databaseSlot")
+            open_fn = self._runtime_func(
+                "ss_sqlite_database_open", I32, [I8P, I32, I8P.as_pointer()])
+            self.provenance.record_external("ss_sqlite_database_open", call)
+            status = builder.call(
+                open_fn, [path, mode, db_slot], name=f"{call_name}_status")
+            handle = builder.load(db_slot, name=f"{call_name}_database")
+            call["result"] = handle
+            call["error_value"] = status
+            call["error_cond"] = _sqlite_simple_status_error_cond(status)
+            return
+
+        if target == "sqlite.closeDatabase":
+            database = arg_val_named("database")
+            if isinstance(database.type, ir.IntType):
+                database = builder.inttoptr(database, I8P)
+            close_fn = self._runtime_func(
+                "ss_sqlite_database_close", I32, [I8P])
+            self.provenance.record_external("ss_sqlite_database_close", call)
+            status = builder.call(
+                close_fn, [database], name=f"{call_name}_status")
+            call["result"] = ir.Constant(I32, 0)
+            call["error_value"] = status
+            call["error_cond"] = _sqlite_simple_status_error_cond(status)
+            return
+
+        if target == "sqlite.errorMessage":
+            database = arg_val_named("database")
+            if isinstance(database.type, ir.IntType):
+                database = builder.inttoptr(database, I8P)
+            errmsg_fn = self._runtime_func(
+                "ss_sqlite_database_errmsg", I8P, [I8P])
+            self.provenance.record_external("ss_sqlite_database_errmsg", call)
+            call["result"] = builder.call(
+                errmsg_fn, [database], name=f"{call_name}_message")
+            return
+
+        if target == "sqlite.lastInsertRowId":
+            database = arg_val_named("database")
+            if isinstance(database.type, ir.IntType):
+                database = builder.inttoptr(database, I8P)
+            last_rowid_fn = self._runtime_func(
+                "ss_sqlite_database_last_insert_rowid", I64, [I8P])
+            self.provenance.record_external(
+                "ss_sqlite_database_last_insert_rowid", call)
+            call["result"] = builder.call(
+                last_rowid_fn, [database], name=f"{call_name}_rowid")
+            return
+
+        if target == "sqlite.changedRowCount":
+            database = arg_val_named("database")
+            if isinstance(database.type, ir.IntType):
+                database = builder.inttoptr(database, I8P)
+            changes_fn = self._runtime_func(
+                "ss_sqlite_database_changes", I32, [I8P])
+            self.provenance.record_external(
+                "ss_sqlite_database_changes", call)
+            call["result"] = builder.call(
+                changes_fn, [database], name=f"{call_name}_changes")
+            return
+
+        if target == "sqlite.exec":
+            database = arg_val_named("database")
+            sql = arg_val_named("sql")
+            if isinstance(database.type, ir.IntType):
+                database = builder.inttoptr(database, I8P)
+            if isinstance(sql.type, ir.IntType):
+                sql = builder.inttoptr(sql, I8P)
+            exec_fn = self._runtime_func(
+                "ss_sqlite_exec", I32, [I8P, I8P])
+            self.provenance.record_external("ss_sqlite_exec", call)
+            status = builder.call(
+                exec_fn, [database, sql], name=f"{call_name}_status")
+            call["result"] = ir.Constant(I32, 0)
+            call["error_value"] = status
+            call["error_cond"] = _sqlite_simple_status_error_cond(status)
+            return
+
+        if target == "sqlite.prepareStatement":
+            database = arg_val_named("database")
+            sql = arg_val_named("sql")
+            if isinstance(database.type, ir.IntType):
+                database = builder.inttoptr(database, I8P)
+            if isinstance(sql.type, ir.IntType):
+                sql = builder.inttoptr(sql, I8P)
+            stmt_slot = builder.alloca(I8P, name=f"{call_name}_statementSlot")
+            prepare_fn = self._runtime_func(
+                "ss_sqlite_statement_prepare", I32,
+                [I8P, I8P, I8P.as_pointer()])
+            self.provenance.record_external(
+                "ss_sqlite_statement_prepare", call)
+            status = builder.call(
+                prepare_fn, [database, sql, stmt_slot],
+                name=f"{call_name}_status")
+            handle = builder.load(stmt_slot, name=f"{call_name}_statement")
+            call["result"] = handle
+            call["error_value"] = status
+            call["error_cond"] = _sqlite_simple_status_error_cond(status)
+            return
+
+        if target == "sqlite.finalizeStatement":
+            statement = arg_val_named("statement")
+            if isinstance(statement.type, ir.IntType):
+                statement = builder.inttoptr(statement, I8P)
+            finalize_fn = self._runtime_func(
+                "ss_sqlite_statement_finalize", I32, [I8P])
+            self.provenance.record_external(
+                "ss_sqlite_statement_finalize", call)
+            status = builder.call(
+                finalize_fn, [statement], name=f"{call_name}_status")
+            call["result"] = ir.Constant(I32, 0)
+            call["error_value"] = status
+            call["error_cond"] = _sqlite_simple_status_error_cond(status)
+            return
+
+        if target == "sqlite.resetStatement":
+            statement = arg_val_named("statement")
+            if isinstance(statement.type, ir.IntType):
+                statement = builder.inttoptr(statement, I8P)
+            reset_fn = self._runtime_func(
+                "ss_sqlite_statement_reset", I32, [I8P])
+            self.provenance.record_external(
+                "ss_sqlite_statement_reset", call)
+            status = builder.call(
+                reset_fn, [statement], name=f"{call_name}_status")
+            call["result"] = ir.Constant(I32, 0)
+            call["error_value"] = status
+            call["error_cond"] = _sqlite_simple_status_error_cond(status)
+            return
+
+        if target == "sqlite.stepStatement":
+            statement = arg_val_named("statement")
+            if isinstance(statement.type, ir.IntType):
+                statement = builder.inttoptr(statement, I8P)
+            step_fn = self._runtime_func(
+                "ss_sqlite_statement_step", I32, [I8P])
+            self.provenance.record_external(
+                "ss_sqlite_statement_step", call)
+            status = builder.call(
+                step_fn, [statement], name=f"{call_name}_status")
+            # stepStatement is the only sqlite.* call whose success leg
+            # carries a value the user binds: SqliteStepResult ∈
+            # {SS_SQLITE_STEP_ROW=100, SS_SQLITE_STEP_DONE=101}. Anything
+            # below 100 is a SS_SQLITE_ERR_* status.
+            step_row_value = ir.Constant(I32, 100)
+            is_error = builder.icmp_signed(
+                "<", status, step_row_value, name=f"{call_name}_isError")
+            call["result"] = status
+            call["error_value"] = status
+            call["error_cond"] = is_error
+            return
+
+        if target in (
+            "sqlite.bindInt64",
+            "sqlite.bindDouble",
+            "sqlite.bindText",
+            "sqlite.bindBlob",
+            "sqlite.bindNull",
+        ):
+            statement = arg_val_named("statement")
+            parameter_index = arg_val_named("parameterIndex")
+            if isinstance(statement.type, ir.IntType):
+                statement = builder.inttoptr(statement, I8P)
+            if (isinstance(parameter_index.type, ir.IntType)
+                    and parameter_index.type.width != 32):
+                parameter_index = (
+                    builder.trunc(parameter_index, I32)
+                    if parameter_index.type.width > 32
+                    else builder.sext(parameter_index, I32))
+            if target == "sqlite.bindNull":
+                bind_fn = self._runtime_func(
+                    "ss_sqlite_statement_bind_null", I32, [I8P, I32])
+                self.provenance.record_external(
+                    "ss_sqlite_statement_bind_null", call)
+                status = builder.call(
+                    bind_fn, [statement, parameter_index],
+                    name=f"{call_name}_status")
+            elif target == "sqlite.bindInt64":
+                value = arg_val_named("value")
+                if isinstance(value.type, ir.IntType) and value.type.width != 64:
+                    value = (
+                        builder.sext(value, I64)
+                        if value.type.width < 64
+                        else builder.trunc(value, I64))
+                bind_fn = self._runtime_func(
+                    "ss_sqlite_statement_bind_int64", I32, [I8P, I32, I64])
+                self.provenance.record_external(
+                    "ss_sqlite_statement_bind_int64", call)
+                status = builder.call(
+                    bind_fn, [statement, parameter_index, value],
+                    name=f"{call_name}_status")
+            elif target == "sqlite.bindDouble":
+                value = arg_val_named("value")
+                bind_fn = self._runtime_func(
+                    "ss_sqlite_statement_bind_double", I32, [I8P, I32, F64])
+                self.provenance.record_external(
+                    "ss_sqlite_statement_bind_double", call)
+                status = builder.call(
+                    bind_fn, [statement, parameter_index, value],
+                    name=f"{call_name}_status")
+            elif target == "sqlite.bindText":
+                value = arg_val_named("value")
+                if isinstance(value.type, ir.IntType):
+                    value = builder.inttoptr(value, I8P)
+                bind_fn = self._runtime_func(
+                    "ss_sqlite_statement_bind_text", I32, [I8P, I32, I8P])
+                self.provenance.record_external(
+                    "ss_sqlite_statement_bind_text", call)
+                status = builder.call(
+                    bind_fn, [statement, parameter_index, value],
+                    name=f"{call_name}_status")
+            else:  # sqlite.bindBlob
+                value = arg_val_named("value")
+                value_length = arg_val_named("valueLength")
+                if isinstance(value.type, ir.IntType):
+                    value = builder.inttoptr(value, I8P)
+                if (isinstance(value_length.type, ir.IntType)
+                        and value_length.type.width != 64):
+                    value_length = (
+                        builder.sext(value_length, I64)
+                        if value_length.type.width < 64
+                        else builder.trunc(value_length, I64))
+                bind_fn = self._runtime_func(
+                    "ss_sqlite_statement_bind_blob", I32,
+                    [I8P, I32, I8P, I64])
+                self.provenance.record_external(
+                    "ss_sqlite_statement_bind_blob", call)
+                status = builder.call(
+                    bind_fn,
+                    [statement, parameter_index, value, value_length],
+                    name=f"{call_name}_status")
+            call["result"] = ir.Constant(I32, 0)
+            call["error_value"] = status
+            call["error_cond"] = _sqlite_simple_status_error_cond(status)
+            return
+
+        if target in (
+            "sqlite.columnCount",
+            "sqlite.columnType",
+            "sqlite.columnName",
+            "sqlite.columnInt64",
+            "sqlite.columnDouble",
+            "sqlite.columnText",
+            "sqlite.columnBlob",
+            "sqlite.columnByteCount",
+        ):
+            statement = arg_val_named("statement")
+            if isinstance(statement.type, ir.IntType):
+                statement = builder.inttoptr(statement, I8P)
+            if target == "sqlite.columnCount":
+                fn = self._runtime_func(
+                    "ss_sqlite_statement_column_count", I32, [I8P])
+                self.provenance.record_external(
+                    "ss_sqlite_statement_column_count", call)
+                call["result"] = builder.call(
+                    fn, [statement], name=f"{call_name}_count")
+                return
+            column_index = arg_val_named("columnIndex")
+            if (isinstance(column_index.type, ir.IntType)
+                    and column_index.type.width != 32):
+                column_index = (
+                    builder.trunc(column_index, I32)
+                    if column_index.type.width > 32
+                    else builder.sext(column_index, I32))
+            if target == "sqlite.columnType":
+                fn = self._runtime_func(
+                    "ss_sqlite_statement_column_type", I32, [I8P, I32])
+                self.provenance.record_external(
+                    "ss_sqlite_statement_column_type", call)
+                call["result"] = builder.call(
+                    fn, [statement, column_index], name=f"{call_name}_type")
+            elif target == "sqlite.columnName":
+                fn = self._runtime_func(
+                    "ss_sqlite_statement_column_name", I8P, [I8P, I32])
+                self.provenance.record_external(
+                    "ss_sqlite_statement_column_name", call)
+                call["result"] = builder.call(
+                    fn, [statement, column_index], name=f"{call_name}_name")
+            elif target == "sqlite.columnInt64":
+                fn = self._runtime_func(
+                    "ss_sqlite_statement_column_int64", I64, [I8P, I32])
+                self.provenance.record_external(
+                    "ss_sqlite_statement_column_int64", call)
+                call["result"] = builder.call(
+                    fn, [statement, column_index], name=f"{call_name}_int")
+            elif target == "sqlite.columnDouble":
+                fn = self._runtime_func(
+                    "ss_sqlite_statement_column_double", F64, [I8P, I32])
+                self.provenance.record_external(
+                    "ss_sqlite_statement_column_double", call)
+                call["result"] = builder.call(
+                    fn, [statement, column_index],
+                    name=f"{call_name}_double")
+            elif target == "sqlite.columnText":
+                fn = self._runtime_func(
+                    "ss_sqlite_statement_column_text", I8P, [I8P, I32])
+                self.provenance.record_external(
+                    "ss_sqlite_statement_column_text", call)
+                call["result"] = builder.call(
+                    fn, [statement, column_index], name=f"{call_name}_text")
+            elif target == "sqlite.columnBlob":
+                fn = self._runtime_func(
+                    "ss_sqlite_statement_column_blob", I8P, [I8P, I32])
+                self.provenance.record_external(
+                    "ss_sqlite_statement_column_blob", call)
+                call["result"] = builder.call(
+                    fn, [statement, column_index], name=f"{call_name}_blob")
+            else:  # sqlite.columnByteCount
+                fn = self._runtime_func(
+                    "ss_sqlite_statement_column_bytes", I64, [I8P, I32])
+                self.provenance.record_external(
+                    "ss_sqlite_statement_column_bytes", call)
+                call["result"] = builder.call(
+                    fn, [statement, column_index],
+                    name=f"{call_name}_byteCount")
+            return
+
+        if target == "sqlite.libraryVersion":
+            version_fn = self._runtime_func(
+                "ss_sqlite_library_version", I8P, [])
+            self.provenance.record_external(
+                "ss_sqlite_library_version", call)
+            call["result"] = builder.call(
+                version_fn, [], name=f"{call_name}_version")
+            return
+
+        if target.startswith("sqlite."):
+            raise ValueError(
+                f"unsupported native sqlite call target: {target!r}; "
+                "add an explicit compiler lowering before using it")
+
         # External-module fallback: targets that look like a method on an
         # imported module (`http.requestCancellationToken`,
         # `database.openConnection`, `AccountBalanceResponseJsonCodec.encode`,
@@ -5815,7 +6322,8 @@ def emit_executable(module_ir: str, exe_path: str, opt_level: int = 2,
                     extra_sources=None,
                     extra_link_args=None,
                     link_work_dir: str = None,
-                    link_ir_path: str = None) -> None:
+                    link_ir_path: str = None,
+                    cpu_config=None) -> None:
     """Ahead-of-time compile SemanticScript IR to a native executable.
 
     The SemanticScript runtime depends only on libc, so the same toolchain that
@@ -5865,7 +6373,10 @@ def emit_executable(module_ir: str, exe_path: str, opt_level: int = 2,
         exe_dir = os.path.dirname(os.path.abspath(exe_path))
         if exe_dir:
             os.makedirs(exe_dir, exist_ok=True)
-        cmd = [clang, f"-O{opt_level}", "-o", exe_path, ll_path]
+        cmd = [clang, f"-O{opt_level}"]
+        if cpu_config is not None and cpu_config.clang_args:
+            cmd.extend(cpu_config.clang_args)
+        cmd.extend(["-o", exe_path, ll_path])
         if extra_sources:
             cmd.extend(extra_sources)
         if extra_link_args:
@@ -6122,6 +6633,13 @@ def _build_metadata_value(prog: Program, key: str) -> str:
     return None
 
 
+def _build_metadata_rows(prog: Program, key: str):
+    rows = []
+    for metadata in prog.hard_metadata.values():
+        rows.extend(metadata.get(key, []))
+    return rows
+
+
 def _resolve_choice_from_build(prog: Program, key: str, cli_value: str,
                                default_value: str, choices) -> str:
     value = cli_value
@@ -6133,6 +6651,177 @@ def _resolve_choice_from_build(prog: Program, key: str, cli_value: str,
         raise ValueError(
             f"{key}: `{value}` is not valid; expected one of {sorted(choices)}")
     return value
+
+
+@dataclass
+class CpuBuildConfig:
+    baseline: str = "generic"
+    tune: str = "generic"
+    feature_check: str = "auto"
+    llvm_cpu: str = ""
+    llvm_features: str = ""
+    clang_args: list = field(default_factory=list)
+    required_features: list = field(default_factory=list)
+    disabled_features: list = field(default_factory=list)
+
+    def summary(self) -> str:
+        parts = [f"baseline={self.baseline}", f"tune={self.tune}"]
+        if self.required_features:
+            parts.append("require=" + ",".join(self.required_features))
+        if self.disabled_features:
+            parts.append("disable=" + ",".join(self.disabled_features))
+        parts.append(f"check={self.feature_check}")
+        return " ".join(parts)
+
+
+def _normalize_cpu_feature(feature_name: str) -> str:
+    feature_name = str(feature_name).strip().lower()
+    if not _CPU_FEATURE_RE.match(feature_name):
+        raise ValueError(f"cpuFeature: invalid feature name `{feature_name}`")
+    return feature_name
+
+
+def _parse_cpu_feature_override(raw_value: str):
+    raw_value = str(raw_value).strip()
+    if not raw_value:
+        raise ValueError("cpuFeature: empty feature override")
+    if raw_value[0] in "+-":
+        return _normalize_cpu_feature(raw_value[1:]), "on" if raw_value[0] == "+" else "off"
+    if "=" not in raw_value:
+        raise ValueError(
+            "cpuFeature: CLI overrides must look like FEATURE=on, FEATURE=off, +FEATURE, or -FEATURE")
+    feature_name, feature_state = raw_value.split("=", 1)
+    feature_state = feature_state.strip().lower()
+    if feature_state not in _CPU_FEATURE_STATES:
+        raise ValueError("cpuFeature: state must be on or off")
+    return _normalize_cpu_feature(feature_name), feature_state
+
+
+def _host_cpu_feature_enabled(feature_name: str) -> bool:
+    try:
+        host_features = llvm.get_host_cpu_features()
+        return bool(host_features[feature_name])
+    except Exception:
+        return False
+
+
+def _host_cpu_name() -> str:
+    try:
+        name = llvm.get_host_cpu_name()
+    except Exception:
+        return ""
+    return str(name or "")
+
+
+def _resolve_cpu_build_config(prog: Program,
+                              cpu_baseline: str = None,
+                              cpu_tune: str = None,
+                              cpu_feature_overrides=None,
+                              cpu_feature_check: str = None) -> CpuBuildConfig:
+    baseline = cpu_baseline
+    if baseline is None:
+        baseline = _build_metadata_value(prog, "cpuBaseline")
+    baseline = baseline or "generic"
+    if baseline not in _BUILD_TAPE_CHOICES["cpuBaseline"]:
+        raise ValueError(
+            f"cpuBaseline: `{baseline}` is not valid; expected one of "
+            f"{sorted(_BUILD_TAPE_CHOICES['cpuBaseline'])}")
+
+    tune = cpu_tune
+    if tune is None:
+        tune = _build_metadata_value(prog, "cpuTune")
+    tune = tune or "generic"
+    if not _CPU_FEATURE_RE.match(str(tune)):
+        raise ValueError(f"cpuTune: invalid CPU tune token `{tune}`")
+
+    feature_check = cpu_feature_check
+    if feature_check is None:
+        feature_check = _build_metadata_value(prog, "cpuFeatureCheck")
+    feature_check = feature_check or "auto"
+    if feature_check not in _BUILD_TAPE_CHOICES["cpuFeatureCheck"]:
+        raise ValueError(
+            f"cpuFeatureCheck: `{feature_check}` is not valid; expected one "
+            f"of {sorted(_BUILD_TAPE_CHOICES['cpuFeatureCheck'])}")
+
+    feature_overrides = []
+    for row in _build_metadata_rows(prog, "cpuFeature"):
+        if len(row) < 2:
+            raise ValueError("cpuFeature: build row requires FEATURE and on|off")
+        feature_name = _normalize_cpu_feature(row[0])
+        feature_state = str(row[1]).strip().lower()
+        if feature_state not in _CPU_FEATURE_STATES:
+            raise ValueError("cpuFeature: state must be on or off")
+        feature_overrides.append((feature_name, feature_state))
+    for override in cpu_feature_overrides or []:
+        feature_overrides.append(_parse_cpu_feature_override(override))
+
+    baseline_features = set(_CPU_BASELINE_FEATURES.get(baseline, frozenset()))
+    explicit_enabled = []
+    explicit_disabled = []
+    for feature_name, feature_state in feature_overrides:
+        if feature_state == "on":
+            if feature_name not in explicit_enabled:
+                explicit_enabled.append(feature_name)
+            if feature_name in explicit_disabled:
+                explicit_disabled.remove(feature_name)
+        else:
+            if feature_name in baseline_features:
+                raise ValueError(
+                    f"cpuFeature: `{feature_name}` cannot be disabled because "
+                    f"`cpuBaseline {baseline}` requires it")
+            if feature_name not in explicit_disabled:
+                explicit_disabled.append(feature_name)
+            if feature_name in explicit_enabled:
+                explicit_enabled.remove(feature_name)
+
+    required_features = sorted(baseline_features | set(explicit_enabled))
+    missing_features = [
+        feature_name for feature_name in required_features
+        if not _host_cpu_feature_enabled(feature_name)
+    ]
+    if missing_features and feature_check in {"auto", "require"}:
+        raise ValueError(
+            "cpuFeatureCheck: host CPU is missing required feature(s): "
+            + ", ".join(missing_features)
+            + ". Lower cpuBaseline, remove cpuFeature rows, or use "
+            "cpuFeatureCheck off only for a known non-host target.")
+    if missing_features and feature_check == "warn":
+        print(
+            "semsc: warning: host CPU is missing requested feature(s): "
+            + ", ".join(missing_features),
+            file=sys.stderr,
+        )
+
+    llvm_cpu = ""
+    if baseline == "native":
+        llvm_cpu = _host_cpu_name()
+    llvm_feature_parts = []
+    if baseline != "native":
+        llvm_feature_parts.extend("+" + feature for feature in sorted(baseline_features))
+    llvm_feature_parts.extend("+" + feature for feature in explicit_enabled)
+    llvm_feature_parts.extend("-" + feature for feature in explicit_disabled)
+
+    clang_args = []
+    clang_march = _CPU_BASELINE_CLANG_MARCH.get(baseline)
+    if clang_march:
+        clang_args.append(f"-march={clang_march}")
+    if tune != "generic":
+        clang_args.append(f"-mtune={tune}")
+    for feature_name in explicit_enabled:
+        clang_args.append(f"-m{feature_name}")
+    for feature_name in explicit_disabled:
+        clang_args.append(f"-mno-{feature_name}")
+
+    return CpuBuildConfig(
+        baseline=baseline,
+        tune=tune,
+        feature_check=feature_check,
+        llvm_cpu=llvm_cpu,
+        llvm_features=",".join(llvm_feature_parts),
+        clang_args=clang_args,
+        required_features=required_features,
+        disabled_features=explicit_disabled,
+    )
 
 
 def _resolve_build_output_path(source_path: str, build_dir: str,
@@ -6212,13 +6901,17 @@ def _resolve_persisted_ir_path(source_path: str, emit_exe: str = None,
 
 
 def jit_run(module_ir: str, opt_level: int = 2,
-            emit_optimized_ir_to: str = None) -> int:
+            emit_optimized_ir_to: str = None,
+            cpu_config: CpuBuildConfig = None) -> int:
     llvm.initialize_native_target()
     llvm.initialize_native_asmprinter()
     mod = llvm.parse_assembly(module_ir)
     mod.verify()
     target = llvm.Target.from_default_triple()
-    tm = target.create_target_machine(opt=opt_level)
+    tm = target.create_target_machine(
+        cpu=cpu_config.llvm_cpu if cpu_config is not None else "",
+        features=cpu_config.llvm_features if cpu_config is not None else "",
+        opt=opt_level)
     if opt_level > 0:
         _optimize(mod, tm, opt_level)
     if emit_optimized_ir_to:
@@ -6453,6 +7146,66 @@ def _native_http_link_inputs(prog: Program):
     return [runtime_source], link_args
 
 
+def _program_uses_sqlite_runtime(prog: Program) -> bool:
+    """True if any operation contains a `sqlite.*` call. We trigger on
+    real call sites rather than the dependency declaration because a
+    program can import standard.sqlite, then conditionally not call any
+    sqlite.* function; we don't want to pay the ~1.5 MB amalgamation
+    link cost in that case."""
+    for op in prog.operations.values():
+        for verb, args, _lineno in op.lines:
+            if verb != "call" or len(args) < 2:
+                continue
+            if args[1].startswith("sqlite."):
+                return True
+    return False
+
+
+def _native_sqlite_link_inputs(prog: Program):
+    """Return the (extra_sources, extra_link_args) tuple for linking the
+    native_sqlite adapter + vendored amalgamation into an --emit-exe
+    build. Mirrors `_native_http_link_inputs` but triggered by any
+    sqlite.* call site rather than by `target webServer`.
+
+    The amalgamation `sqlite3.c` is compiled with the same conservative
+    defines documented in
+    SemanticScript/runtime/native_sqlite/CMakeLists.txt — keep the two
+    lists in sync if the build profile shifts. Without those defines the
+    default sqlite3 build still works, but `SQLITE_OMIT_LOAD_EXTENSION`
+    in particular is a security posture we want carried over to the
+    semsc-driven build too.
+    """
+    if not _program_uses_sqlite_runtime(prog):
+        return [], []
+
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    runtime_dir = os.path.join(
+        repo_root, "SemanticScript", "runtime", "native_sqlite")
+    amalgamation_dir = os.path.join(repo_root, "third_party", "sqlite")
+    extra_sources = [
+        os.path.join(runtime_dir, "sem_sqlite_runtime.c"),
+        os.path.join(amalgamation_dir, "sqlite3.c"),
+    ]
+    # `-I` flag so the adapter source can find sqlite3.h alongside the
+    # vendored amalgamation without polluting the include search path of
+    # the main translation unit.
+    extra_link_args = [
+        f"-I{amalgamation_dir}",
+        "-DSQLITE_OMIT_LOAD_EXTENSION",
+        "-DSQLITE_OMIT_DEPRECATED",
+        "-DSQLITE_DQS=0",
+        "-DSQLITE_THREADSAFE=2",
+        "-DSQLITE_DEFAULT_MEMSTATUS=0",
+        "-DSQLITE_USE_URI=1",
+    ]
+    if os.name != "nt":
+        # POSIX needs libdl + libpthread + libm for sqlite3's runtime
+        # feature detection. Windows links the equivalent functionality
+        # via the Win32 personality compiled into sqlite3.c.
+        extra_link_args.extend(["-ldl", "-lpthread", "-lm"])
+    return extra_sources, extra_link_args
+
+
 def main():
     ap = argparse.ArgumentParser(
         prog="semsc",
@@ -6495,6 +7248,22 @@ def main():
                           "default 2 or optLevel from build.sem"))
     ap.add_argument("--emit-optimized-ir",
                     help="write the post-optimization LLVM IR to this path (after --opt-level passes run)")
+    ap.add_argument("--cpu-baseline",
+                    choices=tuple(sorted(_BUILD_TAPE_CHOICES["cpuBaseline"])),
+                    default=None,
+                    help=("CPU baseline for LLVM/clang lowering. Default "
+                          "generic or cpuBaseline from build.sem"))
+    ap.add_argument("--cpu-tune", default=None,
+                    help=("CPU scheduling tune token for clang AOT builds, "
+                          "for example generic, native, or alderlake"))
+    ap.add_argument("--cpu-feature", action="append", default=None,
+                    help=("CPU feature override. May be repeated. Shapes: "
+                          "FEATURE=on, FEATURE=off, +FEATURE, -FEATURE"))
+    ap.add_argument("--cpu-feature-check",
+                    choices=tuple(sorted(_BUILD_TAPE_CHOICES["cpuFeatureCheck"])),
+                    default=None,
+                    help=("host CPU feature check policy for build-time CPU "
+                          "flags: auto, require, warn, or off"))
     ap.add_argument("--emit-exe", nargs="?", const="",
                     help="ahead-of-time compile to a native executable at this path "
                          "(uses clang on PATH or $SEMSC_CLANG to link). With no "
@@ -6617,6 +7386,12 @@ def main():
         opt_level = int(opt_level_raw) if opt_level_raw is not None else 2
         if opt_level < 0 or opt_level > 3:
             raise ValueError("optLevel: value must be in range 0..3")
+        cpu_config = _resolve_cpu_build_config(
+            prog,
+            cpu_baseline=args.cpu_baseline,
+            cpu_tune=args.cpu_tune,
+            cpu_feature_overrides=args.cpu_feature,
+            cpu_feature_check=args.cpu_feature_check)
         runtime_checks_override = args.runtime_checks
         if runtime_checks_override is None:
             runtime_checks_override = _build_metadata_value(prog, "runtimeChecks")
@@ -6714,6 +7489,10 @@ def main():
     if emit_exe_path:
         try:
             extra_sources, extra_link_args = _native_http_link_inputs(prog)
+            sqlite_sources, sqlite_link_args = _native_sqlite_link_inputs(prog)
+            if sqlite_sources:
+                extra_sources = list(extra_sources or []) + sqlite_sources
+                extra_link_args = list(extra_link_args or []) + sqlite_link_args
             resolved_resource_dir = _resolve_resource_dir(
                 prog, args.source, build_dir,
                 args.keep_resources, args.resource_dir)
@@ -6730,7 +7509,8 @@ def main():
                                 extra_sources=extra_sources,
                                 extra_link_args=extra_link_args,
                                 link_work_dir=build_dir,
-                                link_ir_path=persisted_ir_path)
+                                link_ir_path=persisted_ir_path,
+                                cpu_config=cpu_config)
             finally:
                 for path in resource_temp_files:
                     try:
@@ -6758,12 +7538,14 @@ def main():
                 ("llvm ir", "persisted" if persisted_ir_path else "discarded"),
                 ("build dir", build_dir if did_output else ""),
                 ("opt level", opt_level),
+                ("cpu", cpu_config.summary()),
             ],
         ))
 
     if args.run:
         rc = jit_run(ir_text, opt_level=opt_level,
-                     emit_optimized_ir_to=emit_optimized_ir_path)
+                     emit_optimized_ir_to=emit_optimized_ir_path,
+                     cpu_config=cpu_config)
         sys.exit(rc)
 
     if not did_output and not args.quiet:
@@ -6779,6 +7561,7 @@ def main():
                 ("runtime checks", runtime_checks),
                 ("llvm ir", "persisted" if persisted_ir_path else "discarded"),
                 ("opt level", opt_level),
+                ("cpu", cpu_config.summary()),
             ],
             outputs=[("artifact", "none requested")],
             next_steps=[

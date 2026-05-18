@@ -770,6 +770,58 @@ def test_build_tape_llvm_flags_drive_outputs():
           f"rc={proc.returncode} stderr={proc.stderr!r} path={build_ir_path}")
 
 
+def test_cpu_build_config_defaults_to_portable_generic():
+    prog = semsc.parse("project CpuDefault\n")
+    config = semsc._resolve_cpu_build_config(prog)
+    check("cpu flags: default baseline is portable generic",
+          config.baseline == "generic" and not config.llvm_features and not config.clang_args,
+          config.summary())
+
+
+def test_cpu_build_config_collects_feature_overrides():
+    prog = semsc.parse("\n".join([
+        "buildProject cpuSmoke",
+        "project CpuSmoke",
+        "modulePath cpuSmoke github.com/example/cpu-smoke",
+        "languageVersion cpuSmoke \"1.0\"",
+        "projectVersion cpuSmoke \"1.0.0\"",
+        "projectLicense cpuSmoke MIT",
+        "sourceRoot cpuSmoke \".\"",
+        "targetRuntime cpuSmoke nativeExe",
+        "buildProfile cpuSmoke dev",
+        "runtimeChecks cpuSmoke panic",
+        "persistLlvmIr cpuSmoke auto",
+        "optLevel cpuSmoke 2",
+        "cpuBaseline cpuSmoke generic",
+        "cpuFeature cpuSmoke avx2 off",
+        "cpuFeatureCheck cpuSmoke off",
+        "",
+    ]))
+    config = semsc._resolve_cpu_build_config(prog)
+    check("cpu flags: build tape feature disables lower to LLVM feature string",
+          "-avx2" in config.llvm_features and "-mno-avx2" in config.clang_args,
+          f"llvm={config.llvm_features!r} clang={config.clang_args!r}")
+
+
+def test_cpu_feature_check_rejects_missing_required_feature():
+    prog = semsc.parse("\n".join([
+        "project CpuMissingFeature",
+        "cpuFeatureCheck cpuMissing require",
+        "cpuFeature cpuMissing madeup_feature_for_test on",
+        "",
+    ]))
+    raised = False
+    msg = ""
+    try:
+        semsc._resolve_cpu_build_config(prog)
+    except ValueError as e:
+        raised = True
+        msg = str(e)
+    check("cpu flags: required missing host feature fails before codegen",
+          raised and "missing required feature" in msg,
+          f"raised={raised} msg={msg!r}")
+
+
 def test_sem_build_driver_discovers_build_tape():
     with tempfile.TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
@@ -1246,6 +1298,9 @@ def main():
     test_build_tape_path_normalization()
     test_build_tape_validation_rejects_missing_required_rows()
     test_build_tape_llvm_flags_drive_outputs()
+    test_cpu_build_config_defaults_to_portable_generic()
+    test_cpu_build_config_collects_feature_overrides()
+    test_cpu_feature_check_rejects_missing_required_feature()
     test_sem_build_driver_discovers_build_tape()
     test_codegen_diagnostic_is_agent_readable()
     test_web_codegen_rejects_unsupported_http_target()
