@@ -17,3 +17,7 @@ AgentScript/bootstrap/bootstrap_general.ll
 
 .DS_Store
 Thumbs.db
+
+
+# Subagent probe / scratch files
+.tmp_*.as
