@@ -2,6 +2,18 @@
 
 ## 2026-05-18
 
+- `85705d6c19af7cf43133d0de636b0b148c26b392` - `docs: document SemanticScript 1.0 release readiness`
+  - Adds the release-readiness checklist, CI workflow, dependency metadata, release process notes, support matrix docs, SECURITY / CONTRIBUTING files, and folder-level documentation. Marks completed 1.0 tasks while leaving license, publisher, and final artifact decisions explicit.
+- `248e5a76e73d94ce4dd56ad0ae690c3c45230c8d` - `app: add SemanticScript todo TUI sample`
+  - Adds the console todo TUI sample under `app/todo`, including JSON persistence, keyboard navigation, native executable build notes, and app workspace documentation.
+- `44bee3a1afecdc46f82f4bd0873f13574f33a7b6` - `vscode: add extension release checks`
+  - Documents VS Code extension release metadata decisions, adds JSON/package syntax checks, adds a local VSIX packaging script, and records editor-tooling readiness notes.
+- `0ff5fa051c207c84bddef41bd866fb65bbcd4c60` - `tests: stabilize parity and feature coverage`
+  - Adds `.sem` alias fixtures and parity coverage, fixes sample output drift, stabilizes long-running webserver parity by avoiding fixed-port collisions, and brings feature coverage to 130 pass / 30 expected xfail / 0 fail.
+- `514dac28d71ab664637ab1ccc7a6b3c51a1ba7f5` - `linter: expand SemanticScript validation coverage`
+  - Extends semlint and semlint2 coverage for current SemanticScript forms, storage and memory metadata, raw libc return escapes, branch/read analysis, opaque dependency inputs, and companion tests.
+- `73c4a2bfd1766f6f503fc77a2b2c572ea48489a2` - `compiler: add agent-focused diagnostics and runtime profiles`
+  - Adds structured compiler diagnostics, source-oriented SemanticScript stack traces, runtime panic/trap profiles, LLVM IR persistence controls, success-message tests, and the libc registry updates needed for native linking.
 - `1b533ef283db271859f5b4e44a0398bd67dc766d` - `stdlib: move smokes into companion test files`
   - Moves inline stdlib smoke / unit-test programs into sibling `*.test.sscript` files, keeps implementation modules focused on exported operations, and updates `tests/test_stdlib.py` to prefer companions including `stdio.test.sscript`. Verified with `python SemanticScript\tests\test_stdlib.py` (28/28 passing).
 - `e3bf9fca8a2b465d538921f608df08a341ef560f` - `docs: refresh README and companion test guidance`
@@ -15,7 +27,7 @@
 - `b4d2a4a40cbcb4491c78fd7728c15d764ca8ad65` - `samples: move javascript/ to samples/ and add python comparisons`
   - Moves the host-language comparison programs out of the top-level `javascript/` folder into `samples/`, alongside a new `samples/python/` tree. The split makes the repo root cleaner and signals these are reference oracles for cross-language behavior, not SemanticScript source. Python additions cover concurrency / async patterns (threaded pipeline, asyncio orchestrator, hybrid thread/process orchestration, race-condition showcase, reader-writer cache, watchdog supervisor, priority scheduler with cancellation, deadlock avoidance) and a multi-file math-API coverage suite mirrored across exponents/logs, special functions, trig/hyperbolic, vectors/precision, etc.
 - `c8344fb1af5a3bf51793a31309b94a543e47e4eb` - `docs: consolidate maintainable documentation under docs/`
-  - Moves the documentation surface from scattered top-level / nested files into a single `docs/` tree organized by audience: `docs/README.md` (entry point + map), `docs/agents.md` (guidance for AI coding agents), `docs/language/` (specification-grade docs: program-structure / lexical-model / types-values / operations-dataflow / errors-effects-capabilities / memory-state / concurrency-time-cleanup / records-codecs-boundaries), `docs/reference/` (verb-index / call-targets / maintenance), `docs/toolchain/` (compiler / linter / vscode-extension). Deletes superseded standalone docs: SemanticScript/CHANGELOG.md (root CHANGELOG.md is canonical), SemanticScript/README.md (root + docs/toolchain take over), STDLIB.md (folded into docs/language), STDLIB_RENAME_PROPOSALS.md (rename landed; proposals retired), experiments/refined_syntax_example.sscript (lifted into stdlib_sem/), experiments/refined_syntax_graph.md + whatsneeded.md.
+  - Moves the documentation surface from scattered top-level / nested files into a single `docs/` tree organized by audience: `docs/README.md` (entry point + map), `docs/agents.md` (guidance for AI coding agents), `docs/language/` (specification-grade docs: program-structure / lexical-model / types-values / operations-dataflow / errors-effects-capabilities / memory-state / concurrency-time-cleanup / records-codecs-boundaries), `docs/reference/` (verb-index / call-targets / maintenance), `docs/toolchain/` (compiler / linter / vscode-extension). Deletes superseded standalone docs: the old implementation changelog path, the retired implementation README, STDLIB.md, STDLIB_RENAME_PROPOSALS.md, and the retired refined-syntax research artifacts.
 - `bf4ff1b4f581779c5f974a22e59a45cd8b16c9f5` - `stdlib: extended unit tests for inttypes.sscript smoke`
   - Covers absoluteMaxWidthSignedInt over positive / negative / zero, divideMaxWidthSignedIntQuotient / Remainder happy + zero-divisor failure path (asserting both the typed `DivisionByZeroAttempted` variant and that the success path returns the correct sign), parsePositiveBinaryCStringToSignedInt64 across empty / "0" / "1" / "1101" / junk-suffix inputs, and parsePositiveOctalCStringToSignedInt64 across "0" / "7" / "755" / mixed-junk inputs.
 - `a718da92d3e05480586086e79be461890081f084` - `stdlib: extended unit tests for iso646.sscript smoke`
@@ -48,7 +60,7 @@
 - `3ba2e5830d1d8de8056d1a53ea3c2cf77d665a17` - `chore: ignore generated bootstrap IR`
   - Ignored the generated `SemanticScript/bootstrap/bootstrap_general.ll` artifact so feature and bootstrap runs do not leave generated IR in source status.
 - `0433f09816b6df038a21b4ea2132be39487b67f7` - `docs: add refined syntax research artifacts`
-  - Added the project-wide README plus the refined syntax research notes, broad syntax showcase, and Mermaid graph under `experiments/`.
+  - Added the project-wide README plus the refined syntax research notes, broad syntax showcase, and Mermaid graph under the retired research folder.
 - `4e9d0f2ea1d920de20398001ca899575b2387812` - `tooling: support refined SemanticScript syntax in VS Code`
   - Expanded the VS Code extension for refined syntax verbs, schema values, generated codec targets, aggregate/guard/defer families, and future-syntax linter skipping.
 - `dcf08bc0804bde69e0691edaeba32edd4fc63df0` - `tests: cover records imports and C call edges`
