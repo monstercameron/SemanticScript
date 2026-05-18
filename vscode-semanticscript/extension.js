@@ -162,7 +162,7 @@ const generatedTargetHoverText = (text) => {
     return 'Generated JSON encode target. It should be declared by jsonCodecEncodeTarget and backed by jsonCodec input, output, failure, strictness, and limit metadata.';
   }
 
-  return 'Generated AgentScript target declared by metadata.';
+  return 'Generated SemanticScript target declared by metadata.';
 };
 
 const schemaValues = new Map([
@@ -180,7 +180,7 @@ const schemaValues = new Map([
   ['read', 'Effect or collection role mode: read.'],
   ['write', 'Effect or collection role mode: write.'],
   ['log', 'Effect mode: log/observability output.'],
-  ['sourceTape', 'operationBody kind for normal explicit AgentScript source tape.'],
+  ['sourceTape', 'operationBody kind for normal explicit SemanticScript semantic tape.'],
   ['runtimeBinding', 'operationBody kind for a semantic signature implemented by runtime binding metadata.'],
   ['recordConstructor', 'operationBody kind for an operation-backed record constructor.'],
   ['intrinsic', 'operationBody kind for a primitive intrinsic with intrinsicName metadata.'],
@@ -539,24 +539,24 @@ refinedVerbHoverText.forEach((text, verb) => {
 });
 
 const semanticLegend = new vscode.SemanticTokensLegend([
-  'agentscriptDeclarationVerb',
-  'agentscriptContextVerb',
-  'agentscriptActionVerb',
-  'agentscriptControlVerb',
-  'agentscriptRoleSuffix',
-  'agentscriptPrimitiveTarget',
-  'agentscriptGeneratedTarget',
-  'agentscriptDomainTarget',
-  'agentscriptErrorVariant',
-  'agentscriptSchemaValue',
-  'agentscriptOpaqueInput',
-  'agentscriptDeclaredName',
-  'agentscriptConstName',
-  'agentscriptMutableName',
-  'agentscriptCallObject',
-  'agentscriptArgumentName',
-  'agentscriptLabelName',
-  'agentscriptEffectPath',
+  'semanticscriptDeclarationVerb',
+  'semanticscriptContextVerb',
+  'semanticscriptActionVerb',
+  'semanticscriptControlVerb',
+  'semanticscriptRoleSuffix',
+  'semanticscriptPrimitiveTarget',
+  'semanticscriptGeneratedTarget',
+  'semanticscriptDomainTarget',
+  'semanticscriptErrorVariant',
+  'semanticscriptSchemaValue',
+  'semanticscriptOpaqueInput',
+  'semanticscriptDeclaredName',
+  'semanticscriptConstName',
+  'semanticscriptMutableName',
+  'semanticscriptCallObject',
+  'semanticscriptArgumentName',
+  'semanticscriptLabelName',
+  'semanticscriptEffectPath',
   'type',
   'namespace',
   'variable',
@@ -574,7 +574,7 @@ let linterRunMode = 'onSave';
 let linterPythonPath = 'python';
 let linterConfiguredPath = '';
 let linterSkipFutureSyntax = true;
-let linterEngine = 'aslint';
+let linterEngine = 'semlint';
 let diagnosticCollection = null;
 let lintStatusBarItem = null;
 const lintUpdateTimeouts = new Map();
@@ -819,7 +819,7 @@ const clearDecorations = (editor) => {
 };
 
 const updateSegmentDecorations = (editor) => {
-  if (!editor || editor.document.languageId !== 'agentscript') {
+  if (!editor || editor.document.languageId !== 'semanticscript') {
     return;
   }
 
@@ -1423,221 +1423,221 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
   }
 
   if (verb === 'const' && index === 1) {
-    return 'agentscriptConstName';
+    return 'semanticscriptConstName';
   }
 
   if (verb === 'var' && index === 1) {
-    return 'agentscriptMutableName';
+    return 'semanticscriptMutableName';
   }
 
   if (verb === 'type' && index === 1) {
-    return 'agentscriptDeclaredName';
+    return 'semanticscriptDeclaredName';
   }
 
   if ((verb === 'enumCase' || verb === 'errorCase') && index === 2) {
-    return 'agentscriptDeclaredName';
+    return 'semanticscriptDeclaredName';
   }
 
   if ((verb === 'field' || verb === 'fieldDefault' || verb === 'fieldInvariant') && index === 2) {
-    return 'agentscriptArgumentName';
+    return 'semanticscriptArgumentName';
   }
 
   if (verb === 'typeParameter' && index === 2 && (text === 'success' || text === 'error')) {
-    return 'agentscriptSchemaValue';
+    return 'semanticscriptSchemaValue';
   }
 
   if (verb === 'storage' && index === 3) {
     return tokens[2] && tokens[2].text === 'mutable'
-      ? 'agentscriptMutableName'
-      : 'agentscriptConstName';
+      ? 'semanticscriptMutableName'
+      : 'semanticscriptConstName';
   }
 
   if (verb === 'sharedState' && index === 3) {
-    return 'agentscriptMutableName';
+    return 'semanticscriptMutableName';
   }
 
   if (verb === 'set' && index === 1 && !['local', 'module', 'sharedState'].includes(text)) {
-    return 'agentscriptMutableName';
+    return 'semanticscriptMutableName';
   }
 
   if (verb === 'set' && index === 2 && tokens[1] && ['local', 'module', 'sharedState'].includes(tokens[1].text)) {
-    return 'agentscriptMutableName';
+    return 'semanticscriptMutableName';
   }
 
   if (verb === 'read' && index === 2 && tokens[1] && tokens[1].text === 'sharedState') {
-    return 'agentscriptDeclaredName';
+    return 'semanticscriptDeclaredName';
   }
 
   if (verb === 'label' && index === 1) {
-    return 'agentscriptLabelName';
+    return 'semanticscriptLabelName';
   }
 
   if (branchLabelPositions.get(verb) === index) {
-    return 'agentscriptLabelName';
+    return 'semanticscriptLabelName';
   }
 
   if (verb === 'call' && index === 1) {
-    return 'agentscriptCallObject';
+    return 'semanticscriptCallObject';
   }
 
   if (verb === 'recordBuild' && index === 1) {
-    return 'agentscriptCallObject';
+    return 'semanticscriptCallObject';
   }
 
   if (verb === 'recordBuildFailure' && index === 1) {
-    return 'agentscriptCallObject';
+    return 'semanticscriptCallObject';
   }
 
   if (verb === 'memoryAllocationSource' && index === 2) {
-    return 'agentscriptCallObject';
+    return 'semanticscriptCallObject';
   }
 
   if (verb === 'recordBuilder' && index === 1) {
-    return 'agentscriptDeclaredName';
+    return 'semanticscriptDeclaredName';
   }
 
   if (verb === 'arg' && index === 1) {
-    return 'agentscriptCallObject';
+    return 'semanticscriptCallObject';
   }
 
   if (verb === 'arg' && index === 2) {
-    return 'agentscriptArgumentName';
+    return 'semanticscriptArgumentName';
   }
 
   if (singleCallReferenceVerbs.has(verb) && index === 1) {
-    return 'agentscriptCallObject';
+    return 'semanticscriptCallObject';
   }
 
   if ((verb === 'bind' || verb === 'bindOk' || verb === 'bindError') && index === 3) {
-    return 'agentscriptCallObject';
+    return 'semanticscriptCallObject';
   }
 
   if ((verb === 'bind' || verb === 'bindOk') && index === 1) {
-    return 'agentscriptConstName';
+    return 'semanticscriptConstName';
   }
 
   if (verb === 'bindError' && index === 1) {
-    return 'agentscriptMutableName';
+    return 'semanticscriptMutableName';
   }
 
   if ((verb === 'makeError' || verb === 'declareFailure') && index === 1) {
-    return 'agentscriptMutableName';
+    return 'semanticscriptMutableName';
   }
 
   if (verb === 'input' && index === 2) {
-    return 'agentscriptArgumentName';
+    return 'semanticscriptArgumentName';
   }
 
   if (verb === 'fieldGet' && index === 1) {
-    return 'agentscriptConstName';
+    return 'semanticscriptConstName';
   }
 
   if (verb === 'fieldGet' && index === 4) {
-    return 'agentscriptArgumentName';
+    return 'semanticscriptArgumentName';
   }
 
   if (verb === 'fieldSet' && index === 1) {
-    return 'agentscriptConstName';
+    return 'semanticscriptConstName';
   }
 
   if (verb === 'fieldSet' && index === 4) {
-    return 'agentscriptArgumentName';
+    return 'semanticscriptArgumentName';
   }
 
   if (verb === 'recordCopy' && index === 1) {
-    return 'agentscriptDeclaredName';
+    return 'semanticscriptDeclaredName';
   }
 
   if (verb === 'workArg' && index === 1) {
-    return 'agentscriptDeclaredName';
+    return 'semanticscriptDeclaredName';
   }
 
   if (verb === 'workArg' && index === 2) {
-    return 'agentscriptArgumentName';
+    return 'semanticscriptArgumentName';
   }
 
   if (verb === 'work' && index === 2 && text === 'target') {
-    return 'agentscriptSchemaValue';
+    return 'semanticscriptSchemaValue';
   }
 
   if (verb === 'work' && index === 3 && tokens[2] && tokens[2].text === 'target') {
-    return 'agentscriptDeclaredName';
+    return 'semanticscriptDeclaredName';
   }
 
   if ((verb === 'startInterval' || verb === 'awaitIntervalTick' || verb === 'awaitWork') && index === 1) {
-    return 'agentscriptDeclaredName';
+    return 'semanticscriptDeclaredName';
   }
 
   if (verb === 'submitWork' && (index === 1 || index === 2)) {
-    return 'agentscriptDeclaredName';
+    return 'semanticscriptDeclaredName';
   }
 
   if (verb === 'recordSet' && index === 2) {
-    return 'agentscriptArgumentName';
+    return 'semanticscriptArgumentName';
   }
 
   if (verb === 'guardTokenSource' && index === 2) {
-    return 'agentscriptCallObject';
+    return 'semanticscriptCallObject';
   }
 
   if (verb === 'guardTokenRelease' && index === 2) {
-    return 'agentscriptDeclaredName';
+    return 'semanticscriptDeclaredName';
   }
 
   if (namedDeclarationVerbs.has(verb) && index === 1) {
-    return 'agentscriptDeclaredName';
+    return 'semanticscriptDeclaredName';
   }
 
   if (operationReferenceVerbs.has(verb) && index === 1) {
-    return 'agentscriptDeclaredName';
+    return 'semanticscriptDeclaredName';
   }
 
   if (verb === 'collectionOperationArg' && index === 2) {
-    return 'agentscriptArgumentName';
+    return 'semanticscriptArgumentName';
   }
 
   if (verb === 'jsonCodecInput' && index === 3) {
-    return 'agentscriptArgumentName';
+    return 'semanticscriptArgumentName';
   }
 
   if (verb === 'jsonCodecRequiredField' && index === 2) {
-    return 'agentscriptArgumentName';
+    return 'semanticscriptArgumentName';
   }
 
   if (verb.startsWith('group') && index === 1) {
-    return 'agentscriptDeclaredName';
+    return 'semanticscriptDeclaredName';
   }
 
   if ((verb.startsWith('defer') || verb === 'guardTokenRelease') && index === 1) {
-    return 'agentscriptDeclaredName';
+    return 'semanticscriptDeclaredName';
   }
 
   if ((verb === 'deferLog' || verb === 'deferAwaitLog') && index === 2) {
-    return 'agentscriptDeclaredName';
+    return 'semanticscriptDeclaredName';
   }
 
   if (verb === 'deferWhenExitLog' && index === 3) {
-    return 'agentscriptDeclaredName';
+    return 'semanticscriptDeclaredName';
   }
 
   if ((verb === 'deferLogSink' || verb === 'deferAwaitLogSink' || verb === 'deferWhenExitLogSink') && index === 2 && isLowerQualifiedName(text)) {
-    return 'agentscriptEffectPath';
+    return 'semanticscriptEffectPath';
   }
 
   if ((verb === 'effect' || verb === 'dependencyEffect') && index >= 3 && /^[a-z][A-Za-z0-9_]*(?:\.[a-zA-Z_][A-Za-z0-9_]*)*$/.test(text)) {
-    return 'agentscriptEffectPath';
+    return 'semanticscriptEffectPath';
   }
 
   if ((verb === 'runtimeBinding' || verb === 'dependencyPath' || verb === 'intrinsicName') && index === 2 && isLowerQualifiedName(text)) {
-    return 'agentscriptEffectPath';
+    return 'semanticscriptEffectPath';
   }
 
   if (verb === 'collectionOperationEffect' && index === 3 && /^[a-z][A-Za-z0-9_]*(?:\.[a-zA-Z_][A-Za-z0-9_]*)*$/.test(text)) {
-    return 'agentscriptEffectPath';
+    return 'semanticscriptEffectPath';
   }
 
   if ((verb === 'capability' || verb === 'authority') && index === 2 && isLowerQualifiedName(text)) {
-    return 'agentscriptEffectPath';
+    return 'semanticscriptEffectPath';
   }
 
   return null;
@@ -1662,19 +1662,19 @@ const tokenTypeForSymbol = (text, index, tokens) => {
     const classification = classifyVerb(text);
 
     if (classification === 'declaration') {
-      return 'agentscriptDeclarationVerb';
+      return 'semanticscriptDeclarationVerb';
     }
 
     if (classification === 'context') {
-      return 'agentscriptContextVerb';
+      return 'semanticscriptContextVerb';
     }
 
     if (classification === 'action') {
-      return 'agentscriptActionVerb';
+      return 'semanticscriptActionVerb';
     }
 
     if (classification === 'control') {
-      return 'agentscriptControlVerb';
+      return 'semanticscriptControlVerb';
     }
   }
 
@@ -1697,31 +1697,31 @@ const tokenTypeForSymbol = (text, index, tokens) => {
   }
 
   if (schemaValues.has(text)) {
-    return 'agentscriptSchemaValue';
+    return 'semanticscriptSchemaValue';
   }
 
   if (opaqueInputs.has(text)) {
-    return 'agentscriptOpaqueInput';
+    return 'semanticscriptOpaqueInput';
   }
 
   if (primitiveTargets.has(text)) {
-    return 'agentscriptPrimitiveTarget';
+    return 'semanticscriptPrimitiveTarget';
   }
 
   if (cRuntimeTargetPattern.test(text)) {
-    return 'agentscriptPrimitiveTarget';
+    return 'semanticscriptPrimitiveTarget';
   }
 
   if (generatedTargetPattern.test(text)) {
-    return 'agentscriptGeneratedTarget';
+    return 'semanticscriptGeneratedTarget';
   }
 
   if (isDomainTarget(text)) {
-    return 'agentscriptDomainTarget';
+    return 'semanticscriptDomainTarget';
   }
 
   if (/^[A-Z][A-Za-z0-9_]*\.[A-Z][A-Za-z0-9_]*$/.test(text)) {
-    return 'agentscriptErrorVariant';
+    return 'semanticscriptErrorVariant';
   }
 
   if (tokens && tokens[0] && tokens[0].text === 'call' && index === 2) {
@@ -1744,12 +1744,12 @@ const tokenTypeForSymbol = (text, index, tokens) => {
 };
 
 const roleSuffixBaseTokenTypes = new Set([
-  'agentscriptDeclaredName',
-  'agentscriptConstName',
-  'agentscriptMutableName',
-  'agentscriptCallObject',
-  'agentscriptArgumentName',
-  'agentscriptLabelName',
+  'semanticscriptDeclaredName',
+  'semanticscriptConstName',
+  'semanticscriptMutableName',
+  'semanticscriptCallObject',
+  'semanticscriptArgumentName',
+  'semanticscriptLabelName',
   'variable',
 ]);
 
@@ -1778,7 +1778,7 @@ const provideDocumentSemanticTokens = (document) => {
           builder.push(lineIndex, token.start, suffixStart - token.start, tokenType || 'variable', []);
         }
 
-        builder.push(lineIndex, suffixStart, suffixMatch[0].length, 'agentscriptRoleSuffix', []);
+        builder.push(lineIndex, suffixStart, suffixMatch[0].length, 'semanticscriptRoleSuffix', []);
         return;
       }
 
@@ -1798,7 +1798,7 @@ const registerSemanticTokens = (context) => {
 
   context.subscriptions.push(
     vscode.languages.registerDocumentSemanticTokensProvider(
-      { language: 'agentscript' },
+      { language: 'semanticscript' },
       provider,
       semanticLegend
     )
@@ -2541,7 +2541,7 @@ const symbolHover = (document, position, token, tokenIndex, tokens) => {
   }
 
   if (declaration.text) {
-    markdown.appendCodeblock(declaration.text, 'agentscript');
+    markdown.appendCodeblock(declaration.text, 'semanticscript');
   }
 
   return new vscode.Hover(markdown);
@@ -2577,7 +2577,7 @@ const operationMetadataHover = (operation) => {
   }
 
   if (codeLines.length > 0) {
-    markdown.appendCodeblock(codeLines.join('\n'), 'agentscript');
+    markdown.appendCodeblock(codeLines.join('\n'), 'semanticscript');
   }
 
   return new vscode.Hover(markdown);
@@ -2599,7 +2599,7 @@ const roleSuffixHover = (token, character) => {
 
   return markdownHover(
     `Role suffix: ${suffix}`,
-    'AgentScript role suffixes are context markers. They tell agents and tools what semantic kind a symbol represents.'
+    'SemanticScript role suffixes are context markers. They tell agents and tools what semantic kind a symbol represents.'
   );
 };
 
@@ -2643,7 +2643,7 @@ const provideHover = (document, position) => {
   }
 
   if (tokenIndex === 0 && verbHoverText.has(text)) {
-    return markdownHover(`AgentScript verb: ${text}`, verbHoverText.get(text));
+    return markdownHover(`SemanticScript verb: ${text}`, verbHoverText.get(text));
   }
 
   if (primitiveTargets.has(text)) {
@@ -2703,28 +2703,28 @@ const provideHover = (document, position) => {
 const registerHovers = (context) => {
   context.subscriptions.push(
     vscode.languages.registerHoverProvider(
-      { language: 'agentscript' },
+      { language: 'semanticscript' },
       { provideHover }
     )
   );
 };
 
 const syncConfiguration = () => {
-  const segmentConfig = vscode.workspace.getConfiguration('agentScript.segmentColors');
+  const segmentConfig = vscode.workspace.getConfiguration('semanticScript.segmentColors');
   segmentColoringEnabled = segmentConfig.get('enabled', true);
   segmentColorMode = segmentConfig.get('colorMode', 'background');
 
-  const linterConfig = vscode.workspace.getConfiguration('agentScript.linter');
+  const linterConfig = vscode.workspace.getConfiguration('semanticScript.linter');
   linterEnabled = linterConfig.get('enabled', true);
   linterRunMode = linterConfig.get('run', 'onSave');
   linterPythonPath = linterConfig.get('pythonPath', 'python');
   linterConfiguredPath = linterConfig.get('path', '');
   linterSkipFutureSyntax = linterConfig.get('skipFutureSyntax', true);
-  linterEngine = linterConfig.get('engine', 'aslint');
+  linterEngine = linterConfig.get('engine', 'semlint');
 };
 
-const isAgentScriptDocument = (document) => (
-  document && document.languageId === 'agentscript' && document.uri.scheme === 'file'
+const isSemanticScriptDocument = (document) => (
+  document && document.languageId === 'semanticscript' && document.uri.scheme === 'file'
 );
 
 const documentUsesFutureSyntax = (document) => {
@@ -2732,7 +2732,7 @@ const documentUsesFutureSyntax = (document) => {
 
   if (
     text.includes('future refined syntax')
-    || text.includes('not current executable AgentScript')
+    || text.includes('not current executable SemanticScript')
   ) {
     return true;
   }
@@ -2749,7 +2749,7 @@ const documentUsesFutureSyntax = (document) => {
   });
 };
 
-const linterScriptName = () => (linterEngine === 'aslint2' ? 'aslint2.py' : 'aslint.py');
+const linterScriptName = () => (linterEngine === 'semlint2' ? 'semlint2.py' : 'semlint.py');
 
 const candidateLinterPaths = (document) => {
   const candidates = [];
@@ -2760,7 +2760,7 @@ const candidateLinterPaths = (document) => {
     const rootPath = path.parse(currentPath).root;
 
     while (currentPath && currentPath !== rootPath) {
-      candidates.push(path.join(currentPath, 'AgentScript', 'linter', scriptName));
+      candidates.push(path.join(currentPath, 'SemanticScript', 'linter', scriptName));
       candidates.push(path.join(currentPath, 'linter', scriptName));
       currentPath = path.dirname(currentPath);
     }
@@ -2776,9 +2776,9 @@ const candidateLinterPaths = (document) => {
 
   const workspaceFolders = vscode.workspace.workspaceFolders || [];
   workspaceFolders.forEach((folder) => {
-    candidates.push(path.join(folder.uri.fsPath, 'AgentScript', 'linter', scriptName));
+    candidates.push(path.join(folder.uri.fsPath, 'SemanticScript', 'linter', scriptName));
     candidates.push(path.join(folder.uri.fsPath, 'linter', scriptName));
-    candidates.push(path.join(folder.uri.fsPath, '..', 'AgentScript', 'linter', scriptName));
+    candidates.push(path.join(folder.uri.fsPath, '..', 'SemanticScript', 'linter', scriptName));
     addAncestorCandidates(folder.uri.fsPath);
   });
 
@@ -2842,7 +2842,7 @@ const diagnosticRange = (document, lineNumber, columnNumber) => {
   );
 };
 
-const aslint2Message = (record) => {
+const semlint2Message = (record) => {
   const parts = [];
 
   if (record.code || record.kind) {
@@ -2863,28 +2863,28 @@ const aslint2Message = (record) => {
     parts.push(`gap: ${record.gapEdge}`);
   }
 
-  return parts.join(' - ') || 'AgentScript lint diagnostic';
+  return parts.join(' - ') || 'SemanticScript lint diagnostic';
 };
 
-const diagnosticFromAslint2Record = (document, record) => {
+const diagnosticFromSemlint2Record = (document, record) => {
   const primary = record.primary || {};
   const diagnostic = new vscode.Diagnostic(
     diagnosticRange(document, primary.line, primary.column),
-    aslint2Message(record),
+    semlint2Message(record),
     severityFromLinter(record.severity)
   );
-  diagnostic.source = 'aslint2';
+  diagnostic.source = 'semlint2';
   diagnostic.code = record.code || undefined;
   return diagnostic;
 };
 
-const diagnosticFromAslintRecord = (document, record) => {
+const diagnosticFromSemlintRecord = (document, record) => {
   const diagnostic = new vscode.Diagnostic(
     diagnosticRange(document, record.line, record.column),
-    record.message || String(record.rule || 'AgentScript lint diagnostic'),
+    record.message || String(record.rule || 'SemanticScript lint diagnostic'),
     severityFromLinter(record.severity)
   );
-  diagnostic.source = 'aslint';
+  diagnostic.source = 'semlint';
   diagnostic.code = record.rule || undefined;
   return diagnostic;
 };
@@ -2910,10 +2910,10 @@ const parseLinterDiagnostics = (document, stdout) => {
 
   return records.map((record) => {
     if (record && record.primary) {
-      return diagnosticFromAslint2Record(document, record);
+      return diagnosticFromSemlint2Record(document, record);
     }
 
-    return diagnosticFromAslintRecord(document, record || {});
+    return diagnosticFromSemlintRecord(document, record || {});
   });
 };
 
@@ -2940,7 +2940,7 @@ const clearLinterStatusLater = () => {
 };
 
 const runLinterForDocument = (document, showMissingLinterMessage = false) => {
-  if (!diagnosticCollection || !isAgentScriptDocument(document)) {
+  if (!diagnosticCollection || !isSemanticScriptDocument(document)) {
     return;
   }
 
@@ -2959,7 +2959,7 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
 
   if (linterSkipFutureSyntax && documentUsesFutureSyntax(document)) {
     diagnosticCollection.delete(document.uri);
-    setLinterStatus('$(info) AgentScript future syntax', `${linterEngine} is skipped for refined future syntax.`);
+    setLinterStatus('$(info) SemanticScript future syntax', `${linterEngine} is skipped for refined future syntax.`);
     clearLinterStatusLater();
     return;
   }
@@ -2971,15 +2971,15 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
 
     if (showMissingLinterMessage) {
       vscode.window.showWarningMessage(
-        `AgentScript ${linterEngine} linter not found. Set agentScript.linter.path or open the AgentScript repo root.`
+        `SemanticScript ${linterEngine} linter not found. Set semanticScript.linter.path or open the SemanticScript repo root.`
       );
     }
 
     return;
   }
 
-  setLinterStatus('$(sync~spin) AgentScript lint', document.fileName);
-  const linterArgs = linterEngine === 'aslint2'
+  setLinterStatus('$(sync~spin) SemanticScript lint', document.fileName);
+  const linterArgs = linterEngine === 'semlint2'
     ? [linterPath, document.fileName, '--format', 'json']
     : [linterPath, document.fileName, '--format', 'json', '--fail-on', 'none'];
 
@@ -3014,7 +3014,7 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
         vscode.DiagnosticSeverity.Error
       ),
     ]);
-    setLinterStatus('$(error) AgentScript lint failed', error.message);
+    setLinterStatus('$(error) SemanticScript lint failed', error.message);
     clearLinterStatusLater();
   });
 
@@ -3033,7 +3033,7 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
           vscode.DiagnosticSeverity.Error
         ),
       ]);
-      setLinterStatus('$(error) AgentScript lint failed', stderr.trim());
+      setLinterStatus('$(error) SemanticScript lint failed', stderr.trim());
       clearLinterStatusLater();
       return;
     }
@@ -3042,9 +3042,9 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
     diagnosticCollection.set(document.uri, diagnostics);
 
     if (diagnostics.length > 0) {
-      setLinterStatus(`$(warning) AgentScript lint ${diagnostics.length}`, `${diagnostics.length} diagnostic(s)`);
+      setLinterStatus(`$(warning) SemanticScript lint ${diagnostics.length}`, `${diagnostics.length} diagnostic(s)`);
     } else {
-      setLinterStatus('$(check) AgentScript lint clean', document.fileName);
+      setLinterStatus('$(check) SemanticScript lint clean', document.fileName);
     }
 
     clearLinterStatusLater();
@@ -3052,7 +3052,7 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
 };
 
 const scheduleLinterRun = (document, delayMilliseconds = 350) => {
-  if (!isAgentScriptDocument(document)) {
+  if (!isSemanticScriptDocument(document)) {
     return;
   }
 
@@ -3070,18 +3070,18 @@ const scheduleLinterRun = (document, delayMilliseconds = 350) => {
 };
 
 const registerLinter = (context) => {
-  diagnosticCollection = vscode.languages.createDiagnosticCollection('aslint');
+  diagnosticCollection = vscode.languages.createDiagnosticCollection('semlint');
   lintStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-  lintStatusBarItem.command = 'agentscript.runLinter';
+  lintStatusBarItem.command = 'semanticscript.runLinter';
 
   context.subscriptions.push(diagnosticCollection, lintStatusBarItem);
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('agentscript.runLinter', () => {
+    vscode.commands.registerCommand('semanticscript.runLinter', () => {
       const editor = vscode.window.activeTextEditor;
 
-      if (!editor || !isAgentScriptDocument(editor.document)) {
-        vscode.window.showInformationMessage('Open an AgentScript file to run the linter.');
+      if (!editor || !isSemanticScriptDocument(editor.document)) {
+        vscode.window.showInformationMessage('Open a SemanticScript file to run the linter.');
         return;
       }
 
@@ -3139,10 +3139,10 @@ const activate = (context) => {
   });
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('agentscript.toggleSegmentColors', () => {
+    vscode.commands.registerCommand('semanticscript.toggleSegmentColors', () => {
       segmentColoringEnabled = !segmentColoringEnabled;
       vscode.window.visibleTextEditors.forEach(updateSegmentDecorations);
-      vscode.window.showInformationMessage(`AgentScript segment colors ${segmentColoringEnabled ? 'enabled' : 'disabled'}.`);
+      vscode.window.showInformationMessage(`SemanticScript segment colors ${segmentColoringEnabled ? 'enabled' : 'disabled'}.`);
     })
   );
 
@@ -3167,7 +3167,7 @@ const activate = (context) => {
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration('agentScript.segmentColors') || event.affectsConfiguration('agentScript.linter')) {
+      if (event.affectsConfiguration('semanticScript.segmentColors') || event.affectsConfiguration('semanticScript.linter')) {
         disposeDecorations();
         syncConfiguration();
         decorations = createDecorations();

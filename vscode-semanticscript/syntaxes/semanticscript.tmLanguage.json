@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-  "name": "AgentScript",
-  "scopeName": "source.agentscript",
+  "name": "SemanticScript",
+  "scopeName": "source.semanticscript",
   "patterns": [
     {
       "include": "#comments"
@@ -53,7 +53,7 @@
     "comments": {
       "patterns": [
         {
-          "name": "comment.line.number-sign.agentscript",
+          "name": "comment.line.number-sign.semanticscript",
           "match": "#.*$"
         }
       ]
@@ -61,12 +61,12 @@
     "strings": {
       "patterns": [
         {
-          "name": "string.quoted.double.agentscript",
+          "name": "string.quoted.double.semanticscript",
           "begin": "\"",
           "end": "\"",
           "patterns": [
             {
-              "name": "constant.character.escape.agentscript",
+              "name": "constant.character.escape.semanticscript",
               "match": "\\\\."
             }
           ]
@@ -76,7 +76,7 @@
     "declarationVerbs": {
       "patterns": [
         {
-          "name": "keyword.declaration.agentscript",
+          "name": "keyword.declaration.semanticscript",
           "match": "^(\\s*)(section|project|target|runtime|entry|module|mode|dependency|dependencyEffect|dependencyExports|dependencyFunction|dependencyFunctionInput|dependencyFunctionOutput|dependencyFunctionEffect|dependencyFunctionAsync|importModule|type|typeParameter|typeInvariant|typeRepresentation|typeTrust|typeMemory|typeLayout|typeLiteralEncoding|typeLiteralTerminator|record|recordLayout|recordAlign|field|fieldDefault|fieldInvariant|enum|enumCase|error|errorCase|operation|webServer|serverHost|serverPort|route|routeTimeout|routeMiddleware|storage|sharedState|domainLiteral|literal|listLiteral|jsonCodec|policy|errorPolicy|validator|codec|schema|unknownFields|resource|resourceKey|resourceValue|resourceKind|adapter|boundary|mapper|retryPolicy|timeoutBudget|capability|authority|mutex|shared|channel|listType|arrayType|sliceType|smallListType|mapType|interval|workerPool|work|const|var|testCovers)\\b"
         }
       ]
@@ -84,7 +84,7 @@
     "contextVerbs": {
       "patterns": [
         {
-          "name": "keyword.context.agentscript",
+          "name": "keyword.context.semanticscript",
           "match": "^(\\s*)(input|output|effect|memory|memoryHeap|memoryArena|memoryAllocationSource|memoryStackLimit|async|operationBody|purpose|invariant|warning|failure|guarantee|security|timing|observability|dependencyPath|dependencyFailure|intrinsicName|runtimeBinding|runtimeBindingPrecondition|runtimeBindingFailure|recordConstructor|recordConstructorFailure|recordBuildFailure|jsonCodecStrict|jsonCodecUnknownFields|jsonCodecDecodeTarget|jsonCodecEncodeTarget|jsonCodecRequiredField|jsonCodecInput|jsonCodecOutput|jsonCodecDecodeFailure|jsonCodecEncodeFailure|jsonCodecLimit|trustBoundary|trustBoundaryKind|trustBoundaryInput|trustBoundaryOutput|trustBoundaryValidator|trustBoundarySource|domainLiteralSource|domainLiteralTrust|domainLiteralValidation|literalBytes|literalDigest|literalPreview|literalSource|literalTrust|sharedStateOwner|sharedStateGuard|guardTokenSource|guardTokenOwner|guardTokenProtects|guardTokenRelease|listAllocator|arrayLength|smallListInlineCapacity|smallListSpillAllocator|mapKey|mapValue|mapAllocator|listLiteralLength|listLiteralIndexBase|listLiteralIndexPolicy|listLiteralItem|collectionOperation|collectionOperationArg|collectionOperationOutput|collectionOperationFailure|collectionOperationEffect|collectionOperationAllocation|collectionOperationMutation|collectionOperationIndexPolicy|collectionOperationLengthSource|collectionOperationBorrowSource|collectionOperationCapacitySource|collectionOperationSpillAllocator|collectionOperationSpillFailure|retryMaxAttempts|retryInitialDelay|retryMaximumDelay|retryJitter|group|groupPurpose|groupInput|groupOutput|groupError|groupFailure|groupTiming|deferLogSink|deferRunOn|deferOrder|deferFailurePolicy|deferConsumes|deferAwaitLogSink|deferAwaitTimeout|deferWhenExitLogSink|workArg)\\b"
         }
       ]
@@ -92,7 +92,7 @@
     "actionVerbs": {
       "patterns": [
         {
-          "name": "keyword.action.agentscript",
+          "name": "keyword.action.semanticscript",
           "match": "^(\\s*)(set|call|arg|run|start|await|bind|bindOk|bindError|ignoreOk|ignoreValue|declareFailure|makeError|new|fieldGet|fieldSet|recordBuilder|recordSet|recordCopy|recordBuild|read|timeout|cancelOn|defer|deferLog|deferAwaitLog|deferWhenExitLog|select|selectCase|runSelect|taskGroup|startInGroup|awaitGroup|bindGroupError|send|receive|lock|unlock|useRetry|useCapability|startInterval|awaitIntervalTick|submitWork|awaitWork)\\b"
         }
       ]
@@ -100,7 +100,7 @@
     "controlVerbs": {
       "patterns": [
         {
-          "name": "keyword.control.agentscript",
+          "name": "keyword.control.semanticscript",
           "match": "^(\\s*)(label|branch|branchIf|branchIfError|branchSelected|branchIfGroupError|branchIfChannelClosed|returnOk|returnError|returnValue)\\b"
         }
       ]
@@ -108,7 +108,7 @@
     "numbers": {
       "patterns": [
         {
-          "name": "constant.numeric.integer.agentscript",
+          "name": "constant.numeric.integer.semanticscript",
           "match": "\\b-?\\d+\\b"
         }
       ]
@@ -116,7 +116,7 @@
     "primitiveTargets": {
       "patterns": [
         {
-          "name": "entity.name.function.primitive-target.agentscript",
+          "name": "entity.name.function.primitive-target.semanticscript",
           "match": "\\b(?:c\\.[A-Za-z_][A-Za-z0-9_]*|pointer\\.(?:loadByte|storeByte|offset|difference|isNull)|console\\.writeLine|console\\.writeIntegerLine|console\\.writeInteger|console\\.writeFloatLine|scheduler\\.sleep|retryPolicy\\.delayForAttempt|metrics\\.computeIncrementI64|math\\.(?:addI64|subtractI64|multiplyI64|divideI64|moduloI64|equalI64|notEqualI64|lessThanI64|lessThanOrEqualI64|greaterThanI64|greaterThanOrEqualI64|addF64|subtractF64|multiplyF64|divideF64|equalF64|notEqualF64|lessThanF64|lessThanOrEqualF64|greaterThanF64|greaterThanOrEqualF64|intToFloat|floatToInt|convertSignedInt64ToFloat64|convertFloat64ToSignedInt64|equalCSignedInt32|greaterThanOrEqualCByteCount|checkedMultiplyI64|subI64|mulI64|divI64|modI64|eqI64|neI64|ltI64|leI64|gtI64|geI64))\\b"
         }
       ]
@@ -124,7 +124,7 @@
     "domainTargets": {
       "patterns": [
         {
-          "name": "entity.name.function.domain-target.agentscript",
+          "name": "entity.name.function.domain-target.semanticscript",
           "match": "\\b[A-Z][A-Za-z0-9_]*\\.(?:add|addPositiveStep|subtract|subtractStep|subtractPositiveStep|multiply|multiplyByStep|multiplyByCounter|divide|modulo|moduloBy|equal|notEqual|lessThan|lessThanOrEqual|greaterThan|greaterThanOrEqual|square|checkedMultiply|checkedMultiplyByCounter|checkedMultiplyByStep|length|append|get|set|slice|insert|update|remove)\\b"
         }
       ]
@@ -132,7 +132,7 @@
     "generatedTargets": {
       "patterns": [
         {
-          "name": "entity.name.function.generated-target.agentscript",
+          "name": "entity.name.function.generated-target.semanticscript",
           "match": "\\bjson\\.(?:decode|encode)\\.[A-Z][A-Za-z0-9_]*\\b"
         }
       ]
@@ -140,7 +140,7 @@
     "errorVariants": {
       "patterns": [
         {
-          "name": "constant.language.error-variant.agentscript",
+          "name": "constant.language.error-variant.semanticscript",
           "match": "\\b[A-Z][A-Za-z0-9_]*\\.[A-Z][A-Za-z0-9_]*\\b"
         }
       ]
@@ -148,7 +148,7 @@
     "schemaValues": {
       "patterns": [
         {
-          "name": "constant.language.schema-value.agentscript",
+          "name": "constant.language.schema-value.semanticscript",
           "match": "\\b(?:true|false|yes|no|capturedOutputReplay|local|module|process|sharedState|immutable|mutable|read|write|log|sourceTape|runtimeBinding|recordConstructor|intrinsic|externalDependency|codecDecode|codecEncode|collectionOperation|success|error|decode|encode|reject|ignore|keep|none|maximumBytes|sha256|utf8|nullByte|validatedRuntimeValue|trustedStaticLiteral|trustedUtf8Literal|trustedExternalCNullTerminatedUtf8Source|trustedInternal|trustedSessionContext|trustedStaticAsset|rawPointerToValidatedCString|rawUtf8ToValidatedText|row|column|packed|heap|inPlace|boundsChecked|denseZeroIndexed|all|immutableUpdate|borrowedView|zeroBasedChecked|zeroBasedCheckedRange|contiguousUniqueAscending|arena\\.request|arena\\.process|arena\\.static|returnOk|returnError|reverseRegistration|logAndSuppress|protectedBy|ownedBy)\\b"
         }
       ]
@@ -156,7 +156,7 @@
     "qualifiedNames": {
       "patterns": [
         {
-          "name": "entity.name.namespace.agentscript",
+          "name": "entity.name.namespace.semanticscript",
           "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)+\\b"
         }
       ]
@@ -164,7 +164,7 @@
     "types": {
       "patterns": [
         {
-          "name": "support.type.agentscript",
+          "name": "support.type.semanticscript",
           "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
         }
       ]
@@ -172,7 +172,7 @@
     "symbols": {
       "patterns": [
         {
-          "name": "variable.other.agentscript",
+          "name": "variable.other.semanticscript",
           "match": "\\b[a-z][A-Za-z0-9_]*\\b"
         }
       ]

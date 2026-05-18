@@ -1,0 +1,340 @@
+{
+  "name": "semanticscript-vscode",
+  "displayName": "SemanticScript",
+  "description": "Syntax highlighting and segment coloring for SemanticScript .sscript files.",
+  "version": "0.1.9",
+  "publisher": "semanticscript-local",
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:semanticscript",
+    "onCommand:semanticscript.toggleSegmentColors",
+    "onCommand:semanticscript.runLinter"
+  ],
+  "main": "./extension.js",
+  "scripts": {
+    "check": "node --check extension.js"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "semanticscript",
+        "aliases": [
+          "SemanticScript",
+          "semanticscript"
+        ],
+        "extensions": [
+          ".sscript",
+          ".sem"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "semanticscript",
+        "scopeName": "source.semanticscript",
+        "path": "./syntaxes/semanticscript.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "semanticscript.toggleSegmentColors",
+        "title": "SemanticScript: Toggle Segment Colors"
+      },
+      {
+        "command": "semanticscript.runLinter",
+        "title": "SemanticScript: Run Linter"
+      }
+    ],
+    "configuration": {
+      "title": "SemanticScript",
+      "properties": {
+        "semanticScript.segmentColors.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable subtle line segment coloring for SemanticScript files."
+        },
+        "semanticScript.segmentColors.colorMode": {
+          "type": "string",
+          "default": "background",
+          "enum": [
+            "background",
+            "overview",
+            "both"
+          ],
+          "description": "Controls whether segment colors appear as line backgrounds, overview-ruler markers, or both."
+        },
+        "semanticScript.linter.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable SemanticScript lint diagnostics using the selected standalone linter CLI."
+        },
+        "semanticScript.linter.engine": {
+          "type": "string",
+          "default": "semlint",
+          "enum": [
+            "semlint",
+            "semlint2"
+          ],
+          "description": "Select the SemanticScript linter engine. semlint is stable; semlint2 emits structured refinement diagnostics."
+        },
+        "semanticScript.linter.run": {
+          "type": "string",
+          "default": "onSave",
+          "enum": [
+            "onSave",
+            "onType",
+            "manual"
+          ],
+          "description": "Controls when the SemanticScript linter runs."
+        },
+        "semanticScript.linter.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Python executable used to run the selected linter."
+        },
+        "semanticScript.linter.path": {
+          "type": "string",
+          "default": "",
+          "description": "Optional path to semlint.py or semlint2.py. Leave empty to auto-discover the selected linter from the workspace."
+        },
+        "semanticScript.linter.skipFutureSyntax": {
+          "type": "boolean",
+          "default": true,
+          "description": "Skip current semlint diagnostics for proposed refined syntax files that are not executable by the current compiler yet."
+        }
+      }
+    },
+    "semanticTokenTypes": [
+      {
+        "id": "semanticscriptDeclarationVerb",
+        "superType": "keyword",
+        "description": "SemanticScript declaration verb."
+      },
+      {
+        "id": "semanticscriptContextVerb",
+        "superType": "keyword",
+        "description": "SemanticScript metadata or context verb."
+      },
+      {
+        "id": "semanticscriptActionVerb",
+        "superType": "keyword",
+        "description": "SemanticScript action verb."
+      },
+      {
+        "id": "semanticscriptControlVerb",
+        "superType": "keyword",
+        "description": "SemanticScript control-flow verb."
+      },
+      {
+        "id": "semanticscriptRoleSuffix",
+        "superType": "type",
+        "description": "SemanticScript contextual role suffix inside a symbol."
+      },
+      {
+        "id": "semanticscriptPrimitiveTarget",
+        "superType": "function",
+        "description": "SemanticScript implemented primitive call target."
+      },
+      {
+        "id": "semanticscriptGeneratedTarget",
+        "superType": "function",
+        "description": "SemanticScript generated metadata-backed call target."
+      },
+      {
+        "id": "semanticscriptDomainTarget",
+        "superType": "method",
+        "description": "SemanticScript domain-typed method target."
+      },
+      {
+        "id": "semanticscriptErrorVariant",
+        "superType": "enumMember",
+        "description": "SemanticScript typed error variant reference."
+      },
+      {
+        "id": "semanticscriptSchemaValue",
+        "superType": "enumMember",
+        "description": "SemanticScript fixed schema value."
+      },
+      {
+        "id": "semanticscriptOpaqueInput",
+        "superType": "parameter",
+        "description": "SemanticScript opaque dependency input."
+      },
+      {
+        "id": "semanticscriptDeclaredName",
+        "superType": "variable",
+        "description": "SemanticScript declared top-level or operation name."
+      },
+      {
+        "id": "semanticscriptConstName",
+        "superType": "variable",
+        "description": "SemanticScript constant binding name."
+      },
+      {
+        "id": "semanticscriptMutableName",
+        "superType": "variable",
+        "description": "SemanticScript mutable binding name."
+      },
+      {
+        "id": "semanticscriptCallObject",
+        "superType": "variable",
+        "description": "SemanticScript call object name."
+      },
+      {
+        "id": "semanticscriptArgumentName",
+        "superType": "parameter",
+        "description": "SemanticScript call argument role name."
+      },
+      {
+        "id": "semanticscriptLabelName",
+        "superType": "variable",
+        "description": "SemanticScript control-flow label name."
+      },
+      {
+        "id": "semanticscriptEffectPath",
+        "superType": "namespace",
+        "description": "SemanticScript effect or capability path."
+      }
+    ],
+    "configurationDefaults": {
+      "[semanticscript]": {
+        "editor.semanticHighlighting.enabled": true,
+        "editor.wordBasedSuggestions": "off"
+      },
+      "editor.semanticTokenColorCustomizations": {
+        "rules": {
+          "semanticscriptDeclarationVerb": "#FF7B72",
+          "semanticscriptContextVerb": "#7EE787",
+          "semanticscriptActionVerb": "#DCDCAA",
+          "semanticscriptControlVerb": "#79C0FF",
+          "semanticscriptRoleSuffix": "#FFB86C",
+          "semanticscriptPrimitiveTarget": "#E3B341",
+          "semanticscriptGeneratedTarget": "#C297FF",
+          "semanticscriptDomainTarget": "#56D4DD",
+          "semanticscriptErrorVariant": "#FF6B6B",
+          "semanticscriptSchemaValue": "#B8D7FF",
+          "semanticscriptOpaqueInput": "#DBB2FF",
+          "semanticscriptDeclaredName": "#FFA657",
+          "semanticscriptConstName": "#F2CC60",
+          "semanticscriptMutableName": "#FFA198",
+          "semanticscriptCallObject": "#D2A8FF",
+          "semanticscriptArgumentName": "#A5D6FF",
+          "semanticscriptLabelName": "#79C0FF",
+          "semanticscriptEffectPath": "#A5D6A7",
+          "type:semanticscript": "#4EC9B0",
+          "namespace:semanticscript": "#8B949E",
+          "variable:semanticscript": "#C9D1D9",
+          "string:semanticscript": "#CE9178",
+          "number:semanticscript": "#B5CEA8",
+          "comment:semanticscript": "#6A9955"
+        }
+      },
+      "editor.tokenColorCustomizations": {
+        "textMateRules": [
+          {
+            "scope": "keyword.declaration.semanticscript",
+            "settings": {
+              "foreground": "#FF7B72",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "keyword.context.semanticscript",
+            "settings": {
+              "foreground": "#7EE787",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "keyword.action.semanticscript",
+            "settings": {
+              "foreground": "#DCDCAA",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "keyword.control.semanticscript",
+            "settings": {
+              "foreground": "#79C0FF",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "entity.name.function.primitive-target.semanticscript",
+            "settings": {
+              "foreground": "#E3B341"
+            }
+          },
+          {
+            "scope": "entity.name.function.domain-target.semanticscript",
+            "settings": {
+              "foreground": "#56D4DD"
+            }
+          },
+          {
+            "scope": "entity.name.function.generated-target.semanticscript",
+            "settings": {
+              "foreground": "#C297FF"
+            }
+          },
+          {
+            "scope": "constant.language.error-variant.semanticscript",
+            "settings": {
+              "foreground": "#FF6B6B"
+            }
+          },
+          {
+            "scope": "constant.language.schema-value.semanticscript",
+            "settings": {
+              "foreground": "#B8D7FF"
+            }
+          },
+          {
+            "scope": "entity.name.namespace.semanticscript",
+            "settings": {
+              "foreground": "#8B949E"
+            }
+          },
+          {
+            "scope": "support.type.semanticscript",
+            "settings": {
+              "foreground": "#4EC9B0"
+            }
+          },
+          {
+            "scope": "variable.other.semanticscript",
+            "settings": {
+              "foreground": "#C9D1D9"
+            }
+          },
+          {
+            "scope": "string.quoted.double.semanticscript",
+            "settings": {
+              "foreground": "#CE9178"
+            }
+          },
+          {
+            "scope": "constant.numeric.integer.semanticscript",
+            "settings": {
+              "foreground": "#B5CEA8"
+            }
+          },
+          {
+            "scope": "comment.line.number-sign.semanticscript",
+            "settings": {
+              "foreground": "#6A9955",
+              "fontStyle": "italic"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

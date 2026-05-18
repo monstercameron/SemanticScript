@@ -2,12 +2,12 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run AgentScript Extension",
+      "name": "Run SemanticScript Extension",
       "type": "extensionHost",
       "request": "launch",
       "args": [
         "--extensionDevelopmentPath=${workspaceFolder}",
-        "${workspaceFolder}/../AgentScript/as"
+        "${workspaceFolder}/../SemanticScript/sem"
       ]
     }
   ]

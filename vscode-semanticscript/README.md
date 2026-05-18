@@ -1,16 +1,16 @@
-# AgentScript VS Code Extension
+# SemanticScript VS Code Extension
 
-Local VS Code extension for AgentScript `.as` and `.agentscript` files.
+Local VS Code extension for SemanticScript `.sscript` and `.sem` files.
 
 This extension is editor tooling. It recognizes both the current executable
-AgentScript surface and the refined future syntax used in
-`../experiments/refined_syntax_example.as`. The refined syntax support is for
+SemanticScript surface and the refined future syntax used in
+`../SemanticScript/sem/refined_syntax_demo.sscript`. The refined syntax support is for
 highlighting, hovers, semantic roles, and drift detection; it does not make the
 current compiler accept those future forms.
 
 ## Features
 
-- Language registration for `.as` and `.agentscript`.
+- Language registration for `.sscript` and `.sem`.
 - TextMate highlighting for verbs, types, strings, numbers, comments, symbols,
   qualified paths, error variants, schema values, primitive targets, generated
   targets, and domain targets.
@@ -26,10 +26,10 @@ current compiler accept those future forms.
 - Identifier hovers resolve same-file symbols such as constants, variables,
   inputs, storage slots, call objects, labels, bindings, failures, fields,
   groups, collection declarations, and work items.
-- Optional diagnostics from `aslint.py`, with current-linter diagnostics skipped
+- Optional diagnostics from `semlint.py`, with current-linter diagnostics skipped
   by default for refined future syntax files.
-- Optional structured diagnostics from `aslint2.py` via
-  `agentScript.linter.engine`.
+- Optional structured diagnostics from `semlint2.py` via
+  `semanticScript.linter.engine`.
 
 ## Refined Syntax Coverage
 
@@ -99,42 +99,42 @@ suffix fragments.
 
 ## Linting
 
-Linting uses `../AgentScript/linter/aslint.py` by default. Set
-`agentScript.linter.engine` to `aslint2` to use the structured refinement
-diagnostics from `../AgentScript/linter/aslint2.py`. The extension
-auto-discovers the selected linter from the workspace root, the `AgentScript`
-folder, or ancestors of the open `.as` file. Set `agentScript.linter.path` if
+Linting uses `../SemanticScript/linter/semlint.py` by default. Set
+`semanticScript.linter.engine` to `semlint2` to use the structured refinement
+diagnostics from `../SemanticScript/linter/semlint2.py`. The extension
+auto-discovers the selected linter from the workspace root, the `SemanticScript`
+folder, or ancestors of the open `.sscript` file. Set `semanticScript.linter.path` if
 your checkout layout is different.
 
 Files using the refined future syntax are skipped by the current linter by
 default because that syntax is a mock/spec showcase and is not current
-executable AgentScript. Turn off `agentScript.linter.skipFutureSyntax` if you
-want to force current `aslint.py` diagnostics anyway.
+executable SemanticScript. Turn off `semanticScript.linter.skipFutureSyntax` if you
+want to force current `semlint.py` diagnostics anyway.
 
 ## Commands
 
-- `AgentScript: Toggle Segment Colors`
-- `AgentScript: Run Linter`
+- `SemanticScript: Toggle Segment Colors`
+- `SemanticScript: Run Linter`
 
 ## Run Locally
 
 Open this folder in VS Code:
 
 ```text
-vscode-agentscript
+vscode-semanticscript
 ```
 
-Press `F5` to launch an Extension Development Host, then open an AgentScript
+Press `F5` to launch an Extension Development Host, then open a SemanticScript
 file such as:
 
 ```text
-../experiments/refined_syntax_example.as
+../SemanticScript/sem/refined_syntax_demo.sscript
 ```
 
 or a current executable file such as:
 
 ```text
-../AgentScript/as/countdown.as
+../SemanticScript/sem/countdown.sscript
 ```
 
 ## Install Locally
@@ -143,7 +143,7 @@ From this repository root, install the packaged VSIX or use the extension folder
 directly in your local VS Code extensions directory:
 
 ```text
-%USERPROFILE%\.vscode\extensions\agentscript-vscode
+%USERPROFILE%\.vscode\extensions\semanticscript-vscode
 ```
 
 Then reload VS Code.
@@ -152,20 +152,20 @@ Then reload VS Code.
 
 ```json
 {
-  "agentScript.segmentColors.enabled": true,
-  "agentScript.segmentColors.colorMode": "background",
-  "agentScript.linter.enabled": true,
-  "agentScript.linter.engine": "aslint",
-  "agentScript.linter.run": "onSave",
-  "agentScript.linter.pythonPath": "python",
-  "agentScript.linter.path": "",
-  "agentScript.linter.skipFutureSyntax": true
+  "semanticScript.segmentColors.enabled": true,
+  "semanticScript.segmentColors.colorMode": "background",
+  "semanticScript.linter.enabled": true,
+  "semanticScript.linter.engine": "semlint",
+  "semanticScript.linter.run": "onSave",
+  "semanticScript.linter.pythonPath": "python",
+  "semanticScript.linter.path": "",
+  "semanticScript.linter.skipFutureSyntax": true
 }
 ```
 
-`agentScript.segmentColors.colorMode` can be `background`, `overview`, or
+`semanticScript.segmentColors.colorMode` can be `background`, `overview`, or
 `both`.
 
-`agentScript.linter.engine` can be `aslint` or `aslint2`.
+`semanticScript.linter.engine` can be `semlint` or `semlint2`.
 
-`agentScript.linter.run` can be `onSave`, `onType`, or `manual`.
+`semanticScript.linter.run` can be `onSave`, `onType`, or `manual`.
