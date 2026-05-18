@@ -18,3 +18,7 @@ SemanticScript compiler or runtime implementation.
 When adding a SemanticScript sample that should be compared against another
 language, place the host-language version under the matching language folder and
 keep names aligned where practical.
+
+`samples/python/` is the canonical Python comparison-sample tree for 1.0.
+The top-level `python/` directory remains as a compatibility mirror; update both
+trees when a mirrored Python sample changes.

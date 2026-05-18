@@ -146,7 +146,12 @@ collectionOperationSpillAllocator collectionOperationSpillFailure
 listLiteral listLiteralLength listLiteralIndexBase listLiteralIndexPolicy listLiteralItem
 ```
 
-Collection declarations are mostly metadata/runtime-contract surface today.
+Collection declarations are metadata/runtime-contract surface today. They do
+not create executable methods by themselves: calls like `TaskList.append`,
+`TaskMap.get`, or a declared `collectionOperation` target still need an
+explicit operation/runtime binding. `semlint2.py` reports these as collection
+runtime gaps while the compiler would otherwise use the zero-stub external
+fallback.
 
 ## Runtime Bindings and Intrinsics
 
@@ -160,4 +165,3 @@ intrinsicName NAME arithmetic.addI64
 The compiler has direct lowering for selected runtime bindings and arithmetic
 intrinsics. Unknown runtime binding names fall back to normal operation body
 compilation.
-

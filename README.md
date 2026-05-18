@@ -21,6 +21,13 @@ dataflow, typed failure edges, guarded mutation, structured async,
 trust-boundary metadata, and syntax that is easier for transformer attention to
 recover and edit.
 
+## Quick Preview
+
+![Todo TUI demo preview](docs/assets/todo-tui-preview.png)
+
+The current runnable app lives in `app/todo` and renders a keyboard-driven
+console todo list backed by `todos.json`.
+
 ## Technical Pitch
 
 SemanticScript makes source code a checkable contract tape:
@@ -87,8 +94,8 @@ SemanticScript/
   tests/                        Compiler, parity, bootstrap, and stdlib tests
 
 samples/javascript/             JavaScript comparison and oracle programs
-samples/python/                 Python comparison programs
-python/                         Earlier Python comparison programs
+samples/python/                 Canonical Python comparison programs
+python/                         1.0 compatibility mirror of samples/python/
 vscode-semanticscript/             Local VS Code extension
 ```
 
@@ -480,7 +487,21 @@ npm run check
 npx --yes @vscode/vsce package
 ```
 
-The current packaged artifact is `vscode-semanticscript/semanticscript-vscode-0.1.9.vsix`.
+The 1.0 local VSIX package name is
+`vscode-semanticscript/semanticscript-vscode-1.0.0.vsix`. Generated `.vsix`
+files stay ignored and should be attached outside the repository.
+
+## Release Hygiene
+
+Release policy lives in `docs/reference/release-hygiene.md`.
+
+- The root `LICENSE` is currently a no-license notice, not an open-source grant.
+- `samples/python/` is canonical; top-level `python/` is a 1.0 compatibility
+  mirror.
+- `.sem` files directly under `SemanticScript/sem/` are tracked alias fixtures
+  and should stay aligned with their `.sscript` counterparts.
+- `vscode-semanticscript/package.json` uses `semanticscript-local` for local
+  VSIX builds; choose a real Marketplace publisher before public publishing.
 
 ## Documentation Map
 

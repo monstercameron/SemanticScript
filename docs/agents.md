@@ -69,7 +69,8 @@ Prefer: accountLookupCall validatedTaskTitle consoleStdoutWriter.
   const writeFailedExitCode ExitCode 1
   returnValue writeFailedExitCode
 
-No entry => library mode: compile all ops + stub main returns 0.
+No entry => library mode: compile all ops + stub main returns 0, except routed
+`target webServer` programs, which emit a native HTTP entrypoint.
 
 Top:
   project NAME
@@ -319,9 +320,12 @@ names with underscores.
 Heap edge: avoid c.malloc/c.free in demo apps unless the user asks for heap.
 If used, declare effect allocate heap, effect free heap, memoryHeap OP yes,
 memoryAllocationSource OP ALLOC_CALL, capabilities for heap allocate/free, and
-handle c.malloc as fallible with bindError + branchIfError. Add linter-required
-`defer NAME c.free allocatedPointer`; current compiler treats non-user-op defer
-targets as cleanup metadata, so do not claim this proves runtime leak freedom.
+handle c.malloc as fallible with bindError + branchIfError. For executable code,
+emit an explicit `call ... c.free` cleanup on every ownership path. A
+`defer NAME c.free allocatedPointer` row is useful cleanup metadata, but current
+compiler lowering treats non-user-op defer targets as metadata, so do not claim
+that row alone proves runtime leak freedom. Linters should accept either a
+defer row or an explicit cleanup call that consumes the bound allocation.
 There is no general stdlib free wrapper today; stdlib_sem/README explicitly says
 c.free is one of the host C calls with no useful pure-SemanticScript substitute. Prefer a
 domain-specific stdlib release op when the matching allocator provides one
@@ -446,12 +450,14 @@ locks/select/interval no-op/fallthrough.
 Selected names lower directly. Unknown runtime binding => normal body.
 
 == linter ==
-semlint2 checks: unknown verbs; vague names; missing op metadata; hidden
+semlint/semlint2 checks and guardrails: unknown verbs; vague names; missing op metadata; hidden
 failures; effects without capability; unresolved refs; arg arity/type; dead
 stores; unused calls/labels/consts/inputs/binds/caps/error cases/storage;
 allocation in loop; heap contradiction; missing allocation source; unpaired
 alloc/free; unclosed file; guard source without release; partial retry/trust/
-json codec; bad record align; zero array length; unawaited group/work; lock
+json codec; raw JSON `%s`; fixed-offset parser invariant; width drift; bad
+printf width; Result/Void helper shape; file open/close effects; terminal
+state cleanup; record align; zero array length; unawaited group/work; lock
 without cleanup; duplicate decls; metadata drift; circular type aliases.
 T0/T1/T2 correctness. T3 design debt. T4 style.
 

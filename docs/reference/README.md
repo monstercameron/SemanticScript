@@ -8,6 +8,7 @@ rules.
 - `call-targets.md` lists built-in targets, domain methods, user operations, and current `c.*` bootstrap calls.
 - `verb-index.md` indexes language verbs and line shapes.
 - `maintenance.md` describes how to keep language, compiler, linter, docs, and editor support aligned.
+- `release-hygiene.md` defines release repository-state, package-metadata, and mirror-file policies.
 
 ## Current Status
 

@@ -56,13 +56,14 @@ The alias is recorded but is not a namespace system yet.
 
 ## Library and Web Server Mode
 
-If a source has no `entry` line, the compiler emits every operation as a
+If a source has no `entry` line, the compiler usually emits every operation as a
 callable LLVM function and emits a stub `int main() { return 0; }`. This is how
 library-like and declarative files can still compile and link.
 
-`target webServer` plus `webServer` and `route` metadata follows this same
-model today: route handlers become callable functions, but no HTTP dispatcher
-runtime is wired into `semsc.py` yet.
+Routed `target webServer` programs are the exception. When `webServer` and
+`route` metadata are present, `semsc.py` emits a native HTTP/1.1 entrypoint and
+exact method/path dispatcher. Route handlers must use the native HTTP ABI:
+`HttpRequest`, `HttpResponse`, and `CSignedInt32`.
 
 ## Operations
 

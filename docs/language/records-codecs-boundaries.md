@@ -91,7 +91,11 @@ as `json.encode.Bool`, `json.decode.Bool`, and selected scalar codec targets
 have direct compiler support. Record-level generated codecs are still primarily
 metadata unless a backing operation/runtime binding is present.
 
-`semlint2.py` checks incomplete JSON codecs.
+`semlint2.py` checks incomplete JSON codecs. It also flags record-level
+generated targets such as `json.decode.Task` or `json.encode.Task` as runtime
+gaps unless they are replaced with explicit operations or backed by a real
+runtime binding. Current codegen otherwise reaches the external fallback and
+returns a zero-shaped stub value.
 
 ## Generic Codecs
 
@@ -102,7 +106,20 @@ unknownFields taskBinaryCodec reject
 ```
 
 Generic codecs are contract metadata. Use them when a runtime-specific codec
-backend is not part of the source yet.
+backend is not part of the source yet. Calls such as `taskBinaryCodec.encode`
+or `taskBinaryCodec.decode` do not become executable from the `codec` line
+alone; provide a named operation/runtime binding or keep the codec as metadata.
+
+## Typed Collection Runtime Status
+
+Collection declarations and `collectionOperation` rows describe list, map,
+slice, array, and small-list contracts. They do not yet allocate collection
+storage or implement methods such as `TaskList.append`, `TaskMap.get`, or
+`TaskList.length`.
+
+Until the collection runtime is wired, use explicit operations for executable
+behavior. `semlint2.py` flags typed collection calls whose current compiler path
+would fall through to the zero-stub external fallback.
 
 ## Validators, Mappers, Adapters, Boundaries
 
@@ -137,4 +154,3 @@ Trust-boundary declarations should answer:
 `semlint2.py` checks partial trust boundaries. Treat that diagnostic as design
 pressure: a partial boundary is usually worse than no boundary because it
 implies safety without enough evidence.
-

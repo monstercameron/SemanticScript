@@ -22,7 +22,8 @@ authority for executable lowering.
 
 This folder contains the language explanation layer: lexical rules, program
 structure, types, operations/dataflow, effects/errors, memory/state, records,
-codecs, cleanup, concurrency, and time-related syntax.
+codecs, cleanup, concurrency, time-related syntax, and planned native HTTP API
+shape.
 
 ## Current Status
 

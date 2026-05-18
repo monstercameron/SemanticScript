@@ -46,7 +46,7 @@ matrix. The release-level boundary is:
 | Bootstrap / self-hosting | Preview and release-tested, but not the production compiler. | `SemanticScript/bootstrap/README.md`, `tests/sem_compiler_parity.py` |
 | VS Code extension | Supported editor tooling for `.sscript` / `.sem`; syntax visibility is not executable support. | [toolchain/vscode-extension.md](toolchain/vscode-extension.md) |
 | Refined syntax and partial rows | Inspectable and documented as metadata, fallback, partial, or implemented. | `SYNTAX.md`, [toolchain/compiler.md](toolchain/compiler.md) |
-| Web / HTTP runtime | Route metadata and handler IR only; no 1.0 HTTP listener runtime. | [toolchain/compiler.md](toolchain/compiler.md) |
+| Web / HTTP runtime | Preview native HTTP/1.1 listener for exact routed `target webServer` programs; HTTP/2/H2O and richer request/response APIs remain future work. | [toolchain/compiler.md](toolchain/compiler.md) |
 | Runtime flags | Supported compiler interface for build profile, runtime checks, diagnostics format, IR persistence, and optimization level. | [toolchain/compiler.md](toolchain/compiler.md) |
 
 ## Reading Order
@@ -64,8 +64,10 @@ matrix. The release-level boundary is:
 | [language/memory-state.md](language/memory-state.md) | Storage, shared state, mutation, guard tokens, pointer primitives. |
 | [language/records-codecs-boundaries.md](language/records-codecs-boundaries.md) | Records, builders, JSON codecs, trust boundaries. |
 | [language/concurrency-time-cleanup.md](language/concurrency-time-cleanup.md) | Cleanup, retry, async, groups, channels, locks, worker pools. |
+| [language/native-http-api.md](language/native-http-api.md) | Planned native HTTP server API and route-handler ABI. |
 | [reference/call-targets.md](reference/call-targets.md) | Built-in call targets, domain methods, c.* calls. |
 | [reference/verb-index.md](reference/verb-index.md) | Verb families and schema index. |
+| [reference/release-hygiene.md](reference/release-hygiene.md) | Release repository-state, package-metadata, and mirror-file policy. |
 | [toolchain/compiler.md](toolchain/compiler.md) | semsc.py CLI, parsing, import resolution, codegen modes. |
 | [toolchain/linter.md](toolchain/linter.md) | semlint.py and semlint2.py commands, diagnostics, tiers. |
 | [toolchain/vscode-extension.md](toolchain/vscode-extension.md) | Extension behavior, hover expectations, packaging. |

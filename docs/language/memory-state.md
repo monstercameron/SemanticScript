@@ -70,8 +70,10 @@ read sharedState OUT TYPE BACKING [protectedBy TOKEN]
 ```
 
 Current lowering models mutable shared state as an LLVM module global. It is
-visible across operations in a single process. Cross-process sharing is future
-runtime work.
+visible across operations in a single process. `sharedState process` is the only
+scope with concrete 1.0 lowering. Cross-process, cluster, or distributed shared
+state is future runtime work; do not rely on the compiler for inter-process
+visibility.
 
 ## Guard Tokens
 
@@ -83,8 +85,14 @@ guardTokenRelease accountLookupGuardToken releaseMetricsLock
 ```
 
 Guard-token lines describe authority around shared resources. They are metadata
-for current codegen and active input for linter checks. `semlint2.py` checks for
-guard-token sources without releases and shared-state access without protection.
+for current codegen and active input for linter checks. The 1.0 runtime does
+not enforce guard-token ownership or protection at load/store time. `protectedBy`
+therefore means "this access claims the named token in the source contract",
+not "the generated code validates the token".
+
+`semlint2.py` checks for guard-token sources without releases, shared-state
+access without `protectedBy`, and `protectedBy` tokens that do not declare a
+matching `guardTokenProtects TOKEN RESOURCE` edge.
 
 ## Operation Memory Metadata
 
@@ -130,4 +138,3 @@ Supported pointer targets:
 
 Pointer operations expose memory effects to the linter. Do not hide raw pointer
 work behind vague helper names.
-

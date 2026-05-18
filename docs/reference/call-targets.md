@@ -44,10 +44,21 @@ math.lessThanOrEqualI64
 math.greaterThanI64
 math.greaterThanOrEqualI64
 math.checkedMultiplyI64
+math.equalCSignedInt32
+math.notEqualCSignedInt32
+math.lessThanCSignedInt32
+math.lessThanOrEqualCSignedInt32
+math.greaterThanCSignedInt32
+math.greaterThanOrEqualCSignedInt32
 ```
 
 Short aliases such as `math.subI64`, `math.mulI64`, `math.divI64`, `math.eqI64`,
 and `math.ltI64` are normalized to canonical targets.
+
+Math target names are width contracts. `math.*I64` requires I64-shaped
+operands, and `math.*CSignedInt32` requires CSignedInt32-shaped operands. The
+compiler does not widen or narrow these operands implicitly; use an explicit
+conversion operation when the conversion is intended.
 
 `math.checkedMultiplyI64` returns a product plus an overflow predicate
 internally. Handle it like a fallible call:
@@ -82,9 +93,18 @@ Conversions:
 ```text
 math.intToFloat
 math.floatToInt
+math.signExtendCSignedInt32ToCSignedInt64
+math.truncateCSignedInt64ToCSignedInt32
 math.convertSignedInt64ToFloat64
 math.convertFloat64ToSignedInt64
+math.convertSignedInt32ToSignedInt64
+math.convertSignedInt64ToSignedInt32
 ```
+
+F64 math requires F64-shaped operands. `math.intToFloat` accepts I64 input, and
+`math.floatToInt` accepts F64 input. `math.signExtendCSignedInt32ToCSignedInt64`
+and `math.truncateCSignedInt64ToCSignedInt32` are the explicit integer width
+conversion targets; the `math.convert*` names are normalized aliases.
 
 C macro-style classifiers are available as `c.*` calls and lower inline:
 
@@ -187,4 +207,3 @@ c.timespecGet       -> timespec_get
 
 Varargs are supported for registry entries that declare `var_args=True`, such
 as `c.printf`.
-

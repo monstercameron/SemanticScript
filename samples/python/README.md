@@ -4,13 +4,14 @@ Standard-library-only Python examples for benchmarking against SemanticScript.
 
 ## Contents
 
-This folder mirrors the top-level `python/` example set under `samples/` for
-language-comparison organization.
+This folder is the canonical 1.0 home for Python comparison samples. The
+top-level `python/` folder remains as a compatibility mirror for existing
+scripts and docs.
 
 ## Current Status
 
-Reference examples only. Keep this folder aligned with `python/` when the same
-sample is intentionally duplicated in both locations.
+Reference examples only. When a mirrored sample changes here, update the
+top-level `python/` copy in the same change.
 
 Run everything:
 

@@ -5,6 +5,19 @@ compiler currently targets a single-thread, single-process execution model, so
 many constructs lower to synchronous or metadata-preserving behavior. That is
 not a license to omit the contract lines; future runtimes depend on them.
 
+## 1.0 Runtime Boundary
+
+SemanticScript 1.0 does not ship a real scheduler, event loop, timer wheel, or
+thread pool runtime. `async`, `start`, task groups, worker pools, intervals,
+channels, select, and locks are contract syntax plus single-thread lowering.
+They are useful because they pin down the future runtime contract, but they do
+not create parallel execution, preemption, real event-loop scheduling, mutex
+contention, or timer delays in the current compiler.
+
+Do not describe these constructs as providing runtime concurrency in 1.0
+programs. When an example relies on future scheduler behavior, add a `warning`
+or rationale line that says the current lowering is synchronous.
+
 ## Start and Await
 
 ```semanticscript
@@ -98,7 +111,9 @@ unlock metricsLock
 ```
 
 Current lowering: lock and unlock are no-ops in single-thread execution.
-`semlint2.py` checks for lock acquisition without cleanup.
+They do not provide runtime mutual exclusion until a multi-thread runtime is
+bound. `semlint2.py` checks for lock acquisition without cleanup so the source
+still records the intended release path.
 
 ## Select
 
@@ -138,4 +153,3 @@ awaitWork hashFileWork
 Current lowering: worker-pool work dispatches directly on the same thread.
 `submitWork` builds a synthetic call from `work target` and `workArg` lines;
 `awaitWork` binds the result that direct dispatch already produced.
-

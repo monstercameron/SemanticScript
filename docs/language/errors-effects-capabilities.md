@@ -110,9 +110,13 @@ authority TARGET EFFECT_PATH ACCESS
 ```
 
 Capabilities name grants. `useCapability` attaches a grant to an operation or
-use site. `authority` is an inline grant form. The current compiler preserves
-these as metadata; `semlint2.py` checks for effect sites without capability
-coverage.
+use site. `authority` is an inline grant form. Compiler strict lint and
+`semlint2.py` check for effect sites without capability coverage.
+
+Capability paths are hierarchical. A capability declared at `http.request read`
+authorizes narrower reads such as `http.request.method`, `http.request.path`,
+and `http.request.cancellationToken`. Use a narrower capability when the
+operation should only inspect one request edge.
 
 ## Dependency Contracts
 
@@ -130,4 +134,3 @@ dependencyFunctionAsync postgresClient.lookupAccount yes
 Dependency declarations are metadata in current codegen. They are still
 important because they give linters and agents explicit contract edges instead
 of hiding behavior behind a dotted call target.
-

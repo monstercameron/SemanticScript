@@ -48,7 +48,7 @@ Set `SEMSC_TRACEBACK=1` to print Python tracebacks for parse/codegen failures.
 | Bootstrap and self-hosting | Preview, release-tested | `bootstrap/run_bootstrap_chain.py` and `tests/sem_compiler_parity.py` are valid release verification commands. The staged SemanticScript-written compilers demonstrate input-dependent IR generation for documented subsets. | Self-hosting is not complete. `bootstrap_general.sscript` is not the 1.0 production compiler and does not compile the whole language. |
 | VS Code extension | Supported editor tooling | `vscode-semanticscript/` registers `.sscript` and `.sem`, provides highlighting, hovers, semantic roles, and optional `semlint` / `semlint2` diagnostics. | Highlighted or hovered syntax is not automatically executable compiler support. The compiler and `SYNTAX.md` decide runtime support. |
 | Refined syntax | Partial, inspectable | The parser accepts many refined declarative lines for AST, linter, and editor inspection. Pure metadata is preserved or skipped safely. Some concurrency and dataflow forms lower to documented synchronous fallbacks. | Refined syntax is not uniformly runtime-complete. Use `--parse-only` for forms whose backend is intentionally absent. |
-| Web / HTTP runtime | Metadata and handler IR only | `target webServer`, `webServer`, and `route` metadata can be authored and indexed. Programs with no explicit entry compile handlers as callable LLVM functions plus a stub `main`. | There is no 1.0 HTTP listener or request/response runtime. Explicit non-console entries are rejected until a backend is wired. |
+| Web / HTTP runtime | Preview, release-tested | Routed `target webServer` programs emit a native HTTP/1.1 listener with exact method/path dispatch. Handlers use `input request HttpRequest`, `input response HttpResponse`, and `output CSignedInt32`. The native adapter supports request method/path/header/query/body text/body bytes reads, bounded multipart part reads, response text/bytes/SSE-event/header writes, and one path-scoped middleware callback. | HTTP/2/H2O, path params, route timeout enforcement, static-file serving, graceful shutdown hooks, structured body decoders, long-lived streaming bodies, method-scoped middleware, and persistent state are not 1.0 guarantees. Unrouted webserver files still compile as library/stub programs. |
 | Partial syntax rows | Explicitly partial | Rows marked partial in `SYNTAX.md` may parse, lint, lower synchronously, or emit structural stubs exactly as documented there. | A partial row must not be treated as full application-runtime support. Unsupported runtime semantics should fail rather than silently disappear. |
 | Runtime and diagnostics flags | Supported compiler interface | `--build-profile dev\|prod`, `--runtime-checks off\|traps\|panic`, `--persist-llvm-ir auto\|yes\|no`, `--diagnostics-format agent\|json\|raw`, and `--opt-level 0..3` are the 1.0 flag surface. | These flags do not change language support. `prod` hides panic source context; `off` removes runtime checks and should be chosen deliberately. |
 
@@ -74,14 +74,17 @@ The alias is recorded for tools; it is not currently a full namespace boundary.
 
 `entry console OPERATION` emits `int main()` from that operation.
 
-Without an `entry`, the compiler:
+Without an `entry`, the compiler usually:
 
 - declares every operation as a callable function;
 - compiles every operation body;
 - emits a stub `main` returning zero.
 
-This supports stdlib files, web-server route handlers, and refined syntax
-showcases that need parse/codegen inspection without a runtime host.
+Routed `target webServer` programs are the exception: `webServer` / `route`
+metadata selects the native HTTP entry generator instead of the stub.
+
+The stub mode supports stdlib files and refined syntax showcases that need
+parse/codegen inspection without a runtime host.
 
 ## User Operation ABI
 
@@ -91,7 +94,7 @@ For each non-entry user operation:
 - opaque inputs are dropped from the LLVM ABI;
 - `output OP Result OK ERR` returns `OK`;
 - `output OP TYPE` returns `TYPE`;
-- missing or unknown output defaults to `i32`;
+- missing, malformed, or unknown output contracts are compiler/lint errors;
 - `Void` success currently uses an `i32` zero sentinel where LLVM needs a
   concrete return slot.
 

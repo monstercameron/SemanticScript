@@ -30,9 +30,9 @@ blocks, and dynamic object or array literals.
 | `stdlib.string.compareCString` | Defines dotted namespace path syntax. | Impl'd |
 | `project NAME` | Names the program for tools and generated artifacts. | Impl'd |
 | `target NAME` | Declares intended runtime target such as console or web server. | Impl'd |
-| `target webServer` (no `entry` line) | Selects library-mode codegen: every operation compiles to a callable LLVM function, a stub `int main() { return 0; }` is emitted, the program links. | Impl'd |
+| `target webServer` (no `entry` line) | Selects webserver codegen when `webServer` / `route` metadata is present: routed programs emit a native HTTP/1.1 entrypoint and exact-path dispatcher; unrouted files still compile operations plus a stub `main`. | Partial |
 | `runtime NAME VERSION` | Records the runtime contract expected by the source. | Impl'd |
-| `module NAME` | Names a module boundary for organization and future namespace checks. | Impl'd |
+| `module NAME` | Names a module boundary; `semsc` validates dotted namespace shape and rejects conflicting declarations in one resolved source. | Impl'd |
 | `mode capturedOutputReplay` | Marks sources that replay captured output rather than fully reimplementing an algorithm. | Impl'd |
 | `entry console OPERATION` | Selects the executable console entry operation. | Impl'd |
 | `importModule DOTTED.PATH [as ALIAS]` | Replaces textual includes with explicit module imports (semsc.py resolves DOTTED.PATH → src-dir / stdlib_sem / project-root, inlines content with header stripping). | Impl'd |
@@ -57,7 +57,7 @@ blocks, and dynamic object or array literals.
 | `error NAME` | Declares a typed error domain. | Impl'd |
 | `errorCase ERROR VARIANT [CAUSE_TYPE]` | Declares branchable, name-addressable failure variants. | Impl'd |
 | `enum NAME [repr TYPE]` | Declares a closed value set with optional representation. | Impl'd |
-| `enumCase ENUM CASE [VALUE]` | Declares enum variants without expression syntax. | Impl'd |
+| `enumCase ENUM CASE [VALUE]` | Declares enum variants without expression syntax; repr-backed enum cases lower as typed constants. | Impl'd |
 | `record AccountBalanceResponse` | Declares a record schema. | Impl'd |
 | `field RECORD FIELD TYPE` | Declares one field on a record schema. | Impl'd |
 | `recordLayout RECORD KIND` | Declares record layout kind. | Impl'd |
@@ -139,7 +139,7 @@ blocks, and dynamic object or array literals.
 | `dependencyFunctionOutput FUNC TYPE...` | Records dependency function output shape. | Impl'd |
 | `dependencyFunctionEffect FUNC ACTION PATH` | Records dependency function effects. | Impl'd |
 | `dependencyFunctionAsync scheduler.sleep yes` | Records dependency async behavior. | Impl'd |
-| `capability NAME EFFECT_PATH ACCESS` | Declares a grantable authority edge. | Impl'd |
+| `capability NAME EFFECT_PATH ACCESS` | Declares a grantable authority edge. Capability paths are hierarchical: `http.request read` authorizes narrower paths such as `http.request.method read`. | Impl'd |
 | `useCapability TARGET CAPABILITY` | Attaches a capability to an operation or use site. The capability edge is recorded for the linter (which checks that every effect site has an authorizing capability — see `_check_libc_effect_coverage` and related lint rules); enforcement at the runtime authority layer is a future runtime concern, not a codegen one. | Impl'd |
 | `authority OP EFFECT_PATH ACCESS` | Declares authority inline for a target. | Impl'd |
 | `resource NAME kind KIND` | Declares a named resource. | Impl'd |
@@ -179,12 +179,12 @@ blocks, and dynamic object or array literals.
 | `trustBoundaryOutput TYPE TRUSTED_TYPE` | Declares the trusted output side of a trust boundary. | Impl'd |
 | `trustBoundaryValidator TYPE OPERATION` | Names the validator that proves the transition. | Impl'd |
 | `trustBoundarySource TYPE SOURCE` | Names accepted sources of trusted values. | Impl'd |
-| `webServer NAME` | Declares an HTTP/server application boundary (library-mode codegen emits each route handler as a callable LLVM function; no HTTP runtime is bound). | Partial |
+| `webServer NAME` | Declares an HTTP/server application boundary. Routed `target webServer` programs emit a native HTTP/1.1 blocking exact-route dispatcher with synchronous middleware execution, response status/headers/body writers, request method/path/header/query/body/multipart readers, and one-shot SSE event formatting (see the `http.*` rows below). Still future: HTTP/2 backend, preemptive timeout enforcement, path parameters, long-lived streaming responses, and graceful shutdown hooks. | Partial |
 | `serverHost SERVER HOST_VALUE` | Names host binding. | Impl'd |
 | `serverPort SERVER PORT_VALUE` | Names port binding. | Impl'd |
-| `route SERVER METHOD PATH HANDLER` | Maps one route edge to a named handler operation (handler compiles to a callable function; HTTP dispatch needs an external runtime). | Partial |
-| `routeTimeout SERVER ROUTE DURATION` | Declares route timeout. | Impl'd |
-| `routeMiddleware SERVER ROUTE MIDDLEWARE` | Attaches middleware to a route. | Impl'd |
+| `route SERVER METHOD PATH HANDLER` | Maps one exact method/path edge to a named handler operation. Native webserver codegen dispatches exact paths and requires handlers to use the native HTTP ABI: `HttpRequest`, `HttpResponse`, and `CSignedInt32`. The dispatcher's method whitelist is `GET / HEAD / POST / PUT / PATCH / DELETE / OPTIONS`; routes with any other METHOD are accepted at parse time but never match a real request (and trip `semlint2` SS3601 `invalidRouteMethod`). | Impl'd |
+| `routeTimeout SERVER ROUTE DURATION` | Declares route timeout metadata keyed by route path today; the native runtime does not enforce it yet. | Partial |
+| `routeMiddleware SERVER ROUTE MIDDLEWARE` | Attaches a middleware operation to a route path. The native dispatcher invokes the middleware synchronously before the route handler (semsc.py wires the middleware function pointer into the per-route dispatch); the middleware returns `0` to continue. Middleware ops must declare `effect <op> write http.response*` because that's the only useful thing they can do at this hook (`semlint2` SS3602 `middlewareMissingResponseEffect`). | Impl'd |
 | `defer NAME TARGET ARGS...` | Declares cleanup to run at operation exit. Defers are collected in registration order at parse time and emitted in reverse registration order before every `returnOk`/`returnError`/`returnValue` and on fall-through. `deferRunOn NAME POLICY` filters which exit paths trigger a given defer (default: all). User-op targets compile to a real call; non-user-op targets (libc / dotted external) are still accepted as metadata. | Impl'd |
 | `deferLog NAME TARGET ARGS...` | Same cleanup semantics as `defer`; cleanup-failure log routing (`deferLogSink`) is accepted as metadata. | Impl'd |
 | `deferLogSink NAME SINK` | Declares the cleanup log target. | Impl'd |
@@ -263,12 +263,13 @@ blocks, and dynamic object or array literals.
 | `dependencyFailure OP ERROR.VARIANT` | Records dependency-level failure mapping. | Impl'd |
 | `console.writeLine` | Emits one text line while keeping console dependency explicit. | Impl'd |
 | `console.writeIntegerLine` | Emits one integer line without formatting syntax. | Impl'd |
-| `math.addI64`, `math.subtractI64`, `math.multiplyI64`, `math.divideI64`, `math.moduloI64` | Calls named integer arithmetic operations. | Impl'd |
-| `math.equalI64`, `math.notEqualI64`, `math.lessThanI64`, `math.lessThanOrEqualI64`, `math.greaterThanI64`, `math.greaterThanOrEqualI64` | Calls named integer comparison operations. | Impl'd |
-| `math.intToFloat`, `math.floatToInt` | Performs named numeric conversions. | Impl'd |
-| `math.*F64` | Provides named floating-point arithmetic/comparisons. | Impl'd |
-| `math.equalCSignedInt32`, `math.lessThanCSignedInt32` | Calls C ABI width-specific comparison operations. The dispatch routes through the user-op compile path when the op is defined in the source (stdlib_sem supplies typed-width comparisons in `math.sscript`); otherwise the dotted-target external-module fallback returns a typed-zero stub. Same lowering shape as `TypeName.methodName` above. | Impl'd |
+| `math.addI64`, `math.subtractI64`, `math.multiplyI64`, `math.divideI64`, `math.moduloI64` | Calls named I64 integer arithmetic operations. Operands must already be I64-shaped; codegen does not widen or narrow implicitly. | Impl'd |
+| `math.equalI64`, `math.notEqualI64`, `math.lessThanI64`, `math.lessThanOrEqualI64`, `math.greaterThanI64`, `math.greaterThanOrEqualI64` | Calls named I64 integer comparison operations. Operands must already be I64-shaped. | Impl'd |
+| `math.intToFloat`, `math.floatToInt`, `math.signExtendCSignedInt32ToCSignedInt64`, `math.truncateCSignedInt64ToCSignedInt32` | Performs named numeric conversions: I64 to F64, F64 to I64, signed i32 to i64, and signed i64 to i32. Other source widths require an explicit conversion before the call. | Impl'd |
+| `math.*F64` | Provides named floating-point arithmetic/comparisons over F64-shaped operands only. | Impl'd |
+| `math.equalCSignedInt32`, `math.lessThanCSignedInt32` | Calls C ABI width-specific signed 32-bit comparison operations. These lower directly to i32 comparisons and avoid routing status/count values through the I64 math path. | Impl'd |
 | `TypeName.methodName` | Calls a typed method through a domain alias target (positional-arg fallback resolves dotted call sites against user ops). | Impl'd |
+| `EnumName.equal`, `EnumName.notEqual`, `EnumName.lessThan`, `EnumName.lessThanOrEqual`, `EnumName.greaterThan`, `EnumName.greaterThanOrEqual` | Compares two values of an `enum NAME repr TYPE` declaration. The compiler resolves the enum's repr and dispatches to the matching `math.equal*` / `math.lessThan*` primitive (CSignedInt32-repr enums route through the int32 family; CSignedInt64-repr enums route through the I64 family). Lets source compare enum cases without naming the underlying integer width. | Impl'd |
 | `pointer.loadByte`, `pointer.storeByte`, `pointer.offset`, `pointer.difference`, `pointer.isNull` | Calls named pointer operations. | Impl'd |
 | `c.<funcName>` | Calls registered C standard-library functions through an explicit target. | Impl'd |
 | `c.isnan`, `c.isinf`, `c.isfinite`, `c.isnormal`, `c.signbit`, `c.fpclassify` | Calls C classifier targets through direct lowering. | Impl'd |
@@ -281,8 +282,11 @@ blocks, and dynamic object or array literals.
 | `CByteCount`, `CSignedByteCount`, `CAddressOffset`, `CUnixSecondsSinceEpoch`, `CCpuClockTicks`, `CFileByteOffset` | Defines C ABI role types for interop. | Impl'd |
 | `CFloat32`, `CFloat64` | Defines C ABI floating-point types. | Impl'd |
 | `CNullTerminatedByteString`, `COpaqueMemoryAddress`, `CFileHandle`, `CDecomposedTimeAddress`, `CSetjmpRegisterBuffer` | Defines pointer-shaped C ABI role types. | Impl'd |
-| `Console`, `Process`, `Environment`, `HttpRequest`, `DatabaseClient`, `Clock` | Defines opaque dependency token types (compiler treats each as an i8* token, methods route through ops or external fallback). | Impl'd |
+| `Console`, `Process`, `Environment`, `HttpRequest`, `HttpResponse`, `DatabaseClient`, `Clock` | Defines opaque dependency token types (compiler treats each as an i8* token, methods route through ops or external fallback). `HttpRequest` and `HttpResponse` are the native HTTP ABI handler-signature types: `route` handlers must declare `input HANDLER request HttpRequest` and `input HANDLER response HttpResponse`. | Impl'd |
 | `json.encode.TypeName` for primitive TypeName | Calls typed JSON encode for I64/CSignedInt32/CUnsignedInt32/CSignedInt16/CUnsignedInt16/CSignedByte/CUnsignedByte/Duration|Monotonic|UtcMilliseconds (snprintf %lld), Bool (select between "true"/"false"), F64/CFloat64/CFloat32 (snprintf %g), and String/CNullTerminatedByteString (snprintf `"%s"`). Each call stack-allocates a per-call-site buffer (32B for numerics, 256B for strings) — valid for the lifetime of the enclosing operation. String escape handling for control bytes is deferred to the real codec runtime. | Impl'd |
 | `json.decode.TypeName` for primitive TypeName | Calls typed JSON decode for I64 and width-specific C ABI integer aliases (libc atoll), Bool (strcmp against "true" → 1/0), and F64/CFloat64/CFloat32 (libc atof). The input is a CNullTerminatedByteString; the call returns the parsed primitive value. Malformed input returns the libc default (0 for atoll, 0.0 for atof). | Impl'd |
 | `json.encode.RecordTypeName`, `json.decode.RecordTypeName` | Typed JSON encode/decode operations for non-primitive types (records). Falls back to the dotted-target external-module zero-result lowering — a real structural decoder/encoder over record fields requires the codec runtime tracked under SYNTAX.md's `jsonCodec` row. | Partial |
 | `TaskList.append`, `TaskMap.get` | Calls typed collection operations (dotted-target external-module fallback emits a zero result; real collection runtime not yet wired). | Partial |
+| `http.requestMethod`, `http.requestPath`, `http.requestHeader`, `http.requestQueryParam`, `http.requestBodyText`, `http.requestBodyBytes`, `http.requestBodyLength`, `http.multipartPartText`, `http.multipartPartBytes`, `http.multipartPartFilename`, `http.multipartPartContentType`, `http.multipartPartLength` | Calls native HTTP request readers in the routed webserver codegen path (semsc.py:4081–4173). `requestMethod` and `requestPath` always return a non-null pointer for any dispatched request. `requestHeader`, `requestQueryParam`, `requestBodyText`, `requestBodyBytes`, and the `multipartPart*` readers return null when the named header / query / part is absent or the body is empty — passing such a null to `http.response*` body trips `semlint2` SS3603 `unguardedHttpInput` unless guarded with `pointer.isNull` or opted-in via the warning marker `null-body failure path`. | Impl'd |
+| `http.responseText`, `http.responseBytes`, `http.responseSseEvent`, `http.responseHeader` | Calls native HTTP response writers (semsc.py:3973–4058). `responseText` takes `status`, `body` (CNullTerminatedByteString), and an optional `contentType`; `responseBytes` takes `status`, `body` (COpaqueMemoryAddress), `bodyLength` (CByteCount), and `contentType` so embedded NUL bytes round-trip cleanly. `responseSseEvent` writes a single `text/event-stream` frame (one-shot, not long-lived streaming). `responseHeader` stamps one header into the response — must be called BEFORE the body writer, since the adapter latches headers at the first body write. All four reject a null `body` pointer with the adapter's `handler failed` 500. | Impl'd |
+| `storage local immutable NAME TYPE VALUE` (op-local) and `storage module immutable NAME TYPE VALUE` (module-scope) supersede the legacy `const NAME TYPE VALUE` shorthand | The shorthand `const NAME TYPE VALUE` is still accepted by semsc.py:910 and by `semlint.py`/`semlint2.py` as a registered declaration verb for backwards compatibility, but new code should use the explicit `storage` form so scope, mutability, and ownership are visible on every line. | Impl'd |
