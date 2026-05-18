@@ -2,6 +2,24 @@
 
 ## 2026-05-18
 
+- `ec1f24db27d45dd54cda9d060002249bd776f015` - `linter: cover route metadata drift checks`
+  - Adds semlint2 coverage for missing `routeTimeout` / `routeMiddleware` metadata and explicit opt-out cases so web route coverage drift remains visible in tests.
+- `cbb8963386448af1bcd56758156ded1428796cad` - `docs: refresh web runtime and release guidance`
+  - Refreshes the README, syntax catalog, TODO plan, optimization guidance, language docs, reference docs, toolchain docs, and sample documentation around the native HTTP runtime and 1.0 release posture.
+- `60c4c2aeac068cc5cae613d324c70d1ac8d367e2` - `vscode: mark extension package as 1.0.0`
+  - Bumps the VS Code extension package metadata to `1.0.0` and updates its release-readiness notes for the current private/source-available distribution state.
+- `55b8827490e0e42b947d80d0a721c46dd1385ea6` - `app: add native web demos and HTTP gauntlet`
+  - Adds the basic Todo web server, advanced Todo web API demo, HTTP API gauntlet, PowerShell/Python gauntlet checks, terminal Todo refinements, and the Todo preview asset.
+- `3b0f8c9274af855dadc222f7531f87de454d2a80` - `linter: expand HTTP and app validation`
+  - Extends semlint and semlint2 with native HTTP call ABI checks, nullable reader flow checks, route/app validation, stricter app-scale diagnostics, and companion unit coverage.
+- `775eb3057a25745b3f6aa8580120e888b5c448e1` - `compiler: harden typed lowering and web support`
+  - Hardens output-contract checks, enum lowering, exact-width math conversions, pointer byte loads, unsupported `http.*` diagnostics, native web route/middleware lowering, and related compiler tests.
+- `475623ca37c6303fdd1cad106d0b913c12d9d540` - `runtime: add native HTTP adapter`
+  - Adds the native HTTP runtime adapter, CMake/demo files, request/response/multipart/SSE helpers, middleware support, and native HTTP API/runtime documentation.
+- `945b5fa3e36a303f9be447a56659a1a2d7fe2afd` - `vendor: add h2o third-party module`
+  - Adds the H2O repository as a third-party submodule with `.gitmodules` metadata and repository notes under `third_party/`.
+- `8b7a6fb7ccadd5a052218259dccf6b29375d7e5e` - `chore: add release hygiene and artifact ignores`
+  - Adds root license/distribution notice, release hygiene notes, updated release/security/contribution guidance, and broader ignores for virtualenv, CMake, and native build artifacts.
 - `85705d6c19af7cf43133d0de636b0b148c26b392` - `docs: document SemanticScript 1.0 release readiness`
   - Adds the release-readiness checklist, CI workflow, dependency metadata, release process notes, support matrix docs, SECURITY / CONTRIBUTING files, and folder-level documentation. Marks completed 1.0 tasks while leaving license, publisher, and final artifact decisions explicit.
 - `248e5a76e73d94ce4dd56ad0ae690c3c45230c8d` - `app: add SemanticScript todo TUI sample`
