@@ -4305,5 +4305,96 @@ returnVoid
         self.assertNotIn("SS3613", _codes(diagnostics))
 
 
+# ==========================================================================
+# SS3614  buildTape.mainFileMustExist
+# ==========================================================================
+
+class TestMainFileMustExist(unittest.TestCase):
+    """`mainFile PROJECT "PATH"` in a build tape must reference a file
+    that exists on disk. Catches rename-rot: when the module source
+    gets renamed but the build tape's mainFile row isn't updated, the
+    build silently fails later. SS3614 surfaces the mismatch up front."""
+
+    def _write_build_tape(self, tempDirPath: Path, mainFileName: str,
+                          alsoCreate=None) -> Path:
+        """Write a build.sem fixture referencing `mainFileName`. If
+        `alsoCreate` is non-empty, also drop an actual file with that
+        name in the temp dir — used to test both the present-file and
+        missing-file paths against the same template."""
+        buildTapeSource = f"""project SampleProject
+buildProject sampleProject
+modulePath sampleProject github.com/example/sample
+languageVersion sampleProject "1.0"
+sourceRoot sampleProject "."
+mainFile sampleProject "{mainFileName}"
+"""
+        buildTapePath = tempDirPath / "build.sem"
+        buildTapePath.write_text(buildTapeSource, encoding="utf-8")
+        if alsoCreate:
+            (tempDirPath / alsoCreate).write_text(
+                "module example.sample\n", encoding="utf-8"
+            )
+        return buildTapePath
+
+    def test_missing_main_file_is_flagged(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            tempDirPath = Path(tempDir)
+            buildTapePath = self._write_build_tape(
+                tempDirPath, "main.sem", alsoCreate=None
+            )
+            diagnostics = semlint.lint_path(buildTapePath)
+            self.assertIn("SS3614", _codes(diagnostics))
+            matching = _diagnostics_with_code(diagnostics, "SS3614")[0]
+            self.assertEqual(matching.subjectName, "main.sem")
+            self.assertEqual(matching.subjectKind, "mainFile")
+            self.assertEqual(matching.gapEdge, "filesystem.exists")
+            self.assertTrue(matching.blocksCompile)
+            self.assertEqual(matching.severity.value, "error")
+            # The invariantRule should name the resolved path so an agent
+            # reading the diagnostic knows where the resolver looked.
+            self.assertIn("main.sem", matching.invariantRule)
+
+    def test_present_main_file_is_not_flagged(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            tempDirPath = Path(tempDir)
+            buildTapePath = self._write_build_tape(
+                tempDirPath, "main.sem", alsoCreate="main.sem"
+            )
+            diagnostics = semlint.lint_path(buildTapePath)
+            self.assertNotIn("SS3614", _codes(diagnostics))
+
+    def test_typoed_main_file_caught(self) -> None:
+        # A common rename-rot shape: the real file is `main.sem` but the
+        # build tape still says `main.sscript`.
+        with TemporaryDirectory() as tempDir:
+            tempDirPath = Path(tempDir)
+            buildTapePath = self._write_build_tape(
+                tempDirPath, "main.sscript", alsoCreate="main.sem"
+            )
+            diagnostics = semlint.lint_path(buildTapePath)
+            self.assertIn("SS3614", _codes(diagnostics))
+            matching = _diagnostics_with_code(diagnostics, "SS3614")[0]
+            self.assertEqual(matching.subjectName, "main.sscript")
+
+    def test_non_build_tape_emits_no_diagnostic(self) -> None:
+        # A regular module file with no `mainFile` row must not trip
+        # the rule (the linter is sweeping every file, not just build
+        # tapes).
+        with TemporaryDirectory() as tempDir:
+            tempDirPath = Path(tempDir)
+            modulePath = tempDirPath / "main.sem"
+            modulePath.write_text(
+                "module example.sample\n"
+                "operation main\n"
+                "output main Void\n"
+                "purpose main \"smoke\"\n"
+                "label startMain\n"
+                "returnVoid\n",
+                encoding="utf-8",
+            )
+            diagnostics = semlint.lint_path(modulePath)
+            self.assertNotIn("SS3614", _codes(diagnostics))
+
+
 if __name__ == "__main__":
     unittest.main()

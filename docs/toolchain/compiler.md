@@ -38,6 +38,9 @@ CLI flags:
 | `--opt-level N` | LLVM optimization level `0..3`, default `2`. |
 | `--build-profile dev\|prod` | Runtime safety profile for compiled output. `dev` is the default and embeds `SSRUN001` panic context; `prod` keeps trap checks but hides source context. |
 | `--runtime-checks off\|traps\|panic` | Override the profile default. `off` emits no runtime checks, `traps` emits silent `llvm.trap` checks, and `panic` embeds the SemanticScript panic message before trapping. |
+| `--build-file PATH` | Merge build-time declarations (project metadata, icon registry, build switches) from this `.sem` / `.sscript` file into the main Program before codegen. Conflicting redeclarations are rejected. Unused by `build.sem` entry points that use `importModule` directly. |
+| `--keep-resources` | Retain the intermediate Windows resource files (`.rc` / `.res` / `.ico`) next to the executable for debugging. Default behavior writes them to a tempdir and deletes after linking — the bytes survive only inside the `.exe`'s PE resource section. Overrides `keepResources PROJECT no` in the build tape. |
+| `--resource-dir PATH` | Explicit directory for intermediate resource files. Implies `--keep-resources`. Path resolves relative to the source file's directory unless absolute. Overrides `resourcesDir PROJECT "path"` in the build tape. |
 | `--quiet` | Suppress success messages. |
 
 Set `SEMSC_CLANG` to override the clang executable used by `--emit-exe`.
@@ -67,6 +70,56 @@ python compiler/semsc.py ..\app\todo\build.sem --emit-exe --build-dir C:\sem-art
 
 The repository ignores `build/` folders, so app-local artifacts such as
 `app/todo/build/todo.exe` stay out of source control.
+
+## Build-Time Resources
+
+On Windows, the compiler bakes project metadata and icon assets into the
+executable's PE resource section via `llvm-rc`. Source-level verbs
+(documented in `SYNTAX.md`) declare the resources:
+
+- Project metadata: `version`, `publisher`, `description`, `copyright`,
+  `productName`, `internalName`, `originalFilename`, `trademark`,
+  `comments`, plus arbitrary `metadata "key" "value"` pairs.
+- Icon registry: `iconRoleDefinition`, `icon`, `iconRole`, `iconPurpose`,
+  and one `iconImage` plus its property rows (`iconImagePath`,
+  `iconImageFormat`, `iconImageWidth`, `iconImageHeight`, `iconImageScale`,
+  `iconImageDepth`, `iconImagePlatform`, `iconImagePurpose`,
+  `iconImageGroup`) per registered image.
+
+At `--emit-exe` time, the compiler generates a transient `.rc` plus an
+auto-packed multi-size `.ico`, hands them to `llvm-rc` (probed on PATH and
+under `C:\Program Files\LLVM\bin\`; honors `SEMSC_WINRC`), and the
+resulting `.res` is linked into the PE alongside the LLVM IR object.
+
+**Default behavior is residue-free:** the intermediate `.rc`, `.res`, and
+`.ico` live in a system tempdir and are deleted after linking. The
+resource bytes survive only inside `todo.exe`. After a clean build the
+output directory contains only the executable (and `.ll` if IR
+persistence is on):
+
+```text
+build/
+  todo.exe
+  todo.ll
+```
+
+To inspect what got embedded, opt into keeping the intermediates:
+
+| Source of truth | How to enable | Where files land |
+|---|---|---|
+| build tape | `keepResources PROJECT yes` in `build.sem` | `<build_dir>/resources/` |
+| build tape | `resourcesDir PROJECT "path"` in `build.sem` | `path/` (relative to source dir, or absolute) |
+| CLI flag | `--keep-resources` | `<build_dir>/resources/` |
+| CLI flag | `--resource-dir PATH` | `PATH` |
+
+Precedence: CLI flags win over `build.sem` declarations. Within each
+source, an explicit path beats a boolean keep flag.
+
+The icon group with `iconRole applicationPrimary` is the one that lowers
+to the Windows VERSIONINFO ICON resource. Images with
+`iconImagePlatform any` or `windows` are packed; macOS (`macos`) and
+Linux images are parsed and indexed for future emitters but not yet
+embedded.
 
 ## 1.0 Support Matrix
 

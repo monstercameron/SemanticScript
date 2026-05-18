@@ -7213,6 +7213,127 @@ def check_route_handler_input_names(facts: ExtendedFacts) -> List[Diagnostic]:
     return diagnostics
 
 
+def check_main_file_must_exist(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3614 — every `mainFile PROJECT "PATH"` row in a build tape MUST
+    reference a file that exists on disk (resolved relative to
+    `sourceRoot PROJECT "ROOT_PATH"`, or to the build tape's own
+    directory when sourceRoot is absent).
+
+    This catches the rename-rot scenario: when the module file gets
+    renamed (e.g. `http_api_gauntlet.sscript` → `main.sem`) and the
+    `mainFile` row in `build.sem` isn't updated, semsc would silently
+    fail later in the build OR — worse — `importModule` would resolve
+    via the module registry and the `mainFile` row would become a
+    decorative lie. The lint surfaces the mismatch BEFORE compile.
+
+    Resolution rules (matching semsc.py's build-tape resolver):
+      1. `mainFile httpApiGauntlet "main.sem"` is resolved relative to
+         the directory of the build tape file.
+      2. If `sourceRoot httpApiGauntlet "."` is declared, the file is
+         resolved relative to (build-tape-dir / sourceRoot-path).
+      3. The path is required to exist; the file's content is NOT
+         parsed (that's a separate concern handled by the importModule
+         lowering).
+
+    Graded ERROR + blocksCompile=True because a missing main file is
+    a hard build failure waiting to happen, and the diagnostic site is
+    the canonical place to surface it (semsc's error would arrive
+    later with a less actionable trace).
+    """
+    diagnostics: List[Diagnostic] = []
+    sourceRootByProject: Dict[str, Tuple[str, SourceLine]] = {}
+    mainFileRows: List[Tuple[str, str, SourceLine]] = []  # (project, path, line)
+    for sourceLine in facts.base.lines:
+        if (is_comment(sourceLine) or not sourceLine.tokens
+                or len(sourceLine.args) < 2):
+            continue
+        if sourceLine.verb == "sourceRoot" and len(sourceLine.args) >= 2:
+            sourceRootByProject[sourceLine.args[0]] = (sourceLine.args[1], sourceLine)
+        elif sourceLine.verb == "mainFile" and len(sourceLine.args) >= 2:
+            mainFileRows.append((sourceLine.args[0], sourceLine.args[1], sourceLine))
+
+    if not mainFileRows:
+        # Not a build tape (or one that simply omits mainFile — semsc
+        # may still accept this for non-routed module-only files).
+        return diagnostics
+
+    buildTapeDir = Path(str(facts.base.path)).resolve().parent
+    for projectName, declaredPath, sourceLine in mainFileRows:
+        sourceRootEntry = sourceRootByProject.get(projectName)
+        if sourceRootEntry is not None:
+            sourceRootPath, _sourceRootLine = sourceRootEntry
+            resolvedDir = (buildTapeDir / sourceRootPath).resolve()
+        else:
+            resolvedDir = buildTapeDir
+        resolvedFile = (resolvedDir / declaredPath).resolve()
+        if resolvedFile.exists() and resolvedFile.is_file():
+            continue
+        # Build the diagnostic. Show the declared path AND the resolved
+        # absolute path so the agent doesn't have to redo the resolution
+        # logic in its head.
+        diagnostics.append(Diagnostic(
+            tier=Tier.T1_SPEC,
+            code="SS3614",
+            kind="buildTape.mainFileMustExist",
+            severity=Severity.ERROR,
+            subjectName=declaredPath,
+            subjectKind="mainFile",
+            gapEdge="filesystem.exists",
+            intentSlogan=(
+                f"mainFile `{declaredPath}` does not exist on disk"
+            ),
+            primary=span_of_line(sourceLine, "mainFileDeclaration"),
+            invariantRule=(
+                f"`mainFile {projectName} \"{declaredPath}\"` requires the "
+                f"referenced file to exist relative to "
+                f"`sourceRoot {projectName} \"...\"` (or the build tape's "
+                f"directory when no sourceRoot is declared). The resolver "
+                f"looked at `{resolvedFile}` and found nothing. This is the "
+                f"rename-rot failure mode: the module file was probably "
+                f"renamed and the build tape's mainFile row wasn't updated "
+                f"in lockstep."
+            ),
+            specAnchor="SYNTAX.md#mainFile",
+            fixCandidates=[
+                FixCandidate(
+                    name="updateMainFileToActualName",
+                    shape=(
+                        f"# inspect `{resolvedDir}` for the real module "
+                        f"filename and update the mainFile row:\n"
+                        f"mainFile {projectName} \"<actual-filename>\""
+                    ),
+                ),
+                FixCandidate(
+                    name="restoreOrRenameModuleFile",
+                    shape=(
+                        f"# create or rename the module source so it "
+                        f"matches the declared path:\n"
+                        f"# mv <current-name> {resolvedFile.name}"
+                    ),
+                ),
+                FixCandidate(
+                    name="fixSourceRootIfWrongDirectory",
+                    shape=(
+                        f"# if the module is in a different folder, point "
+                        f"sourceRoot at it:\n"
+                        f"sourceRoot {projectName} \"<correct-source-dir>\""
+                    ),
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            blocksCompile=True,
+            effort=Effort.TRIVIAL,
+            passProvenance="check_main_file_must_exist",
+            agentHint=(
+                "build-tape paths are filesystem-relative; renaming a module "
+                "source without updating the build tape's mainFile row is "
+                "the canonical drift this rule catches. The diagnostic's "
+                "`resolvedFile` shows exactly where the resolver looked."
+            ),
+        ))
+    return diagnostics
+
+
 def check_route_coverage_drift(facts: ExtendedFacts) -> List[Diagnostic]:
     """SS3604 — every declared route SHOULD have a matching
     `routeTimeout SERVER PATH BUDGET` and `routeMiddleware SERVER PATH MW`,
@@ -8279,6 +8400,8 @@ CHECKERS = [
     check_middleware_return_type_is_middleware_control,
     check_void_output_should_use_return_void,
     check_narrative_references_line_number,
+    # Build-tape integrity (SS3614) — mainFile must reference a real file
+    check_main_file_must_exist,
 ]
 
 

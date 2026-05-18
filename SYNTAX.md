@@ -89,6 +89,8 @@ blocks, and dynamic object or array literals.
 | `iconImageDepth IMAGE bits32|bits24|bits8` | Declares the icon image color depth. | Partial |
 | `iconImagePlatform IMAGE any|windows|macos|linux` | Declares the intended platform for the image. | Partial |
 | `iconImagePurpose IMAGE "text"` | Documents where and why a specific icon image size is used. | Partial |
+| `keepResources PROJECT yes\|no` | Build-tape switch — when `yes`, the intermediate Windows resource files (`.rc`/`.res`/`.ico`) are retained under `<build_dir>/resources/` for debugging. Defaults to `no`, in which case the files live in tempdir and are deleted after linking. CLI `--keep-resources` overrides. | Impl'd |
+| `resourcesDir PROJECT "path"` | Build-tape path override naming an explicit directory for intermediate resource files. Implies `keepResources yes`. Relative paths resolve beside the source. CLI `--resource-dir PATH` overrides. | Impl'd |
 | `importModule DOTTED.PATH [as ALIAS]` | Imports a module. When the root build tape has `registerModule` rows, the compiler resolves registered modules first; lint requires project module imports to target the registered module set. Legacy filesystem/std-lib fallback remains for single-file sources and older samples. | Impl'd |
 | `section NAME` | Declares a retrieval/indexing section without creating scope. | Impl'd |
 | `group NAME` | Names a non-lexical attention/dataflow group. | Impl'd |

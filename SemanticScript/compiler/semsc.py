@@ -638,17 +638,17 @@ _ICON_ROLES_RECOGNIZED = frozenset({
     "splash",
 })
 
-# Recognised image-format tokens for iconImageFormat. The compiler picks
-# the right resource-compiler invocation based on this value.
-_ICON_IMAGE_FORMATS = frozenset({"png", "ico", "icns", "svg", "jpeg"})
+# Recognised image-format tokens for iconImageFormat. Matches SYNTAX.md.
+_ICON_IMAGE_FORMATS = frozenset({"png", "ico"})
 
-# Recognised colour-depth tokens for iconImageDepth.
-_ICON_IMAGE_DEPTHS = frozenset({"bits1", "bits4", "bits8", "bits24", "bits32"})
+# Recognised colour-depth tokens for iconImageDepth. Matches SYNTAX.md.
+_ICON_IMAGE_DEPTHS = frozenset({"bits8", "bits24", "bits32"})
 
 # Recognised platform tokens for iconImagePlatform. `any` means the image
 # is consumed by every platform that has an emitter; the three explicit
-# tokens limit the image to a single platform's lowering pass.
-_ICON_IMAGE_PLATFORMS = frozenset({"any", "windows", "darwin", "linux"})
+# tokens limit the image to a single platform's lowering pass. The
+# `macos` spelling matches the SYNTAX.md row and the user-facing vocab.
+_ICON_IMAGE_PLATFORMS = frozenset({"any", "windows", "macos", "linux"})
 
 # Verb -> property name in the icon_images[name] dict.
 _ICON_IMAGE_PROPERTY_VERBS = {
