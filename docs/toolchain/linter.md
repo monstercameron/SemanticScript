@@ -1,15 +1,15 @@
 # Linters
 
-SemanticScript has two linter tracks:
+SemanticScript has one canonical standalone linter:
 
-- `SemanticScript/linter/semlint.py`: current standalone source linter.
-- `SemanticScript/linter/semlint2.py`: structured refinement linter with tiers,
-  citations, fix candidates, and agent-oriented output.
+- `SemanticScript/linter/semlint.py`: structured diagnostics with stable
+  `SS<code>` identifiers, tiers, citations, fix candidates, and
+  agent-oriented output.
 
 The compiler also has an internal lint pass behind `semsc.py --lint`, but editor
 and CI integrations should prefer the standalone linter entry points.
 
-## semlint.py
+## Basic Usage
 
 Run one file:
 
@@ -68,39 +68,39 @@ duplicate domain literals
 semantic comment prefix checks
 ```
 
-## semlint2.py
+## Structured Output
 
 Run one file:
 
 ```powershell
-python SemanticScript/linter/semlint2.py SemanticScript/sem/fizzbuzz.sscript
+python SemanticScript/linter/semlint.py SemanticScript/sem/fizzbuzz.sscript
 ```
 
 Structured JSON:
 
 ```powershell
-python SemanticScript/linter/semlint2.py SemanticScript/sem/fizzbuzz.sscript --format json
+python SemanticScript/linter/semlint.py SemanticScript/sem/fizzbuzz.sscript --format json
 ```
 
 Agent-oriented output:
 
 ```powershell
-python SemanticScript/linter/semlint2.py SemanticScript/sem/fizzbuzz.sscript --format agent
+python SemanticScript/linter/semlint.py SemanticScript/sem/fizzbuzz.sscript --format agent
 ```
 
 Emit diagnostics as SemanticScript-shaped records:
 
 ```powershell
-python SemanticScript/linter/semlint2.py SemanticScript/sem/fizzbuzz.sscript --format sem-record
+python SemanticScript/linter/semlint.py SemanticScript/sem/fizzbuzz.sscript --format sem-record
 ```
 
 Filter:
 
 ```powershell
-python SemanticScript/linter/semlint2.py SemanticScript/sem --tier T3 --code SS0101
+python SemanticScript/linter/semlint.py SemanticScript/sem --tier T3 --code SS0101
 ```
 
-semlint2 tiers:
+semlint tiers:
 
 | Tier | Meaning | Default intent |
 |---|---|---|
@@ -128,7 +128,7 @@ effort
 blocksCompile
 ```
 
-## semlint2 Check Families
+## semlint Check Families
 
 The structured linter currently checks:
 
@@ -175,10 +175,9 @@ duplicate declarations
 
 ## App-Scale Checks
 
-The stable `semlint.py` surface includes conservative app-scale checks for JSON
+The `semlint.py` surface includes conservative app-scale checks for JSON
 serialization boundaries, fixed-format parser contracts, and direct scalar-width
-drift. The structured `semlint2.py` track should keep equivalent checks as it
-absorbs more app-facing rules.
+drift.
 
 ## Serialization Checks
 
@@ -217,9 +216,9 @@ math call. For signed i32/i64 changes, use
 `math.signExtendCSignedInt32ToCSignedInt64` or
 `math.truncateCSignedInt64ToCSignedInt32`.
 
-When a closed status domain is modeled as an enum, semlint2 treats enum cases as
+When a closed status domain is modeled as an enum, semlint treats enum cases as
 typed values and checks the enum repr against the target signature so a status
-enum does not silently degrade back into a raw integer. semlint2 reports
+enum does not silently degrade back into a raw integer. semlint reports
 `mathOperandWidthDrift` when any math target receives an operand with a
 different numeric shape; this diagnostic is compile-blocking because codegen
 rejects the same mismatch.
@@ -230,11 +229,11 @@ The VS Code extension defaults to `semlint.py`. Set:
 
 ```json
 {
-  "semanticScript.linter.engine": "semlint2"
+  "semanticScript.linter.engine": "semlint"
 }
 ```
 
-The extension parses both legacy JSON diagnostics and semlint2 structured JSON.
-For refined future syntax, the extension can skip current `semlint.py`
-diagnostics by default because the current executable linter intentionally lags
-some research syntax.
+The extension parses both legacy JSON diagnostics and semlint structured JSON.
+For refinement-only files that are not executable by the current compiler yet,
+the extension can skip linter diagnostics when
+`semanticScript.linter.skipFutureSyntax` is enabled.

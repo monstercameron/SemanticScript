@@ -47,7 +47,7 @@ jobs:
         run: python -m unittest SemanticScript/formatter/test_semfmt.py -v
 
       - name: Run linter unit tests
-        run: python -m unittest SemanticScript/linter/test_semlint2.py -v
+        run: python -m unittest SemanticScript/linter/test_semlint.py -v
 
       - name: Parse smoke fixtures
         run: |

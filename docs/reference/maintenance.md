@@ -11,7 +11,7 @@ For a new verb or changed schema:
 2. Update `SemanticScript/compiler/semsc.py` parser handling.
 3. Add or update lowering if the verb affects runtime behavior.
 4. Add a focused file in `SemanticScript/sem/feature_tests/`.
-5. Update `SemanticScript/linter/semlint2.py` known verbs and checks.
+5. Update `SemanticScript/linter/semlint.py` known verbs and checks.
 6. Update `SemanticScript/linter/semlint.py` if the current linter should enforce
    the behavior.
 7. Update `vscode-semanticscript` syntax, semantic roles, hovers, and symbol
@@ -113,7 +113,7 @@ Before considering a language-doc update done:
 
 ```powershell
 python SemanticScript/compiler/semsc.py SemanticScript/sem/feature_tests/<case>.sscript --parse-only
-python SemanticScript/linter/semlint2.py SemanticScript/sem/feature_tests/<case>.sscript --format human
+python SemanticScript/linter/semlint.py SemanticScript/sem/feature_tests/<case>.sscript --format human
 cd vscode-semanticscript
 npm run check
 ```

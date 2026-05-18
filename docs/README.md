@@ -11,8 +11,7 @@ organize them:
 ```text
 SYNTAX.md                         complete syntax inventory and status table
 SemanticScript/compiler/semsc.py       reference parser, AST, lowering, CLI
-SemanticScript/linter/semlint.py       current standalone source linter
-SemanticScript/linter/semlint2.py      structured refinement linter
+SemanticScript/linter/semlint.py       canonical standalone structured linter
 SemanticScript/compiler/libc_registry.py
                                   c.* ABI registry
 STDLIB.md                         stdlib module inventory
@@ -69,7 +68,7 @@ matrix. The release-level boundary is:
 | [reference/verb-index.md](reference/verb-index.md) | Verb families and schema index. |
 | [reference/release-hygiene.md](reference/release-hygiene.md) | Release repository-state, package-metadata, and mirror-file policy. |
 | [toolchain/compiler.md](toolchain/compiler.md) | semsc.py CLI, parsing, import resolution, codegen modes. |
-| [toolchain/linter.md](toolchain/linter.md) | semlint.py and semlint2.py commands, diagnostics, tiers. |
+| [toolchain/linter.md](toolchain/linter.md) | semlint.py commands, diagnostics, tiers. |
 | [toolchain/vscode-extension.md](toolchain/vscode-extension.md) | Extension behavior, hover expectations, packaging. |
 | [reference/maintenance.md](reference/maintenance.md) | How to keep language, compiler, linter, docs, and extension in sync. |
 

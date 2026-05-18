@@ -5,7 +5,7 @@ Documentation for compiler, linter, and editor tooling.
 ## Contents
 
 - `compiler.md` documents `semsc.py` behavior and CLI usage.
-- `linter.md` documents `semlint.py` and `semlint2.py`.
+- `linter.md` documents `semlint.py`.
 - `native-http-runtime.md` documents the current native HTTP adapter and planned
   H2O / `libh2o` backend.
 - `vscode-extension.md` documents the VS Code extension surface.

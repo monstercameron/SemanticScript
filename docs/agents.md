@@ -1,6 +1,6 @@
 # SemanticScript agents.md
 
-Dense agent context. ASCII only. Truth: SYNTAX.md, semsc.py, semlint2.py,
+Dense agent context. ASCII only. Truth: SYNTAX.md, semsc.py, semlint.py,
 vscode-semanticscript/extension.js. Editor support != compiler support.
 
 == core ==
@@ -450,7 +450,7 @@ locks/select/interval no-op/fallthrough.
 Selected names lower directly. Unknown runtime binding => normal body.
 
 == linter ==
-semlint/semlint2 checks and guardrails: unknown verbs; vague names; missing op metadata; hidden
+semlint checks and guardrails: unknown verbs; vague names; missing op metadata; hidden
 failures; effects without capability; unresolved refs; arg arity/type; dead
 stores; unused calls/labels/consts/inputs/binds/caps/error cases/storage;
 allocation in loop; heap contradiction; missing allocation source; unpaired
@@ -467,15 +467,15 @@ T0/T1/T2 correctness. T3 design debt. T4 style.
   python SemanticScript/compiler/semsc.py file.sscript --emit-ir out.ll
   python SemanticScript/compiler/semsc.py file.sscript --emit-exe out.exe
   python SemanticScript/linter/semlint.py file.sscript --format json --fail-on none
-  python SemanticScript/linter/semlint2.py file.sscript --format human
-  python SemanticScript/linter/semlint2.py file.sscript --format json
-  python SemanticScript/linter/semlint2.py file.sscript --tier T3 --code SS0101
+  python SemanticScript/linter/semlint.py file.sscript --format human
+  python SemanticScript/linter/semlint.py file.sscript --format json
+  python SemanticScript/linter/semlint.py file.sscript --tier T3 --code SS0101
 
 == change protocol ==
   1 SYNTAX.md schema/status
   2 semsc.py parser + lowering or metadata/sync behavior
   3 feature_tests minimal executable case
-  4 semlint2 known verbs/checks; semlint if needed
+  4 semlint known verbs/checks
   5 vscode grammar + semantic roles + hover + symbol index
   6 docs narrow topic + docs/agents.md if relevant
   7 run compiler/linter/editor checks
