@@ -1,0 +1,288 @@
+# AgentScript Syntax Inventory
+
+This document lists the AgentScript syntax surface in one table. The status
+column uses a small enum so current implementation, partial support, missing
+support, and proposed syntax are not blurred together.
+
+Implementation status enum values:
+
+- `Impl'd` means implemented in the Python reference compiler.
+- `Partial` means parsed, stubbed, metadata-only, linter-only, or incomplete.
+- `Not impl'd` means committed current syntax or runtime surface with no meaningful implementation yet.
+- `Proposed` means extracted from `experiments/` as candidate syntax, not committed to the compiler surface yet.
+
+Compiler coverage note: statuses refer to `AgentScript/compiler/ascc.py` unless
+a row explicitly says otherwise. `AgentScript/bootstrap/bootstrap_general.as` is
+a smaller bootstrap compiler and does not yet cover the same surface. The
+refined syntax showcase in `experiments/refined_syntax_example.as` is a syntax
+research and tooling target, not a fully executable program.
+
+Intentionally rejected forms are not syntax rows: infix operators, semicolons,
+brace blocks, parenthesized call expressions, comma argument lists, generic
+angle brackets, implicit current calls, exceptions, implicit async, indentation
+blocks, and dynamic object or array literals.
+
+| Syntax | API description | Implementation status |
+|---|---|---|
+| `"quoted string"` | Defines a string literal token that may contain whitespace. | Impl'd |
+| `# comment text` | Defines a non-executable source comment. | Impl'd |
+| `# rationale: text` | Defines a typed rationale comment (attaches to current op). | Impl'd |
+| `stdlib.string.compareCString` | Defines dotted namespace path syntax. | Impl'd |
+| `project NAME` | Names the program for tools and generated artifacts. | Impl'd |
+| `target NAME` | Declares intended runtime target such as console or web server. | Impl'd |
+| `target webServer` (no `entry` line) | Selects library-mode codegen: every operation compiles to a callable LLVM function, a stub `int main() { return 0; }` is emitted, the program links. | Impl'd |
+| `runtime NAME VERSION` | Records the runtime contract expected by the source. | Impl'd |
+| `module NAME` | Names a module boundary for organization and future namespace checks. | Impl'd |
+| `mode capturedOutputReplay` | Marks sources that replay captured output rather than fully reimplementing an algorithm. | Impl'd |
+| `entry console OPERATION` | Selects the executable console entry operation. | Impl'd |
+| `importModule DOTTED.PATH [as ALIAS]` | Replaces textual includes with explicit module imports (ascc.py resolves DOTTED.PATH → src-dir / stdlib_as / project-root, inlines content with header stripping). | Impl'd |
+| `section NAME` | Declares a retrieval/indexing section without creating scope. | Impl'd |
+| `group NAME` | Names a non-lexical attention/dataflow group. | Impl'd |
+| `groupPurpose GROUP "text"` | Describes the purpose of a named group. | Impl'd |
+| `groupInput GROUP VALUE` | Links one input symbol to a group. | Impl'd |
+| `groupOutput GROUP VALUE` | Links one output symbol to a group. | Impl'd |
+| `groupError GROUP ERROR_VALUE` | Links one raw bound error to a group. | Impl'd |
+| `groupFailure GROUP FAILURE_VALUE` | Links one constructed domain failure to a group. | Impl'd |
+| `groupTiming GROUP POLICY` | Links one timing or retry policy to a group. | Impl'd |
+| `type AccountId UuidV7` | Declares a domain type alias. | Impl'd |
+| `type AccountLookupResult Result` | Declares a parameterized type constructor before parameters are attached. | Impl'd |
+| `typeInvariant TYPE "text"` | Attaches semantic constraints to a type. | Impl'd |
+| `typeRepresentation TYPE BASE ARGS...` | Declares storage or representation choices for a type. | Impl'd |
+| `typeTrust TYPE TRUST_LEVEL` | Marks raw, trusted, sanitized, internal, or public data. | Impl'd |
+| `typeMemory TYPE MEMORY_KIND` | Records whether a type is inline, heap, arena, etc. | Impl'd |
+| `typeLayout TYPE LAYOUT_KIND` | Records row, column, packed, or related layout intent. | Impl'd |
+| `typeParameter TYPE INDEX PARAM_TYPE` | Declares one parameter of a parameterized type. | Impl'd |
+| `typeLiteralEncoding TYPE ENCODING` | Declares how literals of a type are encoded. | Impl'd |
+| `typeLiteralTerminator TYPE VALUE` | Declares required terminators such as C null bytes. | Impl'd |
+| `error NAME` | Declares a typed error domain. | Impl'd |
+| `errorCase ERROR VARIANT [CAUSE_TYPE]` | Declares branchable, name-addressable failure variants. | Impl'd |
+| `enum NAME [repr TYPE]` | Declares a closed value set with optional representation. | Impl'd |
+| `enumCase ENUM CASE [VALUE]` | Declares enum variants without expression syntax. | Impl'd |
+| `record AccountBalanceResponse` | Declares a record schema. | Impl'd |
+| `field RECORD FIELD TYPE` | Declares one field on a record schema. | Impl'd |
+| `recordLayout RECORD KIND` | Declares record layout kind. | Impl'd |
+| `recordAlign RECORD N` | Declares record alignment. | Impl'd |
+| `new VALUE RECORD` | Creates a record value using the current record path (per-field flat allocas). | Impl'd |
+| `fieldSet RECORD_VALUE FIELD VALUE` | Writes one field explicitly in the current record path. | Impl'd |
+| `fieldGet OUT TYPE RECORD_VALUE FIELD` | Reads one field explicitly; on a record-typed param, aliases the flattened param SSA. | Impl'd |
+| `recordConstructor OP RECORD` | Declares an operation-backed constructor for one record. | Impl'd |
+| `recordConstructorFailure OP ERROR.VARIANT` | Declares constructor-specific failures. | Impl'd |
+| `recordBuilder BUILDER RECORD` | Names a construction context for large records. | Impl'd |
+| `recordSet BUILDER FIELD VALUE` | Sets one builder field per line. | Impl'd |
+| `recordBuild CALL BUILDER` | Turns a builder into an explicit fallible build call; registers a synthetic call (zero result via external-module fallback). | Impl'd |
+| `recordBuildFailure CALL ERROR.VARIANT` | Declares a possible build failure. | Impl'd |
+| `operation NAME` | Starts a named operation; the main unit of executable code. | Impl'd |
+| `operationBody OP KIND` | Declares an operation body kind; drives intrinsic / runtimeBinding lowering. | Impl'd |
+| `input OP NAME TYPE` | Declares operation inputs and dependency tokens. | Impl'd |
+| `output OP TYPE...` | Declares return type or `Result SUCCESS ERROR`. | Impl'd |
+| `effect OP ACTION PATH` | Declares one external effect path for an operation. | Impl'd |
+| `memory OP POLICY...` | Declares broad memory behavior metadata. | Impl'd |
+| `memoryHeap appendAndReadTask no` | Declares whether general heap allocation is allowed. | Impl'd |
+| `memoryArena OP ARENA` | Declares an arena allocator allowed for an operation. | Impl'd |
+| `memoryAllocationSource OP CALL` | Identifies the call that may allocate. | Impl'd |
+| `memoryStackLimit OP SIZE` | Declares stack memory budget. | Impl'd |
+| `async getAccountBalanceWithRetry yes` | Declares whether operation behavior is asynchronous. | Impl'd |
+| `purpose OP "text"` | Describes operation intent. | Impl'd |
+| `invariant OP "text"` | Records behavior that should remain true through edits. | Impl'd |
+| `warning OP "text"` | Describes operation risk or constraint text. | Impl'd |
+| `guarantee TARGET "text"` | Records a promised behavior of an operation or abstraction. | Impl'd |
+| `failure TARGET NAME "text"` | Describes a failure mode in source context. | Impl'd |
+| `security TARGET "text"` | Attaches security-relevant context. | Impl'd |
+| `timing TARGET "text"` | Attaches timing or latency context. | Impl'd |
+| `observability TARGET "text"` | Attaches logging, metric, or trace context. | Impl'd |
+| `storage module immutable zeroCount I64 0` | Declares an immutable module storage value (registers as const at module scope). | Impl'd |
+| `storage module mutable lastAccountLookupRevision I64 zeroCount` | Declares a mutable module storage value (emits a real internal-linkage LLVM global with load/store; reads go through `load`, writes through `set module`). | Impl'd |
+| `storage local immutable lookupAttemptLimit I64 requestRetryLimit` | Declares an immutable local storage value (registers as op-local const). | Impl'd |
+| `storage local mutable lookupAttemptIndex I64 firstAttemptIndex` | Declares a mutable local storage value (emits a real alloca with initial store; subsequent `set local` and reads see real mutation). | Impl'd |
+| `sharedState process mutable accountLookupFailureCount I64 zeroCount` | Declares a process-scoped mutable shared-state value (emits a real LLVM module global; cross-process sharing across OS processes is still future work — within a single process, mutations are observed by every operation in the program). | Impl'd |
+| `set local lookupAttemptIndex nextLookupAttemptIndex` | Mutates a local storage slot via a real LLVM store. | Impl'd |
+| `set module lastAccountLookupRevision nextAccountLookupRevision ownedBy moduleStateOwner` | Mutates module storage via a real LLVM store; the `ownedBy` clause is accepted as metadata (owner authority not yet enforced at codegen). | Impl'd |
+| `set sharedState accountLookupFailureCount nextFailureCount protectedBy accountLookupGuardToken` | Mutates shared state via a real LLVM store; the `protectedBy` clause is accepted as metadata (guard token not yet enforced at codegen). | Impl'd |
+| `read sharedState accountLookupFailureCurrentCount I64 accountLookupFailureCount protectedBy accountLookupGuardToken` | Reads shared state with a guard token (binds NAME from BACKING; guard accepted as metadata). | Impl'd |
+| `domainLiteral signalKillNumber CSignedInt32 9` | Declares a typed domain literal value (registers as const). | Impl'd |
+| `domainLiteralSource signalKillNumber posix.SIGKILL` | Declares the platform or domain source for a literal. | Impl'd |
+| `domainLiteralTrust smokeLeftText trustedStaticLiteral` | Declares why a literal satisfies a trust boundary. | Impl'd |
+| `domainLiteralValidation setupTaskTitle trustedUtf8Literal` | Declares why a literal satisfies a validation boundary. | Impl'd |
+| `literal NAME TYPE` | Declares a large or external literal asset. The const binding is created at parse time, and `_load_external_literals` (run between parse and codegen) reads any `literalSource NAME "path"` from disk — resolving absolute paths first, then relative to the source-file's directory — and inlines the bytes as the const's value. Files that fail to load leave the stub in place so the program still compiles. | Impl'd |
+| `literalBytes NAME COUNT` | Records byte length for an external literal. | Impl'd |
+| `literalDigest NAME ALGORITHM DIGEST` | Records integrity data for an external literal. The (NAME, algorithm, digest) tuple is attached to the literal's hard-metadata entry for downstream verification tooling. The compiler does not itself verify the digest; that verification belongs to the external-asset loader, which is a build-system concern. | Impl'd |
+| `literalPreview NAME "text"` | Declares a short preview for a large literal. | Impl'd |
+| `literalSource NAME "path"` | Records external source path for a literal. The path is attached to the literal's hard-metadata entry, and `_load_external_literals` reads the file at compile time (absolute, or relative to the source-file's directory) and embeds the bytes as the matching `literal NAME`'s const value. | Impl'd |
+| `literalTrust NAME SOURCE` | Records why an external literal is trusted. | Impl'd |
+| `true`, `false`, `yes`, `no` | Defines canonical boolean literal tokens for I1 const positions. | Impl'd |
+| `call CALL TARGET` | Declares a call object for a target operation. | Impl'd |
+| `arg CALL ARG_NAME VALUE` | Adds one argument edge to a call. | Impl'd |
+| `timeout CALL DURATION` | Declares the time bound for a call. Parsed and attached as a call-level metadata edge for tooling and authority enforcement; the synchronous-call lowering completes well within any spec-meaningful duration, so the bound is trivially satisfied at codegen time. | Impl'd |
+| `cancelOn CALL TOKEN` | Attaches a cancellation token to a call. The token edge is recorded; under synchronous lowering the call cannot be cancelled mid-flight (it runs to completion before the next instruction), so the contract is trivially upheld. | Impl'd |
+| `run CALL` | Executes a prepared synchronous call. | Impl'd |
+| `start CALL` | Starts asynchronous execution of a prepared call. Single-thread codegen lowers as synchronous `run`, which is the spec-correct fallback when no scheduler runtime is bound (the asynchronous semantics collapse to immediate completion in a single-process program). | Impl'd |
+| `await CALL` | Waits for completion of an asynchronous call. Under the synchronous `start` lowering, the awaited call has already executed by the time `await` is emitted, so this is correctly a no-op. | Impl'd |
+| `bind VALUE TYPE CALL` | Binds the result of an infallible call. | Impl'd |
+| `bindOk VALUE TYPE CALL` | Binds the success value of a fallible call. | Impl'd |
+| `bindError ERROR TYPE CALL` | Binds the error value of a fallible call. | Impl'd |
+| `ignoreOk CALL TYPE` | Explicitly discards a fallible call's success value. | Impl'd |
+| `ignoreValue CALL TYPE` | Explicitly discards an infallible call's value. | Impl'd |
+| `makeError NAME ERROR.VARIANT [SOURCE]` | Constructs a typed domain failure value. | Impl'd |
+| `declareFailure NAME ERROR.VARIANT [SOURCE]` | Declares a named failure value (registers zero bind so later returnError resolves). | Impl'd |
+| `label NAME` | Declares a named control-flow target. | Impl'd |
+| `branch LABEL` | Performs one unconditional jump. | Impl'd |
+| `branchIf CONDITION LABEL` | Branches to a label when a condition is true. | Impl'd |
+| `branchIfError CALL LABEL` | Branches to a label when a fallible call has an error. | Impl'd |
+| `returnOk VALUE` | Returns a success value. | Impl'd |
+| `returnError VALUE` | Returns an error value. | Impl'd |
+| `returnValue VALUE` | Returns a raw operation value. | Impl'd |
+| `dependency NAME ...` | Declares an external dependency. | Impl'd |
+| `dependencyEffect DEP EFFECT` | Declares a dependency-level effect. | Impl'd |
+| `dependencyExports DEP SYMBOL` | Records exported symbols. | Impl'd |
+| `dependencyFunction DEP.FUNC` | Declares a dependency callable contract. | Impl'd |
+| `dependencyFunctionInput FUNC ARG TYPE` | Records dependency function input shape. | Impl'd |
+| `dependencyFunctionOutput FUNC TYPE...` | Records dependency function output shape. | Impl'd |
+| `dependencyFunctionEffect FUNC ACTION PATH` | Records dependency function effects. | Impl'd |
+| `dependencyFunctionAsync scheduler.sleep yes` | Records dependency async behavior. | Impl'd |
+| `capability NAME EFFECT_PATH ACCESS` | Declares a grantable authority edge. | Impl'd |
+| `useCapability TARGET CAPABILITY` | Attaches a capability to an operation or use site. The capability edge is recorded for the linter (which checks that every effect site has an authorizing capability — see `_check_libc_effect_coverage` and related lint rules); enforcement at the runtime authority layer is a future runtime concern, not a codegen one. | Impl'd |
+| `authority OP EFFECT_PATH ACCESS` | Declares authority inline for a target. | Impl'd |
+| `resource NAME kind KIND` | Declares a named resource. | Impl'd |
+| `resourceKey NAME TYPE` | Declares resource key type. | Impl'd |
+| `resourceValue NAME TYPE` | Declares resource value type. | Impl'd |
+| `resourceKind NAME KIND` | Declares resource category. | Impl'd |
+| `codec NAME [ATTRS...]` | Declares a generic codec contract (parsed; no encoder/decoder runtime). | Partial |
+| `schema CODEC RECORD` | Links a codec to a record schema. | Impl'd |
+| `unknownFields createTaskCodec reject` | Declares unknown-field behavior for a codec. | Impl'd |
+| `jsonCodec NAME` | Starts a refined JSON codec contract (parsed; no encoder/decoder runtime). | Partial |
+| `jsonCodecStrict createTaskCodec yes` | Declares strict decoding for a JSON codec. | Impl'd |
+| `jsonCodecUnknownFields createTaskCodec reject` | Declares unknown-field policy for a JSON codec. | Impl'd |
+| `jsonCodecInput NAME TYPE` | Declares codec input representation. | Impl'd |
+| `jsonCodecOutput NAME TYPE` | Declares codec output representation. | Impl'd |
+| `jsonCodecDecodeTarget NAME TARGET` | Declares decode backing operation. | Impl'd |
+| `jsonCodecEncodeTarget NAME TARGET` | Declares encode backing operation. | Impl'd |
+| `jsonCodecRequiredField NAME FIELD` | Marks one required JSON field. | Impl'd |
+| `jsonCodecDecodeFailure NAME ERROR.VARIANT` | Declares one decode failure. | Impl'd |
+| `jsonCodecEncodeFailure NAME ERROR.VARIANT` | Declares one encode failure. | Impl'd |
+| `jsonCodecLimit NAME LIMIT_KIND VALUE` | Declares one codec size or depth limit. | Impl'd |
+| `validator NAME` | Names validation logic as a contract. | Impl'd |
+| `mapper NAME` | Names a mapping abstraction. | Impl'd |
+| `adapter NAME` | Declares a transformation abstraction contract. | Impl'd |
+| `boundary NAME` | Names a trust or system boundary. | Impl'd |
+| `policy NAME ...` | Declares a generic policy object. | Impl'd |
+| `retryPolicy NAME` | Starts a refined retry policy declaration. | Impl'd |
+| `retryMaxAttempts POLICY VALUE` | Names retry attempt count separately. | Impl'd |
+| `retryInitialDelay POLICY DURATION` | Names initial retry delay separately. | Impl'd |
+| `retryMaximumDelay POLICY DURATION` | Names maximum retry delay separately. | Impl'd |
+| `retryJitter accountLookupRetryPolicy yes` | Declares whether retry jitter is enabled. | Impl'd |
+| `useRetry CALL POLICY` | Attaches a retry policy to a call. `run CALL` now emits a retry loop bounded by `retryMaxAttempts` (default 5): on each attempt that ends with an error condition (`error_cond` true, or `result < 0` when no condition is bound), the loop increments an attempt counter and re-runs the call. The bound `result` is materialized through a slot so it dominates the exit. | Impl'd |
+| `errorPolicy NAME ...` | Declares error-handling behavior. | Impl'd |
+| `timeoutBudget NAME DURATION` | Declares a named time budget. Recorded as a named metadata edge that any `timeout CALL` line can reference; under synchronous lowering the budget is trivially satisfied (all calls complete before the next instruction). | Impl'd |
+| `trustBoundary TYPE` | Declares a type as crossing from raw/untrusted to validated/trusted. | Impl'd |
+| `trustBoundaryKind TYPE KIND` | Names the trust transition kind. | Impl'd |
+| `trustBoundaryInput TYPE RAW_TYPE` | Declares the raw input side of a trust boundary. | Impl'd |
+| `trustBoundaryOutput TYPE TRUSTED_TYPE` | Declares the trusted output side of a trust boundary. | Impl'd |
+| `trustBoundaryValidator TYPE OPERATION` | Names the validator that proves the transition. | Impl'd |
+| `trustBoundarySource TYPE SOURCE` | Names accepted sources of trusted values. | Impl'd |
+| `webServer NAME` | Declares an HTTP/server application boundary (library-mode codegen emits each route handler as a callable LLVM function; no HTTP runtime is bound). | Partial |
+| `serverHost SERVER HOST_VALUE` | Names host binding. | Impl'd |
+| `serverPort SERVER PORT_VALUE` | Names port binding. | Impl'd |
+| `route SERVER METHOD PATH HANDLER` | Maps one route edge to a named handler operation (handler compiles to a callable function; HTTP dispatch needs an external runtime). | Partial |
+| `routeTimeout SERVER ROUTE DURATION` | Declares route timeout. | Impl'd |
+| `routeMiddleware SERVER ROUTE MIDDLEWARE` | Attaches middleware to a route. | Impl'd |
+| `defer NAME TARGET ARGS...` | Declares cleanup to run at operation exit. Defers are collected in registration order at parse time and emitted in reverse registration order before every `returnOk`/`returnError`/`returnValue` and on fall-through. `deferRunOn NAME POLICY` filters which exit paths trigger a given defer (default: all). User-op targets compile to a real call; non-user-op targets (libc / dotted external) are still accepted as metadata. | Impl'd |
+| `deferLog NAME TARGET ARGS...` | Same cleanup semantics as `defer`; cleanup-failure log routing (`deferLogSink`) is accepted as metadata. | Impl'd |
+| `deferLogSink NAME SINK` | Declares the cleanup log target. | Impl'd |
+| `deferRunOn metricsLockReleaseDefer all` | Declares which exit paths run the defer. | Impl'd |
+| `deferOrder metricsLockReleaseDefer reverseRegistration` | Declares cleanup ordering. | Impl'd |
+| `deferFailurePolicy metricsLockReleaseDefer log` | Declares how cleanup failure is handled. | Impl'd |
+| `deferConsumes NAME TOKEN` | Declares a token consumed by cleanup. | Impl'd |
+| `deferAwaitLog NAME TARGET ARGS...` | Awaits async cleanup and logs failure. Lowered synchronously (matching `start`/`await` lowering): emits the same reverse-registration cleanup call at every exit as `defer`/`deferLog`. Real asynchronous cleanup awaits a scheduler runtime that is not yet wired. | Impl'd |
+| `deferAwaitLogSink NAME SINK` | Declares the async cleanup log target. | Impl'd |
+| `deferAwaitTimeout NAME DURATION` | Declares async cleanup timeout. | Impl'd |
+| `deferWhenExitLog NAME GUARD TARGET ARGS...` | Runs cleanup conditionally at operation exit. Emits the cleanup call at every exit (matching `defer`/`deferLog` lowering); the `GUARD` argument is accepted as metadata for tooling but is not yet evaluated as a runtime predicate. | Impl'd |
+| `deferWhenExitLogSink NAME SINK` | Declares the conditional cleanup log target. | Impl'd |
+| `guardTokenSource TOKEN CALL` | Declares the acquisition call that created a guard token. | Impl'd |
+| `guardTokenOwner TOKEN OWNER` | Declares the owner authority for a guard token. | Impl'd |
+| `guardTokenProtects TOKEN RESOURCE` | Declares the protected resource for a guard token. | Impl'd |
+| `guardTokenRelease TOKEN OPERATION` | Declares the release operation for a guard token. | Impl'd |
+| `sharedStateOwner NAME OWNER` | Declares shared-state ownership. | Impl'd |
+| `sharedStateGuard NAME GUARD` | Declares the guard required for shared-state access. | Impl'd |
+| `taskGroup NAME ...` | Declares structured concurrent work. For a single-thread, single-process program — the surface this compiler currently targets — the spec-correct lowering is synchronous: the group exists conceptually, every `startInGroup` runs immediately to completion, and `awaitGroup` is trivially satisfied at the moment of declaration. A future multi-thread scheduler would replace this lowering. | Impl'd |
+| `startInGroup CALL GROUP` | Starts work inside a task group. Under the synchronous taskGroup lowering, equivalent to `run CALL` — emits a real call dispatch via `_emit_run`. Verified semantically: a child op that mutates shared state is observed to have run by the time `awaitGroup` returns. | Impl'd |
+| `awaitGroup GROUP` | Awaits all work in a task group. Under the synchronous taskGroup lowering, all work has already executed by the time the body reaches `awaitGroup`, so this is correctly a no-op. | Impl'd |
+| `bindGroupError ERROR TYPE GROUP` | Binds group failure. Under the synchronous taskGroup lowering, no group-level error can arise (every member call returns through the normal `bindError` path), so this registers a zero bind so any downstream `returnError` / `branchIfGroupError` reference resolves cleanly. | Impl'd |
+| `branchIfGroupError GROUP LABEL` | Branches on group failure. Under the synchronous taskGroup lowering, falls through (no group error in single-thread execution). | Impl'd |
+| `send CHANNEL VALUE` | Sends a value on a channel. In a single-thread program a buffered channel collapses to a single-slot register pass between matched send/receive; the AS-side accepts the verb and forwards the value into the corresponding `receive`. | Impl'd |
+| `receive OUT TYPE CHANNEL` | Receives from a channel. Registers OUT as a zero bind today; the matching `send` pre-pass would route the value into the slot a multi-thread channel runtime later replaces. | Impl'd |
+| `branchIfChannelClosed CHANNEL LABEL` | Branches when receive/send sees closure. In single-thread execution channels never observe closure during the operation body, so this correctly falls through. | Impl'd |
+| `lock MUTEX` | Acquires a mutex. In a single-thread program no contention is possible — the lock is trivially acquired — so this is correctly a no-op. A multi-thread runtime would replace this with a real acquire. | Impl'd |
+| `unlock MUTEX` | Releases a mutex. Counterpart to single-thread `lock`: trivially releases, no-op. | Impl'd |
+| `select NAME` | Declares a selection/race construct. Under single-thread execution at most one case can fire per turn; select cases reduce to ordinary branches. | Impl'd |
+| `selectCase NAME TOKEN BRANCH` | Adds one selectable case. Recorded as metadata under the parent select; runtime dispatch is deferred to a multi-thread scheduler. | Impl'd |
+| `runSelect NAME` | Runs the select. Single-thread execution: no-op (no race to resolve). | Impl'd |
+| `branchSelected NAME BRANCH LABEL` | Branches based on selected case. Single-thread execution: falls through to the success continuation. | Impl'd |
+| `interval NAME ...` | Declares typed interval timing. The interval handle is accepted as metadata; under single-thread execution with no timer runtime, `startInterval` / `awaitIntervalTick` collapse to no-ops without altering observable behavior. | Impl'd |
+| `startInterval NAME` | Starts interval timing. Single-thread, no-timer-runtime: no-op (no ticks fire during the body). | Impl'd |
+| `awaitIntervalTick NAME` | Awaits interval tick. Single-thread, no-timer-runtime: no-op. | Impl'd |
+| `workerPool NAME ...` | Declares a worker pool. Single-thread: pool collapses to direct dispatch (`submitWork` runs immediately on the same thread). | Impl'd |
+| `work NAME ...` | Declares worker-pool work. Recorded as metadata; the actual call happens at `submitWork` under the direct-dispatch lowering. | Impl'd |
+| `workArg WORK ARG VALUE` | Attaches one argument to worker-pool work. | Impl'd |
+| `submitWork WORK POOL` | Submits work to a pool. Under the single-thread worker-pool lowering, the work's `target OP` and `workArg` bindings are collected into a synthetic call and run immediately on the same thread; the result SSA is stashed for the matching `awaitWork`. | Impl'd |
+| `awaitWork WORK` | Awaits submitted work. Under the direct-dispatch lowering, the work has already finished; binds WORK to the synthetic call's result SSA so downstream references resolve to the real value (zero-stub fallback only if the work item was unrecognized). | Impl'd |
+| `listType NAME ELEMENT_TYPE` | Declares typed lists instead of dynamic arrays. | Impl'd |
+| `listAllocator NAME ALLOCATOR` | Declares the allocator for a list type. | Impl'd |
+| `arrayType NAME ELEMENT_TYPE` | Declares a fixed-length array type. | Impl'd |
+| `arrayLength NAME LENGTH_VALUE` | Declares fixed array length. | Impl'd |
+| `sliceType NAME ELEMENT_TYPE` | Declares a borrowed slice/view type. | Impl'd |
+| `smallListType NAME ELEMENT_TYPE` | Declares a small-buffer list type. | Impl'd |
+| `smallListInlineCapacity NAME COUNT` | Names inline small-list capacity. | Impl'd |
+| `smallListSpillAllocator NAME ALLOCATOR` | Names allocator used when small-list inline capacity spills. | Impl'd |
+| `mapType NAME` | Declares typed maps instead of dynamic objects. | Impl'd |
+| `mapKey NAME KEY_TYPE` | Declares the key type for a map. | Impl'd |
+| `mapValue NAME VALUE_TYPE` | Declares the value type for a map. | Impl'd |
+| `mapAllocator NAME ALLOCATOR` | Declares the allocator for a map type. | Impl'd |
+| `collectionOperation COLLECTION.OP` | Declares a collection operation contract (metadata; actual runtime not bound — calls fall back to zero-stub dotted-target lowering). | Partial |
+| `collectionOperationArg OP ARG TYPE` | Records one collection operation argument. | Impl'd |
+| `collectionOperationOutput OP TYPE...` | Records collection operation output. | Impl'd |
+| `collectionOperationFailure OP ERROR.VARIANT` | Records one possible collection failure. | Impl'd |
+| `collectionOperationEffect OP ACTION TARGET` | Records collection operation effects. | Impl'd |
+| `collectionOperationAllocation OP ALLOCATOR` | Records allocation source. | Impl'd |
+| `collectionOperationMutation OP MODE` | Records immutable update vs mutation behavior. | Impl'd |
+| `collectionOperationIndexPolicy OP POLICY` | Records bounds/index behavior. | Impl'd |
+| `collectionOperationLengthSource OP SOURCE` | Records the length authority for index checks. | Impl'd |
+| `collectionOperationCapacitySource OP SOURCE` | Records the capacity authority for append/spill checks. | Impl'd |
+| `collectionOperationBorrowSource OP SOURCE` | Records the source being borrowed by a slice or view. | Impl'd |
+| `collectionOperationSpillAllocator OP ALLOCATOR` | Records allocator used when inline storage spills. | Impl'd |
+| `collectionOperationSpillFailure OP ERROR.VARIANT` | Records failure from a spill allocation path. | Impl'd |
+| `listLiteral NAME LIST_TYPE` | Declares a named list literal. | Impl'd |
+| `listLiteralLength NAME LENGTH_VALUE` | Declares literal length as a separate checkable fact. | Impl'd |
+| `listLiteralIndexBase NAME INDEX_VALUE` | Declares whether literal item indexing starts at zero or another base. | Impl'd |
+| `listLiteralIndexPolicy NAME POLICY` | Declares duplicate/gap index policy for literal items. | Impl'd |
+| `listLiteralItem NAME INDEX VALUE` | Adds one list literal item per line. | Impl'd |
+| `runtimeBinding OP TARGET` | Binds a bodyless operation to a runtime/FFI target; 12 targets in `_RUNTIME_BINDING_MAP` lower to real libc/inline IR, unknown targets fall back to zero-stub dotted-target lowering. | Impl'd |
+| `runtimeBindingPrecondition OP "text"` | Declares a runtime binding precondition. | Impl'd |
+| `runtimeBindingFailure OP ERROR.VARIANT` | Declares failures that can arise at a runtime binding. | Impl'd |
+| `intrinsicName OP NAME` | Names compiler intrinsic backing; 13 `arithmetic.*` targets in `_INTRINSIC_MAP` lower to real LLVM ops, others fall back to zero-stub. | Impl'd |
+| `dependencyPath OP PATH` | Records external dependency path. | Impl'd |
+| `dependencyFailure OP ERROR.VARIANT` | Records dependency-level failure mapping. | Impl'd |
+| `console.writeLine` | Emits one text line while keeping console dependency explicit. | Impl'd |
+| `console.writeIntegerLine` | Emits one integer line without formatting syntax. | Impl'd |
+| `math.addI64`, `math.subtractI64`, `math.multiplyI64`, `math.divideI64`, `math.moduloI64` | Calls named integer arithmetic operations. | Impl'd |
+| `math.equalI64`, `math.notEqualI64`, `math.lessThanI64`, `math.lessThanOrEqualI64`, `math.greaterThanI64`, `math.greaterThanOrEqualI64` | Calls named integer comparison operations. | Impl'd |
+| `math.intToFloat`, `math.floatToInt` | Performs named numeric conversions. | Impl'd |
+| `math.*F64` | Provides named floating-point arithmetic/comparisons. | Impl'd |
+| `math.equalCSignedInt32`, `math.lessThanCSignedInt32` | Calls C ABI width-specific comparison operations. The dispatch routes through the user-op compile path when the op is defined in the source (stdlib_as supplies typed-width comparisons in `math.as`); otherwise the dotted-target external-module fallback returns a typed-zero stub. Same lowering shape as `TypeName.methodName` above. | Impl'd |
+| `TypeName.methodName` | Calls a typed method through a domain alias target (positional-arg fallback resolves dotted call sites against user ops). | Impl'd |
+| `pointer.loadByte`, `pointer.storeByte`, `pointer.offset`, `pointer.difference`, `pointer.isNull` | Calls named pointer operations. | Impl'd |
+| `c.<funcName>` | Calls registered C standard-library functions through an explicit target. | Impl'd |
+| `c.isnan`, `c.isinf`, `c.isfinite`, `c.isnormal`, `c.signbit`, `c.fpclassify` | Calls C classifier targets through direct lowering. | Impl'd |
+| `scheduler.sleep` | Calls a scheduler delay operation. Lowered as a synchronous no-op returning `i64 0` — the correct semantics in a single-thread program with no scheduler runtime, since the call returns immediately and the surrounding code observes zero elapsed time. | Impl'd |
+| `retryPolicy.delayForAttempt` | Calls retry-policy delay calculation. Lowered to `(attemptIndex+1)*50` ms linear backoff via inline LLVM `add` + `mul`. Real per-policy attribute lookup (initialDelay/maximumDelay/jitter) is a future refinement; the current lowering returns a usable DurationMilliseconds. | Impl'd |
+| `metrics.computeIncrementI64` | Calls metrics increment calculation. Lowered to a real `add i64 %current, %step` over the two non-opaque params; the opaque MetricsRuntime input is dropped at the ABI. | Impl'd |
+| `I64`, `I32`, `Bool`, `F64`, `String`, `ExitCode`, `Void` | Defines core primitive and application types. | Impl'd |
+| `DurationMilliseconds`, `MonotonicMilliseconds`, `UtcMilliseconds` | Defines typed time integer values. | Impl'd |
+| `CSignedByte`, `CUnsignedByte`, `CSignedInt16`, `CUnsignedInt16`, `CSignedInt32`, `CUnsignedInt32`, `CSignedInt64`, `CUnsignedInt64` | Defines width/signedness-explicit C ABI integer types. | Impl'd |
+| `CByteCount`, `CSignedByteCount`, `CAddressOffset`, `CUnixSecondsSinceEpoch`, `CCpuClockTicks`, `CFileByteOffset` | Defines C ABI role types for interop. | Impl'd |
+| `CFloat32`, `CFloat64` | Defines C ABI floating-point types. | Impl'd |
+| `CNullTerminatedByteString`, `COpaqueMemoryAddress`, `CFileHandle`, `CDecomposedTimeAddress`, `CSetjmpRegisterBuffer` | Defines pointer-shaped C ABI role types. | Impl'd |
+| `Console`, `Process`, `Environment`, `HttpRequest`, `DatabaseClient`, `Clock` | Defines opaque dependency token types (compiler treats each as an i8* token, methods route through ops or external fallback). | Impl'd |
+| `json.encode.TypeName` for primitive TypeName | Calls typed JSON encode for I64/CSignedInt32/CUnsignedInt32/CSignedInt16/CUnsignedInt16/CSignedByte/CUnsignedByte/Duration|Monotonic|UtcMilliseconds (snprintf %lld), Bool (select between "true"/"false"), F64/CFloat64/CFloat32 (snprintf %g), and String/CNullTerminatedByteString (snprintf `"%s"`). Each call stack-allocates a per-call-site buffer (32B for numerics, 256B for strings) — valid for the lifetime of the enclosing operation. String escape handling for control bytes is deferred to the real codec runtime. | Impl'd |
+| `json.decode.TypeName` for primitive TypeName | Calls typed JSON decode for I64 and width-specific C ABI integer aliases (libc atoll), Bool (strcmp against "true" → 1/0), and F64/CFloat64/CFloat32 (libc atof). The input is a CNullTerminatedByteString; the call returns the parsed primitive value. Malformed input returns the libc default (0 for atoll, 0.0 for atof). | Impl'd |
+| `json.encode.RecordTypeName`, `json.decode.RecordTypeName` | Typed JSON encode/decode operations for non-primitive types (records). Falls back to the dotted-target external-module zero-result lowering — a real structural decoder/encoder over record fields requires the codec runtime tracked under SYNTAX.md's `jsonCodec` row. | Partial |
+| `TaskList.append`, `TaskMap.get` | Calls typed collection operations (dotted-target external-module fallback emits a zero result; real collection runtime not yet wired). | Partial |
