@@ -2,6 +2,16 @@
 
 ## 2026-05-17
 
+- `28e7ec6717a645931524809b10fd8e07345256f2` - `tests: align stdio.as expected output with stdlib operation rename`
+  - Updated the expected-stdout fixture in `tests/test_stdlib.py` to use the new `writeCStringToStandardOutput` / `writeCStringLineToStandardOutput` names instead of the pre-rename `putString` / `putLine`.
+- `33cefb348efe9d807b8c045de848b3874f62b101` - `examples + docs: refined-syntax migration demos and AST.md surface`
+  - Added 20 V0-to-refined `*_refined.as` ports (hello, hello_world, fizzbuzz, factorial, sum_of_squares, countdown, async_workflow, event_workflow, esoteric_trampoline, esoteric_church_encoding, counterintuitive_closure_capture, simple_calculator, smoke_c_io / math / string / classifiers, smoke_camelcase_libc, hello_via_helper, hello_via_c_printf, webserver_console) plus `refined_syntax_demo.as`; expanded `AgentScript/AST.md` §2.12.5 with the refined-syntax declarative surface; added rolling `TODO.md`.
+- `c3cc1e97a6219a771bc8854a01ade945ab925a5e` - `tests: feature_tests 127-160 verify refined-syntax runtime semantics`
+  - Added 34 new feature tests (127–160) plus three `_modules/external_greeting_*.txt` fixtures. Each test is designed to fail under a no-op lowering; covers storage mutability, defer reverse-order + `deferRunOn` filter + error-branch fire, useRetry boundary/exhaustion/first-success, channel value pass + overwrite + distinct slots, start/await sharedState visibility, taskGroup + workerPool dispatch, lock/unlock around state, F64 / Bool storage, two-distinct-literalSource + missing-path graceful, json.encode / decode primitives, interval / select no-op fall-through, and a comprehensive metadata-cluster smoke.
+- `ee5f7fc89bf2c6e69a96c219c39256940836c433` - `docs: SYNTAX.md catalog with implementation status per row`
+  - Added the root-level `SYNTAX.md`: every AgentScript syntax row with one of four statuses (`Impl'd`/`Partial`/`Not impl'd`/`Proposed`) and a description that names the specific lowering. Histogram: 255 Impl'd / 7 Partial / 0 Not impl'd; remaining Partials are runtime gaps (HTTP server, codec runtime for record JSON, dynamic-collection runtime).
+- `e08b3ba004d400d956168a59abd53b87199cf12a` - `compiler: real execution semantics for refined-syntax verbs`
+  - Promoted storage mutability (`local`/`module`/`sharedState mutable` → real alloca / LLVM global; `set` → real store), defer cleanup (reverse-registration emission at every exit; `deferRunOn` filter), `useRetry` retry loops (alloca attempt counter + materialized result slot), `startInGroup` / `submitWork` real dispatch, channel single-slot pass via per-channel alloca, `literalSource` asset loading at compile time, `console.writeFloatLine` (was missing in ascc.py), `_bool_token_to_int` Bool init helper, and `json.encode` / `json.decode` primitives (I64 / Bool / F64 / String). CHANGELOG.md inside AgentScript/ documents each lowering shape.
 - `7e6e86f97908f15a163591ded7bfd3f5a5a705e0` - `chore: ignore generated bootstrap IR`
   - Ignored the generated `AgentScript/bootstrap/bootstrap_general.ll` artifact so feature and bootstrap runs do not leave generated IR in source status.
 - `38f32ad3de915b8fcea68ec500ee454d455dfdfd` - `docs: add refined syntax research artifacts`
