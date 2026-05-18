@@ -4,6 +4,10 @@ Small SemanticScript console todo app with a keyboard-driven terminal UI and JSO
 
 Run commands from this folder so `todos.json` is read and written next to the executable.
 
+## Quick Preview
+
+![Todo TUI demo preview](../../docs/assets/todo-tui-preview.png)
+
 ## Contents
 
 - `todo.sscript` is the app source.
@@ -33,11 +37,14 @@ cd C:\Users\Cam\Desktop\AgentScript\app\todo
 
 ## Keys
 
-- Up/Down: move through rows or action choices.
-- Enter/Right: open the action menu or run the selected action.
-- Esc/Left: go back from the action menu.
-- Esc from the list: save and quit.
+- Up/Down: move through todo rows and the `(new note)` row.
+- Enter or Space from the list: toggle the selected todo done.
+- Right from the list: open the selected todo, or create a new todo from `(new note)`, in the edit modal.
+- D from the list: delete the selected todo.
+- Enter from the edit modal: save the edited title.
+- Esc or Left from the edit modal: return to the list without saving.
+- Esc from the list: save, clear the screen, and quit.
 
-The app writes `todos.json` after changes and on quit. The file is a fixed three-item JSON array of todo objects, and todo titles should avoid double quotes.
+The app writes `todos.json` after changes and on quit. Active todos are loaded into heap-backed arrays, then saved as a JSON array of todo objects. Titles are escaped for double quotes and backslashes, and the loader expects the exact object key order emitted by the app.
 
 Keyboard input uses the Windows `_getch` console primitive exposed to SemanticScript as `c.consoleGetch`.
