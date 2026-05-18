@@ -2413,11 +2413,16 @@ class Codegen:
                 call = calls[call_name]
                 err_cond = call["error_cond"]
                 if err_cond is None:
-                    # default convention for console/io calls: a negative
-                    # return value indicates failure.
+                    # Default convention:
+                    #   - integer return  -> negative value means failure (icmp slt result, 0)
+                    #   - pointer return  -> NULL means failure (icmp eq result, null)
                     result = call["result"]
-                    zero = ir.Constant(result.type, 0)
-                    err_cond = builder.icmp_signed("<", result, zero, name=f"{call_name}_isErr")
+                    if isinstance(result.type, ir.PointerType):
+                        nullptr = ir.Constant(result.type, None)
+                        err_cond = builder.icmp_unsigned("==", result, nullptr, name=f"{call_name}_isErr")
+                    else:
+                        zero = ir.Constant(result.type, 0)
+                        err_cond = builder.icmp_signed("<", result, zero, name=f"{call_name}_isErr")
                 cont = builder.function.append_basic_block(f"after_{call_name}")
                 builder.cbranch(err_cond, get_block(fail_label), cont)
                 builder.position_at_end(cont)
