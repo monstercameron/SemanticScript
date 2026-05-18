@@ -39,6 +39,11 @@ entry console main
 
 error MainError
 errorCase MainError CompareSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+# section capability
+# rationale: smoke-test main writes a single OK line to stdout.
+capability stdoutWriteCapability console.stdout write
 
 # Typed Ordering alias. Width-explicit so callers can pass results to
 # C-ABI consumers when they need to; the AgentScript surface should
@@ -268,6 +273,7 @@ returnValue isWithinTolerance
 operation main
 input main console Console
 output main Result ExitCode MainError
+useCapability main stdoutWriteCapability
 effect main write console.stdout
 memoryHeap main no
 async main no
@@ -355,16 +361,176 @@ branchIf toleranceResult toleranceHolds
 branch smokeAssertionFailed
 label toleranceHolds
 
+# ============================================================
+# Extended unit tests: covers the 2 untested ops
+# (isSignedInt64LeftLessThanOrEqualRight, isSignedInt64LeftGreaterThanRight)
+# plus reflexive / irreflexive / inverse-ordering cases that the
+# single-direction smoke above can't catch.
+# ============================================================
+
+const expectedZero CSignedInt32 0
+const expectedPositiveOne CSignedInt32 1
+
+# compareSignedInt64Ordering(10, 5) == comparisonResultGreaterThan (+1)
+call cmpGreaterCall compareSignedInt64Ordering
+arg cmpGreaterCall leftValue tenInt
+arg cmpGreaterCall rightValue fiveInt
+run cmpGreaterCall
+bind cmpGreaterResult Ordering cmpGreaterCall
+call cmpGreaterCheckCall math.equalI64
+arg cmpGreaterCheckCall left cmpGreaterResult
+arg cmpGreaterCheckCall right expectedPositiveOne
+run cmpGreaterCheckCall
+bind cmpGreaterOk Bool cmpGreaterCheckCall
+branchIf cmpGreaterOk cmpGreaterHolds
+branch smokeAssertionFailed
+label cmpGreaterHolds
+
+# compareSignedInt64Ordering(10, 10) == comparisonResultEqual (0)
+call cmpEqCall compareSignedInt64Ordering
+arg cmpEqCall leftValue tenInt
+arg cmpEqCall rightValue tenIntCopy
+run cmpEqCall
+bind cmpEqResult Ordering cmpEqCall
+call cmpEqCheckCall math.equalI64
+arg cmpEqCheckCall left cmpEqResult
+arg cmpEqCheckCall right expectedZero
+run cmpEqCheckCall
+bind cmpEqOk Bool cmpEqCheckCall
+branchIf cmpEqOk cmpEqHolds
+branch smokeAssertionFailed
+label cmpEqHolds
+
+# areSignedInt64ValuesEqual(5, 10) == false (inequality leg)
+call notEqualCall areSignedInt64ValuesEqual
+arg notEqualCall leftValue fiveInt
+arg notEqualCall rightValue tenInt
+run notEqualCall
+bind notEqualResult Bool notEqualCall
+branchIf notEqualResult smokeAssertionFailed
+branch notEqualHolds
+label notEqualHolds
+
+# isSignedInt64LeftLessThanOrEqualRight(5, 5) == true (reflexive)
+call leReflexiveCall isSignedInt64LeftLessThanOrEqualRight
+arg leReflexiveCall leftValue fiveInt
+arg leReflexiveCall rightValue fiveInt
+run leReflexiveCall
+bind leReflexiveResult Bool leReflexiveCall
+branchIf leReflexiveResult leReflexiveHolds
+branch smokeAssertionFailed
+label leReflexiveHolds
+
+# isSignedInt64LeftLessThanOrEqualRight(10, 5) == false
+call leFalseCall isSignedInt64LeftLessThanOrEqualRight
+arg leFalseCall leftValue tenInt
+arg leFalseCall rightValue fiveInt
+run leFalseCall
+bind leFalseResult Bool leFalseCall
+branchIf leFalseResult smokeAssertionFailed
+branch leFalseHolds
+label leFalseHolds
+
+# isSignedInt64LeftGreaterThanRight(10, 5) == true
+call gtTrueCall isSignedInt64LeftGreaterThanRight
+arg gtTrueCall leftValue tenInt
+arg gtTrueCall rightValue fiveInt
+run gtTrueCall
+bind gtTrueResult Bool gtTrueCall
+branchIf gtTrueResult gtTrueHolds
+branch smokeAssertionFailed
+label gtTrueHolds
+
+# isSignedInt64LeftGreaterThanRight(5, 5) == false (irreflexive)
+call gtIrreflexiveCall isSignedInt64LeftGreaterThanRight
+arg gtIrreflexiveCall leftValue fiveInt
+arg gtIrreflexiveCall rightValue fiveInt
+run gtIrreflexiveCall
+bind gtIrreflexiveResult Bool gtIrreflexiveCall
+branchIf gtIrreflexiveResult smokeAssertionFailed
+branch gtIrreflexiveHolds
+label gtIrreflexiveHolds
+
+# isSignedInt64LeftLessThanRight(10, 5) == false (false leg)
+call ltFalseCall isSignedInt64LeftLessThanRight
+arg ltFalseCall leftValue tenInt
+arg ltFalseCall rightValue fiveInt
+run ltFalseCall
+bind ltFalseResult Bool ltFalseCall
+branchIf ltFalseResult smokeAssertionFailed
+branch ltFalseHolds
+label ltFalseHolds
+
+# compareFloat64Ordering(2.0, 1.0) == greaterThan (inverse)
+call cmpFloatGreaterCall compareFloat64Ordering
+arg cmpFloatGreaterCall leftValue twoFloat
+arg cmpFloatGreaterCall rightValue oneFloat
+run cmpFloatGreaterCall
+bind cmpFloatGreaterResult Ordering cmpFloatGreaterCall
+call cmpFloatGreaterCheckCall math.equalI64
+arg cmpFloatGreaterCheckCall left cmpFloatGreaterResult
+arg cmpFloatGreaterCheckCall right expectedPositiveOne
+run cmpFloatGreaterCheckCall
+bind cmpFloatGreaterOk Bool cmpFloatGreaterCheckCall
+branchIf cmpFloatGreaterOk cmpFloatGreaterHolds
+branch smokeAssertionFailed
+label cmpFloatGreaterHolds
+
+# compareFloat64Ordering(1.0, 1.0) == equal
+call cmpFloatEqCall compareFloat64Ordering
+arg cmpFloatEqCall leftValue oneFloat
+arg cmpFloatEqCall rightValue oneFloat
+run cmpFloatEqCall
+bind cmpFloatEqResult Ordering cmpFloatEqCall
+call cmpFloatEqCheckCall math.equalI64
+arg cmpFloatEqCheckCall left cmpFloatEqResult
+arg cmpFloatEqCheckCall right expectedZero
+run cmpFloatEqCheckCall
+bind cmpFloatEqOk Bool cmpFloatEqCheckCall
+branchIf cmpFloatEqOk cmpFloatEqHolds
+branch smokeAssertionFailed
+label cmpFloatEqHolds
+
+# areFloat64ValuesWithinTolerance(1.0, 2.0, 0.1) == false (outside tolerance)
+call tolFalseCall areFloat64ValuesWithinTolerance
+arg tolFalseCall leftValue oneFloat
+arg tolFalseCall rightValue twoFloat
+arg tolFalseCall tolerance smallTolerance
+run tolFalseCall
+bind tolFalseResult Bool tolFalseCall
+branchIf tolFalseResult smokeAssertionFailed
+branch tolFalseHolds
+label tolFalseHolds
+
+# Symmetry: withinTolerance(1.05, 1.0, 0.1) == true (reverse args)
+call tolSymCall areFloat64ValuesWithinTolerance
+arg tolSymCall leftValue slightlyLargerFloat
+arg tolSymCall rightValue oneFloat
+arg tolSymCall tolerance smallTolerance
+run tolSymCall
+bind tolSymResult Bool tolSymCall
+branchIf tolSymResult tolSymHolds
+branch smokeAssertionFailed
+label tolSymHolds
+
 # Emit "OK\n" and exit 0.
 const successMessageText CNullTerminatedByteString "OK"
 call writeSuccessLineCall console.writeLine
 arg writeSuccessLineCall console console
 arg writeSuccessLineCall text successMessageText
 run writeSuccessLineCall
-ignoreOk writeSuccessLineCall Void
+ignoreOk writeSuccessLineCall CSignedInt32
+bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branchIfError writeSuccessLineCall consoleWriteFailedHandler
 const exitOkCode ExitCode 0
 returnOk exitOkCode
 
+# Failure leg: surface the raw negative CSignedInt32 from
+# console.writeLine as the cause attached to the typed
+# MainError.ConsoleWriteFailed variant.
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
+returnError consoleWriteFailedFailure
 label smokeAssertionFailed
 makeError compareSmokeFailure MainError.CompareSmokeAssertionFailed
 returnError compareSmokeFailure

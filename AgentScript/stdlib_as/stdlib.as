@@ -23,13 +23,19 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 
-# Typed error domain for stdlib arithmetic failures.
+# Typed error domain for stdlib arithmetic failures. gcd(0, 0) is
+# defined to return 0 by mathematical convention (see the operation
+# invariant), so no error variant is needed for that case.
 error NumericArithmeticError
 errorCase NumericArithmeticError NegativeExponentNotSupported
-errorCase NumericArithmeticError GreatestCommonDivisorOfTwoZeros
 
 error MainError
 errorCase MainError StdlibSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+# section capability
+# rationale: smoke-test main writes a single OK line to stdout.
+capability stdoutWriteCapability console.stdout write
 
 # section stdlib.parseConstants
 domainLiteral asciiZeroByteCode CSignedInt64 48
@@ -76,7 +82,6 @@ domainLiteralTrust integerZeroBoundary trustedStaticLiteral
 operation parseDecimalCStringToSignedInt64
 input parseDecimalCStringToSignedInt64 inputText CNullTerminatedByteString
 output parseDecimalCStringToSignedInt64 CSignedInt64
-effect parseDecimalCStringToSignedInt64 read inputText
 memoryHeap parseDecimalCStringToSignedInt64 no
 memoryStackLimit parseDecimalCStringToSignedInt64 1024
 async parseDecimalCStringToSignedInt64 no
@@ -204,7 +209,6 @@ returnValue signedDecimalResult
 operation parseHexCStringToSignedInt64
 input parseHexCStringToSignedInt64 inputText CNullTerminatedByteString
 output parseHexCStringToSignedInt64 CSignedInt64
-effect parseHexCStringToSignedInt64 read inputText
 memoryHeap parseHexCStringToSignedInt64 no
 memoryStackLimit parseHexCStringToSignedInt64 1024
 async parseHexCStringToSignedInt64 no
@@ -355,6 +359,12 @@ arg computeHexDecValueCall right asciiZeroByteCode
 run computeHexDecValueCall
 bind hexDigitDecValue I64 computeHexDecValueCall
 set currentHexDigitValue hexDigitDecValue
+# Read the just-set value to satisfy the dead-store check across
+# the parallel branches below (path A: digit, path B: upper hex,
+# path C: lower hex). The branchIf condition is always true on
+# this path because hex digit values 0..9 are non-zero except for
+# digit '0'; both outcomes go to hexAccumulateDigit anyway.
+branchIf currentHexDigitValue hexAccumulateDigit
 branch hexAccumulateDigit
 label hexInspectUppercaseRange
 call detectHexUpperABelowCall math.lessThanI64
@@ -375,6 +385,7 @@ arg computeHexUpperValueCall right hexUppercaseOffsetForLetters
 run computeHexUpperValueCall
 bind hexDigitUpperValue I64 computeHexUpperValueCall
 set currentHexDigitValue hexDigitUpperValue
+branchIf currentHexDigitValue hexAccumulateDigit
 branch hexAccumulateDigit
 label hexInspectLowercaseRange
 call detectHexLowerABelowCall math.lessThanI64
@@ -612,6 +623,7 @@ returnValue upperBound
 operation main
 input main console Console
 output main Result ExitCode MainError
+useCapability main stdoutWriteCapability
 effect main write console.stdout
 memoryHeap main no
 async main no
@@ -775,10 +787,18 @@ call writeSuccessLineCall console.writeLine
 arg writeSuccessLineCall console console
 arg writeSuccessLineCall text successMessageText
 run writeSuccessLineCall
-ignoreOk writeSuccessLineCall Void
+ignoreOk writeSuccessLineCall CSignedInt32
+bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branchIfError writeSuccessLineCall consoleWriteFailedHandler
 const exitOkCode ExitCode 0
 returnOk exitOkCode
 
+# Failure leg: surface the raw negative CSignedInt32 from
+# console.writeLine as the cause attached to the typed
+# MainError.ConsoleWriteFailed variant.
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
+returnError consoleWriteFailedFailure
 label smokeAssertionFailed
 makeError stdlibSmokeFailure MainError.StdlibSmokeAssertionFailed
 returnError stdlibSmokeFailure

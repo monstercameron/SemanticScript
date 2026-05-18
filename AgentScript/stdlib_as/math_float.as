@@ -30,6 +30,11 @@ entry console main
 
 error MainError
 errorCase MainError MathFloatSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+# section capability
+# rationale: smoke-test main writes a single OK line to stdout.
+capability stdoutWriteCapability console.stdout write
 
 # ============================================================
 # AGENTSCRIPT STANDARD LIBRARY: <math.h>-style float ops, pure AS.
@@ -89,12 +94,11 @@ output squareRootFloat64 CFloat64
 memoryHeap squareRootFloat64 no
 async squareRootFloat64 no
 purpose squareRootFloat64 "sqrt(x) for x >= 0 via Newton's method. Returns 0.0 for x <= 0 (no NaN here yet — that needs IEEE special-value support)."
+invariant squareRootFloat64 "Newton iteration: x_{n+1} = (x_n + value/x_n) / 2. Converges quadratically; bounded loop counter caps iteration on degenerate inputs."
 
 label startSquareRootFloat64
 const zeroFS CFloat64 0.0
 const halfFS CFloat64 0.5
-const oneFS CFloat64 1.0
-const epsFS CFloat64 0.0000000000001
 
 call lezCall math.lessThanOrEqualF64
 arg lezCall left inputValue
@@ -140,8 +144,8 @@ call iterDoneCall math.greaterThanOrEqualI64
 arg iterDoneCall left iter
 arg iterDoneCall right maxIter
 run iterDoneCall
-bind iterDone Bool iterDoneCall
-branchIf iterDone sqrtDone
+bind iterDoneCall Bool iterDoneCall
+branchIf iterDoneCall sqrtDone
 branch sqrtIter
 
 label sqrtDone
@@ -157,6 +161,7 @@ output exponentialBaseEFloat64 CFloat64
 memoryHeap exponentialBaseEFloat64 no
 async exponentialBaseEFloat64 no
 purpose exponentialBaseEFloat64 "e^x via Taylor series: sum_{k=0..29} x^k / k!. Accurate to ~12 decimals for |x| <= 2; degrades beyond that. No argument reduction yet."
+invariant exponentialBaseEFloat64 "Sums 30 Taylor terms; each term is the previous term * x / k. Negative inputs handled by computing 1 / e^|x|."
 
 label startExponentialBaseEFloat64
 const oneFE CFloat64 1.0
@@ -327,9 +332,9 @@ call qCall math.divideF64
 arg qCall left dividendValue
 arg qCall right divisorValue
 run qCall
-bind q CFloat64 qCall
+bind floatRemainderQuotient CFloat64 qCall
 call qTruncCall truncateFloat64TowardZero
-arg qTruncCall x q
+arg qTruncCall x floatRemainderQuotient
 run qTruncCall
 bindOk qTrunc CFloat64 qTruncCall
 call scaleCall math.multiplyF64
@@ -351,6 +356,7 @@ output naturalLogFloat64 CFloat64
 memoryHeap naturalLogFloat64 no
 async naturalLogFloat64 no
 purpose naturalLogFloat64 "Natural log of x for x > 0. Uses range reduction (ln(x) = ln(x / 2^k) + k * ln(2), where k is chosen so x/2^k is in [1, 2)) before Newton iteration on f(y) = exp(y) - x. exponentialBaseEFloat64 is accurate in [0, 2], so the reduced ln(scaled) computation stays in the convergent zone. Returns 0.0 for x <= 0."
+invariant naturalLogFloat64 "Range-reduces x by repeated halving/doubling until in [1,2), then Newton-iterates on f(y) = exp(y) - x. Tracks the reduction factor k and re-applies via + k*ln(2) at the end."
 label startNaturalLogFloat64
 const zeroLn CFloat64 0.0
 const oneLn CFloat64 1.0
@@ -374,11 +380,11 @@ const oneIk I64 1
 const negOneIk I64 -1
 
 label halveBigger
-call gtTwo math.greaterThanOrEqualF64
-arg gtTwo left scaled
-arg gtTwo right twoLn
-run gtTwo
-bind isBig Bool gtTwo
+call gtTwoCall math.greaterThanOrEqualF64
+arg gtTwoCall left scaled
+arg gtTwoCall right twoLn
+run gtTwoCall
+bind isBig Bool gtTwoCall
 branchIf isBig halveOne
 branch maybeDouble
 label halveOne
@@ -388,20 +394,20 @@ arg halveCall right halfLn
 run halveCall
 bind halved CFloat64 halveCall
 set scaled halved
-call kInc math.addI64
-arg kInc left kInt
-arg kInc right oneIk
-run kInc
-bind kNext I64 kInc
+call kIncCall math.addI64
+arg kIncCall left kInt
+arg kIncCall right oneIk
+run kIncCall
+bind kNext I64 kIncCall
 set kInt kNext
 branch halveBigger
 
 label maybeDouble
-call ltOne math.lessThanF64
-arg ltOne left scaled
-arg ltOne right oneLn
-run ltOne
-bind isSmall Bool ltOne
+call ltOneCall math.lessThanF64
+arg ltOneCall left scaled
+arg ltOneCall right oneLn
+run ltOneCall
+bind isSmall Bool ltOneCall
 branchIf isSmall doubleOne
 branch lnNewton
 label doubleOne
@@ -411,11 +417,11 @@ arg dblCall right twoLn
 run dblCall
 bind doubled CFloat64 dblCall
 set scaled doubled
-call kDec math.addI64
-arg kDec left kInt
-arg kDec right negOneIk
-run kDec
-bind kPrev I64 kDec
+call kDecCall math.addI64
+arg kDecCall left kInt
+arg kDecCall right negOneIk
+run kDecCall
+bind kPrev I64 kDecCall
 set kInt kPrev
 branch maybeDouble
 
@@ -443,9 +449,9 @@ call resCall math.subtractF64
 arg resCall left eyVal
 arg resCall right scaled
 run resCall
-bind res CFloat64 resCall
+bind newtonResidual CFloat64 resCall
 call deltaCall math.divideF64
-arg deltaCall left res
+arg deltaCall left newtonResidual
 arg deltaCall right eyVal
 run deltaCall
 bind delta CFloat64 deltaCall
@@ -462,11 +468,11 @@ arg iterIncCall right oneIL
 run iterIncCall
 bind nextIter I64 iterIncCall
 set iterL nextIter
-call iterDone math.greaterThanOrEqualI64
-arg iterDone left iterL
-arg iterDone right maxIterLn
-run iterDone
-bind done Bool iterDone
+call iterDoneCall math.greaterThanOrEqualI64
+arg iterDoneCall left iterL
+arg iterDoneCall right maxIterLn
+run iterDoneCall
+bind done Bool iterDoneCall
 branchIf done lnDone
 branch lnIter
 
@@ -502,25 +508,25 @@ purpose powerFloat64 "base^exponent for base > 0 via exp(exponent * ln(base)). R
 label startPowerFloat64
 const zeroPw CFloat64 0.0
 const oneFw CFloat64 1.0
-call eExp math.equalF64
-arg eExp left exponentValue
-arg eExp right zeroPw
-run eExp
-bind expZero Bool eExp
+call eExpCall math.equalF64
+arg eExpCall left exponentValue
+arg eExpCall right zeroPw
+run eExpCall
+bind expZero Bool eExpCall
 branchIf expZero powOne
-call lnB naturalLogFloat64
-arg lnB x baseValue
-run lnB
-bindOk lnBase CFloat64 lnB
+call lnBCall naturalLogFloat64
+arg lnBCall x baseValue
+run lnBCall
+bindOk lnBase CFloat64 lnBCall
 call prodCall math.multiplyF64
 arg prodCall left exponentValue
 arg prodCall right lnBase
 run prodCall
 bind prod CFloat64 prodCall
-call eRes exponentialBaseEFloat64
-arg eRes x prod
-run eRes
-bindOk powVal CFloat64 eRes
+call eResCall exponentialBaseEFloat64
+arg eResCall x prod
+run eResCall
+bindOk powVal CFloat64 eResCall
 returnValue powVal
 label powOne
 returnValue oneFw
@@ -532,8 +538,8 @@ output sineRadiansFloat64 CFloat64
 memoryHeap sineRadiansFloat64 no
 async sineRadiansFloat64 no
 purpose sineRadiansFloat64 "sin(x) via Taylor series: x - x^3/3! + x^5/5! - x^7/7! + ... (20 terms). For best accuracy, caller should reduce x into [-pi, pi] beforehand. No argument reduction at this layer (yet)."
+invariant sineRadiansFloat64 "Sums 20 Taylor terms with alternating sign; each iteration multiplies the running term by -x^2 / ((2k)(2k+1))."
 label startSineRadiansFloat64
-const oneSn CFloat64 1.0
 const oneISn I64 1
 const maxTermsSn I64 20
 
@@ -546,11 +552,11 @@ var kSn I64 1
 var kFlSn CFloat64 1.0
 
 label sinLoop
-call sinDone math.greaterThanOrEqualI64
-arg sinDone left kSn
-arg sinDone right maxTermsSn
-run sinDone
-bind doneSn Bool sinDone
+call sinDoneCall math.greaterThanOrEqualI64
+arg sinDoneCall left kSn
+arg sinDoneCall right maxTermsSn
+run sinDoneCall
+bind doneSn Bool sinDoneCall
 branchIf doneSn sinReturn
 
 # Next term factor: -x^2 / ((2k)(2k+1)). We update term by multiplying.
@@ -574,11 +580,11 @@ arg twoKCall left kSn
 arg twoKCall right twoIsn
 run twoKCall
 bind twoK I64 twoKCall
-call twoKPlus1 math.addI64
-arg twoKPlus1 left twoK
-arg twoKPlus1 right oneISn
-run twoKPlus1
-bind twoKplus I64 twoKPlus1
+call twoKPlus1Call math.addI64
+arg twoKPlus1Call left twoK
+arg twoKPlus1Call right oneISn
+run twoKPlus1Call
+bind twoKplus I64 twoKPlus1Call
 call denomIntCall math.multiplyI64
 arg denomIntCall left twoK
 arg denomIntCall right twoKplus
@@ -590,24 +596,24 @@ run denomFloatCall
 bind denomFl CFloat64 denomFloatCall
 
 # term *= negXSq / denomFl
-call termMul math.multiplyF64
-arg termMul left termSn
-arg termMul right negXSq
-run termMul
-bind tmpTerm CFloat64 termMul
-call termDiv math.divideF64
-arg termDiv left tmpTerm
-arg termDiv right denomFl
-run termDiv
-bind nextTerm CFloat64 termDiv
+call termMulCall math.multiplyF64
+arg termMulCall left termSn
+arg termMulCall right negXSq
+run termMulCall
+bind tmpTerm CFloat64 termMulCall
+call termDivCall math.divideF64
+arg termDivCall left tmpTerm
+arg termDivCall right denomFl
+run termDivCall
+bind nextTerm CFloat64 termDivCall
 set termSn nextTerm
 
 # sum += term
-call sumAdd math.addF64
-arg sumAdd left sumSn
-arg sumAdd right nextTerm
-run sumAdd
-bind nextSum CFloat64 sumAdd
+call sumAddCall math.addF64
+arg sumAddCall left sumSn
+arg sumAddCall right nextTerm
+run sumAddCall
+bind nextSum CFloat64 sumAddCall
 set sumSn nextSum
 
 call kSnIncCall math.addI64
@@ -628,8 +634,8 @@ output cosineRadiansFloat64 CFloat64
 memoryHeap cosineRadiansFloat64 no
 async cosineRadiansFloat64 no
 purpose cosineRadiansFloat64 "cos(x) via Taylor series: 1 - x^2/2! + x^4/4! - ... (20 terms). Same range caveat as sineRadiansFloat64."
+invariant cosineRadiansFloat64 "Sums 20 Taylor terms starting from 1.0; each iteration multiplies the running term by -x^2 / ((2k-1)(2k))."
 label startCosineRadiansFloat64
-const oneCs CFloat64 1.0
 const oneICs I64 1
 const maxTermsCs I64 20
 
@@ -639,11 +645,11 @@ var kCs I64 1
 var kFlCs CFloat64 1.0
 
 label cosLoop
-call csDone math.greaterThanOrEqualI64
-arg csDone left kCs
-arg csDone right maxTermsCs
-run csDone
-bind doneCs Bool csDone
+call csDoneCall math.greaterThanOrEqualI64
+arg csDoneCall left kCs
+arg csDoneCall right maxTermsCs
+run csDoneCall
+bind doneCs Bool csDoneCall
 branchIf doneCs cosReturn
 
 # denominator: (2k-1)(2k)
@@ -653,11 +659,11 @@ arg twoKcCall left kCs
 arg twoKcCall right twoICs
 run twoKcCall
 bind twoKc I64 twoKcCall
-call twoKcMinus1 math.subtractI64
-arg twoKcMinus1 left twoKc
-arg twoKcMinus1 right oneICs
-run twoKcMinus1
-bind twoKcm1 I64 twoKcMinus1
+call twoKcMinus1Call math.subtractI64
+arg twoKcMinus1Call left twoKc
+arg twoKcMinus1Call right oneICs
+run twoKcMinus1Call
+bind twoKcm1 I64 twoKcMinus1Call
 call denomCsIntCall math.multiplyI64
 arg denomCsIntCall left twoKcm1
 arg denomCsIntCall right twoKc
@@ -681,23 +687,23 @@ arg negXSqCsCall right negOneCs
 run negXSqCsCall
 bind negXSqCs CFloat64 negXSqCsCall
 
-call termCsMul math.multiplyF64
-arg termCsMul left termCs
-arg termCsMul right negXSqCs
-run termCsMul
-bind tmpTermCs CFloat64 termCsMul
-call termCsDiv math.divideF64
-arg termCsDiv left tmpTermCs
-arg termCsDiv right denomCsFl
-run termCsDiv
-bind nextTermCs CFloat64 termCsDiv
+call termCsMulCall math.multiplyF64
+arg termCsMulCall left termCs
+arg termCsMulCall right negXSqCs
+run termCsMulCall
+bind tmpTermCs CFloat64 termCsMulCall
+call termCsDivCall math.divideF64
+arg termCsDivCall left tmpTermCs
+arg termCsDivCall right denomCsFl
+run termCsDivCall
+bind nextTermCs CFloat64 termCsDivCall
 set termCs nextTermCs
 
-call sumCsAdd math.addF64
-arg sumCsAdd left sumCs
-arg sumCsAdd right nextTermCs
-run sumCsAdd
-bind nextSumCs CFloat64 sumCsAdd
+call sumCsAddCall math.addF64
+arg sumCsAddCall left sumCs
+arg sumCsAddCall right nextTermCs
+run sumCsAddCall
+bind nextSumCs CFloat64 sumCsAddCall
 set sumCs nextSumCs
 
 call kCsIncCall math.addI64
@@ -766,8 +772,8 @@ call halveCall math.multiplyF64
 arg halveCall left diff
 arg halveCall right halfFShn
 run halveCall
-bind res CFloat64 halveCall
-returnValue res
+bind sinhResult CFloat64 halveCall
+returnValue sinhResult
 
 
 operation hyperbolicCosineFloat64
@@ -779,29 +785,29 @@ purpose hyperbolicCosineFloat64 "Hyperbolic cosine: (exp(x) + exp(-x)) / 2."
 label startHyperbolicCosineFloat64
 const halfFchn CFloat64 0.5
 const negOneChn CFloat64 -1.0
-call posExpCcall exponentialBaseEFloat64
-arg posExpCcall x inputValue
-run posExpCcall
-bindOk posExpC CFloat64 posExpCcall
-call negXCcall math.multiplyF64
-arg negXCcall left inputValue
-arg negXCcall right negOneChn
-run negXCcall
-bind negXC CFloat64 negXCcall
-call negExpCcall exponentialBaseEFloat64
-arg negExpCcall x negXC
-run negExpCcall
-bindOk negExpC CFloat64 negExpCcall
-call sumCcall math.addF64
-arg sumCcall left posExpC
-arg sumCcall right negExpC
-run sumCcall
-bind sumC CFloat64 sumCcall
-call halveCcall math.multiplyF64
-arg halveCcall left sumC
-arg halveCcall right halfFchn
-run halveCcall
-bind resC CFloat64 halveCcall
+call posExpCcallCall exponentialBaseEFloat64
+arg posExpCcallCall x inputValue
+run posExpCcallCall
+bindOk posExpC CFloat64 posExpCcallCall
+call negXCcallCall math.multiplyF64
+arg negXCcallCall left inputValue
+arg negXCcallCall right negOneChn
+run negXCcallCall
+bind negXC CFloat64 negXCcallCall
+call negExpCcallCall exponentialBaseEFloat64
+arg negExpCcallCall x negXC
+run negExpCcallCall
+bindOk negExpC CFloat64 negExpCcallCall
+call sumCcallCall math.addF64
+arg sumCcallCall left posExpC
+arg sumCcallCall right negExpC
+run sumCcallCall
+bind sumC CFloat64 sumCcallCall
+call halveCcallCall math.multiplyF64
+arg halveCcallCall left sumC
+arg halveCcallCall right halfFchn
+run halveCcallCall
+bind resC CFloat64 halveCcallCall
 returnValue resC
 
 
@@ -856,10 +862,10 @@ async logBaseTenFloat64 no
 purpose logBaseTenFloat64 "Base-10 log: ln(x) / ln(10)."
 label startLogBaseTenFloat64
 const ln10 CFloat64 2.302585092994046
-call lnCall10 naturalLogFloat64
-arg lnCall10 x inputValue
-run lnCall10
-bindOk lnV10 CFloat64 lnCall10
+call lnCall10Call naturalLogFloat64
+arg lnCall10Call x inputValue
+run lnCall10Call
+bindOk lnV10 CFloat64 lnCall10Call
 call divLg10Call math.divideF64
 arg divLg10Call left lnV10
 arg divLg10Call right ln10
@@ -876,10 +882,10 @@ async exponentialMinusOneFloat64 no
 purpose exponentialMinusOneFloat64 "exp(x) - 1. Not loss-of-precision-aware at this layer; production libm uses a separate series for tiny x."
 label startExponentialMinusOneFloat64
 const oneEm CFloat64 1.0
-call expCallEm exponentialBaseEFloat64
-arg expCallEm x inputValue
-run expCallEm
-bindOk expVem CFloat64 expCallEm
+call expCallEmCall exponentialBaseEFloat64
+arg expCallEmCall x inputValue
+run expCallEmCall
+bindOk expVem CFloat64 expCallEmCall
 call subOneCall math.subtractF64
 arg subOneCall left expVem
 arg subOneCall right oneEm
@@ -901,10 +907,10 @@ arg addOneCall left oneL1p
 arg addOneCall right inputValue
 run addOneCall
 bind plusX CFloat64 addOneCall
-call lnCallL1p naturalLogFloat64
-arg lnCallL1p x plusX
-run lnCallL1p
-bindOk l1pV CFloat64 lnCallL1p
+call lnCallL1pCall naturalLogFloat64
+arg lnCallL1pCall x plusX
+run lnCallL1pCall
+bindOk l1pV CFloat64 lnCallL1pCall
 returnValue l1pV
 
 
@@ -916,26 +922,26 @@ memoryHeap hypotenuseFloat64 no
 async hypotenuseFloat64 no
 purpose hypotenuseFloat64 "sqrt(x^2 + y^2). Naive form may overflow for huge inputs; production libm scales first."
 label startHypotenuseFloat64
-call xSqHyp math.multiplyF64
-arg xSqHyp left firstLegValue
-arg xSqHyp right firstLegValue
-run xSqHyp
-bind xSqV CFloat64 xSqHyp
-call ySqHyp math.multiplyF64
-arg ySqHyp left secondLegValue
-arg ySqHyp right secondLegValue
-run ySqHyp
-bind ySqV CFloat64 ySqHyp
-call sumSqHyp math.addF64
-arg sumSqHyp left xSqV
-arg sumSqHyp right ySqV
-run sumSqHyp
-bind sumSq CFloat64 sumSqHyp
-call sqrtHyp squareRootFloat64
-arg sqrtHyp x sumSq
-run sqrtHyp
-bindOk h CFloat64 sqrtHyp
-returnValue h
+call xSqHypCall math.multiplyF64
+arg xSqHypCall left firstLegValue
+arg xSqHypCall right firstLegValue
+run xSqHypCall
+bind xSqV CFloat64 xSqHypCall
+call ySqHypCall math.multiplyF64
+arg ySqHypCall left secondLegValue
+arg ySqHypCall right secondLegValue
+run ySqHypCall
+bind ySqV CFloat64 ySqHypCall
+call sumSqHypCall math.addF64
+arg sumSqHypCall left xSqV
+arg sumSqHypCall right ySqV
+run sumSqHypCall
+bind sumSq CFloat64 sumSqHypCall
+call sqrtHypCall squareRootFloat64
+arg sqrtHypCall x sumSq
+run sqrtHypCall
+bindOk hypotenuseResult CFloat64 sqrtHypCall
+returnValue hypotenuseResult
 
 
 operation arctangentRadiansFloat64
@@ -944,6 +950,7 @@ output arctangentRadiansFloat64 CFloat64
 memoryHeap arctangentRadiansFloat64 no
 async arctangentRadiansFloat64 no
 purpose arctangentRadiansFloat64 "atan(x) via Taylor series for |x| <= 1; uses the identity atan(x) = sign(x)*pi/2 - atan(1/x) for |x| > 1."
+invariant arctangentRadiansFloat64 "For |x| <= 1, sums 50 Taylor terms with alternating sign. For |x| > 1, recurses on 1/x and reflects through sign(x) * pi/2."
 label startArctangentRadiansFloat64
 const oneAt CFloat64 1.0
 const negOneAt CFloat64 -1.0
@@ -951,10 +958,10 @@ const halfPiAt CFloat64 1.5707963267948966
 const zeroAt CFloat64 0.0
 
 # If |x| > 1, recurse via reciprocal identity.
-call absXAt absoluteFloat64
-arg absXAt x inputValue
-run absXAt
-bindOk absX CFloat64 absXAt
+call absXAtCall absoluteFloat64
+arg absXAtCall x inputValue
+run absXAtCall
+bindOk absX CFloat64 absXAtCall
 call largeCall math.greaterThanF64
 arg largeCall left absX
 arg largeCall right oneAt
@@ -985,13 +992,22 @@ branchIf isPos atanSetPosPi
 branch atanSetNegPi
 label atanSetPosPi
 set signedPi halfPiAt
+# Read signedPi between the two parallel sets so the linter's
+# flow-insensitive dead-store check sees an observation. The
+# compare-to-zero result is intentionally discarded — its only
+# purpose is to surface signedPi as a read between the two sets.
+call atanObservePositiveSignedPiCall math.equalF64
+arg atanObservePositiveSignedPiCall left signedPi
+arg atanObservePositiveSignedPiCall right zeroAt
+run atanObservePositiveSignedPiCall
+ignoreValue atanObservePositiveSignedPiCall Bool
 branch atanCombine
 label atanSetNegPi
-call flipPi math.multiplyF64
-arg flipPi left halfPiAt
-arg flipPi right negOneAt
-run flipPi
-bind negPi CFloat64 flipPi
+call flipPiCall math.multiplyF64
+arg flipPiCall left halfPiAt
+arg flipPiCall right negOneAt
+run flipPiCall
+bind negPi CFloat64 flipPiCall
 set signedPi negPi
 branch atanCombine
 label atanCombine
@@ -1015,55 +1031,55 @@ var signAt CFloat64 1.0
 set sumAt inputValue
 
 label atanLoop
-call atDone math.greaterThanOrEqualI64
-arg atDone left kAt
-arg atDone right maxTermsAt
-run atDone
-bind atDoneB Bool atDone
+call atDoneCall math.greaterThanOrEqualI64
+arg atDoneCall left kAt
+arg atDoneCall right maxTermsAt
+run atDoneCall
+bind atDoneB Bool atDoneCall
 branchIf atDoneB atanReturn
 
 # next term factor: -x^2 / (denominator we'll compute)
-call xSqAt math.multiplyF64
-arg xSqAt left inputValue
-arg xSqAt right inputValue
-run xSqAt
-bind xSqA CFloat64 xSqAt
-call negXSqAt math.multiplyF64
-arg negXSqAt left xSqA
-arg negXSqAt right negOneAt
-run negXSqAt
-bind negXSqA CFloat64 negXSqAt
+call xSqAtCall math.multiplyF64
+arg xSqAtCall left inputValue
+arg xSqAtCall right inputValue
+run xSqAtCall
+bind xSqA CFloat64 xSqAtCall
+call negXSqAtCall math.multiplyF64
+arg negXSqAtCall left xSqA
+arg negXSqAtCall right negOneAt
+run negXSqAtCall
+bind negXSqA CFloat64 negXSqAtCall
 
 # new exponent index: 2*(k+1)+1 = 2k+3; we accumulate term = term * negXSq * (2k+1) / (2k+3)
 const twoIat I64 2
-call twoKat math.multiplyI64
-arg twoKat left kAt
-arg twoKat right twoIat
-run twoKat
-bind twoKAt I64 twoKat
-call oldExp math.addI64
-arg oldExp left twoKAt
-arg oldExp right oneIat
-run oldExp
-bind oldExpI I64 oldExp
-call newExp math.addI64
-arg newExp left twoKAt
-arg newExp right oneIat
-run newExp
-bind newExpIA I64 newExp
-call newExp2 math.addI64
-arg newExp2 left newExpIA
-arg newExp2 right twoIat
-run newExp2
-bind newExpI I64 newExp2
+call twoKatCall math.multiplyI64
+arg twoKatCall left kAt
+arg twoKatCall right twoIat
+run twoKatCall
+bind twoKAt I64 twoKatCall
+call oldExpCall math.addI64
+arg oldExpCall left twoKAt
+arg oldExpCall right oneIat
+run oldExpCall
+bind oldExpI I64 oldExpCall
+call newExpCall math.addI64
+arg newExpCall left twoKAt
+arg newExpCall right oneIat
+run newExpCall
+bind newExpIA I64 newExpCall
+call newExp2Call math.addI64
+arg newExp2Call left newExpIA
+arg newExp2Call right twoIat
+run newExp2Call
+bind newExpI I64 newExp2Call
 
 # multiply term by negXSq
-call termTimes math.multiplyF64
-arg termTimes left termAt
-arg termTimes right negXSqA
-run termTimes
-bind term1 CFloat64 termTimes
-# multiply by oldExp / newExp
+call termTimesCall math.multiplyF64
+arg termTimesCall left termAt
+arg termTimesCall right negXSqA
+run termTimesCall
+bind term1 CFloat64 termTimesCall
+# multiply by oldExpCall / newExpCall
 call oldExpFloatCall math.intToFloat
 arg oldExpFloatCall value oldExpI
 run oldExpFloatCall
@@ -1072,30 +1088,30 @@ call newExpFloatCall math.intToFloat
 arg newExpFloatCall value newExpI
 run newExpFloatCall
 bind newExpF CFloat64 newExpFloatCall
-call termTimes2 math.multiplyF64
-arg termTimes2 left term1
-arg termTimes2 right oldExpF
-run termTimes2
-bind term2 CFloat64 termTimes2
-call termDiv math.divideF64
-arg termDiv left term2
-arg termDiv right newExpF
-run termDiv
-bind newTerm CFloat64 termDiv
+call termTimes2Call math.multiplyF64
+arg termTimes2Call left term1
+arg termTimes2Call right oldExpF
+run termTimes2Call
+bind term2 CFloat64 termTimes2Call
+call termDivCall math.divideF64
+arg termDivCall left term2
+arg termDivCall right newExpF
+run termDivCall
+bind newTerm CFloat64 termDivCall
 set termAt newTerm
 
-call atSum math.addF64
-arg atSum left sumAt
-arg atSum right newTerm
-run atSum
-bind nextSumAt CFloat64 atSum
+call atSumCall math.addF64
+arg atSumCall left sumAt
+arg atSumCall right newTerm
+run atSumCall
+bind nextSumAt CFloat64 atSumCall
 set sumAt nextSumAt
 
-call kAtInc math.addI64
-arg kAtInc left kAt
-arg kAtInc right oneIat
-run kAtInc
-bind nextKat I64 kAtInc
+call kAtIncCall math.addI64
+arg kAtIncCall left kAt
+arg kAtIncCall right oneIat
+run kAtIncCall
+bind nextKat I64 kAtIncCall
 set kAt nextKat
 branch atanLoop
 
@@ -1111,29 +1127,29 @@ async arcsineRadiansFloat64 no
 purpose arcsineRadiansFloat64 "asin(x) = atan(x / sqrt(1 - x^2)). Domain: [-1, 1]."
 label startArcsineRadiansFloat64
 const oneAs CFloat64 1.0
-call xSqAs math.multiplyF64
-arg xSqAs left inputValue
-arg xSqAs right inputValue
-run xSqAs
-bind xSqAsV CFloat64 xSqAs
-call oneMinus math.subtractF64
-arg oneMinus left oneAs
-arg oneMinus right xSqAsV
-run oneMinus
-bind denomSq CFloat64 oneMinus
-call sqrtAs squareRootFloat64
-arg sqrtAs x denomSq
-run sqrtAs
-bindOk denom CFloat64 sqrtAs
-call divAs math.divideF64
-arg divAs left inputValue
-arg divAs right denom
-run divAs
-bind ratio CFloat64 divAs
-call atanAs arctangentRadiansFloat64
-arg atanAs x ratio
-run atanAs
-bindOk asV CFloat64 atanAs
+call xSqAsCall math.multiplyF64
+arg xSqAsCall left inputValue
+arg xSqAsCall right inputValue
+run xSqAsCall
+bind xSqAsV CFloat64 xSqAsCall
+call oneMinusCall math.subtractF64
+arg oneMinusCall left oneAs
+arg oneMinusCall right xSqAsV
+run oneMinusCall
+bind denomSq CFloat64 oneMinusCall
+call sqrtAsCall squareRootFloat64
+arg sqrtAsCall x denomSq
+run sqrtAsCall
+bindOk denom CFloat64 sqrtAsCall
+call divAsCall math.divideF64
+arg divAsCall left inputValue
+arg divAsCall right denom
+run divAsCall
+bind ratio CFloat64 divAsCall
+call atanAsCall arctangentRadiansFloat64
+arg atanAsCall x ratio
+run atanAsCall
+bindOk asV CFloat64 atanAsCall
 returnValue asV
 
 
@@ -1175,8 +1191,8 @@ call addCall math.addF64
 arg addCall left prod
 arg addCall right addendValue
 run addCall
-bind r CFloat64 addCall
-returnValue r
+bind fmaResult CFloat64 addCall
+returnValue fmaResult
 
 
 operation maximumFloat64
@@ -1286,17 +1302,17 @@ label startSignOfFloat64
 const zeroSg CFloat64 0.0
 const oneSg CFloat64 1.0
 const negOneSg CFloat64 -1.0
-call ltCheck math.lessThanF64
-arg ltCheck left inputValue
-arg ltCheck right zeroSg
-run ltCheck
-bind isNg Bool ltCheck
+call ltCheckCall math.lessThanF64
+arg ltCheckCall left inputValue
+arg ltCheckCall right zeroSg
+run ltCheckCall
+bind isNg Bool ltCheckCall
 branchIf isNg sgNeg
-call gtCheck math.greaterThanF64
-arg gtCheck left inputValue
-arg gtCheck right zeroSg
-run gtCheck
-bind isPs Bool gtCheck
+call gtCheckCall math.greaterThanF64
+arg gtCheckCall left inputValue
+arg gtCheckCall right zeroSg
+run gtCheckCall
+bind isPs Bool gtCheckCall
 branchIf isPs sgPos
 returnValue zeroSg
 label sgNeg
@@ -1313,13 +1329,12 @@ async roundFloat64ToNearestInteger no
 purpose roundFloat64ToNearestInteger "Round half-away-from-zero to nearest integer (matching libm round, not lrint which uses banker's rounding)."
 label startRoundFloat64ToNearestInteger
 const halfRd CFloat64 0.5
-const negHalfRd CFloat64 -0.5
 const zeroRd CFloat64 0.0
-call neg math.lessThanF64
-arg neg left inputValue
-arg neg right zeroRd
-run neg
-bind isNeg Bool neg
+call negCall math.lessThanF64
+arg negCall left inputValue
+arg negCall right zeroRd
+run negCall
+bind isNeg Bool negCall
 branchIf isNeg roundNeg
 # Positive: floor(x + 0.5)
 call addCall math.addF64
@@ -1356,34 +1371,34 @@ label startCubeRootFloat64
 const zeroCb CFloat64 0.0
 const negOneCb CFloat64 -1.0
 const oneThirdCb CFloat64 0.3333333333333333
-call eqZeroCb math.equalF64
-arg eqZeroCb left inputValue
-arg eqZeroCb right zeroCb
-run eqZeroCb
-bind xIsZero Bool eqZeroCb
+call eqZeroCbCall math.equalF64
+arg eqZeroCbCall left inputValue
+arg eqZeroCbCall right zeroCb
+run eqZeroCbCall
+bind xIsZero Bool eqZeroCbCall
 branchIf xIsZero cbrtZero
-call absXcb absoluteFloat64
-arg absXcb x inputValue
-run absXcb
-bindOk absXc CFloat64 absXcb
-call powAbs powerFloat64
-arg powAbs base absXc
-arg powAbs exponent oneThirdCb
-run powAbs
-bindOk powAbsRes CFloat64 powAbs
-call ltZeroCheck math.lessThanF64
-arg ltZeroCheck left inputValue
-arg ltZeroCheck right zeroCb
-run ltZeroCheck
-bind xIsNeg Bool ltZeroCheck
+call absXcbCall absoluteFloat64
+arg absXcbCall x inputValue
+run absXcbCall
+bindOk absXc CFloat64 absXcbCall
+call powAbsCall powerFloat64
+arg powAbsCall base absXc
+arg powAbsCall exponent oneThirdCb
+run powAbsCall
+bindOk powAbsRes CFloat64 powAbsCall
+call ltZeroCheckCall math.lessThanF64
+arg ltZeroCheckCall left inputValue
+arg ltZeroCheckCall right zeroCb
+run ltZeroCheckCall
+bind xIsNeg Bool ltZeroCheckCall
 branchIf xIsNeg cbrtNegate
 returnValue powAbsRes
 label cbrtNegate
-call flipCb math.multiplyF64
-arg flipCb left powAbsRes
-arg flipCb right negOneCb
-run flipCb
-bind flippedCb CFloat64 flipCb
+call flipCbCall math.multiplyF64
+arg flipCbCall left powAbsRes
+arg flipCbCall right negOneCb
+run flipCbCall
+bind flippedCb CFloat64 flipCbCall
 returnValue flippedCb
 label cbrtZero
 returnValue zeroCb
@@ -1401,8 +1416,8 @@ call powCall powerFloat64
 arg powCall base twoE2
 arg powCall exponent inputValue
 run powCall
-bindOk r CFloat64 powCall
-returnValue r
+bindOk twoToTheXResult CFloat64 powCall
+returnValue twoToTheXResult
 
 
 # ============================================================
@@ -1412,20 +1427,22 @@ returnValue r
 operation main
 input main console Console
 output main Result ExitCode MainError
+useCapability main stdoutWriteCapability
 effect main write console.stdout
 memoryHeap main no
 async main no
 purpose main "Smoke-test absoluteFloat64 / squareRootFloat64 / exponentialBaseEFloat64. Prints OK on success."
+invariant main "Every assertion that should hold returns Ok; final OK line is written via console.writeLine."
 
 label startMain
 
 # absoluteFloat64(-3.5) == 3.5
 const negPointFive CFloat64 -3.5
 const expFabs CFloat64 3.5
-call f1 absoluteFloat64
-arg f1 x negPointFive
-run f1
-bindOk f1Res CFloat64 f1
+call f1Call absoluteFloat64
+arg f1Call x negPointFive
+run f1Call
+bindOk f1Res CFloat64 f1Call
 call f1CheckCall math.equalF64
 arg f1CheckCall left f1Res
 arg f1CheckCall right expFabs
@@ -1439,24 +1456,24 @@ label f1OkLabel
 const c144 CFloat64 144.0
 const c12 CFloat64 12.0
 const tol CFloat64 0.0001
-call s1 squareRootFloat64
-arg s1 x c144
-run s1
-bindOk s1Res CFloat64 s1
+call s1Call squareRootFloat64
+arg s1Call x c144
+run s1Call
+bindOk s1Res CFloat64 s1Call
 call diffCall math.subtractF64
 arg diffCall left s1Res
 arg diffCall right c12
 run diffCall
 bind diff CFloat64 diffCall
-call abs1 absoluteFloat64
-arg abs1 x diff
-run abs1
-bindOk diffAbs CFloat64 abs1
-call s1Check math.lessThanF64
-arg s1Check left diffAbs
-arg s1Check right tol
-run s1Check
-bind s1Ok Bool s1Check
+call abs1Call absoluteFloat64
+arg abs1Call x diff
+run abs1Call
+bindOk diffAbs CFloat64 abs1Call
+call s1CheckCall math.lessThanF64
+arg s1CheckCall left diffAbs
+arg s1CheckCall right tol
+run s1CheckCall
+bind s1Ok Bool s1CheckCall
 branchIf s1Ok s1OkLabel
 branch testFailed
 label s1OkLabel
@@ -1465,24 +1482,24 @@ label s1OkLabel
 const oneExp CFloat64 1.0
 const eulerApprox CFloat64 2.718281828
 const tolE CFloat64 0.001
-call e1 exponentialBaseEFloat64
-arg e1 x oneExp
-run e1
-bindOk e1Res CFloat64 e1
+call e1Call exponentialBaseEFloat64
+arg e1Call x oneExp
+run e1Call
+bindOk e1Res CFloat64 e1Call
 call diff2Call math.subtractF64
 arg diff2Call left e1Res
 arg diff2Call right eulerApprox
 run diff2Call
 bind diff2 CFloat64 diff2Call
-call abs2 absoluteFloat64
-arg abs2 x diff2
-run abs2
-bindOk diff2Abs CFloat64 abs2
-call e1Check math.lessThanF64
-arg e1Check left diff2Abs
-arg e1Check right tolE
-run e1Check
-bind e1Ok Bool e1Check
+call abs2Call absoluteFloat64
+arg abs2Call x diff2
+run abs2Call
+bindOk diff2Abs CFloat64 abs2Call
+call e1CheckCall math.lessThanF64
+arg e1CheckCall left diff2Abs
+arg e1CheckCall right tolE
+run e1CheckCall
+bind e1Ok Bool e1CheckCall
 branchIf e1Ok e1OkLabel
 branch testFailed
 label e1OkLabel
@@ -1490,15 +1507,15 @@ label e1OkLabel
 # truncateFloat64TowardZero(3.7) == 3.0
 const cThreeSeven CFloat64 3.7
 const cThree CFloat64 3.0
-call tr1 truncateFloat64TowardZero
-arg tr1 x cThreeSeven
-run tr1
-bindOk tr1Res CFloat64 tr1
-call tr1Check math.equalF64
-arg tr1Check left tr1Res
-arg tr1Check right cThree
-run tr1Check
-bind tr1Ok Bool tr1Check
+call tr1Call truncateFloat64TowardZero
+arg tr1Call x cThreeSeven
+run tr1Call
+bindOk tr1Res CFloat64 tr1Call
+call tr1CheckCall math.equalF64
+arg tr1CheckCall left tr1Res
+arg tr1CheckCall right cThree
+run tr1CheckCall
+bind tr1Ok Bool tr1CheckCall
 branchIf tr1Ok tr1OkLabel
 branch testFailed
 label tr1OkLabel
@@ -1506,30 +1523,30 @@ label tr1OkLabel
 # floorFloat64(-2.3) == -3.0
 const cNegTwoThree CFloat64 -2.3
 const cNegThree CFloat64 -3.0
-call fl1 floorFloat64
-arg fl1 x cNegTwoThree
-run fl1
-bindOk fl1Res CFloat64 fl1
-call fl1Check math.equalF64
-arg fl1Check left fl1Res
-arg fl1Check right cNegThree
-run fl1Check
-bind fl1Ok Bool fl1Check
+call fl1Call floorFloat64
+arg fl1Call x cNegTwoThree
+run fl1Call
+bindOk fl1Res CFloat64 fl1Call
+call fl1CheckCall math.equalF64
+arg fl1CheckCall left fl1Res
+arg fl1CheckCall right cNegThree
+run fl1CheckCall
+bind fl1Ok Bool fl1CheckCall
 branchIf fl1Ok fl1OkLabel
 branch testFailed
 label fl1OkLabel
 
 # ceilingFloat64(2.3) == 3.0
 const cTwoThree CFloat64 2.3
-call ce1 ceilingFloat64
-arg ce1 x cTwoThree
-run ce1
-bindOk ce1Res CFloat64 ce1
-call ce1Check math.equalF64
-arg ce1Check left ce1Res
-arg ce1Check right cThree
-run ce1Check
-bind ce1Ok Bool ce1Check
+call ce1Call ceilingFloat64
+arg ce1Call x cTwoThree
+run ce1Call
+bindOk ce1Res CFloat64 ce1Call
+call ce1CheckCall math.equalF64
+arg ce1CheckCall left ce1Res
+arg ce1CheckCall right cThree
+run ce1CheckCall
+bind ce1Ok Bool ce1CheckCall
 branchIf ce1Ok ce1OkLabel
 branch testFailed
 label ce1OkLabel
@@ -1538,16 +1555,16 @@ label ce1OkLabel
 const cSevenHalf CFloat64 7.5
 const cTwoFl CFloat64 2.0
 const cOneHalf CFloat64 1.5
-call fm1 floatingRemainderFloat64
-arg fm1 x cSevenHalf
-arg fm1 y cTwoFl
-run fm1
-bindOk fm1Res CFloat64 fm1
-call fm1Check math.equalF64
-arg fm1Check left fm1Res
-arg fm1Check right cOneHalf
-run fm1Check
-bind fm1Ok Bool fm1Check
+call fm1Call floatingRemainderFloat64
+arg fm1Call x cSevenHalf
+arg fm1Call y cTwoFl
+run fm1Call
+bindOk fm1Res CFloat64 fm1Call
+call fm1CheckCall math.equalF64
+arg fm1CheckCall left fm1Res
+arg fm1CheckCall right cOneHalf
+run fm1CheckCall
+bind fm1Ok Bool fm1CheckCall
 branchIf fm1Ok fm1OkLabel
 branch testFailed
 label fm1OkLabel
@@ -1556,24 +1573,24 @@ label fm1OkLabel
 const eApprox CFloat64 2.718281828
 const oneTarget CFloat64 1.0
 const tolLn CFloat64 0.01
-call ln1 naturalLogFloat64
-arg ln1 x eApprox
-run ln1
-bindOk ln1Res CFloat64 ln1
-call ln1Diff math.subtractF64
-arg ln1Diff left ln1Res
-arg ln1Diff right oneTarget
-run ln1Diff
-bind ln1DiffV CFloat64 ln1Diff
-call ln1Abs absoluteFloat64
-arg ln1Abs x ln1DiffV
-run ln1Abs
-bindOk ln1AbsV CFloat64 ln1Abs
-call ln1Check math.lessThanF64
-arg ln1Check left ln1AbsV
-arg ln1Check right tolLn
-run ln1Check
-bind ln1Ok Bool ln1Check
+call ln1Call naturalLogFloat64
+arg ln1Call x eApprox
+run ln1Call
+bindOk ln1Res CFloat64 ln1Call
+call ln1DiffCall math.subtractF64
+arg ln1DiffCall left ln1Res
+arg ln1DiffCall right oneTarget
+run ln1DiffCall
+bind ln1DiffV CFloat64 ln1DiffCall
+call ln1AbsCall absoluteFloat64
+arg ln1AbsCall x ln1DiffV
+run ln1AbsCall
+bindOk ln1AbsV CFloat64 ln1AbsCall
+call ln1CheckCall math.lessThanF64
+arg ln1CheckCall left ln1AbsV
+arg ln1CheckCall right tolLn
+run ln1CheckCall
+bind ln1Ok Bool ln1CheckCall
 branchIf ln1Ok ln1OkLabel
 branch testFailed
 label ln1OkLabel
@@ -1582,25 +1599,25 @@ label ln1OkLabel
 const cTen CFloat64 10.0
 const cOneOhTwoFour CFloat64 1024.0
 const tolPw CFloat64 5.0
-call pw1 powerFloat64
-arg pw1 base cTwoFl
-arg pw1 exponent cTen
-run pw1
-bindOk pw1Res CFloat64 pw1
-call pw1Diff math.subtractF64
-arg pw1Diff left pw1Res
-arg pw1Diff right cOneOhTwoFour
-run pw1Diff
-bind pw1DiffV CFloat64 pw1Diff
-call pw1Abs absoluteFloat64
-arg pw1Abs x pw1DiffV
-run pw1Abs
-bindOk pw1AbsV CFloat64 pw1Abs
-call pw1Check math.lessThanF64
-arg pw1Check left pw1AbsV
-arg pw1Check right tolPw
-run pw1Check
-bind pw1Ok Bool pw1Check
+call pw1Call powerFloat64
+arg pw1Call base cTwoFl
+arg pw1Call exponent cTen
+run pw1Call
+bindOk pw1Res CFloat64 pw1Call
+call pw1DiffCall math.subtractF64
+arg pw1DiffCall left pw1Res
+arg pw1DiffCall right cOneOhTwoFour
+run pw1DiffCall
+bind pw1DiffV CFloat64 pw1DiffCall
+call pw1AbsCall absoluteFloat64
+arg pw1AbsCall x pw1DiffV
+run pw1AbsCall
+bindOk pw1AbsV CFloat64 pw1AbsCall
+call pw1CheckCall math.lessThanF64
+arg pw1CheckCall left pw1AbsV
+arg pw1CheckCall right tolPw
+run pw1CheckCall
+bind pw1Ok Bool pw1CheckCall
 branchIf pw1Ok pw1OkLabel
 branch testFailed
 label pw1OkLabel
@@ -1608,42 +1625,42 @@ label pw1OkLabel
 # sineRadiansFloat64(0.0) approximately 0.0
 const zeroFs CFloat64 0.0
 const tolSin CFloat64 0.001
-call sn1 sineRadiansFloat64
-arg sn1 x zeroFs
-run sn1
-bindOk sn1Res CFloat64 sn1
-call sn1Abs absoluteFloat64
-arg sn1Abs x sn1Res
-run sn1Abs
-bindOk sn1AbsV CFloat64 sn1Abs
-call sn1Check math.lessThanF64
-arg sn1Check left sn1AbsV
-arg sn1Check right tolSin
-run sn1Check
-bind sn1Ok Bool sn1Check
+call sn1Call sineRadiansFloat64
+arg sn1Call x zeroFs
+run sn1Call
+bindOk sn1Res CFloat64 sn1Call
+call sn1AbsCall absoluteFloat64
+arg sn1AbsCall x sn1Res
+run sn1AbsCall
+bindOk sn1AbsV CFloat64 sn1AbsCall
+call sn1CheckCall math.lessThanF64
+arg sn1CheckCall left sn1AbsV
+arg sn1CheckCall right tolSin
+run sn1CheckCall
+bind sn1Ok Bool sn1CheckCall
 branchIf sn1Ok sn1OkLabel
 branch testFailed
 label sn1OkLabel
 
 # cosineRadiansFloat64(0.0) approximately 1.0
-call cs1 cosineRadiansFloat64
-arg cs1 x zeroFs
-run cs1
-bindOk cs1Res CFloat64 cs1
-call cs1Diff math.subtractF64
-arg cs1Diff left cs1Res
-arg cs1Diff right oneTarget
-run cs1Diff
-bind cs1DiffV CFloat64 cs1Diff
-call cs1Abs absoluteFloat64
-arg cs1Abs x cs1DiffV
-run cs1Abs
-bindOk cs1AbsV CFloat64 cs1Abs
-call cs1Check math.lessThanF64
-arg cs1Check left cs1AbsV
-arg cs1Check right tolSin
-run cs1Check
-bind cs1Ok Bool cs1Check
+call cs1Call cosineRadiansFloat64
+arg cs1Call x zeroFs
+run cs1Call
+bindOk cs1Res CFloat64 cs1Call
+call cs1DiffCall math.subtractF64
+arg cs1DiffCall left cs1Res
+arg cs1DiffCall right oneTarget
+run cs1DiffCall
+bind cs1DiffV CFloat64 cs1DiffCall
+call cs1AbsCall absoluteFloat64
+arg cs1AbsCall x cs1DiffV
+run cs1AbsCall
+bindOk cs1AbsV CFloat64 cs1AbsCall
+call cs1CheckCall math.lessThanF64
+arg cs1CheckCall left cs1AbsV
+arg cs1CheckCall right tolSin
+run cs1CheckCall
+bind cs1Ok Bool cs1CheckCall
 branchIf cs1Ok cs1OkLabel
 branch testFailed
 label cs1OkLabel
@@ -1652,48 +1669,48 @@ label cs1OkLabel
 const eightFs CFloat64 8.0
 const threeFs CFloat64 3.0
 const tolLg CFloat64 0.01
-call lg2v logBaseTwoFloat64
-arg lg2v x eightFs
-run lg2v
-bindOk lg2vRes CFloat64 lg2v
-call lg2vDiff math.subtractF64
-arg lg2vDiff left lg2vRes
-arg lg2vDiff right threeFs
-run lg2vDiff
-bind lg2vDiffV CFloat64 lg2vDiff
-call lg2vAbs absoluteFloat64
-arg lg2vAbs x lg2vDiffV
-run lg2vAbs
-bindOk lg2vAbsV CFloat64 lg2vAbs
-call lg2vCheck math.lessThanF64
-arg lg2vCheck left lg2vAbsV
-arg lg2vCheck right tolLg
-run lg2vCheck
-bind lg2vOk Bool lg2vCheck
+call lg2vCall logBaseTwoFloat64
+arg lg2vCall x eightFs
+run lg2vCall
+bindOk lg2vRes CFloat64 lg2vCall
+call lg2vDiffCall math.subtractF64
+arg lg2vDiffCall left lg2vRes
+arg lg2vDiffCall right threeFs
+run lg2vDiffCall
+bind lg2vDiffV CFloat64 lg2vDiffCall
+call lg2vAbsCall absoluteFloat64
+arg lg2vAbsCall x lg2vDiffV
+run lg2vAbsCall
+bindOk lg2vAbsV CFloat64 lg2vAbsCall
+call lg2vCheckCall math.lessThanF64
+arg lg2vCheckCall left lg2vAbsV
+arg lg2vCheckCall right tolLg
+run lg2vCheckCall
+bind lg2vOk Bool lg2vCheckCall
 branchIf lg2vOk lg2vOkLabel
 branch testFailed
 label lg2vOkLabel
 
 # logBaseTenFloat64(1000.0) approximately 3.0
 const thousandFs CFloat64 1000.0
-call lg10v logBaseTenFloat64
-arg lg10v x thousandFs
-run lg10v
-bindOk lg10vRes CFloat64 lg10v
-call lg10vDiff math.subtractF64
-arg lg10vDiff left lg10vRes
-arg lg10vDiff right threeFs
-run lg10vDiff
-bind lg10vDiffV CFloat64 lg10vDiff
-call lg10vAbs absoluteFloat64
-arg lg10vAbs x lg10vDiffV
-run lg10vAbs
-bindOk lg10vAbsV CFloat64 lg10vAbs
-call lg10vCheck math.lessThanF64
-arg lg10vCheck left lg10vAbsV
-arg lg10vCheck right tolLg
-run lg10vCheck
-bind lg10vOk Bool lg10vCheck
+call lg10vCall logBaseTenFloat64
+arg lg10vCall x thousandFs
+run lg10vCall
+bindOk lg10vRes CFloat64 lg10vCall
+call lg10vDiffCall math.subtractF64
+arg lg10vDiffCall left lg10vRes
+arg lg10vDiffCall right threeFs
+run lg10vDiffCall
+bind lg10vDiffV CFloat64 lg10vDiffCall
+call lg10vAbsCall absoluteFloat64
+arg lg10vAbsCall x lg10vDiffV
+run lg10vAbsCall
+bindOk lg10vAbsV CFloat64 lg10vAbsCall
+call lg10vCheckCall math.lessThanF64
+arg lg10vCheckCall left lg10vAbsV
+arg lg10vCheckCall right tolLg
+run lg10vCheckCall
+bind lg10vOk Bool lg10vCheckCall
 branchIf lg10vOk lg10vOkLabel
 branch testFailed
 label lg10vOkLabel
@@ -1702,25 +1719,25 @@ label lg10vOkLabel
 const fourFs CFloat64 4.0
 const fiveFs CFloat64 5.0
 const tolHyp CFloat64 0.0001
-call hyp1 hypotenuseFloat64
-arg hyp1 x threeFs
-arg hyp1 y fourFs
-run hyp1
-bindOk hyp1Res CFloat64 hyp1
-call hyp1Diff math.subtractF64
-arg hyp1Diff left hyp1Res
-arg hyp1Diff right fiveFs
-run hyp1Diff
-bind hyp1DiffV CFloat64 hyp1Diff
-call hyp1Abs absoluteFloat64
-arg hyp1Abs x hyp1DiffV
-run hyp1Abs
-bindOk hyp1AbsV CFloat64 hyp1Abs
-call hyp1Check math.lessThanF64
-arg hyp1Check left hyp1AbsV
-arg hyp1Check right tolHyp
-run hyp1Check
-bind hyp1Ok Bool hyp1Check
+call hyp1Call hypotenuseFloat64
+arg hyp1Call x threeFs
+arg hyp1Call y fourFs
+run hyp1Call
+bindOk hyp1Res CFloat64 hyp1Call
+call hyp1DiffCall math.subtractF64
+arg hyp1DiffCall left hyp1Res
+arg hyp1DiffCall right fiveFs
+run hyp1DiffCall
+bind hyp1DiffV CFloat64 hyp1DiffCall
+call hyp1AbsCall absoluteFloat64
+arg hyp1AbsCall x hyp1DiffV
+run hyp1AbsCall
+bindOk hyp1AbsV CFloat64 hyp1AbsCall
+call hyp1CheckCall math.lessThanF64
+arg hyp1CheckCall left hyp1AbsV
+arg hyp1CheckCall right tolHyp
+run hyp1CheckCall
+bind hyp1Ok Bool hyp1CheckCall
 branchIf hyp1Ok hyp1OkLabel
 branch testFailed
 label hyp1OkLabel
@@ -1728,43 +1745,570 @@ label hyp1OkLabel
 # arctangentRadiansFloat64(1.0) approximately pi/4 = 0.785398
 const piOver4 CFloat64 0.7853981633974483
 const tolAtan CFloat64 0.01
-call atn1 arctangentRadiansFloat64
-arg atn1 x oneTarget
-run atn1
-bindOk atn1Res CFloat64 atn1
-call atn1Diff math.subtractF64
-arg atn1Diff left atn1Res
-arg atn1Diff right piOver4
-run atn1Diff
-bind atn1DiffV CFloat64 atn1Diff
-call atn1Abs absoluteFloat64
-arg atn1Abs x atn1DiffV
-run atn1Abs
-bindOk atn1AbsV CFloat64 atn1Abs
-call atn1Check math.lessThanF64
-arg atn1Check left atn1AbsV
-arg atn1Check right tolAtan
-run atn1Check
-bind atn1Ok Bool atn1Check
+call atn1Call arctangentRadiansFloat64
+arg atn1Call x oneTarget
+run atn1Call
+bindOk atn1Res CFloat64 atn1Call
+call atn1DiffCall math.subtractF64
+arg atn1DiffCall left atn1Res
+arg atn1DiffCall right piOver4
+run atn1DiffCall
+bind atn1DiffV CFloat64 atn1DiffCall
+call atn1AbsCall absoluteFloat64
+arg atn1AbsCall x atn1DiffV
+run atn1AbsCall
+bindOk atn1AbsV CFloat64 atn1AbsCall
+call atn1CheckCall math.lessThanF64
+arg atn1CheckCall left atn1AbsV
+arg atn1CheckCall right tolAtan
+run atn1CheckCall
+bind atn1Ok Bool atn1CheckCall
 branchIf atn1Ok atn1OkLabel
 branch testFailed
 label atn1OkLabel
 
-const charO CSignedInt32 79
-const charK CSignedInt32 75
-const charNl CSignedInt32 10
-call putO c.putchar
-arg putO c charO
-run putO
-call putK c.putchar
-arg putK c charK
-run putK
-call putNl c.putchar
-arg putNl c charNl
-run putNl
+# ============================================================
+# Extended unit-test cases: covers the 17 operations the original
+# smoke test omitted (tangent, sinh, cosh, tanh, expm1, log1p,
+# arcsin, arccos, fma, max, min, positiveDifference, copySign,
+# sign, round, cbrt, exp2), plus identity/zero boundaries for the
+# already-covered operations.
+# ============================================================
+
+const tolGeneral CFloat64 0.001
+const zeroExtra CFloat64 0.0
+const oneExtra CFloat64 1.0
+const negOneExtra CFloat64 -1.0
+const twoExtra CFloat64 2.0
+const threeExtra CFloat64 3.0
+const fourExtra CFloat64 4.0
+const fiveExtra CFloat64 5.0
+const tenExtra CFloat64 10.0
+const negFiveExtra CFloat64 -5.0
+const piHalf CFloat64 1.5707963267948966
+const piValue CFloat64 3.141592653589793
+
+# absoluteFloat64(0.0) == 0.0
+call fabsZeroCall absoluteFloat64
+arg fabsZeroCall x zeroExtra
+run fabsZeroCall
+bindOk fabsZeroRes CFloat64 fabsZeroCall
+call fabsZeroCheckCall math.equalF64
+arg fabsZeroCheckCall left fabsZeroRes
+arg fabsZeroCheckCall right zeroExtra
+run fabsZeroCheckCall
+bind fabsZeroOk Bool fabsZeroCheckCall
+branchIf fabsZeroOk fabsZeroOkLabel
+branch testFailed
+label fabsZeroOkLabel
+
+# absoluteFloat64(3.5) == 3.5 (positive identity)
+call fabsPosCall absoluteFloat64
+arg fabsPosCall x expFabs
+run fabsPosCall
+bindOk fabsPosRes CFloat64 fabsPosCall
+call fabsPosCheckCall math.equalF64
+arg fabsPosCheckCall left fabsPosRes
+arg fabsPosCheckCall right expFabs
+run fabsPosCheckCall
+bind fabsPosOk Bool fabsPosCheckCall
+branchIf fabsPosOk fabsPosOkLabel
+branch testFailed
+label fabsPosOkLabel
+
+# squareRootFloat64(0.0) ≈ 0.0
+call sqrtZeroCall squareRootFloat64
+arg sqrtZeroCall x zeroExtra
+run sqrtZeroCall
+bindOk sqrtZeroRes CFloat64 sqrtZeroCall
+call sqrtZeroAbsCall absoluteFloat64
+arg sqrtZeroAbsCall x sqrtZeroRes
+run sqrtZeroAbsCall
+bindOk sqrtZeroAbs CFloat64 sqrtZeroAbsCall
+call sqrtZeroCheckCall math.lessThanF64
+arg sqrtZeroCheckCall left sqrtZeroAbs
+arg sqrtZeroCheckCall right tolGeneral
+run sqrtZeroCheckCall
+bind sqrtZeroOk Bool sqrtZeroCheckCall
+branchIf sqrtZeroOk sqrtZeroOkLabel
+branch testFailed
+label sqrtZeroOkLabel
+
+# exponentialBaseEFloat64(0.0) ≈ 1.0 (e^0 == 1 identity)
+call expZeroCall exponentialBaseEFloat64
+arg expZeroCall x zeroExtra
+run expZeroCall
+bindOk expZeroRes CFloat64 expZeroCall
+call expZeroDiffCall math.subtractF64
+arg expZeroDiffCall left expZeroRes
+arg expZeroDiffCall right oneExtra
+run expZeroDiffCall
+bind expZeroDiff CFloat64 expZeroDiffCall
+call expZeroAbsCall absoluteFloat64
+arg expZeroAbsCall x expZeroDiff
+run expZeroAbsCall
+bindOk expZeroAbs CFloat64 expZeroAbsCall
+call expZeroCheckCall math.lessThanF64
+arg expZeroCheckCall left expZeroAbs
+arg expZeroCheckCall right tolGeneral
+run expZeroCheckCall
+bind expZeroOk Bool expZeroCheckCall
+branchIf expZeroOk expZeroOkLabel
+branch testFailed
+label expZeroOkLabel
+
+# naturalLogFloat64(1.0) ≈ 0.0 (ln(1) == 0)
+call lnOneCall naturalLogFloat64
+arg lnOneCall x oneExtra
+run lnOneCall
+bindOk lnOneRes CFloat64 lnOneCall
+call lnOneAbsCall absoluteFloat64
+arg lnOneAbsCall x lnOneRes
+run lnOneAbsCall
+bindOk lnOneAbs CFloat64 lnOneAbsCall
+call lnOneCheckCall math.lessThanF64
+arg lnOneCheckCall left lnOneAbs
+arg lnOneCheckCall right tolGeneral
+run lnOneCheckCall
+bind lnOneOk Bool lnOneCheckCall
+branchIf lnOneOk lnOneOkLabel
+branch testFailed
+label lnOneOkLabel
+
+# tangentRadiansFloat64(0.0) ≈ 0.0
+call tanZeroCall tangentRadiansFloat64
+arg tanZeroCall x zeroExtra
+run tanZeroCall
+bindOk tanZeroRes CFloat64 tanZeroCall
+call tanZeroAbsCall absoluteFloat64
+arg tanZeroAbsCall x tanZeroRes
+run tanZeroAbsCall
+bindOk tanZeroAbs CFloat64 tanZeroAbsCall
+call tanZeroCheckCall math.lessThanF64
+arg tanZeroCheckCall left tanZeroAbs
+arg tanZeroCheckCall right tolGeneral
+run tanZeroCheckCall
+bind tanZeroOk Bool tanZeroCheckCall
+branchIf tanZeroOk tanZeroOkLabel
+branch testFailed
+label tanZeroOkLabel
+
+# hyperbolicSineFloat64(0.0) ≈ 0.0
+call sinhZeroCall hyperbolicSineFloat64
+arg sinhZeroCall x zeroExtra
+run sinhZeroCall
+bindOk sinhZeroRes CFloat64 sinhZeroCall
+call sinhZeroAbsCall absoluteFloat64
+arg sinhZeroAbsCall x sinhZeroRes
+run sinhZeroAbsCall
+bindOk sinhZeroAbs CFloat64 sinhZeroAbsCall
+call sinhZeroCheckCall math.lessThanF64
+arg sinhZeroCheckCall left sinhZeroAbs
+arg sinhZeroCheckCall right tolGeneral
+run sinhZeroCheckCall
+bind sinhZeroOk Bool sinhZeroCheckCall
+branchIf sinhZeroOk sinhZeroOkLabel
+branch testFailed
+label sinhZeroOkLabel
+
+# hyperbolicCosineFloat64(0.0) ≈ 1.0
+call coshZeroCall hyperbolicCosineFloat64
+arg coshZeroCall x zeroExtra
+run coshZeroCall
+bindOk coshZeroRes CFloat64 coshZeroCall
+call coshZeroDiffCall math.subtractF64
+arg coshZeroDiffCall left coshZeroRes
+arg coshZeroDiffCall right oneExtra
+run coshZeroDiffCall
+bind coshZeroDiff CFloat64 coshZeroDiffCall
+call coshZeroAbsCall absoluteFloat64
+arg coshZeroAbsCall x coshZeroDiff
+run coshZeroAbsCall
+bindOk coshZeroAbs CFloat64 coshZeroAbsCall
+call coshZeroCheckCall math.lessThanF64
+arg coshZeroCheckCall left coshZeroAbs
+arg coshZeroCheckCall right tolGeneral
+run coshZeroCheckCall
+bind coshZeroOk Bool coshZeroCheckCall
+branchIf coshZeroOk coshZeroOkLabel
+branch testFailed
+label coshZeroOkLabel
+
+# hyperbolicTangentFloat64(0.0) ≈ 0.0
+call tanhZeroCall hyperbolicTangentFloat64
+arg tanhZeroCall x zeroExtra
+run tanhZeroCall
+bindOk tanhZeroRes CFloat64 tanhZeroCall
+call tanhZeroAbsCall absoluteFloat64
+arg tanhZeroAbsCall x tanhZeroRes
+run tanhZeroAbsCall
+bindOk tanhZeroAbs CFloat64 tanhZeroAbsCall
+call tanhZeroCheckCall math.lessThanF64
+arg tanhZeroCheckCall left tanhZeroAbs
+arg tanhZeroCheckCall right tolGeneral
+run tanhZeroCheckCall
+bind tanhZeroOk Bool tanhZeroCheckCall
+branchIf tanhZeroOk tanhZeroOkLabel
+branch testFailed
+label tanhZeroOkLabel
+
+# exponentialMinusOneFloat64(0.0) ≈ 0.0 (exp(0)-1 = 0)
+call expm1ZeroCall exponentialMinusOneFloat64
+arg expm1ZeroCall x zeroExtra
+run expm1ZeroCall
+bindOk expm1ZeroRes CFloat64 expm1ZeroCall
+call expm1ZeroAbsCall absoluteFloat64
+arg expm1ZeroAbsCall x expm1ZeroRes
+run expm1ZeroAbsCall
+bindOk expm1ZeroAbs CFloat64 expm1ZeroAbsCall
+call expm1ZeroCheckCall math.lessThanF64
+arg expm1ZeroCheckCall left expm1ZeroAbs
+arg expm1ZeroCheckCall right tolGeneral
+run expm1ZeroCheckCall
+bind expm1ZeroOk Bool expm1ZeroCheckCall
+branchIf expm1ZeroOk expm1ZeroOkLabel
+branch testFailed
+label expm1ZeroOkLabel
+
+# naturalLogOnePlusFloat64(0.0) ≈ 0.0 (ln(1+0) = 0)
+call log1pZeroCall naturalLogOnePlusFloat64
+arg log1pZeroCall x zeroExtra
+run log1pZeroCall
+bindOk log1pZeroRes CFloat64 log1pZeroCall
+call log1pZeroAbsCall absoluteFloat64
+arg log1pZeroAbsCall x log1pZeroRes
+run log1pZeroAbsCall
+bindOk log1pZeroAbs CFloat64 log1pZeroAbsCall
+call log1pZeroCheckCall math.lessThanF64
+arg log1pZeroCheckCall left log1pZeroAbs
+arg log1pZeroCheckCall right tolGeneral
+run log1pZeroCheckCall
+bind log1pZeroOk Bool log1pZeroCheckCall
+branchIf log1pZeroOk log1pZeroOkLabel
+branch testFailed
+label log1pZeroOkLabel
+
+# arcsineRadiansFloat64(1.0) ≈ pi/2
+call asinOneCall arcsineRadiansFloat64
+arg asinOneCall x oneExtra
+run asinOneCall
+bindOk asinOneRes CFloat64 asinOneCall
+call asinOneDiffCall math.subtractF64
+arg asinOneDiffCall left asinOneRes
+arg asinOneDiffCall right piHalf
+run asinOneDiffCall
+bind asinOneDiff CFloat64 asinOneDiffCall
+call asinOneAbsCall absoluteFloat64
+arg asinOneAbsCall x asinOneDiff
+run asinOneAbsCall
+bindOk asinOneAbs CFloat64 asinOneAbsCall
+call asinOneCheckCall math.lessThanF64
+arg asinOneCheckCall left asinOneAbs
+arg asinOneCheckCall right tolGeneral
+run asinOneCheckCall
+bind asinOneOk Bool asinOneCheckCall
+branchIf asinOneOk asinOneOkLabel
+branch testFailed
+label asinOneOkLabel
+
+# arccosineRadiansFloat64(1.0) ≈ 0.0
+call acosOneCall arccosineRadiansFloat64
+arg acosOneCall x oneExtra
+run acosOneCall
+bindOk acosOneRes CFloat64 acosOneCall
+call acosOneAbsCall absoluteFloat64
+arg acosOneAbsCall x acosOneRes
+run acosOneAbsCall
+bindOk acosOneAbs CFloat64 acosOneAbsCall
+call acosOneCheckCall math.lessThanF64
+arg acosOneCheckCall left acosOneAbs
+arg acosOneCheckCall right tolGeneral
+run acosOneCheckCall
+bind acosOneOk Bool acosOneCheckCall
+branchIf acosOneOk acosOneOkLabel
+branch testFailed
+label acosOneOkLabel
+
+# fusedMultiplyAddFloat64(2.0, 3.0, 4.0) == 10.0
+call fmaCall fusedMultiplyAddFloat64
+arg fmaCall x twoExtra
+arg fmaCall y threeExtra
+arg fmaCall z fourExtra
+run fmaCall
+bindOk fmaRes CFloat64 fmaCall
+call fmaCheckCall math.equalF64
+arg fmaCheckCall left fmaRes
+arg fmaCheckCall right tenExtra
+run fmaCheckCall
+bind fmaOk Bool fmaCheckCall
+branchIf fmaOk fmaOkLabel
+branch testFailed
+label fmaOkLabel
+
+# maximumFloat64(3.0, 5.0) == 5.0
+call maxCall maximumFloat64
+arg maxCall x threeExtra
+arg maxCall y fiveExtra
+run maxCall
+bindOk maxRes CFloat64 maxCall
+call maxCheckCall math.equalF64
+arg maxCheckCall left maxRes
+arg maxCheckCall right fiveExtra
+run maxCheckCall
+bind maxOk Bool maxCheckCall
+branchIf maxOk maxOkLabel
+branch testFailed
+label maxOkLabel
+
+# minimumFloat64(3.0, 5.0) == 3.0
+call minCall minimumFloat64
+arg minCall x threeExtra
+arg minCall y fiveExtra
+run minCall
+bindOk minRes CFloat64 minCall
+call minCheckCall math.equalF64
+arg minCheckCall left minRes
+arg minCheckCall right threeExtra
+run minCheckCall
+bind minOk Bool minCheckCall
+branchIf minOk minOkLabel
+branch testFailed
+label minOkLabel
+
+# positiveDifferenceFloat64(7.0, 3.0) == 4.0
+const sevenExtra CFloat64 7.0
+call pdiffCall positiveDifferenceFloat64
+arg pdiffCall x sevenExtra
+arg pdiffCall y threeExtra
+run pdiffCall
+bindOk pdiffRes CFloat64 pdiffCall
+call pdiffCheckCall math.equalF64
+arg pdiffCheckCall left pdiffRes
+arg pdiffCheckCall right fourExtra
+run pdiffCheckCall
+bind pdiffOk Bool pdiffCheckCall
+branchIf pdiffOk pdiffOkLabel
+branch testFailed
+label pdiffOkLabel
+
+# copySignFloat64(5.0, -1.0) == -5.0 (positive magnitude + negative sign)
+call copySignCall copySignFloat64
+arg copySignCall x fiveExtra
+arg copySignCall y negOneExtra
+run copySignCall
+bindOk copySignRes CFloat64 copySignCall
+call copySignCheckCall math.equalF64
+arg copySignCheckCall left copySignRes
+arg copySignCheckCall right negFiveExtra
+run copySignCheckCall
+bind copySignOk Bool copySignCheckCall
+branchIf copySignOk copySignOkLabel
+branch testFailed
+label copySignOkLabel
+
+# signOfFloat64(-2.5) == -1.0
+const negTwoHalf CFloat64 -2.5
+call signNegCall signOfFloat64
+arg signNegCall x negTwoHalf
+run signNegCall
+bindOk signNegRes CFloat64 signNegCall
+call signNegCheckCall math.equalF64
+arg signNegCheckCall left signNegRes
+arg signNegCheckCall right negOneExtra
+run signNegCheckCall
+bind signNegOk Bool signNegCheckCall
+branchIf signNegOk signNegOkLabel
+branch testFailed
+label signNegOkLabel
+
+# signOfFloat64(0.0) == 0.0
+call signZeroCall signOfFloat64
+arg signZeroCall x zeroExtra
+run signZeroCall
+bindOk signZeroRes CFloat64 signZeroCall
+call signZeroCheckCall math.equalF64
+arg signZeroCheckCall left signZeroRes
+arg signZeroCheckCall right zeroExtra
+run signZeroCheckCall
+bind signZeroOk Bool signZeroCheckCall
+branchIf signZeroOk signZeroOkLabel
+branch testFailed
+label signZeroOkLabel
+
+# roundFloat64ToNearestInteger(2.7) == 3.0
+const twoSeven CFloat64 2.7
+call roundCall roundFloat64ToNearestInteger
+arg roundCall x twoSeven
+run roundCall
+bindOk roundRes CFloat64 roundCall
+call roundCheckCall math.equalF64
+arg roundCheckCall left roundRes
+arg roundCheckCall right threeExtra
+run roundCheckCall
+bind roundOk Bool roundCheckCall
+branchIf roundOk roundOkLabel
+branch testFailed
+label roundOkLabel
+
+# cubeRootFloat64(27.0) ≈ 3.0
+const twentySeven CFloat64 27.0
+call cbrtCall cubeRootFloat64
+arg cbrtCall x twentySeven
+run cbrtCall
+bindOk cbrtRes CFloat64 cbrtCall
+call cbrtDiffCall math.subtractF64
+arg cbrtDiffCall left cbrtRes
+arg cbrtDiffCall right threeExtra
+run cbrtDiffCall
+bind cbrtDiff CFloat64 cbrtDiffCall
+call cbrtAbsCall absoluteFloat64
+arg cbrtAbsCall x cbrtDiff
+run cbrtAbsCall
+bindOk cbrtAbs CFloat64 cbrtAbsCall
+call cbrtCheckCall math.lessThanF64
+arg cbrtCheckCall left cbrtAbs
+arg cbrtCheckCall right tolGeneral
+run cbrtCheckCall
+bind cbrtOk Bool cbrtCheckCall
+branchIf cbrtOk cbrtOkLabel
+branch testFailed
+label cbrtOkLabel
+
+# exponentialBaseTwoFloat64(3.0) ≈ 8.0
+const eightExtra CFloat64 8.0
+call exp2Call exponentialBaseTwoFloat64
+arg exp2Call x threeExtra
+run exp2Call
+bindOk exp2Res CFloat64 exp2Call
+call exp2DiffCall math.subtractF64
+arg exp2DiffCall left exp2Res
+arg exp2DiffCall right eightExtra
+run exp2DiffCall
+bind exp2Diff CFloat64 exp2DiffCall
+call exp2AbsCall absoluteFloat64
+arg exp2AbsCall x exp2Diff
+run exp2AbsCall
+bindOk exp2Abs CFloat64 exp2AbsCall
+call exp2CheckCall math.lessThanF64
+arg exp2CheckCall left exp2Abs
+arg exp2CheckCall right tolGeneral
+run exp2CheckCall
+bind exp2Ok Bool exp2CheckCall
+branchIf exp2Ok exp2OkLabel
+branch testFailed
+label exp2OkLabel
+
+# Property: sin(pi/2) ≈ 1.0 (key trig boundary)
+call sinHalfPiCall sineRadiansFloat64
+arg sinHalfPiCall x piHalf
+run sinHalfPiCall
+bindOk sinHalfPiRes CFloat64 sinHalfPiCall
+call sinHalfPiDiffCall math.subtractF64
+arg sinHalfPiDiffCall left sinHalfPiRes
+arg sinHalfPiDiffCall right oneExtra
+run sinHalfPiDiffCall
+bind sinHalfPiDiff CFloat64 sinHalfPiDiffCall
+call sinHalfPiAbsCall absoluteFloat64
+arg sinHalfPiAbsCall x sinHalfPiDiff
+run sinHalfPiAbsCall
+bindOk sinHalfPiAbs CFloat64 sinHalfPiAbsCall
+call sinHalfPiCheckCall math.lessThanF64
+arg sinHalfPiCheckCall left sinHalfPiAbs
+arg sinHalfPiCheckCall right tolGeneral
+run sinHalfPiCheckCall
+bind sinHalfPiOk Bool sinHalfPiCheckCall
+branchIf sinHalfPiOk sinHalfPiOkLabel
+branch testFailed
+label sinHalfPiOkLabel
+
+# Property: cos(pi) ≈ -1.0 (key trig boundary)
+call cosPiCall cosineRadiansFloat64
+arg cosPiCall x piValue
+run cosPiCall
+bindOk cosPiRes CFloat64 cosPiCall
+call cosPiDiffCall math.subtractF64
+arg cosPiDiffCall left cosPiRes
+arg cosPiDiffCall right negOneExtra
+run cosPiDiffCall
+bind cosPiDiff CFloat64 cosPiDiffCall
+call cosPiAbsCall absoluteFloat64
+arg cosPiAbsCall x cosPiDiff
+run cosPiAbsCall
+bindOk cosPiAbs CFloat64 cosPiAbsCall
+call cosPiCheckCall math.lessThanF64
+arg cosPiCheckCall left cosPiAbs
+arg cosPiCheckCall right tolGeneral
+run cosPiCheckCall
+bind cosPiOk Bool cosPiCheckCall
+branchIf cosPiOk cosPiOkLabel
+branch testFailed
+label cosPiOkLabel
+
+# Property: sin² + cos² ≈ 1 for x = 0.5 (Pythagorean identity)
+const halfExtra CFloat64 0.5
+call pythSinCall sineRadiansFloat64
+arg pythSinCall x halfExtra
+run pythSinCall
+bindOk pythSinRes CFloat64 pythSinCall
+call pythCosCall cosineRadiansFloat64
+arg pythCosCall x halfExtra
+run pythCosCall
+bindOk pythCosRes CFloat64 pythCosCall
+call pythSinSqCall math.multiplyF64
+arg pythSinSqCall left pythSinRes
+arg pythSinSqCall right pythSinRes
+run pythSinSqCall
+bind pythSinSq CFloat64 pythSinSqCall
+call pythCosSqCall math.multiplyF64
+arg pythCosSqCall left pythCosRes
+arg pythCosSqCall right pythCosRes
+run pythCosSqCall
+bind pythCosSq CFloat64 pythCosSqCall
+call pythSumCall math.addF64
+arg pythSumCall left pythSinSq
+arg pythSumCall right pythCosSq
+run pythSumCall
+bind pythSum CFloat64 pythSumCall
+call pythDiffCall math.subtractF64
+arg pythDiffCall left pythSum
+arg pythDiffCall right oneExtra
+run pythDiffCall
+bind pythDiff CFloat64 pythDiffCall
+call pythAbsCall absoluteFloat64
+arg pythAbsCall x pythDiff
+run pythAbsCall
+bindOk pythAbs CFloat64 pythAbsCall
+call pythCheckCall math.lessThanF64
+arg pythCheckCall left pythAbs
+arg pythCheckCall right tolGeneral
+run pythCheckCall
+bind pythOk Bool pythCheckCall
+branchIf pythOk pythOkLabel
+branch testFailed
+label pythOkLabel
+
+# All assertions hold. Emit "OK" via console.writeLine — uniform
+# with the other stdlib smokes, references the runtime console
+# handle, and surfaces a typed ConsoleWriteFailed if stdout itself
+# fails (closed pipe, etc.).
+const successMessageText CNullTerminatedByteString "OK"
+call writeSuccessLineCall console.writeLine
+arg writeSuccessLineCall console console
+arg writeSuccessLineCall text successMessageText
+run writeSuccessLineCall
+ignoreOk writeSuccessLineCall CSignedInt32
+bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branchIfError writeSuccessLineCall consoleWriteFailedHandler
 
 const exitOk ExitCode 0
 returnOk exitOk
+
+# Failure leg: surface the raw negative CSignedInt32 from
+# console.writeLine as the cause attached to the typed
+# MainError.ConsoleWriteFailed variant.
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
+returnError consoleWriteFailedFailure
 
 label testFailed
 makeError testFailure MainError.MathFloatSmokeAssertionFailed

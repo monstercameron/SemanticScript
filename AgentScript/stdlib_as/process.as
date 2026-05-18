@@ -2,29 +2,49 @@
 # AGENTSCRIPT STANDARD LIBRARY: process lifecycle terminators
 # ============================================================
 #
-# # rationale: C's <stdlib.h> exposes exit(int) and abort(void) —
-#   two unconditional process terminators. The refined surface keeps
-#   them as real operations (they have observable effects: write
-#   process.lifecycle) but removes the misleading `Result X Void`
-#   return contract. Neither operation can return at the source
-#   level — control flow exits the process — so the output type is
-#   `Void` with a fall-through ret only there to keep the LLVM IR
-#   well-formed.
+# This module exposes the two unconditional process terminators
+# from C's <stdlib.h>: exit(int) for clean shutdown and abort(void)
+# for immediate termination via SIGABRT. Both operations declare
+# `output Void` because control flow never returns to the caller;
+# any code following a successful call is unreachable.
 #
-# # invariant: both operations are partial in the language-theory
-#   sense: control never returns to the caller. We model that with
-#   `Void` output plus an effect declaration so the linter can
-#   surface unauthorized use.
+# Operations:
 #
-# # security: terminating the process can lose pending I/O. exit()
-#   flushes stdio buffers and runs atexit handlers; abort() does
-#   neither. Callers must choose deliberately.
+#   exitProcessWithStatusCode(exitStatusCode)
+#     Wraps libc exit(). Flushes stdio buffers, runs atexit
+#     handlers, then exits with the given status code.
 #
-# # timing: yields to the OS scheduler immediately. exit() may run
-#   user atexit handlers; abort() takes the SIGABRT fast path.
+#   abortCurrentProcess()
+#     Wraps libc abort(). Raises SIGABRT immediately without
+#     flushing buffers or running atexit handlers. Use only when
+#     continued execution would propagate corrupted state.
 #
-# # observability: both are externally observable via the process
-#   exit code reported to the parent shell.
+# # rationale: Both operations carry an `effect write
+#   process.lifecycle` declaration so the linter can flag any call
+#   site that lacks an authorizing capability. The smoke test for
+#   this module deliberately does NOT invoke either terminator —
+#   doing so would kill the test runner. The smoke verifies that
+#   compilation and metadata parsing succeed and that the OK line
+#   reaches stdout.
+#
+# # invariant: After a successful call to either terminator, the
+#   operation does not return — control flow leaves the process.
+#   The trailing implicit `ret` in the emitted LLVM IR exists only
+#   so the function is well-formed; it is statically unreachable.
+#
+# # security: Terminating the process loses any pending I/O that
+#   stdio has not yet flushed. exitProcessWithStatusCode flushes;
+#   abortCurrentProcess does not. Callers handling sensitive
+#   buffers must choose deliberately.
+#
+# # timing: Both operations yield to the OS scheduler immediately.
+#   exit() runs user-registered atexit handlers, so the latency
+#   depends on what the program registered. abort() takes the
+#   SIGABRT fast path with no user-level cleanup.
+#
+# # observability: The exit code is reported to the parent shell
+#   as the process's wait-status. abort() additionally produces a
+#   core dump on systems configured to capture them.
 
 project StdProcessSelfTest
 target console
@@ -32,35 +52,52 @@ runtime AgentRuntime 0.1
 entry console main
 
 error MainError
-errorCase MainError ProcessSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+# Smoke-test main writes one OK line to stdout — declare the
+# capability once at module scope so the operation header can
+# reference it.
+capability stdoutWriteCapability console.stdout write
+
+# The two terminators write to the abstract `process.lifecycle`
+# effect channel; the linter requires every declared effect to
+# have an authorizing capability proof, so we declare one shared
+# capability at module scope and let each terminator reference it.
+capability processLifecycleCapability process.lifecycle write
 
 # section process.terminators
+#
+# Both operations are partial in the language-theory sense: they
+# terminate the process, so no code following a successful call
+# can run. The `Void` output type and the `effect write
+# process.lifecycle` declaration together encode that contract for
+# the linter and downstream tooling.
 
 operation exitProcessWithStatusCode
 input exitProcessWithStatusCode exitStatusCode CSignedInt32
 output exitProcessWithStatusCode Void
+useCapability exitProcessWithStatusCode processLifecycleCapability
 effect exitProcessWithStatusCode write process.lifecycle
 memoryHeap exitProcessWithStatusCode no
 async exitProcessWithStatusCode no
 purpose exitProcessWithStatusCode "Terminate the process cleanly with the given exit status code. Flushes stdio and runs atexit handlers, then exits. Does not return."
-invariant exitProcessWithStatusCode "Control flow terminates at this call site; the fall-through return statement is unreachable in well-formed programs."
-warning exitProcessWithStatusCode "Pending I/O on file streams other than stdio (e.g. mmap'd buffers) is the caller's responsibility — exit() does not flush them."
+invariant exitProcessWithStatusCode "Control flow does not return from this call site; the trailing ret in the emitted IR is statically unreachable."
+warning exitProcessWithStatusCode "Pending I/O on streams other than stdio (e.g. mmap'd buffers) is the caller's responsibility — exit() does not flush them."
 guarantee exitProcessWithStatusCode "Always terminates the process."
 label startExitProcessWithStatusCode
 call libcExitCall c.exit
 arg libcExitCall code exitStatusCode
 run libcExitCall
-# Fall-through is unreachable; the codegen emits an i32 0 ret to
-# keep LLVM happy.
 
 operation abortCurrentProcess
 output abortCurrentProcess Void
+useCapability abortCurrentProcess processLifecycleCapability
 effect abortCurrentProcess write process.lifecycle
 memoryHeap abortCurrentProcess no
 async abortCurrentProcess no
 purpose abortCurrentProcess "Terminate the process immediately by raising SIGABRT. Does NOT flush stdio. Does not return."
-invariant abortCurrentProcess "Control flow terminates at this call site."
-warning abortCurrentProcess "No buffer flushing, no atexit handlers — use exitProcessWithStatusCode unless the failure is so severe that flushing would propagate corrupted state."
+invariant abortCurrentProcess "Control flow does not return from this call site."
+warning abortCurrentProcess "No buffer flushing, no atexit handlers — prefer exitProcessWithStatusCode unless the failure is so severe that flushing would propagate corrupted state."
 guarantee abortCurrentProcess "Always terminates the process."
 label startAbortCurrentProcess
 call libcAbortCall c.abort
@@ -69,17 +106,23 @@ run libcAbortCall
 # ============================================================
 # Smoke test
 # ============================================================
-# We deliberately do NOT call the terminators in the smoke test
-# because they'd kill the test runner. This file's smoke verifies
-# only that the operations compile and the metadata parses.
+#
+# We deliberately do NOT invoke either terminator — calling them
+# would kill the test runner. Instead, the smoke verifies that
+# this file compiles, that its metadata parses, and that the OK
+# banner reaches stdout. The bindError + branchIfError pair on
+# console.writeLine surfaces a typed ConsoleWriteFailed variant
+# if the write itself fails (e.g. broken pipe).
 
 operation main
 input main console Console
 output main Result ExitCode MainError
+useCapability main stdoutWriteCapability
 effect main write console.stdout
 memoryHeap main no
 async main no
-purpose main "Verify process.as compiles and metadata parses; do NOT actually invoke the terminators."
+purpose main "Verify process.as compiles and metadata parses; emit OK on stdout. The terminators are NOT invoked."
+invariant main "Exit 0 on success; ConsoleWriteFailed only if the OK write itself returns an error."
 
 label startMain
 const successMessageText CNullTerminatedByteString "OK"
@@ -87,6 +130,17 @@ call writeSuccessLineCall console.writeLine
 arg writeSuccessLineCall console console
 arg writeSuccessLineCall text successMessageText
 run writeSuccessLineCall
-ignoreOk writeSuccessLineCall Void
+ignoreOk writeSuccessLineCall CSignedInt32
+bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branchIfError writeSuccessLineCall consoleWriteFailedHandler
 const exitOkCode ExitCode 0
 returnOk exitOkCode
+
+# Failure leg: console.writeLine returned a negative CSignedInt32.
+# We surface that raw return as the cause attached to the typed
+# MainError.ConsoleWriteFailed variant we return to the caller —
+# the typed variant is what callers branch on, the raw int is
+# preserved for diagnostic correlation.
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
+returnError consoleWriteFailedFailure

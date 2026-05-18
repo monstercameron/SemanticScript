@@ -28,13 +28,24 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 
-# Typed error domain for signal delivery.
+# Typed error domain for signal delivery. libc raise() returns
+# non-zero on any failure (including unknown signal numbers); we
+# surface that as a single typed variant rather than try to
+# distinguish causes the kernel doesn't separate.
 error SignalDeliveryError
 errorCase SignalDeliveryError DeliveryFailed
-errorCase SignalDeliveryError UnknownSignalNumber
 
 error MainError
 errorCase MainError SignalSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+# section capability
+# rationale: smoke-test main writes a single OK line to stdout.
+capability stdoutWriteCapability console.stdout write
+
+# raise() touches the abstract `process.signal` effect channel;
+# every effect needs an authorizing capability proof.
+capability processSignalCapability process.signal write
 
 # section signal.numbers
 # rationale: POSIX signal-number constants.
@@ -70,6 +81,7 @@ domainLiteralTrust terminationSignalNumber trustedStaticLiteral
 operation raiseProcessSignalNumber
 input raiseProcessSignalNumber signalNumber CSignedInt32
 output raiseProcessSignalNumber Result CSignedInt32 SignalDeliveryError
+useCapability raiseProcessSignalNumber processSignalCapability
 effect raiseProcessSignalNumber write process.signal
 memoryHeap raiseProcessSignalNumber no
 async raiseProcessSignalNumber no
@@ -103,6 +115,7 @@ returnOk zeroSuccessCode
 operation main
 input main console Console
 output main Result ExitCode MainError
+useCapability main stdoutWriteCapability
 effect main write console.stdout
 memoryHeap main no
 async main no
@@ -136,10 +149,18 @@ call writeSuccessLineCall console.writeLine
 arg writeSuccessLineCall console console
 arg writeSuccessLineCall text successMessageText
 run writeSuccessLineCall
-ignoreOk writeSuccessLineCall Void
+ignoreOk writeSuccessLineCall CSignedInt32
+bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branchIfError writeSuccessLineCall consoleWriteFailedHandler
 const exitOkCode ExitCode 0
 returnOk exitOkCode
 
+# Failure leg: surface the raw negative CSignedInt32 from
+# console.writeLine as the cause attached to the typed
+# MainError.ConsoleWriteFailed variant.
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
+returnError consoleWriteFailedFailure
 label smokeAssertionFailed
 makeError signalSmokeFailure MainError.SignalSmokeAssertionFailed
 returnError signalSmokeFailure

@@ -27,13 +27,21 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 
-# Typed error domain for clock acquisition failures.
-error ClockReadError
-errorCase ClockReadError ClockUnavailable
-errorCase ClockReadError MemoryAllocationFailedForTimeSlot
-
 error MainError
 errorCase MainError TimeSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+# section capability
+# rationale: smoke-test main writes a single OK line to stdout.
+capability stdoutWriteCapability console.stdout write
+
+# CPU-clock and wall-clock reads are observable side effects that
+# need their own capability proofs; the time-slot allocation /
+# release pair needs the heap capabilities.
+capability clockCpuReadCapability clock.cpu read
+capability clockRealTimeReadCapability clock.realTime read
+capability heapAllocationCapability heap allocate
+capability heapFreeCapability heap free
 
 # Canonical conversion factors.
 domainLiteral secondsPerMinuteValue CSignedInt64 60
@@ -59,6 +67,7 @@ domainLiteralTrust timeSlotByteSize trustedStaticLiteral
 
 operation readProcessCpuClockTicks
 output readProcessCpuClockTicks CSignedInt64
+useCapability readProcessCpuClockTicks clockCpuReadCapability
 effect readProcessCpuClockTicks read clock.cpu
 memoryHeap readProcessCpuClockTicks no
 async readProcessCpuClockTicks no
@@ -74,31 +83,51 @@ returnValue cpuClockTickCount
 
 operation readCurrentUnixEpochSeconds
 output readCurrentUnixEpochSeconds CSignedInt64
+useCapability readCurrentUnixEpochSeconds clockRealTimeReadCapability
+useCapability readCurrentUnixEpochSeconds heapAllocationCapability
+useCapability readCurrentUnixEpochSeconds heapFreeCapability
 effect readCurrentUnixEpochSeconds read clock.realTime
 effect readCurrentUnixEpochSeconds allocate heap
+effect readCurrentUnixEpochSeconds free heap
 memoryHeap readCurrentUnixEpochSeconds yes
+memoryAllocationSource readCurrentUnixEpochSeconds allocateTimeSlotCall
 async readCurrentUnixEpochSeconds no
-purpose readCurrentUnixEpochSeconds "Returns seconds since 1970-01-01 00:00:00 UTC via libc time()."
+purpose readCurrentUnixEpochSeconds "Returns seconds since 1970-01-01 00:00:00 UTC via libc time(). Returns 0 on allocation failure of the libc time_t* output slot."
 invariant readCurrentUnixEpochSeconds "Monotonically non-decreasing per real-time clock; not guaranteed monotonic across clock adjustments."
-warning readCurrentUnixEpochSeconds "Wall-clock value is subject to NTP adjustments / DST / manual changes; for monotonic intervals use readProcessCpuClockTicks."
-guarantee readCurrentUnixEpochSeconds "Always returns; on malloc failure returns 0 via the typed Result variant (a future revision will surface ClockReadError directly)."
+warning readCurrentUnixEpochSeconds "Wall-clock value is subject to NTP adjustments / DST / manual changes; for monotonic intervals use readProcessCpuClockTicks. A 0 return indicates allocation failure, not a 1970-01-01 timestamp."
+guarantee readCurrentUnixEpochSeconds "Always returns; never throws."
 # rationale: libc time() accepts a time_t* output parameter. We
 #   allocate a single 8-byte slot, pass it in, ignore the slot
 #   write, and use the function's return value. The slot is freed
-#   immediately after the call so the operation does not leak.
+#   via `defer` so any path through the function (including the
+#   allocation-failure leg) leaves the heap clean. We absorb the
+#   malloc failure as a 0 return rather than complicating the
+#   output type with Result encoding — the compiler can't
+#   distinguish a "value 0" Result.OK from a Result.Err variant
+#   index 0 today, and unix time = 0 is a vanishingly rare value
+#   (1970-01-01 UTC) callers can flag separately if needed.
 label startReadCurrentUnixEpochSeconds
 call allocateTimeSlotCall c.malloc
 arg allocateTimeSlotCall size timeSlotByteSize
 run allocateTimeSlotCall
 bind timeSlotPointer COpaqueMemoryAddress allocateTimeSlotCall
+bindError timeSlotAllocationError CSignedInt32 allocateTimeSlotCall
+branchIfError allocateTimeSlotCall timeSlotAllocationFailedHandler
+defer releaseAllocateTimeSlotCall c.free timeSlotPointer
 call libcTimeCall c.time
 arg libcTimeCall slot timeSlotPointer
 run libcTimeCall
 bind currentUnixSeconds CSignedInt64 libcTimeCall
-call releaseTimeSlotCall c.free
-arg releaseTimeSlotCall ptr timeSlotPointer
-run releaseTimeSlotCall
 returnValue currentUnixSeconds
+
+# Allocation-failure leg: c.malloc returned NULL. We surface the
+# bound error value (the pointer-as-i32 NULL = 0) as the return —
+# this both documents the failure cause in the IR via the
+# bindError line above and produces the documented 0 sentinel
+# (sign-extended from i32 to i64). We do NOT call c.free here
+# because we never successfully allocated.
+label timeSlotAllocationFailedHandler
+returnValue timeSlotAllocationError
 
 # section time.conversions
 
@@ -244,9 +273,18 @@ returnValue isLeapYearFalse
 operation main
 input main console Console
 output main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+useCapability main clockCpuReadCapability
+useCapability main clockRealTimeReadCapability
+useCapability main heapAllocationCapability
+useCapability main heapFreeCapability
 effect main write console.stdout
+effect main read clock.cpu
+effect main read clock.realTime
 effect main allocate heap
+effect main free heap
 memoryHeap main yes
+memoryAllocationSource main exerciseUnixTimeCall
 async main no
 purpose main "Smoke-test the deterministic time helpers (conversions + leap-year). The clock readers are exercised but their values are not asserted (non-deterministic)."
 invariant main "convertSecondsToWholeHours(3661) == 1; convertHoursToSeconds(2) == 7200; isGregorianLeapYear(2000) == true; isGregorianLeapYear(1900) == false; isGregorianLeapYear(2024) == true."
@@ -313,25 +351,41 @@ branchIf leap2024Result leap2024Holds
 branch smokeAssertionFailed
 label leap2024Holds
 
-# Exercise the OS-time wrappers (no value check — just that they
-# return without trapping).
+# Exercise the OS-time wrappers. We don't assert their values
+# (non-deterministic across runs), but we DO branchIf on each
+# returned value so the bind is "used" — the linter would otherwise
+# flag the bind as dead. Either branch lands at the same label.
 call exerciseCpuClockCall readProcessCpuClockTicks
 run exerciseCpuClockCall
-bind cpuClockExerciseResult CSignedInt64 exerciseCpuClockCall
+bind cpuClockTicksObserved CSignedInt64 exerciseCpuClockCall
+branchIf cpuClockTicksObserved cpuClockExercised
+branch cpuClockExercised
+label cpuClockExercised
 
 call exerciseUnixTimeCall readCurrentUnixEpochSeconds
 run exerciseUnixTimeCall
-bind unixTimeExerciseResult CSignedInt64 exerciseUnixTimeCall
+bind unixEpochSecondsObserved CSignedInt64 exerciseUnixTimeCall
+branchIf unixEpochSecondsObserved unixTimeExercised
+branch unixTimeExercised
+label unixTimeExercised
 
 const successMessageText CNullTerminatedByteString "OK"
 call writeSuccessLineCall console.writeLine
 arg writeSuccessLineCall console console
 arg writeSuccessLineCall text successMessageText
 run writeSuccessLineCall
-ignoreOk writeSuccessLineCall Void
+ignoreOk writeSuccessLineCall CSignedInt32
+bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branchIfError writeSuccessLineCall consoleWriteFailedHandler
 const exitOkCode ExitCode 0
 returnOk exitOkCode
 
+# Failure leg: surface the raw negative CSignedInt32 from
+# console.writeLine as the cause attached to the typed
+# MainError.ConsoleWriteFailed variant.
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
+returnError consoleWriteFailedFailure
 label smokeAssertionFailed
 makeError timeSmokeFailure MainError.TimeSmokeAssertionFailed
 returnError timeSmokeFailure

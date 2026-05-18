@@ -23,6 +23,15 @@ entry console main
 
 error MainError
 errorCase MainError SortSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+errorCase MainError MemoryAllocationFailed
+
+# section capability
+# rationale: smoke-test main writes a single OK line to stdout.
+capability stdoutWriteCapability console.stdout write
+# Smoke-test main allocates and frees a working buffer via libc.
+capability heapAllocationCapability heap allocate
+capability heapFreeCapability heap free
 
 domainLiteral integerOneStepValue CSignedInt64 1
 domainLiteralTrust integerOneStepValue trustedStaticLiteral
@@ -37,8 +46,6 @@ operation sortBytesWithBubbleSortInPlace
 input sortBytesWithBubbleSortInPlace byteBuffer COpaqueMemoryAddress
 input sortBytesWithBubbleSortInPlace byteCount CByteCount
 output sortBytesWithBubbleSortInPlace CByteCount
-effect sortBytesWithBubbleSortInPlace read byteBuffer
-effect sortBytesWithBubbleSortInPlace write byteBuffer
 memoryHeap sortBytesWithBubbleSortInPlace no
 async sortBytesWithBubbleSortInPlace no
 purpose sortBytesWithBubbleSortInPlace "In-place bubble sort of the first byteCount bytes of byteBuffer in non-decreasing order. Returns byteCount."
@@ -153,10 +160,10 @@ operation areBytesSortedAscending
 input areBytesSortedAscending byteBuffer CNullTerminatedByteString
 input areBytesSortedAscending byteCount CByteCount
 output areBytesSortedAscending Bool
-effect areBytesSortedAscending read byteBuffer
 memoryHeap areBytesSortedAscending no
 async areBytesSortedAscending no
 purpose areBytesSortedAscending "Returns true when every adjacent pair satisfies byteBuffer[i] <= byteBuffer[i+1]. Empty and single-element buffers are sorted."
+invariant areBytesSortedAscending "Short-circuits on the first out-of-order pair; empty / single-element buffers return true."
 guarantee areBytesSortedAscending "Total."
 label startAreBytesSortedAscending
 call detectSingleElementCall math.lessThanOrEqualI64
@@ -239,8 +246,6 @@ operation sortBytesWithInsertionSortInPlace
 input sortBytesWithInsertionSortInPlace byteBuffer COpaqueMemoryAddress
 input sortBytesWithInsertionSortInPlace byteCount CByteCount
 output sortBytesWithInsertionSortInPlace CByteCount
-effect sortBytesWithInsertionSortInPlace read byteBuffer
-effect sortBytesWithInsertionSortInPlace write byteBuffer
 memoryHeap sortBytesWithInsertionSortInPlace no
 async sortBytesWithInsertionSortInPlace no
 purpose sortBytesWithInsertionSortInPlace "In-place insertion sort. O(n) on nearly-sorted input; O(n^2) worst case."
@@ -352,11 +357,17 @@ returnValue byteCount
 operation main
 input main console Console
 output main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+useCapability main heapAllocationCapability
+useCapability main heapFreeCapability
 effect main allocate heap
+effect main free heap
 effect main write console.stdout
 memoryHeap main yes
+memoryAllocationSource main allocateBufferCall
 async main no
-purpose main "Allocate a 5-byte buffer, fill {5,2,8,1,9}, bubble-sort, verify sorted-ascending."
+purpose main "Allocate an 8-byte buffer, fill {5,2,8,1,9}, bubble-sort, verify sorted-ascending."
+invariant main "Smoke fails closed: malloc failure surfaces MemoryAllocationFailed; out-of-order result surfaces SortSmokeAssertionFailed."
 
 label startMain
 
@@ -365,6 +376,9 @@ call allocateBufferCall c.malloc
 arg allocateBufferCall size allocationByteSize
 run allocateBufferCall
 bind workBuffer COpaqueMemoryAddress allocateBufferCall
+bindError allocationFailureError CSignedInt32 allocateBufferCall
+branchIfError allocateBufferCall heapAllocationFailedHandler
+defer releaseAllocateBufferCall c.free workBuffer
 
 const byteFiveValue CSignedInt32 5
 const byteTwoValue CSignedInt32 2
@@ -419,19 +433,119 @@ branchIf sortedAscendingResult sortedHolds
 branch smokeAssertionFailed
 label sortedHolds
 
-call releaseBufferCall c.free
-arg releaseBufferCall ptr workBuffer
-run releaseBufferCall
+# ============================================================
+# Extended unit tests: insertion sort coverage + predicate
+# boundary cases (empty buffer, single byte, reverse-sorted).
+# Reuses workBuffer (already sorted by bubble sort above) plus
+# fresh writes for the insertion-sort + reverse-sort scenarios.
+# ============================================================
+
+const byteSevenValue CSignedInt32 7
+const byteThreeValue CSignedInt32 3
+const byteFourValue CSignedInt32 4
+const byteSixValue CSignedInt32 6
+const emptyCount CByteCount 0
+const oneCount CByteCount 1
+
+# Predicate: empty buffer is trivially sorted (byteCount=0 returns true).
+call sortedEmptyCall areBytesSortedAscending
+arg sortedEmptyCall byteBuffer workBuffer
+arg sortedEmptyCall byteCount emptyCount
+run sortedEmptyCall
+bind sortedEmptyResult Bool sortedEmptyCall
+branchIf sortedEmptyResult sortedEmptyHolds
+branch smokeAssertionFailed
+label sortedEmptyHolds
+
+# Predicate: single-byte buffer is trivially sorted.
+call sortedSingleCall areBytesSortedAscending
+arg sortedSingleCall byteBuffer workBuffer
+arg sortedSingleCall byteCount oneCount
+run sortedSingleCall
+bind sortedSingleResult Bool sortedSingleCall
+branchIf sortedSingleResult sortedSingleHolds
+branch smokeAssertionFailed
+label sortedSingleHolds
+
+# Refill workBuffer with reverse-sorted {9,7,6,4,3} and verify the
+# predicate correctly returns FALSE.
+call refillReverseAtZeroCall pointer.storeByte
+arg refillReverseAtZeroCall buffer workBuffer
+arg refillReverseAtZeroCall offset offsetZero
+arg refillReverseAtZeroCall value byteNineValue
+run refillReverseAtZeroCall
+call refillReverseAtOneCall pointer.storeByte
+arg refillReverseAtOneCall buffer workBuffer
+arg refillReverseAtOneCall offset offsetOne
+arg refillReverseAtOneCall value byteSevenValue
+run refillReverseAtOneCall
+call refillReverseAtTwoCall pointer.storeByte
+arg refillReverseAtTwoCall buffer workBuffer
+arg refillReverseAtTwoCall offset offsetTwo
+arg refillReverseAtTwoCall value byteSixValue
+run refillReverseAtTwoCall
+call refillReverseAtThreeCall pointer.storeByte
+arg refillReverseAtThreeCall buffer workBuffer
+arg refillReverseAtThreeCall offset offsetThree
+arg refillReverseAtThreeCall value byteFourValue
+run refillReverseAtThreeCall
+call refillReverseAtFourCall pointer.storeByte
+arg refillReverseAtFourCall buffer workBuffer
+arg refillReverseAtFourCall offset offsetFour
+arg refillReverseAtFourCall value byteThreeValue
+run refillReverseAtFourCall
+
+# Predicate on reverse-sorted should return false.
+call sortedReverseCall areBytesSortedAscending
+arg sortedReverseCall byteBuffer workBuffer
+arg sortedReverseCall byteCount totalByteLength
+run sortedReverseCall
+bind sortedReverseResult Bool sortedReverseCall
+branchIf sortedReverseResult smokeAssertionFailed
+# fell through: false as expected
+branch reverseDetected
+label reverseDetected
+
+# Now insertion-sort the reverse-sorted buffer and verify it becomes ascending.
+call runInsertionSortCall sortBytesWithInsertionSortInPlace
+arg runInsertionSortCall byteBuffer workBuffer
+arg runInsertionSortCall byteCount totalByteLength
+run runInsertionSortCall
+ignoreValue runInsertionSortCall CByteCount
+
+call checkInsertionSortedCall areBytesSortedAscending
+arg checkInsertionSortedCall byteBuffer workBuffer
+arg checkInsertionSortedCall byteCount totalByteLength
+run checkInsertionSortedCall
+bind insertionSortedResult Bool checkInsertionSortedCall
+branchIf insertionSortedResult insertionSortedHolds
+branch smokeAssertionFailed
+label insertionSortedHolds
 
 const successMessageText CNullTerminatedByteString "OK"
 call writeSuccessLineCall console.writeLine
 arg writeSuccessLineCall console console
 arg writeSuccessLineCall text successMessageText
 run writeSuccessLineCall
-ignoreOk writeSuccessLineCall Void
+ignoreOk writeSuccessLineCall CSignedInt32
+bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branchIfError writeSuccessLineCall consoleWriteFailedHandler
 const exitOkCode ExitCode 0
 returnOk exitOkCode
 
+# Failure leg: surface the raw negative CSignedInt32 from
+# console.writeLine as the cause attached to the typed
+# MainError.ConsoleWriteFailed variant.
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
+returnError consoleWriteFailedFailure
 label smokeAssertionFailed
 makeError sortSmokeFailure MainError.SortSmokeAssertionFailed
 returnError sortSmokeFailure
+
+# Heap-allocation failure leg: c.malloc returned NULL. We surface
+# the raw negative status as the cause attached to the typed
+# MainError.MemoryAllocationFailed variant.
+label heapAllocationFailedHandler
+makeError heapAllocationFailure MainError.MemoryAllocationFailed allocationFailureError
+returnError heapAllocationFailure

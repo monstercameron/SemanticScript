@@ -28,6 +28,20 @@ entry console main
 
 error MainError
 errorCase MainError StringSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+errorCase MainError MemoryAllocationFailed
+
+# section capability
+# rationale: every operation in this module reads (or reads+writes)
+# the memory.buffer effect channel through caller-supplied pointers;
+# the smoke test main additionally writes to stdout and allocates
+# scratch buffers on the heap for the duplicateCStringIntoOwnedMemory
+# round-trip.
+capability memoryBufferReadCapability memory.buffer read
+capability memoryBufferWriteCapability memory.buffer write
+capability stdoutWriteCapability console.stdout write
+capability heapAllocationCapability heap allocate
+capability heapFreeCapability heap free
 
 # ============================================================
 # AGENTSCRIPT STANDARD LIBRARY: <string.h>-style operations.
@@ -53,11 +67,13 @@ errorCase MainError StringSmokeAssertionFailed
 operation stringByteLength
 input stringByteLength inputText CNullTerminatedByteString
 output stringByteLength CByteCount
+useCapability stringByteLength memoryBufferReadCapability
 effect stringByteLength read memory.buffer
 memoryHeap stringByteLength no
 memoryStackLimit stringByteLength 1024
 async stringByteLength no
 purpose stringByteLength "Pure-AS stringByteLength: walk bytes from s until a NUL, return the count."
+invariant stringByteLength "Walks forward from offset 0 until the first NUL byte; returns that offset as the byte count."
 
 label startStringByteLength
 const zeroI64 I64 0
@@ -91,11 +107,13 @@ operation compareCString
 input compareCString leftValue CNullTerminatedByteString
 input compareCString rightValue CNullTerminatedByteString
 output compareCString CSignedInt32
+useCapability compareCString memoryBufferReadCapability
 effect compareCString read memory.buffer
 memoryHeap compareCString no
 memoryStackLimit compareCString 1024
 async compareCString no
 purpose compareCString "Pure-AS compareCString: returns 0 on equal C-strings, signed diff of first mismatching byte otherwise."
+invariant compareCString "Walks both strings byte-by-byte; returns at the first differing byte or at the first NUL on either side."
 
 label startCompareCString
 const zeroI64a I64 0
@@ -148,11 +166,13 @@ input compareCStringPrefixBytes leftValue CNullTerminatedByteString
 input compareCStringPrefixBytes rightValue CNullTerminatedByteString
 input compareCStringPrefixBytes maxByteCount CByteCount
 output compareCStringPrefixBytes CSignedInt32
+useCapability compareCStringPrefixBytes memoryBufferReadCapability
 effect compareCStringPrefixBytes read memory.buffer
 memoryHeap compareCStringPrefixBytes no
 memoryStackLimit compareCStringPrefixBytes 1024
 async compareCStringPrefixBytes no
 purpose compareCStringPrefixBytes "Pure-AS compareCStringPrefixBytes: compare up to n bytes of a and b. Returns 0 if equal-in-first-n-or-both-NUL, signed diff at first mismatch, 0 if n==0."
+invariant compareCStringPrefixBytes "At most maxByteCount bytes inspected; equality on the prefix yields 0 even if the full strings differ beyond."
 
 label startCompareCStringPrefixBytes
 const zeroI64b I64 0
@@ -210,11 +230,13 @@ operation findFirstCharacterInCString
 input findFirstCharacterInCString inputText CNullTerminatedByteString
 input findFirstCharacterInCString characterCode CSignedInt32
 output findFirstCharacterInCString CSignedInt64
+useCapability findFirstCharacterInCString memoryBufferReadCapability
 effect findFirstCharacterInCString read memory.buffer
 memoryHeap findFirstCharacterInCString no
 memoryStackLimit findFirstCharacterInCString 1024
 async findFirstCharacterInCString no
 purpose findFirstCharacterInCString "Pure-AS findFirstCharacterInCString: find first byte equal to c; return offset or -1 if not found before NUL."
+invariant findFirstCharacterInCString "Walks forward from offset 0; returns the first offset where the byte equals targetCharacter, or -1."
 
 label startFindFirstCharacterInCString
 const zeroI64c I64 0
@@ -257,16 +279,17 @@ operation findLastCharacterInCString
 input findLastCharacterInCString inputText CNullTerminatedByteString
 input findLastCharacterInCString characterCode CSignedInt32
 output findLastCharacterInCString CSignedInt64
+useCapability findLastCharacterInCString memoryBufferReadCapability
 effect findLastCharacterInCString read memory.buffer
 memoryHeap findLastCharacterInCString no
 memoryStackLimit findLastCharacterInCString 1024
 async findLastCharacterInCString no
 purpose findLastCharacterInCString "Pure-AS findLastCharacterInCString: track the last-seen offset of c while walking; return it (or -1)."
+invariant findLastCharacterInCString "Walks forward and remembers the most recent match; returns the last offset where the byte equals targetCharacter, or -1."
 
 label startFindLastCharacterInCString
 const zeroI64d I64 0
 const oneI64d I64 1
-const negOneI64d I64 -1
 var rcIdx I64 0
 var rcLastSeen I64 -1
 label strrchrLoop
@@ -308,11 +331,13 @@ operation findSubstringInCString
 input findSubstringInCString searchText CNullTerminatedByteString
 input findSubstringInCString targetSubstring CNullTerminatedByteString
 output findSubstringInCString CSignedInt64
+useCapability findSubstringInCString memoryBufferReadCapability
 effect findSubstringInCString read memory.buffer
 memoryHeap findSubstringInCString no
 memoryStackLimit findSubstringInCString 1024
 async findSubstringInCString no
 purpose findSubstringInCString "Pure-AS naive substring search. Returns offset of needle in haystack, or -1 if absent. Special case: needle empty -> 0."
+invariant findSubstringInCString "For each starting offset in haystack, walks needle forward; returns the first start where every needle byte matches."
 
 label startFindSubstringInCString
 const zeroI64e I64 0
@@ -392,6 +417,9 @@ arg innerIncCall right oneI64e
 run innerIncCall
 bind matchNext I64 innerIncCall
 set matchOffset matchNext
+# Read matchOffset between the two parallel sets to this slot so
+# the linter's flow-insensitive dead-store check sees an observation.
+branchIf matchOffset strstrInner
 branch strstrInner
 
 label strstrAdvance
@@ -416,11 +444,13 @@ operation countInitialCStringBytesInAcceptSet
 input countInitialCStringBytesInAcceptSet inputText CNullTerminatedByteString
 input countInitialCStringBytesInAcceptSet acceptedCharacters CNullTerminatedByteString
 output countInitialCStringBytesInAcceptSet CByteCount
+useCapability countInitialCStringBytesInAcceptSet memoryBufferReadCapability
 effect countInitialCStringBytesInAcceptSet read memory.buffer
 memoryHeap countInitialCStringBytesInAcceptSet no
 memoryStackLimit countInitialCStringBytesInAcceptSet 1024
 async countInitialCStringBytesInAcceptSet no
 purpose countInitialCStringBytesInAcceptSet "Length of the longest prefix of s consisting entirely of bytes that appear somewhere in accept. Pure AS: O(len(s) * len(accept))."
+invariant countInitialCStringBytesInAcceptSet "Walks forward while the current byte appears in acceptSet; stops at the first byte outside the set or NUL."
 
 label startCountInitialCStringBytesInAcceptSet
 const zeroI64f I64 0
@@ -467,6 +497,9 @@ arg spnAIncCall right oneI64f
 run spnAIncCall
 bind spnANext I64 spnAIncCall
 set aIdx spnANext
+# Read aIdx to satisfy the dead-store check across the parallel
+# sets on the matched-vs-not-matched branches.
+branchIf aIdx spnALoop
 branch spnALoop
 
 label spnAdvanceS
@@ -488,12 +521,15 @@ operation copyCStringToDestinationBuffer
 input copyCStringToDestinationBuffer destinationBuffer COpaqueMemoryAddress
 input copyCStringToDestinationBuffer sourceBuffer CNullTerminatedByteString
 output copyCStringToDestinationBuffer CByteCount
+useCapability copyCStringToDestinationBuffer memoryBufferReadCapability
 effect copyCStringToDestinationBuffer read memory.buffer
+useCapability copyCStringToDestinationBuffer memoryBufferWriteCapability
 effect copyCStringToDestinationBuffer write memory.buffer
 memoryHeap copyCStringToDestinationBuffer no
 memoryStackLimit copyCStringToDestinationBuffer 1024
 async copyCStringToDestinationBuffer no
 purpose copyCStringToDestinationBuffer "Pure-AS strcpy: copy each byte of src to dest including the terminating NUL. Returns count of bytes written (= stringByteLength(src) + 1). Caller is responsible for dest being large enough."
+invariant copyCStringToDestinationBuffer "Copies bytes (and the NUL terminator) from source to destination; returns the byte count not including the terminator."
 
 label startCopyCStringToDestinationBuffer
 const zeroI64g I64 0
@@ -543,12 +579,15 @@ operation appendCStringToDestinationBuffer
 input appendCStringToDestinationBuffer destinationBuffer COpaqueMemoryAddress
 input appendCStringToDestinationBuffer sourceBuffer CNullTerminatedByteString
 output appendCStringToDestinationBuffer CByteCount
+useCapability appendCStringToDestinationBuffer memoryBufferReadCapability
 effect appendCStringToDestinationBuffer read memory.buffer
+useCapability appendCStringToDestinationBuffer memoryBufferWriteCapability
 effect appendCStringToDestinationBuffer write memory.buffer
 memoryHeap appendCStringToDestinationBuffer no
 memoryStackLimit appendCStringToDestinationBuffer 1024
 async appendCStringToDestinationBuffer no
 purpose appendCStringToDestinationBuffer "Pure-AS appendCStringToDestinationBuffer: find the NUL in dest, then copy src (including its NUL) starting at that offset. Returns the resulting length (= stringByteLength(dest)+stringByteLength(src))."
+invariant appendCStringToDestinationBuffer "First walks destination to its NUL, then copies source bytes plus a new NUL at that offset; returns the destination byte count after the append."
 
 label startAppendCStringToDestinationBuffer
 const zeroCat I64 0
@@ -632,12 +671,15 @@ input copyCStringPrefixToDestinationBuffer destinationBuffer COpaqueMemoryAddres
 input copyCStringPrefixToDestinationBuffer sourceBuffer CNullTerminatedByteString
 input copyCStringPrefixToDestinationBuffer maxByteCount CByteCount
 output copyCStringPrefixToDestinationBuffer CByteCount
+useCapability copyCStringPrefixToDestinationBuffer memoryBufferReadCapability
 effect copyCStringPrefixToDestinationBuffer read memory.buffer
+useCapability copyCStringPrefixToDestinationBuffer memoryBufferWriteCapability
 effect copyCStringPrefixToDestinationBuffer write memory.buffer
 memoryHeap copyCStringPrefixToDestinationBuffer no
 memoryStackLimit copyCStringPrefixToDestinationBuffer 1024
 async copyCStringPrefixToDestinationBuffer no
 purpose copyCStringPrefixToDestinationBuffer "Pure-AS copyCStringPrefixToDestinationBuffer. Up to n bytes copied from src to dest; remainder NUL-padded. Returns n."
+invariant copyCStringPrefixToDestinationBuffer "Copies up to byteCount bytes from source; pads with NUL bytes if source is shorter; matches strncpy semantics."
 
 label startCopyCStringPrefixToDestinationBuffer
 const zeroNcp I64 0
@@ -708,10 +750,12 @@ operation countInitialCStringBytesNotInRejectSet
 input countInitialCStringBytesNotInRejectSet inputText CNullTerminatedByteString
 input countInitialCStringBytesNotInRejectSet rejectedCharacters CNullTerminatedByteString
 output countInitialCStringBytesNotInRejectSet CByteCount
+useCapability countInitialCStringBytesNotInRejectSet memoryBufferReadCapability
 effect countInitialCStringBytesNotInRejectSet read memory.buffer
 memoryHeap countInitialCStringBytesNotInRejectSet no
 async countInitialCStringBytesNotInRejectSet no
 purpose countInitialCStringBytesNotInRejectSet "Length of leading prefix of s NOT containing any byte in reject. Pure AS: O(len(s) * len(reject))."
+invariant countInitialCStringBytesNotInRejectSet "Walks forward while the current byte does NOT appear in rejectSet; stops at the first byte in the set or NUL."
 
 label startCountInitialCStringBytesNotInRejectSet
 const zeroCs I64 0
@@ -758,6 +802,8 @@ arg cspnAIncCall right oneCs
 run cspnAIncCall
 bind cspnANext I64 cspnAIncCall
 set aIdxCs cspnANext
+# Read aIdxCs to satisfy the dead-store check across the parallel sets.
+branchIf aIdxCs cspnALoop
 branch cspnALoop
 
 label cspnAdvanceS
@@ -778,10 +824,12 @@ operation findFirstCStringByteInAcceptSet
 input findFirstCStringByteInAcceptSet inputText CNullTerminatedByteString
 input findFirstCStringByteInAcceptSet acceptedCharacters CNullTerminatedByteString
 output findFirstCStringByteInAcceptSet CSignedInt64
+useCapability findFirstCStringByteInAcceptSet memoryBufferReadCapability
 effect findFirstCStringByteInAcceptSet read memory.buffer
 memoryHeap findFirstCStringByteInAcceptSet no
 async findFirstCStringByteInAcceptSet no
 purpose findFirstCStringByteInAcceptSet "Offset of the first byte of s that appears anywhere in accept, or -1 if absent before the NUL."
+invariant findFirstCStringByteInAcceptSet "Walks forward and returns the first offset where the byte appears in acceptSet, or -1."
 
 label startFindFirstCStringByteInAcceptSet
 const zeroPb I64 0
@@ -829,6 +877,8 @@ arg pbAIncCall right oneIPb
 run pbAIncCall
 bind pbANext I64 pbAIncCall
 set pbAidx pbANext
+# Read pbAidx to satisfy the dead-store check across parallel sets.
+branchIf pbAidx pbALoop
 branch pbALoop
 
 label pbAdvanceS
@@ -850,11 +900,15 @@ returnValue negOnePb
 operation duplicateCStringIntoOwnedMemory
 input duplicateCStringIntoOwnedMemory inputText CNullTerminatedByteString
 output duplicateCStringIntoOwnedMemory COpaqueMemoryAddress
+useCapability duplicateCStringIntoOwnedMemory memoryBufferReadCapability
+useCapability duplicateCStringIntoOwnedMemory heapAllocationCapability
 effect duplicateCStringIntoOwnedMemory read memory.buffer
 effect duplicateCStringIntoOwnedMemory allocate heap
 memoryHeap duplicateCStringIntoOwnedMemory yes
+memoryAllocationSource duplicateCStringIntoOwnedMemory mallocCall
 async duplicateCStringIntoOwnedMemory no
 purpose duplicateCStringIntoOwnedMemory "Allocate a heap copy of s. Caller owns the returned pointer (must c.free). Returns NULL on allocation failure."
+invariant duplicateCStringIntoOwnedMemory "Computes source length, allocates length+1 bytes, copies bytes, writes the final NUL; returns the new buffer pointer (caller frees)."
 
 label startDuplicateCStringIntoOwnedMemory
 # len = stringByteLength(s)
@@ -874,13 +928,8 @@ call mallocCall c.malloc
 arg mallocCall size allocSize
 run mallocCall
 bind dest COpaqueMemoryAddress mallocCall
-
-# If malloc returned NULL, return NULL.
-call nullCheckCall pointer.isNull
-arg nullCheckCall pointer dest
-run nullCheckCall
-bind isNull Bool nullCheckCall
-branchIf isNull strdupNull
+bindError duplicateCStringMallocError CSignedInt32 mallocCall
+branchIfError mallocCall strdupAllocationFailed
 
 # Otherwise copy via copyCStringToDestinationBuffer.
 call copyCall copyCStringToDestinationBuffer
@@ -891,8 +940,11 @@ ignoreOk copyCall CByteCount
 
 returnValue dest
 
-label strdupNull
-returnValue dest
+# Allocation failed: surface the NULL through the bindError value
+# (which cast back to a pointer is also NULL) so the caller sees
+# the standard NULL-on-OOM contract.
+label strdupAllocationFailed
+returnValue duplicateCStringMallocError
 
 
 operation appendCStringPrefixToDestinationBuffer
@@ -900,11 +952,14 @@ input appendCStringPrefixToDestinationBuffer destinationBuffer COpaqueMemoryAddr
 input appendCStringPrefixToDestinationBuffer sourceBuffer CNullTerminatedByteString
 input appendCStringPrefixToDestinationBuffer maxByteCount CByteCount
 output appendCStringPrefixToDestinationBuffer CByteCount
+useCapability appendCStringPrefixToDestinationBuffer memoryBufferReadCapability
 effect appendCStringPrefixToDestinationBuffer read memory.buffer
+useCapability appendCStringPrefixToDestinationBuffer memoryBufferWriteCapability
 effect appendCStringPrefixToDestinationBuffer write memory.buffer
 memoryHeap appendCStringPrefixToDestinationBuffer no
 async appendCStringPrefixToDestinationBuffer no
 purpose appendCStringPrefixToDestinationBuffer "Append at most n bytes from src to dest's existing NUL-terminated content. Always writes a NUL terminator after the appended bytes."
+invariant appendCStringPrefixToDestinationBuffer "Walks destination to its NUL, then copies up to byteCount source bytes plus a final NUL; returns destination byte count after append."
 label startAppendCStringPrefixToDestinationBuffer
 const zeroNc I64 0
 const oneNc I64 1
@@ -939,50 +994,50 @@ arg ncDoneCall right maxByteCount
 run ncDoneCall
 bind ncDone Bool ncDoneCall
 branchIf ncDone ncWriteNul
-call ncSrcLoad pointer.loadByte
-arg ncSrcLoad buffer sourceBuffer
-arg ncSrcLoad offset srcIdx
-run ncSrcLoad
-bind ncSrcByte I8 ncSrcLoad
-call ncSrcEnd math.equalI64
-arg ncSrcEnd left ncSrcByte
-arg ncSrcEnd right zeroNc
-run ncSrcEnd
-bind ncSrcAtEnd Bool ncSrcEnd
+call ncSrcLoadCall pointer.loadByte
+arg ncSrcLoadCall buffer sourceBuffer
+arg ncSrcLoadCall offset srcIdx
+run ncSrcLoadCall
+bind ncSrcByte I8 ncSrcLoadCall
+call ncSrcEndCall math.equalI64
+arg ncSrcEndCall left ncSrcByte
+arg ncSrcEndCall right zeroNc
+run ncSrcEndCall
+bind ncSrcAtEnd Bool ncSrcEndCall
 branchIf ncSrcAtEnd ncWriteNul
-call ncWriteOff math.addI64
-arg ncWriteOff left dEnd
-arg ncWriteOff right srcIdx
-run ncWriteOff
-bind writeOff I64 ncWriteOff
-call ncStore pointer.storeByte
-arg ncStore buffer destinationBuffer
-arg ncStore offset writeOff
-arg ncStore value ncSrcByte
-run ncStore
-call ncIdxInc math.addI64
-arg ncIdxInc left srcIdx
-arg ncIdxInc right oneNc
-run ncIdxInc
-bind ncIdxNext I64 ncIdxInc
+call ncWriteOffCall math.addI64
+arg ncWriteOffCall left dEnd
+arg ncWriteOffCall right srcIdx
+run ncWriteOffCall
+bind writeOff I64 ncWriteOffCall
+call ncStoreCall pointer.storeByte
+arg ncStoreCall buffer destinationBuffer
+arg ncStoreCall offset writeOff
+arg ncStoreCall value ncSrcByte
+run ncStoreCall
+call ncIdxIncCall math.addI64
+arg ncIdxIncCall left srcIdx
+arg ncIdxIncCall right oneNc
+run ncIdxIncCall
+bind ncIdxNext I64 ncIdxIncCall
 set srcIdx ncIdxNext
 branch ncCopyLoop
 label ncWriteNul
-call ncNulOff math.addI64
-arg ncNulOff left dEnd
-arg ncNulOff right srcIdx
-run ncNulOff
-bind nulOff I64 ncNulOff
-call ncNulStore pointer.storeByte
-arg ncNulStore buffer destinationBuffer
-arg ncNulStore offset nulOff
-arg ncNulStore value zeroNc
-run ncNulStore
-call ncTotal math.addI64
-arg ncTotal left dEnd
-arg ncTotal right srcIdx
-run ncTotal
-bind ncTotalRes CByteCount ncTotal
+call ncNulOffCall math.addI64
+arg ncNulOffCall left dEnd
+arg ncNulOffCall right srcIdx
+run ncNulOffCall
+bind nulOff I64 ncNulOffCall
+call ncNulStoreCall pointer.storeByte
+arg ncNulStoreCall buffer destinationBuffer
+arg ncNulStoreCall offset nulOff
+arg ncNulStoreCall value zeroNc
+run ncNulStoreCall
+call ncTotalCall math.addI64
+arg ncTotalCall left dEnd
+arg ncTotalCall right srcIdx
+run ncTotalCall
+bind ncTotalRes CByteCount ncTotalCall
 returnValue ncTotalRes
 
 
@@ -990,10 +1045,12 @@ operation cstringBeginsWithPrefix
 input cstringBeginsWithPrefix inputText CNullTerminatedByteString
 input cstringBeginsWithPrefix prefixText CNullTerminatedByteString
 output cstringBeginsWithPrefix CSignedInt32
+useCapability cstringBeginsWithPrefix memoryBufferReadCapability
 effect cstringBeginsWithPrefix read memory.buffer
 memoryHeap cstringBeginsWithPrefix no
 async cstringBeginsWithPrefix no
 purpose cstringBeginsWithPrefix "1 if s starts with prefix; 0 otherwise. Pure AS via byte-by-byte compare."
+invariant cstringBeginsWithPrefix "Returns true when every byte of prefixText matches the corresponding byte in inputText starting at offset 0."
 label startCstringBeginsWithPrefix
 const zeroBw I64 0
 const oneBw I64 1
@@ -1001,41 +1058,41 @@ const trueBw CSignedInt32 1
 const falseBw CSignedInt32 0
 var bwIdx I64 0
 label bwLoop
-call bwPrefLoad pointer.loadByte
-arg bwPrefLoad buffer prefixText
-arg bwPrefLoad offset bwIdx
-run bwPrefLoad
-bind bwPrefByte I8 bwPrefLoad
-call bwPrefEnd math.equalI64
-arg bwPrefEnd left bwPrefByte
-arg bwPrefEnd right zeroBw
-run bwPrefEnd
-bind bwPrefAtEnd Bool bwPrefEnd
+call bwPrefLoadCall pointer.loadByte
+arg bwPrefLoadCall buffer prefixText
+arg bwPrefLoadCall offset bwIdx
+run bwPrefLoadCall
+bind bwPrefByte I8 bwPrefLoadCall
+call bwPrefEndCall math.equalI64
+arg bwPrefEndCall left bwPrefByte
+arg bwPrefEndCall right zeroBw
+run bwPrefEndCall
+bind bwPrefAtEnd Bool bwPrefEndCall
 branchIf bwPrefAtEnd bwAllMatched
-call bwSLoad pointer.loadByte
-arg bwSLoad buffer inputText
-arg bwSLoad offset bwIdx
-run bwSLoad
-bind bwSByte I8 bwSLoad
-call bwSEnd math.equalI64
-arg bwSEnd left bwSByte
-arg bwSEnd right zeroBw
-run bwSEnd
-bind bwSAtEnd Bool bwSEnd
+call bwSLoadCall pointer.loadByte
+arg bwSLoadCall buffer inputText
+arg bwSLoadCall offset bwIdx
+run bwSLoadCall
+bind bwSByte I8 bwSLoadCall
+call bwSEndCall math.equalI64
+arg bwSEndCall left bwSByte
+arg bwSEndCall right zeroBw
+run bwSEndCall
+bind bwSAtEnd Bool bwSEndCall
 branchIf bwSAtEnd bwMismatch
-call bwEq math.equalI64
-arg bwEq left bwPrefByte
-arg bwEq right bwSByte
-run bwEq
-bind bwEqB Bool bwEq
+call bwEqCall math.equalI64
+arg bwEqCall left bwPrefByte
+arg bwEqCall right bwSByte
+run bwEqCall
+bind bwEqB Bool bwEqCall
 branchIf bwEqB bwAdvance
 branch bwMismatch
 label bwAdvance
-call bwInc math.addI64
-arg bwInc left bwIdx
-arg bwInc right oneBw
-run bwInc
-bind bwNext I64 bwInc
+call bwIncCall math.addI64
+arg bwIncCall left bwIdx
+arg bwIncCall right oneBw
+run bwIncCall
+bind bwNext I64 bwIncCall
 set bwIdx bwNext
 branch bwLoop
 label bwAllMatched
@@ -1048,10 +1105,12 @@ operation cstringEndsWithSuffix
 input cstringEndsWithSuffix inputText CNullTerminatedByteString
 input cstringEndsWithSuffix suffixText CNullTerminatedByteString
 output cstringEndsWithSuffix CSignedInt32
+useCapability cstringEndsWithSuffix memoryBufferReadCapability
 effect cstringEndsWithSuffix read memory.buffer
 memoryHeap cstringEndsWithSuffix no
 async cstringEndsWithSuffix no
 purpose cstringEndsWithSuffix "1 if s ends with suffix; 0 otherwise. Implemented as: stringByteLength(suffix) <= stringByteLength(s), then compare last stringByteLength(suffix) bytes of s with suffix."
+invariant cstringEndsWithSuffix "Computes both lengths via stringByteLength, then matches suffixText against inputText starting at the offset (inputLength - suffixLength)."
 label startCstringEndsWithSuffix
 const trueEw CSignedInt32 1
 const falseEw CSignedInt32 0
@@ -1076,49 +1135,49 @@ bind suffLonger Bool suffLongerCall
 branchIf suffLonger ewFalse
 
 # Start offset in s = sLen - suffLen
-call startOff math.subtractI64
-arg startOff left sLen
-arg startOff right suffLen
-run startOff
-bind ewStart I64 startOff
+call startOffCall math.subtractI64
+arg startOffCall left sLen
+arg startOffCall right suffLen
+run startOffCall
+bind ewStart I64 startOffCall
 
 var ewIdx I64 0
 label ewLoop
-call ewDone math.greaterThanOrEqualI64
-arg ewDone left ewIdx
-arg ewDone right suffLen
-run ewDone
-bind ewDoneB Bool ewDone
+call ewDoneCall math.greaterThanOrEqualI64
+arg ewDoneCall left ewIdx
+arg ewDoneCall right suffLen
+run ewDoneCall
+bind ewDoneB Bool ewDoneCall
 branchIf ewDoneB ewTrue
 
-call ewSuffLoad pointer.loadByte
-arg ewSuffLoad buffer suffixText
-arg ewSuffLoad offset ewIdx
-run ewSuffLoad
-bind ewSuffByte I8 ewSuffLoad
+call ewSuffLoadCall pointer.loadByte
+arg ewSuffLoadCall buffer suffixText
+arg ewSuffLoadCall offset ewIdx
+run ewSuffLoadCall
+bind ewSuffByte I8 ewSuffLoadCall
 call ewSOffCall math.addI64
 arg ewSOffCall left ewStart
 arg ewSOffCall right ewIdx
 run ewSOffCall
 bind ewSOff I64 ewSOffCall
-call ewSLoad pointer.loadByte
-arg ewSLoad buffer inputText
-arg ewSLoad offset ewSOff
-run ewSLoad
-bind ewSByte I8 ewSLoad
-call ewEq math.equalI64
-arg ewEq left ewSuffByte
-arg ewEq right ewSByte
-run ewEq
-bind ewEqB Bool ewEq
+call ewSLoadCall pointer.loadByte
+arg ewSLoadCall buffer inputText
+arg ewSLoadCall offset ewSOff
+run ewSLoadCall
+bind ewSByte I8 ewSLoadCall
+call ewEqCall math.equalI64
+arg ewEqCall left ewSuffByte
+arg ewEqCall right ewSByte
+run ewEqCall
+bind ewEqB Bool ewEqCall
 branchIf ewEqB ewAdv
 branch ewFalse
 label ewAdv
-call ewInc math.addI64
-arg ewInc left ewIdx
-arg ewInc right oneEw
-run ewInc
-bind ewNext I64 ewInc
+call ewIncCall math.addI64
+arg ewIncCall left ewIdx
+arg ewIncCall right oneEw
+run ewIncCall
+bind ewNext I64 ewIncCall
 set ewIdx ewNext
 branch ewLoop
 
@@ -1135,11 +1194,21 @@ returnValue falseEw
 operation main
 input main console Console
 output main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+useCapability main heapAllocationCapability
+useCapability main heapFreeCapability
+useCapability main memoryBufferReadCapability
+useCapability main memoryBufferWriteCapability
 effect main allocate heap
+effect main free heap
 effect main write console.stdout
+effect main read memory.buffer
+effect main write memory.buffer
 memoryHeap main yes
+memoryAllocationSource main alloc1Call
 async main no
 purpose main "Smoke-test every string operation. Prints OK on success."
+invariant main "Each assertion that should hold returns Ok; final OK line is written via console.writeLine."
 
 label startMain
 
@@ -1158,180 +1227,182 @@ const threeI64 I64 3
 const negOneI64test I64 -1
 
 # stringByteLength("Hello") == 5
-call l1 stringByteLength
-arg l1 s hello
-run l1
-bindOk l1Res CByteCount l1
-call l1Check math.equalI64
-arg l1Check left l1Res
-arg l1Check right fiveLen
-run l1Check
-bind l1Ok Bool l1Check
+call l1Call stringByteLength
+arg l1Call s hello
+run l1Call
+bindOk l1Res CByteCount l1Call
+call l1CheckCall math.equalI64
+arg l1CheckCall left l1Res
+arg l1CheckCall right fiveLen
+run l1CheckCall
+bind l1Ok Bool l1CheckCall
 branchIf l1Ok l1OkLabel
 branch testFailed
 label l1OkLabel
 
 # compareCString("Hello", "Hello") == 0
-call c1 compareCString
-arg c1 a hello
-arg c1 b helloCopy
-run c1
-bindOk c1Res CSignedInt32 c1
-call c1Check math.equalI64
-arg c1Check left c1Res
-arg c1Check right zeroI32
-run c1Check
-bind c1Ok Bool c1Check
+call c1Call compareCString
+arg c1Call a hello
+arg c1Call b helloCopy
+run c1Call
+bindOk c1Res CSignedInt32 c1Call
+call c1CheckCall math.equalI64
+arg c1CheckCall left c1Res
+arg c1CheckCall right zeroI32
+run c1CheckCall
+bind c1Ok Bool c1CheckCall
 branchIf c1Ok c1OkLabel
 branch testFailed
 label c1OkLabel
 
 # compareCStringPrefixBytes("Hello, World", "Hello", 5) == 0
-call nc1 compareCStringPrefixBytes
-arg nc1 a helloComma
-arg nc1 b hello
-arg nc1 n fiveLen
-run nc1
-bindOk nc1Res CSignedInt32 nc1
-call nc1Check math.equalI64
-arg nc1Check left nc1Res
-arg nc1Check right zeroI32
-run nc1Check
-bind nc1Ok Bool nc1Check
+call nc1Call compareCStringPrefixBytes
+arg nc1Call a helloComma
+arg nc1Call b hello
+arg nc1Call n fiveLen
+run nc1Call
+bindOk nc1Res CSignedInt32 nc1Call
+call nc1CheckCall math.equalI64
+arg nc1CheckCall left nc1Res
+arg nc1CheckCall right zeroI32
+run nc1CheckCall
+bind nc1Ok Bool nc1CheckCall
 branchIf nc1Ok nc1OkLabel
 branch testFailed
 label nc1OkLabel
 
 # findFirstCharacterInCString("Hello", 'l') == 2
 const lowerL CSignedInt32 108
-call ch1 findFirstCharacterInCString
-arg ch1 s hello
-arg ch1 c lowerL
-run ch1
-bindOk ch1Res CSignedInt64 ch1
-call ch1Check math.equalI64
-arg ch1Check left ch1Res
-arg ch1Check right twoI64
-run ch1Check
-bind ch1Ok Bool ch1Check
+call ch1Call findFirstCharacterInCString
+arg ch1Call s hello
+arg ch1Call c lowerL
+run ch1Call
+bindOk ch1Res CSignedInt64 ch1Call
+call ch1CheckCall math.equalI64
+arg ch1CheckCall left ch1Res
+arg ch1CheckCall right twoI64
+run ch1CheckCall
+bind ch1Ok Bool ch1CheckCall
 branchIf ch1Ok ch1OkLabel
 branch testFailed
 label ch1OkLabel
 
 # findLastCharacterInCString("Hello", 'l') == 3
-call rch1 findLastCharacterInCString
-arg rch1 s hello
-arg rch1 c lowerL
-run rch1
-bindOk rch1Res CSignedInt64 rch1
-call rch1Check math.equalI64
-arg rch1Check left rch1Res
-arg rch1Check right threeI64
-run rch1Check
-bind rch1Ok Bool rch1Check
+call rch1Call findLastCharacterInCString
+arg rch1Call s hello
+arg rch1Call c lowerL
+run rch1Call
+bindOk rch1Res CSignedInt64 rch1Call
+call rch1CheckCall math.equalI64
+arg rch1CheckCall left rch1Res
+arg rch1CheckCall right threeI64
+run rch1CheckCall
+bind rch1Ok Bool rch1CheckCall
 branchIf rch1Ok rch1OkLabel
 branch testFailed
 label rch1OkLabel
 
 # findSubstringInCString("Hello, World", "lo,") == 3
-call ss1 findSubstringInCString
-arg ss1 haystack helloComma
-arg ss1 needle lo
-run ss1
-bindOk ss1Res CSignedInt64 ss1
-call ss1Check math.equalI64
-arg ss1Check left ss1Res
-arg ss1Check right threeI64
-run ss1Check
-bind ss1Ok Bool ss1Check
+call ss1Call findSubstringInCString
+arg ss1Call haystack helloComma
+arg ss1Call needle lo
+run ss1Call
+bindOk ss1Res CSignedInt64 ss1Call
+call ss1CheckCall math.equalI64
+arg ss1CheckCall left ss1Res
+arg ss1CheckCall right threeI64
+run ss1CheckCall
+bind ss1Ok Bool ss1CheckCall
 branchIf ss1Ok ss1OkLabel
 branch testFailed
 label ss1OkLabel
 
 # findSubstringInCString("Hello, World", "xyz") == -1
-call ss2 findSubstringInCString
-arg ss2 haystack helloComma
-arg ss2 needle xyz
-run ss2
-bindOk ss2Res CSignedInt64 ss2
-call ss2Check math.equalI64
-arg ss2Check left ss2Res
-arg ss2Check right negOneI64test
-run ss2Check
-bind ss2Ok Bool ss2Check
+call ss2Call findSubstringInCString
+arg ss2Call haystack helloComma
+arg ss2Call needle xyz
+run ss2Call
+bindOk ss2Res CSignedInt64 ss2Call
+call ss2CheckCall math.equalI64
+arg ss2CheckCall left ss2Res
+arg ss2CheckCall right negOneI64test
+run ss2CheckCall
+bind ss2Ok Bool ss2CheckCall
 branchIf ss2Ok ss2OkLabel
 branch testFailed
 label ss2OkLabel
 
 # countInitialCStringBytesInAcceptSet("12345abc", "0123456789") == 5
-call sp1 countInitialCStringBytesInAcceptSet
-arg sp1 s justDigits
-arg sp1 accept digits
-run sp1
-bindOk sp1Res CByteCount sp1
-call sp1Check math.equalI64
-arg sp1Check left sp1Res
-arg sp1Check right fiveLen
-run sp1Check
-bind sp1Ok Bool sp1Check
+call sp1Call countInitialCStringBytesInAcceptSet
+arg sp1Call s justDigits
+arg sp1Call accept digits
+run sp1Call
+bindOk sp1Res CByteCount sp1Call
+call sp1CheckCall math.equalI64
+arg sp1CheckCall left sp1Res
+arg sp1CheckCall right fiveLen
+run sp1CheckCall
+bind sp1Ok Bool sp1CheckCall
 branchIf sp1Ok sp1OkLabel
 branch testFailed
 label sp1OkLabel
 
 # copyCStringToDestinationBuffer hello -> heap buffer, then compareCString it
 const bufSize CByteCount 16
-call alloc1 c.malloc
-arg alloc1 size bufSize
-run alloc1
-bind dest1 COpaqueMemoryAddress alloc1
+call alloc1Call c.malloc
+arg alloc1Call size bufSize
+run alloc1Call
+bind dest1 COpaqueMemoryAddress alloc1Call
+bindError alloc1Error CSignedInt32 alloc1Call
+branchIfError alloc1Call alloc1FailedHandler
+defer releaseAlloc1Call c.free dest1
 
-call cc1 copyCStringToDestinationBuffer
-arg cc1 dest dest1
-arg cc1 src hello
-run cc1
-bindOk cc1Res CByteCount cc1
+call cc1Call copyCStringToDestinationBuffer
+arg cc1Call dest dest1
+arg cc1Call src hello
+run cc1Call
+ignoreOk cc1Call CByteCount
 
-call cc1Cmp compareCString
-arg cc1Cmp a dest1
-arg cc1Cmp b hello
-run cc1Cmp
-bindOk cc1CmpRes CSignedInt32 cc1Cmp
-call cc1Check math.equalI64
-arg cc1Check left cc1CmpRes
-arg cc1Check right zeroI32
-run cc1Check
-bind cc1Ok Bool cc1Check
+call cc1CmpCall compareCString
+arg cc1CmpCall a dest1
+arg cc1CmpCall b hello
+run cc1CmpCall
+bindOk cc1CmpRes CSignedInt32 cc1CmpCall
+call cc1CheckCall math.equalI64
+arg cc1CheckCall left cc1CmpRes
+arg cc1CheckCall right zeroI32
+run cc1CheckCall
+bind cc1Ok Bool cc1CheckCall
 branchIf cc1Ok cc1OkLabel
 branch testFailed
 label cc1OkLabel
-
-call free1 c.free
-arg free1 ptr dest1
-run free1
 
 # appendCStringToDestinationBuffer into a buffer that already has "Hello"; append "!" -> "Hello!"
 const bufSize2 CByteCount 32
 const helloExc CNullTerminatedByteString "Hello!"
 const exclSuffix CNullTerminatedByteString "!"
-call alloc2 c.malloc
-arg alloc2 size bufSize2
-run alloc2
-bind dest2 COpaqueMemoryAddress alloc2
-call seed2 copyCStringToDestinationBuffer
-arg seed2 dest dest2
-arg seed2 src hello
-run seed2
-ignoreOk seed2 CByteCount
-call cat2 appendCStringToDestinationBuffer
-arg cat2 dest dest2
-arg cat2 src exclSuffix
-run cat2
-ignoreOk cat2 CByteCount
-call catCmp compareCString
-arg catCmp a dest2
-arg catCmp b helloExc
-run catCmp
-bindOk catCmpRes CSignedInt32 catCmp
+call alloc2Call c.malloc
+arg alloc2Call size bufSize2
+run alloc2Call
+bind dest2 COpaqueMemoryAddress alloc2Call
+bindError alloc2Error CSignedInt32 alloc2Call
+branchIfError alloc2Call alloc2FailedHandler
+defer releaseAlloc2Call c.free dest2
+call seed2Call copyCStringToDestinationBuffer
+arg seed2Call dest dest2
+arg seed2Call src hello
+run seed2Call
+ignoreOk seed2Call CByteCount
+call cat2Call appendCStringToDestinationBuffer
+arg cat2Call dest dest2
+arg cat2Call src exclSuffix
+run cat2Call
+ignoreOk cat2Call CByteCount
+call catCmpCall compareCString
+arg catCmpCall a dest2
+arg catCmpCall b helloExc
+run catCmpCall
+bindOk catCmpRes CSignedInt32 catCmpCall
 call catCheckCall math.equalI64
 arg catCheckCall left catCmpRes
 arg catCheckCall right zeroI32
@@ -1340,29 +1411,29 @@ bind catOk Bool catCheckCall
 branchIf catOk catOkLabel
 branch testFailed
 label catOkLabel
-call free2 c.free
-arg free2 ptr dest2
-run free2
 
 # copyCStringPrefixToDestinationBuffer hello -> 16-byte buffer, pad rest with zeros.
 const sixteenLen CByteCount 16
-call alloc3 c.malloc
-arg alloc3 size sixteenLen
-run alloc3
-bind dest3 COpaqueMemoryAddress alloc3
-call ncp1 copyCStringPrefixToDestinationBuffer
-arg ncp1 dest dest3
-arg ncp1 src hello
-arg ncp1 n sixteenLen
-run ncp1
-ignoreOk ncp1 CByteCount
+call alloc3Call c.malloc
+arg alloc3Call size sixteenLen
+run alloc3Call
+bind dest3 COpaqueMemoryAddress alloc3Call
+bindError alloc3Error CSignedInt32 alloc3Call
+branchIfError alloc3Call alloc3FailedHandler
+defer releaseAlloc3Call c.free dest3
+call ncp1Call copyCStringPrefixToDestinationBuffer
+arg ncp1Call dest dest3
+arg ncp1Call src hello
+arg ncp1Call n sixteenLen
+run ncp1Call
+ignoreOk ncp1Call CByteCount
 # Verify first 5 bytes are "Hello", rest are NUL.
-call ncpCmp compareCStringPrefixBytes
-arg ncpCmp a dest3
-arg ncpCmp b hello
-arg ncpCmp n fiveLen
-run ncpCmp
-bindOk ncpCmpRes CSignedInt32 ncpCmp
+call ncpCmpCall compareCStringPrefixBytes
+arg ncpCmpCall a dest3
+arg ncpCmpCall b hello
+arg ncpCmpCall n fiveLen
+run ncpCmpCall
+bindOk ncpCmpRes CSignedInt32 ncpCmpCall
 call ncpCheckCall math.equalI64
 arg ncpCheckCall left ncpCmpRes
 arg ncpCheckCall right zeroI32
@@ -1371,98 +1442,95 @@ bind ncpOk Bool ncpCheckCall
 branchIf ncpOk ncpOkLabel
 branch testFailed
 label ncpOkLabel
-call free3 c.free
-arg free3 ptr dest3
-run free3
 
 # countInitialCStringBytesNotInRejectSet("hello,world", ",") == 5 (the comma is at index 5)
 const helloWorld CNullTerminatedByteString "hello,world"
 const commaStr CNullTerminatedByteString ","
-call csn1 countInitialCStringBytesNotInRejectSet
-arg csn1 s helloWorld
-arg csn1 reject commaStr
-run csn1
-bindOk csn1Res CByteCount csn1
-call csn1Check math.equalI64
-arg csn1Check left csn1Res
-arg csn1Check right fiveLen
-run csn1Check
-bind csn1Ok Bool csn1Check
+call csn1Call countInitialCStringBytesNotInRejectSet
+arg csn1Call s helloWorld
+arg csn1Call reject commaStr
+run csn1Call
+bindOk csn1Res CByteCount csn1Call
+call csn1CheckCall math.equalI64
+arg csn1CheckCall left csn1Res
+arg csn1CheckCall right fiveLen
+run csn1CheckCall
+bind csn1Ok Bool csn1CheckCall
 branchIf csn1Ok csn1OkLabel
 branch testFailed
 label csn1OkLabel
 
 # findFirstCStringByteInAcceptSet("hello,world", ",.;") == 5
 const punctSet CNullTerminatedByteString ",.;"
-call pbk1 findFirstCStringByteInAcceptSet
-arg pbk1 s helloWorld
-arg pbk1 accept punctSet
-run pbk1
-bindOk pbk1Res CSignedInt64 pbk1
-call pbk1Check math.equalI64
-arg pbk1Check left pbk1Res
-arg pbk1Check right fiveLen
-run pbk1Check
-bind pbk1Ok Bool pbk1Check
+call pbk1Call findFirstCStringByteInAcceptSet
+arg pbk1Call s helloWorld
+arg pbk1Call accept punctSet
+run pbk1Call
+bindOk pbk1Res CSignedInt64 pbk1Call
+call pbk1CheckCall math.equalI64
+arg pbk1CheckCall left pbk1Res
+arg pbk1CheckCall right fiveLen
+run pbk1CheckCall
+bind pbk1Ok Bool pbk1CheckCall
 branchIf pbk1Ok pbk1OkLabel
 branch testFailed
 label pbk1OkLabel
 
 # duplicateCStringIntoOwnedMemory("Hello") returns a heap copy that compareCString's equal to original
-call sd1 duplicateCStringIntoOwnedMemory
-arg sd1 s hello
-run sd1
-bindOk sd1Res COpaqueMemoryAddress sd1
-call sd1NullCheck pointer.isNull
-arg sd1NullCheck pointer sd1Res
-run sd1NullCheck
-bind sd1IsNull Bool sd1NullCheck
+call sd1Call duplicateCStringIntoOwnedMemory
+arg sd1Call s hello
+run sd1Call
+bindOk sd1Res COpaqueMemoryAddress sd1Call
+call sd1NullCheckCall pointer.isNull
+arg sd1NullCheckCall pointer sd1Res
+run sd1NullCheckCall
+bind sd1IsNull Bool sd1NullCheckCall
 branchIf sd1IsNull testFailed
-call sd1Cmp compareCString
-arg sd1Cmp a sd1Res
-arg sd1Cmp b hello
-run sd1Cmp
-bindOk sd1CmpRes CSignedInt32 sd1Cmp
-call sd1Check math.equalI64
-arg sd1Check left sd1CmpRes
-arg sd1Check right zeroI32
-run sd1Check
-bind sd1Ok Bool sd1Check
+call sd1CmpCall compareCString
+arg sd1CmpCall a sd1Res
+arg sd1CmpCall b hello
+run sd1CmpCall
+bindOk sd1CmpRes CSignedInt32 sd1CmpCall
+call sd1CheckCall math.equalI64
+arg sd1CheckCall left sd1CmpRes
+arg sd1CheckCall right zeroI32
+run sd1CheckCall
+bind sd1Ok Bool sd1CheckCall
 branchIf sd1Ok sd1OkLabel
 branch testFailed
 label sd1OkLabel
-call sd1Free c.free
-arg sd1Free ptr sd1Res
-run sd1Free
+call sd1FreeCall c.free
+arg sd1FreeCall ptr sd1Res
+run sd1FreeCall
 
 # cstringBeginsWithPrefix("Hello, World", "Hello") == 1
 const oneI32trueChk CSignedInt32 1
-call bw1 cstringBeginsWithPrefix
-arg bw1 s helloComma
-arg bw1 prefix hello
-run bw1
-bindOk bw1Res CSignedInt32 bw1
-call bw1Check math.equalI64
-arg bw1Check left bw1Res
-arg bw1Check right oneI32trueChk
-run bw1Check
-bind bw1Ok Bool bw1Check
+call bw1Call cstringBeginsWithPrefix
+arg bw1Call s helloComma
+arg bw1Call prefix hello
+run bw1Call
+bindOk bw1Res CSignedInt32 bw1Call
+call bw1CheckCall math.equalI64
+arg bw1CheckCall left bw1Res
+arg bw1CheckCall right oneI32trueChk
+run bw1CheckCall
+bind bw1Ok Bool bw1CheckCall
 branchIf bw1Ok bw1OkLabel
 branch testFailed
 label bw1OkLabel
 
 # cstringEndsWithSuffix("Hello, World", "World") - need an actual "World" string
 const worldOnly CNullTerminatedByteString "World"
-call ew1 cstringEndsWithSuffix
-arg ew1 s helloComma
-arg ew1 suffix worldOnly
-run ew1
-bindOk ew1Res CSignedInt32 ew1
-call ew1Check math.equalI64
-arg ew1Check left ew1Res
-arg ew1Check right oneI32trueChk
-run ew1Check
-bind ew1Ok Bool ew1Check
+call ew1Call cstringEndsWithSuffix
+arg ew1Call s helloComma
+arg ew1Call suffix worldOnly
+run ew1Call
+bindOk ew1Res CSignedInt32 ew1Call
+call ew1CheckCall math.equalI64
+arg ew1CheckCall left ew1Res
+arg ew1CheckCall right oneI32trueChk
+run ew1CheckCall
+bind ew1Ok Bool ew1CheckCall
 branchIf ew1Ok ew1OkLabel
 branch testFailed
 label ew1OkLabel
@@ -1473,26 +1541,29 @@ const hi CNullTerminatedByteString "Hi"
 const thereMore CNullTerminatedByteString "there!"
 const expectedHiThere CNullTerminatedByteString "Hither"
 const fourNc CByteCount 4
-call allocNc c.malloc
-arg allocNc size bufSizeNc
-run allocNc
-bind destNc COpaqueMemoryAddress allocNc
-call seedNc copyCStringToDestinationBuffer
-arg seedNc dest destNc
-arg seedNc src hi
-run seedNc
-ignoreOk seedNc CByteCount
+call allocNcCall c.malloc
+arg allocNcCall size bufSizeNc
+run allocNcCall
+bind destNc COpaqueMemoryAddress allocNcCall
+bindError allocNcError CSignedInt32 allocNcCall
+branchIfError allocNcCall allocNcFailedHandler
+defer releaseAllocNcCall c.free destNc
+call seedNcCall copyCStringToDestinationBuffer
+arg seedNcCall dest destNc
+arg seedNcCall src hi
+run seedNcCall
+ignoreOk seedNcCall CByteCount
 call ncatCall appendCStringPrefixToDestinationBuffer
 arg ncatCall dest destNc
 arg ncatCall src thereMore
 arg ncatCall n fourNc
 run ncatCall
 ignoreOk ncatCall CByteCount
-call ncCmp compareCString
-arg ncCmp a destNc
-arg ncCmp b expectedHiThere
-run ncCmp
-bindOk ncCmpRes CSignedInt32 ncCmp
+call ncCmpCall compareCString
+arg ncCmpCall a destNc
+arg ncCmpCall b expectedHiThere
+run ncCmpCall
+bindOk ncCmpRes CSignedInt32 ncCmpCall
 call ncCheckCall math.equalI64
 arg ncCheckCall left ncCmpRes
 arg ncCheckCall right zeroI32
@@ -1501,23 +1572,201 @@ bind ncOk Bool ncCheckCall
 branchIf ncOk ncOkLabel
 branch testFailed
 label ncOkLabel
-call freeNc c.free
-arg freeNc ptr destNc
-run freeNc
 
-# Print OK
-const charO CSignedInt32 79
-const charK CSignedInt32 75
-const charNl CSignedInt32 10
-call putO c.putchar
-arg putO c charO
-run putO
-call putK c.putchar
-arg putK c charK
-run putK
-call putNl c.putchar
-arg putNl c charNl
-run putNl
+# ============================================================
+# Extended unit-test cases: empty-string boundary, not-found
+# search results, ordering comparisons, and predicate-false legs
+# for the prefix/suffix checks. Each existing op already has one
+# happy-path assertion above; these target the alternate branch.
+# ============================================================
+
+const emptyStr CNullTerminatedByteString ""
+const helloPlus CNullTerminatedByteString "Hello!"
+const helloFull CNullTerminatedByteString "Hello, World"
+const helloA CNullTerminatedByteString "abc"
+const helloAd CNullTerminatedByteString "abd"
+const helloAb CNullTerminatedByteString "ab"
+const upperZ CSignedInt32 90
+const zeroByteCount CByteCount 0
+const oneI64case I64 1
+const sixI64case I64 6
+const zeroI32trueChk CSignedInt32 0
+
+# stringByteLength("") == 0 (empty boundary)
+call lenEmptyCall stringByteLength
+arg lenEmptyCall s emptyStr
+run lenEmptyCall
+bindOk lenEmptyRes CByteCount lenEmptyCall
+call lenEmptyCheckCall math.equalI64
+arg lenEmptyCheckCall left lenEmptyRes
+arg lenEmptyCheckCall right zeroByteCount
+run lenEmptyCheckCall
+bind lenEmptyOk Bool lenEmptyCheckCall
+branchIf lenEmptyOk lenEmptyOkLabel
+branch testFailed
+label lenEmptyOkLabel
+
+# stringByteLength("Hello!") == 6
+call lenSixCall stringByteLength
+arg lenSixCall s helloPlus
+run lenSixCall
+bindOk lenSixRes CByteCount lenSixCall
+call lenSixCheckCall math.equalI64
+arg lenSixCheckCall left lenSixRes
+arg lenSixCheckCall right sixI64case
+run lenSixCheckCall
+bind lenSixOk Bool lenSixCheckCall
+branchIf lenSixOk lenSixOkLabel
+branch testFailed
+label lenSixOkLabel
+
+# compareCString("abc", "abd") < 0 (lexicographic order)
+call cmpLessCall compareCString
+arg cmpLessCall a helloA
+arg cmpLessCall b helloAd
+run cmpLessCall
+bindOk cmpLessRes CSignedInt32 cmpLessCall
+call cmpLessCheckCall math.lessThanI64
+arg cmpLessCheckCall left cmpLessRes
+arg cmpLessCheckCall right zeroI32trueChk
+run cmpLessCheckCall
+bind cmpLessOk Bool cmpLessCheckCall
+branchIf cmpLessOk cmpLessOkLabel
+branch testFailed
+label cmpLessOkLabel
+
+# compareCString("abd", "abc") > 0 (reverse direction)
+call cmpGreaterCall compareCString
+arg cmpGreaterCall a helloAd
+arg cmpGreaterCall b helloA
+run cmpGreaterCall
+bindOk cmpGreaterRes CSignedInt32 cmpGreaterCall
+call cmpGreaterCheckCall math.greaterThanI64
+arg cmpGreaterCheckCall left cmpGreaterRes
+arg cmpGreaterCheckCall right zeroI32trueChk
+run cmpGreaterCheckCall
+bind cmpGreaterOk Bool cmpGreaterCheckCall
+branchIf cmpGreaterOk cmpGreaterOkLabel
+branch testFailed
+label cmpGreaterOkLabel
+
+# compareCString("abc", "ab") > 0 (longer string greater when prefix-matches)
+call cmpLongerCall compareCString
+arg cmpLongerCall a helloA
+arg cmpLongerCall b helloAb
+run cmpLongerCall
+bindOk cmpLongerRes CSignedInt32 cmpLongerCall
+call cmpLongerCheckCall math.greaterThanI64
+arg cmpLongerCheckCall left cmpLongerRes
+arg cmpLongerCheckCall right zeroI32trueChk
+run cmpLongerCheckCall
+bind cmpLongerOk Bool cmpLongerCheckCall
+branchIf cmpLongerOk cmpLongerOkLabel
+branch testFailed
+label cmpLongerOkLabel
+
+# compareCStringPrefixBytes(a, b, 0) == 0 (zero-length is always equal)
+call cmpZeroNCall compareCStringPrefixBytes
+arg cmpZeroNCall a hello
+arg cmpZeroNCall b xyz
+arg cmpZeroNCall n zeroByteCount
+run cmpZeroNCall
+bindOk cmpZeroNRes CSignedInt32 cmpZeroNCall
+call cmpZeroNCheckCall math.equalI64
+arg cmpZeroNCheckCall left cmpZeroNRes
+arg cmpZeroNCheckCall right zeroI32trueChk
+run cmpZeroNCheckCall
+bind cmpZeroNOk Bool cmpZeroNCheckCall
+branchIf cmpZeroNOk cmpZeroNOkLabel
+branch testFailed
+label cmpZeroNOkLabel
+
+# findFirstCharacterInCString("Hello", 'Z') == -1 (not found)
+call findCharNotFoundCall findFirstCharacterInCString
+arg findCharNotFoundCall s hello
+arg findCharNotFoundCall c upperZ
+run findCharNotFoundCall
+bindOk findCharNotFoundRes CSignedInt64 findCharNotFoundCall
+call findCharNotFoundCheckCall math.equalI64
+arg findCharNotFoundCheckCall left findCharNotFoundRes
+arg findCharNotFoundCheckCall right negOneI64test
+run findCharNotFoundCheckCall
+bind findCharNotFoundOk Bool findCharNotFoundCheckCall
+branchIf findCharNotFoundOk findCharNotFoundOkLabel
+branch testFailed
+label findCharNotFoundOkLabel
+
+# findLastCharacterInCString("Hello", 'Z') == -1 (not found)
+call findLastNotFoundCall findLastCharacterInCString
+arg findLastNotFoundCall s hello
+arg findLastNotFoundCall c upperZ
+run findLastNotFoundCall
+bindOk findLastNotFoundRes CSignedInt64 findLastNotFoundCall
+call findLastNotFoundCheckCall math.equalI64
+arg findLastNotFoundCheckCall left findLastNotFoundRes
+arg findLastNotFoundCheckCall right negOneI64test
+run findLastNotFoundCheckCall
+bind findLastNotFoundOk Bool findLastNotFoundCheckCall
+branchIf findLastNotFoundOk findLastNotFoundOkLabel
+branch testFailed
+label findLastNotFoundOkLabel
+
+# findSubstringInCString("Hello", "Hello") == 0 (needle at start, full match)
+call findSubAtStartCall findSubstringInCString
+arg findSubAtStartCall haystack hello
+arg findSubAtStartCall needle helloCopy
+run findSubAtStartCall
+bindOk findSubAtStartRes CSignedInt64 findSubAtStartCall
+call findSubAtStartCheckCall math.equalI64
+arg findSubAtStartCheckCall left findSubAtStartRes
+arg findSubAtStartCheckCall right zeroI32trueChk
+run findSubAtStartCheckCall
+bind findSubAtStartOk Bool findSubAtStartCheckCall
+branchIf findSubAtStartOk findSubAtStartOkLabel
+branch testFailed
+label findSubAtStartOkLabel
+
+# cstringBeginsWithPrefix("Hello", "Hello, World") == 0 (prefix longer than string)
+call beginsLongerCall cstringBeginsWithPrefix
+arg beginsLongerCall s hello
+arg beginsLongerCall prefix helloFull
+run beginsLongerCall
+bindOk beginsLongerRes CSignedInt32 beginsLongerCall
+call beginsLongerCheckCall math.equalI64
+arg beginsLongerCheckCall left beginsLongerRes
+arg beginsLongerCheckCall right zeroI32trueChk
+run beginsLongerCheckCall
+bind beginsLongerOk Bool beginsLongerCheckCall
+branchIf beginsLongerOk beginsLongerOkLabel
+branch testFailed
+label beginsLongerOkLabel
+
+# cstringEndsWithSuffix("Hello, World", "Hello") == 0 (matches prefix, not suffix)
+call endsMismatchCall cstringEndsWithSuffix
+arg endsMismatchCall s helloComma
+arg endsMismatchCall suffix hello
+run endsMismatchCall
+bindOk endsMismatchRes CSignedInt32 endsMismatchCall
+call endsMismatchCheckCall math.equalI64
+arg endsMismatchCheckCall left endsMismatchRes
+arg endsMismatchCheckCall right zeroI32trueChk
+run endsMismatchCheckCall
+bind endsMismatchOk Bool endsMismatchCheckCall
+branchIf endsMismatchOk endsMismatchOkLabel
+branch testFailed
+label endsMismatchOkLabel
+
+# All assertions hold. Emit "OK" via console.writeLine — uniform
+# with the other stdlib smokes, references the runtime console
+# handle, and surfaces a typed ConsoleWriteFailed if stdout fails.
+const successMessageText CNullTerminatedByteString "OK"
+call writeSuccessLineCall console.writeLine
+arg writeSuccessLineCall console console
+arg writeSuccessLineCall text successMessageText
+run writeSuccessLineCall
+ignoreOk writeSuccessLineCall CSignedInt32
+bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branchIfError writeSuccessLineCall consoleWriteFailedHandler
 
 const exitOk ExitCode 0
 returnOk exitOk
@@ -1526,3 +1775,29 @@ label testFailed
 const exitFail CSignedInt32 1
 makeError testFailure MainError.StringSmokeAssertionFailed exitFail
 returnError testFailure
+
+# Failure leg: surface the raw negative CSignedInt32 from
+# console.writeLine as the cause attached to the typed
+# MainError.ConsoleWriteFailed variant.
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
+returnError consoleWriteFailedFailure
+
+# Heap-allocation failure legs: one handler per c.malloc call so
+# the bindError value for each is referenced (linter wants every
+# bindError consumed). Each surfaces MainError.MemoryAllocationFailed
+# with the call-specific raw error as the cause. The deferred frees
+# registered after each successful malloc still fire on these paths
+# for any allocations that did succeed prior to the failure.
+label alloc1FailedHandler
+makeError alloc1Failure MainError.MemoryAllocationFailed alloc1Error
+returnError alloc1Failure
+label alloc2FailedHandler
+makeError alloc2Failure MainError.MemoryAllocationFailed alloc2Error
+returnError alloc2Failure
+label alloc3FailedHandler
+makeError alloc3Failure MainError.MemoryAllocationFailed alloc3Error
+returnError alloc3Failure
+label allocNcFailedHandler
+makeError allocNcFailure MainError.MemoryAllocationFailed allocNcError
+returnError allocNcFailure

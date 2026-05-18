@@ -36,6 +36,16 @@ errorCase RandomStateError MemoryAllocationFailed
 
 error MainError
 errorCase MainError RandomSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+# section capability
+# rationale: smoke-test main writes a single OK line to stdout.
+capability stdoutWriteCapability console.stdout write
+# State slot lifetime: createDeterministicRandomState allocates an
+# 8-byte LCG slot via c.malloc; releaseDeterministicRandomState
+# returns it via c.free.
+capability heapAllocationCapability heap allocate
+capability heapFreeCapability heap free
 
 # section random.constants
 domainLiteral randomStateSlotByteSize CByteCount 8
@@ -93,7 +103,6 @@ operation loadUnsignedByteFromBufferOffset
 input loadUnsignedByteFromBufferOffset byteBuffer COpaqueMemoryAddress
 input loadUnsignedByteFromBufferOffset byteOffset CByteCount
 output loadUnsignedByteFromBufferOffset CSignedInt64
-effect loadUnsignedByteFromBufferOffset read byteBuffer
 memoryHeap loadUnsignedByteFromBufferOffset no
 async loadUnsignedByteFromBufferOffset no
 purpose loadUnsignedByteFromBufferOffset "Loads one byte at byteOffset and normalizes it to the unsigned 0..255 interpretation via (raw + 256) % 256 to undo i8 sign-extension."
@@ -122,8 +131,10 @@ returnValue unsignedByteValue
 operation createDeterministicRandomState
 input createDeterministicRandomState randomSeed CSignedInt64
 output createDeterministicRandomState Result COpaqueMemoryAddress RandomStateError
+useCapability createDeterministicRandomState heapAllocationCapability
 effect createDeterministicRandomState allocate heap
 memoryHeap createDeterministicRandomState yes
+memoryAllocationSource createDeterministicRandomState allocateRandomStateSlotCall
 async createDeterministicRandomState no
 purpose createDeterministicRandomState "Allocate an 8-byte LCG state slot, store the seed (or 1 when seed <= 0), return the slot pointer."
 invariant createDeterministicRandomState "Stored seed is always > 0; the MINSTD LCG has a zero fixed point that we explicitly avoid by normalizing."
@@ -134,6 +145,8 @@ call allocateRandomStateSlotCall c.malloc
 arg allocateRandomStateSlotCall size randomStateSlotByteSize
 run allocateRandomStateSlotCall
 bind allocatedRandomStateSlot COpaqueMemoryAddress allocateRandomStateSlotCall
+bindError randomStateAllocationError CSignedInt32 allocateRandomStateSlotCall
+branchIfError allocateRandomStateSlotCall randomStateAllocationFailedHandler
 
 # Normalize seed: 0 / negative -> 1 (MINSTD zero fixed point).
 call detectSeedNeedsNormalizationCall math.lessThanOrEqualI64
@@ -141,13 +154,13 @@ arg detectSeedNeedsNormalizationCall left randomSeed
 arg detectSeedNeedsNormalizationCall right fallbackSeedValue
 run detectSeedNeedsNormalizationCall
 bind seedNeedsNormalization Bool detectSeedNeedsNormalizationCall
+# Initialize the working seed to the fallback (1), then overwrite
+# with the caller's seed when normalization is NOT required. This
+# yields a single set on each path and matches fallbackSeedValue
+# without a separate label.
 var normalizedRandomSeed I64 1
-branchIf seedNeedsNormalization useFallbackSeedValue
+branchIf seedNeedsNormalization encodeRandomStateBytes
 set normalizedRandomSeed randomSeed
-branch encodeRandomStateBytes
-label useFallbackSeedValue
-set normalizedRandomSeed fallbackSeedValue
-branch encodeRandomStateBytes
 label encodeRandomStateBytes
 
 # Encode the seed as 8 little-endian bytes into the slot.
@@ -281,11 +294,20 @@ run storeByteSevenForSeedCall
 
 returnOk allocatedRandomStateSlot
 
+# Failure leg: c.malloc returned NULL. Surface the raw negative
+# status as the cause attached to the typed MemoryAllocationFailed
+# variant the caller will branch on.
+label randomStateAllocationFailedHandler
+makeError randomStateAllocationFailure RandomStateError.MemoryAllocationFailed randomStateAllocationError
+returnError randomStateAllocationFailure
+
 operation releaseDeterministicRandomState
 input releaseDeterministicRandomState randomState COpaqueMemoryAddress
 output releaseDeterministicRandomState CSignedInt32
+useCapability releaseDeterministicRandomState heapFreeCapability
 effect releaseDeterministicRandomState free heap
 memoryHeap releaseDeterministicRandomState yes
+memoryAllocationSource releaseDeterministicRandomState releaseSlotCall
 async releaseDeterministicRandomState no
 purpose releaseDeterministicRandomState "Releases the slot returned by createDeterministicRandomState back to the libc allocator."
 invariant releaseDeterministicRandomState "Idempotent for double-free safety only if the libc allocator tolerates it — caller should track ownership."
@@ -300,7 +322,6 @@ returnValue releaseSuccessReturnCode
 operation readDeterministicRandomState
 input readDeterministicRandomState randomState COpaqueMemoryAddress
 output readDeterministicRandomState CSignedInt64
-effect readDeterministicRandomState read randomState
 memoryHeap readDeterministicRandomState no
 async readDeterministicRandomState no
 purpose readDeterministicRandomState "Loads the i64 value from an 8-byte little-endian state slot using loadUnsignedByteFromBufferOffset so high-bit bytes don't sign-extend."
@@ -424,8 +445,6 @@ returnValue fullyComposedStateValue
 operation nextDeterministicRandomSignedInt64
 input nextDeterministicRandomSignedInt64 randomState COpaqueMemoryAddress
 output nextDeterministicRandomSignedInt64 CSignedInt64
-effect nextDeterministicRandomSignedInt64 read randomState
-effect nextDeterministicRandomSignedInt64 write randomState
 memoryHeap nextDeterministicRandomSignedInt64 no
 async nextDeterministicRandomSignedInt64 no
 purpose nextDeterministicRandomSignedInt64 "Advance the MINSTD LCG and return the next state value: state = (state * 48271) mod (2^31 - 1)."
@@ -586,9 +605,14 @@ returnValue nextStateValue
 operation main
 input main console Console
 output main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+useCapability main heapAllocationCapability
+useCapability main heapFreeCapability
 effect main write console.stdout
 effect main allocate heap
+effect main free heap
 memoryHeap main yes
+memoryAllocationSource main createStateCall
 async main no
 purpose main "Seed the LCG with 1; draw two values and verify the MINSTD canonical sequence: 1 -> 48271 -> 182605794."
 invariant main "The MINSTD multiplier produces a deterministic sequence — any deviation indicates encoder/decoder drift."
@@ -640,10 +664,18 @@ call writeSuccessLineCall console.writeLine
 arg writeSuccessLineCall console console
 arg writeSuccessLineCall text successMessageText
 run writeSuccessLineCall
-ignoreOk writeSuccessLineCall Void
+ignoreOk writeSuccessLineCall CSignedInt32
+bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branchIfError writeSuccessLineCall consoleWriteFailedHandler
 const exitOkCode ExitCode 0
 returnOk exitOkCode
 
+# Failure leg: surface the raw negative CSignedInt32 from
+# console.writeLine as the cause attached to the typed
+# MainError.ConsoleWriteFailed variant.
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
+returnError consoleWriteFailedFailure
 label smokeAssertionFailed
 makeError randomSmokeFailure MainError.RandomSmokeAssertionFailed
 returnError randomSmokeFailure

@@ -32,6 +32,11 @@ entry console main
 
 error MainError
 errorCase MainError CharSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+# section capability
+# rationale: smoke-test main writes a single OK line to stdout.
+capability stdoutWriteCapability console.stdout write
 
 # section char.controlBytes
 # rationale: ASCII control-set codepoints commonly named in source code.
@@ -118,6 +123,7 @@ domainLiteralTrust asciiBackslashCharacterCode trustedStaticLiteral
 operation main
 input main console Console
 output main Result ExitCode MainError
+useCapability main stdoutWriteCapability
 effect main write console.stdout
 memoryHeap main no
 async main no
@@ -170,22 +176,27 @@ branchIf spaceOk spaceHolds
 branch smokeAssertionFailed
 label spaceHolds
 
-# All assertions hold. Emit "OK\n" via direct putchar so we don't
-# depend on console.writeLine in this minimal module.
-const upperOLiteral CSignedInt32 79
-const upperKLiteral CSignedInt32 75
-call writeOCharacterCall c.putchar
-arg writeOCharacterCall c upperOLiteral
-run writeOCharacterCall
-call writeKCharacterCall c.putchar
-arg writeKCharacterCall c upperKLiteral
-run writeKCharacterCall
-call writeNewlineCharacterCall c.putchar
-arg writeNewlineCharacterCall c asciiNewlineCharacterCode
-run writeNewlineCharacterCall
-
+# All assertions hold. Emit "OK" via console.writeLine — using the
+# higher-level writer (rather than three raw c.putchar calls) keeps
+# the success path uniform with the other stdlib smokes and gives us
+# a single point at which to surface ConsoleWriteFailed.
+const successMessageText CNullTerminatedByteString "OK"
+call writeSuccessLineCall console.writeLine
+arg writeSuccessLineCall console console
+arg writeSuccessLineCall text successMessageText
+run writeSuccessLineCall
+ignoreOk writeSuccessLineCall CSignedInt32
+bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branchIfError writeSuccessLineCall consoleWriteFailedHandler
 const exitOkCode ExitCode 0
 returnOk exitOkCode
+
+# Failure leg: surface the raw negative CSignedInt32 from
+# console.writeLine as the cause attached to the typed
+# MainError.ConsoleWriteFailed variant.
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
+returnError consoleWriteFailedFailure
 
 label smokeAssertionFailed
 makeError charSmokeFailure MainError.CharSmokeAssertionFailed

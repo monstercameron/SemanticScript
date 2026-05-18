@@ -28,6 +28,15 @@ entry console main
 
 error MainError
 errorCase MainError MemorySmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+errorCase MainError MemoryAllocationFailed
+
+# section capability
+# rationale: smoke-test main writes a single OK line to stdout.
+capability stdoutWriteCapability console.stdout write
+# Smoke-test main allocates and frees a working buffer via libc.
+capability heapAllocationCapability heap allocate
+capability heapFreeCapability heap free
 
 domainLiteral integerOneStepValue CSignedInt64 1
 domainLiteralTrust integerOneStepValue trustedStaticLiteral
@@ -51,8 +60,6 @@ input copyMemoryBytes destinationBuffer COpaqueMemoryAddress
 input copyMemoryBytes sourceBuffer CNullTerminatedByteString
 input copyMemoryBytes byteCount CByteCount
 output copyMemoryBytes CByteCount
-effect copyMemoryBytes read sourceBuffer
-effect copyMemoryBytes write destinationBuffer
 memoryHeap copyMemoryBytes no
 memoryStackLimit copyMemoryBytes 1024
 async copyMemoryBytes no
@@ -93,8 +100,6 @@ input moveMemoryBytesAllowOverlap destinationBuffer COpaqueMemoryAddress
 input moveMemoryBytesAllowOverlap sourceBuffer CNullTerminatedByteString
 input moveMemoryBytesAllowOverlap byteCount CByteCount
 output moveMemoryBytesAllowOverlap CByteCount
-effect moveMemoryBytesAllowOverlap read sourceBuffer
-effect moveMemoryBytesAllowOverlap write destinationBuffer
 memoryHeap moveMemoryBytesAllowOverlap no
 memoryStackLimit moveMemoryBytesAllowOverlap 1024
 async moveMemoryBytesAllowOverlap no
@@ -175,11 +180,11 @@ input fillMemoryBytesWithValue byteBuffer COpaqueMemoryAddress
 input fillMemoryBytesWithValue targetValue CSignedInt32
 input fillMemoryBytesWithValue byteCount CByteCount
 output fillMemoryBytesWithValue CByteCount
-effect fillMemoryBytesWithValue write byteBuffer
 memoryHeap fillMemoryBytesWithValue no
 memoryStackLimit fillMemoryBytesWithValue 1024
 async fillMemoryBytesWithValue no
 purpose fillMemoryBytesWithValue "Writes byteCount copies of targetValue into byteBuffer."
+invariant fillMemoryBytesWithValue "Writes exactly byteCount bytes; never reads from byteBuffer; the low 8 bits of targetValue are stored at each offset."
 guarantee fillMemoryBytesWithValue "Total."
 label startFillMemoryBytesWithValue
 var fillCursor I64 0
@@ -209,8 +214,8 @@ operation zeroMemoryBytes
 input zeroMemoryBytes byteBuffer COpaqueMemoryAddress
 input zeroMemoryBytes byteCount CByteCount
 output zeroMemoryBytes CByteCount
-effect zeroMemoryBytes write byteBuffer
 memoryHeap zeroMemoryBytes no
+memoryStackLimit zeroMemoryBytes 1024
 async zeroMemoryBytes no
 purpose zeroMemoryBytes "Writes byteCount zeros into byteBuffer (bzero shape). Delegates to fillMemoryBytesWithValue."
 guarantee zeroMemoryBytes "Total."
@@ -231,8 +236,6 @@ input compareMemoryByteRanges leftBuffer CNullTerminatedByteString
 input compareMemoryByteRanges rightBuffer CNullTerminatedByteString
 input compareMemoryByteRanges byteCount CByteCount
 output compareMemoryByteRanges CSignedInt64
-effect compareMemoryByteRanges read leftBuffer
-effect compareMemoryByteRanges read rightBuffer
 memoryHeap compareMemoryByteRanges no
 memoryStackLimit compareMemoryByteRanges 1024
 async compareMemoryByteRanges no
@@ -286,7 +289,6 @@ input findByteValueInMemoryRange byteBuffer CNullTerminatedByteString
 input findByteValueInMemoryRange targetValue CSignedInt32
 input findByteValueInMemoryRange byteCount CByteCount
 output findByteValueInMemoryRange CSignedInt64
-effect findByteValueInMemoryRange read byteBuffer
 memoryHeap findByteValueInMemoryRange no
 memoryStackLimit findByteValueInMemoryRange 1024
 async findByteValueInMemoryRange no
@@ -331,10 +333,11 @@ operation hashMemoryBytesWithFnv1a
 input hashMemoryBytesWithFnv1a byteBuffer CNullTerminatedByteString
 input hashMemoryBytesWithFnv1a byteCount CByteCount
 output hashMemoryBytesWithFnv1a CSignedInt64
-effect hashMemoryBytesWithFnv1a read byteBuffer
 memoryHeap hashMemoryBytesWithFnv1a no
+memoryStackLimit hashMemoryBytesWithFnv1a 1024
 async hashMemoryBytesWithFnv1a no
 purpose hashMemoryBytesWithFnv1a "Approximate FNV-1a 64-bit hash. Walks every byte of byteBuffer, mixes via add+multiply (XOR is not natively available at this layer), produces a deterministic per-input value."
+invariant hashMemoryBytesWithFnv1a "Deterministic on the input bytes; identical buffers produce identical hashes; no allocation."
 warning hashMemoryBytesWithFnv1a "Not a bit-exact FNV-1a — useful for dispatch tables but NOT for cryptographic or interoperability purposes."
 guarantee hashMemoryBytesWithFnv1a "Total."
 label startHashMemoryBytesWithFnv1a
@@ -401,11 +404,18 @@ returnValue hashAccumulator
 operation main
 input main console Console
 output main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+useCapability main heapAllocationCapability
+useCapability main heapFreeCapability
 effect main allocate heap
+effect main free heap
 effect main write console.stdout
 memoryHeap main yes
+memoryStackLimit main 4096
+memoryAllocationSource main allocateBufferCall
 async main no
-purpose main "Smoke-test copy / fill / compare / find / move on a heap-allocated buffer."
+purpose main "Smoke-test copy / fill / compare / find on a heap-allocated buffer."
+invariant main "Smoke fails closed: malloc failure surfaces MemoryAllocationFailed; any assertion failure surfaces MemorySmokeAssertionFailed."
 
 label startMain
 const allocSize CByteCount 16
@@ -413,6 +423,9 @@ call allocateBufferCall c.malloc
 arg allocateBufferCall size allocSize
 run allocateBufferCall
 bind workBuffer COpaqueMemoryAddress allocateBufferCall
+bindError heapAllocationError CSignedInt32 allocateBufferCall
+branchIfError allocateBufferCall heapAllocationFailedHandler
+defer releaseAllocateBufferCall c.free workBuffer
 
 const upperALetterCode CSignedInt32 65
 const fiveByteCount CByteCount 5
@@ -481,19 +494,31 @@ branchIf findOk findHolds
 branch smokeAssertionFailed
 label findHolds
 
-call releaseBufferCall c.free
-arg releaseBufferCall ptr workBuffer
-run releaseBufferCall
-
 const successMessageText CNullTerminatedByteString "OK"
 call writeSuccessLineCall console.writeLine
 arg writeSuccessLineCall console console
 arg writeSuccessLineCall text successMessageText
 run writeSuccessLineCall
-ignoreOk writeSuccessLineCall Void
+ignoreOk writeSuccessLineCall CSignedInt32
+bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branchIfError writeSuccessLineCall consoleWriteFailedHandler
 const exitOkCode ExitCode 0
 returnOk exitOkCode
 
+# Failure leg: surface the raw negative CSignedInt32 from
+# console.writeLine as the cause attached to the typed
+# MainError.ConsoleWriteFailed variant.
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
+returnError consoleWriteFailedFailure
 label smokeAssertionFailed
 makeError memorySmokeFailure MainError.MemorySmokeAssertionFailed
 returnError memorySmokeFailure
+
+# Heap-allocation failure leg: c.malloc returned NULL. Surface the
+# typed MemoryAllocationFailed variant with the raw negative status
+# as the cause. The deferred c.free does not fire here because the
+# defer was registered AFTER this branch's branchIfError.
+label heapAllocationFailedHandler
+makeError heapAllocationFailure MainError.MemoryAllocationFailed heapAllocationError
+returnError heapAllocationFailure

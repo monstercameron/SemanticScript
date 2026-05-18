@@ -32,13 +32,20 @@ runtime AgentRuntime 0.1
 entry console main
 
 # Typed error domain for integer arithmetic. AgentScript-style errors
-# replace the previous "negative return = failure" C convention.
+# replace the previous "negative return = failure" C convention. The
+# only currently-detected failure is divide-by-zero — overflow is not
+# detected here because LLVM's sdiv/srem wrap silently and we accept
+# that as the documented behavior in the operation warnings below.
 error IntegerArithmeticError
 errorCase IntegerArithmeticError DivisionByZeroAttempted
-errorCase IntegerArithmeticError ArithmeticOverflowed
 
 error MainError
 errorCase MainError InttypesSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+# section capability
+# rationale: smoke-test main writes a single OK line to stdout.
+capability stdoutWriteCapability console.stdout write
 
 domainLiteral integerZeroComparisonValue CSignedInt64 0
 domainLiteralTrust integerZeroComparisonValue trustedStaticLiteral
@@ -145,7 +152,6 @@ returnError remainderDivisionByZeroFailure
 operation parsePositiveBinaryCStringToSignedInt64
 input parsePositiveBinaryCStringToSignedInt64 inputText CNullTerminatedByteString
 output parsePositiveBinaryCStringToSignedInt64 CSignedInt64
-effect parsePositiveBinaryCStringToSignedInt64 read inputText
 memoryHeap parsePositiveBinaryCStringToSignedInt64 no
 async parsePositiveBinaryCStringToSignedInt64 no
 purpose parsePositiveBinaryCStringToSignedInt64 "Parse a null-terminated C string of '0' / '1' bytes as an unsigned base-2 integer. Stops at the first byte that is neither '0' nor '1' and returns the partial accumulator."
@@ -209,7 +215,6 @@ returnValue binaryAccumulator
 operation parsePositiveOctalCStringToSignedInt64
 input parsePositiveOctalCStringToSignedInt64 inputText CNullTerminatedByteString
 output parsePositiveOctalCStringToSignedInt64 CSignedInt64
-effect parsePositiveOctalCStringToSignedInt64 read inputText
 memoryHeap parsePositiveOctalCStringToSignedInt64 no
 async parsePositiveOctalCStringToSignedInt64 no
 purpose parsePositiveOctalCStringToSignedInt64 "Parse a null-terminated C string of '0'..'7' bytes as an unsigned base-8 integer. Stops at the first byte outside that range."
@@ -270,6 +275,7 @@ returnValue octalAccumulator
 operation main
 input main console Console
 output main Result ExitCode MainError
+useCapability main stdoutWriteCapability
 effect main write console.stdout
 memoryHeap main no
 async main no
@@ -331,10 +337,18 @@ call writeSuccessLineCall console.writeLine
 arg writeSuccessLineCall console console
 arg writeSuccessLineCall text successMessageText
 run writeSuccessLineCall
-ignoreOk writeSuccessLineCall Void
+ignoreOk writeSuccessLineCall CSignedInt32
+bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branchIfError writeSuccessLineCall consoleWriteFailedHandler
 const exitOkCode ExitCode 0
 returnOk exitOkCode
 
+# Failure leg: surface the raw negative CSignedInt32 from
+# console.writeLine as the cause attached to the typed
+# MainError.ConsoleWriteFailed variant.
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
+returnError consoleWriteFailedFailure
 label smokeAssertionFailed
 makeError inttypesSmokeFailure MainError.InttypesSmokeAssertionFailed
 returnError inttypesSmokeFailure

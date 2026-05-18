@@ -40,30 +40,47 @@ errorCase AssertionError PointerWasNull
 
 error MainError
 errorCase MainError AssertSmokeFailed
+errorCase MainError ConsoleWriteFailed
+
+# section capability
+# rationale: smoke-test main writes a single OK line to stdout.
+capability stdoutWriteCapability console.stdout write
 
 # section assert.diagnosticBytes
 
 operation writeAssertionByteToStandardOutput
 input writeAssertionByteToStandardOutput characterCode CSignedInt32
 output writeAssertionByteToStandardOutput CSignedInt32
+useCapability writeAssertionByteToStandardOutput stdoutWriteCapability
 effect writeAssertionByteToStandardOutput write console.stdout
 memoryHeap writeAssertionByteToStandardOutput no
 memoryStackLimit writeAssertionByteToStandardOutput 1024
 async writeAssertionByteToStandardOutput no
 purpose writeAssertionByteToStandardOutput "Single-byte writer wrapping c.putchar for assertion-failure diagnostics."
-invariant writeAssertionByteToStandardOutput "Writes exactly one byte; returns the libc putchar return value (typically the character itself or EOF on error)."
-guarantee writeAssertionByteToStandardOutput "Always returns."
+invariant writeAssertionByteToStandardOutput "Writes exactly one byte; returns the libc putchar return value (the character on success, EOF / negative on error which we propagate to the caller)."
+guarantee writeAssertionByteToStandardOutput "Always returns; negative return signals a stdout-write failure."
 label startWriteAssertionByteToStandardOutput
 call libcPutcharCall c.putchar
 arg libcPutcharCall c characterCode
 run libcPutcharCall
+ignoreOk libcPutcharCall CSignedInt32
+bindError libcPutcharError CSignedInt32 libcPutcharCall
+branchIfError libcPutcharCall returnPutcharError
 bind libcPutcharResult CSignedInt32 libcPutcharCall
+# The assertion-banner emitter doesn't surface stdout-write errors
+# as typed failures (assertion failure is the primary signal), so
+# we just propagate the libc putchar return as-is.
 returnValue libcPutcharResult
+# On putchar error we propagate the negative error value to the
+# caller, who can decide whether to abort or continue.
+label returnPutcharError
+returnValue libcPutcharError
 
 # section assert.diagnosticHelpers
 
 operation emitAssertionFailureBanner
 output emitAssertionFailureBanner CSignedInt32
+useCapability emitAssertionFailureBanner stdoutWriteCapability
 effect emitAssertionFailureBanner write console.stdout
 memoryHeap emitAssertionFailureBanner no
 memoryStackLimit emitAssertionFailureBanner 1024
@@ -79,38 +96,38 @@ const asciiLowerR CSignedInt32 114
 const asciiLowerT CSignedInt32 116
 const asciiExclamation CSignedInt32 33
 const asciiNewline CSignedInt32 10
-call wA writeAssertionByteToStandardOutput
-arg wA characterCode asciiLowerA
-run wA
-ignoreValue wA CSignedInt32
-call wS1 writeAssertionByteToStandardOutput
-arg wS1 characterCode asciiLowerS
-run wS1
-ignoreValue wS1 CSignedInt32
-call wS2 writeAssertionByteToStandardOutput
-arg wS2 characterCode asciiLowerS
-run wS2
-ignoreValue wS2 CSignedInt32
-call wE writeAssertionByteToStandardOutput
-arg wE characterCode asciiLowerE
-run wE
-ignoreValue wE CSignedInt32
-call wR writeAssertionByteToStandardOutput
-arg wR characterCode asciiLowerR
-run wR
-ignoreValue wR CSignedInt32
-call wT writeAssertionByteToStandardOutput
-arg wT characterCode asciiLowerT
-run wT
-ignoreValue wT CSignedInt32
-call wEx writeAssertionByteToStandardOutput
-arg wEx characterCode asciiExclamation
-run wEx
-ignoreValue wEx CSignedInt32
-call wNl writeAssertionByteToStandardOutput
-arg wNl characterCode asciiNewline
-run wNl
-ignoreValue wNl CSignedInt32
+call writeBannerLetterACall writeAssertionByteToStandardOutput
+arg writeBannerLetterACall characterCode asciiLowerA
+run writeBannerLetterACall
+ignoreValue writeBannerLetterACall CSignedInt32
+call writeBannerFirstLetterSCall writeAssertionByteToStandardOutput
+arg writeBannerFirstLetterSCall characterCode asciiLowerS
+run writeBannerFirstLetterSCall
+ignoreValue writeBannerFirstLetterSCall CSignedInt32
+call writeBannerSecondLetterSCall writeAssertionByteToStandardOutput
+arg writeBannerSecondLetterSCall characterCode asciiLowerS
+run writeBannerSecondLetterSCall
+ignoreValue writeBannerSecondLetterSCall CSignedInt32
+call writeBannerLetterECall writeAssertionByteToStandardOutput
+arg writeBannerLetterECall characterCode asciiLowerE
+run writeBannerLetterECall
+ignoreValue writeBannerLetterECall CSignedInt32
+call writeBannerLetterRCall writeAssertionByteToStandardOutput
+arg writeBannerLetterRCall characterCode asciiLowerR
+run writeBannerLetterRCall
+ignoreValue writeBannerLetterRCall CSignedInt32
+call writeBannerLetterTCall writeAssertionByteToStandardOutput
+arg writeBannerLetterTCall characterCode asciiLowerT
+run writeBannerLetterTCall
+ignoreValue writeBannerLetterTCall CSignedInt32
+call writeBannerExclamationCall writeAssertionByteToStandardOutput
+arg writeBannerExclamationCall characterCode asciiExclamation
+run writeBannerExclamationCall
+ignoreValue writeBannerExclamationCall CSignedInt32
+call writeBannerNewlineCall writeAssertionByteToStandardOutput
+arg writeBannerNewlineCall characterCode asciiNewline
+run writeBannerNewlineCall
+ignoreValue writeBannerNewlineCall CSignedInt32
 const bannerReturnCode CSignedInt32 0
 returnValue bannerReturnCode
 
@@ -119,6 +136,7 @@ returnValue bannerReturnCode
 operation requireConditionTrue
 input requireConditionTrue conditionValue Bool
 output requireConditionTrue Result CSignedInt32 AssertionError
+useCapability requireConditionTrue stdoutWriteCapability
 effect requireConditionTrue write console.stdout
 memoryHeap requireConditionTrue no
 memoryStackLimit requireConditionTrue 1024
@@ -142,6 +160,7 @@ operation requireSignedInt64ValuesEqual
 input requireSignedInt64ValuesEqual leftValue CSignedInt64
 input requireSignedInt64ValuesEqual rightValue CSignedInt64
 output requireSignedInt64ValuesEqual Result CSignedInt32 AssertionError
+useCapability requireSignedInt64ValuesEqual stdoutWriteCapability
 effect requireSignedInt64ValuesEqual write console.stdout
 memoryHeap requireSignedInt64ValuesEqual no
 memoryStackLimit requireSignedInt64ValuesEqual 1024
@@ -169,6 +188,7 @@ operation requireSignedInt64ValuesNotEqual
 input requireSignedInt64ValuesNotEqual leftValue CSignedInt64
 input requireSignedInt64ValuesNotEqual rightValue CSignedInt64
 output requireSignedInt64ValuesNotEqual Result CSignedInt32 AssertionError
+useCapability requireSignedInt64ValuesNotEqual stdoutWriteCapability
 effect requireSignedInt64ValuesNotEqual write console.stdout
 memoryHeap requireSignedInt64ValuesNotEqual no
 memoryStackLimit requireSignedInt64ValuesNotEqual 1024
@@ -196,6 +216,7 @@ operation requireSignedInt64LeftGreaterThanRight
 input requireSignedInt64LeftGreaterThanRight leftValue CSignedInt64
 input requireSignedInt64LeftGreaterThanRight rightValue CSignedInt64
 output requireSignedInt64LeftGreaterThanRight Result CSignedInt32 AssertionError
+useCapability requireSignedInt64LeftGreaterThanRight stdoutWriteCapability
 effect requireSignedInt64LeftGreaterThanRight write console.stdout
 memoryHeap requireSignedInt64LeftGreaterThanRight no
 async requireSignedInt64LeftGreaterThanRight no
@@ -222,6 +243,7 @@ operation requireSignedInt64LeftLessThanRight
 input requireSignedInt64LeftLessThanRight leftValue CSignedInt64
 input requireSignedInt64LeftLessThanRight rightValue CSignedInt64
 output requireSignedInt64LeftLessThanRight Result CSignedInt32 AssertionError
+useCapability requireSignedInt64LeftLessThanRight stdoutWriteCapability
 effect requireSignedInt64LeftLessThanRight write console.stdout
 memoryHeap requireSignedInt64LeftLessThanRight no
 async requireSignedInt64LeftLessThanRight no
@@ -249,6 +271,7 @@ input requireSignedInt64ValueWithinInclusiveRange inputValue CSignedInt64
 input requireSignedInt64ValueWithinInclusiveRange lowerBound CSignedInt64
 input requireSignedInt64ValueWithinInclusiveRange upperBound CSignedInt64
 output requireSignedInt64ValueWithinInclusiveRange Result CSignedInt32 AssertionError
+useCapability requireSignedInt64ValueWithinInclusiveRange stdoutWriteCapability
 effect requireSignedInt64ValueWithinInclusiveRange write console.stdout
 memoryHeap requireSignedInt64ValueWithinInclusiveRange no
 async requireSignedInt64ValueWithinInclusiveRange no
@@ -280,6 +303,7 @@ returnError rangeFailure
 operation requireOpaquePointerNotNull
 input requireOpaquePointerNotNull pointerValue COpaqueMemoryAddress
 output requireOpaquePointerNotNull Result CSignedInt32 AssertionError
+useCapability requireOpaquePointerNotNull stdoutWriteCapability
 effect requireOpaquePointerNotNull write console.stdout
 memoryHeap requireOpaquePointerNotNull no
 async requireOpaquePointerNotNull no
@@ -308,6 +332,7 @@ returnError pointerNullFailure
 operation main
 input main console Console
 output main Result ExitCode MainError
+useCapability main stdoutWriteCapability
 effect main write console.stdout
 memoryHeap main no
 async main no
@@ -328,8 +353,6 @@ call assertEqualCall requireSignedInt64ValuesEqual
 arg assertEqualCall leftValue twoPlusTwo
 arg assertEqualCall rightValue fourInt
 run assertEqualCall
-bindOk assertEqualOkSlot CSignedInt32 assertEqualCall
-bindError assertEqualErrSlot CSignedInt32 assertEqualCall
 branchIfError assertEqualCall smokeAssertionFailed
 
 # requireSignedInt64ValuesNotEqual(1, 2)
@@ -338,8 +361,6 @@ call assertNotEqualCall requireSignedInt64ValuesNotEqual
 arg assertNotEqualCall leftValue oneInt
 arg assertNotEqualCall rightValue twoInt
 run assertNotEqualCall
-bindOk assertNotEqualOkSlot CSignedInt32 assertNotEqualCall
-bindError assertNotEqualErrSlot CSignedInt32 assertNotEqualCall
 branchIfError assertNotEqualCall smokeAssertionFailed
 
 const successMessageText CNullTerminatedByteString "OK"
@@ -347,10 +368,18 @@ call writeSuccessLineCall console.writeLine
 arg writeSuccessLineCall console console
 arg writeSuccessLineCall text successMessageText
 run writeSuccessLineCall
-ignoreOk writeSuccessLineCall Void
+ignoreOk writeSuccessLineCall CSignedInt32
+bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branchIfError writeSuccessLineCall consoleWriteFailedHandler
 const exitOkCode ExitCode 0
 returnOk exitOkCode
 
+# Failure leg: surface the raw negative CSignedInt32 from
+# console.writeLine as the cause attached to the typed
+# MainError.ConsoleWriteFailed variant.
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
+returnError consoleWriteFailedFailure
 label smokeAssertionFailed
 makeError assertSmokeFailure MainError.AssertSmokeFailed
 returnError assertSmokeFailure

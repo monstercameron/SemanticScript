@@ -31,6 +31,14 @@ entry console main
 
 error MainError
 errorCase MainError ArraySmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+errorCase MainError MemoryAllocationFailed
+
+# section capability
+# rationale: smoke-test main writes a single OK line to stdout.
+capability stdoutWriteCapability console.stdout write
+capability heapAllocationCapability heap allocate
+capability heapFreeCapability heap free
 
 domainLiteral integerOneStepValue CSignedInt64 1
 domainLiteralTrust integerOneStepValue trustedStaticLiteral
@@ -47,7 +55,6 @@ operation sumSignedByteValuesInBuffer
 input sumSignedByteValuesInBuffer byteBuffer CNullTerminatedByteString
 input sumSignedByteValuesInBuffer byteCount CByteCount
 output sumSignedByteValuesInBuffer CSignedInt64
-effect sumSignedByteValuesInBuffer read byteBuffer
 memoryHeap sumSignedByteValuesInBuffer no
 async sumSignedByteValuesInBuffer no
 purpose sumSignedByteValuesInBuffer "Returns the sum of byte values in the first byteCount bytes of byteBuffer (each byte treated as an unsigned 0..255 value)."
@@ -99,7 +106,6 @@ operation findMinimumSignedByteInBuffer
 input findMinimumSignedByteInBuffer byteBuffer CNullTerminatedByteString
 input findMinimumSignedByteInBuffer byteCount CByteCount
 output findMinimumSignedByteInBuffer CSignedInt64
-effect findMinimumSignedByteInBuffer read byteBuffer
 memoryHeap findMinimumSignedByteInBuffer no
 async findMinimumSignedByteInBuffer no
 purpose findMinimumSignedByteInBuffer "Returns the smallest unsigned-byte value in [0, byteCount). For an empty buffer returns 256 (an out-of-byte-range sentinel)."
@@ -155,7 +161,6 @@ operation findMaximumSignedByteInBuffer
 input findMaximumSignedByteInBuffer byteBuffer CNullTerminatedByteString
 input findMaximumSignedByteInBuffer byteCount CByteCount
 output findMaximumSignedByteInBuffer CSignedInt64
-effect findMaximumSignedByteInBuffer read byteBuffer
 memoryHeap findMaximumSignedByteInBuffer no
 async findMaximumSignedByteInBuffer no
 purpose findMaximumSignedByteInBuffer "Returns the largest unsigned-byte value in [0, byteCount). For an empty buffer returns -1 (an out-of-byte-range sentinel)."
@@ -214,10 +219,10 @@ input bufferContainsSignedByteValue byteBuffer CNullTerminatedByteString
 input bufferContainsSignedByteValue byteCount CByteCount
 input bufferContainsSignedByteValue targetValue CSignedInt32
 output bufferContainsSignedByteValue Bool
-effect bufferContainsSignedByteValue read byteBuffer
 memoryHeap bufferContainsSignedByteValue no
 async bufferContainsSignedByteValue no
 purpose bufferContainsSignedByteValue "Returns true if any byte in [0, byteCount) of byteBuffer equals targetValue."
+invariant bufferContainsSignedByteValue "Short-circuits on the first match; never scans past byteCount."
 guarantee bufferContainsSignedByteValue "Total."
 label startBufferContainsSignedByteValue
 var containsSearchCursor I64 0
@@ -258,7 +263,6 @@ input countSignedByteValueInBuffer byteBuffer CNullTerminatedByteString
 input countSignedByteValueInBuffer byteCount CByteCount
 input countSignedByteValueInBuffer targetValue CSignedInt32
 output countSignedByteValueInBuffer CSignedInt64
-effect countSignedByteValueInBuffer read byteBuffer
 memoryHeap countSignedByteValueInBuffer no
 async countSignedByteValueInBuffer no
 purpose countSignedByteValueInBuffer "Returns the number of bytes in [0, byteCount) that equal targetValue."
@@ -311,8 +315,6 @@ operation reverseBytesInBufferInPlace
 input reverseBytesInBufferInPlace byteBuffer COpaqueMemoryAddress
 input reverseBytesInBufferInPlace byteCount CByteCount
 output reverseBytesInBufferInPlace CByteCount
-effect reverseBytesInBufferInPlace read byteBuffer
-effect reverseBytesInBufferInPlace write byteBuffer
 memoryHeap reverseBytesInBufferInPlace no
 async reverseBytesInBufferInPlace no
 purpose reverseBytesInBufferInPlace "Reverses the order of the first byteCount bytes of byteBuffer in place. Returns byteCount."
@@ -377,11 +379,16 @@ returnValue byteCount
 operation main
 input main console Console
 output main Result ExitCode MainError
-effect main allocate heap
+useCapability main stdoutWriteCapability
+useCapability main heapAllocationCapability
+useCapability main heapFreeCapability
 effect main write console.stdout
+effect main allocate heap
+effect main free heap
 memoryHeap main yes
+memoryAllocationSource main reverseAllocCall
 async main no
-purpose main "Smoke-test the byte-buffer array helpers on the literal 'hello'."
+purpose main "Smoke-test every byte-buffer array helper on the static literal 'hello'; reverseBytesInBufferInPlace is exercised against a fresh heap copy."
 
 label startMain
 
@@ -433,15 +440,218 @@ branchIf countOk countHolds
 branch smokeAssertionFailed
 label countHolds
 
+# ============================================================
+# Extended unit tests: coverage for find-min, find-max, reverse;
+# plus boundary cases for sum / count / contains (empty buffer
+# and not-found scenarios).
+# ============================================================
+
+const zeroByteCount CByteCount 0
+const zeroSigned CSignedInt64 0
+const lowercaseHCode CSignedInt32 104
+const lowercaseECode CSignedInt32 101
+const lowercaseOCode CSignedInt32 111
+const lowercaseZCode CSignedInt32 122
+
+# findMinimumSignedByteInBuffer("hello", 5) == 'e' (101)
+const expectedMinValue CSignedInt64 101
+call findMinCall findMinimumSignedByteInBuffer
+arg findMinCall byteBuffer helloLiteral
+arg findMinCall byteCount fiveByteCount
+run findMinCall
+bind findMinResult CSignedInt64 findMinCall
+call checkMinCall math.equalI64
+arg checkMinCall left findMinResult
+arg checkMinCall right expectedMinValue
+run checkMinCall
+bind findMinOk Bool checkMinCall
+branchIf findMinOk findMinHolds
+branch smokeAssertionFailed
+label findMinHolds
+
+# findMaximumSignedByteInBuffer("hello", 5) == 'o' (111)
+const expectedMaxValue CSignedInt64 111
+call findMaxCall findMaximumSignedByteInBuffer
+arg findMaxCall byteBuffer helloLiteral
+arg findMaxCall byteCount fiveByteCount
+run findMaxCall
+bind findMaxResult CSignedInt64 findMaxCall
+call checkMaxCall math.equalI64
+arg checkMaxCall left findMaxResult
+arg checkMaxCall right expectedMaxValue
+run checkMaxCall
+bind findMaxOk Bool checkMaxCall
+branchIf findMaxOk findMaxHolds
+branch smokeAssertionFailed
+label findMaxHolds
+
+# bufferContainsSignedByteValue("hello", 5, 'z') == false (not present)
+call notContainsCall bufferContainsSignedByteValue
+arg notContainsCall byteBuffer helloLiteral
+arg notContainsCall byteCount fiveByteCount
+arg notContainsCall targetValue lowercaseZCode
+run notContainsCall
+bind notContainsResult Bool notContainsCall
+branchIf notContainsResult smokeAssertionFailed
+# fell through: false as expected, continue
+branch notContainsHolds
+label notContainsHolds
+
+# countSignedByteValueInBuffer("hello", 5, 'z') == 0 (zero matches)
+call zeroCountCall countSignedByteValueInBuffer
+arg zeroCountCall byteBuffer helloLiteral
+arg zeroCountCall byteCount fiveByteCount
+arg zeroCountCall targetValue lowercaseZCode
+run zeroCountCall
+bind zeroCountResult CSignedInt64 zeroCountCall
+call checkZeroCountCall math.equalI64
+arg checkZeroCountCall left zeroCountResult
+arg checkZeroCountCall right zeroSigned
+run checkZeroCountCall
+bind zeroCountOk Bool checkZeroCountCall
+branchIf zeroCountOk zeroCountHolds
+branch smokeAssertionFailed
+label zeroCountHolds
+
+# sumSignedByteValuesInBuffer("hello", 0) == 0 (empty buffer)
+call emptySumCall sumSignedByteValuesInBuffer
+arg emptySumCall byteBuffer helloLiteral
+arg emptySumCall byteCount zeroByteCount
+run emptySumCall
+bind emptySumResult CSignedInt64 emptySumCall
+call checkEmptySumCall math.equalI64
+arg checkEmptySumCall left emptySumResult
+arg checkEmptySumCall right zeroSigned
+run checkEmptySumCall
+bind emptySumOk Bool checkEmptySumCall
+branchIf emptySumOk emptySumHolds
+branch smokeAssertionFailed
+label emptySumHolds
+
+# reverseBytesInBufferInPlace: copy "hello" to a heap buffer, reverse,
+# then verify by reading individual bytes (first should be 'o', last 'h').
+const reverseAllocByteSize CByteCount 5
+call reverseAllocCall c.malloc
+arg reverseAllocCall size reverseAllocByteSize
+run reverseAllocCall
+bind reverseBuffer COpaqueMemoryAddress reverseAllocCall
+bindError reverseAllocError CSignedInt32 reverseAllocCall
+branchIfError reverseAllocCall heapAllocationFailedHandler
+defer releaseReverseAllocCall c.free reverseBuffer
+
+# Copy 'h','e','l','l','o' into the heap buffer at offsets 0..4.
+const offsetZero CByteCount 0
+const offsetOne CByteCount 1
+const offsetTwo CByteCount 2
+const offsetThree CByteCount 3
+const offsetFour CByteCount 4
+call storeH pointer.storeByte
+arg storeH buffer reverseBuffer
+arg storeH offset offsetZero
+arg storeH value lowercaseHCode
+run storeH
+call storeE pointer.storeByte
+arg storeE buffer reverseBuffer
+arg storeE offset offsetOne
+arg storeE value lowercaseECode
+run storeE
+call storeL1 pointer.storeByte
+arg storeL1 buffer reverseBuffer
+arg storeL1 offset offsetTwo
+arg storeL1 value lowercaseLCode
+run storeL1
+call storeL2 pointer.storeByte
+arg storeL2 buffer reverseBuffer
+arg storeL2 offset offsetThree
+arg storeL2 value lowercaseLCode
+run storeL2
+call storeO pointer.storeByte
+arg storeO buffer reverseBuffer
+arg storeO offset offsetFour
+arg storeO value lowercaseOCode
+run storeO
+
+# Reverse the 5 bytes in place.
+call runReverseCall reverseBytesInBufferInPlace
+arg runReverseCall byteBuffer reverseBuffer
+arg runReverseCall byteCount reverseAllocByteSize
+run runReverseCall
+ignoreValue runReverseCall CByteCount
+
+# After reverse, byte at offset 0 should be 'o' (111).
+call loadFirstAfterReverseCall pointer.loadByte
+arg loadFirstAfterReverseCall buffer reverseBuffer
+arg loadFirstAfterReverseCall offset offsetZero
+run loadFirstAfterReverseCall
+bind firstByteAfterReverse I8 loadFirstAfterReverseCall
+# normalize to unsigned for comparison
+const twoFiveSixCount CSignedInt64 256
+call shiftFirstByteCall math.addI64
+arg shiftFirstByteCall left firstByteAfterReverse
+arg shiftFirstByteCall right twoFiveSixCount
+run shiftFirstByteCall
+bind shiftedFirstByte CSignedInt64 shiftFirstByteCall
+call moduloFirstByteCall math.moduloI64
+arg moduloFirstByteCall left shiftedFirstByte
+arg moduloFirstByteCall right twoFiveSixCount
+run moduloFirstByteCall
+bind firstByteUnsigned CSignedInt64 moduloFirstByteCall
+call checkFirstByteCall math.equalI64
+arg checkFirstByteCall left firstByteUnsigned
+arg checkFirstByteCall right expectedMaxValue
+run checkFirstByteCall
+bind firstByteOk Bool checkFirstByteCall
+branchIf firstByteOk reversedFirstHolds
+branch smokeAssertionFailed
+label reversedFirstHolds
+
+# After reverse, byte at offset 4 should be 'h' (104).
+call loadLastAfterReverseCall pointer.loadByte
+arg loadLastAfterReverseCall buffer reverseBuffer
+arg loadLastAfterReverseCall offset offsetFour
+run loadLastAfterReverseCall
+bind lastByteAfterReverse I8 loadLastAfterReverseCall
+call shiftLastByteCall math.addI64
+arg shiftLastByteCall left lastByteAfterReverse
+arg shiftLastByteCall right twoFiveSixCount
+run shiftLastByteCall
+bind shiftedLastByte CSignedInt64 shiftLastByteCall
+call moduloLastByteCall math.moduloI64
+arg moduloLastByteCall left shiftedLastByte
+arg moduloLastByteCall right twoFiveSixCount
+run moduloLastByteCall
+bind lastByteUnsigned CSignedInt64 moduloLastByteCall
+const expectedHValue CSignedInt64 104
+call checkLastByteCall math.equalI64
+arg checkLastByteCall left lastByteUnsigned
+arg checkLastByteCall right expectedHValue
+run checkLastByteCall
+bind lastByteOk Bool checkLastByteCall
+branchIf lastByteOk reversedLastHolds
+branch smokeAssertionFailed
+label reversedLastHolds
+
 const successMessageText CNullTerminatedByteString "OK"
 call writeSuccessLineCall console.writeLine
 arg writeSuccessLineCall console console
 arg writeSuccessLineCall text successMessageText
 run writeSuccessLineCall
-ignoreOk writeSuccessLineCall Void
+ignoreOk writeSuccessLineCall CSignedInt32
+bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branchIfError writeSuccessLineCall consoleWriteFailedHandler
 const exitOkCode ExitCode 0
 returnOk exitOkCode
 
+# Failure leg: surface the raw negative CSignedInt32 from
+# console.writeLine as the cause attached to the typed
+# MainError.ConsoleWriteFailed variant.
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
+returnError consoleWriteFailedFailure
 label smokeAssertionFailed
 makeError arraySmokeFailure MainError.ArraySmokeAssertionFailed
 returnError arraySmokeFailure
+
+label heapAllocationFailedHandler
+makeError reverseAllocFailure MainError.MemoryAllocationFailed reverseAllocError
+returnError reverseAllocFailure

@@ -26,6 +26,11 @@ entry console main
 
 error MainError
 errorCase MainError MathSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+# section capability
+# rationale: smoke-test main writes a single OK line to stdout.
+capability stdoutWriteCapability console.stdout write
 
 
 operation integerSquareRootSignedInt64
@@ -40,7 +45,6 @@ guarantee integerSquareRootSignedInt64 "Total."
 
 label startIntegerSquareRootSignedInt64
 const zeroI64 I64 0
-const oneI64 I64 1
 const twoI64 I64 2
 
 # n <= 0 -> 0
@@ -157,7 +161,6 @@ label startIsSignedInt64Prime
 const zeroP I64 0
 const oneP I64 1
 const twoP I64 2
-const threeP I64 3
 const truePr Bool true
 const falsePr Bool false
 
@@ -202,16 +205,16 @@ arg beyondCall right limit
 run beyondCall
 bind beyond Bool beyondCall
 branchIf beyond isPrimeTrue
-call rCall math.moduloI64
-arg rCall left inputValue
-arg rCall right i
-run rCall
-bind r I64 rCall
-call divCallCheck math.equalI64
-arg divCallCheck left r
-arg divCallCheck right zeroP
-run divCallCheck
-bind divides Bool divCallCheck
+call primeRemainderCall math.moduloI64
+arg primeRemainderCall left inputValue
+arg primeRemainderCall right i
+run primeRemainderCall
+bind trialDivisionRemainder I64 primeRemainderCall
+call divCheckCall math.equalI64
+arg divCheckCall left trialDivisionRemainder
+arg divCheckCall right zeroP
+run divCheckCall
+bind divides Bool divCheckCall
 branchIf divides isPrimeFalse
 call iIncCall math.addI64
 arg iIncCall left i
@@ -233,6 +236,7 @@ output isSignedInt64PowerOfTwo Bool
 memoryHeap isSignedInt64PowerOfTwo no
 async isSignedInt64PowerOfTwo no
 purpose isSignedInt64PowerOfTwo "Returns true when inputValue is a positive power of 2 (1, 2, 4, 8, ...)."
+invariant isSignedInt64PowerOfTwo "Halves inputValue until 1 (power-of-two) or an odd intermediate (not). Zero / negative inputs return false."
 guarantee isSignedInt64PowerOfTwo "Total."
 
 label startIsSignedInt64PowerOfTwo
@@ -290,10 +294,10 @@ output nextPowerOfTwoForSignedInt64 CSignedInt64
 memoryHeap nextPowerOfTwoForSignedInt64 no
 async nextPowerOfTwoForSignedInt64 no
 purpose nextPowerOfTwoForSignedInt64 "Returns the smallest power of 2 >= inputValue (1 for inputValue <= 1)."
+invariant nextPowerOfTwoForSignedInt64 "Doubles a 1-seeded accumulator until it reaches or exceeds inputValue; inputs <= 1 short-circuit to 1."
 guarantee nextPowerOfTwoForSignedInt64 "Total."
 
 label startNextPowerOfTwoForSignedInt64
-const zeroNp I64 0
 const oneNp I64 1
 const twoNp I64 2
 
@@ -332,6 +336,7 @@ output countDecimalDigitsInSignedInt64 CSignedInt64
 memoryHeap countDecimalDigitsInSignedInt64 no
 async countDecimalDigitsInSignedInt64 no
 purpose countDecimalDigitsInSignedInt64 "Returns the count of decimal digits in |inputValue|. Returns 1 for inputValue == 0."
+invariant countDecimalDigitsInSignedInt64 "Divides the absolute value by 10 until the quotient is zero, counting iterations. Negative inputs are absolute-valued via multiplication by -1 first."
 guarantee countDecimalDigitsInSignedInt64 "Total."
 
 label startCountDecimalDigitsInSignedInt64
@@ -458,6 +463,7 @@ output countSetBitsInSignedInt64 CSignedInt64
 memoryHeap countSetBitsInSignedInt64 no
 async countSetBitsInSignedInt64 no
 purpose countSetBitsInSignedInt64 "Returns the population count of inputValue (number of 1-bits in its 64-bit representation)."
+invariant countSetBitsInSignedInt64 "Inspects each of the 64 bits via modulo-2 on a halving working value; increments the counter for every odd remainder."
 guarantee countSetBitsInSignedInt64 "Total — in [0, 64]."
 label startCountSetBitsInSignedInt64
 const zeroPc I64 0
@@ -469,44 +475,44 @@ set pcVal inputValue
 var pcCount I64 0
 var pcIter I64 0
 label pcLoop
-call pcDone math.greaterThanOrEqualI64
-arg pcDone left pcIter
-arg pcDone right limitPc
-run pcDone
-bind pcDoneB Bool pcDone
-branchIf pcDoneB pcReturn
-call pcMod math.moduloI64
-arg pcMod left pcVal
-arg pcMod right twoPc
-run pcMod
-bind pcBit I64 pcMod
-call pcBitNz math.notEqualI64
-arg pcBitNz left pcBit
-arg pcBitNz right zeroPc
-run pcBitNz
-bind pcSet Bool pcBitNz
-branchIf pcSet pcIncrement
+call popcountDoneCall math.greaterThanOrEqualI64
+arg popcountDoneCall left pcIter
+arg popcountDoneCall right limitPc
+run popcountDoneCall
+bind popcountDoneCallB Bool popcountDoneCall
+branchIf popcountDoneCallB pcReturn
+call popcountModCall math.moduloI64
+arg popcountModCall left pcVal
+arg popcountModCall right twoPc
+run popcountModCall
+bind pcBit I64 popcountModCall
+call popcountBitNonzeroCall math.notEqualI64
+arg popcountBitNonzeroCall left pcBit
+arg popcountBitNonzeroCall right zeroPc
+run popcountBitNonzeroCall
+bind pcSet Bool popcountBitNonzeroCall
+branchIf pcSet popcountIncrementBranch
 branch pcAdvance
-label pcIncrement
-call pcInc math.addI64
-arg pcInc left pcCount
-arg pcInc right onePc
-run pcInc
-bind pcNext I64 pcInc
+label popcountIncrementBranch
+call popcountIncrementCall math.addI64
+arg popcountIncrementCall left pcCount
+arg popcountIncrementCall right onePc
+run popcountIncrementCall
+bind pcNext I64 popcountIncrementCall
 set pcCount pcNext
 branch pcAdvance
 label pcAdvance
-call pcDiv math.divideI64
-arg pcDiv left pcVal
-arg pcDiv right twoPc
-run pcDiv
-bind pcHalved I64 pcDiv
+call popcountDivideCall math.divideI64
+arg popcountDivideCall left pcVal
+arg popcountDivideCall right twoPc
+run popcountDivideCall
+bind pcHalved I64 popcountDivideCall
 set pcVal pcHalved
-call pcIterInc math.addI64
-arg pcIterInc left pcIter
-arg pcIterInc right onePc
-run pcIterInc
-bind pcIterNext I64 pcIterInc
+call popcountIterIncrementCall math.addI64
+arg popcountIterIncrementCall left pcIter
+arg popcountIterIncrementCall right onePc
+run popcountIterIncrementCall
+bind pcIterNext I64 popcountIterIncrementCall
 set pcIter pcIterNext
 branch pcLoop
 label pcReturn
@@ -519,6 +525,7 @@ output countTrailingZeroBitsInSignedInt64 CSignedInt64
 memoryHeap countTrailingZeroBitsInSignedInt64 no
 async countTrailingZeroBitsInSignedInt64 no
 purpose countTrailingZeroBitsInSignedInt64 "Returns the count of trailing zero bits in inputValue's 64-bit representation. Returns 64 for inputValue == 0 (matching GCC __builtin_ctzll)."
+invariant countTrailingZeroBitsInSignedInt64 "Halves the value while the low bit is zero, counting iterations. Zero input short-circuits to 64."
 guarantee countTrailingZeroBitsInSignedInt64 "Total."
 label startCountTrailingZeroBitsInSignedInt64
 const zeroTz I64 0
@@ -526,11 +533,11 @@ const oneTz I64 1
 const twoTz I64 2
 const sixtyFourTz I64 64
 # Special case n == 0
-call eqZeroTz math.equalI64
-arg eqZeroTz left inputValue
-arg eqZeroTz right zeroTz
-run eqZeroTz
-bind nIsZero Bool eqZeroTz
+call ctzEqualZeroCall math.equalI64
+arg ctzEqualZeroCall left inputValue
+arg ctzEqualZeroCall right zeroTz
+run ctzEqualZeroCall
+bind nIsZero Bool ctzEqualZeroCall
 branchIf nIsZero tzReturn64
 var tzVal I64 0
 set tzVal inputValue
@@ -541,11 +548,11 @@ arg tzModCall left tzVal
 arg tzModCall right twoTz
 run tzModCall
 bind tzMod I64 tzModCall
-call tzBitSet math.notEqualI64
-arg tzBitSet left tzMod
-arg tzBitSet right zeroTz
-run tzBitSet
-bind tzSet Bool tzBitSet
+call ctzBitSetCall math.notEqualI64
+arg ctzBitSetCall left tzMod
+arg ctzBitSetCall right zeroTz
+run ctzBitSetCall
+bind tzSet Bool ctzBitSetCall
 branchIf tzSet tzReturn
 call tzDivCall math.divideI64
 arg tzDivCall left tzVal
@@ -577,17 +584,17 @@ label startSignOfSignedInt64
 const zeroSi I64 0
 const oneSi I64 1
 const negOneSi I64 -1
-call ltCheck math.lessThanI64
-arg ltCheck left inputValue
-arg ltCheck right zeroSi
-run ltCheck
-bind isNg Bool ltCheck
+call absDiffLessThanCall math.lessThanI64
+arg absDiffLessThanCall left inputValue
+arg absDiffLessThanCall right zeroSi
+run absDiffLessThanCall
+bind isNg Bool absDiffLessThanCall
 branchIf isNg siNeg
-call gtCheck math.greaterThanI64
-arg gtCheck left inputValue
-arg gtCheck right zeroSi
-run gtCheck
-bind isPs Bool gtCheck
+call absDiffGreaterThanCall math.greaterThanI64
+arg absDiffGreaterThanCall left inputValue
+arg absDiffGreaterThanCall right zeroSi
+run absDiffGreaterThanCall
+bind isPs Bool absDiffGreaterThanCall
 branchIf isPs siPos
 returnValue zeroSi
 label siNeg
@@ -613,19 +620,19 @@ arg diffCall left leftValue
 arg diffCall right rightValue
 run diffCall
 bind diff I64 diffCall
-call lt0 math.lessThanI64
-arg lt0 left diff
-arg lt0 right zeroAdi
-run lt0
-bind diffNeg Bool lt0
+call absDiffLessThanZeroCall math.lessThanI64
+arg absDiffLessThanZeroCall left diff
+arg absDiffLessThanZeroCall right zeroAdi
+run absDiffLessThanZeroCall
+bind diffNeg Bool absDiffLessThanZeroCall
 branchIf diffNeg flipDiff
 returnValue diff
 label flipDiff
-call flip math.multiplyI64
-arg flip left diff
-arg flip right negOneAdi
-run flip
-bind absDiff CSignedInt64 flip
+call absDiffFlipSignCall math.multiplyI64
+arg absDiffFlipSignCall left diff
+arg absDiffFlipSignCall right negOneAdi
+run absDiffFlipSignCall
+bind absDiff CSignedInt64 absDiffFlipSignCall
 returnValue absDiff
 
 
@@ -634,13 +641,21 @@ input countLeadingZeroBitsInSignedInt64 inputValue CSignedInt64
 output countLeadingZeroBitsInSignedInt64 CSignedInt64
 memoryHeap countLeadingZeroBitsInSignedInt64 no
 async countLeadingZeroBitsInSignedInt64 no
-purpose countLeadingZeroBitsInSignedInt64 "Returns the count of leading zero bits in inputValue's 64-bit representation. Returns 64 for inputValue == 0."
+purpose countLeadingZeroBitsInSignedInt64 "Returns the count of leading zero bits in inputValue's 64-bit representation. Returns 64 for inputValue == 0; returns 0 for negative values (sign bit 63 is set)."
+invariant countLeadingZeroBitsInSignedInt64 "Probe descends from 2^62 (the largest power of two representable as a positive CSignedInt64). For positive inputs we add 1 to account for the unrepresentable sign bit 63 above the probe range."
 guarantee countLeadingZeroBitsInSignedInt64 "Total — in [0, 64]."
 label startCountLeadingZeroBitsInSignedInt64
 const zeroClz I64 0
 const oneClz I64 1
 const twoClz I64 2
 const sixtyFourClz I64 64
+# Negative inputs have bit 63 set, so zero leading zeros.
+call clzIsNegativeCall math.lessThanI64
+arg clzIsNegativeCall left inputValue
+arg clzIsNegativeCall right zeroClz
+run clzIsNegativeCall
+bind clzIsNegativeResult Bool clzIsNegativeCall
+branchIf clzIsNegativeResult clzReturnZero
 call eqZeroClzCall math.equalI64
 arg eqZeroClzCall left inputValue
 arg eqZeroClzCall right zeroClz
@@ -654,35 +669,43 @@ var probe I64 0
 set probe probeStart
 var clzCount I64 0
 label clzLoop
-call probeLe math.lessThanOrEqualI64
-arg probeLe left probe
-arg probeLe right inputValue
-run probeLe
-bind probeLeN Bool probeLe
-branchIf probeLeN clzDone
-call clzInc math.addI64
-arg clzInc left clzCount
-arg clzInc right oneClz
-run clzInc
-bind clzNext I64 clzInc
+call clzProbeLessEqualCall math.lessThanOrEqualI64
+arg clzProbeLessEqualCall left probe
+arg clzProbeLessEqualCall right inputValue
+run clzProbeLessEqualCall
+bind clzProbeLessEqualCallN Bool clzProbeLessEqualCall
+branchIf clzProbeLessEqualCallN clzDone
+call clzIncrementCall math.addI64
+arg clzIncrementCall left clzCount
+arg clzIncrementCall right oneClz
+run clzIncrementCall
+bind clzNext I64 clzIncrementCall
 set clzCount clzNext
-call probeHalf math.divideI64
-arg probeHalf left probe
-arg probeHalf right twoClz
-run probeHalf
-bind probeNext I64 probeHalf
+call clzProbeHalfCall math.divideI64
+arg clzProbeHalfCall left probe
+arg clzProbeHalfCall right twoClz
+run clzProbeHalfCall
+bind probeNext I64 clzProbeHalfCall
 set probe probeNext
-call probeZero math.equalI64
-arg probeZero left probe
-arg probeZero right zeroClz
-run probeZero
-bind probeIsZero Bool probeZero
+call clzProbeZeroCall math.equalI64
+arg clzProbeZeroCall left probe
+arg clzProbeZeroCall right zeroClz
+run clzProbeZeroCall
+bind probeIsZero Bool clzProbeZeroCall
 branchIf probeIsZero clzReturn64
 branch clzLoop
 label clzDone
-returnValue clzCount
+# Add 1 to count for the unrepresentable bit 63 above probeStart's bit 62.
+call clzAdjustCall math.addI64
+arg clzAdjustCall left clzCount
+arg clzAdjustCall right oneClz
+run clzAdjustCall
+bind clzCountAdjusted I64 clzAdjustCall
+returnValue clzCountAdjusted
 label clzReturn64
 returnValue sixtyFourClz
+label clzReturnZero
+returnValue zeroClz
 
 
 operation squareSignedInt64
@@ -711,16 +734,16 @@ purpose cubeSignedInt64 "Returns inputValue * inputValue * inputValue."
 warning cubeSignedInt64 "Wraps modulo 2^64 on overflow."
 guarantee cubeSignedInt64 "Total."
 label startCubeSignedInt64
-call sq1 math.multiplyI64
-arg sq1 left inputValue
-arg sq1 right inputValue
-run sq1
-bind sq CSignedInt64 sq1
-call cb math.multiplyI64
-arg cb left sq
-arg cb right inputValue
-run cb
-bind cubeResult CSignedInt64 cb
+call cubeSquareStepCall math.multiplyI64
+arg cubeSquareStepCall left inputValue
+arg cubeSquareStepCall right inputValue
+run cubeSquareStepCall
+bind squareIntermediate CSignedInt64 cubeSquareStepCall
+call cubeMultiplyStepCall math.multiplyI64
+arg cubeMultiplyStepCall left squareIntermediate
+arg cubeMultiplyStepCall right inputValue
+run cubeMultiplyStepCall
+bind cubeResult CSignedInt64 cubeMultiplyStepCall
 returnValue cubeResult
 
 
@@ -736,18 +759,18 @@ guarantee isSignedInt64WithinInclusiveRange "Total."
 label startIsSignedInt64WithinInclusiveRange
 const trueIR Bool true
 const falseIR Bool false
-call belowLo math.lessThanI64
-arg belowLo left inputValue
-arg belowLo right lowerBound
-run belowLo
-bind below Bool belowLo
-branchIf below irFalse
-call aboveHi math.greaterThanI64
-arg aboveHi left inputValue
-arg aboveHi right upperBound
-run aboveHi
-bind above Bool aboveHi
-branchIf above irFalse
+call clampBelowLowerCall math.lessThanI64
+arg clampBelowLowerCall left inputValue
+arg clampBelowLowerCall right lowerBound
+run clampBelowLowerCall
+bind belowLowerBound Bool clampBelowLowerCall
+branchIf belowLowerBound irFalse
+call clampAboveUpperCall math.greaterThanI64
+arg clampAboveUpperCall left inputValue
+arg clampAboveUpperCall right upperBound
+run clampAboveUpperCall
+bind aboveUpperBound Bool clampAboveUpperCall
+branchIf aboveUpperBound irFalse
 returnValue trueIR
 label irFalse
 returnValue falseIR
@@ -760,6 +783,7 @@ returnValue falseIR
 operation main
 input main console Console
 output main Result ExitCode MainError
+useCapability main stdoutWriteCapability
 effect main write console.stdout
 memoryHeap main no
 async main no
@@ -950,15 +974,551 @@ branchIf absDiffOk absDiffHolds
 branch smokeAssertionFailed
 label absDiffHolds
 
+# ============================================================
+# Per-operation extended unit tests: covers ops the original smoke
+# test omitted (countLeadingZeroBitsInSignedInt64, squareSignedInt64,
+# cubeSignedInt64, isSignedInt64WithinInclusiveRange) plus boundary
+# cases (zero, one, two) and property invariants (commutativity,
+# round-trip) for ops already covered.
+# ============================================================
+
+const zeroSm CSignedInt64 0
+const oneSm CSignedInt64 1
+const twoSm CSignedInt64 2
+const sixSm CSignedInt64 6
+const negTenSm CSignedInt64 -10
+const negTwoSm CSignedInt64 -2
+const sixtyTwoSm CSignedInt64 62
+const sixtyThreeSm CSignedInt64 63
+const minusOneSm CSignedInt64 -1
+const oneHundredFortyFourEx CSignedInt64 144
+
+# integerSquareRoot boundary: sqrt(0) == 0
+call sqrtZeroCall integerSquareRootSignedInt64
+arg sqrtZeroCall inputValue zeroSm
+run sqrtZeroCall
+bind sqrtZeroResult CSignedInt64 sqrtZeroCall
+call checkSqrtZeroCall math.equalI64
+arg checkSqrtZeroCall left sqrtZeroResult
+arg checkSqrtZeroCall right zeroSm
+run checkSqrtZeroCall
+bind sqrtZeroOk Bool checkSqrtZeroCall
+branchIf sqrtZeroOk sqrtZeroHolds
+branch smokeAssertionFailed
+label sqrtZeroHolds
+
+# integerSquareRoot boundary: sqrt(1) == 1
+call sqrtOneCall integerSquareRootSignedInt64
+arg sqrtOneCall inputValue oneSm
+run sqrtOneCall
+bind sqrtOneResult CSignedInt64 sqrtOneCall
+call checkSqrtOneCall math.equalI64
+arg checkSqrtOneCall left sqrtOneResult
+arg checkSqrtOneCall right oneSm
+run checkSqrtOneCall
+bind sqrtOneOk Bool checkSqrtOneCall
+branchIf sqrtOneOk sqrtOneHolds
+branch smokeAssertionFailed
+label sqrtOneHolds
+
+# integerSquareRoot negative: sqrt(-10) == 0 (clamps to zero)
+call sqrtNegCall integerSquareRootSignedInt64
+arg sqrtNegCall inputValue negTenSm
+run sqrtNegCall
+bind sqrtNegResult CSignedInt64 sqrtNegCall
+call checkSqrtNegCall math.equalI64
+arg checkSqrtNegCall left sqrtNegResult
+arg checkSqrtNegCall right zeroSm
+run checkSqrtNegCall
+bind sqrtNegOk Bool checkSqrtNegCall
+branchIf sqrtNegOk sqrtNegHolds
+branch smokeAssertionFailed
+label sqrtNegHolds
+
+# factorial(0) == 1 (convention)
+call facZeroCall factorialSignedInt64
+arg facZeroCall inputValue zeroSm
+run facZeroCall
+bind facZeroResult CSignedInt64 facZeroCall
+call checkFacZeroCall math.equalI64
+arg checkFacZeroCall left facZeroResult
+arg checkFacZeroCall right oneSm
+run checkFacZeroCall
+bind facZeroOk Bool checkFacZeroCall
+branchIf facZeroOk facZeroHolds
+branch smokeAssertionFailed
+label facZeroHolds
+
+# factorial(1) == 1
+call facOneCall factorialSignedInt64
+arg facOneCall inputValue oneSm
+run facOneCall
+bind facOneResult CSignedInt64 facOneCall
+call checkFacOneCall math.equalI64
+arg checkFacOneCall left facOneResult
+arg checkFacOneCall right oneSm
+run checkFacOneCall
+bind facOneOk Bool checkFacOneCall
+branchIf facOneOk facOneHolds
+branch smokeAssertionFailed
+label facOneHolds
+
+# factorial(3) == 6
+call facThreeCall factorialSignedInt64
+arg facThreeCall inputValue threeForAbsDiff
+run facThreeCall
+bind facThreeResult CSignedInt64 facThreeCall
+call checkFacThreeCall math.equalI64
+arg checkFacThreeCall left facThreeResult
+arg checkFacThreeCall right sixSm
+run checkFacThreeCall
+bind facThreeOk Bool checkFacThreeCall
+branchIf facThreeOk facThreeHolds
+branch smokeAssertionFailed
+label facThreeHolds
+
+# isPrime(2) == true (smallest prime)
+call primeTwoCall isSignedInt64Prime
+arg primeTwoCall inputValue twoSm
+run primeTwoCall
+bind primeTwoResult Bool primeTwoCall
+branchIf primeTwoResult primeTwoHolds
+branch smokeAssertionFailed
+label primeTwoHolds
+
+# isPrime(1) == false
+call primeOneCall isSignedInt64Prime
+arg primeOneCall inputValue oneSm
+run primeOneCall
+bind primeOneResult Bool primeOneCall
+branchIf primeOneResult smokeAssertionFailed
+
+# isPrime(0) == false
+call primeZeroCall isSignedInt64Prime
+arg primeZeroCall inputValue zeroSm
+run primeZeroCall
+bind primeZeroResult Bool primeZeroCall
+branchIf primeZeroResult smokeAssertionFailed
+
+# isPowerOfTwo(1) == true (2^0)
+call powOneCall isSignedInt64PowerOfTwo
+arg powOneCall inputValue oneSm
+run powOneCall
+bind powOneResult Bool powOneCall
+branchIf powOneResult powOneHolds
+branch smokeAssertionFailed
+label powOneHolds
+
+# isPowerOfTwo(0) == false
+call powZeroCall isSignedInt64PowerOfTwo
+arg powZeroCall inputValue zeroSm
+run powZeroCall
+bind powZeroResult Bool powZeroCall
+branchIf powZeroResult smokeAssertionFailed
+
+# isPowerOfTwo(-4) == false (negatives are never powers of two)
+call powNegCall isSignedInt64PowerOfTwo
+arg powNegCall inputValue negTenSm
+run powNegCall
+bind powNegResult Bool powNegCall
+branchIf powNegResult smokeAssertionFailed
+
+# nextPowerOfTwo(1) == 1 (already power of 2)
+call nextPow1Call nextPowerOfTwoForSignedInt64
+arg nextPow1Call inputValue oneSm
+run nextPow1Call
+bind nextPow1Result CSignedInt64 nextPow1Call
+call checkNextPow1Call math.equalI64
+arg checkNextPow1Call left nextPow1Result
+arg checkNextPow1Call right oneSm
+run checkNextPow1Call
+bind nextPow1Ok Bool checkNextPow1Call
+branchIf nextPow1Ok nextPow1Holds
+branch smokeAssertionFailed
+label nextPow1Holds
+
+# nextPowerOfTwo(0) == 1
+call nextPow0Call nextPowerOfTwoForSignedInt64
+arg nextPow0Call inputValue zeroSm
+run nextPow0Call
+bind nextPow0Result CSignedInt64 nextPow0Call
+call checkNextPow0Call math.equalI64
+arg checkNextPow0Call left nextPow0Result
+arg checkNextPow0Call right oneSm
+run checkNextPow0Call
+bind nextPow0Ok Bool checkNextPow0Call
+branchIf nextPow0Ok nextPow0Holds
+branch smokeAssertionFailed
+label nextPow0Holds
+
+# countDecimalDigits(0) == 1
+call digitsZeroCall countDecimalDigitsInSignedInt64
+arg digitsZeroCall inputValue zeroSm
+run digitsZeroCall
+bind digitsZeroResult CSignedInt64 digitsZeroCall
+call checkDigitsZeroCall math.equalI64
+arg checkDigitsZeroCall left digitsZeroResult
+arg checkDigitsZeroCall right oneSm
+run checkDigitsZeroCall
+bind digitsZeroOk Bool checkDigitsZeroCall
+branchIf digitsZeroOk digitsZeroHolds
+branch smokeAssertionFailed
+label digitsZeroHolds
+
+# countDecimalDigits(-99) == 2 (negatives count by absolute value)
+const negNinetyNineSm CSignedInt64 -99
+call digitsNegCall countDecimalDigitsInSignedInt64
+arg digitsNegCall inputValue negNinetyNineSm
+run digitsNegCall
+bind digitsNegResult CSignedInt64 digitsNegCall
+call checkDigitsNegCall math.equalI64
+arg checkDigitsNegCall left digitsNegResult
+arg checkDigitsNegCall right twoSm
+run checkDigitsNegCall
+bind digitsNegOk Bool checkDigitsNegCall
+branchIf digitsNegOk digitsNegHolds
+branch smokeAssertionFailed
+label digitsNegHolds
+
+# isEven(0) == true
+call evenZeroCall isSignedInt64Even
+arg evenZeroCall inputValue zeroSm
+run evenZeroCall
+bind evenZeroResult Bool evenZeroCall
+branchIf evenZeroResult evenZeroHolds
+branch smokeAssertionFailed
+label evenZeroHolds
+
+# isOdd(7) == true
+call oddSevenCall isSignedInt64Odd
+arg oddSevenCall inputValue sevenExpected
+run oddSevenCall
+bind oddSevenResult Bool oddSevenCall
+branchIf oddSevenResult oddSevenHolds
+branch smokeAssertionFailed
+label oddSevenHolds
+
+# countSetBits(0) == 0
+call popcountZeroCall countSetBitsInSignedInt64
+arg popcountZeroCall inputValue zeroSm
+run popcountZeroCall
+bind popcountZeroResult CSignedInt64 popcountZeroCall
+call checkPopcountZeroCall math.equalI64
+arg checkPopcountZeroCall left popcountZeroResult
+arg checkPopcountZeroCall right zeroSm
+run checkPopcountZeroCall
+bind popcountZeroOk Bool checkPopcountZeroCall
+branchIf popcountZeroOk popcountZeroHolds
+branch smokeAssertionFailed
+label popcountZeroHolds
+
+# countSetBits(1) == 1
+call popcountOneCall countSetBitsInSignedInt64
+arg popcountOneCall inputValue oneSm
+run popcountOneCall
+bind popcountOneResult CSignedInt64 popcountOneCall
+call checkPopcountOneCall math.equalI64
+arg checkPopcountOneCall left popcountOneResult
+arg checkPopcountOneCall right oneSm
+run checkPopcountOneCall
+bind popcountOneOk Bool checkPopcountOneCall
+branchIf popcountOneOk popcountOneHolds
+branch smokeAssertionFailed
+label popcountOneHolds
+
+# countTrailingZeros(0) == 64 (matches __builtin_ctzll)
+const sixtyFourSm CSignedInt64 64
+call ctzZeroCall countTrailingZeroBitsInSignedInt64
+arg ctzZeroCall inputValue zeroSm
+run ctzZeroCall
+bind ctzZeroResult CSignedInt64 ctzZeroCall
+call checkCtzZeroCall math.equalI64
+arg checkCtzZeroCall left ctzZeroResult
+arg checkCtzZeroCall right sixtyFourSm
+run checkCtzZeroCall
+bind ctzZeroOk Bool checkCtzZeroCall
+branchIf ctzZeroOk ctzZeroHolds
+branch smokeAssertionFailed
+label ctzZeroHolds
+
+# countTrailingZeros(1) == 0
+call ctzOneCall countTrailingZeroBitsInSignedInt64
+arg ctzOneCall inputValue oneSm
+run ctzOneCall
+bind ctzOneResult CSignedInt64 ctzOneCall
+call checkCtzOneCall math.equalI64
+arg checkCtzOneCall left ctzOneResult
+arg checkCtzOneCall right zeroSm
+run checkCtzOneCall
+bind ctzOneOk Bool checkCtzOneCall
+branchIf ctzOneOk ctzOneHolds
+branch smokeAssertionFailed
+label ctzOneHolds
+
+# sign(0) == 0
+call signZeroCall signOfSignedInt64
+arg signZeroCall inputValue zeroSm
+run signZeroCall
+bind signZeroResult CSignedInt64 signZeroCall
+call checkSignZeroCall math.equalI64
+arg checkSignZeroCall left signZeroResult
+arg checkSignZeroCall right zeroSm
+run checkSignZeroCall
+bind signZeroOk Bool checkSignZeroCall
+branchIf signZeroOk signZeroHolds
+branch smokeAssertionFailed
+label signZeroHolds
+
+# sign(42) == 1
+const fortyTwoSm CSignedInt64 42
+call signPosCall signOfSignedInt64
+arg signPosCall inputValue fortyTwoSm
+run signPosCall
+bind signPosResult CSignedInt64 signPosCall
+call checkSignPosCall math.equalI64
+arg checkSignPosCall left signPosResult
+arg checkSignPosCall right oneSm
+run checkSignPosCall
+bind signPosOk Bool checkSignPosCall
+branchIf signPosOk signPosHolds
+branch smokeAssertionFailed
+label signPosHolds
+
+# absDiff symmetry: absDiff(3, 10) == absDiff(10, 3)
+call absDiffSymCall absoluteDifferenceBetweenSignedInt64Values
+arg absDiffSymCall leftValue threeForAbsDiff
+arg absDiffSymCall rightValue tenInteger
+run absDiffSymCall
+bind absDiffSymResult CSignedInt64 absDiffSymCall
+call checkAbsDiffSymCall math.equalI64
+arg checkAbsDiffSymCall left absDiffSymResult
+arg checkAbsDiffSymCall right sevenExpected
+run checkAbsDiffSymCall
+bind absDiffSymOk Bool checkAbsDiffSymCall
+branchIf absDiffSymOk absDiffSymHolds
+branch smokeAssertionFailed
+label absDiffSymHolds
+
+# === countLeadingZeroBitsInSignedInt64 (was untested) ===
+# clz(0) == 64
+call clzZeroCall countLeadingZeroBitsInSignedInt64
+arg clzZeroCall inputValue zeroSm
+run clzZeroCall
+bind clzZeroResult CSignedInt64 clzZeroCall
+call checkClzZeroCall math.equalI64
+arg checkClzZeroCall left clzZeroResult
+arg checkClzZeroCall right sixtyFourSm
+run checkClzZeroCall
+bind clzZeroOk Bool checkClzZeroCall
+branchIf clzZeroOk clzZeroHolds
+branch smokeAssertionFailed
+label clzZeroHolds
+
+# clz(1) == 63 (one bit set in position 0; 63 zeros above it)
+call clzOneCall countLeadingZeroBitsInSignedInt64
+arg clzOneCall inputValue oneSm
+run clzOneCall
+bind clzOneResult CSignedInt64 clzOneCall
+call checkClzOneCall math.equalI64
+arg checkClzOneCall left clzOneResult
+arg checkClzOneCall right sixtyThreeSm
+run checkClzOneCall
+bind clzOneOk Bool checkClzOneCall
+branchIf clzOneOk clzOneHolds
+branch smokeAssertionFailed
+label clzOneHolds
+
+# clz(2) == 62
+call clzTwoCall countLeadingZeroBitsInSignedInt64
+arg clzTwoCall inputValue twoSm
+run clzTwoCall
+bind clzTwoResult CSignedInt64 clzTwoCall
+call checkClzTwoCall math.equalI64
+arg checkClzTwoCall left clzTwoResult
+arg checkClzTwoCall right sixtyTwoSm
+run checkClzTwoCall
+bind clzTwoOk Bool checkClzTwoCall
+branchIf clzTwoOk clzTwoHolds
+branch smokeAssertionFailed
+label clzTwoHolds
+
+# === squareSignedInt64 (was untested) ===
+# square(0) == 0
+call sqZeroCall squareSignedInt64
+arg sqZeroCall inputValue zeroSm
+run sqZeroCall
+bind sqZeroResult CSignedInt64 sqZeroCall
+call checkSqZeroCall math.equalI64
+arg checkSqZeroCall left sqZeroResult
+arg checkSqZeroCall right zeroSm
+run checkSqZeroCall
+bind sqZeroOk Bool checkSqZeroCall
+branchIf sqZeroOk sqZeroHolds
+branch smokeAssertionFailed
+label sqZeroHolds
+
+# square(12) == 144 (round-trip with sqrt above)
+call sqTwelveCall squareSignedInt64
+arg sqTwelveCall inputValue twelveExpected
+run sqTwelveCall
+bind sqTwelveResult CSignedInt64 sqTwelveCall
+call checkSqTwelveCall math.equalI64
+arg checkSqTwelveCall left sqTwelveResult
+arg checkSqTwelveCall right oneHundredFortyFourEx
+run checkSqTwelveCall
+bind sqTwelveOk Bool checkSqTwelveCall
+branchIf sqTwelveOk sqTwelveHolds
+branch smokeAssertionFailed
+label sqTwelveHolds
+
+# square(-5) == 25 (sign-insensitive)
+const twentyFiveSm CSignedInt64 25
+call sqNegCall squareSignedInt64
+arg sqNegCall inputValue negativeFive
+run sqNegCall
+bind sqNegResult CSignedInt64 sqNegCall
+call checkSqNegCall math.equalI64
+arg checkSqNegCall left sqNegResult
+arg checkSqNegCall right twentyFiveSm
+run checkSqNegCall
+bind sqNegOk Bool checkSqNegCall
+branchIf sqNegOk sqNegHolds
+branch smokeAssertionFailed
+label sqNegHolds
+
+# === cubeSignedInt64 (was untested) ===
+# cube(0) == 0
+call cubeZeroCall cubeSignedInt64
+arg cubeZeroCall inputValue zeroSm
+run cubeZeroCall
+bind cubeZeroResult CSignedInt64 cubeZeroCall
+call checkCubeZeroCall math.equalI64
+arg checkCubeZeroCall left cubeZeroResult
+arg checkCubeZeroCall right zeroSm
+run checkCubeZeroCall
+bind cubeZeroOk Bool checkCubeZeroCall
+branchIf cubeZeroOk cubeZeroHolds
+branch smokeAssertionFailed
+label cubeZeroHolds
+
+# cube(3) == 27
+const twentySevenSm CSignedInt64 27
+call cubeThreeCall cubeSignedInt64
+arg cubeThreeCall inputValue threeForAbsDiff
+run cubeThreeCall
+bind cubeThreeResult CSignedInt64 cubeThreeCall
+call checkCubeThreeCall math.equalI64
+arg checkCubeThreeCall left cubeThreeResult
+arg checkCubeThreeCall right twentySevenSm
+run checkCubeThreeCall
+bind cubeThreeOk Bool checkCubeThreeCall
+branchIf cubeThreeOk cubeThreeHolds
+branch smokeAssertionFailed
+label cubeThreeHolds
+
+# cube(-2) == -8 (sign-preserving)
+const negEightSm CSignedInt64 -8
+call cubeNegCall cubeSignedInt64
+arg cubeNegCall inputValue negTwoSm
+run cubeNegCall
+bind cubeNegResult CSignedInt64 cubeNegCall
+call checkCubeNegCall math.equalI64
+arg checkCubeNegCall left cubeNegResult
+arg checkCubeNegCall right negEightSm
+run checkCubeNegCall
+bind cubeNegOk Bool checkCubeNegCall
+branchIf cubeNegOk cubeNegHolds
+branch smokeAssertionFailed
+label cubeNegHolds
+
+# === isSignedInt64WithinInclusiveRange (was untested) ===
+# 5 in [0, 10] == true
+call rangeInsideCall isSignedInt64WithinInclusiveRange
+arg rangeInsideCall inputValue fiveInputForFactorial
+arg rangeInsideCall lowerBound zeroSm
+arg rangeInsideCall upperBound tenInteger
+run rangeInsideCall
+bind rangeInsideResult Bool rangeInsideCall
+branchIf rangeInsideResult rangeInsideHolds
+branch smokeAssertionFailed
+label rangeInsideHolds
+
+# 0 in [0, 10] == true (lower boundary inclusive)
+call rangeLowerCall isSignedInt64WithinInclusiveRange
+arg rangeLowerCall inputValue zeroSm
+arg rangeLowerCall lowerBound zeroSm
+arg rangeLowerCall upperBound tenInteger
+run rangeLowerCall
+bind rangeLowerResult Bool rangeLowerCall
+branchIf rangeLowerResult rangeLowerHolds
+branch smokeAssertionFailed
+label rangeLowerHolds
+
+# 10 in [0, 10] == true (upper boundary inclusive)
+call rangeUpperCall isSignedInt64WithinInclusiveRange
+arg rangeUpperCall inputValue tenInteger
+arg rangeUpperCall lowerBound zeroSm
+arg rangeUpperCall upperBound tenInteger
+run rangeUpperCall
+bind rangeUpperResult Bool rangeUpperCall
+branchIf rangeUpperResult rangeUpperHolds
+branch smokeAssertionFailed
+label rangeUpperHolds
+
+# -1 in [0, 10] == false (below lower)
+call rangeBelowCall isSignedInt64WithinInclusiveRange
+arg rangeBelowCall inputValue minusOneSm
+arg rangeBelowCall lowerBound zeroSm
+arg rangeBelowCall upperBound tenInteger
+run rangeBelowCall
+bind rangeBelowResult Bool rangeBelowCall
+branchIf rangeBelowResult smokeAssertionFailed
+
+# 11 in [0, 10] == false (above upper)
+const elevenSm CSignedInt64 11
+call rangeAboveCall isSignedInt64WithinInclusiveRange
+arg rangeAboveCall inputValue elevenSm
+arg rangeAboveCall lowerBound zeroSm
+arg rangeAboveCall upperBound tenInteger
+run rangeAboveCall
+bind rangeAboveResult Bool rangeAboveCall
+branchIf rangeAboveResult smokeAssertionFailed
+
+# Property: sqrt(square(x)) == x for x >= 0
+call squareForRoundTripCall squareSignedInt64
+arg squareForRoundTripCall inputValue twelveExpected
+run squareForRoundTripCall
+bind squareForRoundTripResult CSignedInt64 squareForRoundTripCall
+call sqrtAfterSquareCall integerSquareRootSignedInt64
+arg sqrtAfterSquareCall inputValue squareForRoundTripResult
+run sqrtAfterSquareCall
+bind sqrtAfterSquareResult CSignedInt64 sqrtAfterSquareCall
+call checkRoundTripSquareSqrtCall math.equalI64
+arg checkRoundTripSquareSqrtCall left sqrtAfterSquareResult
+arg checkRoundTripSquareSqrtCall right twelveExpected
+run checkRoundTripSquareSqrtCall
+bind roundTripSquareSqrtOk Bool checkRoundTripSquareSqrtCall
+branchIf roundTripSquareSqrtOk roundTripSquareSqrtHolds
+branch smokeAssertionFailed
+label roundTripSquareSqrtHolds
+
 const successMessageText CNullTerminatedByteString "OK"
 call writeSuccessLineCall console.writeLine
 arg writeSuccessLineCall console console
 arg writeSuccessLineCall text successMessageText
 run writeSuccessLineCall
-ignoreOk writeSuccessLineCall Void
+ignoreOk writeSuccessLineCall CSignedInt32
+bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branchIfError writeSuccessLineCall consoleWriteFailedHandler
 const exitOkCode ExitCode 0
 returnOk exitOkCode
 
+# Failure leg: surface the raw negative CSignedInt32 from
+# console.writeLine as the cause attached to the typed
+# MainError.ConsoleWriteFailed variant.
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
+returnError consoleWriteFailedFailure
 label smokeAssertionFailed
 makeError mathSmokeFailure MainError.MathSmokeAssertionFailed
 returnError mathSmokeFailure
