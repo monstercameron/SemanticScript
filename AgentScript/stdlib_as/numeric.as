@@ -429,10 +429,8 @@ const tenNum CSignedInt64 10
 const fourteenNum CSignedInt64 14
 const fifteenNum CSignedInt64 15
 const fiftyFiveNum CSignedInt64 55
-const oneHundredEightyNum CSignedInt64 100
 const minusFiveNum CSignedInt64 -5
 const minusOneNum CSignedInt64 -1
-const fourNum CSignedInt64 4
 
 # increment(5) == 6
 call incCall incrementSignedInt64
@@ -592,7 +590,6 @@ label negateZeroHolds
 const twoFloat CFloat64 2.0
 const halfFloat CFloat64 0.5
 const recipTol CFloat64 0.0001
-const negHalfFloat CFloat64 -0.5
 call reciprocalCall reciprocalFloat64
 arg reciprocalCall inputValue twoFloat
 run reciprocalCall

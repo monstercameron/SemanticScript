@@ -1588,7 +1588,6 @@ const helloAd CNullTerminatedByteString "abd"
 const helloAb CNullTerminatedByteString "ab"
 const upperZ CSignedInt32 90
 const zeroByteCount CByteCount 0
-const oneI64case I64 1
 const sixI64case I64 6
 const zeroI32trueChk CSignedInt32 0
 

@@ -545,31 +545,31 @@ const offsetOne CByteCount 1
 const offsetTwo CByteCount 2
 const offsetThree CByteCount 3
 const offsetFour CByteCount 4
-call storeH pointer.storeByte
-arg storeH buffer reverseBuffer
-arg storeH offset offsetZero
-arg storeH value lowercaseHCode
-run storeH
-call storeE pointer.storeByte
-arg storeE buffer reverseBuffer
-arg storeE offset offsetOne
-arg storeE value lowercaseECode
-run storeE
-call storeL1 pointer.storeByte
-arg storeL1 buffer reverseBuffer
-arg storeL1 offset offsetTwo
-arg storeL1 value lowercaseLCode
-run storeL1
-call storeL2 pointer.storeByte
-arg storeL2 buffer reverseBuffer
-arg storeL2 offset offsetThree
-arg storeL2 value lowercaseLCode
-run storeL2
-call storeO pointer.storeByte
-arg storeO buffer reverseBuffer
-arg storeO offset offsetFour
-arg storeO value lowercaseOCode
-run storeO
+call storeHCall pointer.storeByte
+arg storeHCall buffer reverseBuffer
+arg storeHCall offset offsetZero
+arg storeHCall value lowercaseHCode
+run storeHCall
+call storeECall pointer.storeByte
+arg storeECall buffer reverseBuffer
+arg storeECall offset offsetOne
+arg storeECall value lowercaseECode
+run storeECall
+call storeL1Call pointer.storeByte
+arg storeL1Call buffer reverseBuffer
+arg storeL1Call offset offsetTwo
+arg storeL1Call value lowercaseLCode
+run storeL1Call
+call storeL2Call pointer.storeByte
+arg storeL2Call buffer reverseBuffer
+arg storeL2Call offset offsetThree
+arg storeL2Call value lowercaseLCode
+run storeL2Call
+call storeOCall pointer.storeByte
+arg storeOCall buffer reverseBuffer
+arg storeOCall offset offsetFour
+arg storeOCall value lowercaseOCode
+run storeOCall
 
 # Reverse the 5 bytes in place.
 call runReverseCall reverseBytesInBufferInPlace

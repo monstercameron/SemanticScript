@@ -232,7 +232,6 @@ const negThreePointSeven CFloat64 -3.7
 const negThree CSignedInt64 -3
 const zeroFloatCvt CFloat64 0.0
 const sevenSigned CSignedInt64 7
-const sevenAsFloat CFloat64 7.0
 const floatCvtTol CFloat64 0.0001
 const negFloatCvtTol CFloat64 -0.0001
 const maxInt32Signed CSignedInt64 2147483647
