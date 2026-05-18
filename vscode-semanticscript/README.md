@@ -23,13 +23,12 @@ future syntax for highlighting, hovers, semantic roles, and lint integration.
 
 ## Release Readiness
 
-The package is still pre-1.0 and local-release oriented. Before a public 1.0
-Marketplace release, the release owner must decide:
+The package is 1.0 local-release oriented. Before a public Marketplace release,
+the release owner must decide:
 
-- whether `version` should advance from `0.1.9` to `1.0.0`;
 - the real Marketplace `publisher` value to replace `semanticscript-local`;
-- the legal `license` value to replace `UNLICENSED`, or whether distribution
-  remains private.
+- whether the root no-license notice is accepted for private/source-available
+  distribution, or a public license should replace `UNLICENSED`.
 
 Run `npm run check` before packaging. Use `npm run package:vsix` for local VSIX
 builds only after accepting those metadata constraints for the target release.

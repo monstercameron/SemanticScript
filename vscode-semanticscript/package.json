@@ -2,7 +2,7 @@
   "name": "semanticscript-vscode",
   "displayName": "SemanticScript",
   "description": "Syntax highlighting, segment coloring, and lint integration for SemanticScript .sscript and .sem files.",
-  "version": "0.1.9",
+  "version": "1.0.0",
   "publisher": "semanticscript-local",
   "license": "UNLICENSED",
   "engines": {
