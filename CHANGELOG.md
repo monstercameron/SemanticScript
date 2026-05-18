@@ -2,6 +2,8 @@
 
 ## 2026-05-18
 
+- `3df86ee64e3254a0e85f677ac6fe164c8cafcf67` - `tests: add sqlite round trip feature fixture`
+  - Adds an expected-fail SQLite feature corpus fixture that documents the bootstrap compiler gap while the Python compiler owns the native SQLite end-to-end coverage.
 - `aaf0eaf3af20627fc38185236590b43855a2345e` - `compiler: reload sqlite defer handles from slots`
   - Re-loads SQLite cleanup handles from entry-block slots so deferred close/finalize calls use values that dominate failure-label and success-return cleanup sites.
 - `9d6997a4f3975a8f9221d3512db2edc459ddd20d` - `docs: mark completed tooling todos`
