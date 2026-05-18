@@ -332,6 +332,113 @@ branchIf parseOctalOk parseOctalHolds
 branch smokeAssertionFailed
 label parseOctalHolds
 
+# ============================================================
+# Extended unit tests: covers the 2 ops the smoke previously
+# omitted (divideMaxWidthSignedIntQuotient + Remainder).
+# ============================================================
+
+const numeratorTwentyThree CSignedInt64 23
+const denominatorFour CSignedInt64 4
+const expectedQuotientFive CSignedInt64 5
+const expectedRemainderThree CSignedInt64 3
+
+# divideMaxWidthSignedIntQuotient(23, 4) == 5
+call divQuotientCall divideMaxWidthSignedIntQuotient
+arg divQuotientCall numeratorValue numeratorTwentyThree
+arg divQuotientCall denominatorValue denominatorFour
+run divQuotientCall
+bindOk divQuotientResult CSignedInt64 divQuotientCall
+call checkDivQuotientCall math.equalI64
+arg checkDivQuotientCall left divQuotientResult
+arg checkDivQuotientCall right expectedQuotientFive
+run checkDivQuotientCall
+bind divQuotientOk Bool checkDivQuotientCall
+branchIf divQuotientOk divQuotientHolds
+branch smokeAssertionFailed
+label divQuotientHolds
+
+# divideMaxWidthSignedIntRemainder(23, 4) == 3
+call divRemainderCall divideMaxWidthSignedIntRemainder
+arg divRemainderCall numeratorValue numeratorTwentyThree
+arg divRemainderCall denominatorValue denominatorFour
+run divRemainderCall
+bindOk divRemainderResult CSignedInt64 divRemainderCall
+call checkDivRemainderCall math.equalI64
+arg checkDivRemainderCall left divRemainderResult
+arg checkDivRemainderCall right expectedRemainderThree
+run checkDivRemainderCall
+bind divRemainderOk Bool checkDivRemainderCall
+branchIf divRemainderOk divRemainderHolds
+branch smokeAssertionFailed
+label divRemainderHolds
+
+# Property: quotient * denominator + remainder == numerator
+# (5 * 4 + 3 == 23)
+call propMulCall math.multiplyI64
+arg propMulCall left divQuotientResult
+arg propMulCall right denominatorFour
+run propMulCall
+bind propMulResult CSignedInt64 propMulCall
+call propAddCall math.addI64
+arg propAddCall left propMulResult
+arg propAddCall right divRemainderResult
+run propAddCall
+bind propAddResult CSignedInt64 propAddCall
+call propCheckCall math.equalI64
+arg propCheckCall left propAddResult
+arg propCheckCall right numeratorTwentyThree
+run propCheckCall
+bind propCheckOk Bool propCheckCall
+branchIf propCheckOk propCheckHolds
+branch smokeAssertionFailed
+label propCheckHolds
+
+# divideMaxWidthSignedIntQuotient(0, 5) == 0 (zero dividend)
+const zeroNumerator CSignedInt64 0
+const fiveDenominator CSignedInt64 5
+call divZeroQuotientCall divideMaxWidthSignedIntQuotient
+arg divZeroQuotientCall numeratorValue zeroNumerator
+arg divZeroQuotientCall denominatorValue fiveDenominator
+run divZeroQuotientCall
+bindOk divZeroQuotientResult CSignedInt64 divZeroQuotientCall
+call checkDivZeroQuotientCall math.equalI64
+arg checkDivZeroQuotientCall left divZeroQuotientResult
+arg checkDivZeroQuotientCall right zeroNumerator
+run checkDivZeroQuotientCall
+bind divZeroQuotientOk Bool checkDivZeroQuotientCall
+branchIf divZeroQuotientOk divZeroQuotientHolds
+branch smokeAssertionFailed
+label divZeroQuotientHolds
+
+# parsePositiveBinaryCStringToSignedInt64("0") == 0 (boundary)
+const binaryZeroText CNullTerminatedByteString "0"
+call parseZeroBinaryCall parsePositiveBinaryCStringToSignedInt64
+arg parseZeroBinaryCall inputText binaryZeroText
+run parseZeroBinaryCall
+bind parseZeroBinaryResult CSignedInt64 parseZeroBinaryCall
+call checkParseZeroBinaryCall math.equalI64
+arg checkParseZeroBinaryCall left parseZeroBinaryResult
+arg checkParseZeroBinaryCall right zeroNumerator
+run checkParseZeroBinaryCall
+bind parseZeroBinaryOk Bool checkParseZeroBinaryCall
+branchIf parseZeroBinaryOk parseZeroBinaryHolds
+branch smokeAssertionFailed
+label parseZeroBinaryHolds
+
+# absoluteMaxWidthSignedInt(0) == 0 (boundary)
+call absZeroCall absoluteMaxWidthSignedInt
+arg absZeroCall inputValue zeroNumerator
+run absZeroCall
+bind absZeroResult CSignedInt64 absZeroCall
+call checkAbsZeroCall math.equalI64
+arg checkAbsZeroCall left absZeroResult
+arg checkAbsZeroCall right zeroNumerator
+run checkAbsZeroCall
+bind absZeroOk Bool checkAbsZeroCall
+branchIf absZeroOk absZeroHolds
+branch smokeAssertionFailed
+label absZeroHolds
+
 const successMessageText CNullTerminatedByteString "OK"
 call writeSuccessLineCall console.writeLine
 arg writeSuccessLineCall console console
