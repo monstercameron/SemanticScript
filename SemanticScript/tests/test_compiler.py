@@ -807,7 +807,7 @@ def test_cpu_feature_check_rejects_missing_required_feature():
     prog = semsc.parse("\n".join([
         "project CpuMissingFeature",
         "cpuFeatureCheck cpuMissing require",
-        "cpuFeature cpuMissing madeup_feature_for_test on",
+        "cpuFeature cpuMissing madeup-feature-for-test on",
         "",
     ]))
     raised = False
@@ -972,6 +972,136 @@ def test_web_codegen_rejects_unsupported_http_target():
           and "http.responseJson" in proc.stderr
           and "call jsonWriteCall http.responseJson" in proc.stderr,
           proc.stderr)
+
+
+def test_sqlite_codegen_emits_runtime_externs_and_calls():
+    """Deep-audit smoke for the standard.sqlite lowering. Parses the
+    canonical syntax sample, runs codegen, and asserts the IR actually
+    declares each ss_sqlite_* extern and calls into it. Without these
+    asserts a regression that quietly dropped the dispatch block (or
+    no-op'd it to ir.Constant(I32, 0)) would still produce IR that
+    compiles — see the project memory `feedback_verify_impld_claims`
+    for why we require failure under no-op lowering."""
+    sample_path = ROOT / "sem" / "syntax_sample_sqlite.sscript"
+    source = sample_path.read_text(encoding="utf-8")
+    prog = semsc.parse(source)
+    cg = semsc.Codegen(prog)
+    mod = cg.compile()
+    ir_text = str(mod)
+    expected_externs = (
+        "ss_sqlite_database_open",
+        "ss_sqlite_database_close",
+        "ss_sqlite_database_last_insert_rowid",
+        "ss_sqlite_exec",
+        "ss_sqlite_statement_prepare",
+        "ss_sqlite_statement_finalize",
+        "ss_sqlite_statement_step",
+        "ss_sqlite_statement_bind_text",
+        "ss_sqlite_statement_bind_int64",
+        "ss_sqlite_statement_column_int64",
+        "ss_sqlite_statement_column_text",
+    )
+    for symbol in expected_externs:
+        check(f"sqlite lowering: IR declares @{symbol}",
+              f"@\"{symbol}\"" in ir_text or f"@{symbol}" in ir_text,
+              f"no declare for {symbol}")
+        check(f"sqlite lowering: IR calls @{symbol}",
+              f"call i32 @\"{symbol}\"" in ir_text
+              or f"call i32 @{symbol}" in ir_text
+              or f"call i64 @\"{symbol}\"" in ir_text
+              or f"call i64 @{symbol}" in ir_text
+              or f"call i8* @\"{symbol}\"" in ir_text
+              or f"call i8* @{symbol}" in ir_text
+              or f"call ptr @\"{symbol}\"" in ir_text
+              or f"call ptr @{symbol}" in ir_text,
+              f"no call to {symbol}")
+    # openDatabase + prepareStatement allocate an i8* slot for the
+    # out-pointer; missing alloca would mean the handle isn't being
+    # read back from the call.
+    check("sqlite lowering: openDatabase allocates database slot",
+          "openDatabaseCall_databaseSlot" in ir_text,
+          "no databaseSlot alloca emitted for sqlite.openDatabase")
+    check("sqlite lowering: prepareStatement allocates statement slot",
+          "prepareInsertCall_statementSlot" in ir_text
+          or "prepareSelectCall_statementSlot" in ir_text,
+          "no statementSlot alloca emitted for sqlite.prepareStatement")
+
+
+def test_sqlite_codegen_rejects_unsupported_target():
+    """If a `sqlite.*` call name isn't in the dispatch block the
+    compiler must fail loudly rather than fall through to the
+    external-module zero-result fallback — the latter would silently
+    produce a no-op exe. Mirrors test_web_codegen_rejects_unsupported_http_target."""
+    src = "\n".join([
+        "project UnsupportedSqliteTarget",
+        "entry console main",
+        "operation main",
+        "output main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "purpose main \"exercise the sqlite unsupported-target diagnostic\"",
+        "label start",
+        "const dbPath CNullTerminatedByteString \":memory:\"",
+        "call unsupportedSqliteCall sqlite.notARealEntryPoint",
+        "arg unsupportedSqliteCall path dbPath",
+        "run unsupportedSqliteCall",
+        "bind unsupportedSqliteResult CSignedInt32 unsupportedSqliteCall",
+        "returnValue unsupportedSqliteResult",
+        "",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "unsupported_sqlite.sscript"
+        ir_path = Path(tmpdir) / "unsupported_sqlite.ll"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-ir", str(ir_path)],
+            capture_output=True, text=True,
+        )
+    check("sqlite codegen: unsupported target exits 3",
+          proc.returncode == 3,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+    check("sqlite codegen: unsupported target names call",
+          "unsupported native sqlite call target" in proc.stderr
+          and "sqlite.notARealEntryPoint" in proc.stderr,
+          proc.stderr)
+
+
+def test_sqlite_syntax_sample_runs_end_to_end():
+    """End-to-end deep-audit: compile the sqlite syntax sample to a
+    native exe via --emit-exe (which triggers the native_sqlite link
+    inputs and the vendored amalgamation), run the resulting binary,
+    and assert it reports the round-trip body text on stdout. This is
+    the test that would fail under a missing _native_sqlite_link_inputs
+    wiring — semsc would emit IR but the link step would fail to
+    resolve ss_sqlite_* symbols."""
+    sample_path = ROOT / "sem" / "syntax_sample_sqlite.sscript"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        exe_path = Path(tmpdir) / ("sqlite_sample.exe"
+                                    if os.name == "nt"
+                                    else "sqlite_sample")
+        build_dir = Path(tmpdir) / "build"
+        compile_proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(sample_path), "--emit-exe", str(exe_path),
+             "--build-dir", str(build_dir), "--quiet"],
+            capture_output=True, text=True, timeout=300,
+        )
+        check("sqlite e2e: compile-and-link succeeds",
+              compile_proc.returncode == 0,
+              f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+        if compile_proc.returncode != 0 or not exe_path.exists():
+            return
+        run_proc = subprocess.run(
+            [str(exe_path)],
+            capture_output=True, text=True, timeout=30,
+        )
+        check("sqlite e2e: exe exits 0",
+              run_proc.returncode == 0,
+              f"rc={run_proc.returncode} stderr={run_proc.stderr!r}")
+        check("sqlite e2e: stdout carries selected row body",
+              "hello from sqlite syntax sample" in run_proc.stdout,
+              f"stdout={run_proc.stdout!r}")
 
 
 def test_backend_diagnostic_maps_symbol_to_source_call():
@@ -1304,6 +1434,9 @@ def main():
     test_sem_build_driver_discovers_build_tape()
     test_codegen_diagnostic_is_agent_readable()
     test_web_codegen_rejects_unsupported_http_target()
+    test_sqlite_codegen_emits_runtime_externs_and_calls()
+    test_sqlite_codegen_rejects_unsupported_target()
+    test_sqlite_syntax_sample_runs_end_to_end()
     test_backend_diagnostic_maps_symbol_to_source_call()
     test_runtime_check_resolution_profiles()
     test_runtime_profiles_control_panic_context()

@@ -3022,6 +3022,11 @@ class Codegen:
         labels = {}        # name -> BasicBlock
         calls = {}         # callName -> {target, args, result, error_value, error_cond}
         binds = dict(initial_binds)  # bind-name -> SSA value (or alloca pointer for vars)
+        # bind-name -> entry-block alloca slot for handles that need to be
+        # re-loaded at later use sites (defer cleanup). See bindOk handling
+        # below and the sqlite.openDatabase / sqlite.prepareStatement
+        # dispatchers in _emit_run for the producer side.
+        bind_slots = {}
         var_types = {}     # var-name -> LLVM type
         is_var = set()     # set of mutable var names
 
@@ -3143,13 +3148,12 @@ class Codegen:
             raise ValueError(f"unresolved symbol: {tok!r}")
 
         # ---- defer registry ----
-        # Collect every `defer*` registration (and its `deferRunOn` policy
-        # lines) once up front, so each return path can emit the calls in
-        # reverse registration order regardless of where in source order
-        # the defer line sits. We support `defer`, `deferLog`, `deferAwaitLog`,
-        # and `deferWhenExitLog`. Targets that resolve to a user operation
-        # are called for real at each exit; non-user-op targets are still
-        # accepted as metadata (a future runtime backend would route them).
+        # Collect every `defer*` definition and `deferRunOn` policy once up
+        # front, then maintain an active-defer stack while lowering body rows.
+        # A cleanup is only emitted on a path that has executed its defer row.
+        # That matters for handles produced by fallible calls: a failure branch
+        # before `defer statementFinalize ...` cannot legally load/finalize the
+        # statement value because it does not dominate that branch.
         defers = []
         defer_by_name = {}
         for verb, args, _ln in op.lines:
@@ -3170,6 +3174,20 @@ class Codegen:
         for d in defers:
             if not d["run_on"]:
                 d["run_on"] = {"all"}
+        active_defers = []
+        label_defer_snapshots = {}
+
+        def _merge_defer_snapshots(existing, incoming):
+            incoming_names = {d["name"] for d in incoming}
+            return [d for d in existing if d["name"] in incoming_names]
+
+        def record_label_defers(label_name, incoming):
+            snapshot = list(incoming)
+            if label_name in label_defer_snapshots:
+                label_defer_snapshots[label_name] = _merge_defer_snapshots(
+                    label_defer_snapshots[label_name], snapshot)
+            else:
+                label_defer_snapshots[label_name] = snapshot
 
         # ---- useRetry registry ----
         # Map call name -> policy name. The retry loop wraps `run CALL` so
@@ -3242,11 +3260,50 @@ class Codegen:
                 return True
             return exit_path in run_on
 
-        def emit_defers(exit_path):
-            for d in reversed(defers):
+        # Native cleanup targets that a `defer` row can route to. Each
+        # entry is (runtime symbol, return type, param types). All of
+        # these accept a single opaque-pointer handle and return an int
+        # status; the status is intentionally discarded at defer time
+        # (a cleanup error would happen on the wrong thread of control
+        # to recover from). Without this table, `defer ... sqlite.*`
+        # would silently drop — see emit_defers below.
+        _NATIVE_DEFER_DISPATCH = {
+            "sqlite.closeDatabase": (
+                "ss_sqlite_database_close", I32, [I8P]),
+            "sqlite.finalizeStatement": (
+                "ss_sqlite_statement_finalize", I32, [I8P]),
+            "sqlite.resetStatement": (
+                "ss_sqlite_statement_reset", I32, [I8P]),
+        }
+
+        def emit_defers(exit_path, active=None):
+            if active is None:
+                active = active_defers
+            for d in reversed(active):
                 if not _defer_runs_on(d["run_on"], exit_path):
                     continue
                 target = d["target"]
+                native_dispatch = _NATIVE_DEFER_DISPATCH.get(target)
+                if native_dispatch is not None:
+                    symbol, ret_ty, param_tys = native_dispatch
+                    fn = self._runtime_func(symbol, ret_ty, param_tys)
+                    arg_vals = []
+                    for arg_name, target_ty in zip(d["args"], param_tys):
+                        try:
+                            v = resolve(arg_name)
+                        except ValueError:
+                            v = ir.Constant(target_ty, 0)
+                        if v is SENTINEL:
+                            v = ir.Constant(target_ty, 0)
+                        if (isinstance(target_ty, ir.PointerType)
+                                and isinstance(v.type, ir.IntType)):
+                            v = builder.inttoptr(v, target_ty)
+                        arg_vals.append(v)
+                    while len(arg_vals) < len(param_tys):
+                        arg_vals.append(
+                            ir.Constant(param_tys[len(arg_vals)], 0))
+                    builder.call(fn, arg_vals)
+                    continue
                 fn_entry = self._user_ops.get(target)
                 if fn_entry is None:
                     # Non-user-op target (libc, dotted external, etc.).
@@ -3286,10 +3343,14 @@ class Codegen:
                 continue
 
             if verb == "label":
-                target_bb = labels[args[0]]
+                label_name = args[0]
+                target_bb = labels[label_name]
                 if not builder.block.is_terminated:
+                    record_label_defers(label_name, active_defers)
                     builder.branch(target_bb)
                 builder.position_at_end(target_bb)
+                active_defers = list(
+                    label_defer_snapshots.get(label_name, active_defers))
                 continue
 
             if verb == "const":
@@ -3522,6 +3583,16 @@ class Codegen:
             if verb in ("bindOk", "bind"):
                 value_name, _type_name, call_name = args[0], args[1], args[2]
                 binds[value_name] = calls[call_name]["result"]
+                # Native dispatch handlers that produce a handle via an
+                # out-pointer (sqlite.openDatabase, sqlite.prepareStatement)
+                # stash the entry-block alloca on call["handle_slot"]. We
+                # parallel-register the slot under the bind name so a later
+                # `defer ... sqlite.closeDatabase BIND_NAME` can re-load
+                # the handle at the defer site instead of trying to reuse
+                # the original load's SSA across basic-block boundaries.
+                slot = calls[call_name].get("handle_slot")
+                if slot is not None:
+                    bind_slots[value_name] = slot
                 continue
 
             if verb == "bindError":
@@ -3617,8 +3688,12 @@ class Codegen:
                 binds[work_name] = ir.Constant(I64, 0)
                 continue
             if verb in ("defer", "deferLog", "deferAwaitLog",
-                        "deferWhenExitLog",
-                        "taskGroup", "awaitGroup",
+                        "deferWhenExitLog"):
+                d = defer_by_name.get(args[0]) if args else None
+                if d is not None and d not in active_defers:
+                    active_defers.append(d)
+                continue
+            if verb in ("taskGroup", "awaitGroup",
                         "branchIfGroupError",
                         # Channels, locks (spec §22): synchronous-only
                         # no-op lowering. `send`/`receive` are accepted as
@@ -3758,6 +3833,7 @@ class Codegen:
                         zero = ir.Constant(result.type, 0)
                         err_cond = builder.icmp_signed("<", result, zero, name=f"{call_name}_isErr")
                 cont = builder.function.append_basic_block(f"after_{call_name}")
+                record_label_defers(fail_label, active_defers)
                 builder.cbranch(err_cond, get_block(fail_label), cont)
                 builder.position_at_end(cont)
                 continue
@@ -3772,6 +3848,7 @@ class Codegen:
                     if cond_val.type != I1:
                         cond_val = builder.icmp_signed("!=", cond_val, ir.Constant(cond_val.type, 0))
                     cont = builder.function.append_basic_block(f"after_branchIf_{cond_name}")
+                    record_label_defers(t_label, active_defers)
                     builder.cbranch(cond_val, get_block(t_label), cont)
                     builder.position_at_end(cont)
                 else:
@@ -3779,15 +3856,20 @@ class Codegen:
                     cond_val = resolve(cond_name)
                     if cond_val.type != I1:
                         cond_val = builder.icmp_signed("!=", cond_val, ir.Constant(cond_val.type, 0))
+                    record_label_defers(t_label, active_defers)
+                    record_label_defers(f_label, active_defers)
                     builder.cbranch(cond_val, get_block(t_label), get_block(f_label))
                     dead = builder.function.append_basic_block(f"after_branchIf_{cond_name}")
                     builder.position_at_end(dead)
+                    active_defers = []
                 continue
 
             if verb == "branch":
+                record_label_defers(args[0], active_defers)
                 builder.branch(get_block(args[0]))
                 dead = builder.function.append_basic_block(f"after_branch_{args[0]}")
                 builder.position_at_end(dead)
+                active_defers = []
                 continue
 
             if verb == "returnVoid":
@@ -5031,7 +5113,16 @@ class Codegen:
                 database = builder.inttoptr(database, I8P)
             if isinstance(sql.type, ir.IntType):
                 sql = builder.inttoptr(sql, I8P)
-            stmt_slot = builder.alloca(I8P, name=f"{call_name}_statementSlot")
+            # Entry-block alloca for the same reason openDatabase uses
+            # one — a later `defer ... sqlite.finalizeStatement` must be
+            # able to re-load the handle from a slot that dominates the
+            # defer's basic block. Pre-init to NULL so a defer that fires
+            # before prepare succeeded passes a NULL handle through to
+            # the adapter (which treats NULL as a config error).
+            with builder.goto_entry_block():
+                stmt_slot = builder.alloca(
+                    I8P, name=f"{call_name}_statementSlot")
+                builder.store(ir.Constant(I8P, None), stmt_slot)
             prepare_fn = self._runtime_func(
                 "ss_sqlite_statement_prepare", I32,
                 [I8P, I8P, I8P.as_pointer()])
@@ -5044,6 +5135,7 @@ class Codegen:
             call["result"] = handle
             call["error_value"] = status
             call["error_cond"] = _sqlite_simple_status_error_cond(status)
+            call["handle_slot"] = stmt_slot
             return
 
         if target == "sqlite.finalizeStatement":
