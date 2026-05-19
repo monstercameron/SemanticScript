@@ -1691,6 +1691,14 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
     if verb == "webServer":
         ws = WebServer(args[0])
         prog.web_servers[ws.name] = ws
+        # Reset current_op so the subsequent `purpose <serverName> "..."`
+        # row (and any other webServer-scoped header verbs) doesn't get
+        # mis-attributed to whatever operation an imported stdlib module
+        # left dangling. Without this, importing a stdlib that ends with
+        # an `operation` body (e.g. standard.log's `logError`) breaks
+        # parsing of the next webServer declaration with
+        # "purpose: owner X does not match current operation Y".
+        prog.current_op = None
         return
     if verb == "serverHost":
         prog.web_servers[args[0]].host = _unwrap(args[1])
