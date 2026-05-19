@@ -2,6 +2,10 @@
 
 ## 2026-05-19
 
+- `a2845b7b4d380f9dfc7438d9334d4ff9118c81de` - `docs: mark JSON CRUD syntax implemented`
+  - Promotes the JSON document lifecycle, navigation, cursor-reader, mutator, and delete/clear rows in `SYNTAX.md` from Proposed to Impl'd now that the native runtime and compiler dispatch are wired.
+- `d165a4429a33a05cb40b686ae547737d2400fc41` - `docs: correct strict rollout changelog`
+  - Replaces the stale changelog placeholder hash and corrects the strict rollout wording to match the implemented opt-in `languageMode strictExecutable` / `--strict` behavior.
 - `c2976bb11ca35236efce632f715d2d5af989ba50` - `docs: mark JSON compiler TODOs complete`
   - Marks the completed native JSON compiler-lowering and `jsonBody` checklist items now covered by the compiler, linter, VS Code grammar, semfmt preservation, and feature fixtures.
 - `332df106861186861bec25c46fae3e1765a11c74` - `docs: roll up changelog for strict wall + JSON CRUD + perf refines`
