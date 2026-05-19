@@ -1,0 +1,365 @@
+# ============================================================
+# SEMANTICSCRIPT STANDARD LIBRARY: declarative GUI namespace
+# ============================================================
+#
+# Import this module with:
+#
+#   importModule gui standard.gui
+#
+# The `gui.*` call targets are compiler/runtime-owned intrinsics for the
+# declarative Windows GUI target. This module owns the official
+# standard-library import path, declarative row vocabulary, semantic handle
+# aliases, event/control/layout token sets, handler ABI types, runtime target
+# names, status codes, and reusable capability contracts for that intrinsic
+# namespace.
+#
+# Compiler contract:
+#   - parse the declarative rows;
+#   - validate references, token membership, and handler signatures against
+#     the names and closed sets below;
+#   - lower valid declarations into runtime config IDs and gui.* calls.
+#
+# The compiler should not need to own GUI design semantics beyond the minimal
+# mechanics above. This file is the human-readable contract layer.
+
+module standard.gui
+modulePurpose standard.gui "Standard-library namespace and contracts for declarative GUI application, window, control, event, and runtime-call intrinsics."
+moduleOwns standard.gui "The official import path `standard.gui`, GUI declaration vocabulary, semantic GUI handle aliases, reusable GUI capabilities, closed GUI token sets, status-code names, and the compiler-owned `gui.*` intrinsic namespace contract."
+moduleDoesNotOwn standard.gui "Application GUI graphs, event handler implementations, native Win32 runtime internals, platform message-loop internals, generated application configuration tables, or diagnostics text."
+moduleInvariant standard.gui "The standard module entry is this file; new GUI modules import it as alias `gui` before using compiler-owned targets in the `gui.*` namespace."
+moduleInvariant standard.gui "Parser and runtime implementations may mirror the numeric IDs below, but the vocabulary and user-facing semantics belong to `standard.gui`."
+
+type GuiApplication COpaqueMemoryAddress
+type GuiSession COpaqueMemoryAddress
+type GuiEvent COpaqueMemoryAddress
+type GuiWindow COpaqueMemoryAddress
+type GuiControl COpaqueMemoryAddress
+type GuiButton GuiControl
+type GuiTextBox GuiControl
+type GuiListBox GuiControl
+type GuiCheckBox GuiControl
+type GuiMenuItem GuiControl
+type GuiStatusBar GuiControl
+type GuiTextLabel GuiControl
+type GuiWindowId CUnsignedInt32
+type GuiControlId CUnsignedInt32
+type GuiText CNullTerminatedByteString
+type GuiApplicationTitle GuiText
+type GuiWindowTitle GuiText
+type GuiControlText GuiText
+type GuiPlaceholderText GuiText
+type GuiAccessibleName GuiText
+type GuiListBoxItemText GuiText
+type GuiIconGroupName CNullTerminatedByteString
+type GuiPixels CSignedInt32
+type GuiMinimumPixels GuiPixels
+type GuiTabIndex CSignedInt32
+type GuiKeyCode CSignedInt32
+type GuiSelectedIndex CSignedInt32
+type GuiEventDimensionPixels GuiPixels
+type GuiHandlerStatus CSignedInt32
+type GuiRuntimeStatusCode CSignedInt32
+type GuiDeclarationVerb CNullTerminatedByteString
+type GuiKeywordToken CNullTerminatedByteString
+type GuiRuntimeTarget CNullTerminatedByteString
+
+enum GuiTargetKind repr CSignedInt32
+enumCase GuiTargetKind windowGuiTargetKind 1
+enumCase GuiTargetKind controlGuiTargetKind 2
+
+enum GuiWindowLayout repr CSignedInt32
+enumCase GuiWindowLayout defaultGuiWindowLayout 0
+enumCase GuiWindowLayout verticalStackGuiWindowLayout 1
+enumCase GuiWindowLayout horizontalStackGuiWindowLayout 2
+enumCase GuiWindowLayout gridGuiWindowLayout 3
+enumCase GuiWindowLayout absoluteGuiWindowLayout 4
+
+enum GuiControlKind repr CSignedInt32
+enumCase GuiControlKind buttonGuiControlKind 1
+enumCase GuiControlKind textBoxGuiControlKind 2
+enumCase GuiControlKind listBoxGuiControlKind 3
+enumCase GuiControlKind checkBoxGuiControlKind 4
+enumCase GuiControlKind menuItemGuiControlKind 5
+enumCase GuiControlKind statusBarGuiControlKind 6
+enumCase GuiControlKind textLabelGuiControlKind 7
+
+enum GuiListBoxSelectionMode repr CSignedInt32
+enumCase GuiListBoxSelectionMode defaultGuiListBoxSelectionMode 0
+enumCase GuiListBoxSelectionMode singleGuiListBoxSelectionMode 1
+enumCase GuiListBoxSelectionMode multipleGuiListBoxSelectionMode 2
+
+enum GuiEventKind repr CSignedInt32
+enumCase GuiEventKind clickGuiEventKind 1
+enumCase GuiEventKind valueChangedGuiEventKind 2
+enumCase GuiEventKind selectionChangedGuiEventKind 3
+enumCase GuiEventKind enterPressedGuiEventKind 4
+enumCase GuiEventKind keyPressedGuiEventKind 5
+enumCase GuiEventKind focusGainedGuiEventKind 6
+enumCase GuiEventKind focusLostGuiEventKind 7
+enumCase GuiEventKind closeRequestedGuiEventKind 8
+enumCase GuiEventKind resizedGuiEventKind 9
+enumCase GuiEventKind shownGuiEventKind 10
+enumCase GuiEventKind hiddenGuiEventKind 11
+
+enum GuiRuntimeStatus repr CSignedInt32
+enumCase GuiRuntimeStatus okGuiRuntimeStatus 0
+enumCase GuiRuntimeStatus configGuiRuntimeStatus 1
+enumCase GuiRuntimeStatus runtimeUnavailableGuiRuntimeStatus 2
+enumCase GuiRuntimeStatus allocationGuiRuntimeStatus 3
+enumCase GuiRuntimeStatus platformGuiRuntimeStatus 4
+enumCase GuiRuntimeStatus notFoundGuiRuntimeStatus 5
+enumCase GuiRuntimeStatus wrongKindGuiRuntimeStatus 6
+enumCase GuiRuntimeStatus handlerGuiRuntimeStatus 7
+enumCase GuiRuntimeStatus unsupportedGuiRuntimeStatus 8
+enumCase GuiRuntimeStatus threadGuiRuntimeStatus 9
+
+exportType standard.gui GuiApplication
+exportType standard.gui GuiSession
+exportType standard.gui GuiEvent
+exportType standard.gui GuiWindow
+exportType standard.gui GuiControl
+exportType standard.gui GuiButton
+exportType standard.gui GuiTextBox
+exportType standard.gui GuiListBox
+exportType standard.gui GuiCheckBox
+exportType standard.gui GuiMenuItem
+exportType standard.gui GuiStatusBar
+exportType standard.gui GuiTextLabel
+exportType standard.gui GuiWindowId
+exportType standard.gui GuiControlId
+exportType standard.gui GuiText
+exportType standard.gui GuiApplicationTitle
+exportType standard.gui GuiWindowTitle
+exportType standard.gui GuiControlText
+exportType standard.gui GuiPlaceholderText
+exportType standard.gui GuiAccessibleName
+exportType standard.gui GuiListBoxItemText
+exportType standard.gui GuiIconGroupName
+exportType standard.gui GuiPixels
+exportType standard.gui GuiMinimumPixels
+exportType standard.gui GuiTabIndex
+exportType standard.gui GuiKeyCode
+exportType standard.gui GuiSelectedIndex
+exportType standard.gui GuiEventDimensionPixels
+exportType standard.gui GuiHandlerStatus
+exportType standard.gui GuiRuntimeStatusCode
+exportType standard.gui GuiDeclarationVerb
+exportType standard.gui GuiKeywordToken
+exportType standard.gui GuiRuntimeTarget
+exportType standard.gui GuiTargetKind
+exportType standard.gui GuiWindowLayout
+exportType standard.gui GuiControlKind
+exportType standard.gui GuiListBoxSelectionMode
+exportType standard.gui GuiEventKind
+exportType standard.gui GuiRuntimeStatus
+exportCapability standard.gui guiTextBoxReader
+exportCapability standard.gui guiTextBoxWriter
+exportCapability standard.gui guiListBoxItemsReader
+exportCapability standard.gui guiListBoxWriter
+exportCapability standard.gui guiListBoxSelectionReader
+exportCapability standard.gui guiCheckBoxReader
+exportCapability standard.gui guiCheckBoxWriter
+exportCapability standard.gui guiWindowWriter
+exportCapability standard.gui guiEventReader
+exportCapability standard.gui guiEventCloseWriter
+exportConstant standard.gui guiModuleVersionText
+exportConstant standard.gui guiTargetRuntimeToken
+exportConstant standard.gui guiApplicationVerb
+exportConstant standard.gui guiApplicationTitleVerb
+exportConstant standard.gui guiApplicationIconVerb
+exportConstant standard.gui guiApplicationMainWindowVerb
+exportConstant standard.gui guiApplicationOnExitVerb
+exportConstant standard.gui guiWindowVerb
+exportConstant standard.gui guiWindowApplicationVerb
+exportConstant standard.gui guiWindowTitleVerb
+exportConstant standard.gui guiWindowWidthVerb
+exportConstant standard.gui guiWindowHeightVerb
+exportConstant standard.gui guiWindowMinimumWidthVerb
+exportConstant standard.gui guiWindowMinimumHeightVerb
+exportConstant standard.gui guiWindowLayoutVerb
+exportConstant standard.gui guiWindowResizableVerb
+exportConstant standard.gui guiWindowEventVerb
+exportConstant standard.gui guiButtonVerb
+exportConstant standard.gui guiTextBoxVerb
+exportConstant standard.gui guiListBoxVerb
+exportConstant standard.gui guiCheckBoxVerb
+exportConstant standard.gui guiMenuItemVerb
+exportConstant standard.gui guiStatusBarVerb
+exportConstant standard.gui guiTextLabelVerb
+exportConstant standard.gui guiControlWindowVerb
+exportConstant standard.gui guiControlEnabledVerb
+exportConstant standard.gui guiControlVisibleVerb
+exportConstant standard.gui guiControlTabIndexVerb
+exportConstant standard.gui guiControlAccessibleNameVerb
+exportConstant standard.gui guiControlEventVerb
+exportConstant standard.gui guiButtonTextVerb
+exportConstant standard.gui guiButtonIsDefaultVerb
+exportConstant standard.gui guiTextBoxPlaceholderVerb
+exportConstant standard.gui guiTextBoxMaxLengthVerb
+exportConstant standard.gui guiListBoxSelectionModeVerb
+exportConstant standard.gui guiCheckBoxCheckedVerb
+exportConstant standard.gui guiTextLabelTextVerb
+exportConstant standard.gui yesGuiKeywordToken
+exportConstant standard.gui noGuiKeywordToken
+exportConstant standard.gui verticalStackGuiKeywordToken
+exportConstant standard.gui horizontalStackGuiKeywordToken
+exportConstant standard.gui gridGuiKeywordToken
+exportConstant standard.gui absoluteGuiKeywordToken
+exportConstant standard.gui singleGuiKeywordToken
+exportConstant standard.gui multipleGuiKeywordToken
+exportConstant standard.gui clickGuiKeywordToken
+exportConstant standard.gui valueChangedGuiKeywordToken
+exportConstant standard.gui selectionChangedGuiKeywordToken
+exportConstant standard.gui enterPressedGuiKeywordToken
+exportConstant standard.gui keyPressedGuiKeywordToken
+exportConstant standard.gui focusGainedGuiKeywordToken
+exportConstant standard.gui focusLostGuiKeywordToken
+exportConstant standard.gui closeRequestedGuiKeywordToken
+exportConstant standard.gui resizedGuiKeywordToken
+exportConstant standard.gui shownGuiKeywordToken
+exportConstant standard.gui hiddenGuiKeywordToken
+exportConstant standard.gui guiTextBoxTextTarget
+exportConstant standard.gui guiTextBoxSetTextTarget
+exportConstant standard.gui guiListBoxSelectedIndexTarget
+exportConstant standard.gui guiListBoxAppendItemTarget
+exportConstant standard.gui guiListBoxClearTarget
+exportConstant standard.gui guiWindowCloseTarget
+exportConstant standard.gui guiEventKeyCodeTarget
+exportConstant standard.gui guiEventSelectedIndexTarget
+exportConstant standard.gui guiEventWindowWidthTarget
+exportConstant standard.gui guiEventWindowHeightTarget
+exportConstant standard.gui guiEventCancelCloseTarget
+exportConstant standard.gui guiHandlerSuccessStatus
+exportConstant standard.gui guiHandlerFailureStatus
+exportConstant standard.gui guiInvalidSelectedIndex
+
+typeInvariant GuiApplication "Declarative application handle produced from guiApplication rows; target windowsGui selects exactly one application graph for code generation."
+typeInvariant GuiSession "Opaque runtime session token passed to GUI event handlers and every gui.* call that touches live GUI state."
+typeInvariant GuiEvent "Opaque runtime event token passed to GUI event handlers and event-reader calls."
+typeInvariant GuiWindow "Declarative window handle produced from guiWindow rows and accepted by gui.window.* calls."
+typeInvariant GuiControl "Common opaque control handle alias shared by all declarative GUI control kinds."
+typeInvariant GuiButton "Declarative button control handle produced from guiButton rows."
+typeInvariant GuiTextBox "Declarative text-box control handle produced from guiTextBox rows."
+typeInvariant GuiListBox "Declarative list-box control handle produced from guiListBox rows."
+typeInvariant GuiCheckBox "Declarative check-box control handle produced from guiCheckBox rows."
+typeInvariant GuiMenuItem "Declarative menu-item control handle produced from guiMenuItem rows."
+typeInvariant GuiStatusBar "Declarative status-bar control handle produced from guiStatusBar rows."
+typeInvariant GuiTextLabel "Declarative static text-label control handle produced from guiTextLabel rows."
+typeInvariant GuiWindowId "Stable unsigned runtime window ID emitted into the native GUI config table."
+typeInvariant GuiControlId "Stable unsigned runtime control ID emitted into the native GUI config table."
+typeInvariant GuiText "Null-terminated UTF-8 text crossing the SemanticScript GUI boundary; the runtime converts at the platform boundary as needed."
+typeInvariant GuiApplicationTitle "Application title text declared by guiApplicationTitle."
+typeInvariant GuiWindowTitle "Window title text declared by guiWindowTitle."
+typeInvariant GuiControlText "Visible control text declared by kind-specific rows such as guiButtonText and guiTextLabelText."
+typeInvariant GuiPlaceholderText "Placeholder text declared by guiTextBoxPlaceholder."
+typeInvariant GuiAccessibleName "Assistive-technology name declared by guiControlAccessibleName."
+typeInvariant GuiListBoxItemText "List-box item text passed to gui.listBoxAppendItem."
+typeInvariant GuiIconGroupName "Name of an icon registry group referenced by guiApplicationIcon."
+typeInvariant GuiPixels "Positive pixel count used by window width and height rows and event size readers."
+typeInvariant GuiMinimumPixels "Positive minimum-size pixel count; must not exceed the matching initial window dimension."
+typeInvariant GuiTabIndex "Non-negative tab order index scoped to one window."
+typeInvariant GuiKeyCode "Platform-normalized key code read from a keyPressed GUI event."
+typeInvariant GuiSelectedIndex "Zero-based list-box selected index; -1 means no selection."
+typeInvariant GuiEventDimensionPixels "Window dimension read from a resized GUI event."
+typeInvariant GuiHandlerStatus "GUI handlers return 0 for handled successfully; non-zero reports runtime-level event failure."
+typeInvariant GuiRuntimeStatusCode "Runtime status code returned by gui.* calls that can fail."
+typeInvariant GuiDeclarationVerb "Canonical text for a declarative GUI source row."
+typeInvariant GuiKeywordToken "Canonical text for a closed GUI token such as an event kind, layout, selection mode, or yes/no value."
+typeInvariant GuiRuntimeTarget "Canonical dotted call target in the compiler/runtime-owned gui.* namespace."
+typeInvariant GuiTargetKind "Closed runtime event target set: window or control."
+typeInvariant GuiWindowLayout "Closed layout token set for guiWindowLayout."
+typeInvariant GuiControlKind "Closed control-kind set for per-kind GUI control declarators."
+typeInvariant GuiListBoxSelectionMode "Closed list-box selection mode set for guiListBoxSelectionMode."
+typeInvariant GuiEventKind "Closed GUI event token set shared by guiWindowEvent and guiControlEvent."
+typeInvariant GuiRuntimeStatus "Closed status-code set returned by the native GUI runtime."
+
+capability guiTextBoxReader gui.control.textBox.text read
+capability guiTextBoxWriter gui.control.textBox.text write
+capability guiListBoxItemsReader gui.control.listBox.items read
+capability guiListBoxWriter gui.control.listBox.items write
+capability guiListBoxSelectionReader gui.control.listBox.selection read
+capability guiCheckBoxReader gui.control.checkBox.checked read
+capability guiCheckBoxWriter gui.control.checkBox.checked write
+capability guiWindowWriter gui.window write
+capability guiEventReader gui.event read
+capability guiEventCloseWriter gui.event.close write
+
+storage module immutable guiModuleVersionText CNullTerminatedByteString "standard.gui 0.1"
+storage module immutable guiTargetRuntimeToken GuiKeywordToken "windowsGui"
+
+# Declarative row vocabulary. These constants make the stdlib module the
+# contract home while the compiler remains a mechanical consumer.
+storage module immutable guiApplicationVerb GuiDeclarationVerb "guiApplication"
+storage module immutable guiApplicationTitleVerb GuiDeclarationVerb "guiApplicationTitle"
+storage module immutable guiApplicationIconVerb GuiDeclarationVerb "guiApplicationIcon"
+storage module immutable guiApplicationMainWindowVerb GuiDeclarationVerb "guiApplicationMainWindow"
+storage module immutable guiApplicationOnExitVerb GuiDeclarationVerb "guiApplicationOnExit"
+storage module immutable guiWindowVerb GuiDeclarationVerb "guiWindow"
+storage module immutable guiWindowApplicationVerb GuiDeclarationVerb "guiWindowApplication"
+storage module immutable guiWindowTitleVerb GuiDeclarationVerb "guiWindowTitle"
+storage module immutable guiWindowWidthVerb GuiDeclarationVerb "guiWindowWidth"
+storage module immutable guiWindowHeightVerb GuiDeclarationVerb "guiWindowHeight"
+storage module immutable guiWindowMinimumWidthVerb GuiDeclarationVerb "guiWindowMinimumWidth"
+storage module immutable guiWindowMinimumHeightVerb GuiDeclarationVerb "guiWindowMinimumHeight"
+storage module immutable guiWindowLayoutVerb GuiDeclarationVerb "guiWindowLayout"
+storage module immutable guiWindowResizableVerb GuiDeclarationVerb "guiWindowResizable"
+storage module immutable guiWindowEventVerb GuiDeclarationVerb "guiWindowEvent"
+storage module immutable guiButtonVerb GuiDeclarationVerb "guiButton"
+storage module immutable guiTextBoxVerb GuiDeclarationVerb "guiTextBox"
+storage module immutable guiListBoxVerb GuiDeclarationVerb "guiListBox"
+storage module immutable guiCheckBoxVerb GuiDeclarationVerb "guiCheckBox"
+storage module immutable guiMenuItemVerb GuiDeclarationVerb "guiMenuItem"
+storage module immutable guiStatusBarVerb GuiDeclarationVerb "guiStatusBar"
+storage module immutable guiTextLabelVerb GuiDeclarationVerb "guiTextLabel"
+storage module immutable guiControlWindowVerb GuiDeclarationVerb "guiControlWindow"
+storage module immutable guiControlEnabledVerb GuiDeclarationVerb "guiControlEnabled"
+storage module immutable guiControlVisibleVerb GuiDeclarationVerb "guiControlVisible"
+storage module immutable guiControlTabIndexVerb GuiDeclarationVerb "guiControlTabIndex"
+storage module immutable guiControlAccessibleNameVerb GuiDeclarationVerb "guiControlAccessibleName"
+storage module immutable guiControlEventVerb GuiDeclarationVerb "guiControlEvent"
+storage module immutable guiButtonTextVerb GuiDeclarationVerb "guiButtonText"
+storage module immutable guiButtonIsDefaultVerb GuiDeclarationVerb "guiButtonIsDefault"
+storage module immutable guiTextBoxPlaceholderVerb GuiDeclarationVerb "guiTextBoxPlaceholder"
+storage module immutable guiTextBoxMaxLengthVerb GuiDeclarationVerb "guiTextBoxMaxLength"
+storage module immutable guiListBoxSelectionModeVerb GuiDeclarationVerb "guiListBoxSelectionMode"
+storage module immutable guiCheckBoxCheckedVerb GuiDeclarationVerb "guiCheckBoxChecked"
+storage module immutable guiTextLabelTextVerb GuiDeclarationVerb "guiTextLabelText"
+
+# Closed token spellings used by declarative rows.
+storage module immutable yesGuiKeywordToken GuiKeywordToken "yes"
+storage module immutable noGuiKeywordToken GuiKeywordToken "no"
+storage module immutable verticalStackGuiKeywordToken GuiKeywordToken "verticalStack"
+storage module immutable horizontalStackGuiKeywordToken GuiKeywordToken "horizontalStack"
+storage module immutable gridGuiKeywordToken GuiKeywordToken "grid"
+storage module immutable absoluteGuiKeywordToken GuiKeywordToken "absolute"
+storage module immutable singleGuiKeywordToken GuiKeywordToken "single"
+storage module immutable multipleGuiKeywordToken GuiKeywordToken "multiple"
+storage module immutable clickGuiKeywordToken GuiKeywordToken "click"
+storage module immutable valueChangedGuiKeywordToken GuiKeywordToken "valueChanged"
+storage module immutable selectionChangedGuiKeywordToken GuiKeywordToken "selectionChanged"
+storage module immutable enterPressedGuiKeywordToken GuiKeywordToken "enterPressed"
+storage module immutable keyPressedGuiKeywordToken GuiKeywordToken "keyPressed"
+storage module immutable focusGainedGuiKeywordToken GuiKeywordToken "focusGained"
+storage module immutable focusLostGuiKeywordToken GuiKeywordToken "focusLost"
+storage module immutable closeRequestedGuiKeywordToken GuiKeywordToken "closeRequested"
+storage module immutable resizedGuiKeywordToken GuiKeywordToken "resized"
+storage module immutable shownGuiKeywordToken GuiKeywordToken "shown"
+storage module immutable hiddenGuiKeywordToken GuiKeywordToken "hidden"
+
+# Runtime call target vocabulary. Operations that touch live GUI state require
+# a GuiSession argument; event-reader operations require a GuiEvent argument.
+storage module immutable guiTextBoxTextTarget GuiRuntimeTarget "gui.textBoxText"
+storage module immutable guiTextBoxSetTextTarget GuiRuntimeTarget "gui.textBoxSetText"
+storage module immutable guiListBoxSelectedIndexTarget GuiRuntimeTarget "gui.listBoxSelectedIndex"
+storage module immutable guiListBoxAppendItemTarget GuiRuntimeTarget "gui.listBoxAppendItem"
+storage module immutable guiListBoxClearTarget GuiRuntimeTarget "gui.listBoxClear"
+storage module immutable guiWindowCloseTarget GuiRuntimeTarget "gui.windowClose"
+storage module immutable guiEventKeyCodeTarget GuiRuntimeTarget "gui.eventKeyCode"
+storage module immutable guiEventSelectedIndexTarget GuiRuntimeTarget "gui.eventSelectedIndex"
+storage module immutable guiEventWindowWidthTarget GuiRuntimeTarget "gui.eventWindowWidth"
+storage module immutable guiEventWindowHeightTarget GuiRuntimeTarget "gui.eventWindowHeight"
+storage module immutable guiEventCancelCloseTarget GuiRuntimeTarget "gui.eventCancelClose"
+
+storage module immutable guiHandlerSuccessStatus GuiHandlerStatus 0
+storage module immutable guiHandlerFailureStatus GuiHandlerStatus 1
+storage module immutable guiInvalidSelectedIndex GuiSelectedIndex -1

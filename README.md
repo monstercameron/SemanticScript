@@ -89,7 +89,7 @@ SemanticScript/
   linter/semlint.py              Standalone linter
   sem/                           Executable SemanticScript examples and smoke files
   sem/feature_tests/             Focused compiler feature programs
-  stdlib_sem/                    SemanticScript-shaped standard-library modules
+  std/                           SemanticScript standard library
   bootstrap/                    SemanticScript-written compiler bootstrap stages
   tests/                        Compiler, parity, bootstrap, and stdlib tests
 
@@ -97,6 +97,40 @@ samples/javascript/             JavaScript comparison and oracle programs
 samples/python/                 Canonical Python comparison programs
 python/                         1.0 compatibility mirror of samples/python/
 vscode-semanticscript/             Local VS Code extension
+```
+
+## Standard Library Imports
+
+The standard library is a library tree, not a build project. It has no
+`build.sem`. The top-level relay is:
+
+```text
+SemanticScript/std/module.sem
+```
+
+Each standard module is imported through the `standard.*` namespace and resolves
+to a module entry file:
+
+```text
+standard.html   -> SemanticScript/std/html/main.sem
+standard.json   -> SemanticScript/std/json/main.sem
+standard.sqlite -> SemanticScript/std/sqlite/main.sem
+```
+
+Apps can live anywhere on the filesystem as long as they are compiled with this
+toolchain or given an explicit std path. Resolution order is:
+
+1. `--std-path PATH`
+2. `SEMANTICSCRIPT_STD_PATH` or `SEMSC_STD_PATH`
+3. vendored `std/` folders found by walking up from the app source
+4. `std/` under the current working directory
+5. the compiler-bundled `SemanticScript/compiler/../std`
+
+Example:
+
+```powershell
+python C:\path\to\SemanticScript\compiler\semsc.py C:\anywhere\app\main.sem --run
+python C:\path\to\SemanticScript\compiler\semsc.py C:\anywhere\app\main.sem --std-path C:\path\to\std
 ```
 
 ## Current Implementation

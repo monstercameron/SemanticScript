@@ -12,7 +12,7 @@ errorCase MainError AllocationFailed CSignedInt32
 # ============================================================
 # Stdlib-style helper operations.
 #
-# These mirror operations defined in stdlib_sem/*.sscript. Today SemanticScript does
+# These mirror operations defined in std/*.sscript. Today SemanticScript does
 # not support cross-file calls, so the compiler-side helpers live
 # here alongside main(). The shapes match the corresponding stdlib
 # operations and can be lifted out unchanged once multi-file linking

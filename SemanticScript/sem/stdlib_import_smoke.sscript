@@ -2,7 +2,7 @@
 # SemanticScript stdlib import-and-use smoke
 # ============================================================
 #
-# # rationale: every stdlib_sem/*.sscript module ships an `operation main`
+# # rationale: every std/*.sscript module ships an `operation main`
 #   as its self-test. This file goes one step further — it asks
 #   whether those operations can be IMPORTED into a separate
 #   program via `importModule` and called from outside. It pulls
@@ -58,7 +58,7 @@ useCapability stdlibImportSmokeMain stdoutWriteCapability
 effect stdlibImportSmokeMain write console.stdout
 memoryHeap stdlibImportSmokeMain no
 async stdlibImportSmokeMain no
-purpose stdlibImportSmokeMain "Call one or two operations from each imported stdlib_sem module and assert each result. Demonstrates that importModule successfully wires the stdlib surface into a downstream program."
+purpose stdlibImportSmokeMain "Call one or two operations from each imported std module and assert each result. Demonstrates that importModule successfully wires the stdlib surface into a downstream program."
 invariant stdlibImportSmokeMain "All eight imported-module assertions hold; final exit code is 0; stdout is exactly 'OK\\n'."
 
 label startStdlibImportSmokeMain

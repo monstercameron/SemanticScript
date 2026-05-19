@@ -1,0 +1,58 @@
+# ============================================================
+# SEMANTICSCRIPT STANDARD LIBRARY: native HTTP server namespace
+# ============================================================
+#
+# Import this module with:
+#
+#   importModule http standard.http
+#
+# The `http.*` call targets are compiler/runtime-owned intrinsics. This module
+# owns the official standard-library import path, semantic type names, and
+# reusable capability contracts for that intrinsic namespace.
+
+module standard.http
+modulePurpose standard.http "Standard-library namespace and contracts for native HTTP server request and response intrinsics."
+moduleOwns standard.http "The official import path `standard.http`, semantic HTTP type aliases, reusable HTTP capabilities, and the compiler-owned `http.*` intrinsic namespace contract."
+moduleDoesNotOwn standard.http "Application routes, handler implementations, middleware order, native HTTP runtime implementation, or generated route dispatch."
+moduleInvariant standard.http "The standard module entry is this file; new modules may import it as alias `http` before using compiler-owned targets in the `http.*` namespace."
+
+type HttpStatusCode CSignedInt32
+type HttpHeaderName CNullTerminatedByteString
+type HttpHeaderValue CNullTerminatedByteString
+type HttpContentType CNullTerminatedByteString
+type HttpTextBody CNullTerminatedByteString
+type HttpByteBody COpaqueMemoryAddress
+type HttpBodyLength CByteCount
+type HttpRequestValue CNullTerminatedByteString
+
+exportType standard.http HttpStatusCode
+exportType standard.http HttpHeaderName
+exportType standard.http HttpHeaderValue
+exportType standard.http HttpContentType
+exportType standard.http HttpTextBody
+exportType standard.http HttpByteBody
+exportType standard.http HttpBodyLength
+exportType standard.http HttpRequestValue
+exportCapability standard.http httpRequestReader
+exportCapability standard.http httpResponseWriter
+exportConstant standard.http httpModuleVersionText
+exportConstant standard.http plainTextContentType
+exportConstant standard.http htmlContentType
+exportConstant standard.http jsonContentType
+
+typeInvariant HttpStatusCode "HTTP response status code passed to native response writers."
+typeInvariant HttpHeaderName "Header name passed to native response header writers."
+typeInvariant HttpHeaderValue "Header value passed to native response header writers."
+typeInvariant HttpContentType "Content-Type value passed to native response body writers."
+typeInvariant HttpTextBody "Null-terminated text body passed to native text response writers."
+typeInvariant HttpByteBody "Opaque byte buffer passed to native byte response writers with an explicit length."
+typeInvariant HttpBodyLength "Byte count paired with HttpByteBody."
+typeInvariant HttpRequestValue "Request-derived string value returned by native request readers; nullable readers must be guarded before response-body use."
+
+capability httpRequestReader http.request read
+capability httpResponseWriter http.response write
+
+storage module immutable httpModuleVersionText HttpTextBody "standard.http 0.1"
+storage module immutable plainTextContentType HttpContentType "text/plain; charset=utf-8"
+storage module immutable htmlContentType HttpContentType "text/html; charset=utf-8"
+storage module immutable jsonContentType HttpContentType "application/json; charset=utf-8"

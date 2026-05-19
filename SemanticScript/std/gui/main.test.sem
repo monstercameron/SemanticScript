@@ -1,0 +1,25 @@
+project StdGuiModuleTest
+target console
+runtime native 1
+entry console main
+
+importModule gui standard.gui
+importConstant importedGuiModuleVersionText gui guiModuleVersionText
+
+storage module immutable successCode ExitCode 0
+storage module immutable okText CNullTerminatedByteString "OK"
+
+operation main
+output main ExitCode
+effect main write console.stdout
+authority main console.stdout write
+memoryHeap main no
+async main no
+purpose main "Smoke-test that standard.gui imports and exposes its version constant."
+
+call writeOkCall console.writeLine
+arg writeOkCall text okText
+run writeOkCall
+ignoreValue writeOkCall CSignedInt32
+
+returnValue successCode

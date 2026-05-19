@@ -1,13 +1,11 @@
 """
-test_stdlib.py — run every stdlib_sem/*.sscript self-test and verify it
-exits 0 with stdout 'OK'. Each file is compiled via the trusted
-Python reference compiler (compiler/semsc.py) and JIT-executed.
+Run every canonical stdlib self-test under
+std/<module>/main.test.sem.
 
-Per-test wall-clock timing is recorded and flagged when it exceeds
-the PERFORMANCE_BUDGET_SECONDS budget. The budget is generous because
-the JIT path includes IR generation, LLVM IR-to-native lowering, and
-program execution for each test — typical times are well under 1s,
-so a 5s budget catches genuine regressions.
+Each file is compiled via compiler/semsc.py and JIT-executed. Per-test
+wall-clock timing is recorded and flagged when it exceeds the performance
+budget. The budget is intentionally generous because the JIT path includes IR
+generation, LLVM lowering, and program execution for each test.
 """
 
 import subprocess
@@ -18,116 +16,105 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 SEMSC = ROOT / "compiler" / "semsc.py"
-STDLIB_DIR = ROOT / "stdlib_sem"
+STDLIB_DIR = ROOT / "std"
 
-# Per-test wall-clock budget. Any test that takes longer than this
-# is flagged as a performance regression. The smoke tests are pure
-# JIT runs of short programs — none should approach this number.
 PERFORMANCE_BUDGET_SECONDS = 5.0
 
 
-# Self-tests expected to print exactly 'OK\n' and exit 0.
-OK_PROGRAMS = ["string.sscript", "ctype.sscript", "stdlib.sscript", "memory.sscript",
-               "math.sscript", "math_float.sscript", "assert.sscript",
-               "limits.sscript", "errno.sscript", "time.sscript",
-               "signal.sscript", "process.sscript", "bool.sscript",
-               "random.sscript", "stddef.sscript", "iso646.sscript",
-               "inttypes.sscript", "bit.sscript", "constants.sscript",
-               "compare.sscript", "convert.sscript", "array.sscript",
-               "sort.sscript", "char.sscript", "numeric.sscript",
-               "signal_more.sscript", "errno_more.sscript"]
-# stdio's smoke test prints multiple lines (the demo output of every
-# operation), not just OK.
+OK_MODULES = [
+    "gui", "html", "http", "json", "sqlite",
+    "string", "ctype", "stdlib", "memory", "math", "math_float",
+    "assert", "limits", "errno", "time", "signal", "process", "bool",
+    "random", "stddef", "iso646", "inttypes", "bit", "constants",
+    "compare", "convert", "array", "sort", "char", "numeric",
+    "signal_more", "errno_more",
+]
+
 EXPECTED_STDIO_OUTPUT = (
     "Hello, SemanticScript stdlib!\n"
-    # writeCStringToStandardOutput prints the literal without a trailing
-    # newline; the immediately-following writeCStringLineToStandardOutput("")
-    # supplies the single LF that ends the line, so the next line starts
-    # cleanly. (Pre-rename, the operations were named putString and putLine.)
     "no-newline-then-writeCStringLineToStandardOutput\n"
     "42\n"
     "-1234\n"
     "0\n"
     "255\n"
     "ff\n"
-    # writeByteToStandardOutput is exercised at the end: byte 65 ('A')
-    # followed by byte 10 (LF). This was the one stdio op the previous
-    # smoke didn't cover.
     "A\n"
 )
 
 
+def test_path(module_name: str) -> Path:
+    return STDLIB_DIR / module_name / "main.test.sem"
+
+
 def run(as_file: Path, expected: str) -> tuple[bool, float, bool]:
-    """Returns (passed, elapsed_seconds, within_budget)."""
     started = time.perf_counter()
     proc = subprocess.run(
         [sys.executable, str(SEMSC), str(as_file), "--run", "--quiet"],
-        capture_output=True, text=True, timeout=20,
+        capture_output=True,
+        text=True,
+        timeout=20,
     )
     elapsed = time.perf_counter() - started
     actual = proc.stdout.replace("\r\n", "\n")
     within_budget = elapsed <= PERFORMANCE_BUDGET_SECONDS
+    label = str(as_file.relative_to(STDLIB_DIR))
     if proc.returncode != 0 or actual != expected:
-        print(f"[FAIL] {as_file.name} ({elapsed:.2f}s): rc={proc.returncode}")
+        print(f"[FAIL] {label} ({elapsed:.2f}s): rc={proc.returncode}")
         print(f"   expected: {expected!r}")
         print(f"   got:      {actual!r}")
         if proc.stderr:
             print(f"   stderr:\n{proc.stderr.strip()}")
         return (False, elapsed, within_budget)
     flag = "" if within_budget else f" [SLOW: {elapsed:.2f}s > {PERFORMANCE_BUDGET_SECONDS}s]"
-    print(f"[OK  ] {as_file.name} ({elapsed:.2f}s){flag}")
+    print(f"[OK  ] {label} ({elapsed:.2f}s){flag}")
     return (True, elapsed, within_budget)
 
 
-def main():
+def main() -> None:
     failures = 0
     over_budget = 0
     total_elapsed = 0.0
     slowest_name = None
     slowest_elapsed = 0.0
-    for name in OK_PROGRAMS:
-        # Library-only modules carry no `operation main` of their own;
-        # the smoke lives in a companion `<module>.test.sscript` file in the
-        # same directory. Prefer that when present so the smoke matches
-        # the module's actual public surface (the .sscript file is just
-        # exported operations the .test.sscript importModule's).
-        stem = name[: -len(".sscript")]
-        companion_test = STDLIB_DIR / f"{stem}.test.sscript"
-        target = companion_test if companion_test.exists() else STDLIB_DIR / name
+
+    for module_name in OK_MODULES:
+        target = test_path(module_name)
         ok, elapsed, within_budget = run(target, "OK\n")
         total_elapsed += elapsed
         if elapsed > slowest_elapsed:
             slowest_elapsed = elapsed
-            slowest_name = target.name
+            slowest_name = str(target.relative_to(STDLIB_DIR))
         if not ok:
             failures += 1
         if not within_budget:
             over_budget += 1
-    # stdio: same .test.sscript fallback as the OK-only suite. The
-    # implementation file (stdio.sscript) carries all the writers; the
-    # test file emits the byte-exact demo output asserted below.
-    stdio_test = STDLIB_DIR / "stdio.test.sscript"
-    stdio_target = stdio_test if stdio_test.exists() else STDLIB_DIR / "stdio.sscript"
+
+    stdio_target = test_path("stdio")
     ok, elapsed, within_budget = run(stdio_target, EXPECTED_STDIO_OUTPUT)
     total_elapsed += elapsed
     if elapsed > slowest_elapsed:
         slowest_elapsed = elapsed
-        slowest_name = stdio_target.name
+        slowest_name = str(stdio_target.relative_to(STDLIB_DIR))
     if not ok:
         failures += 1
     if not within_budget:
         over_budget += 1
+
     print()
-    total = len(OK_PROGRAMS) + 1
-    print(f"Total wall-clock: {total_elapsed:.2f}s across {total} tests "
-          f"(avg {total_elapsed / total:.2f}s, slowest {slowest_name} "
-          f"@ {slowest_elapsed:.2f}s).")
+    total = len(OK_MODULES) + 1
+    print(
+        f"Total wall-clock: {total_elapsed:.2f}s across {total} tests "
+        f"(avg {total_elapsed / total:.2f}s, slowest {slowest_name} "
+        f"@ {slowest_elapsed:.2f}s)."
+    )
     if failures:
         print(f"FAILED: {failures}/{total}")
         sys.exit(1)
     if over_budget:
-        print(f"PERF: {over_budget} test(s) exceeded "
-              f"{PERFORMANCE_BUDGET_SECONDS}s budget.")
+        print(
+            f"PERF: {over_budget} test(s) exceeded "
+            f"{PERFORMANCE_BUDGET_SECONDS}s budget."
+        )
         sys.exit(2)
     print(f"All {total} stdlib self-tests passed.")
 

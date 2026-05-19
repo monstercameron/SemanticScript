@@ -8,7 +8,7 @@ error MainError
 errorCase MainError WriteFailed CSignedInt32
 
 # ============================================================
-# Sanity-check demo: exercises a handful of stdlib_sem/* operations
+# Sanity-check demo: exercises a handful of std/* operations
 # (inlined here because cross-file calls aren't supported yet).
 #
 # Operations exercised:

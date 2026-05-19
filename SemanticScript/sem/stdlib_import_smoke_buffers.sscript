@@ -63,7 +63,7 @@ effect stdlibImportSmokeBuffersMain free heap
 memoryHeap stdlibImportSmokeBuffersMain yes
 memoryAllocationSource stdlibImportSmokeBuffersMain allocateSortBufferImportCall
 async stdlibImportSmokeBuffersMain no
-purpose stdlibImportSmokeBuffersMain "Exercise one operation from each of array, sort, memory, inttypes, stdlib, random, limits, signal — proving the buffer-and-runtime tier of stdlib_sem is importable."
+purpose stdlibImportSmokeBuffersMain "Exercise one operation from each of array, sort, memory, inttypes, stdlib, random, limits, signal — proving the buffer-and-runtime tier of std is importable."
 invariant stdlibImportSmokeBuffersMain "Every imported assertion holds; final exit 0; stdout is 'OK\\n'."
 
 label startStdlibImportSmokeBuffersMain

@@ -1,0 +1,111 @@
+# SemanticScript standard-library canonical module: standard.process.
+
+module standard.process
+modulePurpose standard.process "Canonical standard-library module for process helpers."
+moduleOwns standard.process "The official import path `standard.process` and this module's implementation body."
+moduleDoesNotOwn standard.process "App-specific wrappers, compatibility aliases, or generated build artifacts."
+moduleInvariant standard.process "The standard module entry is this file; tests live beside it as `main.test.sem`."
+
+exportConstant standard.process processModuleVersionText
+storage module immutable processModuleVersionText CNullTerminatedByteString "standard.process 0.1"
+
+# Canonical standard-library implementation body.
+# ============================================================
+# SEMANTICSCRIPT STANDARD LIBRARY: process lifecycle terminators
+# ============================================================
+#
+# This module exposes the two unconditional process terminators
+# from C's <stdlib.h>: exit(int) for clean shutdown and abort(void)
+# for immediate termination via SIGABRT. Both operations declare
+# `output Void` because control flow never returns to the caller;
+# any code following a successful call is unreachable.
+#
+# Operations:
+#
+#   exitProcessWithStatusCode(exitStatusCode)
+#     Wraps libc exit(). Flushes stdio buffers, runs atexit
+#     handlers, then exits with the given status code.
+#
+#   abortCurrentProcess()
+#     Wraps libc abort(). Raises SIGABRT immediately without
+#     flushing buffers or running atexit handlers. Use only when
+#     continued execution would propagate corrupted state.
+#
+# # rationale: Both operations carry an `effect write
+#   process.lifecycle` declaration so the linter can flag any call
+#   site that lacks an authorizing capability. The smoke test for
+#   this module deliberately does NOT invoke either terminator â€”
+#   doing so would kill the test runner. The smoke verifies that
+#   compilation and metadata parsing succeed and that the OK line
+#   reaches stdout.
+#
+# # invariant: After a successful call to either terminator, the
+#   operation does not return â€” control flow leaves the process.
+#   The trailing implicit `ret` in the emitted LLVM IR exists only
+#   so the function is well-formed; it is statically unreachable.
+#
+# # security: Terminating the process loses any pending I/O that
+#   stdio has not yet flushed. exitProcessWithStatusCode flushes;
+#   abortCurrentProcess does not. Callers handling sensitive
+#   buffers must choose deliberately.
+#
+# # timing: Both operations yield to the OS scheduler immediately.
+#   exit() runs user-registered atexit handlers, so the latency
+#   depends on what the program registered. abort() takes the
+#   SIGABRT fast path with no user-level cleanup.
+#
+# # observability: The exit code is reported to the parent shell
+#   as the process's wait-status. abort() additionally produces a
+#   core dump on systems configured to capture them.
+
+
+# This is a pure-module (library) file: it exports operations
+# consumed by other programs (notably std/process/main.test.sem
+# which importModules it and runs the smoke). The project / target
+# / runtime / entry block is retained so the module can still be
+# linted standalone â€” the entry just points at the first exported
+# operation rather than a `main` smoke.
+
+# The two terminators write to the abstract `process.lifecycle`
+# effect channel; the linter requires every declared effect to
+# have an authorizing capability proof, so we declare one shared
+# capability at module scope and let each terminator reference it.
+capability processLifecycleCapability process.lifecycle write
+
+# section process.terminators
+#
+# Both operations are partial in the language-theory sense: they
+# terminate the process, so no code following a successful call
+# can run. The `Void` output type and the `effect write
+# process.lifecycle` declaration together encode that contract for
+# the linter and downstream tooling.
+
+operation exitProcessWithStatusCode
+input exitProcessWithStatusCode exitStatusCode CSignedInt32
+output exitProcessWithStatusCode Void
+useCapability exitProcessWithStatusCode processLifecycleCapability
+effect exitProcessWithStatusCode write process.lifecycle
+memoryHeap exitProcessWithStatusCode no
+async exitProcessWithStatusCode no
+purpose exitProcessWithStatusCode "Terminate the process cleanly with the given exit status code. Flushes stdio and runs atexit handlers, then exits. Does not return."
+invariant exitProcessWithStatusCode "Control flow does not return from this call site; the trailing ret in the emitted IR is statically unreachable."
+warning exitProcessWithStatusCode "Pending I/O on streams other than stdio (e.g. mmap'd buffers) is the caller's responsibility â€” exit() does not flush them."
+guarantee exitProcessWithStatusCode "Always terminates the process."
+label startExitProcessWithStatusCode
+call libcExitCall c.exit
+arg libcExitCall code exitStatusCode
+run libcExitCall
+
+operation abortCurrentProcess
+output abortCurrentProcess Void
+useCapability abortCurrentProcess processLifecycleCapability
+effect abortCurrentProcess write process.lifecycle
+memoryHeap abortCurrentProcess no
+async abortCurrentProcess no
+purpose abortCurrentProcess "Terminate the process immediately by raising SIGABRT. Does NOT flush stdio. Does not return."
+invariant abortCurrentProcess "Control flow does not return from this call site."
+warning abortCurrentProcess "No buffer flushing, no atexit handlers â€” prefer exitProcessWithStatusCode unless the failure is so severe that flushing would propagate corrupted state."
+guarantee abortCurrentProcess "Always terminates the process."
+label startAbortCurrentProcess
+call libcAbortCall c.abort
+run libcAbortCall

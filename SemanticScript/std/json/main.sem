@@ -1,0 +1,45 @@
+# ============================================================
+# SEMANTICSCRIPT STANDARD LIBRARY: native JSON namespace
+# ============================================================
+#
+# Import this module with:
+#
+#   importModule json standard.json
+#
+# The `json.*` call targets are compiler/runtime-owned intrinsics. This module
+# owns the official standard-library import path and semantic type contracts for
+# that intrinsic namespace.
+
+module standard.json
+modulePurpose standard.json "Standard-library namespace and contracts for JSON encode/decode, builder, and finder intrinsics."
+moduleOwns standard.json "The official import path `standard.json`, semantic JSON type aliases, default constants, and the compiler-owned `json.*` intrinsic namespace contract."
+moduleDoesNotOwn standard.json "Application codecs, record-specific generated codecs, native JSON runtime memory internals, or caller-owned scratch-buffer allocation."
+moduleInvariant standard.json "The standard module entry is this file; new modules may import it as alias `json` before using compiler-owned targets in the `json.*` namespace."
+
+type JsonBuilder COpaqueMemoryAddress
+type JsonText CNullTerminatedByteString
+type JsonFieldName CNullTerminatedByteString
+type JsonStringValue CNullTerminatedByteString
+type JsonScratchBuffer COpaqueMemoryAddress
+type JsonCapacityBytes CByteCount
+
+exportType standard.json JsonBuilder
+exportType standard.json JsonText
+exportType standard.json JsonFieldName
+exportType standard.json JsonStringValue
+exportType standard.json JsonScratchBuffer
+exportType standard.json JsonCapacityBytes
+exportConstant standard.json jsonModuleVersionText
+exportConstant standard.json defaultJsonBuilderCapacityBytes
+exportConstant standard.json defaultJsonScratchCapacityBytes
+
+typeInvariant JsonBuilder "Opaque handle created by json.createBuilder and freed by json.destroyBuilder."
+typeInvariant JsonText "Null-terminated JSON document or fragment text returned by json.finishBuilder or accepted by json.find* readers."
+typeInvariant JsonFieldName "Top-level field name passed to json.field* and json.find* targets."
+typeInvariant JsonStringValue "String value written by json.fieldString or json.elementString."
+typeInvariant JsonScratchBuffer "Caller-owned byte buffer used by json.findString for unescaped output."
+typeInvariant JsonCapacityBytes "Capacity argument for JSON builder or scratch-buffer operations."
+
+storage module immutable jsonModuleVersionText JsonText "standard.json 0.1"
+storage module immutable defaultJsonBuilderCapacityBytes JsonCapacityBytes 4096
+storage module immutable defaultJsonScratchCapacityBytes JsonCapacityBytes 1024

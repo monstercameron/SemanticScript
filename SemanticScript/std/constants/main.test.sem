@@ -1,0 +1,6 @@
+project StdConstantsTest
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+importModule standard.constants

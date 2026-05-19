@@ -7,7 +7,7 @@
 #   assert (typed AssertionError contracts), stdio (byte / string /
 #   integer writers), and process (lifecycle terminators).
 #   Together with the three earlier smoke tests, this completes
-#   coverage of every stdlib_sem module behind importModule —
+#   coverage of every std module behind importModule —
 #   28 of 28 modules verified importable + usable from a
 #   downstream program.
 #

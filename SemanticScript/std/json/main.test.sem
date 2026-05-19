@@ -1,0 +1,26 @@
+project StdJsonMetadataTest
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+importModule json standard.json
+importConstant importedJsonModuleVersionText json jsonModuleVersionText
+importType ImportedJsonBuilder json JsonBuilder
+
+storage module immutable okText CNullTerminatedByteString "OK"
+storage module immutable successCode ExitCode 0
+
+operation main
+output main ExitCode
+effect main write console.stdout
+authority main console.stdout write
+memoryHeap main no
+async main no
+purpose main "Smoke-test the canonical standard.json import path from its module folder."
+
+call writeCall console.writeLine
+arg writeCall text okText
+run writeCall
+ignoreValue writeCall CSignedInt32
+
+returnValue successCode

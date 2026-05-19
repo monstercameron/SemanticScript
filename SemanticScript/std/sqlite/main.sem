@@ -1,0 +1,77 @@
+# ============================================================
+# SEMANTICSCRIPT STANDARD LIBRARY: native SQLite namespace
+# ============================================================
+#
+# Import this module with:
+#
+#   importModule sqlite standard.sqlite
+#
+# The `sqlite.*` call targets are compiler/runtime-owned intrinsics. This
+# module owns the official standard-library import path and semantic type,
+# enum, constant, and capability contracts for that intrinsic namespace.
+
+module standard.sqlite
+modulePurpose standard.sqlite "Standard-library namespace and contracts for native SQLite database intrinsics."
+moduleOwns standard.sqlite "The official import path `standard.sqlite`, semantic SQLite type aliases, enum tokens, reusable database capabilities, and the compiler-owned `sqlite.*` intrinsic namespace contract."
+moduleDoesNotOwn standard.sqlite "Application schemas, migrations, query text, transaction policy, native SQLite runtime internals, or caller-owned statement lifetimes."
+moduleInvariant standard.sqlite "The standard module entry is this file; new modules may import it as alias `sqlite` before using compiler-owned targets in the `sqlite.*` namespace."
+
+type SqliteDatabase COpaqueMemoryAddress
+type SqliteStatement COpaqueMemoryAddress
+type SqliteRowId CSignedInt64
+type SqliteText CNullTerminatedByteString
+type SqliteBlob COpaqueMemoryAddress
+type SqliteByteCount CByteCount
+
+enum SqliteOpenMode repr CSignedInt32
+enumCase SqliteOpenMode readOnlySqliteOpenMode 1
+enumCase SqliteOpenMode readWriteSqliteOpenMode 2
+enumCase SqliteOpenMode readWriteCreateSqliteOpenMode 6
+enumCase SqliteOpenMode inMemorySqliteOpenMode 14
+
+enum SqliteStepResult repr CSignedInt32
+enumCase SqliteStepResult rowSqliteStepResult 100
+enumCase SqliteStepResult doneSqliteStepResult 101
+
+enum SqliteColumnType repr CSignedInt32
+enumCase SqliteColumnType integerSqliteColumnType 1
+enumCase SqliteColumnType floatSqliteColumnType 2
+enumCase SqliteColumnType textSqliteColumnType 3
+enumCase SqliteColumnType blobSqliteColumnType 4
+enumCase SqliteColumnType nullSqliteColumnType 5
+
+exportType standard.sqlite SqliteDatabase
+exportType standard.sqlite SqliteStatement
+exportType standard.sqlite SqliteRowId
+exportType standard.sqlite SqliteText
+exportType standard.sqlite SqliteBlob
+exportType standard.sqlite SqliteByteCount
+exportType standard.sqlite SqliteOpenMode
+exportType standard.sqlite SqliteStepResult
+exportType standard.sqlite SqliteColumnType
+exportCapability standard.sqlite sqliteDatabaseReader
+exportCapability standard.sqlite sqliteDatabaseReadWriter
+exportConstant standard.sqlite sqliteModuleVersionText
+exportConstant standard.sqlite readOnlySqliteOpenMode
+exportConstant standard.sqlite readWriteSqliteOpenMode
+exportConstant standard.sqlite readWriteCreateSqliteOpenMode
+exportConstant standard.sqlite inMemorySqliteOpenMode
+exportConstant standard.sqlite rowSqliteStepResult
+exportConstant standard.sqlite doneSqliteStepResult
+exportConstant standard.sqlite integerSqliteColumnType
+exportConstant standard.sqlite floatSqliteColumnType
+exportConstant standard.sqlite textSqliteColumnType
+exportConstant standard.sqlite blobSqliteColumnType
+exportConstant standard.sqlite nullSqliteColumnType
+
+typeInvariant SqliteDatabase "Opaque SQLite database handle created by sqlite.openDatabase and closed by sqlite.closeDatabase."
+typeInvariant SqliteStatement "Opaque prepared-statement handle created by sqlite.prepareStatement and finalized by sqlite.finalizeStatement."
+typeInvariant SqliteRowId "Signed 64-bit row identifier returned by sqlite.lastInsertRowId and column readers."
+typeInvariant SqliteText "Null-terminated SQLite text value; sqlite.columnText returns SQLite-owned memory valid until the statement advances or finalizes."
+typeInvariant SqliteBlob "Opaque SQLite blob pointer paired with SqliteByteCount."
+typeInvariant SqliteByteCount "Byte count paired with SQLite blob/text buffers."
+
+capability sqliteDatabaseReader database read
+capability sqliteDatabaseReadWriter database readWrite
+
+storage module immutable sqliteModuleVersionText SqliteText "standard.sqlite 0.1"

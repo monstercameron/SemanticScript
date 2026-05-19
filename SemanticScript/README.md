@@ -11,8 +11,35 @@ Primary language implementation workspace.
 - `linter/` contains standalone source linters and linter tests.
 - `sem/` contains runnable SemanticScript sample programs and feature tests.
 - `sem_python/` is a placeholder/notes area for Python-oriented SemanticScript work.
-- `stdlib_sem/` contains executable SemanticScript standard-library modules.
+- `std/` contains executable SemanticScript standard-library modules.
 - `tests/` contains Python test harnesses and tiny compiler fixtures.
+
+## Standard Library
+
+`std/` is the official standard-library tree. It is intentionally not a
+build-tape project and should not contain `build.sem`.
+
+```text
+std/
+  module.sem              # top-level `standard` relay
+  html/main.sem           # imported as standard.html
+  json/main.sem           # imported as standard.json
+  sqlite/main.sem         # imported as standard.sqlite
+  <module>/main.test.sem  # colocated self-test
+```
+
+Apps import std modules by namespace:
+
+```semanticscript
+importModule html standard.html
+importModule json standard.json
+importModule sqlite standard.sqlite
+```
+
+Std discovery is flexible enough for apps outside this repository. The compiler
+tries `--std-path`, then `SEMANTICSCRIPT_STD_PATH` / `SEMSC_STD_PATH`, then
+vendored ancestor `std/` folders, then current-working-directory std roots, then
+the std bundled beside the compiler at `compiler/../std`.
 
 ## Current Status
 
