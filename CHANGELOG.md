@@ -2,6 +2,8 @@
 
 ## 2026-05-18
 
+- `c1d5d5d39ae4b7d67c39d2214da6372f6d3ebc5f` - `runtime: keep HTTP log helpers internal`
+  - Keeps the HTTP runtime's automatic access-log helpers internal to `native_http` while the reusable public logging C ABI lives in the new `native_log` adapter.
 - `43d24ca8780bfe85404db506c122986849a9779d` - `app: expand todo web dashboard flow`
   - Adds the Todo Web Pro dashboard shell, reusable HTML component module, dashboard JavaScript, login flow, logout/session validation coverage, todo create/list/complete/uncomplete/delete flows, seeded demo data under `sql/schema.sql`, and expanded end-to-end route tests.
 - `aebc47b52b5d4966d8b0d1923d0e2cd0bed02809` - `app: add SemanticScript kilo port`
