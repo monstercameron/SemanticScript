@@ -1262,162 +1262,162 @@ would fail under a no-op lowering.
 
 #### standard.json Types, Error, And Enum
 
-- [ ] Add `type JsonDocument COpaqueMemoryAddress` to
+- [x] Add `type JsonDocument COpaqueMemoryAddress` to
       `SemanticScript/std/json/main.sem` with `exportType standard.json JsonDocument`.
-  - [ ] Add a `typeInvariant JsonDocument` stating the handle is created by
+  - [x] Add a `typeInvariant JsonDocument` stating the handle is created by
         `json.createDocument` / `json.createEmptyDocument` and freed via
         `defer json.destroyDocument`; backing buffer grows up to `capacityBytes`
         and surfaces `JsonAccessError.CapacityExceeded` past that bound.
-- [ ] Add `type JsonCursor CSignedInt64` with `exportType standard.json JsonCursor`.
-  - [ ] Add a `typeInvariant JsonCursor` documenting the stable-index contract
+- [x] Add `type JsonCursor CSignedInt64` with `exportType standard.json JsonCursor`.
+  - [x] Add a `typeInvariant JsonCursor` documenting the stable-index contract
         and the structural-mutation invalidation list
         (`removeObjectField`, `removeArrayElementAt`, `clearObject`, `clearArray`,
         `setObjectFieldObject`, `setObjectFieldArray`,
         `insertArrayElement*`, `replaceArrayElement*` when the new value is a
         container) — cross-reference SYNTAX.md:446 sqlite column-pointer lifetime.
-- [ ] Add `type JsonPath CNullTerminatedByteString` with
+- [x] Add `type JsonPath CNullTerminatedByteString` with
       `exportType standard.json JsonPath`.
-  - [ ] Add a `typeInvariant JsonPath` pinning the grammar: `.fieldName` object
+  - [x] Add a `typeInvariant JsonPath` pinning the grammar: `.fieldName` object
         steps, `[index]` array steps, anything else returns
         `JsonAccessError.MalformedPath`.
-- [ ] Add the `JsonValueKind` enum in `SemanticScript/std/json/main.sem`.
-  - [ ] Declare `enum JsonValueKind repr CSignedInt32`.
-  - [ ] Declare cases `objectJsonValueKind 0`, `arrayJsonValueKind 1`,
+- [x] Add the `JsonValueKind` enum in `SemanticScript/std/json/main.sem`.
+  - [x] Declare `enum JsonValueKind repr CSignedInt32`.
+  - [x] Declare cases `objectJsonValueKind 0`, `arrayJsonValueKind 1`,
         `stringJsonValueKind 2`, `integerJsonValueKind 3`,
         `doubleJsonValueKind 4`, `booleanJsonValueKind 5`,
         `nullJsonValueKind 6` using the descriptive-suffix convention.
-  - [ ] Auto-register the enum in `SemanticScript/compiler/semsc.py`'s built-in
+  - [x] Auto-register the enum in `SemanticScript/compiler/semsc.py`'s built-in
         enum table the same way `SqliteColumnType` is registered.
-- [ ] Add the `JsonAccessError` declaration in `SemanticScript/std/json/main.sem`.
-  - [ ] Declare `error JsonAccessError`.
-  - [ ] Declare `errorCase JsonAccessError PathNotFound CSignedInt32`.
-  - [ ] Declare `errorCase JsonAccessError WrongType CSignedInt32`.
-  - [ ] Declare `errorCase JsonAccessError IndexOutOfRange CSignedInt32`.
-  - [ ] Declare `errorCase JsonAccessError FieldNameTooLong CSignedInt32`.
-  - [ ] Declare `errorCase JsonAccessError DocumentNotMutable CSignedInt32`.
-  - [ ] Declare `errorCase JsonAccessError CapacityExceeded CSignedInt32`.
-  - [ ] Declare `errorCase JsonAccessError MalformedPath CSignedInt32`.
-  - [ ] Declare `errorCase JsonAccessError ScratchTooSmall CSignedInt32`.
-  - [ ] Add `exportError standard.json JsonAccessError`.
-- [ ] Add `JsonEncodeError` and `JsonDecodeError` declarations in the same file.
-  - [ ] `JsonEncodeError` cases: `CapacityExceeded`, `WrongType`,
+- [x] Add the `JsonAccessError` declaration in `SemanticScript/std/json/main.sem`.
+  - [x] Declare `error JsonAccessError`.
+  - [x] Declare `errorCase JsonAccessError PathNotFound CSignedInt32`.
+  - [x] Declare `errorCase JsonAccessError WrongType CSignedInt32`.
+  - [x] Declare `errorCase JsonAccessError IndexOutOfRange CSignedInt32`.
+  - [x] Declare `errorCase JsonAccessError FieldNameTooLong CSignedInt32`.
+  - [x] Declare `errorCase JsonAccessError DocumentNotMutable CSignedInt32`.
+  - [x] Declare `errorCase JsonAccessError CapacityExceeded CSignedInt32`.
+  - [x] Declare `errorCase JsonAccessError MalformedPath CSignedInt32`.
+  - [x] Declare `errorCase JsonAccessError ScratchTooSmall CSignedInt32`.
+  - [x] Add `exportError standard.json JsonAccessError`.
+- [x] Add `JsonEncodeError` and `JsonDecodeError` declarations in the same file.
+  - [x] `JsonEncodeError` cases: `CapacityExceeded`, `WrongType`,
         `OutputBufferTooSmall`, each carrying `CSignedInt32`.
-  - [ ] `JsonDecodeError` cases: `UnexpectedToken`, `MissingRequired`,
+  - [x] `JsonDecodeError` cases: `UnexpectedToken`, `MissingRequired`,
         `WrongType`, `Oversize`, `Truncated`, `EscapeMalformed`,
         each carrying `CSignedInt32`.
 
 #### Native JSON Document Runtime
 
-- [ ] Add the `SSJsonDocument` opaque struct to
+- [x] Add the `SSJsonDocument` opaque struct to
       `SemanticScript/runtime/native_json/sem_json_runtime.h`.
-  - [ ] Hold a growable node table indexed by `int64_t` cursors so cursors
+  - [x] Hold a growable node table indexed by `int64_t` cursors so cursors
         survive non-structural mutations.
-  - [ ] Hold a capacity-bounded text arena for owned string values.
-  - [ ] Track `capacity_bytes` / `bytes_used` for `CapacityExceeded` checks.
-- [ ] Add `SSJsonNodeKind` matching `JsonValueKind` integer values exactly so
+  - [x] Hold a capacity-bounded text arena for owned string values.
+  - [x] Track `capacity_bytes` / `bytes_used` for `CapacityExceeded` checks.
+- [x] Add `SSJsonNodeKind` matching `JsonValueKind` integer values exactly so
       the lowering can forward `cursor_kind` without a translation table.
-- [ ] Add `SS_JSON_OK = 0` and one `SS_JSON_ERR_*` constant per
+- [x] Add `SS_JSON_OK = 0` and one `SS_JSON_ERR_*` constant per
       `JsonAccessError` case in `sem_json_runtime.h`; map 1:1 to the error
       case ordinals.
-- [ ] Implement `ss_json_document_create_from_text(const char *json_text,
+- [x] Implement `ss_json_document_create_from_text(const char *json_text,
       int64_t capacity_bytes, SSJsonDocument **out)` in
       `SemanticScript/runtime/native_json/sem_json_runtime.c`.
   - [ ] Reuse the RFC-8259-aware tokenizer that backs the existing finder API.
-  - [ ] Reject malformed input with the matching `SS_JSON_ERR_*` code; never
+  - [x] Reject malformed input with the matching `SS_JSON_ERR_*` code; never
         leak a half-built document on failure.
-- [ ] Implement `ss_json_document_create_empty(int64_t capacity_bytes,
+- [x] Implement `ss_json_document_create_empty(int64_t capacity_bytes,
       int32_t root_kind, SSJsonDocument **out)` accepting only
       `objectJsonValueKind` / `arrayJsonValueKind` as roots.
-- [ ] Implement `ss_json_document_destroy(SSJsonDocument *document)` freeing
+- [x] Implement `ss_json_document_destroy(SSJsonDocument *document)` freeing
       the node table and arena; tolerate NULL.
-- [ ] Implement `ss_json_document_serialize(SSJsonDocument *document,
+- [x] Implement `ss_json_document_serialize(SSJsonDocument *document,
       char *scratch, int64_t scratch_capacity, const char **out)`.
-  - [ ] Reuse the builder's RFC 8259 `\uXXXX` escape path so output matches
+  - [x] Reuse the builder's RFC 8259 `\uXXXX` escape path so output matches
         the SYNTAX.md:448 escape policy exactly.
-  - [ ] Return `SS_JSON_ERR_SCRATCH_TOO_SMALL` when output would overflow
+  - [x] Return `SS_JSON_ERR_SCRATCH_TOO_SMALL` when output would overflow
         the scratch; never truncate silently.
-- [ ] Implement `ss_json_document_length(SSJsonDocument *document)` returning
+- [x] Implement `ss_json_document_length(SSJsonDocument *document)` returning
       the byte count the next serialize will emit, mirroring
       `json.builderLength`.
-- [ ] Implement `ss_json_document_root(SSJsonDocument *document)` returning
+- [x] Implement `ss_json_document_root(SSJsonDocument *document)` returning
       cursor 0 (always defined).
-- [ ] Implement `ss_json_navigate_object_field(SSJsonDocument *document,
+- [x] Implement `ss_json_navigate_object_field(SSJsonDocument *document,
       int64_t cursor, const char *field_name, int64_t *out)`.
-  - [ ] Return `SS_JSON_ERR_WRONG_TYPE` when the cursor's node is not an
+  - [x] Return `SS_JSON_ERR_WRONG_TYPE` when the cursor's node is not an
         object.
-  - [ ] Return `SS_JSON_ERR_PATH_NOT_FOUND` when the field is absent.
-- [ ] Implement `ss_json_navigate_array_element(SSJsonDocument *document,
+  - [x] Return `SS_JSON_ERR_PATH_NOT_FOUND` when the field is absent.
+- [x] Implement `ss_json_navigate_array_element(SSJsonDocument *document,
       int64_t cursor, int64_t index, int64_t *out)` with
       `SS_JSON_ERR_INDEX_OUT_OF_RANGE` outside `[0, array_length)` and
       `SS_JSON_ERR_WRONG_TYPE` for non-arrays.
-- [ ] Implement `ss_json_cursor_parent(SSJsonDocument *document,
+- [x] Implement `ss_json_cursor_parent(SSJsonDocument *document,
       int64_t cursor, int64_t *out)` returning `SS_JSON_ERR_PATH_NOT_FOUND`
       for the root.
-- [ ] Implement `ss_json_cursor_at_path(SSJsonDocument *document,
+- [x] Implement `ss_json_cursor_at_path(SSJsonDocument *document,
       const char *path, int64_t *out)`.
-  - [ ] Parse segments left-to-right: `.fieldName` for object steps,
+  - [x] Parse segments left-to-right: `.fieldName` for object steps,
         `[index]` for array steps; reject anything else with
         `SS_JSON_ERR_MALFORMED_PATH`.
-  - [ ] Reuse the per-step navigators internally so error codes from a
+  - [x] Reuse the per-step navigators internally so error codes from a
         mid-path failure match what the user would see if they walked the
         cursor manually.
-- [ ] Implement `ss_json_cursor_kind` returning the `JsonValueKind` integer
+- [x] Implement `ss_json_cursor_kind` returning the `JsonValueKind` integer
       directly.
-- [ ] Implement `ss_json_cursor_is_null` returning 1 for `null` and 0 for any
+- [x] Implement `ss_json_cursor_is_null` returning 1 for `null` and 0 for any
       other kind (no error path).
-- [ ] Implement `ss_json_cursor_int64(document, cursor, missing_default,
+- [x] Implement `ss_json_cursor_int64(document, cursor, missing_default,
       out)` matching the `findInt64` `missingDefault` contract from
       SYNTAX.md:449 — total function, no error code.
-- [ ] Implement `ss_json_cursor_double` and `ss_json_cursor_bool` with the
+- [x] Implement `ss_json_cursor_double` and `ss_json_cursor_bool` with the
       same `missing_default` propagation.
-- [ ] Implement `ss_json_cursor_string(document, cursor, scratch,
+- [x] Implement `ss_json_cursor_string(document, cursor, scratch,
       scratch_capacity, out)`.
-  - [ ] Un-escape standard JSON escapes plus `\uXXXX` for BMP code points
+  - [x] Un-escape standard JSON escapes plus `\uXXXX` for BMP code points
         into the scratch buffer (reuse the `findString` algorithm).
-  - [ ] Return `SS_JSON_ERR_WRONG_TYPE` for non-strings,
+  - [x] Return `SS_JSON_ERR_WRONG_TYPE` for non-strings,
         `SS_JSON_ERR_SCRATCH_TOO_SMALL` when the unescaped value plus NUL
         does not fit.
-- [ ] Implement `ss_json_cursor_array_length` /
+- [x] Implement `ss_json_cursor_array_length` /
       `ss_json_cursor_object_field_count` with `SS_JSON_ERR_WRONG_TYPE` on
       kind mismatch.
-- [ ] Implement `ss_json_cursor_object_field_name_at(document, cursor, index,
+- [x] Implement `ss_json_cursor_object_field_name_at(document, cursor, index,
       scratch, scratch_capacity, out)` copying the field name into scratch.
-- [ ] Implement `ss_json_cursor_object_field_value_at(document, cursor,
+- [x] Implement `ss_json_cursor_object_field_value_at(document, cursor,
       index, out)` returning the child cursor.
-- [ ] Implement `ss_json_set_object_field_string`,
+- [x] Implement `ss_json_set_object_field_string`,
       `ss_json_set_object_field_int64`, `ss_json_set_object_field_double`,
       `ss_json_set_object_field_bool`, `ss_json_set_object_field_null`.
-  - [ ] Overwrite an existing field in place when the field name matches.
-  - [ ] Append a new field record when the name is absent.
-  - [ ] Return `SS_JSON_ERR_WRONG_TYPE` on a non-object cursor,
+  - [x] Overwrite an existing field in place when the field name matches.
+  - [x] Append a new field record when the name is absent.
+  - [x] Return `SS_JSON_ERR_WRONG_TYPE` on a non-object cursor,
         `SS_JSON_ERR_FIELD_NAME_TOO_LONG` past the per-document field-name
         bound, `SS_JSON_ERR_CAPACITY_EXCEEDED` when the arena cannot fit
         the new bytes within `capacity_bytes`.
-- [ ] Implement `ss_json_set_object_field_object` /
+- [x] Implement `ss_json_set_object_field_object` /
       `ss_json_set_object_field_array` returning the new child cursor.
-- [ ] Implement `ss_json_set_object_field_json_text` parsing the supplied
+- [x] Implement `ss_json_set_object_field_json_text` parsing the supplied
       sub-document, type-validating it, and grafting it under the named
       field.
-- [ ] Implement `ss_json_append_array_element_*` for string, int64, double,
+- [x] Implement `ss_json_append_array_element_*` for string, int64, double,
       bool, null, object, array, and json_text variants; append at
       `array_length`; return the new element cursor for containers.
-- [ ] Implement `ss_json_insert_array_element_*` for the same variants;
+- [x] Implement `ss_json_insert_array_element_*` for the same variants;
       shift later elements one slot; reject `index > array_length` with
       `SS_JSON_ERR_INDEX_OUT_OF_RANGE`.
-- [ ] Implement `ss_json_replace_array_element_*` overwriting one slot in
+- [x] Implement `ss_json_replace_array_element_*` overwriting one slot in
       place; invalidate descendant cursors of the replaced slot when the
       new value is a container.
-- [ ] Implement `ss_json_remove_object_field` returning `0` when removed and
+- [x] Implement `ss_json_remove_object_field` returning `0` when removed and
       `1` when the field was absent (matches the design's documented
       semantics).
-- [ ] Implement `ss_json_remove_array_element_at` shifting later elements
+- [x] Implement `ss_json_remove_array_element_at` shifting later elements
       down one slot.
-- [ ] Implement `ss_json_clear_object` and `ss_json_clear_array` removing
+- [x] Implement `ss_json_clear_object` and `ss_json_clear_array` removing
       every field/element while preserving the cursor's kind.
-- [ ] Document the cursor invalidation contract in `sem_json_runtime.h`
+- [x] Document the cursor invalidation contract in `sem_json_runtime.h`
       next to each mutator so the C-side comments match the SemanticScript
       `typeInvariant JsonCursor`.
-- [ ] Extend `_native_json_link_inputs` in
+- [x] Extend `_native_json_link_inputs` in
       `SemanticScript/compiler/semsc.py` to pull in `sem_json_runtime.c`
       whenever any `json.*` document call appears (the existing builder
       trigger already covers this, but document the additional symbols).
