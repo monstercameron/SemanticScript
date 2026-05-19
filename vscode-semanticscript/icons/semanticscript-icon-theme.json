@@ -1,0 +1,21 @@
+{
+  "iconDefinitions": {
+    "_semanticscript": {
+      "iconPath": "./semanticscript-file.svg"
+    },
+    "_semanticscriptBuild": {
+      "iconPath": "./semanticscript-build.svg"
+    }
+  },
+  "fileExtensions": {
+    "sscript": "_semanticscript",
+    "sem": "_semanticscript"
+  },
+  "fileNames": {
+    "build.sscript": "_semanticscriptBuild",
+    "build.sem": "_semanticscriptBuild"
+  },
+  "languageIds": {
+    "semanticscript": "_semanticscript"
+  }
+}

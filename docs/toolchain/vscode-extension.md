@@ -10,6 +10,7 @@ The extension should provide:
 
 ```text
 language registration for .sscript and .sem
+extension and file icons for SemanticScript sources
 TextMate highlighting
 semantic token roles
 whole-line segment coloring
@@ -131,3 +132,7 @@ When adding a language verb:
 4. Add identifier indexing if the verb declares or references a symbol.
 5. Update `README.md` and the docs file that owns the verb family.
 6. Package a new VSIX only after `npm run check` passes.
+
+When changing extension icons, keep the file icon theme in
+`vscode-semanticscript/icons/semanticscript-icon-theme.json` aligned with the
+language extensions registered in `package.json`.

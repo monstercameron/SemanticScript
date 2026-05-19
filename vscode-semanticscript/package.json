@@ -2,8 +2,13 @@
   "name": "semanticscript-vscode",
   "displayName": "SemanticScript",
   "description": "Syntax highlighting, navigation, completion, linting, and compiler integration for SemanticScript .sscript and .sem files.",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "publisher": "semanticscript-local",
+  "icon": "icons/semanticscript-extension.png",
+  "galleryBanner": {
+    "color": "#111827",
+    "theme": "dark"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -32,7 +37,7 @@
   "main": "./extension.js",
   "scripts": {
     "check": "node --check extension.js && npm run check:json",
-    "check:json": "node -e \"const fs = require('fs'); ['package.json', 'language-configuration.json', 'syntaxes/semanticscript.tmLanguage.json'].forEach((file) => JSON.parse(fs.readFileSync(file, 'utf8')));\"",
+    "check:json": "node -e \"const fs = require('fs'); ['package.json', 'language-configuration.json', 'syntaxes/semanticscript.tmLanguage.json', 'icons/semanticscript-icon-theme.json'].forEach((file) => JSON.parse(fs.readFileSync(file, 'utf8')));\"",
     "package:vsix": "npm run check && npx --yes @vscode/vsce package",
     "vscode:prepublish": "npm run check"
   },
@@ -48,7 +53,11 @@
           ".sscript",
           ".sem"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/semanticscript-file-light.svg",
+          "dark": "./icons/semanticscript-file-dark.svg"
+        }
       }
     ],
     "grammars": [
@@ -58,18 +67,28 @@
         "path": "./syntaxes/semanticscript.tmLanguage.json"
       }
     ],
+    "iconThemes": [
+      {
+        "id": "semanticscript-icons",
+        "label": "SemanticScript Icons",
+        "path": "./icons/semanticscript-icon-theme.json"
+      }
+    ],
     "commands": [
       {
         "command": "semanticscript.toggleSegmentColors",
-        "title": "SemanticScript: Toggle Segment Colors"
+        "title": "SemanticScript: Toggle Segment Colors",
+        "icon": "$(symbol-color)"
       },
       {
         "command": "semanticscript.runLinter",
-        "title": "SemanticScript: Run Linter"
+        "title": "SemanticScript: Run Linter",
+        "icon": "$(checklist)"
       },
       {
         "command": "semanticscript.compileCurrentFile",
-        "title": "SemanticScript: Compile Current File"
+        "title": "SemanticScript: Compile Current File",
+        "icon": "$(gear)"
       }
     ],
     "configuration": {

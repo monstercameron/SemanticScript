@@ -32,19 +32,6 @@ const declarationVerbs = new Set([
   'enum', 'enumCase', 'error',
   'errorCase', 'operation', 'webServer', 'serverHost', 'serverPort', 'route',
   'routeTimeout', 'routeMiddleware', 'routeTimeoutOptOut', 'routeMiddlewareOptOut',
-  'guiApplication', 'guiApplicationTitle', 'guiApplicationIcon',
-  'guiApplicationMainWindow', 'guiApplicationOnExit',
-  'guiWindow', 'guiWindowApplication', 'guiWindowTitle',
-  'guiWindowWidth', 'guiWindowHeight', 'guiWindowMinimumWidth',
-  'guiWindowMinimumHeight', 'guiWindowLayout', 'guiWindowResizable',
-  'guiWindowEvent',
-  'guiButton', 'guiTextBox', 'guiListBox', 'guiCheckBox',
-  'guiMenuItem', 'guiStatusBar', 'guiTextLabel',
-  'guiControlWindow', 'guiControlEnabled', 'guiControlVisible',
-  'guiControlTabIndex', 'guiControlAccessibleName', 'guiControlEvent',
-  'guiButtonText', 'guiButtonIsDefault', 'guiTextBoxPlaceholder',
-  'guiTextBoxMaxLength', 'guiListBoxSelectionMode', 'guiCheckBoxChecked',
-  'guiTextLabelText',
   'storage', 'sharedState', 'domainLiteral',
   'literal', 'listLiteral', 'htmlTemplate', 'jsonCodec', 'policy', 'errorPolicy',
   'validator', 'codec', 'schema', 'unknownFields', 'resource', 'resourceKey',
@@ -176,11 +163,22 @@ const primitiveTargets = new Map([
   ['http.multipartPartLength', 'Native multipart part length reader: request, name -> CByteCount.'],
   ['http.multipartPartFilename', 'Native nullable multipart filename reader: request, name -> string or NULL.'],
   ['http.multipartPartContentType', 'Native nullable multipart content-type reader: request, name -> string or NULL.'],
+  ['gui.applicationCreate', 'Native GUI builder: title -> GuiApplication. Requires allocate gui.application.'],
+  ['gui.windowCreate', 'Native GUI builder: title, width, height, layout, resizable -> GuiWindow. Requires allocate gui.window.'],
+  ['gui.textLabelCreate', 'Native GUI builder: text -> GuiTextLabel. Requires allocate gui.control.'],
+  ['gui.textBoxCreate', 'Native GUI builder: placeholder, maxLength -> GuiTextBox. Requires allocate gui.control.'],
+  ['gui.buttonCreate', 'Native GUI builder: text, isDefault -> GuiButton. Requires allocate gui.control.'],
+  ['gui.listBoxCreate', 'Native GUI builder: selectionMode -> GuiListBox. Requires allocate gui.control.'],
+  ['gui.windowAddControl', 'Native GUI builder: window, control -> status. Requires write gui.window.'],
+  ['gui.controlOnEvent', 'Native GUI event registration: control, eventKind, handler -> status. Requires write gui.control.event.'],
+  ['gui.applicationSetMainWindow', 'Native GUI builder: application, window -> status. Requires write gui.window.'],
+  ['gui.applicationRun', 'Native GUI runner: application -> status/ExitCode. Requires write gui.window.'],
   ['gui.textBoxText', 'Native GUI reader: session, textBox -> text. Requires read gui.control.textBox.text.'],
   ['gui.textBoxSetText', 'Native GUI writer: session, textBox, text -> status. Requires write gui.control.textBox.text.'],
   ['gui.listBoxSelectedIndex', 'Native GUI reader: session, listBox -> selected index. Requires read gui.control.listBox.selection.'],
   ['gui.listBoxAppendItem', 'Native GUI writer: session, listBox, text -> status. Requires write gui.control.listBox.items.'],
   ['gui.listBoxClear', 'Native GUI writer: session, listBox -> status. Requires write gui.control.listBox.items.'],
+  ['gui.textLabelSetText', 'Native GUI writer: session, textLabel, text -> status. Requires write gui.control.textLabel.text.'],
   ['gui.windowClose', 'Native GUI writer: session, window -> status. Requires write gui.window.'],
   ['gui.eventKeyCode', 'Native GUI event reader: event -> key code. Requires read gui.event.'],
   ['gui.eventSelectedIndex', 'Native GUI event reader: event -> selected index. Requires read gui.event.'],
@@ -268,7 +266,7 @@ const schemaValues = new Map([
   ['dev', 'Build profile that keeps development diagnostics visible.'],
   ['prod', 'Build profile that hides source context and favors release defaults.'],
   ['auto', 'Toolchain policy: let the compiler choose from build.sem and platform context.'],
-  ['windowsGui', 'Windows desktop GUI target runtime. Source entry is discovered from guiApplication metadata.'],
+  ['windowsGui', 'Windows desktop GUI target runtime. Use entry console plus standard.gui gui.* calls.'],
   ['verticalStack', 'GUI window layout token: stack child controls vertically.'],
   ['horizontalStack', 'GUI window layout token: stack child controls horizontally.'],
   ['grid', 'GUI window layout token: arrange controls in a grid.'],
@@ -357,18 +355,18 @@ const primitiveTypes = new Map([
   ['HtmlFragment', 'Hydrated HTML fragment inserted raw only into text-content positions.'],
   ['HtmlTrustedFragment', 'Trusted HTML fragment inserted raw only into text-content positions.'],
   ['HtmlDocument', 'Full hydrated HTML document value produced by html.hydrate.* targets.'],
-  ['GuiApplication', 'Declarative Windows GUI application handle.'],
+  ['GuiApplication', 'Opaque Windows GUI application handle returned by gui.applicationCreate.'],
   ['GuiSession', 'Opaque GUI session input passed to GUI event handlers.'],
   ['GuiEvent', 'Opaque GUI event input passed to GUI event handlers.'],
-  ['GuiWindow', 'Declarative Windows GUI window handle.'],
-  ['GuiControl', 'Common declarative GUI control handle.'],
-  ['GuiButton', 'Declarative GUI button handle.'],
-  ['GuiTextBox', 'Declarative GUI text-box handle.'],
-  ['GuiListBox', 'Declarative GUI list-box handle.'],
-  ['GuiCheckBox', 'Declarative GUI check-box handle.'],
-  ['GuiMenuItem', 'Declarative GUI menu-item handle.'],
-  ['GuiStatusBar', 'Declarative GUI status-bar handle.'],
-  ['GuiTextLabel', 'Declarative GUI text-label handle.'],
+  ['GuiWindow', 'Opaque Windows GUI window handle returned by gui.windowCreate.'],
+  ['GuiControl', 'Common opaque GUI control handle.'],
+  ['GuiButton', 'Opaque GUI button handle returned by gui.buttonCreate.'],
+  ['GuiTextBox', 'Opaque GUI text-box handle returned by gui.textBoxCreate.'],
+  ['GuiListBox', 'Opaque GUI list-box handle returned by gui.listBoxCreate.'],
+  ['GuiCheckBox', 'Opaque GUI check-box handle reserved for future standard.gui functions.'],
+  ['GuiMenuItem', 'Opaque GUI menu-item handle reserved for future standard.gui functions.'],
+  ['GuiStatusBar', 'Opaque GUI status-bar handle reserved for future standard.gui functions.'],
+  ['GuiTextLabel', 'Opaque GUI text-label handle returned by gui.textLabelCreate.'],
   ['CNullTerminatedByteString', 'Validated null-terminated C byte string.'],
   ['RawCStringPointer', 'Raw C string pointer before trust-boundary validation.'],
   ['COpaqueMemoryAddress', 'Opaque memory address value.'],
@@ -505,41 +503,6 @@ const verbHoverText = new Map([
   ['routeMiddleware', 'Web server route middleware metadata keyed by exact route path. Native codegen invokes the middleware before the handler.'],
   ['routeTimeoutOptOut', 'Web server route timeout opt-out: routeTimeoutOptOut SERVER PATH "rationale". Used by semlint route coverage checks.'],
   ['routeMiddlewareOptOut', 'Web server route middleware opt-out: routeMiddlewareOptOut SERVER PATH "rationale". Used by semlint route coverage checks.'],
-  ['guiApplication', 'Declarative Windows GUI application: guiApplication APP.'],
-  ['guiApplicationTitle', 'GUI application title metadata: guiApplicationTitle APP "text".'],
-  ['guiApplicationIcon', 'GUI application icon metadata: guiApplicationIcon APP ICON_GROUP.'],
-  ['guiApplicationMainWindow', 'GUI application entry window: guiApplicationMainWindow APP WINDOW.'],
-  ['guiApplicationOnExit', 'GUI application exit hook metadata: guiApplicationOnExit APP OPERATION.'],
-  ['guiWindow', 'Declarative Windows GUI window: guiWindow WINDOW.'],
-  ['guiWindowApplication', 'GUI window ownership metadata: guiWindowApplication WINDOW APP.'],
-  ['guiWindowTitle', 'GUI window title metadata: guiWindowTitle WINDOW "text".'],
-  ['guiWindowWidth', 'GUI window width metadata: guiWindowWidth WINDOW PIXELS.'],
-  ['guiWindowHeight', 'GUI window height metadata: guiWindowHeight WINDOW PIXELS.'],
-  ['guiWindowMinimumWidth', 'GUI window minimum width metadata: guiWindowMinimumWidth WINDOW PIXELS.'],
-  ['guiWindowMinimumHeight', 'GUI window minimum height metadata: guiWindowMinimumHeight WINDOW PIXELS.'],
-  ['guiWindowLayout', 'GUI window layout metadata: guiWindowLayout WINDOW verticalStack|horizontalStack|grid|absolute.'],
-  ['guiWindowResizable', 'GUI window resizing metadata: guiWindowResizable WINDOW yes|no.'],
-  ['guiWindowEvent', 'GUI window event binding: guiWindowEvent WINDOW EVENT OPERATION.'],
-  ['guiButton', 'Declarative GUI button control: guiButton CONTROL.'],
-  ['guiTextBox', 'Declarative GUI text-box control: guiTextBox CONTROL.'],
-  ['guiListBox', 'Declarative GUI list-box control: guiListBox CONTROL.'],
-  ['guiCheckBox', 'Declarative GUI check-box control: guiCheckBox CONTROL.'],
-  ['guiMenuItem', 'Declarative GUI menu-item control: guiMenuItem CONTROL.'],
-  ['guiStatusBar', 'Declarative GUI status-bar control: guiStatusBar CONTROL.'],
-  ['guiTextLabel', 'Declarative GUI text label: guiTextLabel CONTROL.'],
-  ['guiControlWindow', 'GUI control placement metadata: guiControlWindow CONTROL WINDOW.'],
-  ['guiControlEnabled', 'GUI control enabled metadata: guiControlEnabled CONTROL yes|no.'],
-  ['guiControlVisible', 'GUI control visibility metadata: guiControlVisible CONTROL yes|no.'],
-  ['guiControlTabIndex', 'GUI control tab order metadata: guiControlTabIndex CONTROL N.'],
-  ['guiControlAccessibleName', 'GUI control accessibility metadata: guiControlAccessibleName CONTROL "text".'],
-  ['guiControlEvent', 'GUI control event binding: guiControlEvent CONTROL EVENT OPERATION.'],
-  ['guiButtonText', 'GUI button text metadata: guiButtonText BUTTON "text".'],
-  ['guiButtonIsDefault', 'GUI default-button metadata: guiButtonIsDefault BUTTON yes|no.'],
-  ['guiTextBoxPlaceholder', 'GUI text-box placeholder metadata: guiTextBoxPlaceholder TEXTBOX "text".'],
-  ['guiTextBoxMaxLength', 'GUI text-box length metadata: guiTextBoxMaxLength TEXTBOX N.'],
-  ['guiListBoxSelectionMode', 'GUI list-box selection metadata: guiListBoxSelectionMode LISTBOX single|multiple.'],
-  ['guiCheckBoxChecked', 'GUI check-box checked-state metadata: guiCheckBoxChecked CHECKBOX yes|no.'],
-  ['guiTextLabelText', 'GUI text-label text metadata: guiTextLabelText LABEL "text".'],
   ['htmlTemplate', 'First-class HTML/SSX template declaration: htmlTemplate NAME. The body starts at htmlBody NAME.'],
   ['htmlArg', 'HTML template hydration input: htmlArg TEMPLATE ARG_NAME TYPE. Body holes must reference declared args as {htmlArg.ARG_NAME}.'],
   ['htmlBody', 'Starts the indentation-sensitive HTML/SSX body island for a template. The island ends at the next non-empty column-0 SemanticScript line.'],
@@ -1216,9 +1179,6 @@ const operationHoverReferencePositions = new Map([
   ['entry', 2],
   ['route', 4],
   ['routeMiddleware', 3],
-  ['guiApplicationOnExit', 2],
-  ['guiWindowEvent', 3],
-  ['guiControlEvent', 3],
   ['trustBoundaryValidator', 2],
   ['jsonCodecDecodeTarget', 2],
   ['jsonCodecEncodeTarget', 2],
@@ -1237,8 +1197,6 @@ const namedDeclarationVerbs = new Set([
   'mutex', 'shared', 'channel', 'section', 'domainLiteral', 'literal',
   'listLiteral', 'htmlTemplate', 'listType', 'arrayType', 'sliceType', 'smallListType',
   'mapType', 'collectionOperation', 'interval', 'workerPool', 'work',
-  'guiApplication', 'guiWindow', 'guiButton', 'guiTextBox', 'guiListBox',
-  'guiCheckBox', 'guiMenuItem', 'guiStatusBar', 'guiTextLabel',
   'buildProject', 'registerModule', 'modulePath', 'mainFile', 'mainOperation',
   'targetRuntime', 'buildProfile', 'optLevel', 'cpuBaseline', 'cpuTune',
   'cpuFeature', 'cpuFeatureCheck', 'nativeOutput',
@@ -1484,15 +1442,6 @@ const buildDocumentSymbolIndex = (document) => {
       case 'resource':
       case 'capability':
       case 'webServer':
-      case 'guiApplication':
-      case 'guiWindow':
-      case 'guiButton':
-      case 'guiTextBox':
-      case 'guiListBox':
-      case 'guiCheckBox':
-      case 'guiMenuItem':
-      case 'guiStatusBar':
-      case 'guiTextLabel':
       case 'interval':
       case 'workerPool':
       case 'group':
@@ -1776,16 +1725,6 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
   }
 
   if (verb === 'dependencyFetch' && index === 2) {
-    return 'semanticscriptDeclaredName';
-  }
-
-  if (verb.startsWith('gui') && index === 1) {
-    return 'semanticscriptDeclaredName';
-  }
-
-  if ((verb === 'guiApplicationOnExit' && index === 2)
-    || (verb === 'guiWindowEvent' && index === 3)
-    || (verb === 'guiControlEvent' && index === 3)) {
     return 'semanticscriptDeclaredName';
   }
 
@@ -3338,18 +3277,6 @@ const documentSymbolKind = (verb) => {
       return vscode.SymbolKind.Constant;
     case 'webServer':
       return vscode.SymbolKind.Namespace;
-    case 'guiApplication':
-      return vscode.SymbolKind.Namespace;
-    case 'guiWindow':
-      return vscode.SymbolKind.Namespace;
-    case 'guiButton':
-    case 'guiTextBox':
-    case 'guiListBox':
-    case 'guiCheckBox':
-    case 'guiMenuItem':
-    case 'guiStatusBar':
-    case 'guiTextLabel':
-      return vscode.SymbolKind.Object;
     case 'route':
       return vscode.SymbolKind.Event;
     case 'record':
@@ -3436,8 +3363,6 @@ const provideDocumentSymbols = (document) => {
     'exportOperation', 'exportType',
     'exportError', 'exportCapability', 'exportConstant',
     'operation', 'input', 'webServer', 'route', 'record', 'field',
-    'guiApplication', 'guiWindow', 'guiButton', 'guiTextBox', 'guiListBox',
-    'guiCheckBox', 'guiMenuItem', 'guiStatusBar', 'guiTextLabel',
     'enum', 'enumCase', 'error', 'errorCase', 'type', 'capability',
     'authority', 'timeoutBudget', 'storage', 'sharedState', 'const',
     'var', 'call', 'label', 'jsonCodec', 'policy', 'retryPolicy',

@@ -12,14 +12,18 @@ explicit runtime checks, and refinement-only documentation forms.
 - `extension.js` implements extension behavior.
 - `package.json` defines VS Code contribution points and settings.
 - `language-configuration.json` defines editor language behavior.
+- `icons/` contains the extension icon, language file icons, and optional file
+  icon theme.
 - `syntaxes/` contains TextMate grammar assets.
 - `.vscode/` contains local extension debugging configuration.
 
 ## Current Status
 
-Active editor tooling. Version `1.0.2` supports highlighting, semantic tokens,
+Active editor tooling. Version `1.0.3` supports highlighting, semantic tokens,
 hovers, same-file navigation, completions, lint integration, and direct
-`semsc.py` executable builds from VS Code.
+`semsc.py` executable builds from VS Code. The package also includes a
+SemanticScript gallery icon, language file icon fallback, and selectable
+SemanticScript file icon theme.
 
 ## Release Readiness
 
@@ -35,6 +39,8 @@ builds after accepting the publisher metadata constraint for the target release.
 ## Features
 
 - Language registration for `.sscript` and `.sem`.
+- VS Code extension gallery icon and SemanticScript file icons for `.sscript`,
+  `.sem`, `build.sscript`, and `build.sem`.
 - TextMate highlighting for verbs, types, strings, numbers, comments, symbols,
   qualified paths, error variants, schema values, primitive targets, generated
   targets, domain targets, and embedded `htmlBody` markup islands.
@@ -90,11 +96,12 @@ The extension recognizes the recent syntax families from the refined example:
   `http.multipartPartText`, `http.multipartPartBytes`,
   `http.multipartPartLength`, `http.multipartPartFilename`, and
   `http.multipartPartContentType`.
-- Declarative Windows GUI target metadata:
-  `target windowsGui`, `targetRuntime PROJECT windowsGui`, `guiApplication*`,
-  `guiWindow*`, per-kind controls such as `guiButton` and `guiTextBox`,
-  shared `guiControl*` rows, `GuiSession`/`GuiEvent` handler inputs, and
-  primitive `gui.*` runtime call targets such as `gui.textBoxText` and
+- Windows GUI target support:
+  `target windowsGui`, `targetRuntime PROJECT windowsGui`, normal
+  `entry console main`, `GuiSession`/`GuiEvent` handler inputs, and
+  `standard.gui` `gui.*` call targets such as `gui.applicationCreate`,
+  `gui.windowCreate`, `gui.buttonCreate`, `gui.controlOnEvent`,
+  `gui.applicationRun`, `gui.textBoxText`, `gui.textLabelSetText`, and
   `gui.windowClose`.
 - First-class HTML templates:
   `htmlTemplate`, `htmlArg`, `htmlBody`, `HtmlText`, `HtmlClass`, `SafeUrl`,
@@ -213,6 +220,9 @@ or a current executable file such as:
 ```text
 ../SemanticScript/sem/countdown.sscript
 ```
+
+To check the bundled file icon theme in the Extension Development Host, run
+`Preferences: File Icon Theme` and choose `SemanticScript Icons`.
 
 ## Install Locally
 
