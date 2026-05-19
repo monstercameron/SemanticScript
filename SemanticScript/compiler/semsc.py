@@ -454,6 +454,8 @@ class Record:
         self.layout = None        # "row" | "column" | "packed" | None
         self.align = None         # int | None
         self.fields = []          # list[(field_name, field_type)]
+        self.field_json_names = {} # field_name -> JSON object key
+        self.field_json_omit_when = {} # field_name -> empty|null|false|zero
 
 
 class Enum:
@@ -537,6 +539,7 @@ class Program:
         self.web_servers = {}          # name -> WebServer
         self.html_templates = {}       # name -> HtmlTemplate
         self.json_bodies = []          # list[JsonBodyLiteral]
+        self.record_json_constants = {} # name -> {recordType, fields}
         self.storage_declarations = [] # parsed storage rows for jsonBody binding
         self.type_metadata = {}        # type_name -> {invariant: [...], trust:..., memory:..., layout:..., representation:...}
         self.capabilities = {}         # name -> {effect_path, access}
@@ -1193,6 +1196,136 @@ def _record_type_for_json_body(prog: Program, type_name: str) -> str | None:
             name = next_target
 
 
+def _json_record_key(record: Record, field_name: str) -> str:
+    return record.field_json_names.get(field_name, field_name)
+
+
+def _json_kind_name(value) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float):
+        return "double"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, dict):
+        return "object"
+    return type(value).__name__
+
+
+def _json_record_default_for_policy(prog: Program, field_type: str, policy: str):
+    resolved = resolve_alias(prog, field_type)
+    if policy == "empty":
+        if resolved in ("String", "CNullTerminatedByteString", "CString",
+                        "JsonText"):
+            return ""
+    if policy == "null":
+        if resolved in ("String", "CNullTerminatedByteString", "CString",
+                        "JsonText"):
+            return None
+    if policy == "false" and resolved == "Bool":
+        return False
+    if policy == "zero":
+        if resolved in (
+            "I64", "CSignedInt64", "CUnsignedInt64", "CByteCount",
+            "CSignedByteCount", "CAddressOffset", "CUnixSecondsSinceEpoch",
+            "CCpuClockTicks", "CFileByteOffset", "CMaxSignedInt",
+            "CMaxUnsignedInt", "DurationMilliseconds",
+            "MonotonicMilliseconds", "UtcMilliseconds", "CLong",
+            "CLongLong", "CSize", "CSsize", "CPtrdiff", "CTime", "CClock",
+            "COff", "CIntmax", "CUintmax", "I32", "ExitCode",
+            "CSignedInt32", "CUnsignedInt32", "CInt", "CUint", "I16",
+            "CSignedInt16", "CUnsignedInt16", "CShort", "CUshort", "I8",
+            "CSignedByte", "CUnsignedByte", "CChar", "CSchar", "CUchar",
+            "CByte",
+        ):
+            return 0
+        if resolved in ("F64", "CFloat64", "CDouble", "F32", "CFloat32",
+                        "CFloat"):
+            return 0.0
+    return None
+
+
+def _validate_json_record_value(
+    prog: Program,
+    record_type: str,
+    value,
+    decl_line: int,
+    path: str,
+):
+    if not isinstance(value, dict):
+        raise SyntaxError(
+            f"line {decl_line}: jsonBodyWrongType: `{path or record_type}` "
+            f"expected object for record `{record_type}`, got "
+            f"{_json_kind_name(value)}")
+    record = prog.records[record_type]
+    expected_keys = {_json_record_key(record, field_name): field_name
+                     for field_name, _field_type in record.fields}
+    unknown_keys = sorted(set(value.keys()) - set(expected_keys.keys()))
+    if unknown_keys:
+        key = unknown_keys[0]
+        raise SyntaxError(
+            f"line {decl_line}: jsonBodyUnknownField: `{path or record_type}` "
+            f"contains unknown JSON key `{key}` for record `{record_type}`")
+    fields = {}
+    for field_name, field_type in record.fields:
+        json_key = _json_record_key(record, field_name)
+        field_path = f"{path}.{field_name}" if path else field_name
+        policy = record.field_json_omit_when.get(field_name)
+        if json_key not in value:
+            if policy:
+                fields[field_name] = _json_record_default_for_policy(
+                    prog, field_type, policy)
+                continue
+            raise SyntaxError(
+                f"line {decl_line}: jsonBodyMissingRequired: `{field_path}` "
+                f"is required for record `{record_type}`")
+        field_value = value[json_key]
+        nested_type = _record_type_for_json_body(prog, field_type)
+        if nested_type is not None:
+            fields[field_name] = _validate_json_record_value(
+                prog, nested_type, field_value, decl_line, field_path)
+            continue
+        resolved = resolve_alias(prog, field_type)
+        if field_value is None and policy == "null":
+            fields[field_name] = None
+            continue
+        if resolved in ("String", "CNullTerminatedByteString", "CString",
+                        "JsonText"):
+            if not isinstance(field_value, str):
+                raise SyntaxError(
+                    f"line {decl_line}: jsonBodyWrongType: `{field_path}` "
+                    f"expected string, got {_json_kind_name(field_value)}")
+            fields[field_name] = field_value
+            continue
+        if resolved == "Bool":
+            if not isinstance(field_value, bool):
+                raise SyntaxError(
+                    f"line {decl_line}: jsonBodyWrongType: `{field_path}` "
+                    f"expected boolean, got {_json_kind_name(field_value)}")
+            fields[field_name] = field_value
+            continue
+        if resolved in ("F64", "CFloat64", "CDouble", "F32", "CFloat32",
+                        "CFloat"):
+            if isinstance(field_value, bool) or not isinstance(field_value, (int, float)):
+                raise SyntaxError(
+                    f"line {decl_line}: jsonBodyWrongType: `{field_path}` "
+                    f"expected number, got {_json_kind_name(field_value)}")
+            fields[field_name] = field_value
+            continue
+        if isinstance(field_value, bool) or not isinstance(field_value, int):
+            raise SyntaxError(
+                f"line {decl_line}: jsonBodyWrongType: `{field_path}` "
+                f"expected integer, got {_json_kind_name(field_value)}")
+        fields[field_name] = field_value
+    return fields
+
+
 def _bind_json_body_target(prog: Program, declaration: dict,
                            canonical_text: str) -> None:
     name = declaration["name"]
@@ -1205,7 +1338,7 @@ def _bind_json_body_target(prog: Program, declaration: dict,
     declaration["has_json_body"] = True
 
 
-def _canonicalize_json_body(name: str, body_lines: list, decl_line: int) -> str:
+def _parse_json_body(name: str, body_lines: list, decl_line: int):
     if not body_lines or not any(text.strip() for text, _line in body_lines):
         raise SyntaxError(
             f"line {decl_line}: emptyJsonBody: jsonBody `{name}` requires "
@@ -1225,6 +1358,10 @@ def _canonicalize_json_body(name: str, body_lines: list, decl_line: int) -> str:
         raise SyntaxError(
             f"line {decl_line}: invalidJsonBody: jsonBody `{name}` contains "
             f"invalid JSON: {exc}") from exc
+    return parsed
+
+
+def _canonicalize_json_value(parsed) -> str:
     return json.dumps(parsed, ensure_ascii=False, allow_nan=False,
                       separators=(",", ":"))
 
@@ -1298,11 +1435,8 @@ def _start_json_body_literal(prog: Program, name: str, lineno: int) -> dict:
                 "body_lines": []}
     record_type = _record_type_for_json_body(prog, type_name)
     if record_type is not None:
-        raise SyntaxError(
-            f"line {lineno}: jsonBodyRecordLiteralUnsupported: jsonBody "
-            f"`{name}` targets record type `{record_type}`, but record-typed "
-            "jsonBody literals are not implemented yet; use JsonText for "
-            "validated JSON text literals")
+        return {"name": name, "line": lineno, "target": declaration,
+                "record_type": record_type, "body_lines": []}
     raise SyntaxError(
         f"line {lineno}: jsonBodyUnsupportedType: jsonBody `{name}` "
         f"targets `{type_name}`, expected JsonText or a declared record type")
@@ -1311,9 +1445,21 @@ def _start_json_body_literal(prog: Program, name: str, lineno: int) -> dict:
 def _finish_json_body_literal(prog: Program, active_json_body: dict) -> None:
     name = active_json_body["name"]
     declaration = active_json_body["target"]
-    canonical = _canonicalize_json_body(
+    parsed = _parse_json_body(
         name, active_json_body["body_lines"], active_json_body["line"])
-    _bind_json_body_target(prog, declaration, canonical)
+    canonical = _canonicalize_json_value(parsed)
+    record_type = active_json_body.get("record_type")
+    if record_type is None:
+        _bind_json_body_target(prog, declaration, canonical)
+    else:
+        fields = _validate_json_record_value(
+            prog, record_type, parsed, active_json_body["line"], "")
+        prog.record_json_constants[name] = {
+            "recordType": record_type,
+            "fields": fields,
+        }
+        prog.consts[name] = (declaration["type"], name)
+        declaration["has_json_body"] = True
     prog.json_bodies.append(JsonBodyLiteral(
         name,
         declaration["type"],
@@ -2034,6 +2180,34 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
         if rec is None:
             raise SyntaxError(f"field references unknown record: {args[0]}")
         rec.fields.append((args[1], args[2]))
+        return
+    if verb == "recordFieldJsonName":
+        if len(args) < 3:
+            raise SyntaxError(
+                "recordFieldJsonName requires: recordFieldJsonName RECORD FIELD JSON_KEY")
+        rec = prog.records.get(args[0])
+        if rec is None:
+            raise SyntaxError(f"recordFieldJsonName references unknown record: {args[0]}")
+        if args[1] not in {field_name for field_name, _field_type in rec.fields}:
+            raise SyntaxError(
+                f"recordFieldJsonName references unknown field: {args[0]}.{args[1]}")
+        rec.field_json_names[args[1]] = _unwrap(args[2])
+        return
+    if verb == "recordFieldJsonOmitWhen":
+        if len(args) < 3:
+            raise SyntaxError(
+                "recordFieldJsonOmitWhen requires: recordFieldJsonOmitWhen RECORD FIELD empty|null|false|zero")
+        rec = prog.records.get(args[0])
+        if rec is None:
+            raise SyntaxError(f"recordFieldJsonOmitWhen references unknown record: {args[0]}")
+        if args[1] not in {field_name for field_name, _field_type in rec.fields}:
+            raise SyntaxError(
+                f"recordFieldJsonOmitWhen references unknown field: {args[0]}.{args[1]}")
+        policy = args[2]
+        if policy not in {"empty", "null", "false", "zero"}:
+            raise SyntaxError(
+                "recordFieldJsonOmitWhen policy must be one of: empty, null, false, zero")
+        rec.field_json_omit_when[args[1]] = policy
         return
 
     # ----- enums -----
@@ -2990,6 +3164,7 @@ class Codegen:
         self.strings = {}
         self._next_str_id = 0
         self._next_html_buffer_id = 0
+        self._next_json_buffer_id = 0
         self._web_route_handler_names = set()
         self._trace_seq_global = None
         self._trace_decimal_writer_id = 0
@@ -4449,6 +4624,8 @@ class Codegen:
         labels = {}        # name -> BasicBlock
         calls = {}         # callName -> {target, args, result, error_value, error_cond}
         binds = dict(initial_binds)  # bind-name -> SSA value (or alloca pointer for vars)
+        record_values = {} # record value name -> {type, slots, field_types}
+        self._current_record_values = record_values
         # bind-name -> entry-block alloca slot for handles that need to be
         # re-loaded at later use sites (defer cleanup). See bindOk handling
         # below and the sqlite.openDatabase / sqlite.prepareStatement
@@ -4526,6 +4703,8 @@ class Codegen:
             # future pointer-shaped aliases don't need a special case.
             if llty == I8P and isinstance(raw, str):
                 return self._i8p(builder, raw)
+            if llty == I8P and raw is None:
+                return ir.Constant(I8P, None)
             if llty is None:
                 raise ValueError(f"unsupported const type: {typ}")
             if isinstance(llty, ir.IntType):
@@ -4591,6 +4770,109 @@ class Codegen:
             if tok in opaque_inputs:
                 return SENTINEL
             raise ValueError(f"unresolved symbol: {tok!r}")
+
+        def coerce_to_type(value, target_type):
+            if value.type == target_type:
+                return value
+            if isinstance(value.type, ir.IntType) and isinstance(target_type, ir.IntType):
+                if value.type.width < target_type.width:
+                    return (builder.zext if value.type.width == 1 else builder.sext)(
+                        value, target_type)
+                if value.type.width > target_type.width:
+                    return builder.trunc(value, target_type)
+            if isinstance(value.type, ir.IntType) and isinstance(target_type, ir.PointerType):
+                return builder.inttoptr(value, target_type)
+            if isinstance(value.type, ir.PointerType) and isinstance(target_type, ir.IntType):
+                return builder.ptrtoint(value, target_type)
+            if isinstance(value.type, ir.PointerType) and isinstance(target_type, ir.PointerType):
+                return builder.bitcast(value, target_type)
+            if isinstance(value.type, ir.IntType) and isinstance(target_type, (ir.FloatType, ir.DoubleType)):
+                return builder.sitofp(value, target_type)
+            if isinstance(value.type, (ir.FloatType, ir.DoubleType)) and isinstance(target_type, ir.IntType):
+                return builder.fptosi(value, target_type)
+            if isinstance(value.type, ir.FloatType) and isinstance(target_type, ir.DoubleType):
+                return builder.fpext(value, target_type)
+            if isinstance(value.type, ir.DoubleType) and isinstance(target_type, ir.FloatType):
+                return builder.fptrunc(value, target_type)
+            return value
+
+        def record_leaf_type(record_type, field_path):
+            current_type = record_type
+            parts = field_path.split(".")
+            for index, part in enumerate(parts):
+                record = prog.records.get(current_type)
+                if record is None:
+                    return None
+                match = None
+                for field_name, field_type in record.fields:
+                    if field_name == part:
+                        match = field_type
+                        break
+                if match is None:
+                    return None
+                if index == len(parts) - 1:
+                    return match
+                nested = _record_type_for_json_body(prog, match)
+                if nested is None:
+                    return None
+                current_type = nested
+            return None
+
+        def iter_record_leaf_fields(record_type, prefix=""):
+            record = prog.records.get(record_type)
+            if record is None:
+                return
+            for field_name, field_type in record.fields:
+                path = f"{prefix}.{field_name}" if prefix else field_name
+                nested = _record_type_for_json_body(prog, field_type)
+                if nested is not None:
+                    yield from iter_record_leaf_fields(nested, path)
+                else:
+                    yield path, field_type
+
+        def nested_json_field(record_fields, field_path):
+            current = record_fields
+            for part in field_path.split("."):
+                if not isinstance(current, dict) or part not in current:
+                    return None
+                current = current[part]
+            return current
+
+        def allocate_record_slots(value_name, record_type, initial_fields=None):
+            slots = {}
+            field_types = {}
+            for field_path, field_type in iter_record_leaf_fields(record_type):
+                llty = llvm_type_for(prog, field_type)
+                if llty is None:
+                    continue
+                with builder.goto_entry_block():
+                    slot = builder.alloca(
+                        llty,
+                        name=f"{value_name}_{field_path.replace('.', '_')}")
+                raw_initial = None
+                if initial_fields is not None:
+                    raw_initial = nested_json_field(initial_fields, field_path)
+                init = emit_const_value(field_type, raw_initial)
+                init = coerce_to_type(init, llty)
+                builder.store(init, slot)
+                slots[field_path] = slot
+                field_types[field_path] = field_type
+            record_values[value_name] = {
+                "type": record_type,
+                "slots": slots,
+                "field_types": field_types,
+            }
+            return record_values[value_name]
+
+        def const_record_field(record_name, field_path):
+            record_const = prog.record_json_constants.get(record_name)
+            if record_const is None:
+                return None
+            field_type = record_leaf_type(record_const["recordType"], field_path)
+            if field_type is None:
+                return None
+            raw_value = nested_json_field(record_const["fields"], field_path)
+            return emit_const_value(field_type, raw_value)
 
         # ---- defer registry ----
         # Collect every `defer*` definition and `deferRunOn` policy once up
@@ -5102,6 +5384,10 @@ class Codegen:
 
             if verb in ("bindOk", "bind"):
                 value_name, _type_name, call_name = args[0], args[1], args[2]
+                if _type_name in prog.records and "record_result" in calls[call_name]:
+                    record_values[value_name] = calls[call_name]["record_result"]
+                    binds[value_name] = ir.Constant(I64, 0)
+                    continue
                 binds[value_name] = calls[call_name]["result"]
                 # Native dispatch handlers that produce a handle via an
                 # out-pointer (sqlite.openDatabase, sqlite.prepareStatement)
@@ -5285,12 +5571,54 @@ class Codegen:
                 binds[args[0]] = ir.Constant(I64, 0)
                 continue
             if verb == "new" and len(args) >= 1:
-                binds[args[0]] = ir.Constant(I64, 0)
+                value_name = args[0]
+                record_type = args[1] if len(args) >= 2 else ""
+                if record_type in prog.records:
+                    allocate_record_slots(value_name, record_type)
+                    binds[value_name] = ir.Constant(I64, 0)
+                else:
+                    binds[value_name] = ir.Constant(I64, 0)
                 continue
             if verb == "fieldGet" and len(args) >= 1:
-                binds[args[0]] = ir.Constant(I64, 0)
+                out_name = args[0]
+                out_type = args[1] if len(args) >= 2 else "I64"
+                record_name = args[2] if len(args) >= 3 else ""
+                field_path = args[3] if len(args) >= 4 else ""
+                record_value = record_values.get(record_name)
+                if record_value is not None:
+                    slot = record_value["slots"].get(field_path)
+                    if slot is None:
+                        raise ValueError(
+                            f"fieldGet: `{record_name}` has no field `{field_path}`")
+                    loaded = builder.load(slot, name=f"{out_name}_field")
+                    target_llty = llvm_type_for(prog, out_type)
+                    if target_llty is not None:
+                        loaded = coerce_to_type(loaded, target_llty)
+                    binds[out_name] = loaded
+                    continue
+                const_value = const_record_field(record_name, field_path)
+                if const_value is not None:
+                    target_llty = llvm_type_for(prog, out_type)
+                    if target_llty is not None:
+                        const_value = coerce_to_type(const_value, target_llty)
+                    binds[out_name] = const_value
+                    continue
+                binds[out_name] = ir.Constant(I64, 0)
                 continue
             if verb == "fieldSet":
+                if len(args) >= 3:
+                    record_name, field_path, value_name = args[0], args[1], args[2]
+                    record_value = record_values.get(record_name)
+                    if record_value is not None:
+                        slot = record_value["slots"].get(field_path)
+                        if slot is None:
+                            raise ValueError(
+                                f"fieldSet: `{record_name}` has no field `{field_path}`")
+                        value = resolve(value_name)
+                        if value is SENTINEL:
+                            raise ValueError("fieldSet: cannot store opaque input")
+                        value = coerce_to_type(value, slot.type.pointee)
+                        builder.store(value, slot)
                 continue
 
             # HARD reserved verbs are spec-defined runtime features. The
@@ -5798,6 +6126,453 @@ class Codegen:
         def require_f64(v, context: str):
             return require_exact_type(v, F64, "F64", context)
 
+        high_level_json_alias = False
+
+        def mark_high_level_json_success():
+            call["error_value"] = ir.Constant(I32, 0)
+            call["error_cond"] = ir.Constant(I1, 0)
+
+        def target_type_is_json_text(name: str) -> bool:
+            seen = set()
+            current = name
+            while True:
+                if current == "JsonText":
+                    return True
+                if current in seen or current not in self.prog.type_aliases:
+                    return False
+                seen.add(current)
+                alias_target = self.prog.type_aliases[current]
+                current = alias_target[0] if isinstance(alias_target, list) else alias_target
+
+        record_values = getattr(self, "_current_record_values", {})
+
+        def high_json_as_i8p(value):
+            if value.type == I8P:
+                return value
+            if isinstance(value.type, ir.PointerType):
+                return builder.bitcast(value, I8P)
+            if isinstance(value.type, ir.IntType):
+                return builder.inttoptr(value, I8P)
+            raise ValueError(f"{call_name}: {target} expected pointer-shaped JSON text")
+
+        def high_json_i64(value):
+            if isinstance(value.type, ir.IntType):
+                if value.type.width < 64:
+                    return builder.sext(value, I64)
+                if value.type.width > 64:
+                    return builder.trunc(value, I64)
+                return value
+            if isinstance(value.type, ir.PointerType):
+                return builder.ptrtoint(value, I64)
+            raise ValueError(f"{call_name}: {target} expected integer-shaped value")
+
+        def high_json_i32(value):
+            if isinstance(value.type, ir.IntType):
+                if value.type.width < 32:
+                    return (builder.zext if value.type.width == 1 else builder.sext)(value, I32)
+                if value.type.width > 32:
+                    return builder.trunc(value, I32)
+                return value
+            raise ValueError(f"{call_name}: {target} expected i32-shaped value")
+
+        def high_json_f64(value):
+            if value.type == F64:
+                return value
+            if isinstance(value.type, ir.FloatType):
+                return builder.fpext(value, F64)
+            if isinstance(value.type, ir.IntType):
+                return builder.sitofp(value, F64)
+            raise ValueError(f"{call_name}: {target} expected numeric value")
+
+        def high_json_const_value(field_type, raw):
+            llty = llvm_type_for(self.prog, field_type)
+            resolved = resolve_alias(self.prog, field_type)
+            if llty == I8P:
+                if raw is None:
+                    return ir.Constant(I8P, None)
+                return self._i8p(builder, "" if raw is None else str(raw))
+            if llty == I1:
+                return ir.Constant(I1, 1 if raw is True or raw == 1 else 0)
+            if isinstance(llty, ir.IntType):
+                try:
+                    return ir.Constant(llty, int(raw or 0))
+                except (TypeError, ValueError):
+                    return ir.Constant(llty, 0)
+            if isinstance(llty, (ir.FloatType, ir.DoubleType)):
+                try:
+                    return ir.Constant(llty, float(raw or 0.0))
+                except (TypeError, ValueError):
+                    return ir.Constant(llty, 0.0)
+            if resolved in self.prog.records:
+                return ir.Constant(I64, 0)
+            raise ValueError(f"{call_name}: unsupported record field type `{field_type}`")
+
+        def high_json_nested_field(fields, field_path):
+            current = fields
+            for part in field_path.split("."):
+                if not isinstance(current, dict) or part not in current:
+                    return None
+                current = current[part]
+            return current
+
+        def high_json_record_source(record_symbol, record_type):
+            source = record_values.get(record_symbol)
+            if source is not None:
+                return source
+            record_const = self.prog.record_json_constants.get(record_symbol)
+            if record_const is not None:
+                return {
+                    "type": record_const["recordType"],
+                    "const_fields": record_const["fields"],
+                }
+            return None
+
+        def high_json_record_field_value(source, field_path, field_type):
+            slots = source.get("slots")
+            if slots is not None and field_path in slots:
+                return builder.load(
+                    slots[field_path],
+                    name=f"{call_name}_{field_path.replace('.', '_')}")
+            return high_json_const_value(
+                field_type,
+                high_json_nested_field(source.get("const_fields", {}), field_path))
+
+        def high_json_record_leaf_fields(record_type, prefix=""):
+            record = self.prog.records.get(record_type)
+            if record is None:
+                return
+            for field_name, field_type in record.fields:
+                path = f"{prefix}.{field_name}" if prefix else field_name
+                nested = _record_type_for_json_body(self.prog, field_type)
+                if nested is not None:
+                    yield from high_json_record_leaf_fields(nested, path)
+                else:
+                    yield path, field_type
+
+        def high_json_global_buffer(byte_count, stem):
+            array_ty = ir.ArrayType(I8, byte_count)
+            safe_stem = re.sub(r"[^A-Za-z0-9_]", "_", stem)
+            name = f"as.json.{self._next_json_buffer_id}.{safe_stem}"
+            self._next_json_buffer_id += 1
+            gv = ir.GlobalVariable(self.module, array_ty, name=name)
+            gv.linkage = "internal"
+            gv.global_constant = False
+            gv.initializer = ir.Constant(array_ty, bytearray(byte_count))
+            return builder.gep(
+                gv, [ir.Constant(I32, 0), ir.Constant(I32, 0)],
+                inbounds=True)
+
+        def high_json_record_slots(record_type, value_name):
+            slots = {}
+            field_types = {}
+            for field_path, field_type in high_json_record_leaf_fields(record_type):
+                llty = llvm_type_for(self.prog, field_type)
+                if llty is None:
+                    continue
+                with builder.goto_entry_block():
+                    slot = builder.alloca(
+                        llty,
+                        name=f"{call_name}_{value_name}_{field_path.replace('.', '_')}")
+                policy = None
+                top_field = field_path.split(".", 1)[0]
+                record = self.prog.records.get(record_type)
+                if record is not None:
+                    policy = record.field_json_omit_when.get(top_field)
+                raw_default = _json_record_default_for_policy(
+                    self.prog, field_type, policy) if policy else None
+                builder.store(high_json_const_value(field_type, raw_default), slot)
+                slots[field_path] = slot
+                field_types[field_path] = field_type
+            return {"type": record_type, "slots": slots, "field_types": field_types}
+
+        def high_json_status_slot(name_suffix="status"):
+            with builder.goto_entry_block():
+                slot = builder.alloca(I32, name=f"{call_name}_{name_suffix}")
+                builder.store(ir.Constant(I32, 0), slot)
+            return slot
+
+        def high_json_merge_status(status_slot, new_status):
+            if new_status.type != I32:
+                new_status = high_json_i32(new_status)
+            current = builder.load(status_slot, name=f"{call_name}_statusCurrent")
+            current_is_error = builder.icmp_signed(
+                "!=", current, ir.Constant(I32, 0),
+                name=f"{call_name}_statusAlreadyError")
+            merged = builder.select(current_is_error, current, new_status,
+                                    name=f"{call_name}_statusMerged")
+            builder.store(merged, status_slot)
+
+        def high_json_emit_record_stringify(record_type):
+            record_symbol = call["args"].get("value") or call["args"].get("record")
+            if record_symbol is None:
+                raise ValueError(f"{call_name}: {target} requires arg `value`")
+            source = high_json_record_source(record_symbol, record_type)
+            if source is None:
+                raise ValueError(
+                    f"{call_name}: `{record_symbol}` is not a materialized "
+                    f"record value of type `{record_type}`")
+            status_slot = high_json_status_slot()
+            doc_slot = high_json_status_slot("documentSlot").bitcast(I8P.as_pointer())
+            with builder.goto_entry_block():
+                out_slot = builder.alloca(I8P, name=f"{call_name}_jsonTextSlot")
+                builder.store(ir.Constant(I8P, None), out_slot)
+            create_fn = self._runtime_func(
+                "ss_json_document_create_empty",
+                I32, [I64, I32, I8P.as_pointer()])
+            self.provenance.record_external("ss_json_document_create_empty", call)
+            create_status = builder.call(
+                create_fn,
+                [ir.Constant(I64, 65536), ir.Constant(I32, 0), doc_slot],
+                name=f"{call_name}_createStatus")
+            high_json_merge_status(status_slot, create_status)
+            document = builder.load(doc_slot, name=f"{call_name}_document")
+            root_fn = self._runtime_func("ss_json_document_root", I64, [I8P])
+            self.provenance.record_external("ss_json_document_root", call)
+            root_cursor = builder.call(root_fn, [document], name=f"{call_name}_root")
+
+            def emit_set_scalar(cursor_value, json_key, field_type, value):
+                resolved = resolve_alias(self.prog, field_type)
+                if resolved in ("String", "CNullTerminatedByteString", "CString"):
+                    symbol = "ss_json_set_object_field_string"
+                    fn = self._runtime_func(symbol, I32, [I8P, I64, I8P, I8P])
+                    args_for_call = [document, cursor_value, self._i8p(builder, json_key),
+                                     high_json_as_i8p(value)]
+                elif resolved == "JsonText":
+                    symbol = "ss_json_set_object_field_json_text"
+                    cursor_slot = high_json_status_slot("jsonTextCursor").bitcast(I64.as_pointer())
+                    fn = self._runtime_func(symbol, I32, [I8P, I64, I8P, I8P, I64.as_pointer()])
+                    args_for_call = [document, cursor_value, self._i8p(builder, json_key),
+                                     high_json_as_i8p(value), cursor_slot]
+                elif resolved == "Bool":
+                    symbol = "ss_json_set_object_field_bool"
+                    fn = self._runtime_func(symbol, I32, [I8P, I64, I8P, I32])
+                    args_for_call = [document, cursor_value, self._i8p(builder, json_key),
+                                     high_json_i32(value)]
+                elif resolved in ("F64", "CFloat64", "CDouble", "F32", "CFloat32", "CFloat"):
+                    symbol = "ss_json_set_object_field_double"
+                    fn = self._runtime_func(symbol, I32, [I8P, I64, I8P, F64])
+                    args_for_call = [document, cursor_value, self._i8p(builder, json_key),
+                                     high_json_f64(value)]
+                else:
+                    symbol = "ss_json_set_object_field_int64"
+                    fn = self._runtime_func(symbol, I32, [I8P, I64, I8P, I64])
+                    args_for_call = [document, cursor_value, self._i8p(builder, json_key),
+                                     high_json_i64(value)]
+                self.provenance.record_external(symbol, call)
+                status = builder.call(fn, args_for_call, name=f"{call_name}_{json_key}_status")
+                high_json_merge_status(status_slot, status)
+
+            def emit_record_fields(record_type_name, source_value, cursor_value, prefix=""):
+                record = self.prog.records[record_type_name]
+                for field_name, field_type in record.fields:
+                    json_key = _json_record_key(record, field_name)
+                    path = f"{prefix}.{field_name}" if prefix else field_name
+                    nested_type = _record_type_for_json_body(self.prog, field_type)
+                    if nested_type is not None:
+                        cursor_slot = high_json_status_slot(
+                            f"{field_name}Cursor").bitcast(I64.as_pointer())
+                        symbol = "ss_json_set_object_field_object"
+                        fn = self._runtime_func(
+                            symbol, I32, [I8P, I64, I8P, I64.as_pointer()])
+                        self.provenance.record_external(symbol, call)
+                        status = builder.call(
+                            fn,
+                            [document, cursor_value, self._i8p(builder, json_key), cursor_slot],
+                            name=f"{call_name}_{json_key}_objectStatus")
+                        high_json_merge_status(status_slot, status)
+                        child_cursor = builder.load(
+                            cursor_slot, name=f"{call_name}_{json_key}_cursor")
+                        emit_record_fields(nested_type, source_value, child_cursor, path)
+                        continue
+                    value = high_json_record_field_value(source_value, path, field_type)
+                    policy = record.field_json_omit_when.get(field_name)
+                    omit_cond = None
+                    resolved = resolve_alias(self.prog, field_type)
+                    if policy == "empty" and isinstance(value.type, ir.PointerType):
+                        first = builder.load(value, name=f"{call_name}_{json_key}_first")
+                        omit_cond = builder.icmp_signed(
+                            "==", first, ir.Constant(I8, 0),
+                            name=f"{call_name}_{json_key}_empty")
+                    elif policy == "null" and isinstance(value.type, ir.PointerType):
+                        omit_cond = builder.icmp_unsigned(
+                            "==", value, ir.Constant(value.type, None),
+                            name=f"{call_name}_{json_key}_null")
+                    elif policy == "false":
+                        bool_value = high_json_i32(value)
+                        omit_cond = builder.icmp_signed(
+                            "==", bool_value, ir.Constant(I32, 0),
+                            name=f"{call_name}_{json_key}_false")
+                    elif policy == "zero":
+                        if isinstance(value.type, (ir.FloatType, ir.DoubleType)):
+                            omit_cond = builder.fcmp_ordered(
+                                "==", high_json_f64(value), ir.Constant(F64, 0.0),
+                                name=f"{call_name}_{json_key}_zero")
+                        else:
+                            int_value = high_json_i64(value)
+                            omit_cond = builder.icmp_signed(
+                                "==", int_value, ir.Constant(I64, 0),
+                                name=f"{call_name}_{json_key}_zero")
+                    if omit_cond is None:
+                        emit_set_scalar(cursor_value, json_key, field_type, value)
+                    else:
+                        set_block = builder.function.append_basic_block(
+                            f"{call_name}_{json_key}_set")
+                        after_block = builder.function.append_basic_block(
+                            f"{call_name}_{json_key}_after")
+                        builder.cbranch(omit_cond, after_block, set_block)
+                        builder.position_at_end(set_block)
+                        emit_set_scalar(cursor_value, json_key, field_type, value)
+                        builder.branch(after_block)
+                        builder.position_at_end(after_block)
+
+            emit_record_fields(record_type, source, root_cursor)
+            scratch = high_json_global_buffer(65536, f"{call_name}_stringify")
+            serialize_fn = self._runtime_func(
+                "ss_json_document_serialize",
+                I32, [I8P, I8P, I64, I8P.as_pointer()])
+            self.provenance.record_external("ss_json_document_serialize", call)
+            serialize_status = builder.call(
+                serialize_fn,
+                [document, scratch, ir.Constant(I64, 65536), out_slot],
+                name=f"{call_name}_serializeStatus")
+            high_json_merge_status(status_slot, serialize_status)
+            destroy_fn = self._runtime_func("ss_json_document_destroy", VOID, [I8P])
+            self.provenance.record_external("ss_json_document_destroy", call)
+            builder.call(destroy_fn, [document])
+            call["result"] = builder.load(out_slot, name=f"{call_name}_jsonText")
+            call["error_value"] = builder.load(status_slot, name=f"{call_name}_finalStatus")
+            call["error_cond"] = builder.icmp_signed(
+                "!=", call["error_value"], ir.Constant(I32, 0),
+                name=f"{call_name}_isError")
+
+        def high_json_emit_record_parse(record_type):
+            source_arg = "jsonText"
+            if source_arg not in call["args"]:
+                for fallback_arg in ("text", "value"):
+                    if fallback_arg in call["args"]:
+                        source_arg = fallback_arg
+                        break
+            json_text = high_json_as_i8p(arg_val_named(source_arg))
+            status_slot = high_json_status_slot()
+            doc_slot = high_json_status_slot("documentSlot").bitcast(I8P.as_pointer())
+            create_fn = self._runtime_func(
+                "ss_json_document_create_from_text",
+                I32, [I8P, I64, I8P.as_pointer()])
+            self.provenance.record_external("ss_json_document_create_from_text", call)
+            create_status = builder.call(
+                create_fn,
+                [json_text, ir.Constant(I64, 65536), doc_slot],
+                name=f"{call_name}_createStatus")
+            high_json_merge_status(status_slot, create_status)
+            document = builder.load(doc_slot, name=f"{call_name}_document")
+            root_fn = self._runtime_func("ss_json_document_root", I64, [I8P])
+            self.provenance.record_external("ss_json_document_root", call)
+            root_cursor = builder.call(root_fn, [document], name=f"{call_name}_root")
+            record_result = high_json_record_slots(record_type, "parsed")
+
+            def store_if_nav_ok(nav_status, slot, value):
+                read_block = builder.function.append_basic_block(
+                    f"{call_name}_read_{len(record_result['slots'])}")
+                after_block = builder.function.append_basic_block(
+                    f"{call_name}_after_read_{len(record_result['slots'])}")
+                ok = builder.icmp_signed(
+                    "==", nav_status, ir.Constant(I32, 0),
+                    name=f"{call_name}_navOk")
+                builder.cbranch(ok, read_block, after_block)
+                builder.position_at_end(read_block)
+                builder.store(value, slot)
+                builder.branch(after_block)
+                builder.position_at_end(after_block)
+
+            def emit_read_field(cursor_value, record_type_name, prefix=""):
+                record = self.prog.records[record_type_name]
+                for field_name, field_type in record.fields:
+                    json_key = _json_record_key(record, field_name)
+                    path = f"{prefix}.{field_name}" if prefix else field_name
+                    field_cursor_slot = high_json_status_slot(
+                        f"{json_key}Cursor").bitcast(I64.as_pointer())
+                    nav_fn = self._runtime_func(
+                        "ss_json_navigate_object_field",
+                        I32, [I8P, I64, I8P, I64.as_pointer()])
+                    self.provenance.record_external("ss_json_navigate_object_field", call)
+                    nav_status = builder.call(
+                        nav_fn,
+                        [document, cursor_value, self._i8p(builder, json_key),
+                         field_cursor_slot],
+                        name=f"{call_name}_{json_key}_navStatus")
+                    policy = record.field_json_omit_when.get(field_name)
+                    if policy:
+                        is_missing = builder.icmp_signed(
+                            "==", nav_status, ir.Constant(I32, 1),
+                            name=f"{call_name}_{json_key}_missing")
+                        effective_status = builder.select(
+                            is_missing, ir.Constant(I32, 0), nav_status,
+                            name=f"{call_name}_{json_key}_effectiveStatus")
+                    else:
+                        effective_status = nav_status
+                    high_json_merge_status(status_slot, effective_status)
+                    field_cursor = builder.load(
+                        field_cursor_slot, name=f"{call_name}_{json_key}_cursor")
+                    nested_type = _record_type_for_json_body(self.prog, field_type)
+                    if nested_type is not None:
+                        emit_read_field(field_cursor, nested_type, path)
+                        continue
+                    slot = record_result["slots"].get(path)
+                    if slot is None:
+                        continue
+                    resolved = resolve_alias(self.prog, field_type)
+                    if resolved in ("String", "CNullTerminatedByteString", "CString", "JsonText"):
+                        scratch = high_json_global_buffer(
+                            4096, f"{call_name}_{json_key}_scratch")
+                        out_slot = high_json_status_slot(
+                            f"{json_key}String").bitcast(I8P.as_pointer())
+                        read_fn = self._runtime_func(
+                            "ss_json_cursor_string",
+                            I32, [I8P, I64, I8P, I64, I8P.as_pointer()])
+                        self.provenance.record_external("ss_json_cursor_string", call)
+                        read_status = builder.call(
+                            read_fn,
+                            [document, field_cursor, scratch, ir.Constant(I64, 4096),
+                             out_slot],
+                            name=f"{call_name}_{json_key}_readStatus")
+                        high_json_merge_status(status_slot, read_status)
+                        store_if_nav_ok(nav_status, slot, builder.load(out_slot))
+                    elif resolved == "Bool":
+                        read_fn = self._runtime_func(
+                            "ss_json_cursor_bool", I32, [I8P, I64, I32])
+                        self.provenance.record_external("ss_json_cursor_bool", call)
+                        value = builder.call(
+                            read_fn, [document, field_cursor, ir.Constant(I32, 0)],
+                            name=f"{call_name}_{json_key}_bool")
+                        store_if_nav_ok(nav_status, slot, value)
+                    elif resolved in ("F64", "CFloat64", "CDouble", "F32", "CFloat32", "CFloat"):
+                        read_fn = self._runtime_func(
+                            "ss_json_cursor_double", F64, [I8P, I64, F64])
+                        self.provenance.record_external("ss_json_cursor_double", call)
+                        value = builder.call(
+                            read_fn, [document, field_cursor, ir.Constant(F64, 0.0)],
+                            name=f"{call_name}_{json_key}_double")
+                        store_if_nav_ok(nav_status, slot, high_json_f64(value))
+                    else:
+                        read_fn = self._runtime_func(
+                            "ss_json_cursor_int64", I64, [I8P, I64, I64])
+                        self.provenance.record_external("ss_json_cursor_int64", call)
+                        value = builder.call(
+                            read_fn, [document, field_cursor, ir.Constant(I64, 0)],
+                            name=f"{call_name}_{json_key}_int64")
+                        store_if_nav_ok(nav_status, slot, high_json_i64(value))
+
+            emit_read_field(root_cursor, record_type)
+            destroy_fn = self._runtime_func("ss_json_document_destroy", VOID, [I8P])
+            self.provenance.record_external("ss_json_document_destroy", call)
+            builder.call(destroy_fn, [document])
+            call["record_result"] = record_result
+            call["result"] = ir.Constant(I64, 0)
+            call["error_value"] = builder.load(status_slot, name=f"{call_name}_finalStatus")
+            call["error_cond"] = builder.icmp_signed(
+                "!=", call["error_value"], ir.Constant(I32, 0),
+                name=f"{call_name}_isError")
+
         if target.startswith("json.stringify.") or target.startswith("json.parse."):
             is_stringify = target.startswith("json.stringify.")
             prefix = "json.stringify." if is_stringify else "json.parse."
@@ -5812,16 +6587,33 @@ class Codegen:
                 primitive_targets.get(type_name)
                 or primitive_targets.get(resolved_type)
             )
-            if primitive_target is None:
-                if type_name in self.prog.records or resolved_type in self.prog.records:
-                    action = "stringify" if is_stringify else "parse"
+            if target_type_is_json_text(type_name):
+                source_arg = "value" if is_stringify else "jsonText"
+                if source_arg not in call["args"]:
+                    for fallback_arg in ("jsonText", "text", "value"):
+                        if fallback_arg in call["args"]:
+                            source_arg = fallback_arg
+                            break
+                value = arg_val_named(source_arg)
+                if value.type == I8P:
+                    call["result"] = value
+                elif isinstance(value.type, ir.PointerType):
+                    call["result"] = builder.bitcast(value, I8P)
+                elif isinstance(value.type, ir.IntType):
+                    call["result"] = builder.inttoptr(value, I8P)
+                else:
                     raise ValueError(
-                        f"{call_name}: json.{action}.{type_name} record "
-                        "lowering is not implemented in this compiler yet; "
-                        "record JSON codegen must walk declared record fields "
-                        "and honor generic recordFieldJsonName / "
-                        "recordFieldJsonOmitWhen metadata instead of falling "
-                        "through to a fake external result")
+                        f"{call_name}: {target} input must be pointer-shaped")
+                mark_high_level_json_success()
+                return
+            if primitive_target is None:
+                record_type = type_name if type_name in self.prog.records else resolved_type
+                if record_type in self.prog.records:
+                    if is_stringify:
+                        high_json_emit_record_stringify(record_type)
+                    else:
+                        high_json_emit_record_parse(record_type)
+                    return
                 raise ValueError(
                     f"{call_name}: unsupported high-level JSON target "
                     f"`{target}`; primitive aliases currently cover "
@@ -5831,6 +6623,7 @@ class Codegen:
                     if json_text_arg in call["args"]:
                         call["args"]["value"] = call["args"][json_text_arg]
                         break
+            high_level_json_alias = True
             target = primitive_target
 
         if target.startswith(_HTML_HYDRATE_PREFIX):
@@ -6494,6 +7287,8 @@ class Codegen:
             builder.call(snprintf,
                          [buf_ptr, ir.Constant(I64, buf_size), fmt, n])
             call["result"] = buf_ptr
+            if high_level_json_alias:
+                mark_high_level_json_success()
             return
         if target == "json.encode.Bool":
             v = arg_val_named("value")
@@ -6503,6 +7298,8 @@ class Codegen:
             false_str = self._i8p(builder, "false")
             call["result"] = builder.select(
                 v, true_str, false_str, name=f"{call_name}_bool")
+            if high_level_json_alias:
+                mark_high_level_json_success()
             return
         if target in ("json.encode.F64", "json.encode.CFloat64",
                       "json.encode.CFloat32"):
@@ -6523,6 +7320,8 @@ class Codegen:
             builder.call(snprintf,
                          [buf_ptr, ir.Constant(I64, buf_size), fmt, v])
             call["result"] = buf_ptr
+            if high_level_json_alias:
+                mark_high_level_json_success()
             return
         if target in ("json.decode.I64", "json.decode.CSignedInt64",
                       "json.decode.CSignedInt32", "json.decode.CUnsignedInt32",
@@ -6541,6 +7340,8 @@ class Codegen:
             atoll = self._libc_func("atoll")
             call["result"] = builder.call(
                 atoll, [v], name=f"{call_name}_decoded")
+            if high_level_json_alias:
+                mark_high_level_json_success()
             return
         if target == "json.decode.Bool":
             # Compare the input string against the literal "true" via
@@ -6556,6 +7357,8 @@ class Codegen:
                 "==", cmp, ir.Constant(I32, 0), name=f"{call_name}_isTrue")
             call["result"] = builder.zext(
                 is_true, I64, name=f"{call_name}_decoded")
+            if high_level_json_alias:
+                mark_high_level_json_success()
             return
         if target in ("json.decode.F64", "json.decode.CFloat64",
                       "json.decode.CFloat32"):
@@ -6567,6 +7370,8 @@ class Codegen:
             atof = self._libc_func("atof")
             call["result"] = builder.call(
                 atof, [v], name=f"{call_name}_decoded")
+            if high_level_json_alias:
+                mark_high_level_json_success()
             return
         if target in ("json.encode.String",
                       "json.encode.CNullTerminatedByteString"):
@@ -6591,6 +7396,8 @@ class Codegen:
             builder.call(snprintf,
                          [buf_ptr, ir.Constant(I64, buf_size), fmt, v])
             call["result"] = buf_ptr
+            if high_level_json_alias:
+                mark_high_level_json_success()
             return
 
         # ------------------------------------------------------------
@@ -9668,11 +10475,24 @@ def lint(prog: Program, strict: bool = False):
         if "capturedOutputReplay" not in prog.modes:
             for lbl, callers in branchIfError_targets.items():
                 distinct = {c[0] for c in callers}
-                if len(distinct) > 1:
-                    if lbl in labels_declared:
-                        diags.append((callers[0][1],
-                            f"failureLabelAggregation: label `{lbl}` is targeted by {len(distinct)} distinct calls; "
-                            f"makeError at the shared label cannot pin the cause (§12)"))
+                if len(distinct) <= 1:
+                    continue
+                if lbl not in labels_declared:
+                    continue
+                # §12 wants the cause pinned. When every distinct caller
+                # has its own `bindError` row, the cause IS pinned per
+                # call (each call's error value lives in its own named
+                # binding) even if all callers converge on one response
+                # label — that convergence is the idiomatic "one body
+                # per failure category" shape the apps use. Fire only
+                # when at least one caller branched WITHOUT capturing
+                # its error, i.e. the cause is genuinely lost.
+                if all(calls.get(call_name, {}).get("has_bindError")
+                       for call_name in distinct):
+                    continue
+                diags.append((callers[0][1],
+                    f"failureLabelAggregation: label `{lbl}` is targeted by {len(distinct)} distinct calls; "
+                    f"makeError at the shared label cannot pin the cause (§12)"))
 
     # ---- module-level: purpose on contract-heavy abstractions ----
     _check_purpose_on_abstractions(prog, diags)

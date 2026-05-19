@@ -72,6 +72,9 @@ typeInvariant SqliteBlob "Opaque SQLite blob pointer paired with SqliteByteCount
 typeInvariant SqliteByteCount "Byte count paired with SQLite blob/text buffers."
 
 capability sqliteDatabaseReader database read
+purpose sqliteDatabaseReader "Authority to execute read-only SQL — prepareStatement of SELECT statements, bind*, step, and the column readers — against an open SqliteDatabase handle."
+
 capability sqliteDatabaseReadWriter database readWrite
+purpose sqliteDatabaseReadWriter "Authority to execute read-or-write SQL — prepareStatement of any statement plus sqlite.exec for DDL — against an open SqliteDatabase handle."
 
 storage module immutable sqliteModuleVersionText SqliteText "standard.sqlite 0.1"

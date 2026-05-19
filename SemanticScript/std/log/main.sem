@@ -127,14 +127,67 @@ storage module immutable logZeroI64 CSignedInt64 0
 
 
 # ============================================================
+# Capabilities — scoped grants for the libc + filesystem effects the
+# log operations declare. Each is `capability NAME SCOPE ACCESS` so the
+# semlint coverage walk (which keys on (scope, access)) can match the
+# matching `effect OP ACCESS SCOPE` row in each operation below.
+# ============================================================
+capability logFilesystemOpen filesystem open
+purpose logFilesystemOpen "Authority to open the audit-log file via c.fopen."
+
+capability logFilesystemClose filesystem close
+purpose logFilesystemClose "Authority to close the audit-log file via c.fclose."
+
+capability logFilesystemReadWrite filesystem readWrite
+purpose logFilesystemReadWrite "Authority to read and write the open audit-log file (c.fputs and friends)."
+
+capability logFileOpen file open
+purpose logFileOpen "Authority to acquire a file handle (the libc-layer half of `filesystem open`)."
+
+capability logFileClose file close
+purpose logFileClose "Authority to release a file handle (the libc-layer half of `filesystem close`)."
+
+capability logFilesystemRead filesystem read
+purpose logFilesystemRead "Authority to read raw filesystem bytes (c.fopen in append modes needs this)."
+
+capability logFilesystemWrite filesystem write
+purpose logFilesystemWrite "Authority to write raw filesystem bytes (c.fopen in append modes needs this)."
+
+capability logConsoleStdoutWrite console.stdout write
+purpose logConsoleStdoutWrite "Authority for c.fputs to a FILE* that points at the log stream (the libc registry models this as a console.stdout write)."
+
+capability logMemoryBufferReadWrite memory.buffer readWrite
+purpose logMemoryBufferReadWrite "Authority to read and write the in-op scratch buffers used by the envelope formatters."
+
+capability logHeapAllocate heap allocate
+purpose logHeapAllocate "Authority to c.malloc the per-line envelope buffer in logEventStructured + logInfo/Warn/Error."
+
+capability logHeapFree heap free
+purpose logHeapFree "Authority to c.free the per-line envelope buffer at the matching defer in the same operations."
+
+
+# ============================================================
 # openLogFile — open the audit-trail file in append mode.
 # ============================================================
 
 operation openLogFile
 input openLogFile filePath CNullTerminatedByteString
 output openLogFile CSignedInt32
-effect openLogFile filesystem open
+# Effect order is `effect OP ACCESS SCOPE`. c.fopen in append mode triggers
+# multiple low-level effects; we declare each one so the lint's
+# missingEffectDeclaration walk against the libc_registry shape is silent.
+effect openLogFile open filesystem
+effect openLogFile open file
+effect openLogFile close file
+effect openLogFile read filesystem
+effect openLogFile write filesystem
 effect openLogFile readWrite memory.buffer
+useCapability openLogFile logFilesystemOpen
+useCapability openLogFile logFileOpen
+useCapability openLogFile logFileClose
+useCapability openLogFile logFilesystemRead
+useCapability openLogFile logFilesystemWrite
+useCapability openLogFile logMemoryBufferReadWrite
 memory openLogFile heap auto
 async openLogFile no
 purpose openLogFile "Open `filePath` in append mode and remember the FILE* in sharedLogFileHandle so subsequent writeLogLine calls have somewhere to write. Re-opening with the same or different path closes the prior handle first so the file table doesn't leak across re-init."
@@ -192,8 +245,12 @@ returnValue logStatusErrEngine
 
 operation closeLogFile
 output closeLogFile CSignedInt32
-effect closeLogFile filesystem close
+effect closeLogFile close filesystem
+effect closeLogFile close file
 effect closeLogFile readWrite memory.buffer
+useCapability closeLogFile logFilesystemClose
+useCapability closeLogFile logFileClose
+useCapability closeLogFile logMemoryBufferReadWrite
 memory closeLogFile heap auto
 async closeLogFile no
 purpose closeLogFile "Close sharedLogFileHandle and clear it back to NULL. Safe to call when no handle was ever opened — degrades to a no-op."
@@ -229,6 +286,10 @@ input writeLogLine linePayload CNullTerminatedByteString
 output writeLogLine CSignedInt32
 effect writeLogLine readWrite filesystem
 effect writeLogLine readWrite memory.buffer
+effect writeLogLine write console.stdout
+useCapability writeLogLine logFilesystemReadWrite
+useCapability writeLogLine logMemoryBufferReadWrite
+useCapability writeLogLine logConsoleStdoutWrite
 memory writeLogLine heap auto
 async writeLogLine no
 purpose writeLogLine "Append `linePayload` followed by a single '\\n' to sharedLogFileHandle and fflush. No handle and no payload are both silent no-ops returning logStatusOk so callers don't need to guard every log call."
@@ -291,6 +352,7 @@ input escapeJsonString destinationBuffer COpaqueMemoryAddress
 input escapeJsonString destinationCapacity CSignedInt64
 output escapeJsonString CSignedInt32
 effect escapeJsonString readWrite memory.buffer
+useCapability escapeJsonString logMemoryBufferReadWrite
 memory escapeJsonString heap auto
 async escapeJsonString no
 purpose escapeJsonString "Copy sourceText into destinationBuffer with `\"` and `\\` escaped. Stops cleanly when the destination would overflow so the buffer never gets a half-encoded escape sequence at its tail. Caller must size destinationCapacity >= worst-case `2 * len(sourceText) + 1`."
@@ -348,6 +410,10 @@ effect logEventStructured allocate heap
 effect logEventStructured free heap
 effect logEventStructured readWrite memory.buffer
 effect logEventStructured readWrite filesystem
+useCapability logEventStructured logHeapAllocate
+useCapability logEventStructured logHeapFree
+useCapability logEventStructured logMemoryBufferReadWrite
+useCapability logEventStructured logFilesystemReadWrite
 memory logEventStructured heap auto
 async logEventStructured no
 purpose logEventStructured "Compose {\"level\":\"<l>\",\"event\":\"<e>\",\"message\":\"<m>\"} into a malloc'd buffer and hand it to writeLogLine. Caller fields are escaped via escapeJsonString so a message text containing `\"` cannot break out of the message field."
@@ -405,6 +471,10 @@ effect logInfo allocate heap
 effect logInfo free heap
 effect logInfo readWrite memory.buffer
 effect logInfo readWrite filesystem
+useCapability logInfo logHeapAllocate
+useCapability logInfo logHeapFree
+useCapability logInfo logMemoryBufferReadWrite
+useCapability logInfo logFilesystemReadWrite
 memory logInfo heap auto
 async logInfo no
 purpose logInfo "Shorthand for logEventStructured(\"info\", \"app\", messageText)."
@@ -425,6 +495,10 @@ effect logWarn allocate heap
 effect logWarn free heap
 effect logWarn readWrite memory.buffer
 effect logWarn readWrite filesystem
+useCapability logWarn logHeapAllocate
+useCapability logWarn logHeapFree
+useCapability logWarn logMemoryBufferReadWrite
+useCapability logWarn logFilesystemReadWrite
 memory logWarn heap auto
 async logWarn no
 purpose logWarn "Shorthand for logEventStructured(\"warn\", \"app\", messageText)."
@@ -445,6 +519,10 @@ effect logError allocate heap
 effect logError free heap
 effect logError readWrite memory.buffer
 effect logError readWrite filesystem
+useCapability logError logHeapAllocate
+useCapability logError logHeapFree
+useCapability logError logMemoryBufferReadWrite
+useCapability logError logFilesystemReadWrite
 memory logError heap auto
 async logError no
 purpose logError "Shorthand for logEventStructured(\"error\", \"app\", messageText)."

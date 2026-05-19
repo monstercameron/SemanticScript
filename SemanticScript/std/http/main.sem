@@ -50,7 +50,10 @@ typeInvariant HttpBodyLength "Byte count paired with HttpByteBody."
 typeInvariant HttpRequestValue "Request-derived string value returned by native request readers; nullable readers must be guarded before response-body use."
 
 capability httpRequestReader http.request read
+purpose httpRequestReader "Authority to read fields off the incoming HttpRequest (method, path, headers, cookies, query params, body, multipart parts)."
+
 capability httpResponseWriter http.response write
+purpose httpResponseWriter "Authority to write headers and a body to the HttpResponse handed to the route handler (http.responseText/Bytes/SseEvent/File and http.responseHeader)."
 
 storage module immutable httpModuleVersionText HttpTextBody "standard.http 0.1"
 storage module immutable plainTextContentType HttpContentType "text/plain; charset=utf-8"

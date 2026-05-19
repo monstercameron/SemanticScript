@@ -63,10 +63,14 @@ route todoWebProServer GET "*" notFoundPageHandler
 # / sqliteDatabaseReader / sqliteDatabaseReadWriter come from imported stdlib
 # modules) =====
 
-capability bcryptHashCompute compute bcryptHash
+# capability NAME EFFECT_PATH ACCESS — EFFECT first, ACCESS second, matching
+# the lint's `_check_effect_authority_coverage` lookup shape (the operation
+# effect row is `effect OP ACTION TARGET`, and lint checks
+# `_access_covers(cap.access, action) AND _effect_path_covers(cap.effect, target)`).
+capability bcryptHashCompute bcryptHash compute
 purpose bcryptHashCompute "Authority to run the bcrypt password hashing key schedule at cost 12."
 
-capability bcryptRandomCompute compute bcryptRandom
+capability bcryptRandomCompute bcryptRandom compute
 purpose bcryptRandomCompute "Authority to draw bytes from the platform CSPRNG via bcrypt.randomBytes — used to mint session tokens."
 
 capability heapAllocCapability heap allocate
@@ -395,9 +399,9 @@ arg closeFreshDatabaseAfterSchemaFailureCall database freshDatabase
 run closeFreshDatabaseAfterSchemaFailureCall
 ignoreOk closeFreshDatabaseAfterSchemaFailureCall Void
 bindError closeFreshAfterSchemaFailureCloseError SqliteDatabaseCloseFailure closeFreshDatabaseAfterSchemaFailureCall
-branchIfError closeFreshDatabaseAfterSchemaFailureCall schemaApplyReportInitialError
+branchIfError closeFreshDatabaseAfterSchemaFailureCall schemaInitialErrorReported
 
-label schemaApplyReportInitialError
+label schemaInitialErrorReported
 returnError schemaApplyError
 
 # ===== JSON response helpers =====
@@ -481,15 +485,15 @@ branchIf sessionTokenMissing requireSessionAttachedNoCookie
 call openDatabaseForSessionCall openOrReuseDatabase
 run openDatabaseForSessionCall
 bindOk sessionDatabase SqliteDatabase openDatabaseForSessionCall
-bindError sessionDatabaseOpenErr CSignedInt32 openDatabaseForSessionCall
-branchIfError openDatabaseForSessionCall requireSessionDatabaseUnavailable
+bindError sessionDatabaseOpenError CSignedInt32 openDatabaseForSessionCall
+branchIfError openDatabaseForSessionCall requireSessionDatabaseUnavailableFailed
 
 call prepareSessionLookupCall sqlite.prepareStatement
 arg prepareSessionLookupCall database sessionDatabase
 arg prepareSessionLookupCall sql sqlSelectSessionByToken
 run prepareSessionLookupCall
 bindOk sessionLookupStatement SqliteStatement prepareSessionLookupCall
-bindError sessionLookupPrepareErr SqliteStatementPrepareFailure prepareSessionLookupCall
+bindError sessionLookupPrepareError SqliteStatementPrepareFailure prepareSessionLookupCall
 branchIfError prepareSessionLookupCall requireSessionPrepareFailed
 
 defer finalizeSessionLookupDefer sqlite.finalizeStatement sessionLookupStatement
@@ -500,14 +504,14 @@ arg bindSessionTokenCall parameterIndex bindIndex1
 arg bindSessionTokenCall value sessionTokenFromCookie
 run bindSessionTokenCall
 ignoreOk bindSessionTokenCall Void
-bindError sessionTokenBindErr SqliteStatementBindFailure bindSessionTokenCall
+bindError sessionTokenBindError SqliteStatementBindFailure bindSessionTokenCall
 branchIfError bindSessionTokenCall requireSessionBindFailed
 
 call stepSessionLookupCall sqlite.stepStatement
 arg stepSessionLookupCall statement sessionLookupStatement
 run stepSessionLookupCall
 bindOk sessionStepResult SqliteStepResult stepSessionLookupCall
-bindError sessionStepErr SqliteStatementStepFailure stepSessionLookupCall
+bindError sessionStepError SqliteStatementStepFailure stepSessionLookupCall
 branchIfError stepSessionLookupCall requireSessionStepFailed
 
 # stepStatement returns rowSqliteStepResult (100) for a hit, doneSqliteStepResult (101) for empty.
@@ -552,7 +556,7 @@ returnValue noSessionUserId
 label requireSessionAttachedNoCookie
 returnValue noSessionUserId
 
-label requireSessionDatabaseUnavailable
+label requireSessionDatabaseUnavailableFailed
 returnValue noSessionUserId
 
 label requireSessionPrepareFailed
@@ -584,8 +588,8 @@ arg preparePruneExpiredSessionsCall database database
 arg preparePruneExpiredSessionsCall sql sqlDeleteExpiredSessions
 run preparePruneExpiredSessionsCall
 bindOk pruneExpiredSessionsStatement SqliteStatement preparePruneExpiredSessionsCall
-bindError pruneExpiredSessionsPrepareErr SqliteStatementPrepareFailure preparePruneExpiredSessionsCall
-branchIfError preparePruneExpiredSessionsCall pruneExpiredSessionsDone
+bindError pruneExpiredSessionsPrepareError SqliteStatementPrepareFailure preparePruneExpiredSessionsCall
+branchIfError preparePruneExpiredSessionsCall pruneExpiredSessionsCompleted
 
 defer finalizePruneExpiredSessionsDefer sqlite.finalizeStatement pruneExpiredSessionsStatement
 
@@ -595,17 +599,17 @@ arg bindPruneExpiredSessionsNowCall parameterIndex bindIndex1
 arg bindPruneExpiredSessionsNowCall value nowMs
 run bindPruneExpiredSessionsNowCall
 ignoreOk bindPruneExpiredSessionsNowCall Void
-bindError pruneExpiredSessionsBindErr SqliteStatementBindFailure bindPruneExpiredSessionsNowCall
-branchIfError bindPruneExpiredSessionsNowCall pruneExpiredSessionsDone
+bindError pruneExpiredSessionsBindError SqliteStatementBindFailure bindPruneExpiredSessionsNowCall
+branchIfError bindPruneExpiredSessionsNowCall pruneExpiredSessionsCompleted
 
 call stepPruneExpiredSessionsCall sqlite.stepStatement
 arg stepPruneExpiredSessionsCall statement pruneExpiredSessionsStatement
 run stepPruneExpiredSessionsCall
 ignoreOk stepPruneExpiredSessionsCall SqliteStepResult
-bindError pruneExpiredSessionsStepErr SqliteStatementStepFailure stepPruneExpiredSessionsCall
-branchIfError stepPruneExpiredSessionsCall pruneExpiredSessionsDone
+bindError pruneExpiredSessionsStepError SqliteStatementStepFailure stepPruneExpiredSessionsCall
+branchIfError stepPruneExpiredSessionsCall pruneExpiredSessionsCompleted
 
-label pruneExpiredSessionsDone
+label pruneExpiredSessionsCompleted
 returnValue jsonOk
 
 # ===== handlers =====
@@ -685,8 +689,8 @@ label startRegisterHandler
 call openDbForRegisterCall openOrReuseDatabase
 run openDbForRegisterCall
 bindOk registerDatabase SqliteDatabase openDbForRegisterCall
-bindError registerDbErr CSignedInt32 openDbForRegisterCall
-branchIfError openDbForRegisterCall registerDatabaseUnavailable
+bindError registerDbError CSignedInt32 openDbForRegisterCall
+branchIfError openDbForRegisterCall registerDatabaseUnavailableFailed
 
 # Read the request body.
 call readRegisterBodyCall http.requestBodyText
@@ -698,7 +702,7 @@ call registerBodyNullCheckCall pointer.isNull
 arg registerBodyNullCheckCall pointer registerBodyText
 run registerBodyNullCheckCall
 bind registerBodyMissing Bool registerBodyNullCheckCall
-branchIf registerBodyMissing registerBadRequestBodyMissing
+branchIf registerBodyMissing registerBadRequestBodyMissed
 
 call parseRegisterBodyCall json.createDocument
 arg parseRegisterBodyCall jsonText registerBodyText
@@ -706,7 +710,7 @@ arg parseRegisterBodyCall capacityBytes jsonDocumentCapacity
 run parseRegisterBodyCall
 bindOk registerDocument JsonDocument parseRegisterBodyCall
 bindError parseRegisterBodyError JsonAccessError parseRegisterBodyCall
-branchIfError parseRegisterBodyCall registerBadRequestBodyMissing
+branchIfError parseRegisterBodyCall registerBadRequestBodyMissed
 defer releaseRegisterDocumentDefer json.destroyDocument registerDocument
 
 call registerDocumentRootCall json.documentRoot
@@ -746,7 +750,7 @@ arg registerUsernameCursorCall fieldName fieldUsername
 run registerUsernameCursorCall
 bindOk registerUsernameCursor JsonCursor registerUsernameCursorCall
 bindError registerUsernameCursorError JsonAccessError registerUsernameCursorCall
-branchIfError registerUsernameCursorCall registerBadRequestUsernameMissing
+branchIfError registerUsernameCursorCall registerBadRequestUsernameMissed
 
 call readRegisterUsernameCall json.cursorString
 arg readRegisterUsernameCall document registerDocument
@@ -756,7 +760,7 @@ arg readRegisterUsernameCall scratchCapacity usernameScratchCapacity
 run readRegisterUsernameCall
 bindOk usernameRecovered CNullTerminatedByteString readRegisterUsernameCall
 bindError readRegisterUsernameError JsonAccessError readRegisterUsernameCall
-branchIfError readRegisterUsernameCall registerBadRequestUsernameMissing
+branchIfError readRegisterUsernameCall registerBadRequestUsernameMissed
 
 call registerPasswordCursorCall json.objectFieldAt
 arg registerPasswordCursorCall document registerDocument
@@ -765,7 +769,7 @@ arg registerPasswordCursorCall fieldName fieldPassword
 run registerPasswordCursorCall
 bindOk registerPasswordCursor JsonCursor registerPasswordCursorCall
 bindError registerPasswordCursorError JsonAccessError registerPasswordCursorCall
-branchIfError registerPasswordCursorCall registerBadRequestPasswordMissing
+branchIfError registerPasswordCursorCall registerBadRequestPasswordMissed
 
 call readRegisterPasswordCall json.cursorString
 arg readRegisterPasswordCall document registerDocument
@@ -775,7 +779,7 @@ arg readRegisterPasswordCall scratchCapacity passwordScratchCapacity
 run readRegisterPasswordCall
 bindOk passwordRecovered CNullTerminatedByteString readRegisterPasswordCall
 bindError readRegisterPasswordError JsonAccessError readRegisterPasswordCall
-branchIfError readRegisterPasswordCall registerBadRequestPasswordMissing
+branchIfError readRegisterPasswordCall registerBadRequestPasswordMissed
 
 storage local immutable emptyDisplayName CNullTerminatedByteString ""
 storage local mutable displayNameForInsert CNullTerminatedByteString emptyDisplayName
@@ -787,7 +791,7 @@ arg registerDisplayNameCursorCall fieldName fieldDisplayName
 run registerDisplayNameCursorCall
 bindOk registerDisplayNameCursor JsonCursor registerDisplayNameCursorCall
 bindError registerDisplayNameCursorError JsonAccessError registerDisplayNameCursorCall
-branchIfError registerDisplayNameCursorCall registerDisplayNameReady
+branchIfError registerDisplayNameCursorCall registerDisplayNameResolved
 
 call readRegisterDisplayNameCall json.cursorString
 arg readRegisterDisplayNameCall document registerDocument
@@ -797,12 +801,12 @@ arg readRegisterDisplayNameCall scratchCapacity displayNameScratchCapacity
 run readRegisterDisplayNameCall
 bindOk displayNameRecovered CNullTerminatedByteString readRegisterDisplayNameCall
 bindError readRegisterDisplayNameError JsonAccessError readRegisterDisplayNameCall
-branchIfError readRegisterDisplayNameCall registerDisplayNameReady
+branchIfError readRegisterDisplayNameCall registerDisplayNameResolved
 set local displayNameForInsert displayNameRecovered
 
 # displayName is optional — if absent, substitute the empty string. We use
 # a const empty string to feed the SQL bind so the column receives '' not NULL.
-label registerDisplayNameReady
+label registerDisplayNameResolved
 
 # Hash the password.
 call allocateHashBufferCall c.malloc
@@ -852,7 +856,7 @@ arg prepareInsertUserCall database registerDatabase
 arg prepareInsertUserCall sql sqlInsertUser
 run prepareInsertUserCall
 bindOk insertUserStatement SqliteStatement prepareInsertUserCall
-bindError insertUserPrepareErr SqliteStatementPrepareFailure prepareInsertUserCall
+bindError insertUserPrepareError SqliteStatementPrepareFailure prepareInsertUserCall
 branchIfError prepareInsertUserCall registerInsertUserPrepareFailed
 
 defer finalizeInsertUserDefer sqlite.finalizeStatement insertUserStatement
@@ -864,7 +868,7 @@ arg bindInsertUsernameCall parameterIndex bindIndex1
 arg bindInsertUsernameCall value usernameRecovered
 run bindInsertUsernameCall
 ignoreOk bindInsertUsernameCall Void
-bindError bindInsertUsernameErr SqliteStatementBindFailure bindInsertUsernameCall
+bindError bindInsertUsernameError SqliteStatementBindFailure bindInsertUsernameCall
 branchIfError bindInsertUsernameCall registerInsertUserBindFailed
 
 call bindInsertPasswordCall sqlite.bindText
@@ -873,7 +877,7 @@ arg bindInsertPasswordCall parameterIndex bindIndex2
 arg bindInsertPasswordCall value hashedPasswordText
 run bindInsertPasswordCall
 ignoreOk bindInsertPasswordCall Void
-bindError bindInsertPasswordErr SqliteStatementBindFailure bindInsertPasswordCall
+bindError bindInsertPasswordError SqliteStatementBindFailure bindInsertPasswordCall
 branchIfError bindInsertPasswordCall registerInsertUserBindFailed
 
 call bindInsertDisplayNameCall sqlite.bindText
@@ -882,7 +886,7 @@ arg bindInsertDisplayNameCall parameterIndex bindIndex3
 arg bindInsertDisplayNameCall value displayNameForInsert
 run bindInsertDisplayNameCall
 ignoreOk bindInsertDisplayNameCall Void
-bindError bindInsertDisplayNameErr SqliteStatementBindFailure bindInsertDisplayNameCall
+bindError bindInsertDisplayNameError SqliteStatementBindFailure bindInsertDisplayNameCall
 branchIfError bindInsertDisplayNameCall registerInsertUserBindFailed
 
 call bindInsertCreatedAtCall sqlite.bindInt64
@@ -891,7 +895,7 @@ arg bindInsertCreatedAtCall parameterIndex bindIndex4
 arg bindInsertCreatedAtCall value registerNowMs
 run bindInsertCreatedAtCall
 ignoreOk bindInsertCreatedAtCall Void
-bindError bindInsertCreatedAtErr SqliteStatementBindFailure bindInsertCreatedAtCall
+bindError bindInsertCreatedAtError SqliteStatementBindFailure bindInsertCreatedAtCall
 branchIfError bindInsertCreatedAtCall registerInsertUserBindFailed
 
 call bindInsertLastLoginCall sqlite.bindInt64
@@ -900,15 +904,15 @@ arg bindInsertLastLoginCall parameterIndex bindIndex5
 arg bindInsertLastLoginCall value registerNowMs
 run bindInsertLastLoginCall
 ignoreOk bindInsertLastLoginCall Void
-bindError bindInsertLastLoginErr SqliteStatementBindFailure bindInsertLastLoginCall
+bindError bindInsertLastLoginError SqliteStatementBindFailure bindInsertLastLoginCall
 branchIfError bindInsertLastLoginCall registerInsertUserBindFailed
 
 call stepInsertUserCall sqlite.stepStatement
 arg stepInsertUserCall statement insertUserStatement
 run stepInsertUserCall
 bindOk insertUserStepResult SqliteStepResult stepInsertUserCall
-bindError insertUserStepErr SqliteStatementStepFailure stepInsertUserCall
-branchIfError stepInsertUserCall registerUsernameConflict
+bindError insertUserStepError SqliteStatementStepFailure stepInsertUserCall
+branchIfError stepInsertUserCall registerUsernameConflicted
 
 # Capture the new user id.
 call lastUserRowIdCall sqlite.lastInsertRowId
@@ -982,7 +986,7 @@ arg prepareInsertSessionCall database registerDatabase
 arg prepareInsertSessionCall sql sqlInsertSession
 run prepareInsertSessionCall
 bindOk insertSessionStatement SqliteStatement prepareInsertSessionCall
-bindError insertSessionPrepareErr SqliteStatementPrepareFailure prepareInsertSessionCall
+bindError insertSessionPrepareError SqliteStatementPrepareFailure prepareInsertSessionCall
 branchIfError prepareInsertSessionCall registerInsertSessionPrepareFailed
 
 defer finalizeInsertSessionDefer sqlite.finalizeStatement insertSessionStatement
@@ -993,7 +997,7 @@ arg bindSessionTokenIntoInsertCall parameterIndex bindIndex1
 arg bindSessionTokenIntoInsertCall value sessionTokenText
 run bindSessionTokenIntoInsertCall
 ignoreOk bindSessionTokenIntoInsertCall Void
-bindError bindSessionTokenIntoInsertErr SqliteStatementBindFailure bindSessionTokenIntoInsertCall
+bindError bindSessionTokenIntoInsertError SqliteStatementBindFailure bindSessionTokenIntoInsertCall
 branchIfError bindSessionTokenIntoInsertCall registerInsertSessionBindFailed
 
 call bindSessionUserIdCall sqlite.bindInt64
@@ -1002,7 +1006,7 @@ arg bindSessionUserIdCall parameterIndex bindIndex2
 arg bindSessionUserIdCall value newUserId
 run bindSessionUserIdCall
 ignoreOk bindSessionUserIdCall Void
-bindError bindSessionUserIdErr SqliteStatementBindFailure bindSessionUserIdCall
+bindError bindSessionUserIdError SqliteStatementBindFailure bindSessionUserIdCall
 branchIfError bindSessionUserIdCall registerInsertSessionBindFailed
 
 call bindSessionIssuedCall sqlite.bindInt64
@@ -1011,7 +1015,7 @@ arg bindSessionIssuedCall parameterIndex bindIndex3
 arg bindSessionIssuedCall value registerNowMs
 run bindSessionIssuedCall
 ignoreOk bindSessionIssuedCall Void
-bindError bindSessionIssuedErr SqliteStatementBindFailure bindSessionIssuedCall
+bindError bindSessionIssuedError SqliteStatementBindFailure bindSessionIssuedCall
 branchIfError bindSessionIssuedCall registerInsertSessionBindFailed
 
 call bindSessionExpiresCall sqlite.bindInt64
@@ -1020,7 +1024,7 @@ arg bindSessionExpiresCall parameterIndex bindIndex4
 arg bindSessionExpiresCall value sessionExpiresAt
 run bindSessionExpiresCall
 ignoreOk bindSessionExpiresCall Void
-bindError bindSessionExpiresErr SqliteStatementBindFailure bindSessionExpiresCall
+bindError bindSessionExpiresError SqliteStatementBindFailure bindSessionExpiresCall
 branchIfError bindSessionExpiresCall registerInsertSessionBindFailed
 
 call bindSessionLastSeenCall sqlite.bindInt64
@@ -1029,14 +1033,14 @@ arg bindSessionLastSeenCall parameterIndex bindIndex5
 arg bindSessionLastSeenCall value registerNowMs
 run bindSessionLastSeenCall
 ignoreOk bindSessionLastSeenCall Void
-bindError bindSessionLastSeenErr SqliteStatementBindFailure bindSessionLastSeenCall
+bindError bindSessionLastSeenError SqliteStatementBindFailure bindSessionLastSeenCall
 branchIfError bindSessionLastSeenCall registerInsertSessionBindFailed
 
 call stepInsertSessionCall sqlite.stepStatement
 arg stepInsertSessionCall statement insertSessionStatement
 run stepInsertSessionCall
 bindOk insertSessionStepResult SqliteStepResult stepInsertSessionCall
-bindError insertSessionStepErr SqliteStatementStepFailure stepInsertSessionCall
+bindError insertSessionStepError SqliteStatementStepFailure stepInsertSessionCall
 branchIfError stepInsertSessionCall registerInsertSessionStepFailed
 
 # Build the Set-Cookie header.
@@ -1156,7 +1160,7 @@ returnValue registerResponseStatus
 
 # ----- registerHandler failure labels -----
 
-label registerDatabaseUnavailable
+label registerDatabaseUnavailableFailed
 storage local immutable dbUnavailableBody CNullTerminatedByteString "{\"error\":{\"code\":\"databaseUnavailable\",\"message\":\"could not open database\"}}\n"
 call writeDbErrCall writeErrorJsonResponse
 arg writeDbErrCall response response
@@ -1176,7 +1180,7 @@ run writeRegisterAllocationFailedCall
 bind writeRegisterAllocationFailedStatus CSignedInt32 writeRegisterAllocationFailedCall
 returnValue writeRegisterAllocationFailedStatus
 
-label registerBadRequestBodyMissing
+label registerBadRequestBodyMissed
 storage local immutable bodyMissingBody CNullTerminatedByteString "{\"error\":{\"code\":\"bodyMissing\",\"message\":\"request body is required\"}}\n"
 call writeBodyMissingCall writeErrorJsonResponse
 arg writeBodyMissingCall response response
@@ -1186,7 +1190,7 @@ run writeBodyMissingCall
 bind writeBodyMissingStatus CSignedInt32 writeBodyMissingCall
 returnValue writeBodyMissingStatus
 
-label registerBadRequestUsernameMissing
+label registerBadRequestUsernameMissed
 storage local immutable usernameMissingBody CNullTerminatedByteString "{\"error\":{\"code\":\"usernameMissing\",\"message\":\"username field is required\"}}\n"
 call writeUsernameMissingCall writeErrorJsonResponse
 arg writeUsernameMissingCall response response
@@ -1196,7 +1200,7 @@ run writeUsernameMissingCall
 bind writeUsernameMissingStatus CSignedInt32 writeUsernameMissingCall
 returnValue writeUsernameMissingStatus
 
-label registerBadRequestPasswordMissing
+label registerBadRequestPasswordMissed
 storage local immutable passwordMissingBody CNullTerminatedByteString "{\"error\":{\"code\":\"passwordMissing\",\"message\":\"password field is required\"}}\n"
 call writePasswordMissingCall writeErrorJsonResponse
 arg writePasswordMissingCall response response
@@ -1217,7 +1221,17 @@ bind writeHashFailedStatus CSignedInt32 writeHashFailedCall
 returnValue writeHashFailedStatus
 
 label registerInsertUserPrepareFailed
-returnError insertUserPrepareErr
+# registerHandler's declared output is CSignedInt32 (HTTP status code), not
+# Result, so `returnError` would violate the operation's contract. Write
+# the matching error response and surface its CSignedInt32 status instead.
+storage local immutable insertUserPrepareFailedBody CNullTerminatedByteString "{\"error\":{\"code\":\"insertUserPrepareFailed\",\"message\":\"could not prepare user insert\"}}\n"
+call writeInsertUserPrepareFailedCall writeErrorJsonResponse
+arg writeInsertUserPrepareFailedCall response response
+arg writeInsertUserPrepareFailedCall status httpStatusInternalServerError
+arg writeInsertUserPrepareFailedCall messageBody insertUserPrepareFailedBody
+run writeInsertUserPrepareFailedCall
+bind writeInsertUserPrepareFailedStatus CSignedInt32 writeInsertUserPrepareFailedCall
+returnValue writeInsertUserPrepareFailedStatus
 
 label registerInsertUserBindFailed
 storage local immutable insertBindFailedBody CNullTerminatedByteString "{\"error\":{\"code\":\"insertBindFailed\",\"message\":\"failed to bind insert parameters\"}}\n"
@@ -1229,7 +1243,7 @@ run writeInsertBindFailedCall
 bind writeInsertBindFailedStatus CSignedInt32 writeInsertBindFailedCall
 returnValue writeInsertBindFailedStatus
 
-label registerUsernameConflict
+label registerUsernameConflicted
 storage local immutable usernameConflictBody CNullTerminatedByteString "{\"error\":{\"code\":\"usernameConflict\",\"message\":\"username already taken\"}}\n"
 call writeUsernameConflictCall writeErrorJsonResponse
 arg writeUsernameConflictCall response response
@@ -1260,7 +1274,15 @@ bind writeEncodeFailedStatus CSignedInt32 writeEncodeFailedCall
 returnValue writeEncodeFailedStatus
 
 label registerInsertSessionPrepareFailed
-returnError insertSessionPrepareErr
+# Same Result-contract reason as registerInsertUserPrepareFailed above.
+storage local immutable insertSessionPrepareFailedBody CNullTerminatedByteString "{\"error\":{\"code\":\"insertSessionPrepareFailed\",\"message\":\"could not prepare session insert\"}}\n"
+call writeInsertSessionPrepareFailedCall writeErrorJsonResponse
+arg writeInsertSessionPrepareFailedCall response response
+arg writeInsertSessionPrepareFailedCall status httpStatusInternalServerError
+arg writeInsertSessionPrepareFailedCall messageBody insertSessionPrepareFailedBody
+run writeInsertSessionPrepareFailedCall
+bind writeInsertSessionPrepareFailedStatus CSignedInt32 writeInsertSessionPrepareFailedCall
+returnValue writeInsertSessionPrepareFailedStatus
 
 label registerInsertSessionBindFailed
 storage local immutable sessionBindFailedBody CNullTerminatedByteString "{\"error\":{\"code\":\"sessionBindFailed\",\"message\":\"failed to bind session insert parameters\"}}\n"
@@ -1324,15 +1346,15 @@ branchIf meUnauthenticated meUnauthorizedHandler
 call openDbForMeCall openOrReuseDatabase
 run openDbForMeCall
 bindOk meDatabase SqliteDatabase openDbForMeCall
-bindError meDbErr CSignedInt32 openDbForMeCall
-branchIfError openDbForMeCall meDatabaseUnavailable
+bindError meDbError CSignedInt32 openDbForMeCall
+branchIfError openDbForMeCall meDatabaseUnavailableFailed
 
 call prepareSelectUserCall sqlite.prepareStatement
 arg prepareSelectUserCall database meDatabase
 arg prepareSelectUserCall sql sqlSelectUserById
 run prepareSelectUserCall
 bindOk selectUserStatement SqliteStatement prepareSelectUserCall
-bindError selectUserPrepareErr SqliteStatementPrepareFailure prepareSelectUserCall
+bindError selectUserPrepareError SqliteStatementPrepareFailure prepareSelectUserCall
 branchIfError prepareSelectUserCall meSelectUserFailed
 
 defer finalizeSelectUserDefer sqlite.finalizeStatement selectUserStatement
@@ -1343,14 +1365,14 @@ arg bindMeUserIdCall parameterIndex bindIndex1
 arg bindMeUserIdCall value meUserId
 run bindMeUserIdCall
 ignoreOk bindMeUserIdCall Void
-bindError bindMeUserIdErr SqliteStatementBindFailure bindMeUserIdCall
+bindError bindMeUserIdError SqliteStatementBindFailure bindMeUserIdCall
 branchIfError bindMeUserIdCall meSelectUserFailed
 
 call stepSelectUserCall sqlite.stepStatement
 arg stepSelectUserCall statement selectUserStatement
 run stepSelectUserCall
 bindOk selectUserStepResult SqliteStepResult stepSelectUserCall
-bindError selectUserStepErr SqliteStatementStepFailure stepSelectUserCall
+bindError selectUserStepError SqliteStatementStepFailure stepSelectUserCall
 branchIfError stepSelectUserCall meSelectUserFailed
 
 call userRowFoundCheckCall math.equalCSignedInt32
@@ -1468,7 +1490,7 @@ run writeMeUnauthorizedCall
 bind writeMeUnauthorizedStatus CSignedInt32 writeMeUnauthorizedCall
 returnValue writeMeUnauthorizedStatus
 
-label meDatabaseUnavailable
+label meDatabaseUnavailableFailed
 storage local immutable meDbUnavailableBody CNullTerminatedByteString "{\"error\":{\"code\":\"databaseUnavailable\",\"message\":\"database not available\"}}\n"
 call writeMeDbUnavailableCall writeErrorJsonResponse
 arg writeMeDbUnavailableCall response response
@@ -1527,22 +1549,22 @@ call logoutCookieNullCheckCall pointer.isNull
 arg logoutCookieNullCheckCall pointer logoutSessionToken
 run logoutCookieNullCheckCall
 bind logoutNoCookie Bool logoutCookieNullCheckCall
-branchIf logoutNoCookie logoutClearCookieResponse
+branchIf logoutNoCookie logoutCookieCleared
 
 # Best-effort DELETE — errors are ignored because logout is idempotent.
 call openDbForLogoutCall openOrReuseDatabase
 run openDbForLogoutCall
 bindOk logoutDatabase SqliteDatabase openDbForLogoutCall
-bindError logoutDbErr CSignedInt32 openDbForLogoutCall
-branchIfError openDbForLogoutCall logoutClearCookieResponse
+bindError logoutDbError CSignedInt32 openDbForLogoutCall
+branchIfError openDbForLogoutCall logoutCookieCleared
 
 call prepareLogoutCall sqlite.prepareStatement
 arg prepareLogoutCall database logoutDatabase
 arg prepareLogoutCall sql sqlDeleteSessionByToken
 run prepareLogoutCall
 bindOk logoutStatement SqliteStatement prepareLogoutCall
-bindError logoutPrepareErr SqliteStatementPrepareFailure prepareLogoutCall
-branchIfError prepareLogoutCall logoutClearCookieResponse
+bindError logoutPrepareError SqliteStatementPrepareFailure prepareLogoutCall
+branchIfError prepareLogoutCall logoutCookieCleared
 
 defer finalizeLogoutDefer sqlite.finalizeStatement logoutStatement
 
@@ -1552,18 +1574,18 @@ arg bindLogoutTokenCall parameterIndex bindIndex1
 arg bindLogoutTokenCall value logoutSessionToken
 run bindLogoutTokenCall
 ignoreOk bindLogoutTokenCall Void
-bindError bindLogoutTokenErr SqliteStatementBindFailure bindLogoutTokenCall
-branchIfError bindLogoutTokenCall logoutClearCookieResponse
+bindError bindLogoutTokenError SqliteStatementBindFailure bindLogoutTokenCall
+branchIfError bindLogoutTokenCall logoutCookieCleared
 
 call stepLogoutCall sqlite.stepStatement
 arg stepLogoutCall statement logoutStatement
 run stepLogoutCall
 ignoreOk stepLogoutCall SqliteStepResult
-bindError stepLogoutErr SqliteStatementStepFailure stepLogoutCall
-branchIfError stepLogoutCall logoutClearCookieResponse
-branch logoutClearCookieResponse
+bindError stepLogoutError SqliteStatementStepFailure stepLogoutCall
+branchIfError stepLogoutCall logoutCookieCleared
+branch logoutCookieCleared
 
-label logoutClearCookieResponse
+label logoutCookieCleared
 call writeLogoutClearCookieCall http.responseHeader
 arg writeLogoutClearCookieCall response response
 arg writeLogoutClearCookieCall name setCookieHeaderName
@@ -1619,8 +1641,8 @@ label startLoginHandler
 call openDbForLoginCall openOrReuseDatabase
 run openDbForLoginCall
 bindOk loginDatabase SqliteDatabase openDbForLoginCall
-bindError loginDbErr CSignedInt32 openDbForLoginCall
-branchIfError openDbForLoginCall loginDatabaseUnavailable
+bindError loginDbError CSignedInt32 openDbForLoginCall
+branchIfError openDbForLoginCall loginDatabaseUnavailableFailed
 
 call readLoginBodyCall http.requestBodyText
 arg readLoginBodyCall request request
@@ -1631,7 +1653,7 @@ call loginBodyNullCheckCall pointer.isNull
 arg loginBodyNullCheckCall pointer loginBodyText
 run loginBodyNullCheckCall
 bind loginBodyMissing Bool loginBodyNullCheckCall
-branchIf loginBodyMissing loginInvalidCredentials
+branchIf loginBodyMissing loginInvalidCredentialsRejected
 
 call parseLoginBodyCall json.createDocument
 arg parseLoginBodyCall jsonText loginBodyText
@@ -1639,7 +1661,7 @@ arg parseLoginBodyCall capacityBytes jsonDocumentCapacity
 run parseLoginBodyCall
 bindOk loginDocument JsonDocument parseLoginBodyCall
 bindError parseLoginBodyError JsonAccessError parseLoginBodyCall
-branchIfError parseLoginBodyCall loginInvalidCredentials
+branchIfError parseLoginBodyCall loginInvalidCredentialsRejected
 defer releaseLoginDocumentDefer json.destroyDocument loginDocument
 
 call loginDocumentRootCall json.documentRoot
@@ -1652,7 +1674,7 @@ arg allocateLoginUsernameScratchCall size usernameScratchCapacity
 run allocateLoginUsernameScratchCall
 bindOk loginUsernameScratch COpaqueMemoryAddress allocateLoginUsernameScratchCall
 bindError allocateLoginUsernameScratchError COpaqueMemoryAddress allocateLoginUsernameScratchCall
-branchIfError allocateLoginUsernameScratchCall loginInternalFailure
+branchIfError allocateLoginUsernameScratchCall loginInternalFailed
 defer releaseLoginUsernameScratchDefer c.free loginUsernameScratch
 
 call allocateLoginPasswordScratchCall c.malloc
@@ -1660,7 +1682,7 @@ arg allocateLoginPasswordScratchCall size passwordScratchCapacity
 run allocateLoginPasswordScratchCall
 bindOk loginPasswordScratch COpaqueMemoryAddress allocateLoginPasswordScratchCall
 bindError allocateLoginPasswordScratchError COpaqueMemoryAddress allocateLoginPasswordScratchCall
-branchIfError allocateLoginPasswordScratchCall loginInternalFailure
+branchIfError allocateLoginPasswordScratchCall loginInternalFailed
 defer releaseLoginPasswordScratchDefer c.free loginPasswordScratch
 
 call loginUsernameCursorCall json.objectFieldAt
@@ -1670,7 +1692,7 @@ arg loginUsernameCursorCall fieldName fieldUsername
 run loginUsernameCursorCall
 bindOk loginUsernameCursor JsonCursor loginUsernameCursorCall
 bindError loginUsernameCursorError JsonAccessError loginUsernameCursorCall
-branchIfError loginUsernameCursorCall loginInvalidCredentials
+branchIfError loginUsernameCursorCall loginInvalidCredentialsRejected
 
 call readLoginUsernameCall json.cursorString
 arg readLoginUsernameCall document loginDocument
@@ -1680,7 +1702,7 @@ arg readLoginUsernameCall scratchCapacity usernameScratchCapacity
 run readLoginUsernameCall
 bindOk loginUsernameText CNullTerminatedByteString readLoginUsernameCall
 bindError readLoginUsernameError JsonAccessError readLoginUsernameCall
-branchIfError readLoginUsernameCall loginInvalidCredentials
+branchIfError readLoginUsernameCall loginInvalidCredentialsRejected
 
 call loginPasswordCursorCall json.objectFieldAt
 arg loginPasswordCursorCall document loginDocument
@@ -1689,7 +1711,7 @@ arg loginPasswordCursorCall fieldName fieldPassword
 run loginPasswordCursorCall
 bindOk loginPasswordCursor JsonCursor loginPasswordCursorCall
 bindError loginPasswordCursorError JsonAccessError loginPasswordCursorCall
-branchIfError loginPasswordCursorCall loginInvalidCredentials
+branchIfError loginPasswordCursorCall loginInvalidCredentialsRejected
 
 call readLoginPasswordCall json.cursorString
 arg readLoginPasswordCall document loginDocument
@@ -1699,7 +1721,7 @@ arg readLoginPasswordCall scratchCapacity passwordScratchCapacity
 run readLoginPasswordCall
 bindOk loginPasswordText CNullTerminatedByteString readLoginPasswordCall
 bindError readLoginPasswordError JsonAccessError readLoginPasswordCall
-branchIfError readLoginPasswordCall loginInvalidCredentials
+branchIfError readLoginPasswordCall loginInvalidCredentialsRejected
 
 # SELECT the user row by username (case-insensitive — schema COLLATE NOCASE).
 call prepareSelectUserByUsernameCall sqlite.prepareStatement
@@ -1707,7 +1729,7 @@ arg prepareSelectUserByUsernameCall database loginDatabase
 arg prepareSelectUserByUsernameCall sql sqlSelectUserByUsername
 run prepareSelectUserByUsernameCall
 bindOk selectUserByUsernameStatement SqliteStatement prepareSelectUserByUsernameCall
-bindError selectUserByUsernamePrepareErr SqliteStatementPrepareFailure prepareSelectUserByUsernameCall
+bindError selectUserByUsernamePrepareError SqliteStatementPrepareFailure prepareSelectUserByUsernameCall
 branchIfError prepareSelectUserByUsernameCall loginSelectUserFailed
 
 defer finalizeSelectUserByUsernameDefer sqlite.finalizeStatement selectUserByUsernameStatement
@@ -1718,14 +1740,14 @@ arg bindSelectUsernameCall parameterIndex bindIndex1
 arg bindSelectUsernameCall value loginUsernameText
 run bindSelectUsernameCall
 ignoreOk bindSelectUsernameCall Void
-bindError bindSelectUsernameErr SqliteStatementBindFailure bindSelectUsernameCall
+bindError bindSelectUsernameError SqliteStatementBindFailure bindSelectUsernameCall
 branchIfError bindSelectUsernameCall loginSelectUserFailed
 
 call stepSelectUserByUsernameCall sqlite.stepStatement
 arg stepSelectUserByUsernameCall statement selectUserByUsernameStatement
 run stepSelectUserByUsernameCall
 bindOk selectUserByUsernameStepResult SqliteStepResult stepSelectUserByUsernameCall
-bindError selectUserByUsernameStepErr SqliteStatementStepFailure stepSelectUserByUsernameCall
+bindError selectUserByUsernameStepError SqliteStatementStepFailure stepSelectUserByUsernameCall
 branchIfError stepSelectUserByUsernameCall loginSelectUserFailed
 
 call loginUserRowFoundCheckCall math.equalCSignedInt32
@@ -1734,7 +1756,7 @@ arg loginUserRowFoundCheckCall right rowSqliteStepResult
 run loginUserRowFoundCheckCall
 bind loginUserRowFound Bool loginUserRowFoundCheckCall
 branchIf loginUserRowFound loginUserRowFoundLabel
-branch loginInvalidCredentials
+branch loginInvalidCredentialsRejected
 label loginUserRowFoundLabel
 
 # Read the user_id + password_hash from the row.
@@ -1777,7 +1799,7 @@ arg loginPasswordMatchCheckCall right loginMatchSentinel
 run loginPasswordMatchCheckCall
 bind loginPasswordMatched Bool loginPasswordMatchCheckCall
 branchIf loginPasswordMatched loginPasswordMatchedLabel
-branch loginInvalidCredentials
+branch loginInvalidCredentialsRejected
 label loginPasswordMatchedLabel
 
 # Password matched — mint a fresh session. Same flow as registerHandler.
@@ -1786,7 +1808,7 @@ arg allocateLoginRandomCall size randomBufferCapacity
 run allocateLoginRandomCall
 bindOk loginRandomBuffer COpaqueMemoryAddress allocateLoginRandomCall
 bindError allocateLoginRandomError COpaqueMemoryAddress allocateLoginRandomCall
-branchIfError allocateLoginRandomCall loginInternalFailure
+branchIfError allocateLoginRandomCall loginInternalFailed
 defer releaseLoginRandomDefer c.free loginRandomBuffer
 
 call drawLoginRandomCall bcrypt.randomBytes
@@ -1801,7 +1823,7 @@ arg loginRandomOkCheckCall right jsonOk
 run loginRandomOkCheckCall
 bind loginRandomOk Bool loginRandomOkCheckCall
 branchIf loginRandomOk loginRandomOkLabel
-branch loginInternalFailure
+branch loginInternalFailed
 label loginRandomOkLabel
 
 call allocateLoginTokenCall c.malloc
@@ -1809,7 +1831,7 @@ arg allocateLoginTokenCall size tokenBufferCapacity
 run allocateLoginTokenCall
 bindOk loginTokenBuffer COpaqueMemoryAddress allocateLoginTokenCall
 bindError allocateLoginTokenError COpaqueMemoryAddress allocateLoginTokenCall
-branchIfError allocateLoginTokenCall loginInternalFailure
+branchIfError allocateLoginTokenCall loginInternalFailed
 defer releaseLoginTokenDefer c.free loginTokenBuffer
 
 storage local mutable loginEncodedTokenLength CSignedInt32 0
@@ -1828,7 +1850,7 @@ arg loginEncodeOkCheckCall right jsonOk
 run loginEncodeOkCheckCall
 bind loginEncodeOk Bool loginEncodeOkCheckCall
 branchIf loginEncodeOk loginEncodeOkLabel
-branch loginInternalFailure
+branch loginInternalFailed
 label loginEncodeOkLabel
 
 bind loginSessionTokenText CNullTerminatedByteString allocateLoginTokenCall
@@ -1854,7 +1876,7 @@ arg prepareInsertLoginSessionCall database loginDatabase
 arg prepareInsertLoginSessionCall sql sqlInsertSession
 run prepareInsertLoginSessionCall
 bindOk insertLoginSessionStatement SqliteStatement prepareInsertLoginSessionCall
-bindError insertLoginSessionPrepareErr SqliteStatementPrepareFailure prepareInsertLoginSessionCall
+bindError insertLoginSessionPrepareError SqliteStatementPrepareFailure prepareInsertLoginSessionCall
 branchIfError prepareInsertLoginSessionCall loginInsertSessionFailed
 
 defer finalizeInsertLoginSessionDefer sqlite.finalizeStatement insertLoginSessionStatement
@@ -1865,7 +1887,7 @@ arg bindLoginSessionTokenCall parameterIndex bindIndex1
 arg bindLoginSessionTokenCall value loginSessionTokenText
 run bindLoginSessionTokenCall
 ignoreOk bindLoginSessionTokenCall Void
-bindError bindLoginSessionTokenErr SqliteStatementBindFailure bindLoginSessionTokenCall
+bindError bindLoginSessionTokenError SqliteStatementBindFailure bindLoginSessionTokenCall
 branchIfError bindLoginSessionTokenCall loginInsertSessionFailed
 
 call bindLoginSessionUserIdCall sqlite.bindInt64
@@ -1874,7 +1896,7 @@ arg bindLoginSessionUserIdCall parameterIndex bindIndex2
 arg bindLoginSessionUserIdCall value loginExistingUserId
 run bindLoginSessionUserIdCall
 ignoreOk bindLoginSessionUserIdCall Void
-bindError bindLoginSessionUserIdErr SqliteStatementBindFailure bindLoginSessionUserIdCall
+bindError bindLoginSessionUserIdError SqliteStatementBindFailure bindLoginSessionUserIdCall
 branchIfError bindLoginSessionUserIdCall loginInsertSessionFailed
 
 call bindLoginSessionIssuedCall sqlite.bindInt64
@@ -1883,7 +1905,7 @@ arg bindLoginSessionIssuedCall parameterIndex bindIndex3
 arg bindLoginSessionIssuedCall value loginNowMs
 run bindLoginSessionIssuedCall
 ignoreOk bindLoginSessionIssuedCall Void
-bindError bindLoginSessionIssuedErr SqliteStatementBindFailure bindLoginSessionIssuedCall
+bindError bindLoginSessionIssuedError SqliteStatementBindFailure bindLoginSessionIssuedCall
 branchIfError bindLoginSessionIssuedCall loginInsertSessionFailed
 
 call bindLoginSessionExpiresCall sqlite.bindInt64
@@ -1892,7 +1914,7 @@ arg bindLoginSessionExpiresCall parameterIndex bindIndex4
 arg bindLoginSessionExpiresCall value loginExpiresAt
 run bindLoginSessionExpiresCall
 ignoreOk bindLoginSessionExpiresCall Void
-bindError bindLoginSessionExpiresErr SqliteStatementBindFailure bindLoginSessionExpiresCall
+bindError bindLoginSessionExpiresError SqliteStatementBindFailure bindLoginSessionExpiresCall
 branchIfError bindLoginSessionExpiresCall loginInsertSessionFailed
 
 call bindLoginSessionLastSeenCall sqlite.bindInt64
@@ -1901,14 +1923,14 @@ arg bindLoginSessionLastSeenCall parameterIndex bindIndex5
 arg bindLoginSessionLastSeenCall value loginNowMs
 run bindLoginSessionLastSeenCall
 ignoreOk bindLoginSessionLastSeenCall Void
-bindError bindLoginSessionLastSeenErr SqliteStatementBindFailure bindLoginSessionLastSeenCall
+bindError bindLoginSessionLastSeenError SqliteStatementBindFailure bindLoginSessionLastSeenCall
 branchIfError bindLoginSessionLastSeenCall loginInsertSessionFailed
 
 call stepInsertLoginSessionCall sqlite.stepStatement
 arg stepInsertLoginSessionCall statement insertLoginSessionStatement
 run stepInsertLoginSessionCall
 ignoreOk stepInsertLoginSessionCall SqliteStepResult
-bindError stepInsertLoginSessionErr SqliteStatementStepFailure stepInsertLoginSessionCall
+bindError stepInsertLoginSessionError SqliteStatementStepFailure stepInsertLoginSessionCall
 branchIfError stepInsertLoginSessionCall loginInsertSessionFailed
 
 # Build the Set-Cookie header.
@@ -1917,7 +1939,7 @@ arg allocateLoginCookieBufferCall size cookieHeaderCapacity
 run allocateLoginCookieBufferCall
 bindOk loginCookieHeaderBuffer COpaqueMemoryAddress allocateLoginCookieBufferCall
 bindError allocateLoginCookieBufferError COpaqueMemoryAddress allocateLoginCookieBufferCall
-branchIfError allocateLoginCookieBufferCall loginInternalFailure
+branchIfError allocateLoginCookieBufferCall loginInternalFailed
 defer releaseLoginCookieBufferDefer c.free loginCookieHeaderBuffer
 
 # Compose from shared module-scope cookieNameEquals / cookieAttributeSuffix
@@ -1946,7 +1968,7 @@ arg allocateLoginResponseBufferCall size jsonResponseCapacity
 run allocateLoginResponseBufferCall
 bindOk loginResponseBuffer COpaqueMemoryAddress allocateLoginResponseBufferCall
 bindError allocateLoginResponseBufferError COpaqueMemoryAddress allocateLoginResponseBufferCall
-branchIfError allocateLoginResponseBufferCall loginInternalFailure
+branchIfError allocateLoginResponseBufferCall loginInternalFailed
 defer releaseLoginResponseBufferDefer c.free loginResponseBuffer
 
 call createLoginResponseDocumentCall json.createEmptyDocument
@@ -1955,7 +1977,7 @@ arg createLoginResponseDocumentCall rootKind jsonObjectRootKind
 run createLoginResponseDocumentCall
 bindOk loginResponseDocument JsonDocument createLoginResponseDocumentCall
 bindError createLoginResponseDocumentError JsonAccessError createLoginResponseDocumentCall
-branchIfError createLoginResponseDocumentCall loginInternalFailure
+branchIfError createLoginResponseDocumentCall loginInternalFailed
 defer releaseLoginResponseDocumentDefer json.destroyDocument loginResponseDocument
 
 call loginResponseRootCall json.documentRoot
@@ -1970,7 +1992,7 @@ arg createLoginUserObjectCall fieldName fieldUser
 run createLoginUserObjectCall
 bindOk loginResponseUserCursor JsonCursor createLoginUserObjectCall
 bindError createLoginUserObjectError JsonAccessError createLoginUserObjectCall
-branchIfError createLoginUserObjectCall loginInternalFailure
+branchIfError createLoginUserObjectCall loginInternalFailed
 
 call setLoginUserIdCall json.setObjectFieldInt64
 arg setLoginUserIdCall document loginResponseDocument
@@ -1980,7 +2002,7 @@ arg setLoginUserIdCall value loginExistingUserId
 run setLoginUserIdCall
 ignoreOk setLoginUserIdCall CSignedInt32
 bindError setLoginUserIdError JsonAccessError setLoginUserIdCall
-branchIfError setLoginUserIdCall loginInternalFailure
+branchIfError setLoginUserIdCall loginInternalFailed
 
 call setLoginUsernameCall json.setObjectFieldString
 arg setLoginUsernameCall document loginResponseDocument
@@ -1990,7 +2012,7 @@ arg setLoginUsernameCall value loginUsernameCanonical
 run setLoginUsernameCall
 ignoreOk setLoginUsernameCall CSignedInt32
 bindError setLoginUsernameError JsonAccessError setLoginUsernameCall
-branchIfError setLoginUsernameCall loginInternalFailure
+branchIfError setLoginUsernameCall loginInternalFailed
 
 call setLoginDisplayNameCall json.setObjectFieldString
 arg setLoginDisplayNameCall document loginResponseDocument
@@ -2000,7 +2022,7 @@ arg setLoginDisplayNameCall value loginDisplayName
 run setLoginDisplayNameCall
 ignoreOk setLoginDisplayNameCall CSignedInt32
 bindError setLoginDisplayNameError JsonAccessError setLoginDisplayNameCall
-branchIfError setLoginDisplayNameCall loginInternalFailure
+branchIfError setLoginDisplayNameCall loginInternalFailed
 
 call serializeLoginResponseCall json.serializeDocument
 arg serializeLoginResponseCall document loginResponseDocument
@@ -2009,7 +2031,7 @@ arg serializeLoginResponseCall scratchCapacity jsonResponseCapacity
 run serializeLoginResponseCall
 bindOk loginResponseBodyText JsonText serializeLoginResponseCall
 bindError serializeLoginResponseError JsonAccessError serializeLoginResponseCall
-branchIfError serializeLoginResponseCall loginInternalFailure
+branchIfError serializeLoginResponseCall loginInternalFailed
 
 call writeLoginResponseCall writeJsonOkResponse
 arg writeLoginResponseCall response response
@@ -2027,7 +2049,7 @@ returnValue writeLoginStatus
 
 # ----- loginHandler failure labels -----
 
-label loginDatabaseUnavailable
+label loginDatabaseUnavailableFailed
 storage local immutable loginDbUnavailableBody CNullTerminatedByteString "{\"error\":{\"code\":\"databaseUnavailable\",\"message\":\"database not available\"}}\n"
 call writeLoginDbUnavailableCall writeErrorJsonResponse
 arg writeLoginDbUnavailableCall response response
@@ -2047,7 +2069,7 @@ run writeLoginSelectFailedCall
 bind writeLoginSelectFailedStatus CSignedInt32 writeLoginSelectFailedCall
 returnValue writeLoginSelectFailedStatus
 
-label loginInvalidCredentials
+label loginInvalidCredentialsRejected
 storage local immutable loginInvalidCredentialsBody CNullTerminatedByteString "{\"error\":{\"code\":\"invalidCredentials\",\"message\":\"invalid username or password\"}}\n"
 call writeLoginInvalidCall writeErrorJsonResponse
 arg writeLoginInvalidCall response response
@@ -2073,7 +2095,7 @@ run writeLoginInsertSessionFailedCall
 bind writeLoginInsertSessionFailedStatus CSignedInt32 writeLoginInsertSessionFailedCall
 returnValue writeLoginInsertSessionFailedStatus
 
-label loginInternalFailure
+label loginInternalFailed
 storage local immutable loginInternalFailureBody CNullTerminatedByteString "{\"error\":{\"code\":\"internalError\",\"message\":\"could not complete login\"}}\n"
 call writeLoginInternalCall writeErrorJsonResponse
 arg writeLoginInternalCall response response
@@ -2127,8 +2149,8 @@ branchIf createUnauthenticated createUnauthorizedHandler
 call createOpenDbCall openOrReuseDatabase
 run createOpenDbCall
 bindOk createDatabase SqliteDatabase createOpenDbCall
-bindError createDbErr CSignedInt32 createOpenDbCall
-branchIfError createOpenDbCall createDbUnavailable
+bindError createDbError CSignedInt32 createOpenDbCall
+branchIfError createOpenDbCall createDbUnavailableFailed
 
 call createReadBodyCall http.requestBodyText
 arg createReadBodyCall request request
@@ -2139,7 +2161,7 @@ call createBodyNullCheckCall pointer.isNull
 arg createBodyNullCheckCall pointer createBodyText
 run createBodyNullCheckCall
 bind createBodyMissing Bool createBodyNullCheckCall
-branchIf createBodyMissing createBadRequestBodyMissing
+branchIf createBodyMissing createBadRequestBodyMissed
 
 call parseCreateBodyCall json.createDocument
 arg parseCreateBodyCall jsonText createBodyText
@@ -2147,7 +2169,7 @@ arg parseCreateBodyCall capacityBytes jsonDocumentCapacity
 run parseCreateBodyCall
 bindOk createDocument JsonDocument parseCreateBodyCall
 bindError parseCreateBodyError JsonAccessError parseCreateBodyCall
-branchIfError parseCreateBodyCall createBadRequestBodyMissing
+branchIfError parseCreateBodyCall createBadRequestBodyMissed
 defer releaseCreateDocumentDefer json.destroyDocument createDocument
 
 call createDocumentRootCall json.documentRoot
@@ -2182,7 +2204,7 @@ arg createTitleCursorCall fieldName fieldTitle
 run createTitleCursorCall
 bindOk createTitleCursor JsonCursor createTitleCursorCall
 bindError createTitleCursorError JsonAccessError createTitleCursorCall
-branchIfError createTitleCursorCall createBadRequestTitleMissing
+branchIfError createTitleCursorCall createBadRequestTitleMissed
 
 call readCreateTitleCall json.cursorString
 arg readCreateTitleCall document createDocument
@@ -2192,7 +2214,7 @@ arg readCreateTitleCall scratchCapacity titleScratchCapacity
 run readCreateTitleCall
 bindOk createTitleText CNullTerminatedByteString readCreateTitleCall
 bindError readCreateTitleError JsonAccessError readCreateTitleCall
-branchIfError readCreateTitleCall createBadRequestTitleMissing
+branchIfError readCreateTitleCall createBadRequestTitleMissed
 
 call createBodyCursorCall json.objectFieldAt
 arg createBodyCursorCall document createDocument
@@ -2201,7 +2223,7 @@ arg createBodyCursorCall fieldName fieldBody
 run createBodyCursorCall
 bindOk createBodyCursor JsonCursor createBodyCursorCall
 bindError createBodyCursorError JsonAccessError createBodyCursorCall
-branchIfError createBodyCursorCall bodyReady
+branchIfError createBodyCursorCall bodyResolved
 
 call readCreateBodyCall json.cursorString
 arg readCreateBodyCall document createDocument
@@ -2211,10 +2233,10 @@ arg readCreateBodyCall scratchCapacity bodyScratchCapacity
 run readCreateBodyCall
 bindOk createBodyRecovered CNullTerminatedByteString readCreateBodyCall
 bindError readCreateBodyError JsonAccessError readCreateBodyCall
-branchIfError readCreateBodyCall bodyReady
+branchIfError readCreateBodyCall bodyResolved
 set local createTodoBody createBodyRecovered
 
-label bodyReady
+label bodyResolved
 
 call createPriorityCursorCall json.objectFieldAt
 arg createPriorityCursorCall document createDocument
@@ -2223,7 +2245,7 @@ arg createPriorityCursorCall fieldName fieldPriority
 run createPriorityCursorCall
 bindOk createPriorityCursor JsonCursor createPriorityCursorCall
 bindError createPriorityCursorError JsonAccessError createPriorityCursorCall
-branchIfError createPriorityCursorCall createPriorityReady
+branchIfError createPriorityCursorCall createPriorityResolved
 
 call readCreatePriorityCall json.cursorInt64
 arg readCreatePriorityCall document createDocument
@@ -2233,7 +2255,7 @@ run readCreatePriorityCall
 bind createPriorityRecovered CSignedInt64 readCreatePriorityCall
 set local createPriority createPriorityRecovered
 
-label createPriorityReady
+label createPriorityResolved
 
 call createNowCall http.nowMillis
 run createNowCall
@@ -2245,7 +2267,7 @@ arg prepareInsertTodoCall database createDatabase
 arg prepareInsertTodoCall sql sqlInsertTodo
 run prepareInsertTodoCall
 bindOk insertTodoStatement SqliteStatement prepareInsertTodoCall
-bindError insertTodoPrepareErr SqliteStatementPrepareFailure prepareInsertTodoCall
+bindError insertTodoPrepareError SqliteStatementPrepareFailure prepareInsertTodoCall
 branchIfError prepareInsertTodoCall createInsertPrepareFailed
 
 defer finalizeInsertTodoDefer sqlite.finalizeStatement insertTodoStatement
@@ -2256,7 +2278,7 @@ arg bindCreateUserIdCall parameterIndex bindIndex1
 arg bindCreateUserIdCall value createUserId
 run bindCreateUserIdCall
 ignoreOk bindCreateUserIdCall Void
-bindError bindCreateUserIdErr SqliteStatementBindFailure bindCreateUserIdCall
+bindError bindCreateUserIdError SqliteStatementBindFailure bindCreateUserIdCall
 branchIfError bindCreateUserIdCall createInsertBindFailed
 
 call bindCreateTitleCall sqlite.bindText
@@ -2265,7 +2287,7 @@ arg bindCreateTitleCall parameterIndex bindIndex2
 arg bindCreateTitleCall value createTitleText
 run bindCreateTitleCall
 ignoreOk bindCreateTitleCall Void
-bindError bindCreateTitleErr SqliteStatementBindFailure bindCreateTitleCall
+bindError bindCreateTitleError SqliteStatementBindFailure bindCreateTitleCall
 branchIfError bindCreateTitleCall createInsertBindFailed
 
 call bindCreateBodyCall sqlite.bindText
@@ -2274,7 +2296,7 @@ arg bindCreateBodyCall parameterIndex bindIndex3
 arg bindCreateBodyCall value createTodoBody
 run bindCreateBodyCall
 ignoreOk bindCreateBodyCall Void
-bindError bindCreateBodyErr SqliteStatementBindFailure bindCreateBodyCall
+bindError bindCreateBodyError SqliteStatementBindFailure bindCreateBodyCall
 branchIfError bindCreateBodyCall createInsertBindFailed
 
 call bindCreatePriorityCall sqlite.bindInt64
@@ -2283,7 +2305,7 @@ arg bindCreatePriorityCall parameterIndex bindIndex4
 arg bindCreatePriorityCall value createPriority
 run bindCreatePriorityCall
 ignoreOk bindCreatePriorityCall Void
-bindError bindCreatePriorityErr SqliteStatementBindFailure bindCreatePriorityCall
+bindError bindCreatePriorityError SqliteStatementBindFailure bindCreatePriorityCall
 branchIfError bindCreatePriorityCall createInsertBindFailed
 
 call bindCreateCreatedAtCall sqlite.bindInt64
@@ -2292,7 +2314,7 @@ arg bindCreateCreatedAtCall parameterIndex bindIndex5
 arg bindCreateCreatedAtCall value createNowMs
 run bindCreateCreatedAtCall
 ignoreOk bindCreateCreatedAtCall Void
-bindError bindCreateCreatedAtErr SqliteStatementBindFailure bindCreateCreatedAtCall
+bindError bindCreateCreatedAtError SqliteStatementBindFailure bindCreateCreatedAtCall
 branchIfError bindCreateCreatedAtCall createInsertBindFailed
 
 # updated_at_ms is the same as created_at_ms for a fresh row; the SQL uses
@@ -2308,14 +2330,14 @@ arg bindCreateUpdatedAtCall parameterIndex bindIndex6
 arg bindCreateUpdatedAtCall value createNowMs
 run bindCreateUpdatedAtCall
 ignoreOk bindCreateUpdatedAtCall Void
-bindError bindCreateUpdatedAtErr SqliteStatementBindFailure bindCreateUpdatedAtCall
+bindError bindCreateUpdatedAtError SqliteStatementBindFailure bindCreateUpdatedAtCall
 branchIfError bindCreateUpdatedAtCall createInsertBindFailed
 
 call stepInsertTodoCall sqlite.stepStatement
 arg stepInsertTodoCall statement insertTodoStatement
 run stepInsertTodoCall
 ignoreOk stepInsertTodoCall SqliteStepResult
-bindError stepInsertTodoErr SqliteStatementStepFailure stepInsertTodoCall
+bindError stepInsertTodoError SqliteStatementStepFailure stepInsertTodoCall
 branchIfError stepInsertTodoCall createInsertStepFailed
 
 call lastTodoRowIdCall sqlite.lastInsertRowId
@@ -2438,7 +2460,7 @@ run writeCreateUnauthCall
 bind writeCreateUnauthStatus CSignedInt32 writeCreateUnauthCall
 returnValue writeCreateUnauthStatus
 
-label createDbUnavailable
+label createDbUnavailableFailed
 storage local immutable createDbUnavailableBody CNullTerminatedByteString "{\"error\":{\"code\":\"databaseUnavailable\",\"message\":\"database not available\"}}\n"
 call writeCreateDbUnavailableCall writeErrorJsonResponse
 arg writeCreateDbUnavailableCall response response
@@ -2458,7 +2480,7 @@ run writeCreateAllocationFailedCall
 bind writeCreateAllocationFailedStatus CSignedInt32 writeCreateAllocationFailedCall
 returnValue writeCreateAllocationFailedStatus
 
-label createBadRequestBodyMissing
+label createBadRequestBodyMissed
 storage local immutable createBodyMissingMessage CNullTerminatedByteString "{\"error\":{\"code\":\"bodyMissing\",\"message\":\"request body is required\"}}\n"
 call writeCreateBodyMissingCall writeErrorJsonResponse
 arg writeCreateBodyMissingCall response response
@@ -2468,7 +2490,7 @@ run writeCreateBodyMissingCall
 bind writeCreateBodyMissingStatus CSignedInt32 writeCreateBodyMissingCall
 returnValue writeCreateBodyMissingStatus
 
-label createBadRequestTitleMissing
+label createBadRequestTitleMissed
 storage local immutable createTitleMissingMessage CNullTerminatedByteString "{\"error\":{\"code\":\"titleMissing\",\"message\":\"title field is required\"}}\n"
 call writeCreateTitleMissingCall writeErrorJsonResponse
 arg writeCreateTitleMissingCall response response
@@ -2479,7 +2501,17 @@ bind writeCreateTitleMissingStatus CSignedInt32 writeCreateTitleMissingCall
 returnValue writeCreateTitleMissingStatus
 
 label createInsertPrepareFailed
-returnError insertTodoPrepareErr
+# createTodoHandler's declared output is CSignedInt32 (HTTP status code), not
+# Result, so `returnError` would violate the operation's contract. Write
+# the matching error response and surface its CSignedInt32 status instead.
+storage local immutable insertTodoPrepareFailedBody CNullTerminatedByteString "{\"error\":{\"code\":\"insertTodoPrepareFailed\",\"message\":\"could not prepare todo insert\"}}\n"
+call writeInsertTodoPrepareFailedCall writeErrorJsonResponse
+arg writeInsertTodoPrepareFailedCall response response
+arg writeInsertTodoPrepareFailedCall status httpStatusInternalServerError
+arg writeInsertTodoPrepareFailedCall messageBody insertTodoPrepareFailedBody
+run writeInsertTodoPrepareFailedCall
+bind writeInsertTodoPrepareFailedStatus CSignedInt32 writeInsertTodoPrepareFailedCall
+returnValue writeInsertTodoPrepareFailedStatus
 
 label createInsertBindFailed
 storage local immutable createBindFailedBody CNullTerminatedByteString "{\"error\":{\"code\":\"insertBindFailed\",\"message\":\"could not bind insert parameters\"}}\n"
@@ -2542,15 +2574,15 @@ branchIf listUnauthenticated listUnauthorizedHandler
 call listOpenDbCall openOrReuseDatabase
 run listOpenDbCall
 bindOk listDatabase SqliteDatabase listOpenDbCall
-bindError listDbErr CSignedInt32 listOpenDbCall
-branchIfError listOpenDbCall listDbUnavailable
+bindError listDbError CSignedInt32 listOpenDbCall
+branchIfError listOpenDbCall listDbUnavailableFailed
 
 call prepareListCall sqlite.prepareStatement
 arg prepareListCall database listDatabase
 arg prepareListCall sql sqlSelectTodosByUser
 run prepareListCall
 bindOk listStatement SqliteStatement prepareListCall
-bindError listPrepareErr SqliteStatementPrepareFailure prepareListCall
+bindError listPrepareError SqliteStatementPrepareFailure prepareListCall
 branchIfError prepareListCall listSelectFailed
 
 defer finalizeListDefer sqlite.finalizeStatement listStatement
@@ -2561,7 +2593,7 @@ arg bindListUserIdCall parameterIndex bindIndex1
 arg bindListUserIdCall value listUserId
 run bindListUserIdCall
 ignoreOk bindListUserIdCall Void
-bindError bindListUserIdErr SqliteStatementBindFailure bindListUserIdCall
+bindError bindListUserIdError SqliteStatementBindFailure bindListUserIdCall
 branchIfError bindListUserIdCall listSelectFailed
 
 call allocateListResponseBufferCall c.malloc
@@ -2607,7 +2639,7 @@ call stepListCall sqlite.stepStatement
 arg stepListCall statement listStatement
 run stepListCall
 bindOk listStepResult SqliteStepResult stepListCall
-bindError listStepErr SqliteStatementStepFailure stepListCall
+bindError listStepError SqliteStatementStepFailure stepListCall
 branchIfError stepListCall listSelectFailed
 
 call listRowAvailableCheckCall math.equalCSignedInt32
@@ -2739,7 +2771,7 @@ run writeListUnauthCall
 bind writeListUnauthStatus CSignedInt32 writeListUnauthCall
 returnValue writeListUnauthStatus
 
-label listDbUnavailable
+label listDbUnavailableFailed
 storage local immutable listDbUnavailableBody CNullTerminatedByteString "{\"error\":{\"code\":\"databaseUnavailable\",\"message\":\"database not available\"}}\n"
 call writeListDbUnavailableCall writeErrorJsonResponse
 arg writeListDbUnavailableCall response response
@@ -2859,15 +2891,15 @@ branchIf deleteIdZero deleteBadRequestIdMissing
 call deleteOpenDbCall openOrReuseDatabase
 run deleteOpenDbCall
 bindOk deleteDatabase SqliteDatabase deleteOpenDbCall
-bindError deleteDbErr CSignedInt32 deleteOpenDbCall
-branchIfError deleteOpenDbCall deleteDbUnavailable
+bindError deleteDbError CSignedInt32 deleteOpenDbCall
+branchIfError deleteOpenDbCall deleteDbUnavailableFailed
 
 call prepareDeleteCall sqlite.prepareStatement
 arg prepareDeleteCall database deleteDatabase
 arg prepareDeleteCall sql sqlDeleteTodoByIdAndUser
 run prepareDeleteCall
 bindOk deleteStatement SqliteStatement prepareDeleteCall
-bindError deletePrepareErr SqliteStatementPrepareFailure prepareDeleteCall
+bindError deletePrepareError SqliteStatementPrepareFailure prepareDeleteCall
 branchIfError prepareDeleteCall deleteFailed
 
 defer finalizeDeleteStatementDefer sqlite.finalizeStatement deleteStatement
@@ -2878,7 +2910,7 @@ arg bindDeleteIdCall parameterIndex bindIndex1
 arg bindDeleteIdCall value deleteTodoId
 run bindDeleteIdCall
 ignoreOk bindDeleteIdCall Void
-bindError bindDeleteIdErr SqliteStatementBindFailure bindDeleteIdCall
+bindError bindDeleteIdError SqliteStatementBindFailure bindDeleteIdCall
 branchIfError bindDeleteIdCall deleteFailed
 
 call bindDeleteUserIdCall sqlite.bindInt64
@@ -2887,14 +2919,14 @@ arg bindDeleteUserIdCall parameterIndex bindIndex2
 arg bindDeleteUserIdCall value deleteUserId
 run bindDeleteUserIdCall
 ignoreOk bindDeleteUserIdCall Void
-bindError bindDeleteUserIdErr SqliteStatementBindFailure bindDeleteUserIdCall
+bindError bindDeleteUserIdError SqliteStatementBindFailure bindDeleteUserIdCall
 branchIfError bindDeleteUserIdCall deleteFailed
 
 call stepDeleteCall sqlite.stepStatement
 arg stepDeleteCall statement deleteStatement
 run stepDeleteCall
 ignoreOk stepDeleteCall SqliteStepResult
-bindError stepDeleteErr SqliteStatementStepFailure stepDeleteCall
+bindError stepDeleteError SqliteStatementStepFailure stepDeleteCall
 branchIfError stepDeleteCall deleteFailed
 
 call writeDeleteOkCall writeJsonOkResponse
@@ -2931,7 +2963,7 @@ run writeDeleteIdMissingCall
 bind writeDeleteIdMissingStatus CSignedInt32 writeDeleteIdMissingCall
 returnValue writeDeleteIdMissingStatus
 
-label deleteDbUnavailable
+label deleteDbUnavailableFailed
 storage local immutable deleteDbUnavailableBody CNullTerminatedByteString "{\"error\":{\"code\":\"databaseUnavailable\",\"message\":\"database not available\"}}\n"
 call writeDeleteDbUnavailableCall writeErrorJsonResponse
 arg writeDeleteDbUnavailableCall response response
@@ -3017,8 +3049,8 @@ branchIf completeIdZero completeBadRequestIdMissing
 call completeOpenDbCall openOrReuseDatabase
 run completeOpenDbCall
 bindOk completeDatabase SqliteDatabase completeOpenDbCall
-bindError completeDbErr CSignedInt32 completeOpenDbCall
-branchIfError completeOpenDbCall completeDbUnavailable
+bindError completeDbError CSignedInt32 completeOpenDbCall
+branchIfError completeOpenDbCall completeDbUnavailableFailed
 
 call completeNowCall http.nowMillis
 run completeNowCall
@@ -3029,7 +3061,7 @@ arg prepareCompleteCall database completeDatabase
 arg prepareCompleteCall sql sqlCompleteTodoByIdAndUser
 run prepareCompleteCall
 bindOk completeStatement SqliteStatement prepareCompleteCall
-bindError completePrepareErr SqliteStatementPrepareFailure prepareCompleteCall
+bindError completePrepareError SqliteStatementPrepareFailure prepareCompleteCall
 branchIfError prepareCompleteCall completeFailed
 
 defer finalizeCompleteStatementDefer sqlite.finalizeStatement completeStatement
@@ -3043,7 +3075,7 @@ arg bindCompleteCompletedAtCall parameterIndex bindIndex1
 arg bindCompleteCompletedAtCall value completeNowMs
 run bindCompleteCompletedAtCall
 ignoreOk bindCompleteCompletedAtCall Void
-bindError bindCompleteCompletedAtErr SqliteStatementBindFailure bindCompleteCompletedAtCall
+bindError bindCompleteCompletedAtError SqliteStatementBindFailure bindCompleteCompletedAtCall
 branchIfError bindCompleteCompletedAtCall completeFailed
 
 call bindCompleteUpdatedAtCall sqlite.bindInt64
@@ -3052,7 +3084,7 @@ arg bindCompleteUpdatedAtCall parameterIndex bindIndex2
 arg bindCompleteUpdatedAtCall value completeNowMs
 run bindCompleteUpdatedAtCall
 ignoreOk bindCompleteUpdatedAtCall Void
-bindError bindCompleteUpdatedAtErr SqliteStatementBindFailure bindCompleteUpdatedAtCall
+bindError bindCompleteUpdatedAtError SqliteStatementBindFailure bindCompleteUpdatedAtCall
 branchIfError bindCompleteUpdatedAtCall completeFailed
 
 call bindCompleteIdCall sqlite.bindInt64
@@ -3061,7 +3093,7 @@ arg bindCompleteIdCall parameterIndex bindIndex3
 arg bindCompleteIdCall value completeTodoId
 run bindCompleteIdCall
 ignoreOk bindCompleteIdCall Void
-bindError bindCompleteIdErr SqliteStatementBindFailure bindCompleteIdCall
+bindError bindCompleteIdError SqliteStatementBindFailure bindCompleteIdCall
 branchIfError bindCompleteIdCall completeFailed
 
 call bindCompleteUserIdCall sqlite.bindInt64
@@ -3070,14 +3102,14 @@ arg bindCompleteUserIdCall parameterIndex bindIndex4
 arg bindCompleteUserIdCall value completeUserId
 run bindCompleteUserIdCall
 ignoreOk bindCompleteUserIdCall Void
-bindError bindCompleteUserIdErr SqliteStatementBindFailure bindCompleteUserIdCall
+bindError bindCompleteUserIdError SqliteStatementBindFailure bindCompleteUserIdCall
 branchIfError bindCompleteUserIdCall completeFailed
 
 call stepCompleteCall sqlite.stepStatement
 arg stepCompleteCall statement completeStatement
 run stepCompleteCall
 ignoreOk stepCompleteCall SqliteStepResult
-bindError stepCompleteErr SqliteStatementStepFailure stepCompleteCall
+bindError stepCompleteError SqliteStatementStepFailure stepCompleteCall
 branchIfError stepCompleteCall completeFailed
 
 call writeCompleteOkCall writeJsonOkResponse
@@ -3114,7 +3146,7 @@ run writeCompleteIdMissingCall
 bind writeCompleteIdMissingStatus CSignedInt32 writeCompleteIdMissingCall
 returnValue writeCompleteIdMissingStatus
 
-label completeDbUnavailable
+label completeDbUnavailableFailed
 storage local immutable completeDbUnavailableBody CNullTerminatedByteString "{\"error\":{\"code\":\"databaseUnavailable\",\"message\":\"database not available\"}}\n"
 call writeCompleteDbUnavailableCall writeErrorJsonResponse
 arg writeCompleteDbUnavailableCall response response
@@ -3200,8 +3232,8 @@ branchIf uncompleteIdZero uncompleteBadRequestIdMissing
 call uncompleteOpenDbCall openOrReuseDatabase
 run uncompleteOpenDbCall
 bindOk uncompleteDatabase SqliteDatabase uncompleteOpenDbCall
-bindError uncompleteDbErr CSignedInt32 uncompleteOpenDbCall
-branchIfError uncompleteOpenDbCall uncompleteDbUnavailable
+bindError uncompleteDbError CSignedInt32 uncompleteOpenDbCall
+branchIfError uncompleteOpenDbCall uncompleteDbUnavailableFailed
 
 call uncompleteNowCall http.nowMillis
 run uncompleteNowCall
@@ -3212,7 +3244,7 @@ arg prepareUncompleteCall database uncompleteDatabase
 arg prepareUncompleteCall sql sqlUncompleteTodoByIdAndUser
 run prepareUncompleteCall
 bindOk uncompleteStatement SqliteStatement prepareUncompleteCall
-bindError uncompletePrepareErr SqliteStatementPrepareFailure prepareUncompleteCall
+bindError uncompletePrepareError SqliteStatementPrepareFailure prepareUncompleteCall
 branchIfError prepareUncompleteCall uncompleteFailed
 
 defer finalizeUncompleteStatementDefer sqlite.finalizeStatement uncompleteStatement
@@ -3226,7 +3258,7 @@ arg bindUncompleteUpdatedAtCall parameterIndex bindIndex1
 arg bindUncompleteUpdatedAtCall value uncompleteNowMs
 run bindUncompleteUpdatedAtCall
 ignoreOk bindUncompleteUpdatedAtCall Void
-bindError bindUncompleteUpdatedAtErr SqliteStatementBindFailure bindUncompleteUpdatedAtCall
+bindError bindUncompleteUpdatedAtError SqliteStatementBindFailure bindUncompleteUpdatedAtCall
 branchIfError bindUncompleteUpdatedAtCall uncompleteFailed
 
 call bindUncompleteIdCall sqlite.bindInt64
@@ -3235,7 +3267,7 @@ arg bindUncompleteIdCall parameterIndex bindIndex2
 arg bindUncompleteIdCall value uncompleteTodoId
 run bindUncompleteIdCall
 ignoreOk bindUncompleteIdCall Void
-bindError bindUncompleteIdErr SqliteStatementBindFailure bindUncompleteIdCall
+bindError bindUncompleteIdError SqliteStatementBindFailure bindUncompleteIdCall
 branchIfError bindUncompleteIdCall uncompleteFailed
 
 call bindUncompleteUserIdCall sqlite.bindInt64
@@ -3244,14 +3276,14 @@ arg bindUncompleteUserIdCall parameterIndex bindIndex3
 arg bindUncompleteUserIdCall value uncompleteUserId
 run bindUncompleteUserIdCall
 ignoreOk bindUncompleteUserIdCall Void
-bindError bindUncompleteUserIdErr SqliteStatementBindFailure bindUncompleteUserIdCall
+bindError bindUncompleteUserIdError SqliteStatementBindFailure bindUncompleteUserIdCall
 branchIfError bindUncompleteUserIdCall uncompleteFailed
 
 call stepUncompleteCall sqlite.stepStatement
 arg stepUncompleteCall statement uncompleteStatement
 run stepUncompleteCall
 ignoreOk stepUncompleteCall SqliteStepResult
-bindError stepUncompleteErr SqliteStatementStepFailure stepUncompleteCall
+bindError stepUncompleteError SqliteStatementStepFailure stepUncompleteCall
 branchIfError stepUncompleteCall uncompleteFailed
 
 call writeUncompleteOkCall writeJsonOkResponse
@@ -3288,7 +3320,7 @@ run writeUncompleteIdMissingCall
 bind writeUncompleteIdMissingStatus CSignedInt32 writeUncompleteIdMissingCall
 returnValue writeUncompleteIdMissingStatus
 
-label uncompleteDbUnavailable
+label uncompleteDbUnavailableFailed
 storage local immutable uncompleteDbUnavailableBody CNullTerminatedByteString "{\"error\":{\"code\":\"databaseUnavailable\",\"message\":\"database not available\"}}\n"
 call writeUncompleteDbUnavailableCall writeErrorJsonResponse
 arg writeUncompleteDbUnavailableCall response response
