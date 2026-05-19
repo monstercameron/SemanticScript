@@ -1,0 +1,55 @@
+# Hello GUI project build tape.
+# This sample is the Windows GUI smoke app for the refined gui* surface. GUI
+# contracts live in standard.gui; the compiler bridge only discovers the
+# minimal application/window graph needed to render one native window.
+
+buildProject helloGui
+project HelloGui
+modulePath helloGui github.com/monstercameron/SemanticScript/app/hello-gui
+languageVersion helloGui "1.0"
+projectVersion helloGui "0.1.0"
+projectLicense helloGui MIT
+
+sourceRoot helloGui "."
+registerModule helloGui app.hello_gui "."
+mainFile helloGui "main.sem"
+testPattern helloGui "*.test.sem"
+testRoot helloGui "."
+
+target windowsGui
+runtime native 1
+
+version "0.1.0.0"
+publisher "Earl Cameron"
+description "SemanticScript Hello GUI - minimal declarative Windows desktop window."
+productName "Hello GUI"
+internalName "hello_gui"
+originalFilename "hello_gui.exe"
+comments "Built from app/hello-gui/main.sem by the SemanticScript reference compiler."
+metadata "BuildSource" "app/hello-gui/main.sem"
+metadata "RuntimeContract" "native 1"
+metadata "GuiSurface" "standard.gui|guiApplication|guiWindow"
+
+targetRuntime helloGui windowsGui
+buildProfile helloGui dev
+optLevel helloGui 2
+runtimeChecks helloGui panic
+persistLlvmIr helloGui yes
+emitLlvmIr helloGui auto
+emitOptimizedLlvmIr helloGui no
+buildFolderName helloGui build
+cpuBaseline helloGui generic
+cpuTune helloGui generic
+cpuFeatureCheck helloGui auto
+formatterSetting helloGui lineWidth 100
+linterSetting helloGui maxTier T4
+docsOutput helloGui "docs"
+nativeOutput helloGui "hello_gui.exe"
+
+# Future comptime hook. Reserved for 2.0; not executed by the current compiler.
+comptimeOperation helloGui configureHelloGuiBuild
+
+# Current compiler bridge: inline the GUI module registered above. A
+# windowsGui build intentionally has no entry console row and no mainOperation
+# row; the GUI bridge discovers the unique guiApplication and its main window.
+importModule app.hello_gui

@@ -8,6 +8,10 @@ Top-level application workspace for runnable SemanticScript apps.
 - `todo-web/` contains a web-server sample that returns a hello text response.
 - `todo-web-advanced/` contains a route/method/request edge demo for the native
   HTTP API.
+- `hello-gui/` contains the minimal declarative Windows GUI smoke sample using
+  the refined `gui*` syntax.
+- `html-console-demo/` contains a first-class HTML/SSX syntax demo that splits
+  templates across registered modules and prints hydrated HTML to stdout.
 - `http-api-gauntlet/` contains a broad native HTTP API stress demo covering
   request reflection, body limits, binary body echo, multipart uploads,
   one-shot SSE, middleware, response headers, status codes, and negative

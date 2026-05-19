@@ -1,0 +1,21 @@
+module app.hello_gui
+modulePurpose app.hello_gui "Minimal Windows GUI app that imports standard.gui and declares one native window."
+moduleOwns app.hello_gui "The application/window declaration graph for the hello GUI smoke sample."
+moduleDoesNotOwn app.hello_gui "The native Win32 message loop, handle lifetime, layout engine, or standard.gui runtime implementation."
+moduleInvariant app.hello_gui "build.sem selects target windowsGui; this module keeps the bridge to the smallest guiApplication plus guiWindow graph needed to render a window."
+
+importModule gui standard.gui
+
+guiApplication helloGuiApp
+guiApplicationTitle helloGuiApp "Hello GUI"
+guiApplicationMainWindow helloGuiApp helloGuiMainWindow
+
+guiWindow helloGuiMainWindow
+guiWindowApplication helloGuiMainWindow helloGuiApp
+guiWindowTitle helloGuiMainWindow "Hello GUI"
+guiWindowWidth helloGuiMainWindow 420
+guiWindowHeight helloGuiMainWindow 220
+guiWindowMinimumWidth helloGuiMainWindow 320
+guiWindowMinimumHeight helloGuiMainWindow 160
+guiWindowLayout helloGuiMainWindow verticalStack
+guiWindowResizable helloGuiMainWindow yes

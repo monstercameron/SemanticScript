@@ -1,0 +1,19 @@
+module app.html_console_demo.shared
+modulePurpose app.html_console_demo.shared "Shared presentation constants for the HTML console demo."
+moduleOwns app.html_console_demo.shared "Static presentation copy and class names consumed by page and domain modules."
+moduleDoesNotOwn app.html_console_demo.shared "Todo item data ownership or page/component rendering operations."
+moduleInvariant app.html_console_demo.shared "Every exported value is immutable module storage so downstream modules read stable demo copy."
+
+exportConstant app.html_console_demo.shared todoDashboardPageTitleText
+exportConstant app.html_console_demo.shared todoDashboardIntroText
+exportConstant app.html_console_demo.shared shellClassName
+exportConstant app.html_console_demo.shared panelClassName
+exportConstant app.html_console_demo.shared openTodoClassName
+exportConstant app.html_console_demo.shared doneTodoClassName
+
+storage module immutable todoDashboardPageTitleText HtmlText "Todo TUI HTML Console Demo"
+storage module immutable todoDashboardIntroText HtmlText "Server-rendered HTML generated from first-class SemanticScript templates."
+storage module immutable shellClassName HtmlClass "todo-shell"
+storage module immutable panelClassName HtmlClass "todo-panel"
+storage module immutable openTodoClassName HtmlClass "todo-row todo-row-open"
+storage module immutable doneTodoClassName HtmlClass "todo-row todo-row-done"

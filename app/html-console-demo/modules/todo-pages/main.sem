@@ -1,0 +1,77 @@
+module app.html_console_demo.todo_pages
+modulePurpose app.html_console_demo.todo_pages "Page-level HTML assembly for the console-rendered todo dashboard."
+moduleOwns app.html_console_demo.todo_pages "Full-document HTML template and page hydration operation."
+moduleDoesNotOwn app.html_console_demo.todo_pages "Reusable todo-list component internals or executable console printing."
+moduleInvariant app.html_console_demo.todo_pages "The page operation wires demo todo-domain constants into the component operation; the full-document template only receives the rendered HtmlFragment."
+
+importModule html standard.html
+importModule app.html_console_demo.shared as shared
+importModule app.html_console_demo.todo_domain as todoDomain
+importModule app.html_console_demo.todo_components as todoComponents
+
+exportOperation app.html_console_demo.todo_pages renderTodoDashboardPage
+
+htmlTemplate TodoDashboardPageTemplate
+htmlArg TodoDashboardPageTemplate pageTitleText HtmlText
+htmlArg TodoDashboardPageTemplate introText HtmlText
+htmlArg TodoDashboardPageTemplate shellClassName HtmlClass
+htmlArg TodoDashboardPageTemplate panelClassName HtmlClass
+htmlArg TodoDashboardPageTemplate todoListFragment HtmlFragment
+htmlBody TodoDashboardPageTemplate
+  <!doctype html>
+  <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <title>{htmlArg.pageTitleText}</title>
+      <style>
+        body { font-family: system-ui, sans-serif; margin: 2rem; color: #17202a; background: #f5f7fb; }
+        .todo-shell { max-width: 46rem; margin: 0 auto; }
+        .todo-panel { border: 1px solid #ccd4e0; border-radius: 8px; background: white; padding: 1rem 1.25rem; }
+        .todo-list { display: grid; gap: 0.5rem; padding-left: 1.25rem; }
+        .todo-row { display: grid; grid-template-columns: 1fr auto; gap: 1rem; align-items: center; }
+        .todo-row-done .todo-title { text-decoration: line-through; color: #506070; }
+        .todo-status { font-size: 0.85rem; color: #445; }
+      </style>
+    </head>
+    <body>
+      <main class="{htmlArg.shellClassName}">
+        <article class="{htmlArg.panelClassName}">
+          <h1>{htmlArg.pageTitleText}</h1>
+          <p>{htmlArg.introText}</p>
+          {htmlArg.todoListFragment}
+        </article>
+      </main>
+    </body>
+  </html>
+
+operation renderTodoDashboardPage
+output renderTodoDashboardPage HtmlDocument
+memoryHeap renderTodoDashboardPage no
+async renderTodoDashboardPage no
+purpose renderTodoDashboardPage "Hydrate the full HTML document from shared copy and the todo-list component fragment."
+invariant renderTodoDashboardPage "The page assembly layer depends on the component module through an explicit operation call and passes the resulting HtmlFragment into its own template."
+
+label startRenderTodoDashboardPage
+
+call renderTodoListFragmentCall todoComponents.renderTodoListFragment
+arg renderTodoListFragmentCall firstTodoTitleText todoDomain.firstTodoTitleText
+arg renderTodoListFragmentCall firstTodoStatusText todoDomain.firstTodoStatusText
+arg renderTodoListFragmentCall firstTodoClassName todoDomain.firstTodoClassName
+arg renderTodoListFragmentCall secondTodoTitleText todoDomain.secondTodoTitleText
+arg renderTodoListFragmentCall secondTodoStatusText todoDomain.secondTodoStatusText
+arg renderTodoListFragmentCall secondTodoClassName todoDomain.secondTodoClassName
+arg renderTodoListFragmentCall thirdTodoTitleText todoDomain.thirdTodoTitleText
+arg renderTodoListFragmentCall thirdTodoStatusText todoDomain.thirdTodoStatusText
+arg renderTodoListFragmentCall thirdTodoClassName todoDomain.thirdTodoClassName
+run renderTodoListFragmentCall
+bind todoListFragment HtmlFragment renderTodoListFragmentCall
+
+call hydrateDashboardPageCall html.hydrate.TodoDashboardPageTemplate
+arg hydrateDashboardPageCall pageTitleText shared.todoDashboardPageTitleText
+arg hydrateDashboardPageCall introText shared.todoDashboardIntroText
+arg hydrateDashboardPageCall shellClassName shared.shellClassName
+arg hydrateDashboardPageCall panelClassName shared.panelClassName
+arg hydrateDashboardPageCall todoListFragment todoListFragment
+run hydrateDashboardPageCall
+bind dashboardPageHtml HtmlDocument hydrateDashboardPageCall
+returnValue dashboardPageHtml

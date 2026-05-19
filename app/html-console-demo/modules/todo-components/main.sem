@@ -1,0 +1,71 @@
+module app.html_console_demo.todo_components
+modulePurpose app.html_console_demo.todo_components "Reusable HTML/SSX components for the console-rendered todo dashboard."
+moduleOwns app.html_console_demo.todo_components "Component-level HTML templates and hydration operations."
+moduleDoesNotOwn app.html_console_demo.todo_components "Page shell composition, console output, or todo persistence."
+moduleInvariant app.html_console_demo.todo_components "Dynamic holes inside htmlBody only read declared htmlArg values."
+
+importModule html standard.html
+
+exportOperation app.html_console_demo.todo_components renderTodoListFragment
+
+htmlTemplate TodoListTemplate
+purpose TodoListTemplate "Render a fixed three-row ordered todo list as an HTML fragment."
+guarantee TodoListTemplate "This template renders exactly three todo rows; dynamic collection rendering is future work."
+htmlArg TodoListTemplate firstTodoTitleText HtmlText
+htmlArg TodoListTemplate firstTodoStatusText HtmlText
+htmlArg TodoListTemplate firstTodoClassName HtmlClass
+htmlArg TodoListTemplate secondTodoTitleText HtmlText
+htmlArg TodoListTemplate secondTodoStatusText HtmlText
+htmlArg TodoListTemplate secondTodoClassName HtmlClass
+htmlArg TodoListTemplate thirdTodoTitleText HtmlText
+htmlArg TodoListTemplate thirdTodoStatusText HtmlText
+htmlArg TodoListTemplate thirdTodoClassName HtmlClass
+htmlBody TodoListTemplate
+  <section class="todo-list-region" aria-label="Todo list">
+    <ol class="todo-list">
+      <li class="{htmlArg.firstTodoClassName}">
+        <span class="todo-title">{htmlArg.firstTodoTitleText}</span>
+        <span class="todo-status">{htmlArg.firstTodoStatusText}</span>
+      </li>
+      <li class="{htmlArg.secondTodoClassName}">
+        <span class="todo-title">{htmlArg.secondTodoTitleText}</span>
+        <span class="todo-status">{htmlArg.secondTodoStatusText}</span>
+      </li>
+      <li class="{htmlArg.thirdTodoClassName}">
+        <span class="todo-title">{htmlArg.thirdTodoTitleText}</span>
+        <span class="todo-status">{htmlArg.thirdTodoStatusText}</span>
+      </li>
+    </ol>
+  </section>
+
+operation renderTodoListFragment
+input renderTodoListFragment firstTodoTitleText HtmlText
+input renderTodoListFragment firstTodoStatusText HtmlText
+input renderTodoListFragment firstTodoClassName HtmlClass
+input renderTodoListFragment secondTodoTitleText HtmlText
+input renderTodoListFragment secondTodoStatusText HtmlText
+input renderTodoListFragment secondTodoClassName HtmlClass
+input renderTodoListFragment thirdTodoTitleText HtmlText
+input renderTodoListFragment thirdTodoStatusText HtmlText
+input renderTodoListFragment thirdTodoClassName HtmlClass
+output renderTodoListFragment HtmlFragment
+memoryHeap renderTodoListFragment no
+async renderTodoListFragment no
+purpose renderTodoListFragment "Hydrate the reusable fixed three-row todo list component from explicit caller inputs."
+invariant renderTodoListFragment "The component has no request, console, persistence, or todo-domain access; all dynamic content arrives through operation inputs forwarded into htmlArg-bound template inputs."
+
+label startRenderTodoListFragment
+
+call hydrateTodoListCall html.hydrate.TodoListTemplate
+arg hydrateTodoListCall firstTodoTitleText firstTodoTitleText
+arg hydrateTodoListCall firstTodoStatusText firstTodoStatusText
+arg hydrateTodoListCall firstTodoClassName firstTodoClassName
+arg hydrateTodoListCall secondTodoTitleText secondTodoTitleText
+arg hydrateTodoListCall secondTodoStatusText secondTodoStatusText
+arg hydrateTodoListCall secondTodoClassName secondTodoClassName
+arg hydrateTodoListCall thirdTodoTitleText thirdTodoTitleText
+arg hydrateTodoListCall thirdTodoStatusText thirdTodoStatusText
+arg hydrateTodoListCall thirdTodoClassName thirdTodoClassName
+run hydrateTodoListCall
+bind todoListFragment HtmlFragment hydrateTodoListCall
+returnValue todoListFragment
