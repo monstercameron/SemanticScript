@@ -3,9 +3,9 @@
 Production-grade multi-user todo web app for SemanticScript. The runtime
 foundation is complete (bcrypt password hashing, sqlite persistence, JSON
 encode/decode, HTTP with path-params + cookies + file serving + session
-cookies); the handler bodies for register + DB persistence + cookie issue
-are wired through end-to-end. Session validation and the rest of the
-CRUD surface are scaffold-ready and ship in the next iteration.
+cookies); the handler bodies for register, login, DB persistence, and
+cookie issue are wired through end-to-end. Session validation and the rest
+of the CRUD surface are scaffold-ready and ship in the next iteration.
 
 ## What works today (v1.0)
 
@@ -16,13 +16,19 @@ CRUD surface are scaffold-ready and ship in the next iteration.
   base64url session token, INSERTs the session row, returns `201` with
   the user record JSON and a `Set-Cookie: session=<token>; HttpOnly;
   SameSite=Strict; Max-Age=2592000; Path=/` header.
+- `POST /api/auth/login` — verifies the submitted password with
+  `bcrypt.verifyPassword`, mints a fresh session token on success, returns
+  `200` with the user record JSON and the same HttpOnly session cookie
+  shape used by register. Bad usernames, bad passwords, and malformed
+  bodies all return the same `401` JSON response shape.
 - Schema bootstrap: `users + sessions + todos + todo_images` tables
   with CHECK / NOT NULL / FOREIGN KEY constraints, applied at startup
   via a single `sqlite.exec` of the literal-loaded `schema.sql`.
+  The schema also seeds a `demo` user (`demo1234`) and sample todos for
+  first-run manual testing.
 
 ## Scaffolded but not yet validated (v1.1 follow-up)
 
-- `POST /api/auth/login` — currently returns 501.
 - `POST /api/auth/logout` — wired (writes clear-cookie + 200), but
   session validation chain (`requireSessionUserId`) needs debugging
   before it can reliably DELETE the right session row.
@@ -91,6 +97,9 @@ curl http://127.0.0.1:18090/api/version
 curl -X POST http://127.0.0.1:18090/api/auth/register `
   -H "Content-Type: application/json" `
   -d '{"username":"alice","password":"secret123"}'
+curl -X POST http://127.0.0.1:18090/api/auth/login `
+  -H "Content-Type: application/json" `
+  -d '{"username":"demo","password":"demo1234"}'
 ```
 
 The register POST should return `201` with a JSON body like
@@ -105,9 +114,9 @@ python app/todo-web-pro/scripts/test_todo_web_pro.py
 ```
 
 Lints, builds, starts, polls `/health`, exercises every shipped route
-plus the registration flow, asserts the resulting DB rows match the
-returned cookie, then tears the server down. Exit 0 on success, non-zero
-on first failed assertion.
+plus the registration and login flows, asserts the resulting DB rows
+match the returned cookies, then tears the server down. Exit 0 on
+success, non-zero on first failed assertion.
 
 ## Compiler bug fixed in this session
 

@@ -13,7 +13,23 @@ projectLicense todoWebPro MIT
 
 sourceRoot todoWebPro "."
 registerModule todoWebPro app.todo_web_pro "."
+registerModule todoWebPro app.todo_web_pro.components "components"
 registerModule todoWebPro app.todo_web_pro.pages "pages"
+
+# Project-wide constants visible to every module via the buildConstant
+# verb (registers each as a `storage module immutable` row on the
+# parsed Program). Single source of truth for host / port / paths /
+# session lifetime — no per-module redeclaration, no drift between
+# main.sem and pages/main.sem.
+buildConstant todoWebPro serverHostText CNullTerminatedByteString "127.0.0.1"
+buildConstant todoWebPro serverPortNumber CSignedInt32 18090
+buildConstant todoWebPro apiBaseUrlText CNullTerminatedByteString "http://127.0.0.1:18090"
+buildConstant todoWebPro databaseUsePersistentStorage CNullTerminatedByteString "yes"
+buildConstant todoWebPro databasePath CNullTerminatedByteString "todo_web_pro.db"
+buildConstant todoWebPro databaseInMemoryPath CNullTerminatedByteString ":memory:"
+buildConstant todoWebPro imagesDirectoryPath CNullTerminatedByteString "images"
+buildConstant todoWebPro assetsDirectoryPath CNullTerminatedByteString "assets"
+buildConstant todoWebPro sessionLifetimeMs CSignedInt64 2592000000
 mainFile todoWebPro "main.sem"
 testPattern todoWebPro "*.test.sem"
 testRoot todoWebPro "."
