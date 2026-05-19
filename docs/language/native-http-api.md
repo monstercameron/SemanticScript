@@ -23,7 +23,9 @@ Current implementation status:
 - Response text, response bytes, one-shot SSE event bodies, and custom response
   headers are available through native runtime calls.
 - `routeMiddleware` executes one path-scoped middleware operation before the
-  route handler.
+  route handler. Middleware operations return the built-in `MiddlewareControl`
+  enum, so they can either continue to the route handler or short-circuit after
+  writing a complete response.
 - H2O/HTTP2 dispatch is not wired into `semsc.py` yet.
 
 This file describes the API shape implemented by the current adapter plus the
@@ -54,10 +56,14 @@ Rules:
   operation.
 - The first backend should support exact static paths. Path parameters can be
   added after the exact-route dispatcher is stable.
-- Methods should normalize to uppercase during parsing or route-table
-  generation.
+- Current checked methods are `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`,
+  and `OPTIONS`. Keep source methods uppercase unless a test explicitly covers
+  compatibility behavior.
 - `routeMiddleware SERVER PATH HANDLER` currently attaches one middleware
   operation to all methods on an exact path.
+- `routeTimeoutOptOut SERVER PATH "rationale"` and
+  `routeMiddlewareOptOut SERVER PATH "rationale"` declare intentional per-path
+  gaps for linter coverage.
 - `routeTimeout SERVER PATH DURATION` is parsed as metadata only. The blocking
   runtime does not preempt synchronous handlers.
 
@@ -93,6 +99,20 @@ Return values:
 2  runtime unavailable
 3  native engine error
 ```
+
+Middleware operations use the same request/response input ABI but declare:
+
+```semanticscript
+output tracingMiddleware MiddlewareControl
+```
+
+The compiler pre-registers `MiddlewareControl` as a `CSignedInt32`-backed enum
+with `continueMiddlewareControl` and `shortCircuitMiddlewareControl`. Returning
+`continueMiddlewareControl` runs the route handler. Returning
+`shortCircuitMiddlewareControl` skips the handler and sends the response already
+written by the middleware. A short-circuit middleware must write status, body,
+and content type before it returns; the runtime turns a short-circuit with no
+body into a visible 500 response instead of silently succeeding.
 
 Later syntax can allow `output OP HttpResponse`, but the first backend should
 not hide response ownership. Writing into an explicit response handle makes the
@@ -158,12 +178,14 @@ and content type. It does not stream files to disk, decode nested multipart
 bodies, percent-decode names, or enforce per-part quotas beyond the request cap.
 
 Nullable request readers are still pointer-shaped at the ABI boundary:
-`http.requestHeader`, `http.requestQueryParam`, and multipart part readers can
-return `NULL` when the named value is absent. Passing that result directly to a
-non-null response writer currently makes the handler fail. Production handlers
-should guard nullable reader results with `pointer.isNull` and branch to an
-explicit response; gauntlet routes may intentionally document the null-body
-failure path with a `warning`.
+`http.requestHeader`, `http.requestQueryParam`, `http.requestCookie`,
+`http.requestBodyText`, `http.requestBodyBytes`, and multipart part readers can
+return `NULL` when the named value is absent, empty, or over the bounded request
+limit. Passing that result directly to a non-null response writer currently
+makes the handler fail. Production handlers should guard nullable reader results
+with `pointer.isNull` and branch to an explicit response. Routes that
+intentionally pin the adapter's null-body 500 path for regression coverage
+should use `pinsNullBodyFailurePath OP "rationale"` rather than a prose warning.
 
 Current SSE behavior is one-shot event-stream body formatting through
 `http.responseSseEvent`. It emits a valid `text/event-stream` payload with a
@@ -266,7 +288,11 @@ static SSHttpServerConfig ss_server = {
 
 5. A real `main` that returns `ss_http_server_run(&ss_server)`.
 
-Errors should point at the source route and handler lines. For example, if a
-route handler lacks `response HttpResponse`, the diagnostic should cite the
-`route` line and the handler's `operation` header, then tell the user to add
-the missing input.
+Compiler codegen validates the route handler ABI before emitting the native
+route table: route handlers must compile to exactly `[HttpRequest,
+HttpResponse] -> CSignedInt32`. `semlint.py` carries the name-level and
+middleware-level contracts on top: canonical input names are `request` and
+`response`, middleware bound through `routeMiddleware` must declare
+`MiddlewareControl`, and response-body wrappers must declare
+`responseBodyForwarder OP bodyInputName` so nullable-body checks remain
+transitive.

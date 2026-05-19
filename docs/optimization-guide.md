@@ -206,9 +206,11 @@ operation or type contract.
 
 Prefer one of these shapes:
 
-- Encode with a schema-backed JSON codec.
+- Encode whole typed values with `json.stringify.<TypeName>`.
+- Build dynamic object/array responses through `JsonDocument` mutators and
+  serialize once with `json.serializeDocument`.
 - Write string content through an escaping operation such as
-  `writeJsonEscapedStringBuffer`.
+  `writeJsonEscapedStringBuffer` only while migrating legacy call sites.
 - Reject unsupported characters at the input boundary and document that
   invariant next to the buffer mutation operation.
 
@@ -228,7 +230,10 @@ Quotes, backslashes, newlines, and control bytes can corrupt the file format or
 change the semantic value that will be loaded later.
 
 `semlint.py` reports `rawJsonStringInterpolation` for conservative cases where
-a JSON-like string literal places `%s` inside JSON quotes.
+a JSON-like string literal places `%s` inside JSON quotes. The intended repair
+is `json.stringify.<TypeName>` for typed request/response records, or
+`json.createEmptyDocument` plus `json.serializeDocument` when the shape is built
+incrementally.
 
 Fixed-format parsers should make their accepted producer format explicit in an
 `invariant`. If a loader depends on offsets or object key order, say that it
@@ -237,6 +242,43 @@ only accepts the exact shape emitted by the matching saver.
 `semlint.py` reports `fixedOffsetParserContract` when an operation declares
 numeric `*ValueOffset` or `*FieldOffset` constants without an invariant naming
 the exact fixed format or producer shape.
+
+## Bounded String Accumulators
+
+Repeated `c.strcat` into a fixed-size accumulator is bounded but still
+quadratic. Each append rescans the bytes already written, so a loop that appends
+N fragments pays for the prefix again on every iteration. The capacity check may
+make the code memory-safe, but it does not make the shape a good hot-path
+optimization.
+
+`semlint.py` reports SS3203 `performanceDiscipline.stringAccumulatorAppendInLoop`
+when `c.strcat`/`c.strncat` style appends appear inside a back-edge loop.
+It also reports SS3205 `performanceDiscipline.snprintfI32OffsetWithoutWidening`
+when a `c.snprintf` byte count is added directly to an i64 cursor; widen it
+with `math.signExtendCSignedInt32ToCSignedInt64` first.
+
+Prefer a cursor-based builder:
+
+```semanticscript
+storage local mutable writeOffset CSignedInt64 zeroIndex
+call copyChunkCall memory.copy
+arg copyChunkCall destination outputBuffer
+arg copyChunkCall destinationOffset writeOffset
+arg copyChunkCall source chunkBuffer
+arg copyChunkCall byteCount chunkLength
+run copyChunkCall
+call nextOffsetCall math.addI64
+arg nextOffsetCall left writeOffset
+arg nextOffsetCall right chunkLength
+run nextOffsetCall
+bind nextOffset CSignedInt64 nextOffsetCall
+set local writeOffset nextOffset
+```
+
+Keep one explicit remaining-capacity check before each copy and write the final
+NUL once. If a `strcat` accumulator stays because the fragment count is tiny and
+not data-dependent, document that bound in an `invariant` so later patches do
+not turn the bounded case into a quadratic request-size path.
 
 ## Aggregate Pressure
 
@@ -285,6 +327,57 @@ For owned resources, executable code needs executable cleanup. Use explicit
 `c.free`/`c.fclose` calls when the compiler cannot lower the corresponding
 host-call `defer`. Cleanup metadata is still useful for auditing, but it is not
 a substitute for code that actually runs.
+
+Heap allocation failure is also executable control flow. Every heap-producing
+call (`memory.allocate`, `c.malloc`, allocator-backed string builders, or
+runtime bootstrap allocators) must bind the returned pointer, check it with
+`pointer.isNull`, and branch to an OOM path before the first dereference or
+copy. The OOM path must return a typed error/status or cleanly unwind to the
+caller; a warning comment, optimistic use, or crash-by-null-dereference is not a
+valid failure contract.
+
+For C heap allocators, `semlint.py` reports SS3305
+`memoryDiscipline.uncheckedHeapAllocation` unless each `c.malloc`, `c.calloc`,
+or `c.realloc` call has both `bindError` and `branchIfError`.
+
+Partial bootstrap failures must close any handles already opened. For SQLite,
+that means a successful `sqlite3_open` followed by a failed schema creation,
+pragma setup, prepare, or migration step must call the matching close operation
+before returning failure. Prefer a shared cleanup label for bootstrap code so
+every failure after handle acquisition passes through the same executable close
+path. A `defer` row is enough only when the current backend lowers it on that
+failure path; otherwise write the close call directly.
+
+`semlint.py` reports SS3905
+`resourceLifecycle.sqliteDatabaseFailureCleanupMissing` when a
+`sqlite.openDatabase` success handle can reach a later setup failure label
+without `sqlite.closeDatabase`. It reports SS3906
+`resourceLifecycle.sqliteStatementFinalizeMissing` when
+`sqlite.prepareStatement` lacks a same-operation `sqlite.finalizeStatement`
+defer or explicit cleanup call.
+
+## Fixed-Capacity Row Mutations
+
+Fixed row editors should treat "row count unchanged" as a refused insert/split,
+not as a successful no-op. When a mutator such as `insertEmptyRowAt` or
+`splitRowAt` returns the prior `activeRowCount`, branch out before moving the
+cursor, marking the file dirty, or writing into the row.
+
+`semlint.py` reports SS3207
+`performanceDiscipline.rowCountMutationUnchecked` when a fixed-row mutator
+returns a row count but the caller does not compare that result to the prior
+`activeRowCount` and branch on the full-buffer path.
+
+## GUI Event Mutation Boundaries
+
+Keep add/create handlers separate from selection handlers. A handler that reads
+`gui.listBoxSelectedIndex` is usually confirming or updating an existing
+selection; appending a new list item in that same handler creates a hidden
+growth path where repeated "complete selected" clicks keep extending the list.
+
+`semlint.py` reports SS3206
+`performanceDiscipline.selectedListAppendInHandler` when one operation both
+reads `gui.listBoxSelectedIndex` and calls `gui.listBoxAppendItem`.
 
 ## Terminal State Lifecycle
 
@@ -836,25 +929,57 @@ branchIf queryMissing queryMissingPath
 
 **Transitive wrapper detection.** A user op that takes a `body` input and
 forwards it unchanged to `http.response*` is treated as a response body
-writer by the linter (semlint walks to a fixed point). The gauntlet's
-`writeTextResponse(response, status, body)` is the prototype case. You do
-not need to repeat the guard inside each wrapper layer — guard once at
-the binding site, and the lint follows the body through wrappers.
+writer by the linter only when it declares
+`responseBodyForwarder OP bodyInputName` (semlint walks declared forwarders to
+a fixed point). The gauntlet's `writeTextResponse(response, status, body)` is
+the prototype case. You do not need to repeat the guard inside each wrapper
+layer. Guard once at the binding site, and the lint follows the body through
+declared wrappers.
 
-**Per-op opt-out marker.** If a route is intentionally pinning the
-adapter's null-body 500 contract for regression coverage of the failure
-path (the gauntlet's `/reflect/required-header-or-fail` is the canonical
-example), declare:
+`semlint.py` reports SS3615 `webserver.responseBodyForwarderMissing` when an
+operation forwards one of its inputs to `http.responseText`,
+`http.responseBytes`, or `http.responseSseEvent` without the declaration. This
+keeps helper functions from hiding nullable request values from SS3603.
+
+**Per-op opt-out marker.** If a route is intentionally pinning the adapter's
+null-body 500 contract for regression coverage of the failure path (the
+gauntlet's `/reflect/required-header-or-fail` is the canonical example),
+declare the explicit opt-out row:
 
 ```semanticscript
-warning yourHandler "this route intentionally exercises the adapter null-body failure path; do not add a guard or this coverage disappears silently"
+pinsNullBodyFailurePath yourHandler "intentional regression coverage of the native adapter null-body 500 path"
 ```
 
-The phrase `null-body failure path` (or `null-body 500`) must appear
-verbatim in the warning text — that's the marker `semlint`
-(`HTTP_NULL_GUARD_OPT_OUT_MARKERS`) matches. The marker is deliberately
-specific so a generic "this might 500" warning cannot accidentally
-silence the lint.
+`semlint.py` reports SS3606 when the rationale is missing or empty. The legacy
+prose marker inside `warning OP "..."` is still honored for one deprecation
+cycle, but it trips SS3605 so migrations can replace it with the explicit row.
+
+### Response writer ownership
+
+`http.response*` writers and user wrappers around them must own or copy every
+body, header name, header value, and content-type pointer that can outlive the
+handler stack frame. A handler is allowed to run cleanup immediately after the
+writer returns:
+
+```semanticscript
+call responseCall http.responseText
+arg responseCall response response
+arg responseCall status okStatus
+arg responseCall body scratchBody
+run responseCall
+call scratchFreeCall c.free
+arg scratchFreeCall pointer scratchBody
+run scratchFreeCall
+returnValue okStatus
+```
+
+That shape is safe only if the response writer has already copied `scratchBody`
+into response-owned storage or has completed the send before returning. Do not
+optimize response writes by storing borrowed pointers into handler-local
+buffers, SQLite row buffers, request arenas, or heap allocations that a later
+`defer`/cleanup path can release. If copying is too expensive for a binary body,
+make ownership explicit with a transfer operation whose contract says the
+handler must not free the buffer after the call.
 
 ## Synchronous Lowering Of Async Constructs
 
@@ -893,10 +1018,16 @@ could be inlined at compile time. The asset becomes part of the compiled
 binary's `.rodata` (or equivalent), so cold-start cost is paid once at
 link time, not on every request.
 
-## Per-Call-Site JSON Buffer Lifetimes
+## JSON Serialization Lifetimes
 
-`json.encode.<Primitive>` stack-allocates a per-call-site buffer that
-lives for the lifetime of the enclosing operation:
+Prefer the high-level JSON surface over direct stack-buffer formatting:
+
+- `json.stringify.<TypeName>` for primitive and record-shaped values.
+- `json.serializeDocument` after `json.createEmptyDocument` and document
+  mutators for dynamic object/array construction.
+
+Legacy `json.encode.<Primitive>` stack-allocates a per-call-site buffer that
+lives only for the lifetime of the enclosing operation:
 
 - 32B for numerics (I64, CSignedInt32, Duration/Monotonic/UtcMilliseconds, Bool, F64/CFloat64/CFloat32)
 - 256B for strings (String, CNullTerminatedByteString)
@@ -910,10 +1041,13 @@ Two consequences:
    encoded value across a function boundary, copy into caller-owned
    storage first.
 
-For record-shaped `json.encode.RecordTypeName` / `json.decode.RecordTypeName`,
-the current lowering is a zero-stub fallback (Partial per SYNTAX.md). Real
-structural encoding awaits the `jsonCodec` runtime — until then, encode
-records field-by-field through the primitive `json.encode.<Primitive>` calls.
+Do not build new record encoders around `json.encode.RecordTypeName` /
+`json.decode.RecordTypeName`; those names are the legacy partial surface.
+Use `json.stringify.<RecordTypeName>` and `json.parse.<RecordTypeName>` for
+schema-backed values, or the document CRUD API when fields are assembled in a
+loop. When `json.serializeDocument` needs caller-owned scratch, keep the scratch
+buffer owned by the current operation and copy or write the returned `JsonText`
+before the scratch storage is released.
 
 ## Math Operand Width Discipline
 
@@ -1019,23 +1153,27 @@ appears in the handler body. The companion `routeMiddleware` /
 path, so the multiplicity is asymmetric: route rows repeat, middleware
 and timeout rows don't.
 
-## Middleware Return Contract (Proposed)
+## Middleware Return Contract
 
-Today middleware ops declare `output OP CSignedInt32` and return `0`
-to continue. The dispatcher only honors `0` (every non-zero value is
-silently ignored), so the "non-zero means short-circuit" promise is
-half-real. The SYNTAX.md `Proposed` row for `enum MiddlewareControl
-repr CSignedInt32` (with `continueMiddlewareControl: 0` and
-`shortCircuitMiddlewareControl: 1`) is the planned replacement: typed
-enum cases instead of magic integers, and a dispatcher that actually
-halts the chain on `shortCircuit`.
+Middleware ops bound through `routeMiddleware` declare:
 
-Until the dispatcher honors short-circuit, middleware ops should
-return `0` and document the contract in the operation's `invariant`
-line. Do not return a sentinel `1` and assume it will short-circuit —
-the current runtime continues regardless, and the assumption rots the
-moment a test relies on it. The future SS3610 (when shipped) will
-enforce `output OP MiddlewareControl` over bare `CSignedInt32`.
+```semanticscript
+output gauntletMiddleware MiddlewareControl
+...
+returnValue continueMiddlewareControl
+```
+
+`MiddlewareControl` is a compiler-registered enum backed by `CSignedInt32`.
+`continueMiddlewareControl` runs the route handler. `shortCircuitMiddlewareControl`
+skips the handler and sends the response already written by the middleware.
+The dispatcher makes a missing short-circuit body visible as a 500 response
+instead of treating it as success.
+
+`semlint.py` reports SS3610 `middlewareReturnNotMiddlewareControl` when an
+operation bound via `routeMiddleware` still declares `output OP CSignedInt32` or
+another non-`MiddlewareControl` output. This is an ERROR with
+`blocksCompile=True`, even though the source-level enforcement still lives in
+the linter rather than in the parser.
 
 ## Cross-Document References
 

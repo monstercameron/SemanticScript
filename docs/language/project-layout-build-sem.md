@@ -259,6 +259,9 @@ importModule app.hello_web
 The build tape owns only the target/link bridge. GUI vocabulary belongs to the
 imported `standard.gui` module, which should provide the metadata contracts,
 capabilities, and validation rules for application/window/control declarations.
+Use `importModule gui standard.gui` in GUI source. The legacy
+`importModule standard.gui as gui` form remains accepted during the
+compatibility window, but the alias-first form is preferred.
 
 `build.sem`:
 
@@ -341,6 +344,7 @@ Rules:
 
 - Do not declare `entry windowsGui` in a `windowsGui` build tape.
 - Use `entry console main` and keep GUI construction as explicit `gui.*` calls.
+- Use `importModule gui standard.gui` for the GUI contract namespace.
 - The compiler bridge should only lower `gui.*` calls and link the runtime.
 - Shape checks such as duplicate controls, allowed events, accessibility names,
   and GUI capability coverage belong in `standard.gui` and lint/tooling where

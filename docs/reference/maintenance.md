@@ -23,6 +23,13 @@ For a new verb or changed schema:
 Do not add only editor highlighting. Highlighting without parser/linter/docs
 support creates false confidence.
 
+For strict syntax hardening, prove compiler behavior separately from lint
+behavior. A TODO item that says "compiler rejects" needs a negative
+`semsc.py --parse-only` test that fails without `--lint`; a standalone
+`semlint.py` failure is not enough. Keep proposed rows such as
+`languageMode strictExecutable`, `runChecked`, `bindOwned`, and
+`requireNonNull` in the research note until parser/compiler tests exist.
+
 ## Status Vocabulary
 
 Use the same status words everywhere:
@@ -126,4 +133,3 @@ python tests/test_compiler.py
 python tests/sem_compiler_parity.py
 python tests/test_stdlib.py
 ```
-

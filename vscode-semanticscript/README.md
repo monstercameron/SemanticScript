@@ -75,7 +75,8 @@ The extension recognizes the recent syntax families from the refined example:
   `section`, `storage`, `sharedState`, `read`, `set local`,
   `set module`, `set sharedState`.
 - Program mode:
-  `mode capturedOutputReplay`.
+  `mode capturedOutputReplay`, `languageMode strictExecutable`, and
+  `languageMode refinedSyntax`.
 - Project metadata:
   `version`, `publisher`, `description`, `copyright`, `productName`,
   `internalName`, `originalFilename`, `trademark`, `comments`, and repeatable
@@ -84,7 +85,7 @@ The extension recognizes the recent syntax families from the refined example:
   `operationBody`, `runtimeBinding`, `runtimeBindingPrecondition`,
   `runtimeBindingFailure`, `intrinsicName`, `dependencyPath`,
   `dependencyFailure`, `precondition`, `pinsNullBodyFailurePath`,
-  `responseBodyForwarder`, and `rationale`.
+  `responseBodyForwarder`, `rationale`, and explicit `returnVoid` control flow.
 - Native web server declarations:
   `webServer`, `serverHost`, `serverPort`, `route`, `routeTimeout`,
   `routeMiddleware`, `routeTimeoutOptOut`, and `routeMiddlewareOptOut`.
@@ -144,6 +145,7 @@ ordinary variables. Examples include:
 
 ```text
 yes no
+strictExecutable refinedSyntax
 local module process sharedState
 immutable mutable
 sourceTape runtimeBinding recordConstructor intrinsic externalDependency
@@ -157,6 +159,8 @@ zeroBasedChecked zeroBasedCheckedRange contiguousUniqueAscending
 arena.request arena.process arena.static
 returnOk returnError reverseRegistration logAndSuppress
 protectedBy ownedBy
+continueMiddlewareControl shortCircuitMiddlewareControl
+inMemorySqliteOpenMode readWriteCreateSqliteOpenMode
 ```
 
 Role suffix highlighting is intentionally limited to real user symbols. Fixed

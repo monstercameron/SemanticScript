@@ -4,6 +4,9 @@
   "scopeName": "source.semanticscript",
   "patterns": [
     {
+      "include": "#jsonBody"
+    },
+    {
       "include": "#htmlBody"
     },
     {
@@ -133,11 +136,57 @@
         }
       ]
     },
+    "jsonBody": {
+      "patterns": [
+        {
+          "name": "meta.embedded.block.json.semanticscript",
+          "begin": "^(jsonBody)\\b(?:\\s+([A-Za-z_][A-Za-z0-9_]*))?.*$",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.declaration.semanticscript"
+            },
+            "2": {
+              "name": "variable.other.constant.semanticscript"
+            }
+          },
+          "end": "^(?=\\S)",
+          "patterns": [
+            {
+              "name": "string.quoted.double.json.semanticscript",
+              "begin": "\"",
+              "end": "\"",
+              "patterns": [
+                {
+                  "name": "constant.character.escape.json.semanticscript",
+                  "match": "\\\\(?:[\"\\\\/bfnrt]|u[0-9A-Fa-f]{4})"
+                }
+              ]
+            },
+            {
+              "name": "constant.numeric.json.semanticscript",
+              "match": "-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?"
+            },
+            {
+              "name": "constant.language.json.semanticscript",
+              "match": "\\b(?:true|false|null)\\b"
+            },
+            {
+              "name": "punctuation.separator.json.semanticscript",
+              "match": "[:,]"
+            },
+            {
+              "name": "punctuation.definition.json.semanticscript",
+              "match": "[\\[\\]{}]"
+            }
+          ]
+        }
+      ]
+    },
     "declarationVerbs": {
       "patterns": [
         {
           "name": "keyword.declaration.semanticscript",
-          "match": "^(\\s*)(section|project|target|runtime|entry|module|mode|buildProject|modulePath|languageVersion|projectVersion|projectLicense|sourceRoot|registerModule|mainFile|mainOperation|testPattern|testRoot|dependencySource|dependencyFetch|dependencyCache|dependencyLock|dependencyIntegrity|targetRuntime|buildProfile|runtimeChecks|optLevel|persistLlvmIr|emitLlvmIr|llvmIrOutput|emitOptimizedLlvmIr|optimizedLlvmIrOutput|buildDir|buildRoot|buildFolderName|cpuBaseline|cpuTune|cpuFeature|cpuFeatureCheck|nativeOutput|nativeHttpHost|nativeHttpPort|formatterSetting|linterSetting|docsOutput|comptimeOperation|moduleFolder|modulePurpose|moduleOwns|moduleDoesNotOwn|moduleDependency|moduleWarning|moduleInvariant|moduleSecurity|moduleObservability|exportType|exportError|exportOperation|exportCapability|exportConstant|version|publisher|description|copyright|productName|internalName|originalFilename|trademark|comments|metadata|dependency|dependencyEffect|dependencyExports|dependencyFunction|dependencyFunctionInput|dependencyFunctionOutput|dependencyFunctionEffect|dependencyFunctionAsync|importModule|importOperation|importType|importError|importCapability|importConstant|type|typeParameter|typeInvariant|typeRepresentation|typeTrust|typeMemory|typeLayout|typeLiteralEncoding|typeLiteralTerminator|record|recordLayout|recordAlign|field|fieldDefault|fieldInvariant|enum|enumCase|error|errorCase|operation|webServer|serverHost|serverPort|route|routeTimeout|routeMiddleware|routeTimeoutOptOut|routeMiddlewareOptOut|storage|sharedState|domainLiteral|literal|listLiteral|htmlTemplate|jsonCodec|policy|errorPolicy|validator|codec|schema|unknownFields|resource|resourceKey|resourceValue|resourceKind|adapter|boundary|mapper|retryPolicy|timeoutBudget|capability|authority|mutex|shared|channel|listType|arrayType|sliceType|smallListType|mapType|interval|workerPool|work|const|var|testCovers)\\b"
+          "match": "^(\\s*)(section|project|target|runtime|entry|module|mode|languageMode|buildProject|modulePath|languageVersion|projectVersion|projectLicense|sourceRoot|registerModule|mainFile|mainOperation|testPattern|testRoot|dependencySource|dependencyFetch|dependencyCache|dependencyLock|dependencyIntegrity|targetRuntime|buildProfile|runtimeChecks|optLevel|persistLlvmIr|emitLlvmIr|llvmIrOutput|emitOptimizedLlvmIr|optimizedLlvmIrOutput|buildDir|buildRoot|buildFolderName|cpuBaseline|cpuTune|cpuFeature|cpuFeatureCheck|nativeOutput|nativeHttpHost|nativeHttpPort|formatterSetting|linterSetting|docsOutput|comptimeOperation|moduleFolder|modulePurpose|moduleOwns|moduleDoesNotOwn|moduleDependency|moduleWarning|moduleInvariant|moduleSecurity|moduleObservability|exportType|exportError|exportOperation|exportCapability|exportConstant|version|publisher|description|copyright|productName|internalName|originalFilename|trademark|comments|metadata|dependency|dependencyEffect|dependencyExports|dependencyFunction|dependencyFunctionInput|dependencyFunctionOutput|dependencyFunctionEffect|dependencyFunctionAsync|importModule|importOperation|importType|importError|importCapability|importConstant|type|typeParameter|typeInvariant|typeRepresentation|typeTrust|typeMemory|typeLayout|typeLiteralEncoding|typeLiteralTerminator|record|recordLayout|recordAlign|field|fieldDefault|fieldInvariant|enum|enumCase|error|errorCase|operation|webServer|serverHost|serverPort|route|routeTimeout|routeMiddleware|routeTimeoutOptOut|routeMiddlewareOptOut|storage|sharedState|domainLiteral|jsonBody|literal|listLiteral|htmlTemplate|jsonCodec|policy|errorPolicy|validator|codec|schema|unknownFields|resource|resourceKey|resourceValue|resourceKind|adapter|boundary|mapper|retryPolicy|timeoutBudget|capability|authority|mutex|shared|channel|listType|arrayType|sliceType|smallListType|mapType|interval|workerPool|work|const|var|testCovers)\\b"
         }
       ]
     },
@@ -161,7 +210,7 @@
       "patterns": [
         {
           "name": "keyword.control.semanticscript",
-          "match": "^(\\s*)(label|branch|branchIf|branchIfError|branchSelected|branchIfGroupError|branchIfChannelClosed|returnOk|returnError|returnValue)\\b"
+          "match": "^(\\s*)(label|branch|branchIf|branchIfError|branchSelected|branchIfGroupError|branchIfChannelClosed|returnOk|returnError|returnValue|returnVoid)\\b"
         }
       ]
     },
@@ -209,7 +258,7 @@
       "patterns": [
         {
           "name": "constant.language.schema-value.semanticscript",
-          "match": "\\b(?:true|false|yes|no|capturedOutputReplay|local|module|process|sharedState|immutable|mutable|read|write|log|sourceTape|runtimeBinding|recordConstructor|intrinsic|externalDependency|codecDecode|codecEncode|collectionOperation|success|error|decode|encode|github|http|as|dev|prod|auto|windowsGui|verticalStack|horizontalStack|grid|absolute|single|multiple|click|valueChanged|selectionChanged|enterPressed|keyPressed|focusGained|focusLost|closeRequested|resized|shown|hidden|reject|ignore|keep|none|maximumBytes|sha256|utf8|nullByte|validatedRuntimeValue|trustedStaticLiteral|trustedUtf8Literal|trustedExternalCNullTerminatedUtf8Source|trustedInternal|trustedSessionContext|trustedStaticAsset|rawPointerToValidatedCString|rawUtf8ToValidatedText|row|column|packed|heap|inPlace|boundsChecked|denseZeroIndexed|all|immutableUpdate|borrowedView|zeroBasedChecked|zeroBasedCheckedRange|contiguousUniqueAscending|arena\\.request|arena\\.process|arena\\.static|returnOk|returnError|reverseRegistration|logAndSuppress|protectedBy|ownedBy)\\b"
+          "match": "\\b(?:true|false|yes|no|capturedOutputReplay|strictExecutable|refinedSyntax|local|module|process|sharedState|immutable|mutable|read|write|log|sourceTape|runtimeBinding|recordConstructor|intrinsic|externalDependency|codecDecode|codecEncode|collectionOperation|success|error|decode|encode|github|http|as|dev|prod|auto|windowsGui|verticalStack|horizontalStack|grid|absolute|single|multiple|click|valueChanged|selectionChanged|enterPressed|keyPressed|focusGained|focusLost|closeRequested|resized|shown|hidden|reject|ignore|keep|none|maximumBytes|sha256|utf8|nullByte|validatedRuntimeValue|trustedStaticLiteral|trustedUtf8Literal|trustedExternalCNullTerminatedUtf8Source|trustedInternal|trustedSessionContext|trustedStaticAsset|rawPointerToValidatedCString|rawUtf8ToValidatedText|row|column|packed|heap|inPlace|boundsChecked|denseZeroIndexed|all|immutableUpdate|borrowedView|zeroBasedChecked|zeroBasedCheckedRange|contiguousUniqueAscending|arena\\.request|arena\\.process|arena\\.static|returnOk|returnError|continueMiddlewareControl|shortCircuitMiddlewareControl|readOnlySqliteOpenMode|readWriteSqliteOpenMode|readWriteCreateSqliteOpenMode|inMemorySqliteOpenMode|reverseRegistration|logAndSuppress|protectedBy|ownedBy)\\b"
         }
       ]
     },

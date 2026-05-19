@@ -134,10 +134,17 @@ branchIfError CALL LABEL
 returnOk VALUE
 returnError VALUE
 returnValue VALUE
+returnVoid
 ```
 
 `branchIf` jumps when the condition is true and falls through otherwise.
 Two-target branch syntax is legacy and should not be used.
+
+Use `returnVoid` for operations declared `output OP Void` or `output OP CVoid`.
+The user-operation ABI still lowers that path to the internal zero sentinel, but
+the source no longer has to carry a fake `CSignedInt32` value just to satisfy the
+ABI. `returnVoid` is rejected on non-Void outputs; non-Void operations should
+continue to use `returnValue`, `returnOk`, or `returnError` as appropriate.
 
 ## Ignoring Results
 
@@ -150,4 +157,3 @@ ignoreValue metricsFlushCall I64
 
 Use these only when the discard is a real part of the contract. Fallible calls
 should usually bind and branch on their error path instead.
-

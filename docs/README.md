@@ -65,6 +65,7 @@ matrix. The release-level boundary is:
 | [language/records-codecs-boundaries.md](language/records-codecs-boundaries.md) | Records, builders, JSON codecs, trust boundaries. |
 | [language/concurrency-time-cleanup.md](language/concurrency-time-cleanup.md) | Cleanup, retry, async, groups, channels, locks, worker pools. |
 | [language/native-http-api.md](language/native-http-api.md) | Planned native HTTP server API and route-handler ABI. |
+| [language/strict-syntax-research.md](language/strict-syntax-research.md) | Candidate stricter syntax and compile-blocking rules for recurring bug classes. |
 | [reference/call-targets.md](reference/call-targets.md) | Built-in call targets, domain methods, c.* calls. |
 | [reference/verb-index.md](reference/verb-index.md) | Verb families and schema index. |
 | [reference/release-hygiene.md](reference/release-hygiene.md) | Release repository-state, package-metadata, and mirror-file policy. |

@@ -7,7 +7,7 @@ const vscode = require('vscode');
 
 const declarationVerbs = new Set([
   'section',
-  'project', 'target', 'runtime', 'entry', 'module', 'mode', 'dependency', 'dependencyEffect',
+  'project', 'target', 'runtime', 'entry', 'module', 'mode', 'languageMode', 'dependency', 'dependencyEffect',
   'dependencyExports', 'dependencyFunction', 'dependencyFunctionInput',
   'dependencyFunctionOutput', 'dependencyFunctionEffect', 'dependencyFunctionAsync',
   'buildProject', 'modulePath', 'languageVersion', 'sourceRoot', 'registerModule',
@@ -32,7 +32,7 @@ const declarationVerbs = new Set([
   'enum', 'enumCase', 'error',
   'errorCase', 'operation', 'webServer', 'serverHost', 'serverPort', 'route',
   'routeTimeout', 'routeMiddleware', 'routeTimeoutOptOut', 'routeMiddlewareOptOut',
-  'storage', 'sharedState', 'domainLiteral',
+  'storage', 'sharedState', 'domainLiteral', 'jsonBody',
   'literal', 'listLiteral', 'htmlTemplate', 'jsonCodec', 'policy', 'errorPolicy',
   'validator', 'codec', 'schema', 'unknownFields', 'resource', 'resourceKey',
   'resourceValue', 'resourceKind', 'adapter', 'boundary', 'mapper', 'retryPolicy',
@@ -92,7 +92,7 @@ const actionVerbs = new Set([
 const controlVerbs = new Set([
   'label', 'branch', 'branchIf', 'branchIfError', 'branchSelected',
   'branchIfGroupError', 'branchIfChannelClosed', 'returnOk', 'returnError',
-  'returnValue',
+  'returnValue', 'returnVoid',
 ]);
 
 const roleSuffixPattern = /(Call|Error|Failed|Failure|Result|Option|Request|Response|Token|Timeout|Deadline|Defer|Group|Policy|Codec|Validator|Mapper|Adapter|Boundary|Resource|Capability|Authority|Channel|Mutex|Lock|Guard|State|Storage|Select|Record|Builder|Field|Enum|Variant|Template|Html|Document|Fragment|Class|Value|Counter|Count|Index|Length|Capacity|Allocator|Source|Target|Step|Accumulator|Divisor|Remainder|Span|Metric|Trace)$/;
@@ -239,6 +239,8 @@ const schemaValues = new Map([
   ['yes', 'Boolean schema value.'],
   ['no', 'Boolean schema value.'],
   ['capturedOutputReplay', 'Mode marker for programs that replay captured output.'],
+  ['strictExecutable', 'Language mode that closes unknown lowercase executable verbs.'],
+  ['refinedSyntax', 'Language mode for research/metadata files that keep permissive lowercase rows.'],
   ['local', 'Storage scope for operation-local storage.'],
   ['module', 'Storage scope for module-owned storage.'],
   ['process', 'Storage scope for process-shared state.'],
@@ -415,6 +417,7 @@ const verbHoverText = new Map([
   ['entry', 'Top-level declaration: entry MODE OPERATION.'],
   ['module', 'Top-level module declaration. Validated as a dotted namespace and recorded in compiler metadata.'],
   ['mode', 'Top-level mode declaration such as mode capturedOutputReplay.'],
+  ['languageMode', 'Top-level language mode declaration: languageMode strictExecutable or languageMode refinedSyntax.'],
   ['buildProject', 'Build tape declaration: buildProject PROJECT.'],
   ['modulePath', 'Build tape project path: modulePath PROJECT MODULE_PATH.'],
   ['languageVersion', 'Build tape language contract: languageVersion PROJECT "VERSION".'],
@@ -506,6 +509,7 @@ const verbHoverText = new Map([
   ['htmlTemplate', 'First-class HTML/SSX template declaration: htmlTemplate NAME. The body starts at htmlBody NAME.'],
   ['htmlArg', 'HTML template hydration input: htmlArg TEMPLATE ARG_NAME TYPE. Body holes must reference declared args as {htmlArg.ARG_NAME}.'],
   ['htmlBody', 'Starts the indentation-sensitive HTML/SSX body island for a template. The island ends at the next non-empty column-0 SemanticScript line.'],
+  ['jsonBody', 'Starts an indentation-sensitive JSON literal island bound to a preceding immutable storage binding with the same name.'],
   ['jsonCodec', 'Contract-heavy JSON codec declaration.'],
   ['codec', 'Contract-heavy codec declaration.'],
   ['schema', 'Codec schema attachment: schema CODEC_NAME RECORD_NAME.'],
@@ -599,6 +603,7 @@ const verbHoverText = new Map([
   ['returnOk', 'Return success value from Result operation.'],
   ['returnError', 'Return typed error value from Result operation.'],
   ['returnValue', 'Return plain value.'],
+  ['returnVoid', 'Return from a Void/CVoid operation without exposing the ABI zero sentinel.'],
 ]);
 
 const refinedVerbHoverText = new Map([
@@ -944,6 +949,9 @@ const isHtmlBodyContentLine = (lineText) => {
   return lineText.startsWith(' ') || lineText.startsWith('\t');
 };
 
+const isIndentedIslandContentLine = isHtmlBodyContentLine;
+const indentedIslandVerbs = new Set(['htmlBody', 'jsonBody']);
+
 const createDecorationOptions = (backgroundColor, overviewRulerColor) => {
   const options = {
     isWholeLine: true,
@@ -1046,17 +1054,17 @@ const updateSegmentDecorations = (editor) => {
     unknown: [],
   };
 
-  let insideHtmlBody = false;
+  let insideIndentedIsland = false;
 
   for (let lineIndex = 0; lineIndex < editor.document.lineCount; lineIndex += 1) {
     const line = editor.document.lineAt(lineIndex);
 
-    if (insideHtmlBody) {
-      if (isHtmlBodyContentLine(line.text)) {
+    if (insideIndentedIsland) {
+      if (isIndentedIslandContentLine(line.text)) {
         continue;
       }
 
-      insideHtmlBody = false;
+      insideIndentedIsland = false;
     }
 
     const kind = classifyLine(line.text);
@@ -1080,8 +1088,8 @@ const updateSegmentDecorations = (editor) => {
         ));
       }
 
-      if (verbText === 'htmlBody') {
-        insideHtmlBody = true;
+      if (indentedIslandVerbs.has(verbText)) {
+        insideIndentedIsland = true;
       }
     }
   }
@@ -1194,7 +1202,7 @@ const namedDeclarationVerbs = new Set([
   'project', 'operation', 'webServer', 'record', 'enum', 'error', 'codec',
   'jsonCodec', 'validator', 'mapper', 'adapter', 'boundary', 'policy',
   'errorPolicy', 'retryPolicy', 'timeoutBudget', 'resource', 'capability',
-  'mutex', 'shared', 'channel', 'section', 'domainLiteral', 'literal',
+  'mutex', 'shared', 'channel', 'section', 'domainLiteral', 'literal', 'jsonBody',
   'listLiteral', 'htmlTemplate', 'listType', 'arrayType', 'sliceType', 'smallListType',
   'mapType', 'collectionOperation', 'interval', 'workerPool', 'work',
   'buildProject', 'registerModule', 'modulePath', 'mainFile', 'mainOperation',
@@ -1238,9 +1246,19 @@ const ensureOperationMetadataEntry = (operations, name) => {
 const buildOperationMetadataIndex = (document) => {
   const operations = new Map();
   let currentSection = null;
+  let insideIndentedIsland = false;
 
   for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex += 1) {
     const lineText = document.lineAt(lineIndex).text;
+
+    if (insideIndentedIsland) {
+      if (isIndentedIslandContentLine(lineText)) {
+        continue;
+      }
+
+      insideIndentedIsland = false;
+    }
+
     const tokens = tokenizeLine(lineText);
 
     if (tokens.length === 0 || tokens[0].text.startsWith('#')) {
@@ -1273,6 +1291,10 @@ const buildOperationMetadataIndex = (document) => {
         line: lineIndex + 1,
         text: lineText.trim(),
       });
+    }
+
+    if (indentedIslandVerbs.has(verb)) {
+      insideIndentedIsland = true;
     }
   }
 
@@ -1328,6 +1350,7 @@ const buildDocumentSymbolIndex = (document) => {
   const calls = new Map();
   const lineOperations = new Map();
   let currentOperation = null;
+  let insideIndentedIsland = false;
 
   const declarationBase = (kind, tokens, lineIndex, extra = {}) => ({
     kind,
@@ -1340,6 +1363,16 @@ const buildDocumentSymbolIndex = (document) => {
 
   for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex += 1) {
     const lineText = document.lineAt(lineIndex).text;
+
+    if (insideIndentedIsland) {
+      if (isIndentedIslandContentLine(lineText)) {
+        lineOperations.set(lineIndex, currentOperation);
+        continue;
+      }
+
+      insideIndentedIsland = false;
+    }
+
     const tokens = tokenizeLine(lineText);
 
     if (tokens.length === 0 || tokens[0].text.startsWith('#')) {
@@ -1410,6 +1443,7 @@ const buildDocumentSymbolIndex = (document) => {
 
       case 'domainLiteral':
       case 'literal':
+      case 'jsonBody':
       case 'listLiteral':
         addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase(readableVerbName(verb).toLowerCase(), tokens, lineIndex, {
           name: tokenText(tokens, 1),
@@ -1628,6 +1662,10 @@ const buildDocumentSymbolIndex = (document) => {
       default:
         break;
     }
+
+    if (indentedIslandVerbs.has(verb)) {
+      insideIndentedIsland = true;
+    }
   }
 
   return {
@@ -1702,6 +1740,10 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
 
   if ((verb === 'htmlArg' || verb === 'htmlBody') && index === 1) {
     return 'semanticscriptDeclaredName';
+  }
+
+  if (verb === 'jsonBody' && index === 1) {
+    return 'semanticscriptConstName';
   }
 
   if (verb === 'htmlArg' && index === 2) {
@@ -2055,17 +2097,17 @@ const canSplitRoleSuffix = (tokenType) => roleSuffixBaseTokenTypes.has(tokenType
 
 const provideDocumentSemanticTokens = (document) => {
   const builder = new vscode.SemanticTokensBuilder(semanticLegend);
-  let insideHtmlBody = false;
+  let insideIndentedIsland = false;
 
   for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex += 1) {
     const lineText = document.lineAt(lineIndex).text;
 
-    if (insideHtmlBody) {
-      if (isHtmlBodyContentLine(lineText)) {
+    if (insideIndentedIsland) {
+      if (isIndentedIslandContentLine(lineText)) {
         continue;
       }
 
-      insideHtmlBody = false;
+      insideIndentedIsland = false;
     }
 
     const tokens = tokenizeLine(lineText);
@@ -2095,8 +2137,8 @@ const provideDocumentSemanticTokens = (document) => {
       }
     });
 
-    if (tokens[0] && tokens[0].text === 'htmlBody') {
-      insideHtmlBody = true;
+    if (tokens[0] && indentedIslandVerbs.has(tokens[0].text)) {
+      insideIndentedIsland = true;
     }
   }
 
@@ -2346,6 +2388,12 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
         'Indented following lines are parsed as markup until the next non-empty column-0 SemanticScript line.',
       ]);
 
+    case 'jsonBody':
+      return detailHover(`JSON body: ${tokenText(tokens, 1)}`, [
+        `Binds validated JSON text to immutable storage ${inlineCode(tokenText(tokens, 1))}.`,
+        'Indented following lines are parsed as strict JSON until the next non-empty column-0 SemanticScript line.',
+      ]);
+
     case 'operation':
       return detailHover(`Operation: ${tokenText(tokens, 1)}`, [
         `Starts the executable operation ${inlineCode(tokenText(tokens, 1))}.`,
@@ -2491,6 +2539,12 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
     case 'returnValue':
       return detailHover(`Return value: ${tokenText(tokens, 1)}`, [
         `Returns raw value ${inlineCode(tokenText(tokens, 1))}.`,
+      ]);
+
+    case 'returnVoid':
+      return detailHover('Return void', [
+        'Returns from an operation declared `output OP Void` or `output OP CVoid`.',
+        'Codegen lowers this to the internal zero sentinel, but the source stays semantically explicit.',
       ]);
 
     case 'makeError':
@@ -2803,6 +2857,12 @@ const tokenUseDescription = (tokens, tokenIndex, declaration) => {
       }
       break;
 
+    case 'jsonBody':
+      if (tokenIndex === 1) {
+        return `This token selects the immutable storage slot that receives the validated JSON literal.`;
+      }
+      break;
+
     case 'input':
       if (tokenIndex === 2) {
         return `This token declares input parameter ${inlineCode(text)} for ${inlineCode(tokenText(tokens, 1))}.`;
@@ -2932,6 +2992,12 @@ const tokenUseDescription = (tokens, tokenIndex, declaration) => {
     case 'returnValue':
       if (tokenIndex === 1) {
         return `This token is returned as the raw operation value.`;
+      }
+      break;
+
+    case 'returnVoid':
+      if (tokenIndex === 0) {
+        return `Explicit Void/CVoid return form.`;
       }
       break;
 
@@ -3295,6 +3361,7 @@ const documentSymbolKind = (verb) => {
     case 'authority':
       return vscode.SymbolKind.Key;
     case 'const':
+    case 'jsonBody':
       return vscode.SymbolKind.Constant;
     case 'var':
     case 'storage':
@@ -3344,6 +3411,10 @@ const symbolDetailText = (verb, tokens) => {
     return tokenText(tokens, 2);
   }
 
+  if (verb === 'jsonBody') {
+    return 'JsonText island';
+  }
+
   return tokenTailText(tokens, 2);
 };
 
@@ -3365,12 +3436,22 @@ const provideDocumentSymbols = (document) => {
     'operation', 'input', 'webServer', 'route', 'record', 'field',
     'enum', 'enumCase', 'error', 'errorCase', 'type', 'capability',
     'authority', 'timeoutBudget', 'storage', 'sharedState', 'const',
-    'var', 'call', 'label', 'jsonCodec', 'policy', 'retryPolicy',
+    'var', 'call', 'label', 'jsonCodec', 'jsonBody', 'policy', 'retryPolicy',
     'workerPool', 'work', 'interval', 'htmlTemplate', 'htmlArg',
   ]);
+  let insideIndentedIsland = false;
 
   for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex += 1) {
     const line = document.lineAt(lineIndex);
+
+    if (insideIndentedIsland) {
+      if (isIndentedIslandContentLine(line.text)) {
+        continue;
+      }
+
+      insideIndentedIsland = false;
+    }
+
     const tokens = tokenizeLine(line.text);
 
     if (tokens.length === 0 || tokens[0].text.startsWith('#')) {
@@ -3406,6 +3487,10 @@ const provideDocumentSymbols = (document) => {
       line.range,
       selectionRange
     ));
+
+    if (indentedIslandVerbs.has(verb)) {
+      insideIndentedIsland = true;
+    }
   }
 
   return symbols;

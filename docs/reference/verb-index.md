@@ -162,6 +162,40 @@ trustBoundaryValidator trustBoundarySource
 Primitive JSON generated targets have some lowering support. Record-level codec
 contracts are primarily metadata today.
 
+## JSON
+
+Import `standard.json` with the canonical `json` alias before using the public
+JSON surface:
+
+```text
+importModule json standard.json
+```
+
+Implemented builder/finder calls remain available while the document CRUD API
+lands. Rows marked `proposed` are the public contract shape but do not have
+current parser/runtime lowering; rows marked `partial` have some parser or
+primitive-alias behavior but not the full intended surface. See `SYNTAX.md` for
+the row-level implementation status before relying on them in executable code.
+
+| Verb | Schema | Status |
+|---|---|---|
+| `json.createBuilder` | `call NAME json.createBuilder` with `capacityBytes` | lowered |
+| `json.destroyBuilder` | `call NAME json.destroyBuilder` with `builder` | lowered |
+| `json.objectOpen`, `json.objectClose`, `json.arrayOpen`, `json.arrayClose` | `call NAME json.<target>` with `builder` | lowered |
+| `json.fieldInt64`, `json.fieldDouble`, `json.fieldBool`, `json.fieldString`, `json.fieldNull` | `call NAME json.field*` with `builder`, `fieldName`, and value args where needed | lowered |
+| `json.elementInt64`, `json.elementDouble`, `json.elementBool`, `json.elementString`, `json.elementNull` | `call NAME json.element*` with `builder` and value args where needed | lowered |
+| `json.finishBuilder`, `json.builderLength` | `call NAME json.<target>` with `builder` | lowered |
+| `json.hasField`, `json.findString`, `json.findInt64`, `json.findDouble`, `json.findBool` | `call NAME json.<target>` with `jsonText`, `fieldName`, and scratch/default args where needed | lowered |
+| `json.createDocument`, `json.createEmptyDocument`, `json.destroyDocument` | Document lifecycle over `JsonDocument` handles and caller-supplied capacity | proposed |
+| `json.serializeDocument`, `json.documentLength`, `json.documentRoot` | Document serialization, size query, and root cursor access | proposed |
+| `json.objectFieldAt`, `json.arrayElementAt`, `json.cursorParent`, `json.cursorAtPath` | Navigation returning `Result JsonCursor JsonAccessError` | proposed |
+| `json.cursorKind`, `json.cursorIsNull`, `json.cursorInt64`, `json.cursorDouble`, `json.cursorBool`, `json.cursorString`, `json.cursorArrayLength`, `json.cursorObjectFieldCount`, `json.cursorObjectFieldNameAt`, `json.cursorObjectFieldValueAt` | Cursor readers over one `JsonDocument` and `JsonCursor` | proposed |
+| `json.setObjectFieldString`, `json.setObjectFieldInt64`, `json.setObjectFieldDouble`, `json.setObjectFieldBool`, `json.setObjectFieldNull`, `json.setObjectFieldObject`, `json.setObjectFieldArray`, `json.setObjectFieldJsonText` | Object field mutators with `JsonAccessError` status on failure | proposed |
+| `json.appendArrayElement*`, `json.insertArrayElement*`, `json.replaceArrayElement*` | Array mutators for scalar, container, and raw JSON text values | proposed |
+| `json.removeObjectField`, `json.removeArrayElementAt`, `json.clearObject`, `json.clearArray` | Delete and clear calls that preserve the owning document handle | proposed |
+| `json.stringify.<TypeName>`, `json.parse.<TypeName>` | Typed high-level JSON entry points for primitives and generated record codecs | partial |
+| `jsonBody` | `jsonBody NAME` followed by an indented JSON island bound to matching storage | partial |
+
 ## HTML Templates
 
 Standard-library modules are imported through the `standard.*` namespace. The
@@ -205,6 +239,11 @@ standard-library import is:
 ```text
 importModule gui standard.gui
 ```
+
+The legacy `importModule standard.gui as gui` shape remains accepted during the
+compatibility window, but new GUI code should use the alias-first form above.
+Top-level row-centric GUI declarations such as `guiApplication`, `guiWindow`,
+and `guiButton` are historical design notes, not committed executable verbs.
 
 | Verb | Schema | Status |
 |---|---|---|

@@ -112,6 +112,9 @@ The compiler role should stay narrow: select the Windows GUI bridge, link the
 native GUI runtime, and lower explicit `gui.*` calls from `standard.gui`.
 Application shape, controls, events, accessibility, effects, and capabilities
 belong in `standard.gui`, the GUI runtime, and lint/tooling where possible.
+Do not use top-level GUI declaration rows such as `guiApplication`,
+`guiWindow`, or `guiButton` in executable source; the committed shape is
+ordinary operation/call/arg/run syntax.
 
 A renderable Windows GUI source imports `standard.gui`, creates an application,
 creates a window and controls, attaches controls to the window, marks the main
@@ -164,6 +167,9 @@ run runApp
 bind status ExitCode runApp
 returnValue status
 ```
+
+`importModule standard.gui as gui` remains accepted for compatibility, but new
+GUI source should use the alias-first `importModule gui standard.gui` form.
 
 Do not write `entry windowsGui OPERATION`; that form is intentionally outside
 the committed surface. GUI event handlers are ordinary operations whose

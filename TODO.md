@@ -127,6 +127,429 @@ review. A task is only done when the linked command or artifact is clean.
   - [x] Refined syntax support.
   - [x] Web/HTTP runtime support.
 
+## P1 - Strict Syntax Hardening
+
+This section turns the strict-syntax research in
+`docs/language/strict-syntax-research.md` into implementation-sized tasks. The
+goal is to make recurring bug classes fail in the compiler itself, without
+requiring a separate linter invocation.
+
+### Strict Executable Mode
+
+- [ ] Decide the source row for strict mode.
+  - [x] Prefer `languageMode strictExecutable` unless a better existing
+        versioning row should own the setting.
+  - [x] Decide whether strict mode belongs in source files, `build.sem`, or
+        both.
+  - [ ] Decide whether strict mode is inherited by imported modules.
+  - [ ] Decide whether `languageVersion PROJECT "1.0"` implies strict mode in
+        the future.
+  - [x] Document the initial rollout as opt-in, not default.
+- [x] Add parser support for `languageMode NAME`.
+  - [x] Store language modes on `Program`.
+  - [x] Reject duplicate incompatible language modes.
+  - [x] Accept `strictExecutable`.
+  - [x] Accept `refinedSyntax` for research files that intentionally use
+        metadata-only rows.
+  - [x] Reject unknown language-mode values with a parse diagnostic.
+  - [x] Add syntax inventory rows for `languageMode strictExecutable`.
+  - [x] Add syntax inventory rows for `languageMode refinedSyntax`.
+- [ ] Close the executable grammar when strict mode is active.
+  - [x] Reject unknown lowercase top-level verbs in strict mode.
+  - [x] Reject unknown lowercase operation-body verbs in strict mode.
+  - [ ] Keep typed comments and group anchors parseable in strict mode.
+  - [ ] Keep explicitly documented metadata-only rows parseable in strict
+        mode only when they are in the allowed strict metadata set.
+  - [x] Keep permissive parsing for non-strict refined examples.
+  - [x] Add a clear diagnostic that tells users to add
+        `languageMode refinedSyntax` only for research/metadata files.
+- [x] Add strict-mode compiler tests.
+  - [x] Negative test: misspelled lowercase top-level verb fails without
+        `--lint`.
+  - [x] Negative test: misspelled lowercase operation-body verb fails without
+        `--lint`.
+  - [x] Positive test: documented strict metadata row parses.
+  - [x] Positive test: `languageMode refinedSyntax` preserves permissive
+        metadata parsing.
+
+### Shared Contract Tables
+
+- [ ] Extract built-in call target signatures into a shared module.
+  - [ ] Include math targets.
+  - [ ] Include pointer targets.
+  - [ ] Include C/libc targets or references to `libc_registry.py`.
+  - [ ] Include native HTTP targets.
+  - [ ] Include native GUI targets.
+  - [ ] Include SQLite targets.
+  - [ ] Include JSON runtime targets.
+  - [ ] Make both `semsc.py` and `semlint.py` consume the same source of
+        truth where practical.
+- [ ] Add a shared fallibility table.
+  - [ ] Mark heap allocation calls as fallible.
+  - [ ] Mark file-open calls as fallible.
+  - [ ] Mark native HTTP response writers as fallible.
+  - [ ] Mark SQLite open/exec/prepare/bind/step/reset/finalize/close calls as
+        fallible.
+  - [ ] Mark checked arithmetic calls as fallible.
+  - [ ] Mark infallible math calls as infallible.
+  - [ ] Mark explicit status-return calls whose failures are status values,
+        not `Result`, so they can require `bind` or `ignoreValue`.
+- [ ] Add a shared ownership table.
+  - [ ] Mark `c.malloc`, `c.calloc`, and successful `c.realloc` outputs as
+        owned heap buffers.
+  - [ ] Mark `sqlite.openDatabase` success output as an owned SQLite database.
+  - [ ] Mark `sqlite.prepareStatement` success output as an owned SQLite
+        statement.
+  - [ ] Mark cleanup targets for each owned resource.
+  - [ ] Record whether cleanup is allowed by explicit call, `defer`, or both.
+- [ ] Add drift tests for shared tables.
+  - [ ] Verify linter and compiler agree on built-in signatures.
+  - [ ] Verify linter and compiler agree on fallible targets.
+  - [ ] Verify linter and compiler agree on owned-resource producers.
+
+### Checked Fallible Calls
+
+- [ ] Design the checked call syntax.
+  - [ ] Confirm `runChecked CALL ok VALUE TYPE error ERROR TYPE else LABEL`
+        is the preferred shape.
+  - [ ] Decide whether `runChecked` should create the ok/error binds itself.
+  - [ ] Decide whether `runChecked` replaces or coexists with `run`,
+        `bindOk`, `bindError`, and `branchIfError`.
+  - [ ] Decide whether `runChecked` may target calls with no success value.
+  - [ ] Decide whether `runChecked` may target status-return calls.
+  - [ ] Decide whether `ignoreOk` is still legal for checked calls.
+- [x] Add parser support for `runChecked`.
+  - [x] Add `runChecked` to body verb tables.
+  - [x] Validate minimum arity.
+  - [x] Validate keyword positions such as `ok`, `error`, and `else`.
+  - [x] Preserve source line information for generated diagnostics.
+- [ ] Add compiler validation for fallible targets in strict mode.
+  - [ ] Reject plain `run` for known fallible targets in strict mode.
+  - [x] Reject plain `run` for Result-shaped SQLite prepare in strict mode.
+  - [ ] Require `runChecked` or an explicitly accepted legacy checked pattern
+        for every known fallible target.
+  - [x] Accept the legacy checked pattern for Result-shaped fallible calls.
+  - [ ] Reject unchecked explicit-disposition targets such as heap allocation
+        and native HTTP response writers.
+  - [ ] Reject `bindError` without a corresponding branch in strict mode.
+  - [ ] Reject `branchIfError` on targets that the shared table marks
+        infallible.
+  - [ ] Reject fallible calls whose success value is used before the error
+        branch is established.
+  - [ ] Ensure diagnostics point at the `run` line and the original `call`
+        line.
+- [x] Lower `runChecked`.
+  - [x] Emit the same call lowering as `run`.
+  - [x] Bind the success value on the fallthrough path.
+  - [x] Bind the error value on the error path.
+  - [x] Emit the branch to the declared failure label.
+  - [x] Preserve existing `defer` behavior on both paths.
+- [ ] Migrate app examples after the syntax exists.
+  - [ ] Convert `app/todo-web-pro` heap allocations to `runChecked`.
+  - [ ] Convert `app/todo-web-pro` SQLite bootstrap calls to `runChecked`.
+  - [ ] Convert native HTTP response writes in sample apps to `runChecked`
+        where appropriate.
+  - [ ] Keep legacy examples only where they deliberately document old syntax.
+- [ ] Add compiler tests for checked calls.
+  - [x] Negative test: `c.malloc` with plain `run` fails in strict mode.
+  - [x] Negative test: SQLite prepare with plain `run` fails in strict mode.
+  - [ ] Negative test: HTTP response write with ignored status fails in strict
+        mode.
+  - [x] Positive test: `runChecked` heap allocation compiles.
+  - [ ] Positive test: `runChecked` SQLite prepare compiles.
+  - [ ] Positive test: `runChecked` HTTP response write compiles.
+
+### Owned Resources And Cleanup
+
+- [ ] Design owned binding syntax.
+  - [ ] Confirm `bindOwned VALUE TYPE CALL cleanup TARGET` for infallible
+        owned producers.
+  - [ ] Confirm `bindOkOwned VALUE TYPE CALL cleanup TARGET` for fallible
+        owned producers.
+  - [ ] Decide whether cleanup args are implicit from the owned value or
+        explicitly listed.
+  - [ ] Decide how ownership transfer is represented.
+  - [ ] Decide whether `returnOwned` or `transferOwned` is needed.
+  - [ ] Decide how owned values interact with `defer`.
+- [ ] Add parser support for owned binding rows.
+  - [ ] Add `bindOwned`.
+  - [ ] Add `bindOkOwned`.
+  - [ ] Validate `cleanup TARGET` arity.
+  - [ ] Validate that the call target is in the ownership table.
+  - [ ] Validate that the cleanup target matches the owned resource kind.
+- [x] Add conservative compiler ownership validation.
+  - [x] Reject returning from an operation while an owned value is live.
+  - [x] Reject branching to a label that can return while an owned value is
+        live and unreleased.
+  - [x] Treat a matching explicit cleanup call as release.
+  - [x] Treat a matching lowered `defer` as release where the backend actually
+        emits it on that path.
+  - [ ] Reject cleanup calls that consume a value after ownership transfer.
+  - [x] Reject double cleanup of the same owned value in strict mode.
+- [ ] Add SQLite ownership coverage.
+  - [x] Model `sqlite.openDatabase` as producing owned `SqliteDatabase`.
+  - [x] Model `sqlite.closeDatabase` as releasing `SqliteDatabase`.
+  - [x] Model `sqlite.prepareStatement` as producing owned `SqliteStatement`.
+  - [x] Model `sqlite.finalizeStatement` as releasing `SqliteStatement`.
+  - [x] Check schema/bootstrap failure paths after database acquisition.
+  - [x] Check statement failure paths after prepare succeeds.
+- [ ] Add C heap ownership coverage.
+  - [x] Model `c.malloc` as producing owned heap memory.
+  - [x] Model `c.calloc` as producing owned heap memory.
+  - [x] Model successful `c.realloc` as producing owned heap memory.
+  - [x] Model `c.free` as releasing heap memory.
+  - [x] Check return paths after heap acquisition.
+  - [x] Check failure paths between heap acquisition and cleanup.
+- [ ] Add ownership tests.
+  - [x] Negative test: `sqlite.openDatabase` followed by schema failure
+        without close fails in strict mode.
+  - [x] Negative test: `sqlite.prepareStatement` without finalize fails in
+        strict mode.
+  - [x] Negative test: `c.malloc` without `c.free` fails in strict mode.
+  - [x] Negative test: double `c.free` fails in strict mode.
+  - [x] Positive test: explicit cleanup label compiles.
+  - [x] Positive test: lowered `defer` cleanup compiles when supported.
+
+### Nullable And Non-Null Values
+
+- [ ] Add nullable ABI aliases.
+  - [ ] Add `NullableCNullTerminatedByteString`.
+  - [ ] Add `NullableCOpaqueMemoryAddress`.
+  - [ ] Decide whether nullable aliases are first-class type constructors or
+        named aliases only.
+  - [ ] Document which built-in call targets can return nullable values.
+- [ ] Update native HTTP request-reader contracts.
+  - [ ] Mark `http.requestHeader` as returning nullable text.
+  - [ ] Mark `http.requestQueryParam` as returning nullable text.
+  - [ ] Mark `http.requestBodyText` as nullable if absent body remains a
+        possible runtime result.
+  - [ ] Mark multipart part text readers as nullable.
+  - [ ] Mark multipart part bytes readers as nullable.
+  - [ ] Keep `http.requestMethod` and `http.requestPath` non-null.
+- [ ] Add non-null refinement syntax.
+  - [ ] Add `requireNonNull OUT TYPE INPUT else LABEL`.
+  - [ ] Decide whether the syntax should include an error binding.
+  - [ ] Decide whether `requireNonNull` is allowed for all nullable pointer
+        types or only text/body types.
+  - [ ] Lower `requireNonNull` to `pointer.isNull` plus branch.
+  - [ ] Bind the non-null value only on the success path.
+- [ ] Enforce non-null response writer inputs.
+  - [ ] Require `http.responseText` body to be non-null text.
+  - [ ] Require `http.responseSseEvent` event and data to be non-null text.
+  - [ ] Require `http.responseBytes` body to be non-null bytes when length is
+        non-zero.
+  - [ ] Reject direct nullable request-reader outputs passed to response
+        writers.
+  - [ ] Reject wrappers that erase nullable input without refinement.
+- [ ] Add nullable tests.
+  - [ ] Negative test: nullable request body passed directly to
+        `http.responseText` fails.
+  - [ ] Negative test: nullable header passed directly to `http.responseText`
+        fails.
+  - [ ] Positive test: `requireNonNull` then response write compiles.
+  - [ ] Positive test: missing nullable value branches to explicit 400/404
+        response path.
+
+### Response Forwarding Contracts
+
+- [ ] Decide final forwarding syntax.
+  - [ ] Consider extending `input OP NAME TYPE forwardTo TARGET.ARG`.
+  - [ ] Consider adding `forwardInput OP NAME to TARGET.ARG`.
+  - [ ] Decide whether existing `responseBodyForwarder OP NAME` remains as a
+        compatibility alias.
+  - [ ] Decide whether forwarding contracts are required only in strict mode
+        or always for response wrappers.
+- [ ] Add parser support for the final forwarding contract.
+  - [ ] Validate that the owning operation exists.
+  - [ ] Validate that the input exists.
+  - [ ] Validate that the target call arg is a known response-body slot.
+  - [ ] Store forwarding facts on the operation contract.
+- [ ] Add compiler validation for response wrappers.
+  - [ ] Detect operations that pass an input directly to `http.responseText`
+        body.
+  - [ ] Detect operations that pass an input directly to `http.responseBytes`
+        body.
+  - [ ] Detect operations that pass an input directly to
+        `http.responseSseEvent` event or data.
+  - [ ] Reject missing forwarding contracts in strict mode.
+  - [ ] Propagate nullable-body checks through forwarding contracts.
+  - [ ] Propagate trust-boundary checks through forwarding contracts where
+        available.
+- [ ] Add forwarding tests.
+  - [ ] Negative test: wrapper forwards response body without contract.
+  - [ ] Negative test: wrapper declares wrong forwarded input.
+  - [ ] Positive test: wrapper declares forwarding contract and compiles.
+  - [ ] Positive test: transitive nullable body still requires
+        `requireNonNull`.
+
+### Capacity-Bounded Mutations
+
+- [ ] Replace ambiguous row-count mutation contracts.
+  - [ ] Identify all fixed-capacity row/list mutators in apps and stdlib.
+  - [ ] Decide whether they return `Result RowCount RowCapacityError`.
+  - [ ] Decide whether they return a closed `RowMutationStatus` enum plus
+        output row count.
+  - [ ] Decide whether unchanged row count is ever a valid success result.
+  - [ ] Update syntax docs for capacity-bounded mutation contracts.
+- [ ] Add compiler checks for strict capacity mutators.
+  - [ ] Reject raw row-count outputs from operations marked as
+        capacity-bounded mutators in strict mode.
+  - [ ] Require call sites to branch on `Result` error or status enum before
+        cursor movement.
+  - [ ] Require dirty-state mutation only on the applied branch.
+  - [ ] Require cursor movement only on the applied branch.
+- [ ] Migrate `app/Kilo_port`.
+  - [ ] Convert `insertEmptyRowAt` to the selected strict result shape.
+  - [ ] Convert `splitRowAt` to the selected strict result shape.
+  - [ ] Update caller branches to use the new result/status.
+  - [ ] Keep the existing linter rule as a migration warning for non-strict
+        code.
+- [ ] Add capacity-mutation tests.
+  - [ ] Negative test: unchecked raw row count fails in strict mode.
+  - [ ] Negative test: cursor moves before capacity branch fails.
+  - [ ] Negative test: dirty flag set before capacity branch fails.
+  - [ ] Positive test: full-buffer branch returns without cursor movement.
+  - [ ] Positive test: applied branch updates cursor and dirty state.
+
+### GUI Event Mutation Boundaries
+
+- [ ] Define strict GUI effect-conflict rules.
+  - [ ] Treat `read gui.control.listBox.selection` plus
+        `write gui.control.listBox.items` as conflicting in one event handler.
+  - [ ] Decide whether the conflict applies to all list boxes or only the same
+        list box when handle identity can be tracked.
+  - [ ] Decide whether setup/build operations are exempt.
+  - [ ] Decide whether a specific opt-in mode such as
+        `operationMode reconcileListItems` is allowed.
+- [ ] Add compiler validation for GUI handlers.
+  - [ ] Identify operations registered via `gui.controlOnEvent`.
+  - [ ] Read declared effects on those handler operations.
+  - [ ] Reject conflicting selection-read/list-item-write effects in strict
+        mode.
+  - [ ] Reject direct `gui.listBoxSelectedIndex` and
+        `gui.listBoxAppendItem` calls in one handler when effects are missing
+        or insufficient.
+  - [ ] Preserve the linter rule for non-strict code.
+- [ ] Add GUI boundary tests.
+  - [ ] Negative test: complete-selected handler also appends list item.
+  - [ ] Negative test: handler omits effects but calls both targets.
+  - [ ] Positive test: setup handler appends items without selection read.
+  - [ ] Positive test: selection handler updates status text only.
+  - [ ] Positive test: explicit reconciliation mode compiles if the mode is
+        accepted.
+
+### Explicit ABI Conversions
+
+- [ ] Define strict conversion policy.
+  - [ ] Require explicit numeric conversions before width changes in strict
+        mode.
+  - [ ] Require explicit pointer conversions before pointer/int crossings in
+        strict mode.
+  - [ ] Decide which existing ABI coercions remain allowed for opaque runtime
+        handles.
+  - [ ] Decide whether return-position coercions are rejected or only warned
+        during migration.
+- [ ] Remove implicit conversions in strict mode.
+  - [ ] Reject `CSignedInt32` passed to `math.addI64`.
+  - [ ] Reject `CSignedInt32` passed to C varargs expecting a 64-bit format
+        unless explicitly widened.
+  - [ ] Reject GUI i64 values passed to i32 GUI args unless explicitly
+        narrowed.
+  - [ ] Reject pointer values passed through integer slots without explicit
+        conversion.
+  - [ ] Reject integer values passed to pointer args except documented null
+        constants.
+- [ ] Add conversion helper targets where missing.
+  - [ ] Ensure signed i32 to signed i64 conversion is available.
+  - [ ] Ensure signed i64 to signed i32 conversion is available.
+  - [ ] Decide whether unsigned conversions need separate targets.
+  - [ ] Decide whether pointer-to-int and int-to-pointer conversions should be
+        named language operations or forbidden outside runtime code.
+- [ ] Add explicit conversion tests.
+  - [ ] Negative test: `snprintf` byte count added to i64 cursor without
+        widening fails.
+  - [ ] Positive test: widened `snprintf` byte count compiles.
+  - [ ] Negative test: GUI i64 dimension passed to i32 arg fails in strict
+        mode.
+  - [ ] Positive test: explicit narrowing compiles when allowed.
+  - [ ] Negative test: pointer/int crossing fails without explicit conversion.
+
+### Web Route And Middleware Schemas
+
+- [ ] Move route method validation into the compiler.
+  - [x] Reject unsupported route methods without requiring `semlint`.
+  - [x] Keep the allowed method set in one shared table.
+  - [x] Include `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, and
+        `OPTIONS`.
+  - [ ] Decide whether lowercase source methods normalize or fail.
+  - [x] Add diagnostics that point to the `route` row.
+- [ ] Move middleware ABI validation into the compiler.
+  - [x] Require middleware output `MiddlewareControl`.
+  - [x] Reject bare `CSignedInt32` middleware output in strict mode.
+  - [x] Require middleware handler input names and types to match the native
+        ABI.
+  - [ ] Validate short-circuit response expectations where possible.
+- [ ] Move route handler naming/type validation earlier.
+  - [x] Require route handler input names `request` and `response` in strict
+        mode.
+  - [x] Require route handler input types `HttpRequest` and `HttpResponse`.
+  - [ ] Require route handler output `CSignedInt32` or the future strict HTTP
+        result type if introduced.
+  - [ ] Point diagnostics to both the `route` row and handler operation
+        header.
+- [ ] Enforce route coverage contracts.
+  - [ ] Require timeout coverage for each route unless an opt-out row exists.
+  - [ ] Require middleware coverage for each route unless an opt-out row
+        exists.
+  - [ ] Reject malformed opt-out rows in strict mode.
+  - [ ] Decide whether coverage checks are target-specific to webserver builds
+        or always active when `webServer` rows exist.
+- [ ] Add web schema tests.
+  - [x] Negative test: invalid method fails without `--lint`.
+  - [x] Negative test: middleware returns bare `CSignedInt32`.
+  - [x] Negative test: route handler has wrong input names.
+  - [ ] Negative test: route missing timeout without opt-out.
+  - [x] Positive test: valid middleware and handler shape compiles.
+  - [ ] Positive test: explicit timeout/middleware opt-outs compile.
+
+### Documentation And Tooling Follow-through
+
+- [ ] Update language docs after each strict syntax change.
+  - [x] Update `SYNTAX.md`.
+  - [ ] Update `docs/language/lexical-model.md`.
+  - [x] Update `docs/language/operations-dataflow.md`.
+  - [ ] Update `docs/language/errors-effects-capabilities.md`.
+  - [ ] Update `docs/language/memory-state.md`.
+  - [x] Update `docs/language/native-http-api.md`.
+  - [x] Update `docs/optimization-guide.md`.
+- [x] Update toolchain docs.
+  - [x] Document strict mode in `docs/toolchain/compiler.md`.
+  - [x] Document which linter rules graduated to compiler errors.
+  - [x] Document migration commands and expected diagnostics.
+  - [x] Update agent workflow docs so agents run compiler negative tests, not
+        only semlint.
+- [ ] Update linter behavior after compiler hardening.
+  - [ ] Keep linter rules for non-strict source.
+  - [ ] Avoid duplicate diagnostics when the compiler already blocks the same
+        strict-mode source.
+  - [ ] Add fix candidates that migrate legacy patterns to strict syntax.
+  - [ ] Keep aggressive targeted rules for app review and editor feedback.
+- [ ] Update VS Code tooling.
+  - [x] Add highlighting for `languageMode`.
+  - [ ] Add highlighting for `runChecked`.
+  - [ ] Add highlighting for `bindOwned` and `bindOkOwned`.
+  - [ ] Add highlighting for `requireNonNull`.
+  - [ ] Add highlighting for the final response-forwarding syntax.
+  - [ ] Add hover docs for each new strict syntax row.
+- [ ] Add migration coverage.
+  - [ ] Add strict-mode parse/build coverage for at least one console app.
+  - [ ] Add strict-mode parse/build coverage for one webserver app.
+  - [ ] Add strict-mode parse/build coverage for one GUI app if GUI remains in
+        scope.
+  - [ ] Add strict-mode parse/build coverage for one SQLite-using app.
+  - [ ] Add a non-strict compatibility test so existing refined examples still
+        parse.
+
 ## P1 - Declarative Windows GUI Target
 
 This section tracks the declarative Windows desktop GUI surface. The design
@@ -213,28 +636,35 @@ surface is now `entry console main` plus `standard.gui` function calls.
 
 ### Syntax Naming And Shape
 
-- [ ] Use `guiApplication APP`, not bare `application APP`, to avoid future
+Resolution: the committed executable GUI surface is `entry console main` plus
+`standard.gui` function targets. The row-centric names below are reserved
+historical design notes only; if top-level GUI declaration rows are revived,
+they must keep this naming shape. `importModule standard.gui as gui` remains
+accepted during the compatibility window, but `importModule gui standard.gui`
+is the preferred source shape.
+
+- [x] Use `guiApplication APP`, not bare `application APP`, to avoid future
       collisions with web, mobile, package, or process concepts.
-- [ ] Use `guiWindow WINDOW`, not bare `window WINDOW`, so grep results are
+- [x] Use `guiWindow WINDOW`, not bare `window WINDOW`, so grep results are
       scoped to the GUI surface.
-- [ ] Use per-kind control declarators such as `guiButton CONTROL` and
+- [x] Use per-kind control declarators such as `guiButton CONTROL` and
       `guiTextBox CONTROL`, not `guiControl CONTROL KIND`.
-- [ ] Do not use `label CONTROL`; `label NAME` already owns control-flow
+- [x] Do not use `label CONTROL`; `label NAME` already owns control-flow
       labels. Use `guiTextLabel CONTROL`.
-- [ ] Keep every GUI verb lower camelCase.
-- [ ] Keep every GUI symbol value lower camelCase.
-- [ ] Keep every GUI opaque type PascalCase with a `Gui` prefix.
-- [ ] Keep all runtime call targets under the `gui.*` namespace.
-- [ ] Add `standard.gui` as the canonical import module for GUI contracts.
-- [ ] Reserve `importModule gui standard.gui` as the preferred GUI import
+- [x] Keep every GUI verb lower camelCase.
+- [x] Keep every GUI symbol value lower camelCase.
+- [x] Keep every GUI opaque type PascalCase with a `Gui` prefix.
+- [x] Keep all runtime call targets under the `gui.*` namespace.
+- [x] Add `standard.gui` as the canonical import module for GUI contracts.
+- [x] Reserve `importModule gui standard.gui` as the preferred GUI import
       shape.
-- [ ] Decide whether legacy `importModule standard.gui as gui` remains accepted
+- [x] Decide whether legacy `importModule standard.gui as gui` remains accepted
       during the compatibility window.
-- [ ] Add all committed GUI rows to `SYNTAX.md` with `Partial` status until
+- [x] Add all committed GUI rows to `SYNTAX.md` with `Partial` status until
       parser, validation, codegen, and runtime are complete.
-- [ ] Add GUI verbs to `docs/reference/verb-index.md`.
-- [ ] Add GUI target notes to `docs/language/program-structure.md`.
-- [ ] Add GUI build-tape notes to `docs/language/project-layout-build-sem.md`.
+- [x] Add GUI verbs to `docs/reference/verb-index.md`.
+- [x] Add GUI target notes to `docs/language/program-structure.md`.
+- [x] Add GUI build-tape notes to `docs/language/project-layout-build-sem.md`.
 
 ### Application Rows
 
@@ -800,11 +1230,13 @@ product".
 
 ### Data, Codec, And Collection Runtime
 
-- [ ] Implement real JSON codec runtime for records.
-  - [ ] Lower `json.encode.RecordTypeName`.
-  - [ ] Lower `json.decode.RecordTypeName`.
-  - [ ] Enforce required fields, unknown-field policy, and limits.
-  - [ ] Add tests for valid JSON, malformed JSON, missing fields, and escaping.
+- [ ] (superseded) Implement real JSON codec runtime for records.
+  - All JSON record-codec, encode/decode, and runtime work — including the
+    `json.encode.RecordTypeName` / `json.decode.RecordTypeName` lowerings,
+    required-field/unknown-field/limit enforcement, and the malformed/missing/
+    escaping test matrix — is now owned end-to-end by the
+    `### Native JSON CRUD API And jsonBody Literal` section below. Do not add
+    new JSON-handling bullets here; extend that section instead.
 - [x] Implement generic `codec` runtime or keep it as explicit metadata-only
       syntax for 1.0.
 - [ ] Implement typed collection runtime for `TaskList.append`, `TaskMap.get`,
@@ -816,6 +1248,804 @@ product".
       calls with diagnostics when a source claims runtime behavior.
   - [x] Add semlint diagnostics for record JSON codec, generic codec, and
         typed collection runtime fallbacks.
+
+### Native JSON CRUD API And jsonBody Literal
+
+This section turns the JSON refinement design into implementation-sized tasks.
+The goal is a native CRUD surface over a mutable parsed JSON tree, a column-0
+`jsonBody NAME` indented-island literal that lowers to a compile-time-validated
+constant, and typed `json.stringify.<TypeName>` / `json.parse.<TypeName>` entry
+points that wrap the existing builder/finder runtime so handlers stop hand-rolling
+JSON through `c.snprintf` format templates. Honor the `feedback_verify_impld_claims`
+rule: nothing here promotes a SYNTAX.md row to `Impl'd` without a feature_test that
+would fail under a no-op lowering.
+
+#### standard.json Types, Error, And Enum
+
+- [ ] Add `type JsonDocument COpaqueMemoryAddress` to
+      `SemanticScript/std/json/main.sem` with `exportType standard.json JsonDocument`.
+  - [ ] Add a `typeInvariant JsonDocument` stating the handle is created by
+        `json.createDocument` / `json.createEmptyDocument` and freed via
+        `defer json.destroyDocument`; backing buffer grows up to `capacityBytes`
+        and surfaces `JsonAccessError.CapacityExceeded` past that bound.
+- [ ] Add `type JsonCursor CSignedInt64` with `exportType standard.json JsonCursor`.
+  - [ ] Add a `typeInvariant JsonCursor` documenting the stable-index contract
+        and the structural-mutation invalidation list
+        (`removeObjectField`, `removeArrayElementAt`, `clearObject`, `clearArray`,
+        `setObjectFieldObject`, `setObjectFieldArray`,
+        `insertArrayElement*`, `replaceArrayElement*` when the new value is a
+        container) — cross-reference SYNTAX.md:446 sqlite column-pointer lifetime.
+- [ ] Add `type JsonPath CNullTerminatedByteString` with
+      `exportType standard.json JsonPath`.
+  - [ ] Add a `typeInvariant JsonPath` pinning the grammar: `.fieldName` object
+        steps, `[index]` array steps, anything else returns
+        `JsonAccessError.MalformedPath`.
+- [ ] Add the `JsonValueKind` enum in `SemanticScript/std/json/main.sem`.
+  - [ ] Declare `enum JsonValueKind repr CSignedInt32`.
+  - [ ] Declare cases `objectJsonValueKind 0`, `arrayJsonValueKind 1`,
+        `stringJsonValueKind 2`, `integerJsonValueKind 3`,
+        `doubleJsonValueKind 4`, `booleanJsonValueKind 5`,
+        `nullJsonValueKind 6` using the descriptive-suffix convention.
+  - [ ] Auto-register the enum in `SemanticScript/compiler/semsc.py`'s built-in
+        enum table the same way `SqliteColumnType` is registered.
+- [ ] Add the `JsonAccessError` declaration in `SemanticScript/std/json/main.sem`.
+  - [ ] Declare `error JsonAccessError`.
+  - [ ] Declare `errorCase JsonAccessError PathNotFound CSignedInt32`.
+  - [ ] Declare `errorCase JsonAccessError WrongType CSignedInt32`.
+  - [ ] Declare `errorCase JsonAccessError IndexOutOfRange CSignedInt32`.
+  - [ ] Declare `errorCase JsonAccessError FieldNameTooLong CSignedInt32`.
+  - [ ] Declare `errorCase JsonAccessError DocumentNotMutable CSignedInt32`.
+  - [ ] Declare `errorCase JsonAccessError CapacityExceeded CSignedInt32`.
+  - [ ] Declare `errorCase JsonAccessError MalformedPath CSignedInt32`.
+  - [ ] Declare `errorCase JsonAccessError ScratchTooSmall CSignedInt32`.
+  - [ ] Add `exportError standard.json JsonAccessError`.
+- [ ] Add `JsonEncodeError` and `JsonDecodeError` declarations in the same file.
+  - [ ] `JsonEncodeError` cases: `CapacityExceeded`, `WrongType`,
+        `OutputBufferTooSmall`, each carrying `CSignedInt32`.
+  - [ ] `JsonDecodeError` cases: `UnexpectedToken`, `MissingRequired`,
+        `WrongType`, `Oversize`, `Truncated`, `EscapeMalformed`,
+        each carrying `CSignedInt32`.
+
+#### Native JSON Document Runtime
+
+- [ ] Add the `SSJsonDocument` opaque struct to
+      `SemanticScript/runtime/native_json/sem_json_runtime.h`.
+  - [ ] Hold a growable node table indexed by `int64_t` cursors so cursors
+        survive non-structural mutations.
+  - [ ] Hold a capacity-bounded text arena for owned string values.
+  - [ ] Track `capacity_bytes` / `bytes_used` for `CapacityExceeded` checks.
+- [ ] Add `SSJsonNodeKind` matching `JsonValueKind` integer values exactly so
+      the lowering can forward `cursor_kind` without a translation table.
+- [ ] Add `SS_JSON_OK = 0` and one `SS_JSON_ERR_*` constant per
+      `JsonAccessError` case in `sem_json_runtime.h`; map 1:1 to the error
+      case ordinals.
+- [ ] Implement `ss_json_document_create_from_text(const char *json_text,
+      int64_t capacity_bytes, SSJsonDocument **out)` in
+      `SemanticScript/runtime/native_json/sem_json_runtime.c`.
+  - [ ] Reuse the RFC-8259-aware tokenizer that backs the existing finder API.
+  - [ ] Reject malformed input with the matching `SS_JSON_ERR_*` code; never
+        leak a half-built document on failure.
+- [ ] Implement `ss_json_document_create_empty(int64_t capacity_bytes,
+      int32_t root_kind, SSJsonDocument **out)` accepting only
+      `objectJsonValueKind` / `arrayJsonValueKind` as roots.
+- [ ] Implement `ss_json_document_destroy(SSJsonDocument *document)` freeing
+      the node table and arena; tolerate NULL.
+- [ ] Implement `ss_json_document_serialize(SSJsonDocument *document,
+      char *scratch, int64_t scratch_capacity, const char **out)`.
+  - [ ] Reuse the builder's RFC 8259 `\uXXXX` escape path so output matches
+        the SYNTAX.md:448 escape policy exactly.
+  - [ ] Return `SS_JSON_ERR_SCRATCH_TOO_SMALL` when output would overflow
+        the scratch; never truncate silently.
+- [ ] Implement `ss_json_document_length(SSJsonDocument *document)` returning
+      the byte count the next serialize will emit, mirroring
+      `json.builderLength`.
+- [ ] Implement `ss_json_document_root(SSJsonDocument *document)` returning
+      cursor 0 (always defined).
+- [ ] Implement `ss_json_navigate_object_field(SSJsonDocument *document,
+      int64_t cursor, const char *field_name, int64_t *out)`.
+  - [ ] Return `SS_JSON_ERR_WRONG_TYPE` when the cursor's node is not an
+        object.
+  - [ ] Return `SS_JSON_ERR_PATH_NOT_FOUND` when the field is absent.
+- [ ] Implement `ss_json_navigate_array_element(SSJsonDocument *document,
+      int64_t cursor, int64_t index, int64_t *out)` with
+      `SS_JSON_ERR_INDEX_OUT_OF_RANGE` outside `[0, array_length)` and
+      `SS_JSON_ERR_WRONG_TYPE` for non-arrays.
+- [ ] Implement `ss_json_cursor_parent(SSJsonDocument *document,
+      int64_t cursor, int64_t *out)` returning `SS_JSON_ERR_PATH_NOT_FOUND`
+      for the root.
+- [ ] Implement `ss_json_cursor_at_path(SSJsonDocument *document,
+      const char *path, int64_t *out)`.
+  - [ ] Parse segments left-to-right: `.fieldName` for object steps,
+        `[index]` for array steps; reject anything else with
+        `SS_JSON_ERR_MALFORMED_PATH`.
+  - [ ] Reuse the per-step navigators internally so error codes from a
+        mid-path failure match what the user would see if they walked the
+        cursor manually.
+- [ ] Implement `ss_json_cursor_kind` returning the `JsonValueKind` integer
+      directly.
+- [ ] Implement `ss_json_cursor_is_null` returning 1 for `null` and 0 for any
+      other kind (no error path).
+- [ ] Implement `ss_json_cursor_int64(document, cursor, missing_default,
+      out)` matching the `findInt64` `missingDefault` contract from
+      SYNTAX.md:449 — total function, no error code.
+- [ ] Implement `ss_json_cursor_double` and `ss_json_cursor_bool` with the
+      same `missing_default` propagation.
+- [ ] Implement `ss_json_cursor_string(document, cursor, scratch,
+      scratch_capacity, out)`.
+  - [ ] Un-escape standard JSON escapes plus `\uXXXX` for BMP code points
+        into the scratch buffer (reuse the `findString` algorithm).
+  - [ ] Return `SS_JSON_ERR_WRONG_TYPE` for non-strings,
+        `SS_JSON_ERR_SCRATCH_TOO_SMALL` when the unescaped value plus NUL
+        does not fit.
+- [ ] Implement `ss_json_cursor_array_length` /
+      `ss_json_cursor_object_field_count` with `SS_JSON_ERR_WRONG_TYPE` on
+      kind mismatch.
+- [ ] Implement `ss_json_cursor_object_field_name_at(document, cursor, index,
+      scratch, scratch_capacity, out)` copying the field name into scratch.
+- [ ] Implement `ss_json_cursor_object_field_value_at(document, cursor,
+      index, out)` returning the child cursor.
+- [ ] Implement `ss_json_set_object_field_string`,
+      `ss_json_set_object_field_int64`, `ss_json_set_object_field_double`,
+      `ss_json_set_object_field_bool`, `ss_json_set_object_field_null`.
+  - [ ] Overwrite an existing field in place when the field name matches.
+  - [ ] Append a new field record when the name is absent.
+  - [ ] Return `SS_JSON_ERR_WRONG_TYPE` on a non-object cursor,
+        `SS_JSON_ERR_FIELD_NAME_TOO_LONG` past the per-document field-name
+        bound, `SS_JSON_ERR_CAPACITY_EXCEEDED` when the arena cannot fit
+        the new bytes within `capacity_bytes`.
+- [ ] Implement `ss_json_set_object_field_object` /
+      `ss_json_set_object_field_array` returning the new child cursor.
+- [ ] Implement `ss_json_set_object_field_json_text` parsing the supplied
+      sub-document, type-validating it, and grafting it under the named
+      field.
+- [ ] Implement `ss_json_append_array_element_*` for string, int64, double,
+      bool, null, object, array, and json_text variants; append at
+      `array_length`; return the new element cursor for containers.
+- [ ] Implement `ss_json_insert_array_element_*` for the same variants;
+      shift later elements one slot; reject `index > array_length` with
+      `SS_JSON_ERR_INDEX_OUT_OF_RANGE`.
+- [ ] Implement `ss_json_replace_array_element_*` overwriting one slot in
+      place; invalidate descendant cursors of the replaced slot when the
+      new value is a container.
+- [ ] Implement `ss_json_remove_object_field` returning `0` when removed and
+      `1` when the field was absent (matches the design's documented
+      semantics).
+- [ ] Implement `ss_json_remove_array_element_at` shifting later elements
+      down one slot.
+- [ ] Implement `ss_json_clear_object` and `ss_json_clear_array` removing
+      every field/element while preserving the cursor's kind.
+- [ ] Document the cursor invalidation contract in `sem_json_runtime.h`
+      next to each mutator so the C-side comments match the SemanticScript
+      `typeInvariant JsonCursor`.
+- [ ] Extend `_native_json_link_inputs` in
+      `SemanticScript/compiler/semsc.py` to pull in `sem_json_runtime.c`
+      whenever any `json.*` document call appears (the existing builder
+      trigger already covers this, but document the additional symbols).
+
+#### Compiler Lowering (semsc.py)
+
+- [ ] Register `json.createDocument` in the `json.*` dispatch table in
+      `SemanticScript/compiler/semsc.py`.
+  - [ ] Allocate the out-pointer slot in the function's entry block,
+        pre-initialized to NULL, exactly like `sqlite.openDatabase`.
+  - [ ] Stash the slot on `call["handle_slot"]` so the matching
+        `defer json.destroyDocument` re-loads the handle at every exit.
+  - [ ] Populate `call["result"]` / `call["error_value"]` /
+        `call["error_cond"]` so `bindOk` / `bindError` / `branchIfError`
+        fall through unchanged.
+- [ ] Register `json.createEmptyDocument` with the same handle-slot
+      machinery.
+- [ ] Add `json.destroyDocument` to `_NATIVE_DEFER_DISPATCH` alongside
+      `json.destroyBuilder` so `defer json.destroyDocument userDocument`
+      compiles to a real call at every cleanup site, including failure
+      labels.
+- [ ] Register `json.serializeDocument` returning
+      `Result JsonText JsonAccessError`.
+- [ ] Register `json.documentLength` returning a plain `CSignedInt64`.
+- [ ] Register `json.documentRoot` returning a plain `JsonCursor` (root is
+      always defined, no error path).
+- [ ] Register `json.objectFieldAt`, `json.arrayElementAt`,
+      `json.cursorParent`, `json.cursorAtPath` returning
+      `Result JsonCursor JsonAccessError`.
+- [ ] Register the cursor readers (`cursorKind`, `cursorIsNull`,
+      `cursorInt64`, `cursorDouble`, `cursorBool`, `cursorString`,
+      `cursorArrayLength`, `cursorObjectFieldCount`,
+      `cursorObjectFieldNameAt`, `cursorObjectFieldValueAt`) with the
+      bind shape documented in the design table.
+- [ ] Register the mutator calls (`setObjectField*`, `appendArrayElement*`,
+      `insertArrayElement*`, `replaceArrayElement*`, `removeObjectField`,
+      `removeArrayElementAt`, `clearObject`, `clearArray`) returning
+      `CSignedInt32` status with `ignoreOk` + `bindError CSignedInt32` +
+      `branchIfError`, matching the existing `json.field*` shape.
+- [ ] Add `json.document.tree` to the effect-axis validator so
+      `effect OP read json.document.tree` and
+      `effect OP write json.document.tree` parse and route through semlint
+      as a real axis, parallel to `gui.control.textBox.text`.
+- [ ] Resolve `useCapability OP <name>` for the two heap capabilities the
+      design uses (`jsonDocumentAllocateCapability heap allocate`,
+      `jsonDocumentFreeCapability heap free`) without introducing a new
+      capability bucket — they remain user-named heap capabilities.
+
+#### jsonBody Indented-Island Literal
+
+- [ ] Add parser support for `jsonBody NAME` at column 0 in
+      `SemanticScript/compiler/semsc.py`.
+  - [ ] Recognize indented lines that follow as one raw-text island,
+        terminated at the next non-empty column-0 SemanticScript line — the
+        same termination rule used by `htmlBody` (SYNTAX.md:307).
+  - [ ] Capture the island bytes verbatim, preserving inner whitespace
+        inside JSON string literals.
+  - [ ] Bind the island to the most recently declared
+        `storage local|module immutable NAME TYPE` row that has no inline
+        value; reject orphan `jsonBody NAME` rows with a parse diagnostic.
+  - [ ] Reject `jsonBody` rows whose target storage type is neither
+        `JsonText` nor a declared `record` type with a parse diagnostic
+        that names the offending type.
+- [ ] Validate the island as JSON at compile time.
+  - [ ] Parse with a strict RFC 8259 tokenizer that rejects trailing
+        commas, comments, unquoted keys, and non-UTF-8 bytes.
+  - [ ] Emit a diagnostic citing the column-0 island name and the in-island
+        line+column of the offending byte.
+- [ ] Type-check the parsed literal against the declared storage type.
+  - [ ] `JsonText`: store the canonicalized JSON bytes as a
+        `CNullTerminatedByteString` constant.
+  - [ ] `record`: enforce every required field is present, every type
+        matches, no unknown keys are present, and nested record literals
+        recurse through the same rule.
+  - [ ] Honor `recordFieldJsonName` overrides when mapping JSON keys to
+        record fields.
+  - [ ] Honor `recordFieldJsonOmitWhen empty|null|false|zero` so omitted
+        fields default to the configured policy without runtime branching.
+  - [ ] Emit one diagnostic per failure naming the offending field, the
+        expected type, and the actual JSON kind.
+- [ ] Lower the typed literal to a constant in the emitted module.
+  - [ ] `JsonText`: emit a static null-terminated byte array exactly like
+        an inline `"..."` storage value.
+  - [ ] Record-typed: emit a typed struct constant whose layout matches
+        the record's emitted struct so no runtime parse runs.
+- [ ] Update `SemanticScript/linter/semlint.py` to walk `jsonBody` islands
+      and surface the same parse/type diagnostics that `semsc.py` emits,
+      so `ascc --lint --parse-only` reports them without a full compile.
+- [ ] Update `vscode-semanticscript/syntaxes/semanticscript.tmLanguage.json`
+      to highlight the `jsonBody NAME` row and JSON-token the island lines.
+- [ ] Update `vscode-semanticscript/extension.js` symbol/hover support to
+      treat `jsonBody NAME` as a value-producing declaration that resolves
+      to the prior storage row.
+- [ ] Add a semfmt pass for `jsonBody` islands so formatting preserves
+      indentation, mirroring the `htmlBody` exception flagged in
+      `feedback_semfmt_strips_htmlbody`.
+  - [ ] Add a regression test that runs semfmt on a file containing
+        `jsonBody` and asserts the JSON island still parses afterward.
+
+#### json.stringify.<TypeName> And json.parse.<TypeName>
+
+- [ ] Add `json.stringify.<TypeName>` dispatch in
+      `SemanticScript/compiler/semsc.py`.
+  - [ ] For primitive `TypeName` (I64, Bool, F64, String,
+        width-specific C ABI integers) reuse the existing
+        `json.encode.<Primitive>` lowering at SYNTAX.md:428.
+  - [ ] For record `TypeName` generate a field-by-field encoder that walks
+        `recordField` + `recordFieldJsonName` + `recordFieldJsonOmitWhen`
+        and calls the matching `json.field*` builder primitive; promotes
+        the SYNTAX.md:430 Partial row toward `Impl'd`.
+  - [ ] For `JsonText` perform an identity copy through scratch with a
+        length check so pre-built bodies can flow through a typed
+        pipeline without escaping twice.
+  - [ ] Surface `bindOk JsonText` / `bindError JsonEncodeError` at the
+        call site.
+- [ ] Add `json.parse.<TypeName>` dispatch in `semsc.py`.
+  - [ ] Primitive: reuse `json.decode.<Primitive>` at SYNTAX.md:429.
+  - [ ] Record: generate a field-by-field decoder that validates required
+        fields, type-checks each field, applies `omit-when` defaults, and
+        surfaces field-level failures through `JsonDecodeError`.
+  - [ ] `JsonText`: validate JSON syntax and pass bytes through unchanged.
+- [ ] Add `recordFieldJsonOmitWhen` parser support if not already present;
+      accept `empty`, `null`, `false`, `zero` policies.
+- [ ] Update SYNTAX.md:428 / :429 / :430 rows to cross-reference
+      `json.stringify.<TypeName>` and `json.parse.<TypeName>` as the
+      recommended high-level entry points.
+
+#### semlint Rules
+
+- [ ] Add `SS3620 unguardedJsonAccess` to `SemanticScript/linter/semlint.py`.
+  - [ ] Flag any operation that consumes a `bindOk JsonCursor` from a
+        fallible navigator without a `branchIfError` between the `run`
+        and the first use of the cursor.
+  - [ ] Treat `json.documentRoot` as exempt (cannot fail).
+  - [ ] Add unit coverage in
+        `SemanticScript/linter/test_semlint.py`.
+- [ ] Add `SS3621 staleJsonCursor`.
+  - [ ] Track `JsonCursor` bindings across the operation body and warn
+        when a cursor is read after a structural mutator on its document
+        (full mutator list per the `typeInvariant JsonCursor` row).
+  - [ ] Surface a fix-it hint suggesting a fresh `objectFieldAt` /
+        `arrayElementAt` / `cursorAtPath` call.
+  - [ ] Add unit coverage with each structural-mutator case.
+- [ ] Add `SS3622 malformedJsonPath`.
+  - [ ] Parse every `JsonPath` literal at lint time and flag unmatched
+        `[`, empty `.` segments, unescaped dots inside field names, and
+        non-numeric array indices.
+  - [ ] Block compilation when the literal is statically malformed so the
+        diagnostic fires before the runtime sees the path.
+- [ ] Add `SS3623 unescapedJsonStringInterpolation`.
+  - [ ] Flag `c.snprintf` format strings that contain `%s` inside JSON
+        string content (heuristic: surrounded by `"` and embedded in a
+        literal that includes `{` / `:` / `,`).
+  - [ ] Recommend `json.stringify.<TypeName>` or
+        `json.serializeDocument` as the safe replacement.
+- [ ] Re-run `python SemanticScript/linter/test_semlint.py` after each new
+      rule to confirm zero regressions.
+
+#### SYNTAX.md Rows
+
+- [ ] Add a row for the new `standard.json` types
+      (`JsonDocument`, `JsonCursor`, `JsonPath`) mirroring SYNTAX.md:447.
+- [ ] Add a row for `JsonValueKind` next to `SqliteColumnType`.
+- [ ] Add a row for `JsonAccessError`, `JsonEncodeError`, `JsonDecodeError`.
+- [ ] Add a row for the document lifecycle calls (`json.createDocument`,
+      `json.createEmptyDocument`, `json.destroyDocument`,
+      `json.serializeDocument`, `json.documentLength`,
+      `json.documentRoot`).
+- [ ] Add a row for the navigation calls (`json.objectFieldAt`,
+      `json.arrayElementAt`, `json.cursorParent`, `json.cursorAtPath`).
+- [ ] Add a row grouping the cursor readers.
+- [ ] Add a row grouping the object mutators.
+- [ ] Add a row grouping the array mutators.
+- [ ] Add a row grouping the delete calls.
+- [ ] Add a row for `jsonBody NAME` describing the indented-island contract,
+      noting it as the second indentation-sensitive exception after
+      `htmlBody`.
+- [ ] Add a row for `json.stringify.<TypeName>` and `json.parse.<TypeName>`
+      as the high-level typed entry points.
+- [ ] Promote SYNTAX.md:430 from `Partial` to `Impl'd` once the record
+      codec generator is live; verify with a feature_test per
+      `feedback_verify_impld_claims`.
+
+#### Feature Tests
+
+- [ ] Add `SemanticScript/tests/feature/<NNN>_json_document_round_trip.sscript`
+      exercising `createDocument` → cursor walk → mutator →
+      `serializeDocument`; assert the recovered text equals an expected
+      literal, deep-audit pattern from `json_runtime_smoke.sscript`.
+- [ ] Add a feature test for `createEmptyDocument` that builds a tree
+      from scratch and serializes it; assert byte-for-byte equality with
+      a known literal.
+- [ ] Add one feature test per navigator covering both success and the
+      typed-error paths (`PathNotFound`, `WrongType`, `IndexOutOfRange`).
+- [ ] Add one feature test per cursor reader, including the
+      `missingDefault` propagation path for numeric/bool readers and the
+      `ScratchTooSmall` path for `cursorString`.
+- [ ] Add one feature test per mutator asserting the post-mutation
+      serialization equals an expected literal, then re-reading the
+      mutated field to confirm round-trip.
+- [ ] Add a feature test for `clearObject` / `clearArray` confirming kind
+      preservation and zero length post-clear.
+- [ ] Add a feature test for `JsonAccessError.CapacityExceeded` that
+      intentionally undersizes the document and asserts the typed error
+      reaches a `returnError`.
+- [ ] Add an adversarial test parallel to
+      `json_runtime_adversarial.sscript` covering deep nesting up to the
+      documented bound, control bytes in strings, full RFC 8259 escape
+      coverage, and pathological `JsonPath` inputs.
+- [ ] Add a `jsonBody` feature test with four cases:
+  - [ ] One literal bound to `JsonText`.
+  - [ ] One literal bound to a record covering every primitive field type.
+  - [ ] One literal that intentionally fails record type-check; assert
+        the diagnostic names the offending field.
+  - [ ] One literal that intentionally fails JSON syntax; assert the
+        diagnostic cites the in-island offset.
+- [ ] Add `json.stringify` / `json.parse` round-trip tests, one per
+      primitive and one per record codec; each deep-audit asserts the
+      lowered behavior cannot be a no-op.
+- [ ] Confirm zero XFAIL change in
+      `python SemanticScript/tests/feature_coverage.py` after each batch.
+
+#### Documentation
+
+- [ ] Update `docs/reference/verb-index.md` with every new `json.*` verb.
+- [ ] Update `docs/language/operations-dataflow.md` with the end-to-end
+      CRUD example matching the design's `renameFirstTodoHandler` flow.
+- [ ] Add `docs/language/json-crud.md` describing the document lifecycle,
+      cursor invalidation contract, path grammar, and stringify/parse
+      typed entry points; link from `docs/language/README.md`.
+- [ ] Update `CHANGELOG.md` with one entry per landed batch
+      (types, runtime, lowering, jsonBody, stringify/parse, semlint).
+- [ ] Update `SemanticScript/std/README.md` JSON section to reference the
+      new types/errors/enum and the high-level entry points.
+
+#### App Migration (todo-web-pro)
+
+- [ ] Replace the static success bodies in `app/todo-web-pro/main.sem`
+      (`healthBodyJson`, `versionBodyJson`, `logoutResponseBody`,
+      `deleteOkBody`, `completeOkBody`, `uncompleteOkBody`) with
+      `storage local immutable NAME JsonText` rows backed by
+      `jsonBody NAME` islands.
+- [ ] Replace `userResponseFormat`, `meResponseFormat`,
+      `loginResponseFormat`, `createResponseFormat`, and `listRowFormat`
+      with record-typed codecs invoked via `json.stringify.<TypeName>`.
+- [ ] Replace the streaming list serializer at
+      `app/todo-web-pro/main.sem:2200-2380` with a single
+      `json.createEmptyDocument` + `appendArrayElementObject` loop +
+      `json.serializeDocument` pipeline so the unescaped `%s` title bug
+      in `listRowFormat` goes away by construction.
+- [ ] Replace the per-field `bodyMissing` / `usernameMissing` /
+      `passwordMissing` error responses with one `JsonDecodeError` switch
+      in front of `json.parse.LoginRequest` and
+      `json.parse.RegisterRequest`.
+- [ ] Run `python app/todo-web-pro/scripts/test_todo_web_pro.py` after
+      each migration step to confirm response shapes remain byte-stable.
+
+#### Removal Of Pre-CRUD JSON Surfaces
+
+Once the new surface lands the existing user-facing JSON calls become dead
+weight and the project must end with exactly one way to handle JSON. The
+underlying C runtime helpers can stay as internal primitives that the new
+lowerings reuse — every removal below is at the **language surface**, not
+in `sem_json_runtime.c`. Each removal must be paired with equivalent
+coverage under the new surface so this is a strict refactor with zero
+behavior regressions.
+
+- [ ] Remove the user-facing builder calls from the `json.*` dispatch table
+      in `SemanticScript/compiler/semsc.py`.
+  - [ ] `json.createBuilder`, `json.destroyBuilder`, `json.finishBuilder`,
+        `json.builderLength`.
+  - [ ] `json.objectOpen`, `json.objectClose`, `json.arrayOpen`,
+        `json.arrayClose`.
+  - [ ] `json.fieldInt64`, `json.fieldDouble`, `json.fieldBool`,
+        `json.fieldString`, `json.fieldNull`.
+  - [ ] `json.elementInt64`, `json.elementDouble`, `json.elementBool`,
+        `json.elementString`, `json.elementNull`.
+  - [ ] Add `SS3624 deprecatedJsonBuilderCall` in
+        `SemanticScript/linter/semlint.py` so any lingering source emits a
+        block-compile diagnostic with a fix-it pointing at
+        `json.stringify.<TypeName>` or `json.createEmptyDocument` +
+        `appendArrayElement*`.
+  - [ ] Drop `json.destroyBuilder` from `_NATIVE_DEFER_DISPATCH` once no
+        user source references it; keep the C symbol as an internal helper
+        the new mutator family reuses.
+- [ ] Remove the user-facing finder calls from the `json.*` dispatch table.
+  - [ ] `json.findString`, `json.findInt64`, `json.findDouble`,
+        `json.findBool`, `json.hasField`.
+  - [ ] Add `SS3625 deprecatedJsonFinderCall` recommending
+        `json.createDocument` + `json.cursorAtPath` + `json.cursor*` as
+        the replacement.
+- [ ] Remove the user-facing primitive encode/decode shortcuts from the
+      `json.*` dispatch table.
+  - [ ] Delete the `json.encode.<Primitive>` dispatch path
+        (current SYNTAX.md:428).
+  - [ ] Delete the `json.decode.<Primitive>` dispatch path
+        (current SYNTAX.md:429).
+  - [ ] Route internal callers through `json.stringify.<Primitive>` /
+        `json.parse.<Primitive>` so there is one public spelling and the
+        primitive-vs-record dispatch lives in exactly one switch.
+- [ ] Remove the user-facing record encode/decode shortcuts.
+  - [ ] Delete the `json.encode.RecordTypeName` dispatch path.
+  - [ ] Delete the `json.decode.RecordTypeName` dispatch path.
+  - [ ] Mark SYNTAX.md:430 as removed with a one-line pointer to the new
+        `json.stringify.<TypeName>` / `json.parse.<TypeName>` rows.
+- [ ] Remove the obsolete public exports from
+      `SemanticScript/std/json/main.sem`.
+  - [ ] Drop `exportType standard.json JsonBuilder`; keep `JsonBuilder` as
+        an internal-only alias the runtime header uses.
+  - [ ] Drop `exportConstant standard.json defaultJsonBuilderCapacityBytes`
+        if no surviving public call references it.
+  - [ ] Audit every other `JsonFieldName` / `JsonStringValue` /
+        `JsonScratchBuffer` export and remove ones that no surviving
+        public call still uses.
+- [ ] Delete the corresponding SYNTAX.md rows.
+  - [ ] Rewrite row 447 to list only the surviving aliases
+        (`JsonText`, `JsonScratchBuffer`, `JsonCapacityBytes`,
+        `JsonDocument`, `JsonCursor`, `JsonPath`).
+  - [ ] Delete row 448 (builder call surface) — replaced by the new
+        document-lifecycle + mutator rows.
+  - [ ] Delete row 449 (finder call surface) — replaced by the new cursor
+        reader rows.
+  - [ ] Delete rows 428/429/430 — replaced by `json.stringify.<TypeName>`
+        and `json.parse.<TypeName>` rows.
+- [ ] Migrate or delete the legacy JSON runtime tests.
+  - [ ] `SemanticScript/tests/json_runtime_smoke.sscript`: port every
+        assertion to the new CRUD surface, then delete the legacy file.
+  - [ ] `SemanticScript/tests/json_runtime_adversarial.sscript`: same
+        treatment.
+  - [ ] `SemanticScript/runtime/native_json/health_demo.c`: delete if its
+        coverage is now redundant with the new `ss_json_document_*` unit
+        tests, otherwise rewrite to exercise the document surface.
+- [ ] Update VS Code extension surfaces.
+  - [ ] Remove the deprecated `json.*` call names from
+        `vscode-semanticscript/extension.js` symbol/hover tables.
+  - [ ] Remove deprecated highlights from
+        `vscode-semanticscript/syntaxes/semanticscript.tmLanguage.json`.
+- [ ] Update `docs/reference/verb-index.md` to delete every removed
+      `json.*` verb entry.
+- [x] Rewrite `docs/optimization-guide.md` JSON sections around
+      `json.stringify.<TypeName>` and `json.serializeDocument` so the
+      stack-allocated-buffer guidance migrates to the new surface.
+- [ ] Replace every legacy call site in the repository.
+  - [ ] Grep for `json\.(createBuilder|destroyBuilder|finishBuilder|`
+        `builderLength|objectOpen|objectClose|arrayOpen|arrayClose|`
+        `field(Int64|Double|Bool|String|Null)|`
+        `element(Int64|Double|Bool|String|Null)|`
+        `findString|findInt64|findDouble|findBool|hasField|`
+        `encode\.|decode\.)` and migrate every match to the new surface.
+  - [ ] Confirm the grep returns zero hits in `app/`,
+        `SemanticScript/tests/`, `SemanticScript/std/`, `docs/`, and
+        `vscode-semanticscript/` before marking removal complete.
+- [ ] Audit the rest of this file.
+  - [ ] Re-run `grep -ni "json" TODO.md` and confirm every JSON-handling
+        bullet lives under
+        `### Native JSON CRUD API And jsonBody Literal`.
+  - [ ] Delete any orphan JSON bullet found elsewhere and replace it with
+        a one-line pointer to this section.
+
+#### Aggressive Testing And Edge Case Coverage
+
+Every test below must follow the deep-audit pattern
+(`feedback_verify_impld_claims`): each case asserts a semantic outcome that
+would fail under a no-op lowering, not just that the call returns OK. Place
+the new tests under `SemanticScript/tests/feature/` so
+`feature_coverage.py` picks them up automatically. Each batch finishes only
+when `python SemanticScript/tests/feature_coverage.py` is green.
+
+- [ ] Add `SemanticScript/tests/feature/<NNN>_json_document_tokenizer_edges.sscript`
+      covering JSON tokenizer corner cases.
+  - [ ] Empty object `{}` parses to a zero-field root and serializes
+        identically.
+  - [ ] Empty array `[]` parses to a zero-element root and serializes
+        identically.
+  - [ ] Mixed whitespace (spaces, tabs, LF, CR) between every token
+        parses to the same tree as the no-whitespace input.
+  - [ ] UTF-8 BOM (`EF BB BF`) at the start of input is rejected with
+        `JsonAccessError.UnexpectedToken`.
+  - [ ] Every standard escape (`\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`,
+        `\t`) survives parse + serialize byte-for-byte.
+  - [ ] `\uXXXX` for BMP code points round-trips.
+  - [ ] Surrogate pair `😀` decodes to one non-BMP character
+        and re-serializes to the same surrogate pair.
+  - [ ] Lone high surrogate `\uD83D` (no low follow-up) is rejected with
+        `EscapeMalformed`.
+  - [ ] Lone low surrogate `\uDE00` is rejected with `EscapeMalformed`.
+  - [ ] Raw control byte (0x00-0x1F) inside a string literal is rejected.
+  - [ ] Trailing comma in an object is rejected.
+  - [ ] Trailing comma in an array is rejected.
+  - [ ] `//` line comment is rejected.
+  - [ ] `/* block comment */` is rejected.
+  - [ ] Single-quoted string is rejected.
+  - [ ] Unquoted object key is rejected.
+  - [ ] Leading zero `05` is rejected.
+  - [ ] Plus-signed integer `+5` is rejected.
+  - [ ] Hex integer `0x5` is rejected.
+  - [ ] Trailing `.` on a float (`5.`) is rejected.
+  - [ ] Leading `.` on a float (`.5`) is rejected.
+  - [ ] Scientific notation `1e10`, `1E-5`, `1.5e+2` parses correctly.
+  - [ ] `NaN`, `Infinity`, `-Infinity` are rejected (RFC 8259 forbids).
+  - [ ] Duplicate object keys: confirm the documented last-wins policy
+        and assert `SS3626 duplicateJsonObjectKey` fires in semlint.
+- [ ] Add boundary/precision tests.
+  - [ ] `i64` max (9223372036854775807) round-trips through stringify +
+        parse.
+  - [ ] `i64` min (-9223372036854775808) round-trips.
+  - [ ] `i64` overflow (one past max in source) returns the documented
+        atoll-fallback value; pin the choice in SYNTAX.md.
+  - [ ] `f64` smallest positive subnormal round-trips within documented
+        precision.
+  - [ ] `f64` largest finite (`1.7976931348623157e+308`) round-trips.
+  - [ ] `-0.0` is distinguishable from `0.0` after round-trip.
+  - [ ] 1 MiB string value fits under a 2 MiB `capacity_bytes`.
+  - [ ] 1 MiB string under a 512 KiB `capacity_bytes` returns
+        `CapacityExceeded`.
+  - [ ] Field name at exactly the `FieldNameTooLong` boundary succeeds.
+  - [ ] Field name one byte past the boundary returns
+        `FieldNameTooLong`.
+- [ ] Add nesting-depth tests.
+  - [ ] Object nested to the documented bound (currently 16) parses +
+        serializes.
+  - [ ] Object nested one past the bound is rejected with the
+        `JsonAccessError.NestingTooDeep` case (add the case to the error
+        enum and the C status table if not already present).
+  - [ ] Array nested to the bound parses + serializes.
+  - [ ] Array nested one past the bound is rejected.
+  - [ ] Mixed object/array nesting to the bound parses + serializes.
+- [ ] Add cursor stability tests.
+  - [ ] Cursor to `todos[0]` survives `setObjectFieldInt64` on a
+        sibling.
+  - [ ] Cursor to `todos[0].title` survives a primitive-overwrite on
+        the same string (in-place update).
+  - [ ] Cursor to `todos[0]` is invalidated by `removeArrayElementAt
+        todos 0`; using it triggers `SS3621 staleJsonCursor`.
+  - [ ] Cursor to `todos[1]` is invalidated by `insertArrayElement* todos
+        0 ...` (shifted-position case).
+  - [ ] Cursor to any object field is invalidated by `clearObject` on
+        the parent.
+  - [ ] Cursor to any array element is invalidated by `clearArray` on
+        the parent.
+  - [ ] Cursor invalidation propagates through nested containers
+        (clear grandparent → all descendants stale).
+- [ ] Add mutator semantic tests.
+  - [ ] `setObjectFieldString` on a present field overwrites in place
+        and preserves key order.
+  - [ ] `setObjectFieldString` on an absent field appends and preserves
+        existing field order.
+  - [ ] `setObjectField*` on a non-object cursor returns `WrongType`.
+  - [ ] `appendArrayElement*` on a non-array cursor returns
+        `WrongType`.
+  - [ ] `insertArrayElement*` at `index == length` appends without
+        error.
+  - [ ] `insertArrayElement*` at `index > length` returns
+        `IndexOutOfRange`.
+  - [ ] `insertArrayElement*` at negative index returns
+        `IndexOutOfRange`.
+  - [ ] `replaceArrayElement*` at out-of-range index returns
+        `IndexOutOfRange`.
+  - [ ] `removeObjectField` of an absent field returns `1` (status,
+        not error).
+  - [ ] `removeArrayElementAt` of out-of-range index returns
+        `IndexOutOfRange`.
+  - [ ] `clearObject` on an already-empty object is a no-op success.
+  - [ ] `clearArray` on an already-empty array is a no-op success.
+  - [ ] `setObjectFieldJsonText` rejects a syntactically malformed
+        sub-document with `UnexpectedToken` and does not partially
+        graft.
+- [ ] Add path edge case tests.
+  - [ ] Empty path `""` returns the root cursor or `MalformedPath` —
+        pin the choice in SYNTAX.md and assert it.
+  - [ ] `.field` works on a root object.
+  - [ ] `[0]` works on a root array.
+  - [ ] `.field[0].sub` (three steps) resolves correctly.
+  - [ ] `[10][20]` resolves a nested-array lookup.
+  - [ ] Unmatched `[` returns `MalformedPath`.
+  - [ ] Empty `.` segment returns `MalformedPath`.
+  - [ ] Non-numeric index `[abc]` returns `MalformedPath`.
+  - [ ] Negative index `[-1]` returns `MalformedPath`
+        (negative indexing not supported — pin the contract).
+  - [ ] Missing object field returns `PathNotFound` carrying the failing
+        segment index in the error payload.
+  - [ ] Out-of-range array index returns `IndexOutOfRange`.
+- [ ] Add capacity / scratch / OOM tests.
+  - [ ] `createDocument` with `capacityBytes` smaller than the input
+        text returns `CapacityExceeded` and does not allocate a
+        partial document.
+  - [ ] `createEmptyDocument` with `capacityBytes == 0` returns
+        `CapacityExceeded` on first mutation.
+  - [ ] `setObjectFieldString` that would push the arena past
+        `capacity_bytes` returns `CapacityExceeded` and leaves the
+        document unchanged (transactional mutation).
+  - [ ] `serializeDocument` with `scratch_capacity` one byte short of
+        the serialized length returns `ScratchTooSmall`.
+  - [ ] `cursorString` with `scratch_capacity` one byte short of the
+        unescaped value plus NUL returns `ScratchTooSmall`.
+  - [ ] `destroyDocument` on NULL does not crash.
+  - [ ] Double-destroy is caught by a debug assert and does not
+        corrupt heap.
+  - [ ] Defer cleanup runs `destroyDocument` exactly once per exit
+        path — verify under valgrind in CI.
+- [ ] Add `jsonBody` literal edge case tests
+      (`SemanticScript/tests/feature/<NNN>_json_body_*`).
+  - [ ] Empty island after `jsonBody NAME` is rejected with
+        `parseDiagnosticEmptyJsonBody`.
+  - [ ] Two `jsonBody` rows targeting the same `storage` name are
+        rejected with `duplicateJsonBodyBinding`.
+  - [ ] `jsonBody` row whose target storage already has an inline value
+        is rejected with `jsonBodyTargetAlreadyValued`.
+  - [ ] `jsonBody` row with no matching storage row is rejected with
+        `orphanJsonBody`.
+  - [ ] `jsonBody` row whose storage type is neither `JsonText` nor a
+        declared record is rejected with `jsonBodyUnsupportedType`.
+  - [ ] Record-typed island with a missing required field surfaces a
+        diagnostic naming the field.
+  - [ ] Record-typed island with an extra unknown key is rejected.
+  - [ ] Record-typed island with a wrong-typed field surfaces a
+        diagnostic naming the expected vs actual JSON kind.
+  - [ ] `recordFieldJsonName` override is honored when the JSON key
+        differs from the record field identifier.
+  - [ ] `recordFieldJsonOmitWhen empty` accepts an absent string field
+        and defaults to `""`.
+  - [ ] `recordFieldJsonOmitWhen null` accepts an explicit JSON `null`.
+  - [ ] `recordFieldJsonOmitWhen false` accepts an absent bool field
+        and defaults to `false`.
+  - [ ] `recordFieldJsonOmitWhen zero` accepts an absent numeric field
+        and defaults to `0`.
+  - [ ] Nested record literal inside an outer record literal type-checks
+        recursively.
+  - [ ] Multi-line island with deeply nested objects parses identically
+        after `semfmt`.
+- [ ] Add `json.stringify` / `json.parse` round-trip tests.
+  - [ ] Stringify and re-parse for every primitive type
+        (I64, Bool, F64, String, width-specific C integers, F32).
+  - [ ] Stringify and re-parse for a record with every primitive field
+        type at once.
+  - [ ] Stringify and re-parse for a record carrying an array-of-records
+        field.
+  - [ ] Stringify a record with `recordFieldJsonOmitWhen` fields and
+        confirm omitted keys are absent from output.
+  - [ ] Stringify a string containing every standard escape and a
+        non-BMP character; re-parse equals the original byte-for-byte.
+  - [ ] Stringify the empty string; re-parse equals the empty string.
+  - [ ] Parse with an unknown key surfaces
+        `JsonDecodeError.UnknownKey` when the codec's policy is strict,
+        or is ignored when lenient — pin the per-codec policy in
+        `jsonCodec` metadata.
+  - [ ] Parse with a missing required key surfaces `MissingRequired`
+        naming the field.
+  - [ ] Parse with a wrong-typed value surfaces `WrongType` naming the
+        field.
+  - [ ] Parse a record whose JSON keys use `recordFieldJsonName`
+        overrides decodes correctly.
+- [ ] Add single-thread concurrency-shape tests.
+  - [ ] Two `JsonDocument` handles open at once, each with its own
+        cursor, do not alias trees.
+  - [ ] Multi-document defer order runs cleanup in reverse declaration
+        order and frees both arenas.
+  - [ ] A cursor produced from `documentA` and passed against
+        `documentB` is rejected with
+        `JsonAccessError.CursorForeignToDocument` (add the error case
+        if not already present).
+- [ ] Add performance baseline tests.
+  - [ ] Document with 10,000 fields opens, walks, and serializes inside
+        a per-call wall-clock budget published in
+        `docs/optimization-guide.md`.
+  - [ ] Array with 10,000 elements appends inside budget.
+  - [ ] Nesting at exactly the documented bound serializes inside
+        budget.
+  - [ ] Repeated `setObjectFieldString` on the same key 1,000 times
+        does not leak the arena: heap bytes-used returns to baseline
+        after a `clearObject`.
+- [ ] Add cross-platform byte-equality tests.
+  - [ ] Serialize the same document on Windows + Linux CI; assert
+        byte-for-byte equality.
+  - [ ] LF / CRLF inside a JSON string literal survives parse +
+        serialize unchanged on both platforms.
+  - [ ] File I/O round-trip (write serialized output to disk, read
+        back, re-parse, structural equality) on both platforms.
+- [ ] Add semlint rule edge case tests in
+      `SemanticScript/linter/test_semlint.py`.
+  - [ ] `SS3620 unguardedJsonAccess` fires when a cursor is used
+        before `branchIfError`.
+  - [ ] `SS3620` is silent when the cursor comes from
+        `json.documentRoot` (exempt path).
+  - [ ] `SS3621 staleJsonCursor` fires once per structural mutator
+        when the cursor is used after.
+  - [ ] `SS3621` is silent when a fresh cursor is rebound after the
+        mutator.
+  - [ ] `SS3622 malformedJsonPath` fires for the malformed-path corpus
+        used above.
+  - [ ] `SS3622` is silent for a syntactically valid path even when the
+        path would resolve to a missing field at runtime (lint is
+        syntactic, not semantic).
+  - [ ] `SS3623 unescapedJsonStringInterpolation` fires for the
+        `listRowFormat`-style heuristic.
+  - [ ] `SS3623` is silent for an `snprintf` outside any JSON context
+        (false-positive guard).
+  - [ ] `SS3624 deprecatedJsonBuilderCall` and
+        `SS3625 deprecatedJsonFinderCall` fire on the legacy call
+        names from the removal section and block compilation.
+- [ ] Add fuzz coverage.
+  - [ ] Add `SemanticScript/tests/fuzz/json_document_fuzz.py` that
+        drives random JSON inputs through `createDocument`; assert no
+        crash, no leak, and round-trip equality where parse succeeds.
+  - [ ] Add an output-side fuzzer that emits random typed values
+        through `json.stringify` and re-parses through `json.parse`;
+        assert round-trip equality.
+  - [ ] Run each fuzzer for a fixed wall-clock budget in CI and fail
+        on any non-zero exit from the driver.
+  - [ ] Seed the corpus with the malformed-surrogate, deep-nesting,
+        big-string, and full-escape cases above.
+- [ ] Add memory-safety coverage.
+  - [ ] Run the full feature_coverage suite under
+        `valgrind --leak-check=full` on Linux CI and assert zero leaks.
+  - [ ] Run the full suite under AddressSanitizer on supported
+        platforms and assert no errors.
+  - [ ] Add a leak regression test: create 1,000 documents in a tight
+        loop, destroy each via `defer`, assert heap usage returns to
+        baseline within a documented tolerance.
+- [ ] Add migration regression coverage.
+  - [ ] Diff every assertion in `json_runtime_smoke.sscript` against
+        the equivalent assertion in the new feature tests; confirm
+        zero coverage gaps before deleting the legacy test.
+  - [ ] Same diff against `json_runtime_adversarial.sscript`.
+  - [ ] `python app/todo-web-pro/scripts/test_todo_web_pro.py` passes
+        identically before and after the app migration, with
+        byte-stable response bodies; archive the pre/post diff in the
+        CHANGELOG entry for the migration.
 
 ### Concurrency, Async, And State Runtime
 
@@ -2378,37 +3608,77 @@ order.
   - [ ] Every semlint diagnostic code has an explanation.
   - [ ] Examples in explanations parse or intentionally fail as documented.
 
-### Trace, Crash, And Debug Tooling
+### Agent Observability, Trace, Crash, And Debug Tooling
 
-- [ ] Define source-to-runtime trace metadata.
-  - [ ] Map semantic tape rows to source file/line/column.
-  - [ ] Map generated LLVM blocks back to operation and call names.
-  - [ ] Map native runtime failures back to SemanticScript route/handler names.
-- [ ] Add trace execution mode.
-  - [ ] Add `sem run --trace`.
-  - [ ] Add trace output for operation entry/exit.
-  - [ ] Add trace output for call execution.
-  - [ ] Add trace output for branch decisions.
-  - [ ] Add trace output for returned values where safe.
-  - [ ] Redact values from paths marked sensitive by future metadata.
-- [ ] Add crash explanation mode.
-  - [ ] Add `sem run --explain-crash`.
-  - [ ] Capture runtime panic code.
-  - [ ] Capture SemanticScript stack/operation context.
-  - [ ] Capture direction message that hints at the likely fix.
-  - [ ] Capture build profile and runtime-check mode.
-  - [ ] Keep prod profile output minimal by default.
-- [ ] Add IR inspection helpers.
-  - [ ] Add `sem inspect-ir`.
-  - [ ] Show the source operation that produced an IR function.
-  - [ ] Show native ABI signatures for HTTP handlers.
-  - [ ] Show linked runtime objects.
-- [ ] Add minimal debugger plan.
-  - [ ] Decide whether to integrate with LLDB/GDB or keep source-level traces
-        only for the first release.
-  - [ ] Define breakpoint syntax if source-level breakpoints are added.
-  - [ ] Define watch/expression support only after value representation is
+- [x] Treat this surface as machine-readable agent tooling, not human debugger UI.
+  - [x] Prefer deterministic JSON/JSONL artifacts over prose.
+  - [x] Include `schemaVersion`, tool version, source fingerprint, build fingerprint,
+        build profile, runtime-check mode, LLVM target triple, and artifact paths.
+  - [x] Keep optional human text as a view over structured data, never as the
+        only output.
+  - [x] Keep LLVM IR, optimized LLVM IR, trace maps, crash reports, profiles,
+        and benchmark reports cross-linkable by stable ids.
+
+- [x] Define source-to-runtime trace metadata.
+  - [x] Map semantic tape rows to source file/line/column.
+  - [x] Map generated LLVM blocks back to operation and call names.
+  - [x] Map native runtime failures back to SemanticScript route/handler names.
+  - [x] Emit a trace-map sidecar with stable `siteId` values for operations,
+        calls, branches, returns, routes, handlers, runtime symbols, and link inputs.
+  - [x] Preserve imported-source origins instead of only reporting the flattened
+        resolved stream.
+  - [x] Include source row text and redaction metadata so agents can patch near
+        the right source without leaking sensitive values.
+- [x] Add agent-oriented IR inspection.
+  - [x] Add `sem inspect-ir`.
+  - [x] Support JSON output by default.
+  - [x] Show the source operation that produced each LLVM function.
+  - [x] Show generated LLVM basic blocks by function.
+  - [x] Show native ABI signatures for HTTP handlers.
+  - [x] Show linked runtime source files and link args.
+  - [x] Include trace-map ids in the IR inspection output.
+- [x] Add trace execution mode.
+  - [x] Add `sem run --trace`.
+  - [x] Support JSONL output for streaming traces.
+  - [x] Add trace output for operation entry/exit.
+  - [x] Add trace output for call execution.
+  - [x] Add trace output for branch decisions.
+  - [x] Add trace output for returned values where safe.
+  - [x] Include monotonic sequence ids and monotonic timestamps.
+  - [x] Include operation/call/site ids matching the trace-map sidecar.
+  - [x] Redact values from paths marked sensitive by future metadata.
+- [x] Add agent profiling mode.
+  - [x] Add `sem run --profile --json`.
+  - [x] Aggregate hot operations, hot calls, branch frequencies, runtime external
+        calls, startup time, wall time, and HTTP request counts where applicable.
+  - [x] Keep profile summaries separate from exhaustive traces so agents can
+        optimize without measuring trace overhead as application cost.
+- [x] Add crash explanation mode.
+  - [x] Add `sem run --explain-crash`.
+  - [x] Run crashing programs in a subprocess so LLVM traps do not kill the tool
+        driver.
+  - [x] Support JSON output for agent triage.
+  - [x] Capture runtime panic code.
+  - [x] Capture SemanticScript stack/operation context.
+  - [x] Capture direction message that hints at the likely fix.
+  - [x] Capture build profile and runtime-check mode.
+  - [x] Attach the last N trace events when trace data is available.
+  - [x] Emit suspected category and fix candidates for agent patch planning.
+  - [x] Keep prod profile output minimal by default.
+- [x] Add optimization-loop integration.
+  - [x] Define the agent loop: inspect IR, capture baseline profile/bench,
+        patch source, run check/tests, re-profile/re-bench, compare artifacts.
+  - [x] Preserve artifact indexes so agents can compare before/after runs.
+  - [x] Report benchmark/profile deltas in stable JSON fields.
+- [x] Add minimal debugger plan.
+  - [x] Keep source-level semantic traces as the first release debugger surface.
+  - [x] Defer LLDB/GDB integration until source representation, trace ids, and
+        value representation are stable.
+  - [x] Define breakpoint syntax if source-level breakpoints are added.
+  - [x] Define watch/expression support only after value representation is
         stable.
+  - [x] Document where native debugger integration adds value for LLVM backend
+        failures versus where semantic trace data is better for agents.
 
 ### REPL And Scratch Runner
 
