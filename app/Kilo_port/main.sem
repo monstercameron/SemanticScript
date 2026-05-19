@@ -1,0 +1,4537 @@
+# SemanticScript port of antirez/kilo.
+# Upstream source is cloned in app/Kilo_port/upstream-kilo.
+# Platform terminal behavior comes from the generic native_terminal runtime;
+# editor behavior stays in this SemanticScript module.
+module app.kiloport
+modulePurpose app.kiloport "Kilo-style terminal editor ported to executable SemanticScript."
+moduleOwns app.kiloport "Editor row storage, file load/save, ANSI terminal rendering, keyboard handling, search, and mutation flow."
+moduleDoesNotOwn app.kiloport "SemanticScript compiler/runtime terminal primitives or the upstream Kilo C source."
+moduleInvariant app.kiloport "The edited file path comes from argv[1] when present, then KILO_FILE, otherwise kilo.txt."
+
+exportType app.kiloport KiloKeyCode
+exportType app.kiloport SaveFileStatus
+exportOperation app.kiloport main
+
+type KiloKeyCode CSignedInt32
+
+enum SaveFileStatus repr CSignedInt32
+enumCase SaveFileStatus SaveSucceeded 0
+enumCase SaveFileStatus SaveOpenFailed 1
+enumCase SaveFileStatus SaveWriteFailed 2
+enumCase SaveFileStatus SaveCloseFailed 3
+
+storage module immutable zeroI64 CSignedInt64 0
+storage module immutable oneI64 CSignedInt64 1
+storage module immutable twoI64 CSignedInt64 2
+storage module immutable byteBaseI64 CSignedInt64 256
+storage module immutable notFound CSignedInt64 -1
+storage module immutable zeroI32 CSignedInt32 0
+storage module immutable oneI32 CSignedInt32 1
+storage module immutable successExitCode ExitCode 0
+storage module immutable failureExitCode ExitCode 1
+
+storage module immutable nulByte CSignedInt32 0
+storage module immutable tabByte CSignedInt32 9
+storage module immutable newlineByte CSignedInt32 10
+storage module immutable carriageReturnByte CSignedInt32 13
+storage module immutable escapeByte CSignedInt32 27
+storage module immutable backspaceByte CSignedInt32 8
+storage module immutable deleteByte CSignedInt32 127
+storage module immutable spaceByte CSignedInt32 32
+storage module immutable dollarByte CSignedInt32 36
+storage module immutable asteriskByte CSignedInt32 42
+storage module immutable slashByte CSignedInt32 47
+storage module immutable doubleQuoteByte CSignedInt32 34
+storage module immutable singleQuoteByte CSignedInt32 39
+storage module immutable backslashByte CSignedInt32 92
+storage module immutable underscoreByte CSignedInt32 95
+storage module immutable kiloTabStop CSignedInt64 8
+
+storage module immutable ctrlF KiloKeyCode 6
+storage module immutable ctrlH KiloKeyCode 8
+storage module immutable ctrlL KiloKeyCode 12
+storage module immutable enterKey KiloKeyCode 13
+storage module immutable ctrlQ KiloKeyCode 17
+storage module immutable ctrlS KiloKeyCode 19
+storage module immutable escKey KiloKeyCode 27
+storage module immutable arrowLeft KiloKeyCode 1000
+storage module immutable arrowRight KiloKeyCode 1001
+storage module immutable arrowUp KiloKeyCode 1002
+storage module immutable arrowDown KiloKeyCode 1003
+storage module immutable delKey KiloKeyCode 1004
+storage module immutable homeKey KiloKeyCode 1005
+storage module immutable endKey KiloKeyCode 1006
+storage module immutable pageUpKey KiloKeyCode 1007
+storage module immutable pageDownKey KiloKeyCode 1008
+
+operation emitEscCode
+input emitEscCode code CNullTerminatedByteString
+output emitEscCode CSignedInt32
+effect emitEscCode write console.stdout
+authority emitEscCode console.stdout write
+memoryHeap emitEscCode no
+async emitEscCode no
+purpose emitEscCode "Emit one ANSI escape sequence body after ESC."
+invariant emitEscCode "The ESC byte is always emitted before the supplied ANSI body."
+label startEmitEscCode
+call escapeCall c.putchar
+arg escapeCall character escapeByte
+run escapeCall
+ignoreValue escapeCall CSignedInt32
+call codeCall c.printf
+arg codeCall format code
+run codeCall
+ignoreValue codeCall CSignedInt32
+returnValue zeroI32
+
+operation hideCursor
+output hideCursor CSignedInt32
+effect hideCursor write console.stdout
+authority hideCursor console.stdout write
+memoryHeap hideCursor no
+async hideCursor no
+purpose hideCursor "Hide the terminal cursor while drawing."
+invariant hideCursor "Cursor visibility is changed only through ANSI SGR/control output."
+label startHideCursor
+storage local immutable code CNullTerminatedByteString "[?25l"
+call emitCall emitEscCode
+arg emitCall code code
+run emitCall
+ignoreValue emitCall CSignedInt32
+returnValue zeroI32
+
+operation showCursor
+output showCursor CSignedInt32
+effect showCursor write console.stdout
+authority showCursor console.stdout write
+memoryHeap showCursor no
+async showCursor no
+purpose showCursor "Show the terminal cursor before returning control."
+invariant showCursor "Cursor visibility is restored with the ANSI show-cursor sequence."
+label startShowCursor
+storage local immutable code CNullTerminatedByteString "[?25h"
+call emitCall emitEscCode
+arg emitCall code code
+run emitCall
+ignoreValue emitCall CSignedInt32
+returnValue zeroI32
+
+operation clearScreen
+output clearScreen CSignedInt32
+effect clearScreen write console.stdout
+authority clearScreen console.stdout write
+memoryHeap clearScreen no
+async clearScreen no
+purpose clearScreen "Clear the terminal and move the cursor to the home position."
+invariant clearScreen "A clear-screen call always resets the cursor to the terminal home position."
+label startClearScreen
+storage local immutable clearCode CNullTerminatedByteString "[2J"
+storage local immutable homeCode CNullTerminatedByteString "[H"
+call clearCall emitEscCode
+arg clearCall code clearCode
+run clearCall
+ignoreValue clearCall CSignedInt32
+call homeCall emitEscCode
+arg homeCall code homeCode
+run homeCall
+ignoreValue homeCall CSignedInt32
+returnValue zeroI32
+
+operation setAnsiColor
+input setAnsiColor color CSignedInt32
+output setAnsiColor CSignedInt32
+effect setAnsiColor write console.stdout
+authority setAnsiColor console.stdout write
+memoryHeap setAnsiColor no
+async setAnsiColor no
+purpose setAnsiColor "Set one ANSI SGR foreground color."
+invariant setAnsiColor "Only the supplied foreground color code is written to the terminal."
+label startSetAnsiColor
+storage local immutable colorFormat CNullTerminatedByteString "[%dm"
+call escapeCall c.putchar
+arg escapeCall character escapeByte
+run escapeCall
+ignoreValue escapeCall CSignedInt32
+call colorCall c.printf
+arg colorCall format colorFormat
+arg colorCall color color
+run colorCall
+ignoreValue colorCall CSignedInt32
+returnValue zeroI32
+
+operation resetAnsiColor
+output resetAnsiColor CSignedInt32
+effect resetAnsiColor write console.stdout
+authority resetAnsiColor console.stdout write
+memoryHeap resetAnsiColor no
+async resetAnsiColor no
+purpose resetAnsiColor "Reset terminal foreground color to the default."
+invariant resetAnsiColor "Color reset emits the default foreground SGR sequence only."
+label startResetAnsiColor
+storage local immutable resetCode CNullTerminatedByteString "[39m"
+call resetCall emitEscCode
+arg resetCall code resetCode
+run resetCall
+ignoreValue resetCall CSignedInt32
+returnValue zeroI32
+
+operation invertVideo
+output invertVideo CSignedInt32
+effect invertVideo write console.stdout
+authority invertVideo console.stdout write
+memoryHeap invertVideo no
+async invertVideo no
+purpose invertVideo "Enable inverse video for the status bar."
+invariant invertVideo "Inverse-video state is changed only through ANSI SGR output."
+label startInvertVideo
+storage local immutable inverseCode CNullTerminatedByteString "[7m"
+call inverseCall emitEscCode
+arg inverseCall code inverseCode
+run inverseCall
+ignoreValue inverseCall CSignedInt32
+returnValue zeroI32
+
+operation resetVideo
+output resetVideo CSignedInt32
+effect resetVideo write console.stdout
+authority resetVideo console.stdout write
+memoryHeap resetVideo no
+async resetVideo no
+purpose resetVideo "Reset terminal SGR state."
+invariant resetVideo "Video reset emits the full SGR reset sequence before normal drawing resumes."
+label startResetVideo
+storage local immutable resetCode CNullTerminatedByteString "[0m"
+call resetCall emitEscCode
+arg resetCall code resetCode
+run resetCall
+ignoreValue resetCall CSignedInt32
+returnValue zeroI32
+
+operation readKiloKey
+output readKiloKey KiloKeyCode
+effect readKiloKey read console.stdin
+authority readKiloKey console.stdin read
+memoryHeap readKiloKey no
+async readKiloKey no
+purpose readKiloKey "Read one normalized editor key from the native terminal adapter."
+invariant readKiloKey "The runtime adapter returns ordinary bytes or stable app-local soft key codes."
+label startReadKiloKey
+call keyCall c.terminalReadKey
+run keyCall
+bind keyCode CSignedInt32 keyCall
+returnValue keyCode
+
+operation getRowPointer
+input getRowPointer rowsBuffer COpaqueMemoryAddress
+input getRowPointer rowIndex CSignedInt64
+input getRowPointer rowCapacity CSignedInt64
+output getRowPointer COpaqueMemoryAddress
+effect getRowPointer read memory.buffer
+authority getRowPointer memory.buffer read
+memoryHeap getRowPointer no
+async getRowPointer no
+purpose getRowPointer "Return the start pointer for one fixed-capacity row slot."
+invariant getRowPointer "The returned pointer is rowIndex multiplied by the fixed row capacity from rowsBuffer."
+label startGetRowPointer
+call rowOffsetCall math.multiplyI64
+arg rowOffsetCall left rowIndex
+arg rowOffsetCall right rowCapacity
+run rowOffsetCall
+bind rowOffset CSignedInt64 rowOffsetCall
+call pointerCall pointer.offset
+arg pointerCall base rowsBuffer
+arg pointerCall offset rowOffset
+run pointerCall
+bind rowPointer COpaqueMemoryAddress pointerCall
+returnValue rowPointer
+
+operation isJavaScriptIdentifierByte
+input isJavaScriptIdentifierByte byteValue CSignedInt32
+output isJavaScriptIdentifierByte Bool
+memoryHeap isJavaScriptIdentifierByte no
+async isJavaScriptIdentifierByte no
+purpose isJavaScriptIdentifierByte "Return true when a byte can continue a JavaScript identifier."
+invariant isJavaScriptIdentifierByte "Identifier bytes are ASCII alphanumeric, underscore, or dollar sign."
+label startIsJavaScriptIdentifierByte
+call alnumCall c.isalnum
+arg alnumCall character byteValue
+run alnumCall
+bind alnumStatus CSignedInt32 alnumCall
+call alnumBoolCall math.notEqualCSignedInt32
+arg alnumBoolCall left alnumStatus
+arg alnumBoolCall right zeroI32
+run alnumBoolCall
+bind isAlnum Bool alnumBoolCall
+branchIf isAlnum returnIdentifierTrue
+call underscoreCall math.equalCSignedInt32
+arg underscoreCall left byteValue
+arg underscoreCall right underscoreByte
+run underscoreCall
+bind isUnderscore Bool underscoreCall
+branchIf isUnderscore returnIdentifierTrue
+call dollarCall math.equalCSignedInt32
+arg dollarCall left byteValue
+arg dollarCall right dollarByte
+run dollarCall
+bind isDollar Bool dollarCall
+branchIf isDollar returnIdentifierTrue
+storage local immutable identifierFalse Bool false
+returnValue identifierFalse
+label returnIdentifierTrue
+storage local immutable identifierTrue Bool true
+returnValue identifierTrue
+
+operation tabRenderedWidth
+input tabRenderedWidth renderedColumn CSignedInt64
+output tabRenderedWidth CSignedInt64
+memoryHeap tabRenderedWidth no
+async tabRenderedWidth no
+purpose tabRenderedWidth "Return how many spaces a tab renders at the current zero-based screen column."
+invariant tabRenderedWidth "Uses Kilo's eight-column tab stop model."
+label startTabRenderedWidth
+call oneBasedColumnCall math.addI64
+arg oneBasedColumnCall left renderedColumn
+arg oneBasedColumnCall right oneI64
+run oneBasedColumnCall
+bind oneBasedColumn CSignedInt64 oneBasedColumnCall
+call remainderCall math.moduloI64
+arg remainderCall left oneBasedColumn
+arg remainderCall right kiloTabStop
+run remainderCall
+bind tabRemainder CSignedInt64 remainderCall
+call onStopCall math.equalI64
+arg onStopCall left tabRemainder
+arg onStopCall right zeroI64
+run onStopCall
+bind startsOnTabStop Bool onStopCall
+branchIf startsOnTabStop returnFullTabWidth
+call widthCall math.subtractI64
+arg widthCall left kiloTabStop
+arg widthCall right tabRemainder
+run widthCall
+bind partialTabWidth CSignedInt64 widthCall
+returnValue partialTabWidth
+label returnFullTabWidth
+returnValue kiloTabStop
+
+operation renderedColumnForFileColumn
+input renderedColumnForFileColumn rowPointer COpaqueMemoryAddress
+input renderedColumnForFileColumn rowLength CSignedInt64
+input renderedColumnForFileColumn leftVisibleColumn CSignedInt64
+input renderedColumnForFileColumn fileColumn CSignedInt64
+output renderedColumnForFileColumn CSignedInt64
+effect renderedColumnForFileColumn read memory.buffer
+authority renderedColumnForFileColumn memory.buffer read
+memoryHeap renderedColumnForFileColumn no
+async renderedColumnForFileColumn no
+purpose renderedColumnForFileColumn "Map a raw file byte column to its rendered terminal column."
+invariant renderedColumnForFileColumn "Tabs expand using the same tab width operation as row rendering."
+label startRenderedColumnForFileColumn
+storage local mutable scanColumn CSignedInt64 leftVisibleColumn
+storage local mutable renderedColumn CSignedInt64 zeroI64
+label renderedColumnLoop
+call reachedTargetCall math.greaterThanOrEqualI64
+arg reachedTargetCall left scanColumn
+arg reachedTargetCall right fileColumn
+run reachedTargetCall
+bind reachedTarget Bool reachedTargetCall
+branchIf reachedTarget returnRenderedColumn
+call reachedRowEndCall math.greaterThanOrEqualI64
+arg reachedRowEndCall left scanColumn
+arg reachedRowEndCall right rowLength
+run reachedRowEndCall
+bind reachedRowEnd Bool reachedRowEndCall
+branchIf reachedRowEnd returnRenderedColumn
+call loadColumnByteCall pointer.loadByte
+arg loadColumnByteCall buffer rowPointer
+arg loadColumnByteCall offset scanColumn
+run loadColumnByteCall
+bind columnByte CSignedInt32 loadColumnByteCall
+call tabColumnCheckCall math.equalCSignedInt32
+arg tabColumnCheckCall left columnByte
+arg tabColumnCheckCall right tabByte
+run tabColumnCheckCall
+bind columnIsTab Bool tabColumnCheckCall
+branchIf columnIsTab advanceRenderedByTab
+call renderedIncCall math.addI64
+arg renderedIncCall left renderedColumn
+arg renderedIncCall right oneI64
+run renderedIncCall
+bind renderedAfterByte CSignedInt64 renderedIncCall
+set local renderedColumn renderedAfterByte
+branch advanceScannedColumn
+label advanceRenderedByTab
+call tabWidthCall tabRenderedWidth
+arg tabWidthCall renderedColumn renderedColumn
+run tabWidthCall
+bind tabWidth CSignedInt64 tabWidthCall
+call addTabWidthCall math.addI64
+arg addTabWidthCall left renderedColumn
+arg addTabWidthCall right tabWidth
+run addTabWidthCall
+bind renderedAfterTab CSignedInt64 addTabWidthCall
+set local renderedColumn renderedAfterTab
+branch advanceScannedColumn
+label advanceScannedColumn
+call scanIncCall math.addI64
+arg scanIncCall left scanColumn
+arg scanIncCall right oneI64
+run scanIncCall
+bind nextScanColumn CSignedInt64 scanIncCall
+set local scanColumn nextScanColumn
+branch renderedColumnLoop
+label returnRenderedColumn
+returnValue renderedColumn
+
+operation keywordStartsAt
+input keywordStartsAt rowPointer COpaqueMemoryAddress
+input keywordStartsAt rowLength CSignedInt64
+input keywordStartsAt sourceIndex CSignedInt64
+input keywordStartsAt keywordText CNullTerminatedByteString
+input keywordStartsAt keywordLength CSignedInt64
+output keywordStartsAt Bool
+effect keywordStartsAt read memory.buffer
+authority keywordStartsAt memory.buffer read
+memoryHeap keywordStartsAt no
+async keywordStartsAt no
+purpose keywordStartsAt "Return true when keywordText starts at sourceIndex with JavaScript identifier boundaries."
+invariant keywordStartsAt "A match cannot be preceded or followed by an identifier byte."
+label startKeywordStartsAt
+storage local immutable keywordFalse Bool false
+storage local immutable keywordTrue Bool true
+call keywordEndCall math.addI64
+arg keywordEndCall left sourceIndex
+arg keywordEndCall right keywordLength
+run keywordEndCall
+bind keywordEnd CSignedInt64 keywordEndCall
+call fitsCall math.lessThanOrEqualI64
+arg fitsCall left keywordEnd
+arg fitsCall right rowLength
+run fitsCall
+bind keywordFits Bool fitsCall
+branchIf keywordFits checkPreviousBoundary
+returnValue keywordFalse
+label checkPreviousBoundary
+call atStartCall math.equalI64
+arg atStartCall left sourceIndex
+arg atStartCall right zeroI64
+run atStartCall
+bind sourceAtStart Bool atStartCall
+branchIf sourceAtStart checkNextBoundary
+call previousIndexCall math.subtractI64
+arg previousIndexCall left sourceIndex
+arg previousIndexCall right oneI64
+run previousIndexCall
+bind previousIndex CSignedInt64 previousIndexCall
+call previousByteCall pointer.loadByte
+arg previousByteCall buffer rowPointer
+arg previousByteCall offset previousIndex
+run previousByteCall
+bind previousByte CSignedInt32 previousByteCall
+call previousIdentifierCall isJavaScriptIdentifierByte
+arg previousIdentifierCall byteValue previousByte
+run previousIdentifierCall
+bind previousIsIdentifier Bool previousIdentifierCall
+branchIf previousIsIdentifier returnKeywordFalse
+label checkNextBoundary
+call atRowEndCall math.greaterThanOrEqualI64
+arg atRowEndCall left keywordEnd
+arg atRowEndCall right rowLength
+run atRowEndCall
+bind keywordEndsRow Bool atRowEndCall
+branchIf keywordEndsRow compareKeywordBytes
+call nextByteCall pointer.loadByte
+arg nextByteCall buffer rowPointer
+arg nextByteCall offset keywordEnd
+run nextByteCall
+bind nextByte CSignedInt32 nextByteCall
+call nextIdentifierCall isJavaScriptIdentifierByte
+arg nextIdentifierCall byteValue nextByte
+run nextIdentifierCall
+bind nextIsIdentifier Bool nextIdentifierCall
+branchIf nextIsIdentifier returnKeywordFalse
+label compareKeywordBytes
+call rowSubstringCall pointer.offset
+arg rowSubstringCall base rowPointer
+arg rowSubstringCall offset sourceIndex
+run rowSubstringCall
+bind rowSubstring COpaqueMemoryAddress rowSubstringCall
+call compareCall c.strncmp
+arg compareCall left rowSubstring
+arg compareCall right keywordText
+arg compareCall count keywordLength
+run compareCall
+bind compareResult CSignedInt32 compareCall
+call matchCall math.equalCSignedInt32
+arg matchCall left compareResult
+arg matchCall right zeroI32
+run matchCall
+bind keywordMatches Bool matchCall
+branchIf keywordMatches returnKeywordTrue
+label returnKeywordFalse
+returnValue keywordFalse
+label returnKeywordTrue
+returnValue keywordTrue
+
+operation matchJavaScriptKeyword1LengthAt
+input matchJavaScriptKeyword1LengthAt rowPointer COpaqueMemoryAddress
+input matchJavaScriptKeyword1LengthAt rowLength CSignedInt64
+input matchJavaScriptKeyword1LengthAt sourceIndex CSignedInt64
+output matchJavaScriptKeyword1LengthAt CSignedInt64
+effect matchJavaScriptKeyword1LengthAt read memory.buffer
+authority matchJavaScriptKeyword1LengthAt memory.buffer read
+memoryHeap matchJavaScriptKeyword1LengthAt no
+async matchJavaScriptKeyword1LengthAt no
+purpose matchJavaScriptKeyword1LengthAt "Return the length of a JavaScript control/declaration keyword at sourceIndex, or zero."
+invariant matchJavaScriptKeyword1LengthAt "Matches only whole JavaScript identifier tokens."
+label startMatchJavaScriptKeyword1LengthAt
+storage local immutable functionKeyword CNullTerminatedByteString "function"
+storage local immutable functionLength CSignedInt64 8
+storage local immutable constKeyword CNullTerminatedByteString "const"
+storage local immutable constLength CSignedInt64 5
+storage local immutable letKeyword CNullTerminatedByteString "let"
+storage local immutable letLength CSignedInt64 3
+storage local immutable varKeyword CNullTerminatedByteString "var"
+storage local immutable varLength CSignedInt64 3
+storage local immutable ifKeyword CNullTerminatedByteString "if"
+storage local immutable ifLength CSignedInt64 2
+storage local immutable elseKeyword CNullTerminatedByteString "else"
+storage local immutable elseLength CSignedInt64 4
+storage local immutable forKeyword CNullTerminatedByteString "for"
+storage local immutable forLength CSignedInt64 3
+storage local immutable whileKeyword CNullTerminatedByteString "while"
+storage local immutable whileLength CSignedInt64 5
+storage local immutable returnKeyword CNullTerminatedByteString "return"
+storage local immutable returnLength CSignedInt64 6
+storage local immutable classKeyword CNullTerminatedByteString "class"
+storage local immutable classLength CSignedInt64 5
+storage local immutable extendsKeyword CNullTerminatedByteString "extends"
+storage local immutable extendsLength CSignedInt64 7
+storage local immutable importKeyword CNullTerminatedByteString "import"
+storage local immutable importLength CSignedInt64 6
+storage local immutable exportKeyword CNullTerminatedByteString "export"
+storage local immutable exportLength CSignedInt64 6
+storage local immutable fromKeyword CNullTerminatedByteString "from"
+storage local immutable fromLength CSignedInt64 4
+storage local immutable asyncKeyword CNullTerminatedByteString "async"
+storage local immutable asyncLength CSignedInt64 5
+storage local immutable awaitKeyword CNullTerminatedByteString "await"
+storage local immutable awaitLength CSignedInt64 5
+storage local immutable tryKeyword CNullTerminatedByteString "try"
+storage local immutable tryLength CSignedInt64 3
+storage local immutable catchKeyword CNullTerminatedByteString "catch"
+storage local immutable catchLength CSignedInt64 5
+storage local immutable finallyKeyword CNullTerminatedByteString "finally"
+storage local immutable finallyLength CSignedInt64 7
+storage local immutable throwKeyword CNullTerminatedByteString "throw"
+storage local immutable throwLength CSignedInt64 5
+storage local immutable switchKeyword CNullTerminatedByteString "switch"
+storage local immutable switchLength CSignedInt64 6
+storage local immutable caseKeyword CNullTerminatedByteString "case"
+storage local immutable caseLength CSignedInt64 4
+storage local immutable defaultKeyword CNullTerminatedByteString "default"
+storage local immutable defaultLength CSignedInt64 7
+storage local immutable breakKeyword CNullTerminatedByteString "break"
+storage local immutable breakLength CSignedInt64 5
+storage local immutable continueKeyword CNullTerminatedByteString "continue"
+storage local immutable continueLength CSignedInt64 8
+storage local immutable newKeyword CNullTerminatedByteString "new"
+storage local immutable newLength CSignedInt64 3
+call functionMatchCall keywordStartsAt
+arg functionMatchCall rowPointer rowPointer
+arg functionMatchCall rowLength rowLength
+arg functionMatchCall sourceIndex sourceIndex
+arg functionMatchCall keywordText functionKeyword
+arg functionMatchCall keywordLength functionLength
+run functionMatchCall
+bind functionMatches Bool functionMatchCall
+branchIf functionMatches returnFunctionLength
+call constMatchCall keywordStartsAt
+arg constMatchCall rowPointer rowPointer
+arg constMatchCall rowLength rowLength
+arg constMatchCall sourceIndex sourceIndex
+arg constMatchCall keywordText constKeyword
+arg constMatchCall keywordLength constLength
+run constMatchCall
+bind constMatches Bool constMatchCall
+branchIf constMatches returnConstLength
+call letMatchCall keywordStartsAt
+arg letMatchCall rowPointer rowPointer
+arg letMatchCall rowLength rowLength
+arg letMatchCall sourceIndex sourceIndex
+arg letMatchCall keywordText letKeyword
+arg letMatchCall keywordLength letLength
+run letMatchCall
+bind letMatches Bool letMatchCall
+branchIf letMatches returnLetLength
+call varMatchCall keywordStartsAt
+arg varMatchCall rowPointer rowPointer
+arg varMatchCall rowLength rowLength
+arg varMatchCall sourceIndex sourceIndex
+arg varMatchCall keywordText varKeyword
+arg varMatchCall keywordLength varLength
+run varMatchCall
+bind varMatches Bool varMatchCall
+branchIf varMatches returnVarLength
+call ifMatchCall keywordStartsAt
+arg ifMatchCall rowPointer rowPointer
+arg ifMatchCall rowLength rowLength
+arg ifMatchCall sourceIndex sourceIndex
+arg ifMatchCall keywordText ifKeyword
+arg ifMatchCall keywordLength ifLength
+run ifMatchCall
+bind ifMatches Bool ifMatchCall
+branchIf ifMatches returnIfLength
+call elseMatchCall keywordStartsAt
+arg elseMatchCall rowPointer rowPointer
+arg elseMatchCall rowLength rowLength
+arg elseMatchCall sourceIndex sourceIndex
+arg elseMatchCall keywordText elseKeyword
+arg elseMatchCall keywordLength elseLength
+run elseMatchCall
+bind elseMatches Bool elseMatchCall
+branchIf elseMatches returnElseLength
+call forMatchCall keywordStartsAt
+arg forMatchCall rowPointer rowPointer
+arg forMatchCall rowLength rowLength
+arg forMatchCall sourceIndex sourceIndex
+arg forMatchCall keywordText forKeyword
+arg forMatchCall keywordLength forLength
+run forMatchCall
+bind forMatches Bool forMatchCall
+branchIf forMatches returnForLength
+call whileMatchCall keywordStartsAt
+arg whileMatchCall rowPointer rowPointer
+arg whileMatchCall rowLength rowLength
+arg whileMatchCall sourceIndex sourceIndex
+arg whileMatchCall keywordText whileKeyword
+arg whileMatchCall keywordLength whileLength
+run whileMatchCall
+bind whileMatches Bool whileMatchCall
+branchIf whileMatches returnWhileLength
+call returnMatchCall keywordStartsAt
+arg returnMatchCall rowPointer rowPointer
+arg returnMatchCall rowLength rowLength
+arg returnMatchCall sourceIndex sourceIndex
+arg returnMatchCall keywordText returnKeyword
+arg returnMatchCall keywordLength returnLength
+run returnMatchCall
+bind returnMatches Bool returnMatchCall
+branchIf returnMatches returnReturnLength
+call classMatchCall keywordStartsAt
+arg classMatchCall rowPointer rowPointer
+arg classMatchCall rowLength rowLength
+arg classMatchCall sourceIndex sourceIndex
+arg classMatchCall keywordText classKeyword
+arg classMatchCall keywordLength classLength
+run classMatchCall
+bind classMatches Bool classMatchCall
+branchIf classMatches returnClassLength
+call extendsMatchCall keywordStartsAt
+arg extendsMatchCall rowPointer rowPointer
+arg extendsMatchCall rowLength rowLength
+arg extendsMatchCall sourceIndex sourceIndex
+arg extendsMatchCall keywordText extendsKeyword
+arg extendsMatchCall keywordLength extendsLength
+run extendsMatchCall
+bind extendsMatches Bool extendsMatchCall
+branchIf extendsMatches returnExtendsLength
+call importMatchCall keywordStartsAt
+arg importMatchCall rowPointer rowPointer
+arg importMatchCall rowLength rowLength
+arg importMatchCall sourceIndex sourceIndex
+arg importMatchCall keywordText importKeyword
+arg importMatchCall keywordLength importLength
+run importMatchCall
+bind importMatches Bool importMatchCall
+branchIf importMatches returnImportLength
+call exportMatchCall keywordStartsAt
+arg exportMatchCall rowPointer rowPointer
+arg exportMatchCall rowLength rowLength
+arg exportMatchCall sourceIndex sourceIndex
+arg exportMatchCall keywordText exportKeyword
+arg exportMatchCall keywordLength exportLength
+run exportMatchCall
+bind exportMatches Bool exportMatchCall
+branchIf exportMatches returnExportLength
+call fromMatchCall keywordStartsAt
+arg fromMatchCall rowPointer rowPointer
+arg fromMatchCall rowLength rowLength
+arg fromMatchCall sourceIndex sourceIndex
+arg fromMatchCall keywordText fromKeyword
+arg fromMatchCall keywordLength fromLength
+run fromMatchCall
+bind fromMatches Bool fromMatchCall
+branchIf fromMatches returnFromLength
+call asyncMatchCall keywordStartsAt
+arg asyncMatchCall rowPointer rowPointer
+arg asyncMatchCall rowLength rowLength
+arg asyncMatchCall sourceIndex sourceIndex
+arg asyncMatchCall keywordText asyncKeyword
+arg asyncMatchCall keywordLength asyncLength
+run asyncMatchCall
+bind asyncMatches Bool asyncMatchCall
+branchIf asyncMatches returnAsyncLength
+call awaitMatchCall keywordStartsAt
+arg awaitMatchCall rowPointer rowPointer
+arg awaitMatchCall rowLength rowLength
+arg awaitMatchCall sourceIndex sourceIndex
+arg awaitMatchCall keywordText awaitKeyword
+arg awaitMatchCall keywordLength awaitLength
+run awaitMatchCall
+bind awaitMatches Bool awaitMatchCall
+branchIf awaitMatches returnAwaitLength
+call tryMatchCall keywordStartsAt
+arg tryMatchCall rowPointer rowPointer
+arg tryMatchCall rowLength rowLength
+arg tryMatchCall sourceIndex sourceIndex
+arg tryMatchCall keywordText tryKeyword
+arg tryMatchCall keywordLength tryLength
+run tryMatchCall
+bind tryMatches Bool tryMatchCall
+branchIf tryMatches returnTryLength
+call catchMatchCall keywordStartsAt
+arg catchMatchCall rowPointer rowPointer
+arg catchMatchCall rowLength rowLength
+arg catchMatchCall sourceIndex sourceIndex
+arg catchMatchCall keywordText catchKeyword
+arg catchMatchCall keywordLength catchLength
+run catchMatchCall
+bind catchMatches Bool catchMatchCall
+branchIf catchMatches returnCatchLength
+call finallyMatchCall keywordStartsAt
+arg finallyMatchCall rowPointer rowPointer
+arg finallyMatchCall rowLength rowLength
+arg finallyMatchCall sourceIndex sourceIndex
+arg finallyMatchCall keywordText finallyKeyword
+arg finallyMatchCall keywordLength finallyLength
+run finallyMatchCall
+bind finallyMatches Bool finallyMatchCall
+branchIf finallyMatches returnFinallyLength
+call throwMatchCall keywordStartsAt
+arg throwMatchCall rowPointer rowPointer
+arg throwMatchCall rowLength rowLength
+arg throwMatchCall sourceIndex sourceIndex
+arg throwMatchCall keywordText throwKeyword
+arg throwMatchCall keywordLength throwLength
+run throwMatchCall
+bind throwMatches Bool throwMatchCall
+branchIf throwMatches returnThrowLength
+call switchMatchCall keywordStartsAt
+arg switchMatchCall rowPointer rowPointer
+arg switchMatchCall rowLength rowLength
+arg switchMatchCall sourceIndex sourceIndex
+arg switchMatchCall keywordText switchKeyword
+arg switchMatchCall keywordLength switchLength
+run switchMatchCall
+bind switchMatches Bool switchMatchCall
+branchIf switchMatches returnSwitchLength
+call caseMatchCall keywordStartsAt
+arg caseMatchCall rowPointer rowPointer
+arg caseMatchCall rowLength rowLength
+arg caseMatchCall sourceIndex sourceIndex
+arg caseMatchCall keywordText caseKeyword
+arg caseMatchCall keywordLength caseLength
+run caseMatchCall
+bind caseMatches Bool caseMatchCall
+branchIf caseMatches returnCaseLength
+call defaultMatchCall keywordStartsAt
+arg defaultMatchCall rowPointer rowPointer
+arg defaultMatchCall rowLength rowLength
+arg defaultMatchCall sourceIndex sourceIndex
+arg defaultMatchCall keywordText defaultKeyword
+arg defaultMatchCall keywordLength defaultLength
+run defaultMatchCall
+bind defaultMatches Bool defaultMatchCall
+branchIf defaultMatches returnDefaultLength
+call breakMatchCall keywordStartsAt
+arg breakMatchCall rowPointer rowPointer
+arg breakMatchCall rowLength rowLength
+arg breakMatchCall sourceIndex sourceIndex
+arg breakMatchCall keywordText breakKeyword
+arg breakMatchCall keywordLength breakLength
+run breakMatchCall
+bind breakMatches Bool breakMatchCall
+branchIf breakMatches returnBreakLength
+call continueMatchCall keywordStartsAt
+arg continueMatchCall rowPointer rowPointer
+arg continueMatchCall rowLength rowLength
+arg continueMatchCall sourceIndex sourceIndex
+arg continueMatchCall keywordText continueKeyword
+arg continueMatchCall keywordLength continueLength
+run continueMatchCall
+bind continueMatches Bool continueMatchCall
+branchIf continueMatches returnContinueLength
+call newMatchCall keywordStartsAt
+arg newMatchCall rowPointer rowPointer
+arg newMatchCall rowLength rowLength
+arg newMatchCall sourceIndex sourceIndex
+arg newMatchCall keywordText newKeyword
+arg newMatchCall keywordLength newLength
+run newMatchCall
+bind newMatches Bool newMatchCall
+branchIf newMatches returnNewLength
+returnValue zeroI64
+label returnFunctionLength
+returnValue functionLength
+label returnConstLength
+returnValue constLength
+label returnLetLength
+returnValue letLength
+label returnVarLength
+returnValue varLength
+label returnIfLength
+returnValue ifLength
+label returnElseLength
+returnValue elseLength
+label returnForLength
+returnValue forLength
+label returnWhileLength
+returnValue whileLength
+label returnReturnLength
+returnValue returnLength
+label returnClassLength
+returnValue classLength
+label returnExtendsLength
+returnValue extendsLength
+label returnImportLength
+returnValue importLength
+label returnExportLength
+returnValue exportLength
+label returnFromLength
+returnValue fromLength
+label returnAsyncLength
+returnValue asyncLength
+label returnAwaitLength
+returnValue awaitLength
+label returnTryLength
+returnValue tryLength
+label returnCatchLength
+returnValue catchLength
+label returnFinallyLength
+returnValue finallyLength
+label returnThrowLength
+returnValue throwLength
+label returnSwitchLength
+returnValue switchLength
+label returnCaseLength
+returnValue caseLength
+label returnDefaultLength
+returnValue defaultLength
+label returnBreakLength
+returnValue breakLength
+label returnContinueLength
+returnValue continueLength
+label returnNewLength
+returnValue newLength
+
+operation matchJavaScriptKeyword2LengthAt
+input matchJavaScriptKeyword2LengthAt rowPointer COpaqueMemoryAddress
+input matchJavaScriptKeyword2LengthAt rowLength CSignedInt64
+input matchJavaScriptKeyword2LengthAt sourceIndex CSignedInt64
+output matchJavaScriptKeyword2LengthAt CSignedInt64
+effect matchJavaScriptKeyword2LengthAt read memory.buffer
+authority matchJavaScriptKeyword2LengthAt memory.buffer read
+memoryHeap matchJavaScriptKeyword2LengthAt no
+async matchJavaScriptKeyword2LengthAt no
+purpose matchJavaScriptKeyword2LengthAt "Return the length of a JavaScript literal/type/global token at sourceIndex, or zero."
+invariant matchJavaScriptKeyword2LengthAt "Matches only whole JavaScript identifier tokens."
+label startMatchJavaScriptKeyword2LengthAt
+storage local immutable trueKeyword CNullTerminatedByteString "true"
+storage local immutable trueLength CSignedInt64 4
+storage local immutable falseKeyword CNullTerminatedByteString "false"
+storage local immutable falseLength CSignedInt64 5
+storage local immutable nullKeyword CNullTerminatedByteString "null"
+storage local immutable nullLength CSignedInt64 4
+storage local immutable undefinedKeyword CNullTerminatedByteString "undefined"
+storage local immutable undefinedLength CSignedInt64 9
+storage local immutable thisKeyword CNullTerminatedByteString "this"
+storage local immutable thisLength CSignedInt64 4
+storage local immutable superKeyword CNullTerminatedByteString "super"
+storage local immutable superLength CSignedInt64 5
+storage local immutable nanKeyword CNullTerminatedByteString "NaN"
+storage local immutable nanLength CSignedInt64 3
+storage local immutable infinityKeyword CNullTerminatedByteString "Infinity"
+storage local immutable infinityLength CSignedInt64 8
+storage local immutable consoleKeyword CNullTerminatedByteString "console"
+storage local immutable consoleLength CSignedInt64 7
+storage local immutable promiseKeyword CNullTerminatedByteString "Promise"
+storage local immutable promiseLength CSignedInt64 7
+storage local immutable arrayKeyword CNullTerminatedByteString "Array"
+storage local immutable arrayLength CSignedInt64 5
+storage local immutable objectKeyword CNullTerminatedByteString "Object"
+storage local immutable objectLength CSignedInt64 6
+storage local immutable stringKeyword CNullTerminatedByteString "String"
+storage local immutable stringLength CSignedInt64 6
+storage local immutable numberKeyword CNullTerminatedByteString "Number"
+storage local immutable numberLength CSignedInt64 6
+storage local immutable booleanKeyword CNullTerminatedByteString "Boolean"
+storage local immutable booleanLength CSignedInt64 7
+call trueMatchCall keywordStartsAt
+arg trueMatchCall rowPointer rowPointer
+arg trueMatchCall rowLength rowLength
+arg trueMatchCall sourceIndex sourceIndex
+arg trueMatchCall keywordText trueKeyword
+arg trueMatchCall keywordLength trueLength
+run trueMatchCall
+bind trueMatches Bool trueMatchCall
+branchIf trueMatches returnTrueLength
+call falseMatchCall keywordStartsAt
+arg falseMatchCall rowPointer rowPointer
+arg falseMatchCall rowLength rowLength
+arg falseMatchCall sourceIndex sourceIndex
+arg falseMatchCall keywordText falseKeyword
+arg falseMatchCall keywordLength falseLength
+run falseMatchCall
+bind falseMatches Bool falseMatchCall
+branchIf falseMatches returnFalseLength
+call nullMatchCall keywordStartsAt
+arg nullMatchCall rowPointer rowPointer
+arg nullMatchCall rowLength rowLength
+arg nullMatchCall sourceIndex sourceIndex
+arg nullMatchCall keywordText nullKeyword
+arg nullMatchCall keywordLength nullLength
+run nullMatchCall
+bind nullMatches Bool nullMatchCall
+branchIf nullMatches returnNullLength
+call undefinedMatchCall keywordStartsAt
+arg undefinedMatchCall rowPointer rowPointer
+arg undefinedMatchCall rowLength rowLength
+arg undefinedMatchCall sourceIndex sourceIndex
+arg undefinedMatchCall keywordText undefinedKeyword
+arg undefinedMatchCall keywordLength undefinedLength
+run undefinedMatchCall
+bind undefinedMatches Bool undefinedMatchCall
+branchIf undefinedMatches returnUndefinedLength
+call thisMatchCall keywordStartsAt
+arg thisMatchCall rowPointer rowPointer
+arg thisMatchCall rowLength rowLength
+arg thisMatchCall sourceIndex sourceIndex
+arg thisMatchCall keywordText thisKeyword
+arg thisMatchCall keywordLength thisLength
+run thisMatchCall
+bind thisMatches Bool thisMatchCall
+branchIf thisMatches returnThisLength
+call superMatchCall keywordStartsAt
+arg superMatchCall rowPointer rowPointer
+arg superMatchCall rowLength rowLength
+arg superMatchCall sourceIndex sourceIndex
+arg superMatchCall keywordText superKeyword
+arg superMatchCall keywordLength superLength
+run superMatchCall
+bind superMatches Bool superMatchCall
+branchIf superMatches returnSuperLength
+call nanMatchCall keywordStartsAt
+arg nanMatchCall rowPointer rowPointer
+arg nanMatchCall rowLength rowLength
+arg nanMatchCall sourceIndex sourceIndex
+arg nanMatchCall keywordText nanKeyword
+arg nanMatchCall keywordLength nanLength
+run nanMatchCall
+bind nanMatches Bool nanMatchCall
+branchIf nanMatches returnNanLength
+call infinityMatchCall keywordStartsAt
+arg infinityMatchCall rowPointer rowPointer
+arg infinityMatchCall rowLength rowLength
+arg infinityMatchCall sourceIndex sourceIndex
+arg infinityMatchCall keywordText infinityKeyword
+arg infinityMatchCall keywordLength infinityLength
+run infinityMatchCall
+bind infinityMatches Bool infinityMatchCall
+branchIf infinityMatches returnInfinityLength
+call consoleMatchCall keywordStartsAt
+arg consoleMatchCall rowPointer rowPointer
+arg consoleMatchCall rowLength rowLength
+arg consoleMatchCall sourceIndex sourceIndex
+arg consoleMatchCall keywordText consoleKeyword
+arg consoleMatchCall keywordLength consoleLength
+run consoleMatchCall
+bind consoleMatches Bool consoleMatchCall
+branchIf consoleMatches returnConsoleLength
+call promiseMatchCall keywordStartsAt
+arg promiseMatchCall rowPointer rowPointer
+arg promiseMatchCall rowLength rowLength
+arg promiseMatchCall sourceIndex sourceIndex
+arg promiseMatchCall keywordText promiseKeyword
+arg promiseMatchCall keywordLength promiseLength
+run promiseMatchCall
+bind promiseMatches Bool promiseMatchCall
+branchIf promiseMatches returnPromiseLength
+call arrayMatchCall keywordStartsAt
+arg arrayMatchCall rowPointer rowPointer
+arg arrayMatchCall rowLength rowLength
+arg arrayMatchCall sourceIndex sourceIndex
+arg arrayMatchCall keywordText arrayKeyword
+arg arrayMatchCall keywordLength arrayLength
+run arrayMatchCall
+bind arrayMatches Bool arrayMatchCall
+branchIf arrayMatches returnArrayLength
+call objectMatchCall keywordStartsAt
+arg objectMatchCall rowPointer rowPointer
+arg objectMatchCall rowLength rowLength
+arg objectMatchCall sourceIndex sourceIndex
+arg objectMatchCall keywordText objectKeyword
+arg objectMatchCall keywordLength objectLength
+run objectMatchCall
+bind objectMatches Bool objectMatchCall
+branchIf objectMatches returnObjectLength
+call stringMatchCall keywordStartsAt
+arg stringMatchCall rowPointer rowPointer
+arg stringMatchCall rowLength rowLength
+arg stringMatchCall sourceIndex sourceIndex
+arg stringMatchCall keywordText stringKeyword
+arg stringMatchCall keywordLength stringLength
+run stringMatchCall
+bind stringMatches Bool stringMatchCall
+branchIf stringMatches returnStringLength
+call numberMatchCall keywordStartsAt
+arg numberMatchCall rowPointer rowPointer
+arg numberMatchCall rowLength rowLength
+arg numberMatchCall sourceIndex sourceIndex
+arg numberMatchCall keywordText numberKeyword
+arg numberMatchCall keywordLength numberLength
+run numberMatchCall
+bind numberMatches Bool numberMatchCall
+branchIf numberMatches returnNumberLength
+call booleanMatchCall keywordStartsAt
+arg booleanMatchCall rowPointer rowPointer
+arg booleanMatchCall rowLength rowLength
+arg booleanMatchCall sourceIndex sourceIndex
+arg booleanMatchCall keywordText booleanKeyword
+arg booleanMatchCall keywordLength booleanLength
+run booleanMatchCall
+bind booleanMatches Bool booleanMatchCall
+branchIf booleanMatches returnBooleanLength
+returnValue zeroI64
+label returnTrueLength
+returnValue trueLength
+label returnFalseLength
+returnValue falseLength
+label returnNullLength
+returnValue nullLength
+label returnUndefinedLength
+returnValue undefinedLength
+label returnThisLength
+returnValue thisLength
+label returnSuperLength
+returnValue superLength
+label returnNanLength
+returnValue nanLength
+label returnInfinityLength
+returnValue infinityLength
+label returnConsoleLength
+returnValue consoleLength
+label returnPromiseLength
+returnValue promiseLength
+label returnArrayLength
+returnValue arrayLength
+label returnObjectLength
+returnValue objectLength
+label returnStringLength
+returnValue stringLength
+label returnNumberLength
+returnValue numberLength
+label returnBooleanLength
+returnValue booleanLength
+
+operation loadRowLength
+input loadRowLength rowLengths COpaqueMemoryAddress
+input loadRowLength rowIndex CSignedInt64
+output loadRowLength CSignedInt64
+effect loadRowLength read memory.buffer
+authority loadRowLength memory.buffer read
+memoryHeap loadRowLength no
+async loadRowLength no
+purpose loadRowLength "Read one row length byte and return it as an i64."
+invariant loadRowLength "Row lengths are stored as two little-endian bytes and widened without modifying row storage."
+label startLoadRowLength
+call baseOffsetCall math.multiplyI64
+arg baseOffsetCall left rowIndex
+arg baseOffsetCall right twoI64
+run baseOffsetCall
+bind baseOffset CSignedInt64 baseOffsetCall
+call highOffsetCall math.addI64
+arg highOffsetCall left baseOffset
+arg highOffsetCall right oneI64
+run highOffsetCall
+bind highOffset CSignedInt64 highOffsetCall
+call loadLowCall pointer.loadByte
+arg loadLowCall buffer rowLengths
+arg loadLowCall offset baseOffset
+run loadLowCall
+bind loadedLowByteRaw CSignedInt32 loadLowCall
+call widenLowByteCall math.signExtendCSignedInt32ToCSignedInt64
+arg widenLowByteCall inputValue loadedLowByteRaw
+run widenLowByteCall
+bind loadedLowByte CSignedInt64 widenLowByteCall
+storage local mutable lowByteValue CSignedInt64 loadedLowByte
+call lowNegativeCall math.lessThanI64
+arg lowNegativeCall left loadedLowByte
+arg lowNegativeCall right zeroI64
+run lowNegativeCall
+bind lowIsNegative Bool lowNegativeCall
+branchIf lowIsNegative normalizeLowByte
+branch loadHighLengthByte
+label normalizeLowByte
+call lowNormalizeCall math.addI64
+arg lowNormalizeCall left loadedLowByte
+arg lowNormalizeCall right byteBaseI64
+run lowNormalizeCall
+bind normalizedLowByte CSignedInt64 lowNormalizeCall
+set local lowByteValue normalizedLowByte
+branch loadHighLengthByte
+label loadHighLengthByte
+call loadHighCall pointer.loadByte
+arg loadHighCall buffer rowLengths
+arg loadHighCall offset highOffset
+run loadHighCall
+bind loadedHighByteRaw CSignedInt32 loadHighCall
+call widenHighByteCall math.signExtendCSignedInt32ToCSignedInt64
+arg widenHighByteCall inputValue loadedHighByteRaw
+run widenHighByteCall
+bind loadedHighByte CSignedInt64 widenHighByteCall
+storage local mutable highByteValue CSignedInt64 loadedHighByte
+call highNegativeCall math.lessThanI64
+arg highNegativeCall left loadedHighByte
+arg highNegativeCall right zeroI64
+run highNegativeCall
+bind highIsNegative Bool highNegativeCall
+branchIf highIsNegative normalizeHighByte
+branch combineLengthBytes
+label normalizeHighByte
+call highNormalizeCall math.addI64
+arg highNormalizeCall left loadedHighByte
+arg highNormalizeCall right byteBaseI64
+run highNormalizeCall
+bind normalizedHighByte CSignedInt64 highNormalizeCall
+set local highByteValue normalizedHighByte
+branch combineLengthBytes
+label combineLengthBytes
+call highShiftCall math.multiplyI64
+arg highShiftCall left highByteValue
+arg highShiftCall right byteBaseI64
+run highShiftCall
+bind shiftedHighByte CSignedInt64 highShiftCall
+call lengthCall math.addI64
+arg lengthCall left shiftedHighByte
+arg lengthCall right lowByteValue
+run lengthCall
+bind loadedLength CSignedInt64 lengthCall
+returnValue loadedLength
+
+operation storeRowLength
+input storeRowLength rowLengths COpaqueMemoryAddress
+input storeRowLength rowIndex CSignedInt64
+input storeRowLength rowLength CSignedInt64
+output storeRowLength CSignedInt32
+effect storeRowLength write memory.buffer
+authority storeRowLength memory.buffer write
+memoryHeap storeRowLength no
+async storeRowLength no
+purpose storeRowLength "Store one bounded row length in the two-byte row length table."
+invariant storeRowLength "Only the selected row length slot pair is modified."
+label startStoreRowLength
+call baseOffsetCall math.multiplyI64
+arg baseOffsetCall left rowIndex
+arg baseOffsetCall right twoI64
+run baseOffsetCall
+bind baseOffset CSignedInt64 baseOffsetCall
+call highOffsetCall math.addI64
+arg highOffsetCall left baseOffset
+arg highOffsetCall right oneI64
+run highOffsetCall
+bind highOffset CSignedInt64 highOffsetCall
+call lowByteCall math.moduloI64
+arg lowByteCall left rowLength
+arg lowByteCall right byteBaseI64
+run lowByteCall
+bind lowByteValue CSignedInt64 lowByteCall
+call highByteCall math.divideI64
+arg highByteCall left rowLength
+arg highByteCall right byteBaseI64
+run highByteCall
+bind highByteValue CSignedInt64 highByteCall
+call storeLowCall pointer.storeByte
+arg storeLowCall buffer rowLengths
+arg storeLowCall offset baseOffset
+arg storeLowCall value lowByteValue
+run storeLowCall
+call storeHighCall pointer.storeByte
+arg storeHighCall buffer rowLengths
+arg storeHighCall offset highOffset
+arg storeHighCall value highByteValue
+run storeHighCall
+returnValue zeroI32
+
+operation copyLineBufferToRow
+input copyLineBufferToRow rowsBuffer COpaqueMemoryAddress
+input copyLineBufferToRow rowLengths COpaqueMemoryAddress
+input copyLineBufferToRow rowIndex CSignedInt64
+input copyLineBufferToRow rowCapacity CSignedInt64
+input copyLineBufferToRow sourceBuffer COpaqueMemoryAddress
+output copyLineBufferToRow CSignedInt64
+effect copyLineBufferToRow read memory.buffer
+effect copyLineBufferToRow write memory.buffer
+authority copyLineBufferToRow memory.buffer read
+authority copyLineBufferToRow memory.buffer write
+memoryHeap copyLineBufferToRow no
+async copyLineBufferToRow no
+purpose copyLineBufferToRow "Copy one fgets line into a fixed row slot, stripping CR/LF and preserving a trailing NUL."
+invariant copyLineBufferToRow "The copy loop never writes beyond rowCapacity minus one and always writes a trailing NUL."
+label startCopyLineBufferToRow
+storage local mutable copyIndex CSignedInt64 zeroI64
+call rowPointerCall getRowPointer
+arg rowPointerCall rowsBuffer rowsBuffer
+arg rowPointerCall rowIndex rowIndex
+arg rowPointerCall rowCapacity rowCapacity
+run rowPointerCall
+bind rowPointer COpaqueMemoryAddress rowPointerCall
+call maxDataLengthCall math.subtractI64
+arg maxDataLengthCall left rowCapacity
+arg maxDataLengthCall right oneI64
+run maxDataLengthCall
+bind maxDataLength CSignedInt64 maxDataLengthCall
+label copyLineLoop
+call capCheckCall math.greaterThanOrEqualI64
+arg capCheckCall left copyIndex
+arg capCheckCall right maxDataLength
+run capCheckCall
+bind atCapacity Bool capCheckCall
+branchIf atCapacity finishCopyLine
+call loadSourceCall pointer.loadByte
+arg loadSourceCall buffer sourceBuffer
+arg loadSourceCall offset copyIndex
+run loadSourceCall
+bind sourceByte CSignedInt32 loadSourceCall
+call nulCheckCall math.equalCSignedInt32
+arg nulCheckCall left sourceByte
+arg nulCheckCall right nulByte
+run nulCheckCall
+bind sourceIsNul Bool nulCheckCall
+branchIf sourceIsNul finishCopyLine
+call newlineCheckCall math.equalCSignedInt32
+arg newlineCheckCall left sourceByte
+arg newlineCheckCall right newlineByte
+run newlineCheckCall
+bind sourceIsNewline Bool newlineCheckCall
+branchIf sourceIsNewline finishCopyLine
+call carriageCheckCall math.equalCSignedInt32
+arg carriageCheckCall left sourceByte
+arg carriageCheckCall right carriageReturnByte
+run carriageCheckCall
+bind sourceIsCarriage Bool carriageCheckCall
+branchIf sourceIsCarriage finishCopyLine
+call storeByteCall pointer.storeByte
+arg storeByteCall buffer rowPointer
+arg storeByteCall offset copyIndex
+arg storeByteCall value sourceByte
+run storeByteCall
+call nextIndexCall math.addI64
+arg nextIndexCall left copyIndex
+arg nextIndexCall right oneI64
+run nextIndexCall
+bind nextIndex CSignedInt64 nextIndexCall
+set local copyIndex nextIndex
+branch copyLineLoop
+label finishCopyLine
+call storeNulCall pointer.storeByte
+arg storeNulCall buffer rowPointer
+arg storeNulCall offset copyIndex
+arg storeNulCall value nulByte
+run storeNulCall
+call storeLengthCall storeRowLength
+arg storeLengthCall rowLengths rowLengths
+arg storeLengthCall rowIndex rowIndex
+arg storeLengthCall rowLength copyIndex
+run storeLengthCall
+ignoreValue storeLengthCall CSignedInt32
+returnValue copyIndex
+
+operation loadFileFromDisk
+input loadFileFromDisk rowsBuffer COpaqueMemoryAddress
+input loadFileFromDisk rowLengths COpaqueMemoryAddress
+input loadFileFromDisk maxRows CSignedInt64
+input loadFileFromDisk rowCapacity CSignedInt64
+input loadFileFromDisk lineBuffer COpaqueMemoryAddress
+input loadFileFromDisk lineBufferCapacity CSignedInt32
+input loadFileFromDisk fileName CNullTerminatedByteString
+output loadFileFromDisk CSignedInt64
+effect loadFileFromDisk read filesystem
+effect loadFileFromDisk open file
+effect loadFileFromDisk close file
+effect loadFileFromDisk read memory.buffer
+effect loadFileFromDisk write memory.buffer
+authority loadFileFromDisk filesystem read
+authority loadFileFromDisk file open
+authority loadFileFromDisk file close
+authority loadFileFromDisk memory.buffer read
+authority loadFileFromDisk memory.buffer write
+memoryHeap loadFileFromDisk no
+async loadFileFromDisk no
+purpose loadFileFromDisk "Load an existing text file into fixed row storage; missing files start empty."
+invariant loadFileFromDisk "The load loop never stores more than maxRows rows and each row remains NUL-terminated."
+label startLoadFileFromDisk
+storage local immutable readMode CNullTerminatedByteString "r"
+storage local mutable loadedRows CSignedInt64 zeroI64
+call openCall c.fopen
+arg openCall filename fileName
+arg openCall mode readMode
+run openCall
+bind fileHandle CFileHandle openCall
+call nullCheckCall pointer.isNull
+arg nullCheckCall pointer fileHandle
+run nullCheckCall
+bind fileIsNull Bool nullCheckCall
+branchIf fileIsNull returnEmptyFile
+label loadFileLoop
+call rowsFullCall math.greaterThanOrEqualI64
+arg rowsFullCall left loadedRows
+arg rowsFullCall right maxRows
+run rowsFullCall
+bind rowsAreFull Bool rowsFullCall
+branchIf rowsAreFull finishLoadFile
+call readLineCall c.fgets
+arg readLineCall string lineBuffer
+arg readLineCall count lineBufferCapacity
+arg readLineCall stream fileHandle
+run readLineCall
+bind readResult CNullTerminatedByteString readLineCall
+call readNullCheckCall pointer.isNull
+arg readNullCheckCall pointer readResult
+run readNullCheckCall
+bind readReturnedNull Bool readNullCheckCall
+branchIf readReturnedNull finishLoadFile
+call copyLineCall copyLineBufferToRow
+arg copyLineCall rowsBuffer rowsBuffer
+arg copyLineCall rowLengths rowLengths
+arg copyLineCall rowIndex loadedRows
+arg copyLineCall rowCapacity rowCapacity
+arg copyLineCall sourceBuffer lineBuffer
+run copyLineCall
+ignoreValue copyLineCall CSignedInt64
+call incrementRowsCall math.addI64
+arg incrementRowsCall left loadedRows
+arg incrementRowsCall right oneI64
+run incrementRowsCall
+bind nextLoadedRows CSignedInt64 incrementRowsCall
+set local loadedRows nextLoadedRows
+branch loadFileLoop
+label finishLoadFile
+call closeCall c.fclose
+arg closeCall stream fileHandle
+run closeCall
+ignoreValue closeCall CSignedInt32
+returnValue loadedRows
+label returnEmptyFile
+returnValue zeroI64
+
+operation saveFileToDisk
+input saveFileToDisk rowsBuffer COpaqueMemoryAddress
+input saveFileToDisk rowLengths COpaqueMemoryAddress
+input saveFileToDisk activeRowCount CSignedInt64
+input saveFileToDisk rowCapacity CSignedInt64
+input saveFileToDisk fileName CNullTerminatedByteString
+output saveFileToDisk SaveFileStatus
+effect saveFileToDisk read memory.buffer
+effect saveFileToDisk write filesystem
+effect saveFileToDisk open file
+effect saveFileToDisk close file
+effect saveFileToDisk write console.stdout
+authority saveFileToDisk memory.buffer read
+authority saveFileToDisk filesystem write
+authority saveFileToDisk file open
+authority saveFileToDisk file close
+authority saveFileToDisk console.stdout write
+memoryHeap saveFileToDisk no
+async saveFileToDisk no
+purpose saveFileToDisk "Write every active row to disk with a newline after each row."
+invariant saveFileToDisk "The save loop writes exactly the active row length for each row before its newline."
+label startSaveFileToDisk
+storage local immutable writeMode CNullTerminatedByteString "w"
+storage local mutable saveIndex CSignedInt64 zeroI64
+call openCall c.fopen
+arg openCall filename fileName
+arg openCall mode writeMode
+run openCall
+bind fileHandle CFileHandle openCall
+call nullCheckCall pointer.isNull
+arg nullCheckCall pointer fileHandle
+run nullCheckCall
+bind fileIsNull Bool nullCheckCall
+branchIf fileIsNull returnSaveOpenFailed
+label saveLoop
+call doneCheckCall math.greaterThanOrEqualI64
+arg doneCheckCall left saveIndex
+arg doneCheckCall right activeRowCount
+run doneCheckCall
+bind saveDone Bool doneCheckCall
+branchIf saveDone finishSave
+call rowPointerCall getRowPointer
+arg rowPointerCall rowsBuffer rowsBuffer
+arg rowPointerCall rowIndex saveIndex
+arg rowPointerCall rowCapacity rowCapacity
+run rowPointerCall
+bind rowPointer COpaqueMemoryAddress rowPointerCall
+call rowLengthCall loadRowLength
+arg rowLengthCall rowLengths rowLengths
+arg rowLengthCall rowIndex saveIndex
+run rowLengthCall
+bind rowLength CSignedInt64 rowLengthCall
+call writeRowCall c.fwrite
+arg writeRowCall ptr rowPointer
+arg writeRowCall size oneI64
+arg writeRowCall count rowLength
+arg writeRowCall stream fileHandle
+run writeRowCall
+bind writtenBytes CByteCount writeRowCall
+call writeMatchesCall math.equalI64
+arg writeMatchesCall left writtenBytes
+arg writeMatchesCall right rowLength
+run writeMatchesCall
+bind writeMatches Bool writeMatchesCall
+branchIf writeMatches writeNewline
+branch closeAfterWriteFailure
+label writeNewline
+call newlineCall c.fputc
+arg newlineCall character newlineByte
+arg newlineCall stream fileHandle
+run newlineCall
+bind newlineResult CSignedInt32 newlineCall
+call newlineFailedCall math.lessThanCSignedInt32
+arg newlineFailedCall left newlineResult
+arg newlineFailedCall right zeroI32
+run newlineFailedCall
+bind newlineFailed Bool newlineFailedCall
+branchIf newlineFailed closeAfterWriteFailure
+call incrementCall math.addI64
+arg incrementCall left saveIndex
+arg incrementCall right oneI64
+run incrementCall
+bind nextSaveIndex CSignedInt64 incrementCall
+set local saveIndex nextSaveIndex
+branch saveLoop
+label finishSave
+call closeCall c.fclose
+arg closeCall stream fileHandle
+run closeCall
+bind closeResult CSignedInt32 closeCall
+call closeFailedCall math.lessThanCSignedInt32
+arg closeFailedCall left closeResult
+arg closeFailedCall right zeroI32
+run closeFailedCall
+bind closeFailed Bool closeFailedCall
+branchIf closeFailed returnSaveCloseFailed
+returnValue SaveSucceeded
+label closeAfterWriteFailure
+call closeAfterWriteFailureCall c.fclose
+arg closeAfterWriteFailureCall stream fileHandle
+run closeAfterWriteFailureCall
+ignoreValue closeAfterWriteFailureCall CSignedInt32
+returnValue SaveWriteFailed
+label returnSaveOpenFailed
+returnValue SaveOpenFailed
+label returnSaveCloseFailed
+returnValue SaveCloseFailed
+
+operation insertEmptyRowAt
+input insertEmptyRowAt rowsBuffer COpaqueMemoryAddress
+input insertEmptyRowAt rowLengths COpaqueMemoryAddress
+input insertEmptyRowAt activeRowCount CSignedInt64
+input insertEmptyRowAt rowIndex CSignedInt64
+input insertEmptyRowAt maxRows CSignedInt64
+input insertEmptyRowAt rowCapacity CSignedInt64
+output insertEmptyRowAt CSignedInt64
+effect insertEmptyRowAt read memory.buffer
+effect insertEmptyRowAt write memory.buffer
+authority insertEmptyRowAt memory.buffer read
+authority insertEmptyRowAt memory.buffer write
+memoryHeap insertEmptyRowAt no
+async insertEmptyRowAt no
+purpose insertEmptyRowAt "Insert an empty row and shift later fixed row slots down."
+invariant insertEmptyRowAt "Rows at and after insertIndex are shifted at most one slot and row count increases by one."
+label startInsertEmptyRowAt
+storage local mutable shiftIndex CSignedInt64 activeRowCount
+call fullCheckCall math.greaterThanOrEqualI64
+arg fullCheckCall left activeRowCount
+arg fullCheckCall right maxRows
+run fullCheckCall
+bind isFull Bool fullCheckCall
+branchIf isFull returnUnchanged
+label shiftDownLoop
+call shiftNeededCall math.greaterThanI64
+arg shiftNeededCall left shiftIndex
+arg shiftNeededCall right rowIndex
+run shiftNeededCall
+bind shiftNeeded Bool shiftNeededCall
+branchIf shiftNeeded shiftOneRowDown
+branch clearInsertedRow
+label shiftOneRowDown
+call previousIndexCall math.subtractI64
+arg previousIndexCall left shiftIndex
+arg previousIndexCall right oneI64
+run previousIndexCall
+bind previousIndex CSignedInt64 previousIndexCall
+call destinationCall getRowPointer
+arg destinationCall rowsBuffer rowsBuffer
+arg destinationCall rowIndex shiftIndex
+arg destinationCall rowCapacity rowCapacity
+run destinationCall
+bind destinationPointer COpaqueMemoryAddress destinationCall
+call sourceCall getRowPointer
+arg sourceCall rowsBuffer rowsBuffer
+arg sourceCall rowIndex previousIndex
+arg sourceCall rowCapacity rowCapacity
+run sourceCall
+bind sourcePointer COpaqueMemoryAddress sourceCall
+call moveRowCall c.memmove
+arg moveRowCall dest destinationPointer
+arg moveRowCall src sourcePointer
+arg moveRowCall count rowCapacity
+run moveRowCall
+ignoreValue moveRowCall COpaqueMemoryAddress
+call previousLengthCall loadRowLength
+arg previousLengthCall rowLengths rowLengths
+arg previousLengthCall rowIndex previousIndex
+run previousLengthCall
+bind previousLength CSignedInt64 previousLengthCall
+call storeLengthCall storeRowLength
+arg storeLengthCall rowLengths rowLengths
+arg storeLengthCall rowIndex shiftIndex
+arg storeLengthCall rowLength previousLength
+run storeLengthCall
+ignoreValue storeLengthCall CSignedInt32
+set local shiftIndex previousIndex
+branch shiftDownLoop
+label clearInsertedRow
+call insertedPointerCall getRowPointer
+arg insertedPointerCall rowsBuffer rowsBuffer
+arg insertedPointerCall rowIndex rowIndex
+arg insertedPointerCall rowCapacity rowCapacity
+run insertedPointerCall
+bind insertedPointer COpaqueMemoryAddress insertedPointerCall
+call zeroInsertedCall c.memset
+arg zeroInsertedCall ptr insertedPointer
+arg zeroInsertedCall value zeroI32
+arg zeroInsertedCall num rowCapacity
+run zeroInsertedCall
+ignoreValue zeroInsertedCall COpaqueMemoryAddress
+call storeZeroLengthCall storeRowLength
+arg storeZeroLengthCall rowLengths rowLengths
+arg storeZeroLengthCall rowIndex rowIndex
+arg storeZeroLengthCall rowLength zeroI64
+run storeZeroLengthCall
+ignoreValue storeZeroLengthCall CSignedInt32
+call incrementRowsCall math.addI64
+arg incrementRowsCall left activeRowCount
+arg incrementRowsCall right oneI64
+run incrementRowsCall
+bind incrementedRows CSignedInt64 incrementRowsCall
+returnValue incrementedRows
+label returnUnchanged
+returnValue activeRowCount
+
+operation deleteRowAt
+input deleteRowAt rowsBuffer COpaqueMemoryAddress
+input deleteRowAt rowLengths COpaqueMemoryAddress
+input deleteRowAt activeRowCount CSignedInt64
+input deleteRowAt rowIndex CSignedInt64
+input deleteRowAt rowCapacity CSignedInt64
+output deleteRowAt CSignedInt64
+effect deleteRowAt read memory.buffer
+effect deleteRowAt write memory.buffer
+authority deleteRowAt memory.buffer read
+authority deleteRowAt memory.buffer write
+memoryHeap deleteRowAt no
+async deleteRowAt no
+purpose deleteRowAt "Delete one row and shift later slots up."
+invariant deleteRowAt "Rows after deleteIndex are shifted at most one slot and row count decreases by one."
+label startDeleteRowAt
+storage local mutable shiftIndex CSignedInt64 rowIndex
+call inRangeCall math.lessThanI64
+arg inRangeCall left rowIndex
+arg inRangeCall right activeRowCount
+run inRangeCall
+bind isInRange Bool inRangeCall
+branchIf isInRange deleteLoop
+returnValue activeRowCount
+label deleteLoop
+call nextIndexCall math.addI64
+arg nextIndexCall left shiftIndex
+arg nextIndexCall right oneI64
+run nextIndexCall
+bind nextIndex CSignedInt64 nextIndexCall
+call shiftDoneCall math.greaterThanOrEqualI64
+arg shiftDoneCall left nextIndex
+arg shiftDoneCall right activeRowCount
+run shiftDoneCall
+bind shiftDone Bool shiftDoneCall
+branchIf shiftDone finishDeleteRow
+call destinationCall getRowPointer
+arg destinationCall rowsBuffer rowsBuffer
+arg destinationCall rowIndex shiftIndex
+arg destinationCall rowCapacity rowCapacity
+run destinationCall
+bind destinationPointer COpaqueMemoryAddress destinationCall
+call sourceCall getRowPointer
+arg sourceCall rowsBuffer rowsBuffer
+arg sourceCall rowIndex nextIndex
+arg sourceCall rowCapacity rowCapacity
+run sourceCall
+bind sourcePointer COpaqueMemoryAddress sourceCall
+call moveRowCall c.memmove
+arg moveRowCall dest destinationPointer
+arg moveRowCall src sourcePointer
+arg moveRowCall count rowCapacity
+run moveRowCall
+ignoreValue moveRowCall COpaqueMemoryAddress
+call nextLengthCall loadRowLength
+arg nextLengthCall rowLengths rowLengths
+arg nextLengthCall rowIndex nextIndex
+run nextLengthCall
+bind nextLength CSignedInt64 nextLengthCall
+call storeLengthCall storeRowLength
+arg storeLengthCall rowLengths rowLengths
+arg storeLengthCall rowIndex shiftIndex
+arg storeLengthCall rowLength nextLength
+run storeLengthCall
+ignoreValue storeLengthCall CSignedInt32
+set local shiftIndex nextIndex
+branch deleteLoop
+label finishDeleteRow
+call decrementedRowsCall math.subtractI64
+arg decrementedRowsCall left activeRowCount
+arg decrementedRowsCall right oneI64
+run decrementedRowsCall
+bind decrementedRows CSignedInt64 decrementedRowsCall
+returnValue decrementedRows
+
+operation insertCharInRow
+input insertCharInRow rowsBuffer COpaqueMemoryAddress
+input insertCharInRow rowLengths COpaqueMemoryAddress
+input insertCharInRow rowIndex CSignedInt64
+input insertCharInRow columnIndex CSignedInt64
+input insertCharInRow rowCapacity CSignedInt64
+input insertCharInRow character CSignedInt32
+output insertCharInRow CSignedInt64
+effect insertCharInRow read memory.buffer
+effect insertCharInRow write memory.buffer
+authority insertCharInRow memory.buffer read
+authority insertCharInRow memory.buffer write
+memoryHeap insertCharInRow no
+async insertCharInRow no
+purpose insertCharInRow "Insert one byte into an existing row and return the new row length."
+invariant insertCharInRow "The row insertion loop preserves byte order and leaves the row NUL-terminated."
+label startInsertCharInRow
+storage local mutable insertAt CSignedInt64 columnIndex
+call rowPointerCall getRowPointer
+arg rowPointerCall rowsBuffer rowsBuffer
+arg rowPointerCall rowIndex rowIndex
+arg rowPointerCall rowCapacity rowCapacity
+run rowPointerCall
+bind rowPointer COpaqueMemoryAddress rowPointerCall
+call rowLengthCall loadRowLength
+arg rowLengthCall rowLengths rowLengths
+arg rowLengthCall rowIndex rowIndex
+run rowLengthCall
+bind rowLength CSignedInt64 rowLengthCall
+call maxLengthCall math.subtractI64
+arg maxLengthCall left rowCapacity
+arg maxLengthCall right oneI64
+run maxLengthCall
+bind maxLength CSignedInt64 maxLengthCall
+call fullCheckCall math.greaterThanOrEqualI64
+arg fullCheckCall left rowLength
+arg fullCheckCall right maxLength
+run fullCheckCall
+bind isFull Bool fullCheckCall
+branchIf isFull returnOldLength
+call columnPastEndCall math.greaterThanI64
+arg columnPastEndCall left insertAt
+arg columnPastEndCall right rowLength
+run columnPastEndCall
+bind columnPastEnd Bool columnPastEndCall
+branchIf columnPastEnd clampInsertColumn
+branch startShiftRight
+label clampInsertColumn
+set local insertAt rowLength
+branch startShiftRight
+label startShiftRight
+storage local mutable shiftIndex CSignedInt64 rowLength
+label shiftRightLoop
+call shiftContinueCall math.greaterThanOrEqualI64
+arg shiftContinueCall left shiftIndex
+arg shiftContinueCall right insertAt
+run shiftContinueCall
+bind shiftContinue Bool shiftContinueCall
+branchIf shiftContinue shiftByteRight
+branch storeInsertedChar
+label shiftByteRight
+call nextSlotCall math.addI64
+arg nextSlotCall left shiftIndex
+arg nextSlotCall right oneI64
+run nextSlotCall
+bind nextSlot CSignedInt64 nextSlotCall
+call loadShiftByteCall pointer.loadByte
+arg loadShiftByteCall buffer rowPointer
+arg loadShiftByteCall offset shiftIndex
+run loadShiftByteCall
+bind shiftByte CSignedInt32 loadShiftByteCall
+call storeShiftByteCall pointer.storeByte
+arg storeShiftByteCall buffer rowPointer
+arg storeShiftByteCall offset nextSlot
+arg storeShiftByteCall value shiftByte
+run storeShiftByteCall
+call atZeroCheckCall math.equalI64
+arg atZeroCheckCall left shiftIndex
+arg atZeroCheckCall right zeroI64
+run atZeroCheckCall
+bind shiftAtZero Bool atZeroCheckCall
+branchIf shiftAtZero storeInsertedChar
+call decrementShiftCall math.subtractI64
+arg decrementShiftCall left shiftIndex
+arg decrementShiftCall right oneI64
+run decrementShiftCall
+bind decrementedShift CSignedInt64 decrementShiftCall
+set local shiftIndex decrementedShift
+branch shiftRightLoop
+label storeInsertedChar
+call storeCharCall pointer.storeByte
+arg storeCharCall buffer rowPointer
+arg storeCharCall offset insertAt
+arg storeCharCall value character
+run storeCharCall
+call newLengthCall math.addI64
+arg newLengthCall left rowLength
+arg newLengthCall right oneI64
+run newLengthCall
+bind newLength CSignedInt64 newLengthCall
+call storeLengthCall storeRowLength
+arg storeLengthCall rowLengths rowLengths
+arg storeLengthCall rowIndex rowIndex
+arg storeLengthCall rowLength newLength
+run storeLengthCall
+ignoreValue storeLengthCall CSignedInt32
+returnValue newLength
+label returnOldLength
+returnValue rowLength
+
+operation deleteCharInRow
+input deleteCharInRow rowsBuffer COpaqueMemoryAddress
+input deleteCharInRow rowLengths COpaqueMemoryAddress
+input deleteCharInRow rowIndex CSignedInt64
+input deleteCharInRow columnIndex CSignedInt64
+input deleteCharInRow rowCapacity CSignedInt64
+output deleteCharInRow CSignedInt64
+effect deleteCharInRow read memory.buffer
+effect deleteCharInRow write memory.buffer
+authority deleteCharInRow memory.buffer read
+authority deleteCharInRow memory.buffer write
+memoryHeap deleteCharInRow no
+async deleteCharInRow no
+purpose deleteCharInRow "Delete one byte from an existing row and return the new row length."
+invariant deleteCharInRow "The row deletion loop shifts bytes left and leaves the row NUL-terminated."
+label startDeleteCharInRow
+call rowPointerCall getRowPointer
+arg rowPointerCall rowsBuffer rowsBuffer
+arg rowPointerCall rowIndex rowIndex
+arg rowPointerCall rowCapacity rowCapacity
+run rowPointerCall
+bind rowPointer COpaqueMemoryAddress rowPointerCall
+call rowLengthCall loadRowLength
+arg rowLengthCall rowLengths rowLengths
+arg rowLengthCall rowIndex rowIndex
+run rowLengthCall
+bind rowLength CSignedInt64 rowLengthCall
+call columnInRangeCall math.lessThanI64
+arg columnInRangeCall left columnIndex
+arg columnInRangeCall right rowLength
+run columnInRangeCall
+bind columnInRange Bool columnInRangeCall
+branchIf columnInRange startShiftLeft
+returnValue rowLength
+label startShiftLeft
+storage local mutable shiftIndex CSignedInt64 columnIndex
+label shiftLeftLoop
+call nextIndexCall math.addI64
+arg nextIndexCall left shiftIndex
+arg nextIndexCall right oneI64
+run nextIndexCall
+bind nextIndex CSignedInt64 nextIndexCall
+call doneCheckCall math.greaterThanI64
+arg doneCheckCall left nextIndex
+arg doneCheckCall right rowLength
+run doneCheckCall
+bind shiftDone Bool doneCheckCall
+branchIf shiftDone finishDeleteChar
+call loadNextCall pointer.loadByte
+arg loadNextCall buffer rowPointer
+arg loadNextCall offset nextIndex
+run loadNextCall
+bind nextByte CSignedInt32 loadNextCall
+call storeCurrentCall pointer.storeByte
+arg storeCurrentCall buffer rowPointer
+arg storeCurrentCall offset shiftIndex
+arg storeCurrentCall value nextByte
+run storeCurrentCall
+set local shiftIndex nextIndex
+branch shiftLeftLoop
+label finishDeleteChar
+call newLengthCall math.subtractI64
+arg newLengthCall left rowLength
+arg newLengthCall right oneI64
+run newLengthCall
+bind newLength CSignedInt64 newLengthCall
+call storeLengthCall storeRowLength
+arg storeLengthCall rowLengths rowLengths
+arg storeLengthCall rowIndex rowIndex
+arg storeLengthCall rowLength newLength
+run storeLengthCall
+ignoreValue storeLengthCall CSignedInt32
+returnValue newLength
+
+operation splitRowAt
+input splitRowAt rowsBuffer COpaqueMemoryAddress
+input splitRowAt rowLengths COpaqueMemoryAddress
+input splitRowAt activeRowCount CSignedInt64
+input splitRowAt rowIndex CSignedInt64
+input splitRowAt columnIndex CSignedInt64
+input splitRowAt maxRows CSignedInt64
+input splitRowAt rowCapacity CSignedInt64
+output splitRowAt CSignedInt64
+effect splitRowAt read memory.buffer
+effect splitRowAt write memory.buffer
+authority splitRowAt memory.buffer read
+authority splitRowAt memory.buffer write
+memoryHeap splitRowAt no
+async splitRowAt no
+purpose splitRowAt "Split one row at the cursor and return the updated row count."
+invariant splitRowAt "The split keeps both resulting rows within fixed row capacity and updates both lengths."
+label startSplitRowAt
+call nextRowIndexCall math.addI64
+arg nextRowIndexCall left rowIndex
+arg nextRowIndexCall right oneI64
+run nextRowIndexCall
+bind nextRowIndex CSignedInt64 nextRowIndexCall
+call insertCall insertEmptyRowAt
+arg insertCall rowsBuffer rowsBuffer
+arg insertCall rowLengths rowLengths
+arg insertCall activeRowCount activeRowCount
+arg insertCall rowIndex nextRowIndex
+arg insertCall maxRows maxRows
+arg insertCall rowCapacity rowCapacity
+run insertCall
+bind afterInsertRows CSignedInt64 insertCall
+call insertedCheckCall math.equalI64
+arg insertedCheckCall left afterInsertRows
+arg insertedCheckCall right activeRowCount
+run insertedCheckCall
+bind insertFailed Bool insertedCheckCall
+branchIf insertFailed returnOriginalRows
+call sourceRowPointerCall getRowPointer
+arg sourceRowPointerCall rowsBuffer rowsBuffer
+arg sourceRowPointerCall rowIndex rowIndex
+arg sourceRowPointerCall rowCapacity rowCapacity
+run sourceRowPointerCall
+bind sourceRowPointer COpaqueMemoryAddress sourceRowPointerCall
+call destRowPointerCall getRowPointer
+arg destRowPointerCall rowsBuffer rowsBuffer
+arg destRowPointerCall rowIndex nextRowIndex
+arg destRowPointerCall rowCapacity rowCapacity
+run destRowPointerCall
+bind destRowPointer COpaqueMemoryAddress destRowPointerCall
+call rowLengthCall loadRowLength
+arg rowLengthCall rowLengths rowLengths
+arg rowLengthCall rowIndex rowIndex
+run rowLengthCall
+bind rowLength CSignedInt64 rowLengthCall
+storage local mutable splitColumn CSignedInt64 columnIndex
+call splitPastEndCall math.greaterThanI64
+arg splitPastEndCall left columnIndex
+arg splitPastEndCall right rowLength
+run splitPastEndCall
+bind splitPastEnd Bool splitPastEndCall
+branchIf splitPastEnd splitAtEnd
+branch copyTailStart
+label splitAtEnd
+set local splitColumn rowLength
+branch copyTailStart
+label copyTailStart
+storage local mutable copyIndex CSignedInt64 zeroI64
+storage local mutable sourceIndex CSignedInt64 splitColumn
+label copyTailLoop
+call tailDoneCall math.greaterThanOrEqualI64
+arg tailDoneCall left sourceIndex
+arg tailDoneCall right rowLength
+run tailDoneCall
+bind tailDone Bool tailDoneCall
+branchIf tailDone finishSplitRow
+call loadTailByteCall pointer.loadByte
+arg loadTailByteCall buffer sourceRowPointer
+arg loadTailByteCall offset sourceIndex
+run loadTailByteCall
+bind tailByte CSignedInt32 loadTailByteCall
+call storeTailByteCall pointer.storeByte
+arg storeTailByteCall buffer destRowPointer
+arg storeTailByteCall offset copyIndex
+arg storeTailByteCall value tailByte
+run storeTailByteCall
+call incCopyCall math.addI64
+arg incCopyCall left copyIndex
+arg incCopyCall right oneI64
+run incCopyCall
+bind nextCopyIndex CSignedInt64 incCopyCall
+set local copyIndex nextCopyIndex
+call incSourceCall math.addI64
+arg incSourceCall left sourceIndex
+arg incSourceCall right oneI64
+run incSourceCall
+bind nextSourceIndex CSignedInt64 incSourceCall
+set local sourceIndex nextSourceIndex
+branch copyTailLoop
+label finishSplitRow
+call storeDestNulCall pointer.storeByte
+arg storeDestNulCall buffer destRowPointer
+arg storeDestNulCall offset copyIndex
+arg storeDestNulCall value nulByte
+run storeDestNulCall
+call storeDestLengthCall storeRowLength
+arg storeDestLengthCall rowLengths rowLengths
+arg storeDestLengthCall rowIndex nextRowIndex
+arg storeDestLengthCall rowLength copyIndex
+run storeDestLengthCall
+ignoreValue storeDestLengthCall CSignedInt32
+call storeSourceNulCall pointer.storeByte
+arg storeSourceNulCall buffer sourceRowPointer
+arg storeSourceNulCall offset splitColumn
+arg storeSourceNulCall value nulByte
+run storeSourceNulCall
+call storeSourceLengthCall storeRowLength
+arg storeSourceLengthCall rowLengths rowLengths
+arg storeSourceLengthCall rowIndex rowIndex
+arg storeSourceLengthCall rowLength splitColumn
+run storeSourceLengthCall
+ignoreValue storeSourceLengthCall CSignedInt32
+returnValue afterInsertRows
+label returnOriginalRows
+returnValue activeRowCount
+
+operation appendRowToPrevious
+input appendRowToPrevious rowsBuffer COpaqueMemoryAddress
+input appendRowToPrevious rowLengths COpaqueMemoryAddress
+input appendRowToPrevious activeRowCount CSignedInt64
+input appendRowToPrevious rowIndex CSignedInt64
+input appendRowToPrevious rowCapacity CSignedInt64
+output appendRowToPrevious CSignedInt64
+effect appendRowToPrevious read memory.buffer
+effect appendRowToPrevious write memory.buffer
+authority appendRowToPrevious memory.buffer read
+authority appendRowToPrevious memory.buffer write
+memoryHeap appendRowToPrevious no
+async appendRowToPrevious no
+purpose appendRowToPrevious "Join rowIndex into the previous row, then delete rowIndex."
+invariant appendRowToPrevious "Append copies only bytes that fit in the previous row and preserves row order after deletion."
+label startAppendRowToPrevious
+call firstRowCheckCall math.equalI64
+arg firstRowCheckCall left rowIndex
+arg firstRowCheckCall right zeroI64
+run firstRowCheckCall
+bind isFirstRow Bool firstRowCheckCall
+branchIf isFirstRow returnOriginalRows
+call prevIndexCall math.subtractI64
+arg prevIndexCall left rowIndex
+arg prevIndexCall right oneI64
+run prevIndexCall
+bind prevIndex CSignedInt64 prevIndexCall
+call prevPointerCall getRowPointer
+arg prevPointerCall rowsBuffer rowsBuffer
+arg prevPointerCall rowIndex prevIndex
+arg prevPointerCall rowCapacity rowCapacity
+run prevPointerCall
+bind prevPointer COpaqueMemoryAddress prevPointerCall
+call currPointerCall getRowPointer
+arg currPointerCall rowsBuffer rowsBuffer
+arg currPointerCall rowIndex rowIndex
+arg currPointerCall rowCapacity rowCapacity
+run currPointerCall
+bind currPointer COpaqueMemoryAddress currPointerCall
+call prevLengthCall loadRowLength
+arg prevLengthCall rowLengths rowLengths
+arg prevLengthCall rowIndex prevIndex
+run prevLengthCall
+bind prevLength CSignedInt64 prevLengthCall
+call currLengthCall loadRowLength
+arg currLengthCall rowLengths rowLengths
+arg currLengthCall rowIndex rowIndex
+run currLengthCall
+bind currLength CSignedInt64 currLengthCall
+call maxDataCall math.subtractI64
+arg maxDataCall left rowCapacity
+arg maxDataCall right oneI64
+run maxDataCall
+bind maxData CSignedInt64 maxDataCall
+storage local mutable copyIndex CSignedInt64 zeroI64
+storage local mutable targetIndex CSignedInt64 prevLength
+label appendLoop
+call sourceDoneCall math.greaterThanOrEqualI64
+arg sourceDoneCall left copyIndex
+arg sourceDoneCall right currLength
+run sourceDoneCall
+bind sourceDone Bool sourceDoneCall
+branchIf sourceDone finishAppendJoin
+call targetFullCall math.greaterThanOrEqualI64
+arg targetFullCall left targetIndex
+arg targetFullCall right maxData
+run targetFullCall
+bind targetFull Bool targetFullCall
+branchIf targetFull finishAppendJoin
+call loadCurrCall pointer.loadByte
+arg loadCurrCall buffer currPointer
+arg loadCurrCall offset copyIndex
+run loadCurrCall
+bind currByte CSignedInt32 loadCurrCall
+call storePrevCall pointer.storeByte
+arg storePrevCall buffer prevPointer
+arg storePrevCall offset targetIndex
+arg storePrevCall value currByte
+run storePrevCall
+call incCopyCall math.addI64
+arg incCopyCall left copyIndex
+arg incCopyCall right oneI64
+run incCopyCall
+bind nextCopy CSignedInt64 incCopyCall
+set local copyIndex nextCopy
+call incTargetCall math.addI64
+arg incTargetCall left targetIndex
+arg incTargetCall right oneI64
+run incTargetCall
+bind nextTarget CSignedInt64 incTargetCall
+set local targetIndex nextTarget
+branch appendLoop
+label finishAppendJoin
+call storeNulCall pointer.storeByte
+arg storeNulCall buffer prevPointer
+arg storeNulCall offset targetIndex
+arg storeNulCall value nulByte
+run storeNulCall
+call storeLengthCall storeRowLength
+arg storeLengthCall rowLengths rowLengths
+arg storeLengthCall rowIndex prevIndex
+arg storeLengthCall rowLength targetIndex
+run storeLengthCall
+ignoreValue storeLengthCall CSignedInt32
+call deleteCall deleteRowAt
+arg deleteCall rowsBuffer rowsBuffer
+arg deleteCall rowLengths rowLengths
+arg deleteCall activeRowCount activeRowCount
+arg deleteCall rowIndex rowIndex
+arg deleteCall rowCapacity rowCapacity
+run deleteCall
+bind afterDeleteRows CSignedInt64 deleteCall
+returnValue afterDeleteRows
+label returnOriginalRows
+returnValue activeRowCount
+
+operation renderRow
+input renderRow rowPointer COpaqueMemoryAddress
+input renderRow rowLength CSignedInt64
+input renderRow leftVisibleColumn CSignedInt64
+input renderRow screenCols CSignedInt64
+input renderRow initialBlockComment CSignedInt32
+input renderRow matchStart CSignedInt64
+input renderRow matchLength CSignedInt64
+output renderRow CSignedInt32
+effect renderRow read memory.buffer
+effect renderRow write console.stdout
+authority renderRow memory.buffer read
+authority renderRow console.stdout write
+memoryHeap renderRow no
+async renderRow no
+purpose renderRow "Render one visible row with Kilo-style lightweight syntax colors."
+invariant renderRow "Rendering reads row bytes only within the stored length and never mutates editor rows."
+label startRenderRow
+# rationale: These are ANSI SGR foreground color codes, not ASCII byte values.
+storage local immutable whiteColor CSignedInt32 37
+# rationale: These are ANSI SGR foreground color codes, not ASCII byte values.
+storage local immutable cyanColor CSignedInt32 36
+# rationale: These are ANSI SGR foreground color codes, not ASCII byte values.
+storage local immutable magentaColor CSignedInt32 35
+storage local immutable redColor CSignedInt32 31
+storage local immutable yellowColor CSignedInt32 33
+storage local immutable greenColor CSignedInt32 32
+storage local immutable blueColor CSignedInt32 34
+storage local mutable renderedCols CSignedInt64 zeroI64
+storage local mutable sourceIndex CSignedInt64 leftVisibleColumn
+storage local mutable inString CSignedInt32 zeroI32
+storage local mutable inStringEscape CSignedInt32 zeroI32
+storage local mutable inLineComment CSignedInt32 zeroI32
+storage local mutable inBlockComment CSignedInt32 initialBlockComment
+storage local mutable keywordRemaining CSignedInt64 zeroI64
+storage local mutable keywordColor CSignedInt32 zeroI32
+storage local mutable tabSpacesRemaining CSignedInt64 zeroI64
+storage local mutable matchEnd CSignedInt64 matchStart
+storage local mutable matchTabSpacesRemaining CSignedInt64 zeroI64
+call matchEndCall math.addI64
+arg matchEndCall left matchStart
+arg matchEndCall right matchLength
+run matchEndCall
+bind computedMatchEnd CSignedInt64 matchEndCall
+set local matchEnd computedMatchEnd
+label renderRowLoop
+call screenDoneCall math.greaterThanOrEqualI64
+arg screenDoneCall left renderedCols
+arg screenDoneCall right screenCols
+run screenDoneCall
+bind screenDone Bool screenDoneCall
+branchIf screenDone finishRenderRow
+call rowDoneCall math.greaterThanOrEqualI64
+arg rowDoneCall left sourceIndex
+arg rowDoneCall right rowLength
+run rowDoneCall
+bind rowDone Bool rowDoneCall
+branchIf rowDone finishRenderRow
+call loadByteCall pointer.loadByte
+arg loadByteCall buffer rowPointer
+arg loadByteCall offset sourceIndex
+run loadByteCall
+bind rowByte CSignedInt32 loadByteCall
+call matchStartedCall math.greaterThanOrEqualI64
+arg matchStartedCall left sourceIndex
+arg matchStartedCall right matchStart
+run matchStartedCall
+bind matchStarted Bool matchStartedCall
+branchIf matchStarted checkMatchNotEnded
+branch checkTabByte
+label checkMatchNotEnded
+call matchNotEndedCall math.lessThanI64
+arg matchNotEndedCall left sourceIndex
+arg matchNotEndedCall right matchEnd
+run matchNotEndedCall
+bind matchNotEnded Bool matchNotEndedCall
+branchIf matchNotEnded printMatchByte
+branch checkTabByte
+label checkTabByte
+call tabCheckCall math.equalCSignedInt32
+arg tabCheckCall left rowByte
+arg tabCheckCall right tabByte
+run tabCheckCall
+bind isTab Bool tabCheckCall
+branchIf isTab printTabAsSpaces
+call keywordRemainingCall math.greaterThanI64
+arg keywordRemainingCall left keywordRemaining
+arg keywordRemainingCall right zeroI64
+run keywordRemainingCall
+bind hasKeywordRemaining Bool keywordRemainingCall
+branchIf hasKeywordRemaining printKeywordByte
+call commentCheckCall math.equalCSignedInt32
+arg commentCheckCall left inLineComment
+arg commentCheckCall right oneI32
+run commentCheckCall
+bind insideLineComment Bool commentCheckCall
+branchIf insideLineComment printCommentByte
+call blockCommentCheckCall math.equalCSignedInt32
+arg blockCommentCheckCall left inBlockComment
+arg blockCommentCheckCall right oneI32
+run blockCommentCheckCall
+bind insideBlockComment Bool blockCommentCheckCall
+branchIf insideBlockComment printBlockCommentByte
+call stringCheckCall math.notEqualCSignedInt32
+arg stringCheckCall left inString
+arg stringCheckCall right zeroI32
+run stringCheckCall
+bind insideString Bool stringCheckCall
+branchIf insideString printStringByte
+call slashCheckCall math.equalCSignedInt32
+arg slashCheckCall left rowByte
+arg slashCheckCall right slashByte
+run slashCheckCall
+bind isSlash Bool slashCheckCall
+branchIf isSlash maybeStartComment
+call doubleQuoteCheckCall math.equalCSignedInt32
+arg doubleQuoteCheckCall left rowByte
+arg doubleQuoteCheckCall right doubleQuoteByte
+run doubleQuoteCheckCall
+bind isDoubleQuote Bool doubleQuoteCheckCall
+branchIf isDoubleQuote startString
+call singleQuoteCheckCall math.equalCSignedInt32
+arg singleQuoteCheckCall left rowByte
+arg singleQuoteCheckCall right singleQuoteByte
+run singleQuoteCheckCall
+bind isSingleQuote Bool singleQuoteCheckCall
+branchIf isSingleQuote startString
+call keyword1Call matchJavaScriptKeyword1LengthAt
+arg keyword1Call rowPointer rowPointer
+arg keyword1Call rowLength rowLength
+arg keyword1Call sourceIndex sourceIndex
+run keyword1Call
+bind keyword1Length CSignedInt64 keyword1Call
+call keyword1FoundCall math.greaterThanI64
+arg keyword1FoundCall left keyword1Length
+arg keyword1FoundCall right zeroI64
+run keyword1FoundCall
+bind keyword1Found Bool keyword1FoundCall
+branchIf keyword1Found startKeyword1
+call keyword2Call matchJavaScriptKeyword2LengthAt
+arg keyword2Call rowPointer rowPointer
+arg keyword2Call rowLength rowLength
+arg keyword2Call sourceIndex sourceIndex
+run keyword2Call
+bind keyword2Length CSignedInt64 keyword2Call
+call keyword2FoundCall math.greaterThanI64
+arg keyword2FoundCall left keyword2Length
+arg keyword2FoundCall right zeroI64
+run keyword2FoundCall
+bind keyword2Found Bool keyword2FoundCall
+branchIf keyword2Found startKeyword2
+call digitCall c.isdigit
+arg digitCall character rowByte
+run digitCall
+bind digitResult CSignedInt32 digitCall
+call digitPositiveCall math.notEqualCSignedInt32
+arg digitPositiveCall left digitResult
+arg digitPositiveCall right zeroI32
+run digitPositiveCall
+bind isDigit Bool digitPositiveCall
+branchIf isDigit printNumberByte
+branch printNormalByte
+label maybeStartComment
+call nextSourceIndexCall math.addI64
+arg nextSourceIndexCall left sourceIndex
+arg nextSourceIndexCall right oneI64
+run nextSourceIndexCall
+bind nextSourceIndex CSignedInt64 nextSourceIndexCall
+call hasNextCall math.lessThanI64
+arg hasNextCall left nextSourceIndex
+arg hasNextCall right rowLength
+run hasNextCall
+bind hasNext Bool hasNextCall
+branchIf hasNext loadPossibleCommentSecondByte
+branch printNormalByte
+label loadPossibleCommentSecondByte
+call loadNextByteCall pointer.loadByte
+arg loadNextByteCall buffer rowPointer
+arg loadNextByteCall offset nextSourceIndex
+run loadNextByteCall
+bind nextByte CSignedInt32 loadNextByteCall
+call nextSlashCheckCall math.equalCSignedInt32
+arg nextSlashCheckCall left nextByte
+arg nextSlashCheckCall right slashByte
+run nextSlashCheckCall
+bind nextIsSlash Bool nextSlashCheckCall
+branchIf nextIsSlash startLineComment
+call nextAsteriskCheckCall math.equalCSignedInt32
+arg nextAsteriskCheckCall left nextByte
+arg nextAsteriskCheckCall right asteriskByte
+run nextAsteriskCheckCall
+bind nextIsAsterisk Bool nextAsteriskCheckCall
+branchIf nextIsAsterisk startBlockComment
+branch printNormalByte
+label startLineComment
+set local inLineComment oneI32
+branch printCommentByte
+label startBlockComment
+set local inBlockComment oneI32
+branch printBlockCommentByte
+label startString
+set local inString rowByte
+branch printStringByte
+label startKeyword1
+set local keywordRemaining keyword1Length
+set local keywordColor yellowColor
+branch printKeywordByte
+label startKeyword2
+set local keywordRemaining keyword2Length
+set local keywordColor greenColor
+branch printKeywordByte
+label printNormalByte
+call colorWhiteCall setAnsiColor
+arg colorWhiteCall color whiteColor
+run colorWhiteCall
+ignoreValue colorWhiteCall CSignedInt32
+call printNormalCall c.putchar
+arg printNormalCall character rowByte
+run printNormalCall
+ignoreValue printNormalCall CSignedInt32
+branch advanceRenderedByte
+label printCommentByte
+call colorCyanCall setAnsiColor
+arg colorCyanCall color cyanColor
+run colorCyanCall
+ignoreValue colorCyanCall CSignedInt32
+call printCommentCall c.putchar
+arg printCommentCall character rowByte
+run printCommentCall
+ignoreValue printCommentCall CSignedInt32
+branch advanceRenderedByte
+label printBlockCommentByte
+call colorBlockCommentCall setAnsiColor
+arg colorBlockCommentCall color cyanColor
+run colorBlockCommentCall
+ignoreValue colorBlockCommentCall CSignedInt32
+call printBlockCommentCall c.putchar
+arg printBlockCommentCall character rowByte
+run printBlockCommentCall
+ignoreValue printBlockCommentCall CSignedInt32
+call blockSlashCheckCall math.equalCSignedInt32
+arg blockSlashCheckCall left rowByte
+arg blockSlashCheckCall right slashByte
+run blockSlashCheckCall
+bind blockByteIsSlash Bool blockSlashCheckCall
+branchIf blockByteIsSlash maybeEndBlockComment
+branch advanceRenderedByte
+label maybeEndBlockComment
+call sourceAtStartForBlockCall math.equalI64
+arg sourceAtStartForBlockCall left sourceIndex
+arg sourceAtStartForBlockCall right zeroI64
+run sourceAtStartForBlockCall
+bind blockAtStart Bool sourceAtStartForBlockCall
+branchIf blockAtStart advanceRenderedByte
+call previousBlockIndexCall math.subtractI64
+arg previousBlockIndexCall left sourceIndex
+arg previousBlockIndexCall right oneI64
+run previousBlockIndexCall
+bind previousBlockIndex CSignedInt64 previousBlockIndexCall
+call previousBlockByteCall pointer.loadByte
+arg previousBlockByteCall buffer rowPointer
+arg previousBlockByteCall offset previousBlockIndex
+run previousBlockByteCall
+bind previousBlockByte CSignedInt32 previousBlockByteCall
+call previousStarCheckCall math.equalCSignedInt32
+arg previousStarCheckCall left previousBlockByte
+arg previousStarCheckCall right asteriskByte
+run previousStarCheckCall
+bind previousWasStar Bool previousStarCheckCall
+branchIf previousWasStar clearBlockCommentState
+branch advanceRenderedByte
+label clearBlockCommentState
+set local inBlockComment zeroI32
+branch advanceRenderedByte
+label printStringByte
+call colorMagentaCall setAnsiColor
+arg colorMagentaCall color magentaColor
+run colorMagentaCall
+ignoreValue colorMagentaCall CSignedInt32
+call printStringCall c.putchar
+arg printStringCall character rowByte
+run printStringCall
+ignoreValue printStringCall CSignedInt32
+call stringEscapeActiveCall math.equalCSignedInt32
+arg stringEscapeActiveCall left inStringEscape
+arg stringEscapeActiveCall right oneI32
+run stringEscapeActiveCall
+bind stringEscapeActive Bool stringEscapeActiveCall
+branchIf stringEscapeActive clearStringEscapeState
+call stringBackslashCall math.equalCSignedInt32
+arg stringBackslashCall left rowByte
+arg stringBackslashCall right backslashByte
+run stringBackslashCall
+bind stringByteIsBackslash Bool stringBackslashCall
+branchIf stringByteIsBackslash setStringEscapeState
+call stringEndCheckCall math.equalCSignedInt32
+arg stringEndCheckCall left rowByte
+arg stringEndCheckCall right inString
+run stringEndCheckCall
+bind stringEnds Bool stringEndCheckCall
+branchIf stringEnds clearStringState
+branch advanceRenderedByte
+label clearStringEscapeState
+set local inStringEscape zeroI32
+call observeClearedStringEscapeCall math.equalCSignedInt32
+arg observeClearedStringEscapeCall left inStringEscape
+arg observeClearedStringEscapeCall right zeroI32
+run observeClearedStringEscapeCall
+ignoreValue observeClearedStringEscapeCall Bool
+branch advanceRenderedByte
+label setStringEscapeState
+set local inStringEscape oneI32
+call observeSetStringEscapeCall math.equalCSignedInt32
+arg observeSetStringEscapeCall left inStringEscape
+arg observeSetStringEscapeCall right oneI32
+run observeSetStringEscapeCall
+ignoreValue observeSetStringEscapeCall Bool
+branch advanceRenderedByte
+label clearStringState
+set local inString zeroI32
+branch advanceRenderedByte
+label printNumberByte
+call colorRedCall setAnsiColor
+arg colorRedCall color redColor
+run colorRedCall
+ignoreValue colorRedCall CSignedInt32
+call printNumberCall c.putchar
+arg printNumberCall character rowByte
+run printNumberCall
+ignoreValue printNumberCall CSignedInt32
+branch advanceRenderedByte
+label printKeywordByte
+call colorKeywordCall setAnsiColor
+arg colorKeywordCall color keywordColor
+run colorKeywordCall
+ignoreValue colorKeywordCall CSignedInt32
+call printKeywordCall c.putchar
+arg printKeywordCall character rowByte
+run printKeywordCall
+ignoreValue printKeywordCall CSignedInt32
+call keywordDecCall math.subtractI64
+arg keywordDecCall left keywordRemaining
+arg keywordDecCall right oneI64
+run keywordDecCall
+bind nextKeywordRemaining CSignedInt64 keywordDecCall
+set local keywordRemaining nextKeywordRemaining
+branch advanceRenderedByte
+label printMatchByte
+call matchTabCheckCall math.equalCSignedInt32
+arg matchTabCheckCall left rowByte
+arg matchTabCheckCall right tabByte
+run matchTabCheckCall
+bind matchByteIsTab Bool matchTabCheckCall
+branchIf matchByteIsTab printMatchedTabAsSpaces
+call colorMatchCall setAnsiColor
+arg colorMatchCall color blueColor
+run colorMatchCall
+ignoreValue colorMatchCall CSignedInt32
+call printMatchCall c.putchar
+arg printMatchCall character rowByte
+run printMatchCall
+ignoreValue printMatchCall CSignedInt32
+branch advanceRenderedByte
+label printMatchedTabAsSpaces
+call matchTabWidthCall tabRenderedWidth
+arg matchTabWidthCall renderedColumn renderedCols
+run matchTabWidthCall
+bind matchTabWidth CSignedInt64 matchTabWidthCall
+set local matchTabSpacesRemaining matchTabWidth
+call colorMatchTabCall setAnsiColor
+arg colorMatchTabCall color blueColor
+run colorMatchTabCall
+ignoreValue colorMatchTabCall CSignedInt32
+label printMatchedTabSpaceLoop
+call matchTabSpacesDoneCall math.lessThanOrEqualI64
+arg matchTabSpacesDoneCall left matchTabSpacesRemaining
+arg matchTabSpacesDoneCall right zeroI64
+run matchTabSpacesDoneCall
+bind matchTabSpacesDone Bool matchTabSpacesDoneCall
+branchIf matchTabSpacesDone finishMatchedTab
+call matchTabSpaceCall c.putchar
+arg matchTabSpaceCall character spaceByte
+run matchTabSpaceCall
+ignoreValue matchTabSpaceCall CSignedInt32
+call matchTabSpacesDecCall math.subtractI64
+arg matchTabSpacesDecCall left matchTabSpacesRemaining
+arg matchTabSpacesDecCall right oneI64
+run matchTabSpacesDecCall
+bind nextMatchTabSpacesRemaining CSignedInt64 matchTabSpacesDecCall
+set local matchTabSpacesRemaining nextMatchTabSpacesRemaining
+branch printMatchedTabSpaceLoop
+label finishMatchedTab
+call addMatchTabColsCall math.addI64
+arg addMatchTabColsCall left renderedCols
+arg addMatchTabColsCall right matchTabWidth
+run addMatchTabColsCall
+bind renderedAfterMatchTab CSignedInt64 addMatchTabColsCall
+set local renderedCols renderedAfterMatchTab
+branch advanceSourceOnly
+label printTabAsSpaces
+call tabWidthCall tabRenderedWidth
+arg tabWidthCall renderedColumn renderedCols
+run tabWidthCall
+bind tabWidth CSignedInt64 tabWidthCall
+set local tabSpacesRemaining tabWidth
+label printTabSpaceLoop
+call tabSpacesDoneCall math.lessThanOrEqualI64
+arg tabSpacesDoneCall left tabSpacesRemaining
+arg tabSpacesDoneCall right zeroI64
+run tabSpacesDoneCall
+bind tabSpacesDone Bool tabSpacesDoneCall
+branchIf tabSpacesDone finishPrintTab
+call tabSpaceCall c.putchar
+arg tabSpaceCall character spaceByte
+run tabSpaceCall
+ignoreValue tabSpaceCall CSignedInt32
+call tabSpacesDecCall math.subtractI64
+arg tabSpacesDecCall left tabSpacesRemaining
+arg tabSpacesDecCall right oneI64
+run tabSpacesDecCall
+bind nextTabSpacesRemaining CSignedInt64 tabSpacesDecCall
+set local tabSpacesRemaining nextTabSpacesRemaining
+branch printTabSpaceLoop
+label finishPrintTab
+call addTabColsCall math.addI64
+arg addTabColsCall left renderedCols
+arg addTabColsCall right tabWidth
+run addTabColsCall
+bind renderedAfterTab CSignedInt64 addTabColsCall
+set local renderedCols renderedAfterTab
+branch advanceSourceOnly
+label advanceRenderedByte
+call nextRenderedCall math.addI64
+arg nextRenderedCall left renderedCols
+arg nextRenderedCall right oneI64
+run nextRenderedCall
+bind nextRendered CSignedInt64 nextRenderedCall
+set local renderedCols nextRendered
+label advanceSourceOnly
+call nextSourceCall math.addI64
+arg nextSourceCall left sourceIndex
+arg nextSourceCall right oneI64
+run nextSourceCall
+bind nextSource CSignedInt64 nextSourceCall
+set local sourceIndex nextSource
+branch renderRowLoop
+label finishRenderRow
+call resetCall resetAnsiColor
+run resetCall
+ignoreValue resetCall CSignedInt32
+returnValue zeroI32
+
+operation rowEndsInsideBlockComment
+input rowEndsInsideBlockComment rowPointer COpaqueMemoryAddress
+input rowEndsInsideBlockComment rowLength CSignedInt64
+input rowEndsInsideBlockComment initialBlockComment CSignedInt32
+output rowEndsInsideBlockComment CSignedInt32
+effect rowEndsInsideBlockComment read memory.buffer
+authority rowEndsInsideBlockComment memory.buffer read
+memoryHeap rowEndsInsideBlockComment no
+async rowEndsInsideBlockComment no
+purpose rowEndsInsideBlockComment "Return whether a row leaves JavaScript/C-style block comment state open."
+invariant rowEndsInsideBlockComment "The scanner tracks /* and */ outside quoted strings for cross-row syntax coloring."
+label startRowEndsInsideBlockComment
+storage local mutable scanIndex CSignedInt64 zeroI64
+storage local mutable inString CSignedInt32 zeroI32
+storage local mutable inStringEscape CSignedInt32 zeroI32
+storage local mutable inBlockComment CSignedInt32 initialBlockComment
+label blockStateScanLoop
+call blockScanDoneCall math.greaterThanOrEqualI64
+arg blockScanDoneCall left scanIndex
+arg blockScanDoneCall right rowLength
+run blockScanDoneCall
+bind blockScanDone Bool blockScanDoneCall
+branchIf blockScanDone returnBlockState
+call loadScanByteCall pointer.loadByte
+arg loadScanByteCall buffer rowPointer
+arg loadScanByteCall offset scanIndex
+run loadScanByteCall
+bind scanByte CSignedInt32 loadScanByteCall
+call inBlockCheckCall math.equalCSignedInt32
+arg inBlockCheckCall left inBlockComment
+arg inBlockCheckCall right oneI32
+run inBlockCheckCall
+bind currentlyInBlock Bool inBlockCheckCall
+branchIf currentlyInBlock maybeEndBlockState
+call inStringCheckCall math.notEqualCSignedInt32
+arg inStringCheckCall left inString
+arg inStringCheckCall right zeroI32
+run inStringCheckCall
+bind currentlyInString Bool inStringCheckCall
+branchIf currentlyInString maybeEndStringState
+call scanDoubleQuoteCall math.equalCSignedInt32
+arg scanDoubleQuoteCall left scanByte
+arg scanDoubleQuoteCall right doubleQuoteByte
+run scanDoubleQuoteCall
+bind scanIsDoubleQuote Bool scanDoubleQuoteCall
+branchIf scanIsDoubleQuote startBlockStateString
+call scanSingleQuoteCall math.equalCSignedInt32
+arg scanSingleQuoteCall left scanByte
+arg scanSingleQuoteCall right singleQuoteByte
+run scanSingleQuoteCall
+bind scanIsSingleQuote Bool scanSingleQuoteCall
+branchIf scanIsSingleQuote startBlockStateString
+call scanSlashCall math.equalCSignedInt32
+arg scanSlashCall left scanByte
+arg scanSlashCall right slashByte
+run scanSlashCall
+bind scanIsSlash Bool scanSlashCall
+branchIf scanIsSlash maybeStartBlockState
+branch advanceBlockScan
+label startBlockStateString
+set local inString scanByte
+branch advanceBlockScan
+label maybeEndStringState
+call stateEscapeActiveCall math.equalCSignedInt32
+arg stateEscapeActiveCall left inStringEscape
+arg stateEscapeActiveCall right oneI32
+run stateEscapeActiveCall
+bind stateEscapeActive Bool stateEscapeActiveCall
+branchIf stateEscapeActive clearStateEscape
+call stateBackslashCall math.equalCSignedInt32
+arg stateBackslashCall left scanByte
+arg stateBackslashCall right backslashByte
+run stateBackslashCall
+bind stateByteIsBackslash Bool stateBackslashCall
+branchIf stateByteIsBackslash setStateEscape
+call stringEndStateCall math.equalCSignedInt32
+arg stringEndStateCall left scanByte
+arg stringEndStateCall right inString
+run stringEndStateCall
+bind stringStateEnds Bool stringEndStateCall
+branchIf stringStateEnds clearStringBlockState
+branch advanceBlockScan
+label clearStateEscape
+set local inStringEscape zeroI32
+call observeClearedStateEscapeCall math.equalCSignedInt32
+arg observeClearedStateEscapeCall left inStringEscape
+arg observeClearedStateEscapeCall right zeroI32
+run observeClearedStateEscapeCall
+ignoreValue observeClearedStateEscapeCall Bool
+branch advanceBlockScan
+label setStateEscape
+set local inStringEscape oneI32
+call observeSetStateEscapeCall math.equalCSignedInt32
+arg observeSetStateEscapeCall left inStringEscape
+arg observeSetStateEscapeCall right oneI32
+run observeSetStateEscapeCall
+ignoreValue observeSetStateEscapeCall Bool
+branch advanceBlockScan
+label clearStringBlockState
+set local inString zeroI32
+branch advanceBlockScan
+label maybeStartBlockState
+call nextStartIndexCall math.addI64
+arg nextStartIndexCall left scanIndex
+arg nextStartIndexCall right oneI64
+run nextStartIndexCall
+bind nextStartIndex CSignedInt64 nextStartIndexCall
+call hasStartNextCall math.lessThanI64
+arg hasStartNextCall left nextStartIndex
+arg hasStartNextCall right rowLength
+run hasStartNextCall
+bind hasStartNext Bool hasStartNextCall
+branchIf hasStartNext loadStartSecondByte
+branch advanceBlockScan
+label loadStartSecondByte
+call loadStartSecondCall pointer.loadByte
+arg loadStartSecondCall buffer rowPointer
+arg loadStartSecondCall offset nextStartIndex
+run loadStartSecondCall
+bind startSecondByte CSignedInt32 loadStartSecondCall
+call startAsteriskCall math.equalCSignedInt32
+arg startAsteriskCall left startSecondByte
+arg startAsteriskCall right asteriskByte
+run startAsteriskCall
+bind startsBlockComment Bool startAsteriskCall
+branchIf startsBlockComment setBlockCommentOpen
+branch advanceBlockScan
+label setBlockCommentOpen
+set local inBlockComment oneI32
+branch advanceBlockScan
+label maybeEndBlockState
+call scanAsteriskCall math.equalCSignedInt32
+arg scanAsteriskCall left scanByte
+arg scanAsteriskCall right asteriskByte
+run scanAsteriskCall
+bind scanIsAsterisk Bool scanAsteriskCall
+branchIf scanIsAsterisk checkSlashAfterAsterisk
+branch advanceBlockScan
+label checkSlashAfterAsterisk
+call nextEndIndexCall math.addI64
+arg nextEndIndexCall left scanIndex
+arg nextEndIndexCall right oneI64
+run nextEndIndexCall
+bind nextEndIndex CSignedInt64 nextEndIndexCall
+call hasEndNextCall math.lessThanI64
+arg hasEndNextCall left nextEndIndex
+arg hasEndNextCall right rowLength
+run hasEndNextCall
+bind hasEndNext Bool hasEndNextCall
+branchIf hasEndNext loadEndSecondByte
+branch advanceBlockScan
+label loadEndSecondByte
+call loadEndSecondCall pointer.loadByte
+arg loadEndSecondCall buffer rowPointer
+arg loadEndSecondCall offset nextEndIndex
+run loadEndSecondCall
+bind endSecondByte CSignedInt32 loadEndSecondCall
+call endSlashCall math.equalCSignedInt32
+arg endSlashCall left endSecondByte
+arg endSlashCall right slashByte
+run endSlashCall
+bind endsBlockComment Bool endSlashCall
+branchIf endsBlockComment clearBlockCommentOpen
+branch advanceBlockScan
+label clearBlockCommentOpen
+set local inBlockComment zeroI32
+branch advanceBlockScan
+label advanceBlockScan
+call incBlockScanCall math.addI64
+arg incBlockScanCall left scanIndex
+arg incBlockScanCall right oneI64
+run incBlockScanCall
+bind nextScanIndex CSignedInt64 incBlockScanCall
+set local scanIndex nextScanIndex
+branch blockStateScanLoop
+label returnBlockState
+returnValue inBlockComment
+
+operation blockCommentStateBeforeRow
+input blockCommentStateBeforeRow rowsBuffer COpaqueMemoryAddress
+input blockCommentStateBeforeRow rowLengths COpaqueMemoryAddress
+input blockCommentStateBeforeRow rowCapacity CSignedInt64
+input blockCommentStateBeforeRow targetRow CSignedInt64
+output blockCommentStateBeforeRow CSignedInt32
+effect blockCommentStateBeforeRow read memory.buffer
+authority blockCommentStateBeforeRow memory.buffer read
+memoryHeap blockCommentStateBeforeRow no
+async blockCommentStateBeforeRow no
+purpose blockCommentStateBeforeRow "Scan rows before targetRow to compute cross-row block comment state."
+invariant blockCommentStateBeforeRow "Rows are scanned monotonically and state is the open-comment flag before targetRow starts."
+label startBlockCommentStateBeforeRow
+storage local mutable scanRow CSignedInt64 zeroI64
+storage local mutable blockState CSignedInt32 zeroI32
+label beforeRowScanLoop
+call beforeDoneCall math.greaterThanOrEqualI64
+arg beforeDoneCall left scanRow
+arg beforeDoneCall right targetRow
+run beforeDoneCall
+bind beforeDone Bool beforeDoneCall
+branchIf beforeDone returnBeforeState
+call beforeRowPointerCall getRowPointer
+arg beforeRowPointerCall rowsBuffer rowsBuffer
+arg beforeRowPointerCall rowIndex scanRow
+arg beforeRowPointerCall rowCapacity rowCapacity
+run beforeRowPointerCall
+bind beforeRowPointer COpaqueMemoryAddress beforeRowPointerCall
+call beforeRowLengthCall loadRowLength
+arg beforeRowLengthCall rowLengths rowLengths
+arg beforeRowLengthCall rowIndex scanRow
+run beforeRowLengthCall
+bind beforeRowLength CSignedInt64 beforeRowLengthCall
+call rowStateCall rowEndsInsideBlockComment
+arg rowStateCall rowPointer beforeRowPointer
+arg rowStateCall rowLength beforeRowLength
+arg rowStateCall initialBlockComment blockState
+run rowStateCall
+bind nextBlockState CSignedInt32 rowStateCall
+set local blockState nextBlockState
+call incBeforeRowCall math.addI64
+arg incBeforeRowCall left scanRow
+arg incBeforeRowCall right oneI64
+run incBeforeRowCall
+bind nextBeforeRow CSignedInt64 incBeforeRowCall
+set local scanRow nextBeforeRow
+branch beforeRowScanLoop
+label returnBeforeState
+returnValue blockState
+
+operation renderScreen
+input renderScreen rowsBuffer COpaqueMemoryAddress
+input renderScreen rowLengths COpaqueMemoryAddress
+input renderScreen activeRowCount CSignedInt64
+input renderScreen rowCapacity CSignedInt64
+input renderScreen cursorColumn CSignedInt64
+input renderScreen cursorScreenRow CSignedInt64
+input renderScreen topVisibleRow CSignedInt64
+input renderScreen leftVisibleColumn CSignedInt64
+input renderScreen screenRows CSignedInt64
+input renderScreen screenCols CSignedInt64
+input renderScreen fileName CNullTerminatedByteString
+input renderScreen dirty CSignedInt64
+input renderScreen statusMessage CNullTerminatedByteString
+input renderScreen searchMatchRow CSignedInt64
+input renderScreen searchMatchStart CSignedInt64
+input renderScreen searchMatchLength CSignedInt64
+output renderScreen CSignedInt32
+effect renderScreen read memory.buffer
+effect renderScreen write console.stdout
+authority renderScreen memory.buffer read
+authority renderScreen console.stdout write
+memoryHeap renderScreen no
+async renderScreen no
+purpose renderScreen "Draw the editor view, status bar, message bar, and cursor position."
+invariant renderScreen "Screen rendering is output-only and leaves all editor state unchanged."
+label startRenderScreen
+storage local immutable clearLineText CNullTerminatedByteString "[0K"
+storage local immutable newLineText CNullTerminatedByteString "\r\n"
+storage local immutable tildeLineText CNullTerminatedByteString "~"
+storage local immutable welcomeText CNullTerminatedByteString "Kilo editor -- SemanticScript port"
+storage local immutable statusFormat CNullTerminatedByteString "%s - %lld lines %s"
+storage local immutable modifiedText CNullTerminatedByteString "(modified)"
+storage local immutable cleanText CNullTerminatedByteString ""
+storage local immutable cursorFormat CNullTerminatedByteString "[%lld;%lldH"
+storage local mutable drawRow CSignedInt64 zeroI64
+storage local mutable dirtyText CNullTerminatedByteString cleanText
+storage local mutable cursorRenderedColumn CSignedInt64 cursorColumn
+storage local mutable blockCommentState CSignedInt32 zeroI32
+storage local mutable rowMatchStart CSignedInt64 zeroI64
+storage local mutable rowMatchLength CSignedInt64 zeroI64
+call hideCall hideCursor
+run hideCall
+ignoreValue hideCall CSignedInt32
+storage local immutable homeCode CNullTerminatedByteString "[H"
+call homeCall emitEscCode
+arg homeCall code homeCode
+run homeCall
+ignoreValue homeCall CSignedInt32
+call dirtyCheckCall math.notEqualI64
+arg dirtyCheckCall left dirty
+arg dirtyCheckCall right zeroI64
+run dirtyCheckCall
+bind isDirty Bool dirtyCheckCall
+branchIf isDirty setDirtyText
+branch initializeBlockCommentState
+label setDirtyText
+set local dirtyText modifiedText
+branch initializeBlockCommentState
+label initializeBlockCommentState
+call initialBlockStateCall blockCommentStateBeforeRow
+arg initialBlockStateCall rowsBuffer rowsBuffer
+arg initialBlockStateCall rowLengths rowLengths
+arg initialBlockStateCall rowCapacity rowCapacity
+arg initialBlockStateCall targetRow topVisibleRow
+run initialBlockStateCall
+bind initialBlockState CSignedInt32 initialBlockStateCall
+set local blockCommentState initialBlockState
+branch renderRowsLoop
+label renderRowsLoop
+call rowsDoneCall math.greaterThanOrEqualI64
+arg rowsDoneCall left drawRow
+arg rowsDoneCall right screenRows
+run rowsDoneCall
+bind rowsDone Bool rowsDoneCall
+branchIf rowsDone renderStatusBar
+call fileRowCall math.addI64
+arg fileRowCall left topVisibleRow
+arg fileRowCall right drawRow
+run fileRowCall
+bind fileRow CSignedInt64 fileRowCall
+call fileRowVisibleCall math.lessThanI64
+arg fileRowVisibleCall left fileRow
+arg fileRowVisibleCall right activeRowCount
+run fileRowVisibleCall
+bind fileRowVisible Bool fileRowVisibleCall
+branchIf fileRowVisible renderFileRow
+call tildeCall c.printf
+arg tildeCall format tildeLineText
+run tildeCall
+ignoreValue tildeCall CSignedInt32
+call clearLineCall emitEscCode
+arg clearLineCall code clearLineText
+run clearLineCall
+ignoreValue clearLineCall CSignedInt32
+call newlineCall c.printf
+arg newlineCall format newLineText
+run newlineCall
+ignoreValue newlineCall CSignedInt32
+branch advanceDrawRow
+label renderFileRow
+call rowPointerCall getRowPointer
+arg rowPointerCall rowsBuffer rowsBuffer
+arg rowPointerCall rowIndex fileRow
+arg rowPointerCall rowCapacity rowCapacity
+run rowPointerCall
+bind rowPointer COpaqueMemoryAddress rowPointerCall
+call lengthCall loadRowLength
+arg lengthCall rowLengths rowLengths
+arg lengthCall rowIndex fileRow
+run lengthCall
+bind rowLength CSignedInt64 lengthCall
+call matchRowCheckCall math.equalI64
+arg matchRowCheckCall left fileRow
+arg matchRowCheckCall right searchMatchRow
+run matchRowCheckCall
+bind isSearchMatchRow Bool matchRowCheckCall
+branchIf isSearchMatchRow setRowMatchOverlay
+set local rowMatchStart zeroI64
+set local rowMatchLength zeroI64
+branch drawFileRowWithOverlay
+label setRowMatchOverlay
+set local rowMatchStart searchMatchStart
+set local rowMatchLength searchMatchLength
+branch drawFileRowWithOverlay
+label drawFileRowWithOverlay
+call drawRowCall renderRow
+arg drawRowCall rowPointer rowPointer
+arg drawRowCall rowLength rowLength
+arg drawRowCall leftVisibleColumn leftVisibleColumn
+arg drawRowCall screenCols screenCols
+arg drawRowCall initialBlockComment blockCommentState
+arg drawRowCall matchStart rowMatchStart
+arg drawRowCall matchLength rowMatchLength
+run drawRowCall
+ignoreValue drawRowCall CSignedInt32
+call nextBlockStateCall rowEndsInsideBlockComment
+arg nextBlockStateCall rowPointer rowPointer
+arg nextBlockStateCall rowLength rowLength
+arg nextBlockStateCall initialBlockComment blockCommentState
+run nextBlockStateCall
+bind nextBlockCommentState CSignedInt32 nextBlockStateCall
+set local blockCommentState nextBlockCommentState
+call clearFileLineCall emitEscCode
+arg clearFileLineCall code clearLineText
+run clearFileLineCall
+ignoreValue clearFileLineCall CSignedInt32
+call newlineFileCall c.printf
+arg newlineFileCall format newLineText
+run newlineFileCall
+ignoreValue newlineFileCall CSignedInt32
+branch advanceDrawRow
+label advanceDrawRow
+call incDrawRowCall math.addI64
+arg incDrawRowCall left drawRow
+arg incDrawRowCall right oneI64
+run incDrawRowCall
+bind nextDrawRow CSignedInt64 incDrawRowCall
+set local drawRow nextDrawRow
+branch renderRowsLoop
+label renderStatusBar
+call clearStatusCall emitEscCode
+arg clearStatusCall code clearLineText
+run clearStatusCall
+ignoreValue clearStatusCall CSignedInt32
+call invertCall invertVideo
+run invertCall
+ignoreValue invertCall CSignedInt32
+call statusCall c.printf
+arg statusCall format statusFormat
+arg statusCall file fileName
+arg statusCall lines activeRowCount
+arg statusCall dirty dirtyText
+run statusCall
+ignoreValue statusCall CSignedInt32
+call resetCall resetVideo
+run resetCall
+ignoreValue resetCall CSignedInt32
+call newlineStatusCall c.printf
+arg newlineStatusCall format newLineText
+run newlineStatusCall
+ignoreValue newlineStatusCall CSignedInt32
+call clearMessageCall emitEscCode
+arg clearMessageCall code clearLineText
+run clearMessageCall
+ignoreValue clearMessageCall CSignedInt32
+call messageCall c.printf
+arg messageCall format statusMessage
+run messageCall
+ignoreValue messageCall CSignedInt32
+call cursorRowCall math.addI64
+arg cursorRowCall left cursorScreenRow
+arg cursorRowCall right oneI64
+run cursorRowCall
+bind cursorRow CSignedInt64 cursorRowCall
+call cursorFileRowCall math.addI64
+arg cursorFileRowCall left topVisibleRow
+arg cursorFileRowCall right cursorScreenRow
+run cursorFileRowCall
+bind cursorFileRow CSignedInt64 cursorFileRowCall
+call cursorRowExistsCall math.lessThanI64
+arg cursorRowExistsCall left cursorFileRow
+arg cursorRowExistsCall right activeRowCount
+run cursorRowExistsCall
+bind cursorRowExists Bool cursorRowExistsCall
+branchIf cursorRowExists computeRenderedCursorColumn
+branch placeCursor
+label computeRenderedCursorColumn
+call cursorRowPointerCall getRowPointer
+arg cursorRowPointerCall rowsBuffer rowsBuffer
+arg cursorRowPointerCall rowIndex cursorFileRow
+arg cursorRowPointerCall rowCapacity rowCapacity
+run cursorRowPointerCall
+bind cursorRowPointer COpaqueMemoryAddress cursorRowPointerCall
+call cursorRowLengthCall loadRowLength
+arg cursorRowLengthCall rowLengths rowLengths
+arg cursorRowLengthCall rowIndex cursorFileRow
+run cursorRowLengthCall
+bind cursorRowLength CSignedInt64 cursorRowLengthCall
+call cursorFileColumnCall math.addI64
+arg cursorFileColumnCall left leftVisibleColumn
+arg cursorFileColumnCall right cursorColumn
+run cursorFileColumnCall
+bind cursorFileColumn CSignedInt64 cursorFileColumnCall
+call renderedCursorColumnCall renderedColumnForFileColumn
+arg renderedCursorColumnCall rowPointer cursorRowPointer
+arg renderedCursorColumnCall rowLength cursorRowLength
+arg renderedCursorColumnCall leftVisibleColumn leftVisibleColumn
+arg renderedCursorColumnCall fileColumn cursorFileColumn
+run renderedCursorColumnCall
+bind renderedCursorColumn CSignedInt64 renderedCursorColumnCall
+set local cursorRenderedColumn renderedCursorColumn
+branch placeCursor
+label placeCursor
+call cursorColCall math.addI64
+arg cursorColCall left cursorRenderedColumn
+arg cursorColCall right oneI64
+run cursorColCall
+bind cursorCol CSignedInt64 cursorColCall
+call escapeCursorCall c.putchar
+arg escapeCursorCall character escapeByte
+run escapeCursorCall
+ignoreValue escapeCursorCall CSignedInt32
+call cursorCall c.printf
+arg cursorCall format cursorFormat
+arg cursorCall row cursorRow
+arg cursorCall col cursorCol
+run cursorCall
+ignoreValue cursorCall CSignedInt32
+call showCall showCursor
+run showCall
+ignoreValue showCall CSignedInt32
+call flushCall c.fflush
+arg flushCall stream zeroI64
+run flushCall
+ignoreValue flushCall CSignedInt32
+returnValue zeroI32
+
+operation findNextMatch
+input findNextMatch rowsBuffer COpaqueMemoryAddress
+input findNextMatch activeRowCount CSignedInt64
+input findNextMatch rowCapacity CSignedInt64
+input findNextMatch startRow CSignedInt64
+input findNextMatch queryBuffer COpaqueMemoryAddress
+output findNextMatch CSignedInt64
+effect findNextMatch read memory.buffer
+authority findNextMatch memory.buffer read
+memoryHeap findNextMatch no
+async findNextMatch no
+purpose findNextMatch "Return the first row at or after startRow that contains queryBuffer, or -1."
+invariant findNextMatch "Search scans rows monotonically from startRow and returns the first matching row index."
+label startFindNextMatch
+storage local mutable checkedRows CSignedInt64 zeroI64
+storage local mutable rowCursor CSignedInt64 startRow
+call firstQueryByteCall pointer.loadByte
+arg firstQueryByteCall buffer queryBuffer
+arg firstQueryByteCall offset zeroI64
+run firstQueryByteCall
+bind firstQueryByte CSignedInt32 firstQueryByteCall
+call emptyQueryCall math.equalCSignedInt32
+arg emptyQueryCall left firstQueryByte
+arg emptyQueryCall right nulByte
+run emptyQueryCall
+bind queryIsEmpty Bool emptyQueryCall
+branchIf queryIsEmpty returnNotFound
+label findLoop
+call allCheckedCall math.greaterThanOrEqualI64
+arg allCheckedCall left checkedRows
+arg allCheckedCall right activeRowCount
+run allCheckedCall
+bind allChecked Bool allCheckedCall
+branchIf allChecked returnNotFound
+call wrapCheckCall math.greaterThanOrEqualI64
+arg wrapCheckCall left rowCursor
+arg wrapCheckCall right activeRowCount
+run wrapCheckCall
+bind shouldWrap Bool wrapCheckCall
+branchIf shouldWrap wrapRowCursor
+branch checkCurrentRow
+label wrapRowCursor
+set local rowCursor zeroI64
+branch checkCurrentRow
+label checkCurrentRow
+call rowPointerCall getRowPointer
+arg rowPointerCall rowsBuffer rowsBuffer
+arg rowPointerCall rowIndex rowCursor
+arg rowPointerCall rowCapacity rowCapacity
+run rowPointerCall
+bind rowPointer COpaqueMemoryAddress rowPointerCall
+call matchCall c.strstr
+arg matchCall haystack rowPointer
+arg matchCall needle queryBuffer
+run matchCall
+bind matchPointer CNullTerminatedByteString matchCall
+call matchNullCall pointer.isNull
+arg matchNullCall pointer matchPointer
+run matchNullCall
+bind matchIsNull Bool matchNullCall
+branchIf matchIsNull advanceFind
+returnValue rowCursor
+label advanceFind
+call incCheckedCall math.addI64
+arg incCheckedCall left checkedRows
+arg incCheckedCall right oneI64
+run incCheckedCall
+bind nextChecked CSignedInt64 incCheckedCall
+set local checkedRows nextChecked
+call incCursorCall math.addI64
+arg incCursorCall left rowCursor
+arg incCursorCall right oneI64
+run incCursorCall
+bind nextCursor CSignedInt64 incCursorCall
+set local rowCursor nextCursor
+branch findLoop
+label returnNotFound
+returnValue notFound
+
+operation findMatchColumnInRow
+input findMatchColumnInRow rowsBuffer COpaqueMemoryAddress
+input findMatchColumnInRow rowCapacity CSignedInt64
+input findMatchColumnInRow rowIndex CSignedInt64
+input findMatchColumnInRow queryBuffer COpaqueMemoryAddress
+output findMatchColumnInRow CSignedInt64
+effect findMatchColumnInRow read memory.buffer
+authority findMatchColumnInRow memory.buffer read
+memoryHeap findMatchColumnInRow no
+async findMatchColumnInRow no
+purpose findMatchColumnInRow "Return the first raw column where queryBuffer occurs in rowIndex, or -1."
+invariant findMatchColumnInRow "The result is pointer difference within the row allocation returned by strstr."
+label startFindMatchColumnInRow
+call rowPointerCall getRowPointer
+arg rowPointerCall rowsBuffer rowsBuffer
+arg rowPointerCall rowIndex rowIndex
+arg rowPointerCall rowCapacity rowCapacity
+run rowPointerCall
+bind rowPointer COpaqueMemoryAddress rowPointerCall
+call matchCall c.strstr
+arg matchCall haystack rowPointer
+arg matchCall needle queryBuffer
+run matchCall
+bind matchPointer CNullTerminatedByteString matchCall
+call matchNullCall pointer.isNull
+arg matchNullCall pointer matchPointer
+run matchNullCall
+bind matchIsNull Bool matchNullCall
+branchIf matchIsNull returnColumnNotFound
+call offsetCall pointer.difference
+arg offsetCall left matchPointer
+arg offsetCall right rowPointer
+run offsetCall
+bind matchColumn CSignedInt64 offsetCall
+returnValue matchColumn
+label returnColumnNotFound
+returnValue notFound
+
+operation findDirectedMatch
+input findDirectedMatch rowsBuffer COpaqueMemoryAddress
+input findDirectedMatch activeRowCount CSignedInt64
+input findDirectedMatch rowCapacity CSignedInt64
+input findDirectedMatch lastMatch CSignedInt64
+input findDirectedMatch direction CSignedInt64
+input findDirectedMatch queryBuffer COpaqueMemoryAddress
+output findDirectedMatch CSignedInt64
+effect findDirectedMatch read memory.buffer
+authority findDirectedMatch memory.buffer read
+memoryHeap findDirectedMatch no
+async findDirectedMatch no
+purpose findDirectedMatch "Return next or previous matching row with wraparound, mirroring upstream Kilo search."
+invariant findDirectedMatch "direction is expected to be 1 or -1; every active row is checked at most once."
+label startFindDirectedMatch
+storage local mutable checkedRows CSignedInt64 zeroI64
+storage local mutable currentRow CSignedInt64 lastMatch
+call firstQueryByteCall pointer.loadByte
+arg firstQueryByteCall buffer queryBuffer
+arg firstQueryByteCall offset zeroI64
+run firstQueryByteCall
+bind firstQueryByte CSignedInt32 firstQueryByteCall
+call emptyQueryCall math.equalCSignedInt32
+arg emptyQueryCall left firstQueryByte
+arg emptyQueryCall right nulByte
+run emptyQueryCall
+bind queryIsEmpty Bool emptyQueryCall
+branchIf queryIsEmpty returnDirectedNotFound
+label directedFindLoop
+call allDirectedCheckedCall math.greaterThanOrEqualI64
+arg allDirectedCheckedCall left checkedRows
+arg allDirectedCheckedCall right activeRowCount
+run allDirectedCheckedCall
+bind allDirectedChecked Bool allDirectedCheckedCall
+branchIf allDirectedChecked returnDirectedNotFound
+call advanceCurrentCall math.addI64
+arg advanceCurrentCall left currentRow
+arg advanceCurrentCall right direction
+run advanceCurrentCall
+bind advancedCurrentRow CSignedInt64 advanceCurrentCall
+set local currentRow advancedCurrentRow
+call beforeFirstCall math.lessThanI64
+arg beforeFirstCall left currentRow
+arg beforeFirstCall right zeroI64
+run beforeFirstCall
+bind beforeFirst Bool beforeFirstCall
+branchIf beforeFirst wrapDirectedToLast
+call afterLastCall math.greaterThanOrEqualI64
+arg afterLastCall left currentRow
+arg afterLastCall right activeRowCount
+run afterLastCall
+bind afterLast Bool afterLastCall
+branchIf afterLast wrapDirectedToFirst
+branch checkDirectedCurrentRow
+label wrapDirectedToLast
+call lastRowCall math.subtractI64
+arg lastRowCall left activeRowCount
+arg lastRowCall right oneI64
+run lastRowCall
+bind lastRow CSignedInt64 lastRowCall
+set local currentRow lastRow
+branch checkDirectedCurrentRow
+label wrapDirectedToFirst
+set local currentRow zeroI64
+branch checkDirectedCurrentRow
+label checkDirectedCurrentRow
+call rowPointerCall getRowPointer
+arg rowPointerCall rowsBuffer rowsBuffer
+arg rowPointerCall rowIndex currentRow
+arg rowPointerCall rowCapacity rowCapacity
+run rowPointerCall
+bind rowPointer COpaqueMemoryAddress rowPointerCall
+call matchCall c.strstr
+arg matchCall haystack rowPointer
+arg matchCall needle queryBuffer
+run matchCall
+bind matchPointer CNullTerminatedByteString matchCall
+call matchNullCall pointer.isNull
+arg matchNullCall pointer matchPointer
+run matchNullCall
+bind matchIsNull Bool matchNullCall
+branchIf matchIsNull advanceDirectedFind
+returnValue currentRow
+label advanceDirectedFind
+call incCheckedCall math.addI64
+arg incCheckedCall left checkedRows
+arg incCheckedCall right oneI64
+run incCheckedCall
+bind nextChecked CSignedInt64 incCheckedCall
+set local checkedRows nextChecked
+branch directedFindLoop
+label returnDirectedNotFound
+returnValue notFound
+
+operation main
+input main console Console
+output main ExitCode
+effect main read console.stdin
+effect main write console.stdout
+effect main read filesystem
+effect main write filesystem
+effect main open file
+effect main close file
+effect main allocate heap
+effect main free heap
+effect main read memory.buffer
+effect main write memory.buffer
+effect main read process.environment
+effect main read process.arguments
+effect main read console.terminal
+effect main configure console.terminal
+authority main console.stdin read
+authority main console.stdout write
+authority main filesystem read
+authority main filesystem write
+authority main file open
+authority main file close
+authority main heap allocate
+authority main heap free
+authority main memory.buffer read
+authority main memory.buffer write
+authority main process.environment read
+authority main process.arguments read
+authority main console.terminal read
+authority main console.terminal configure
+memoryHeap main yes
+memoryAllocationSource main rowsAllocCall
+memoryAllocationSource main lengthsAllocCall
+memoryAllocationSource main lineAllocCall
+memoryAllocationSource main searchAllocCall
+async main no
+purpose main "Run the Kilo SemanticScript port."
+invariant main "The editor loop keeps cursor, scroll offsets, and dirty state inside the active fixed buffers."
+label startMain
+storage local immutable maxRows CSignedInt64 2048
+storage local immutable rowCapacity CSignedInt64 4096
+storage local immutable rowLengthBytes CByteCount 4096
+storage local immutable lineBufferBytes CByteCount 4096
+storage local immutable lineBufferCapacity CSignedInt32 4096
+storage local immutable searchBufferBytes CByteCount 128
+storage local immutable rowsBufferBytes CByteCount 8388608
+storage local immutable reservedStatusRows CSignedInt64 2
+storage local immutable quitWarningCount CSignedInt64 3
+storage local immutable noSearchMatch CSignedInt64 -1
+storage local mutable screenRows CSignedInt64 22
+storage local mutable screenCols CSignedInt64 80
+storage local immutable envFileNameKey CNullTerminatedByteString "KILO_FILE"
+storage local immutable defaultFileName CNullTerminatedByteString "kilo.txt"
+storage local immutable helpStatus CNullTerminatedByteString "HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find"
+storage local immutable savedStatus CNullTerminatedByteString "File saved."
+storage local immutable saveFailedStatus CNullTerminatedByteString "Save failed."
+storage local immutable loadedStatus CNullTerminatedByteString "Loaded. Ctrl-S save, Ctrl-Q quit, Ctrl-F find."
+storage local immutable dirtyQuitWarning CNullTerminatedByteString "WARNING: unsaved changes. Press Ctrl-Q 3 more times to quit."
+storage local immutable searchPrompt CNullTerminatedByteString "Search mode: type query, arrows jump, Enter accepts, Esc cancels."
+storage local immutable searchFound CNullTerminatedByteString "Search match found."
+storage local immutable searchMissing CNullTerminatedByteString "No match."
+storage local immutable emptyStatus CNullTerminatedByteString ""
+storage local immutable rowLimitStatus CNullTerminatedByteString "Row limit reached."
+storage local immutable goodbyeText CNullTerminatedByteString "\nKilo SemanticScript session ended.\n"
+storage local mutable fileName CNullTerminatedByteString defaultFileName
+storage local mutable activeRowCount CSignedInt64 zeroI64
+storage local mutable cursorColumn CSignedInt64 zeroI64
+storage local mutable cursorScreenRow CSignedInt64 zeroI64
+storage local mutable topVisibleRow CSignedInt64 zeroI64
+storage local mutable leftVisibleColumn CSignedInt64 zeroI64
+storage local mutable dirty CSignedInt64 zeroI64
+storage local mutable quitWarningsRemaining CSignedInt64 quitWarningCount
+storage local mutable statusMessage CNullTerminatedByteString helpStatus
+storage local mutable insertByte CSignedInt32 zeroI32
+storage local mutable searchMatchRow CSignedInt64 noSearchMatch
+storage local mutable searchMatchStart CSignedInt64 zeroI64
+storage local mutable searchMatchLength CSignedInt64 zeroI64
+
+call rowsAllocCall c.malloc
+arg rowsAllocCall size rowsBufferBytes
+run rowsAllocCall
+bindOk rowsBuffer COpaqueMemoryAddress rowsAllocCall
+bindError rowsAllocError COpaqueMemoryAddress rowsAllocCall
+call observeRowsAllocErrorCall pointer.isNull
+arg observeRowsAllocErrorCall pointer rowsAllocError
+run observeRowsAllocErrorCall
+ignoreValue observeRowsAllocErrorCall Bool
+branchIfError rowsAllocCall allocationFailed
+call rowsZeroCall c.memset
+arg rowsZeroCall ptr rowsBuffer
+arg rowsZeroCall value zeroI32
+arg rowsZeroCall num rowsBufferBytes
+run rowsZeroCall
+ignoreValue rowsZeroCall COpaqueMemoryAddress
+call lengthsAllocCall c.malloc
+arg lengthsAllocCall size rowLengthBytes
+run lengthsAllocCall
+bindOk rowLengths COpaqueMemoryAddress lengthsAllocCall
+bindError lengthsAllocError COpaqueMemoryAddress lengthsAllocCall
+call observeLengthsAllocErrorCall pointer.isNull
+arg observeLengthsAllocErrorCall pointer lengthsAllocError
+run observeLengthsAllocErrorCall
+ignoreValue observeLengthsAllocErrorCall Bool
+branchIfError lengthsAllocCall allocationAfterRowsFailed
+call lengthsZeroCall c.memset
+arg lengthsZeroCall ptr rowLengths
+arg lengthsZeroCall value zeroI32
+arg lengthsZeroCall num rowLengthBytes
+run lengthsZeroCall
+ignoreValue lengthsZeroCall COpaqueMemoryAddress
+call lineAllocCall c.malloc
+arg lineAllocCall size lineBufferBytes
+run lineAllocCall
+bindOk lineBuffer COpaqueMemoryAddress lineAllocCall
+bindError lineAllocError COpaqueMemoryAddress lineAllocCall
+call observeLineAllocErrorCall pointer.isNull
+arg observeLineAllocErrorCall pointer lineAllocError
+run observeLineAllocErrorCall
+ignoreValue observeLineAllocErrorCall Bool
+branchIfError lineAllocCall allocationAfterLengthsFailed
+call searchAllocCall c.malloc
+arg searchAllocCall size searchBufferBytes
+run searchAllocCall
+bindOk searchBuffer COpaqueMemoryAddress searchAllocCall
+bindError searchAllocError COpaqueMemoryAddress searchAllocCall
+call observeSearchAllocErrorCall pointer.isNull
+arg observeSearchAllocErrorCall pointer searchAllocError
+run observeSearchAllocErrorCall
+ignoreValue observeSearchAllocErrorCall Bool
+branchIfError searchAllocCall allocationAfterLineFailed
+call searchZeroCall c.memset
+arg searchZeroCall ptr searchBuffer
+arg searchZeroCall value zeroI32
+arg searchZeroCall num searchBufferBytes
+run searchZeroCall
+ignoreValue searchZeroCall COpaqueMemoryAddress
+
+call enableRawCall c.terminalEnableRaw
+run enableRawCall
+ignoreValue enableRawCall CSignedInt32
+call terminalRowsCall c.terminalGetWindowRows
+run terminalRowsCall
+bind terminalRows CSignedInt64 terminalRowsCall
+call visibleRowsCall math.subtractI64
+arg visibleRowsCall left terminalRows
+arg visibleRowsCall right reservedStatusRows
+run visibleRowsCall
+bind visibleRows CSignedInt64 visibleRowsCall
+call rowsPositiveCall math.greaterThanI64
+arg rowsPositiveCall left visibleRows
+arg rowsPositiveCall right zeroI64
+run rowsPositiveCall
+bind rowsPositive Bool rowsPositiveCall
+branchIf rowsPositive applyRuntimeRows
+branch keepDefaultRows
+label applyRuntimeRows
+set local screenRows visibleRows
+label keepDefaultRows
+call terminalColsCall c.terminalGetWindowCols
+run terminalColsCall
+bind terminalCols CSignedInt64 terminalColsCall
+call colsPositiveCall math.greaterThanI64
+arg colsPositiveCall left terminalCols
+arg colsPositiveCall right zeroI64
+run colsPositiveCall
+bind colsPositive Bool colsPositiveCall
+branchIf colsPositive applyRuntimeCols
+branch keepDefaultCols
+label applyRuntimeCols
+set local screenCols terminalCols
+label keepDefaultCols
+
+call firstArgumentCall c.terminalFirstArgument
+run firstArgumentCall
+bind argumentFileName CNullTerminatedByteString firstArgumentCall
+call argumentNullCheckCall pointer.isNull
+arg argumentNullCheckCall pointer argumentFileName
+run argumentNullCheckCall
+bind argumentIsNull Bool argumentNullCheckCall
+branchIf argumentIsNull checkEnvironmentFileName
+set local fileName argumentFileName
+branch fileNameResolved
+label checkEnvironmentFileName
+call getenvFileNameCall c.getenv
+arg getenvFileNameCall name envFileNameKey
+run getenvFileNameCall
+bind envFileName CNullTerminatedByteString getenvFileNameCall
+call envNullCheckCall pointer.isNull
+arg envNullCheckCall pointer envFileName
+run envNullCheckCall
+bind envIsNull Bool envNullCheckCall
+branchIf envIsNull fileNameResolved
+set local fileName envFileName
+label fileNameResolved
+
+call loadCall loadFileFromDisk
+arg loadCall rowsBuffer rowsBuffer
+arg loadCall rowLengths rowLengths
+arg loadCall maxRows maxRows
+arg loadCall rowCapacity rowCapacity
+arg loadCall lineBuffer lineBuffer
+arg loadCall lineBufferCapacity lineBufferCapacity
+arg loadCall fileName fileName
+run loadCall
+bind loadedRows CSignedInt64 loadCall
+set local activeRowCount loadedRows
+set local statusMessage loadedStatus
+call clearStartCall clearScreen
+run clearStartCall
+ignoreValue clearStartCall CSignedInt32
+branch replLoop
+
+label replLoop
+call renderCall renderScreen
+arg renderCall rowsBuffer rowsBuffer
+arg renderCall rowLengths rowLengths
+arg renderCall activeRowCount activeRowCount
+arg renderCall rowCapacity rowCapacity
+arg renderCall cursorColumn cursorColumn
+arg renderCall cursorScreenRow cursorScreenRow
+arg renderCall topVisibleRow topVisibleRow
+arg renderCall leftVisibleColumn leftVisibleColumn
+arg renderCall screenRows screenRows
+arg renderCall screenCols screenCols
+arg renderCall fileName fileName
+arg renderCall dirty dirty
+arg renderCall statusMessage statusMessage
+arg renderCall searchMatchRow searchMatchRow
+arg renderCall searchMatchStart searchMatchStart
+arg renderCall searchMatchLength searchMatchLength
+run renderCall
+ignoreValue renderCall CSignedInt32
+call keyCall readKiloKey
+run keyCall
+bind pressedKey KiloKeyCode keyCall
+call quitCheckCall math.equalCSignedInt32
+arg quitCheckCall left pressedKey
+arg quitCheckCall right ctrlQ
+run quitCheckCall
+bind quitPressed Bool quitCheckCall
+branchIf quitPressed handleQuit
+call saveCheckCall math.equalCSignedInt32
+arg saveCheckCall left pressedKey
+arg saveCheckCall right ctrlS
+run saveCheckCall
+bind savePressed Bool saveCheckCall
+branchIf savePressed handleSave
+call findCheckCall math.equalCSignedInt32
+arg findCheckCall left pressedKey
+arg findCheckCall right ctrlF
+run findCheckCall
+bind findPressed Bool findCheckCall
+branchIf findPressed handleFind
+call enterCheckCall math.equalCSignedInt32
+arg enterCheckCall left pressedKey
+arg enterCheckCall right enterKey
+run enterCheckCall
+bind enterPressed Bool enterCheckCall
+branchIf enterPressed handleEnter
+call tabKeyCheckCall math.equalCSignedInt32
+arg tabKeyCheckCall left pressedKey
+arg tabKeyCheckCall right tabByte
+run tabKeyCheckCall
+bind tabPressed Bool tabKeyCheckCall
+branchIf tabPressed insertTab
+call backspaceCheckCall math.equalCSignedInt32
+arg backspaceCheckCall left pressedKey
+arg backspaceCheckCall right backspaceByte
+run backspaceCheckCall
+bind backspacePressed Bool backspaceCheckCall
+branchIf backspacePressed handleBackspace
+call ctrlHCheckCall math.equalCSignedInt32
+arg ctrlHCheckCall left pressedKey
+arg ctrlHCheckCall right ctrlH
+run ctrlHCheckCall
+bind ctrlHPressed Bool ctrlHCheckCall
+branchIf ctrlHPressed handleBackspace
+call delCheckCall math.equalCSignedInt32
+arg delCheckCall left pressedKey
+arg delCheckCall right delKey
+run delCheckCall
+bind deletePressed Bool delCheckCall
+branchIf deletePressed handleDeleteKey
+call leftCheckCall math.equalCSignedInt32
+arg leftCheckCall left pressedKey
+arg leftCheckCall right arrowLeft
+run leftCheckCall
+bind leftPressed Bool leftCheckCall
+branchIf leftPressed moveLeft
+call rightCheckCall math.equalCSignedInt32
+arg rightCheckCall left pressedKey
+arg rightCheckCall right arrowRight
+run rightCheckCall
+bind rightPressed Bool rightCheckCall
+branchIf rightPressed moveRight
+call upCheckCall math.equalCSignedInt32
+arg upCheckCall left pressedKey
+arg upCheckCall right arrowUp
+run upCheckCall
+bind upPressed Bool upCheckCall
+branchIf upPressed moveUp
+call downCheckCall math.equalCSignedInt32
+arg downCheckCall left pressedKey
+arg downCheckCall right arrowDown
+run downCheckCall
+bind downPressed Bool downCheckCall
+branchIf downPressed moveDown
+call pageUpCheckCall math.equalCSignedInt32
+arg pageUpCheckCall left pressedKey
+arg pageUpCheckCall right pageUpKey
+run pageUpCheckCall
+bind pageUpPressed Bool pageUpCheckCall
+branchIf pageUpPressed movePageUp
+call pageDownCheckCall math.equalCSignedInt32
+arg pageDownCheckCall left pressedKey
+arg pageDownCheckCall right pageDownKey
+run pageDownCheckCall
+bind pageDownPressed Bool pageDownCheckCall
+branchIf pageDownPressed movePageDown
+call homeCheckCall math.equalCSignedInt32
+arg homeCheckCall left pressedKey
+arg homeCheckCall right homeKey
+run homeCheckCall
+bind homePressed Bool homeCheckCall
+branchIf homePressed moveHome
+call endCheckCall math.equalCSignedInt32
+arg endCheckCall left pressedKey
+arg endCheckCall right endKey
+run endCheckCall
+bind endPressed Bool endCheckCall
+branchIf endPressed moveEnd
+call printableCheckCall c.isprint
+arg printableCheckCall character pressedKey
+run printableCheckCall
+bind printableStatus CSignedInt32 printableCheckCall
+call isPrintableCall math.notEqualCSignedInt32
+arg isPrintableCall left printableStatus
+arg isPrintableCall right zeroI32
+run isPrintableCall
+bind isPrintable Bool isPrintableCall
+branchIf isPrintable insertPrintable
+branch resetQuitAndLoop
+
+label handleQuit
+call dirtyCheckForQuitCall math.notEqualI64
+arg dirtyCheckForQuitCall left dirty
+arg dirtyCheckForQuitCall right zeroI64
+run dirtyCheckForQuitCall
+bind hasUnsavedChanges Bool dirtyCheckForQuitCall
+branchIf hasUnsavedChanges maybeWarnBeforeQuit
+branch quitProgram
+label maybeWarnBeforeQuit
+call warningsLeftCall math.greaterThanI64
+arg warningsLeftCall left quitWarningsRemaining
+arg warningsLeftCall right zeroI64
+run warningsLeftCall
+bind hasQuitWarningsLeft Bool warningsLeftCall
+branchIf hasQuitWarningsLeft showDirtyQuitWarning
+branch quitProgram
+label showDirtyQuitWarning
+call decrementQuitWarningsCall math.subtractI64
+arg decrementQuitWarningsCall left quitWarningsRemaining
+arg decrementQuitWarningsCall right oneI64
+run decrementQuitWarningsCall
+bind nextQuitWarningsRemaining CSignedInt64 decrementQuitWarningsCall
+set local quitWarningsRemaining nextQuitWarningsRemaining
+set local statusMessage dirtyQuitWarning
+branch replLoop
+
+label handleSave
+call saveCall saveFileToDisk
+arg saveCall rowsBuffer rowsBuffer
+arg saveCall rowLengths rowLengths
+arg saveCall activeRowCount activeRowCount
+arg saveCall rowCapacity rowCapacity
+arg saveCall fileName fileName
+run saveCall
+bind saveStatus SaveFileStatus saveCall
+call saveSuccessCheckCall SaveFileStatus.equal
+arg saveSuccessCheckCall left saveStatus
+arg saveSuccessCheckCall right SaveSucceeded
+run saveSuccessCheckCall
+bind saveSucceeded Bool saveSuccessCheckCall
+branchIf saveSucceeded saveSucceededPath
+set local statusMessage saveFailedStatus
+branch resetQuitAndLoop
+label saveSucceededPath
+set local dirty zeroI64
+set local statusMessage savedStatus
+branch resetQuitAndLoop
+
+label handleFind
+set local statusMessage searchPrompt
+call searchZeroBeforeFindCall c.memset
+arg searchZeroBeforeFindCall ptr searchBuffer
+arg searchZeroBeforeFindCall value zeroI32
+arg searchZeroBeforeFindCall num searchBufferBytes
+run searchZeroBeforeFindCall
+ignoreValue searchZeroBeforeFindCall COpaqueMemoryAddress
+storage local mutable searchLength CSignedInt64 zeroI64
+storage local immutable savedSearchCursorColumn CSignedInt64 cursorColumn
+storage local immutable savedSearchCursorScreenRow CSignedInt64 cursorScreenRow
+storage local immutable savedSearchTopVisibleRow CSignedInt64 topVisibleRow
+storage local immutable savedSearchLeftVisibleColumn CSignedInt64 leftVisibleColumn
+storage local mutable lastSearchMatch CSignedInt64 noSearchMatch
+storage local mutable findDirection CSignedInt64 zeroI64
+storage local immutable reverseSearchDirection CSignedInt64 -1
+set local searchMatchRow noSearchMatch
+set local searchMatchStart zeroI64
+set local searchMatchLength zeroI64
+label searchInputLoop
+call renderSearchCall renderScreen
+arg renderSearchCall rowsBuffer rowsBuffer
+arg renderSearchCall rowLengths rowLengths
+arg renderSearchCall activeRowCount activeRowCount
+arg renderSearchCall rowCapacity rowCapacity
+arg renderSearchCall cursorColumn cursorColumn
+arg renderSearchCall cursorScreenRow cursorScreenRow
+arg renderSearchCall topVisibleRow topVisibleRow
+arg renderSearchCall leftVisibleColumn leftVisibleColumn
+arg renderSearchCall screenRows screenRows
+arg renderSearchCall screenCols screenCols
+arg renderSearchCall fileName fileName
+arg renderSearchCall dirty dirty
+arg renderSearchCall statusMessage statusMessage
+arg renderSearchCall searchMatchRow searchMatchRow
+arg renderSearchCall searchMatchStart searchMatchStart
+arg renderSearchCall searchMatchLength searchMatchLength
+run renderSearchCall
+ignoreValue renderSearchCall CSignedInt32
+call searchKeyCall readKiloKey
+run searchKeyCall
+bind searchKey KiloKeyCode searchKeyCall
+call searchEnterCall math.equalCSignedInt32
+arg searchEnterCall left searchKey
+arg searchEnterCall right enterKey
+run searchEnterCall
+bind searchEnterPressed Bool searchEnterCall
+branchIf searchEnterPressed finishSearchInput
+call searchEscCall math.equalCSignedInt32
+arg searchEscCall left searchKey
+arg searchEscCall right escKey
+run searchEscCall
+bind searchEscPressed Bool searchEscCall
+branchIf searchEscPressed cancelSearchInput
+call searchBackspaceCall math.equalCSignedInt32
+arg searchBackspaceCall left searchKey
+arg searchBackspaceCall right backspaceByte
+run searchBackspaceCall
+bind searchBackspacePressed Bool searchBackspaceCall
+branchIf searchBackspacePressed deleteSearchByte
+call searchCtrlHCall math.equalCSignedInt32
+arg searchCtrlHCall left searchKey
+arg searchCtrlHCall right ctrlH
+run searchCtrlHCall
+bind searchCtrlHPressed Bool searchCtrlHCall
+branchIf searchCtrlHPressed deleteSearchByte
+call searchDeleteCall math.equalCSignedInt32
+arg searchDeleteCall left searchKey
+arg searchDeleteCall right delKey
+run searchDeleteCall
+bind searchDeletePressed Bool searchDeleteCall
+branchIf searchDeletePressed deleteSearchByte
+call searchRightCall math.equalCSignedInt32
+arg searchRightCall left searchKey
+arg searchRightCall right arrowRight
+run searchRightCall
+bind searchRightPressed Bool searchRightCall
+branchIf searchRightPressed searchForward
+call searchDownCall math.equalCSignedInt32
+arg searchDownCall left searchKey
+arg searchDownCall right arrowDown
+run searchDownCall
+bind searchDownPressed Bool searchDownCall
+branchIf searchDownPressed searchForward
+call searchLeftCall math.equalCSignedInt32
+arg searchLeftCall left searchKey
+arg searchLeftCall right arrowLeft
+run searchLeftCall
+bind searchLeftPressed Bool searchLeftCall
+branchIf searchLeftPressed searchBackward
+call searchUpCall math.equalCSignedInt32
+arg searchUpCall left searchKey
+arg searchUpCall right arrowUp
+run searchUpCall
+bind searchUpPressed Bool searchUpCall
+branchIf searchUpPressed searchBackward
+call searchPrintableCall c.isprint
+arg searchPrintableCall character searchKey
+run searchPrintableCall
+bind searchPrintableStatus CSignedInt32 searchPrintableCall
+call searchPrintableBoolCall math.notEqualCSignedInt32
+arg searchPrintableBoolCall left searchPrintableStatus
+arg searchPrintableBoolCall right zeroI32
+run searchPrintableBoolCall
+bind searchPrintable Bool searchPrintableBoolCall
+branchIf searchPrintable appendSearchByte
+branch searchInputLoop
+label appendSearchByte
+storage local immutable maxSearchLength CSignedInt64 126
+call searchRoomCall math.lessThanI64
+arg searchRoomCall left searchLength
+arg searchRoomCall right maxSearchLength
+run searchRoomCall
+bind searchHasRoom Bool searchRoomCall
+branchIf searchHasRoom storeSearchByte
+branch searchInputLoop
+label storeSearchByte
+call storeSearchByteCall pointer.storeByte
+arg storeSearchByteCall buffer searchBuffer
+arg storeSearchByteCall offset searchLength
+arg storeSearchByteCall value searchKey
+run storeSearchByteCall
+call nextSearchLenCall math.addI64
+arg nextSearchLenCall left searchLength
+arg nextSearchLenCall right oneI64
+run nextSearchLenCall
+bind nextSearchLen CSignedInt64 nextSearchLenCall
+set local searchLength nextSearchLen
+call storeSearchNulCall pointer.storeByte
+arg storeSearchNulCall buffer searchBuffer
+arg storeSearchNulCall offset searchLength
+arg storeSearchNulCall value nulByte
+run storeSearchNulCall
+set local lastSearchMatch noSearchMatch
+set local findDirection oneI64
+call observeStoreSearchDirectionCall math.addI64
+arg observeStoreSearchDirectionCall left findDirection
+arg observeStoreSearchDirectionCall right zeroI64
+run observeStoreSearchDirectionCall
+ignoreValue observeStoreSearchDirectionCall CSignedInt64
+branch runLiveSearchStep
+label deleteSearchByte
+call hasSearchByteCall math.greaterThanI64
+arg hasSearchByteCall left searchLength
+arg hasSearchByteCall right zeroI64
+run hasSearchByteCall
+bind hasSearchByte Bool hasSearchByteCall
+branchIf hasSearchByte removeSearchByte
+branch searchInputLoop
+label removeSearchByte
+call decSearchCall math.subtractI64
+arg decSearchCall left searchLength
+arg decSearchCall right oneI64
+run decSearchCall
+bind decSearchLen CSignedInt64 decSearchCall
+set local searchLength decSearchLen
+call clearSearchByteCall pointer.storeByte
+arg clearSearchByteCall buffer searchBuffer
+arg clearSearchByteCall offset searchLength
+arg clearSearchByteCall value nulByte
+run clearSearchByteCall
+set local lastSearchMatch noSearchMatch
+set local findDirection oneI64
+call observeDeleteSearchDirectionCall math.addI64
+arg observeDeleteSearchDirectionCall left findDirection
+arg observeDeleteSearchDirectionCall right zeroI64
+run observeDeleteSearchDirectionCall
+ignoreValue observeDeleteSearchDirectionCall CSignedInt64
+branch runLiveSearchStep
+label searchForward
+set local findDirection oneI64
+call observeForwardSearchDirectionCall math.addI64
+arg observeForwardSearchDirectionCall left findDirection
+arg observeForwardSearchDirectionCall right zeroI64
+run observeForwardSearchDirectionCall
+ignoreValue observeForwardSearchDirectionCall CSignedInt64
+branch runLiveSearchStep
+label searchBackward
+set local findDirection reverseSearchDirection
+call observeBackwardSearchDirectionCall math.addI64
+arg observeBackwardSearchDirectionCall left findDirection
+arg observeBackwardSearchDirectionCall right zeroI64
+run observeBackwardSearchDirectionCall
+ignoreValue observeBackwardSearchDirectionCall CSignedInt64
+branch runLiveSearchStep
+label runLiveSearchStep
+call hasLiveQueryCall math.greaterThanI64
+arg hasLiveQueryCall left searchLength
+arg hasLiveQueryCall right zeroI64
+run hasLiveQueryCall
+bind hasLiveQuery Bool hasLiveQueryCall
+branchIf hasLiveQuery ensureLiveDirection
+set local searchMatchRow noSearchMatch
+set local searchMatchStart zeroI64
+set local searchMatchLength zeroI64
+branch searchInputLoop
+label ensureLiveDirection
+call noLastMatchCall math.equalI64
+arg noLastMatchCall left lastSearchMatch
+arg noLastMatchCall right noSearchMatch
+run noLastMatchCall
+bind hasNoLastMatch Bool noLastMatchCall
+branchIf hasNoLastMatch forceForwardLiveSearch
+branch findLiveMatch
+label forceForwardLiveSearch
+set local findDirection oneI64
+call observeForcedSearchDirectionCall math.addI64
+arg observeForcedSearchDirectionCall left findDirection
+arg observeForcedSearchDirectionCall right zeroI64
+run observeForcedSearchDirectionCall
+ignoreValue observeForcedSearchDirectionCall CSignedInt64
+branch findLiveMatch
+label findLiveMatch
+call liveFindCall findDirectedMatch
+arg liveFindCall rowsBuffer rowsBuffer
+arg liveFindCall activeRowCount activeRowCount
+arg liveFindCall rowCapacity rowCapacity
+arg liveFindCall lastMatch lastSearchMatch
+arg liveFindCall direction findDirection
+arg liveFindCall queryBuffer searchBuffer
+run liveFindCall
+bind liveFoundRow CSignedInt64 liveFindCall
+call liveFoundCheckCall math.notEqualI64
+arg liveFoundCheckCall left liveFoundRow
+arg liveFoundCheckCall right noSearchMatch
+run liveFoundCheckCall
+bind liveFoundSomething Bool liveFoundCheckCall
+branchIf liveFoundSomething applyLiveSearchMatch
+set local searchMatchRow noSearchMatch
+set local searchMatchStart zeroI64
+set local searchMatchLength zeroI64
+branch searchInputLoop
+label applyLiveSearchMatch
+set local lastSearchMatch liveFoundRow
+call liveMatchColumnCall findMatchColumnInRow
+arg liveMatchColumnCall rowsBuffer rowsBuffer
+arg liveMatchColumnCall rowCapacity rowCapacity
+arg liveMatchColumnCall rowIndex liveFoundRow
+arg liveMatchColumnCall queryBuffer searchBuffer
+run liveMatchColumnCall
+bind liveMatchColumn CSignedInt64 liveMatchColumnCall
+set local searchMatchRow liveFoundRow
+set local searchMatchStart liveMatchColumn
+set local searchMatchLength searchLength
+set local topVisibleRow liveFoundRow
+set local cursorScreenRow zeroI64
+set local leftVisibleColumn zeroI64
+set local cursorColumn liveMatchColumn
+call horizontalSearchOverflowCall math.greaterThanI64
+arg horizontalSearchOverflowCall left cursorColumn
+arg horizontalSearchOverflowCall right screenCols
+run horizontalSearchOverflowCall
+bind horizontalSearchOverflow Bool horizontalSearchOverflowCall
+branchIf horizontalSearchOverflow adjustLiveSearchHorizontal
+branch searchInputLoop
+label adjustLiveSearchHorizontal
+call searchOverflowDiffCall math.subtractI64
+arg searchOverflowDiffCall left cursorColumn
+arg searchOverflowDiffCall right screenCols
+run searchOverflowDiffCall
+bind searchOverflowDiff CSignedInt64 searchOverflowDiffCall
+call adjustedSearchCursorColumnCall math.subtractI64
+arg adjustedSearchCursorColumnCall left cursorColumn
+arg adjustedSearchCursorColumnCall right searchOverflowDiff
+run adjustedSearchCursorColumnCall
+bind adjustedSearchCursorColumn CSignedInt64 adjustedSearchCursorColumnCall
+set local cursorColumn adjustedSearchCursorColumn
+set local leftVisibleColumn searchOverflowDiff
+branch searchInputLoop
+label cancelSearchInput
+set local cursorColumn savedSearchCursorColumn
+set local cursorScreenRow savedSearchCursorScreenRow
+set local topVisibleRow savedSearchTopVisibleRow
+set local leftVisibleColumn savedSearchLeftVisibleColumn
+set local searchMatchRow noSearchMatch
+set local searchMatchStart zeroI64
+set local searchMatchLength zeroI64
+call observeCancelSearchMatchRowCall math.addI64
+arg observeCancelSearchMatchRowCall left searchMatchRow
+arg observeCancelSearchMatchRowCall right zeroI64
+run observeCancelSearchMatchRowCall
+ignoreValue observeCancelSearchMatchRowCall CSignedInt64
+call observeCancelSearchMatchStartCall math.addI64
+arg observeCancelSearchMatchStartCall left searchMatchStart
+arg observeCancelSearchMatchStartCall right zeroI64
+run observeCancelSearchMatchStartCall
+ignoreValue observeCancelSearchMatchStartCall CSignedInt64
+call observeCancelSearchMatchLengthCall math.addI64
+arg observeCancelSearchMatchLengthCall left searchMatchLength
+arg observeCancelSearchMatchLengthCall right zeroI64
+run observeCancelSearchMatchLengthCall
+ignoreValue observeCancelSearchMatchLengthCall CSignedInt64
+set local statusMessage emptyStatus
+branch resetQuitAndLoop
+label finishSearchInput
+set local searchMatchRow noSearchMatch
+set local searchMatchStart zeroI64
+set local searchMatchLength zeroI64
+call observeFinishSearchMatchRowCall math.addI64
+arg observeFinishSearchMatchRowCall left searchMatchRow
+arg observeFinishSearchMatchRowCall right zeroI64
+run observeFinishSearchMatchRowCall
+ignoreValue observeFinishSearchMatchRowCall CSignedInt64
+call observeFinishSearchMatchStartCall math.addI64
+arg observeFinishSearchMatchStartCall left searchMatchStart
+arg observeFinishSearchMatchStartCall right zeroI64
+run observeFinishSearchMatchStartCall
+ignoreValue observeFinishSearchMatchStartCall CSignedInt64
+call observeFinishSearchMatchLengthCall math.addI64
+arg observeFinishSearchMatchLengthCall left searchMatchLength
+arg observeFinishSearchMatchLengthCall right zeroI64
+run observeFinishSearchMatchLengthCall
+ignoreValue observeFinishSearchMatchLengthCall CSignedInt64
+set local statusMessage emptyStatus
+branch resetQuitAndLoop
+
+label handleEnter
+call fileRowForEnterCall math.addI64
+arg fileRowForEnterCall left topVisibleRow
+arg fileRowForEnterCall right cursorScreenRow
+run fileRowForEnterCall
+bind fileRowForEnter CSignedInt64 fileRowForEnterCall
+call rowExistsForEnterCall math.lessThanI64
+arg rowExistsForEnterCall left fileRowForEnter
+arg rowExistsForEnterCall right activeRowCount
+run rowExistsForEnterCall
+bind rowExistsForEnter Bool rowExistsForEnterCall
+branchIf rowExistsForEnter splitExistingRow
+call addEmptyAtEndCall insertEmptyRowAt
+arg addEmptyAtEndCall rowsBuffer rowsBuffer
+arg addEmptyAtEndCall rowLengths rowLengths
+arg addEmptyAtEndCall activeRowCount activeRowCount
+arg addEmptyAtEndCall rowIndex activeRowCount
+arg addEmptyAtEndCall maxRows maxRows
+arg addEmptyAtEndCall rowCapacity rowCapacity
+run addEmptyAtEndCall
+bind rowsAfterAddEmpty CSignedInt64 addEmptyAtEndCall
+set local activeRowCount rowsAfterAddEmpty
+branch afterRowMutationMoveDown
+label splitExistingRow
+call fileColForEnterCall math.addI64
+arg fileColForEnterCall left leftVisibleColumn
+arg fileColForEnterCall right cursorColumn
+run fileColForEnterCall
+bind fileColForEnter CSignedInt64 fileColForEnterCall
+call splitCall splitRowAt
+arg splitCall rowsBuffer rowsBuffer
+arg splitCall rowLengths rowLengths
+arg splitCall activeRowCount activeRowCount
+arg splitCall rowIndex fileRowForEnter
+arg splitCall columnIndex fileColForEnter
+arg splitCall maxRows maxRows
+arg splitCall rowCapacity rowCapacity
+run splitCall
+bind rowsAfterSplit CSignedInt64 splitCall
+set local activeRowCount rowsAfterSplit
+branch afterRowMutationMoveDown
+label afterRowMutationMoveDown
+set local dirty oneI64
+set local cursorColumn zeroI64
+set local leftVisibleColumn zeroI64
+call bottomCheckAfterEnterCall math.greaterThanOrEqualI64
+arg bottomCheckAfterEnterCall left cursorScreenRow
+arg bottomCheckAfterEnterCall right screenRows
+run bottomCheckAfterEnterCall
+bind atBottomAfterEnter Bool bottomCheckAfterEnterCall
+branchIf atBottomAfterEnter scrollDownAfterEnter
+call cursorScreenRowAfterEnterCall math.addI64
+arg cursorScreenRowAfterEnterCall left cursorScreenRow
+arg cursorScreenRowAfterEnterCall right oneI64
+run cursorScreenRowAfterEnterCall
+bind cursorScreenRowAfterEnter CSignedInt64 cursorScreenRowAfterEnterCall
+set local cursorScreenRow cursorScreenRowAfterEnter
+branch resetQuitAndLoop
+label scrollDownAfterEnter
+call topVisibleRowAfterEnterCall math.addI64
+arg topVisibleRowAfterEnterCall left topVisibleRow
+arg topVisibleRowAfterEnterCall right oneI64
+run topVisibleRowAfterEnterCall
+bind topVisibleRowAfterEnter CSignedInt64 topVisibleRowAfterEnterCall
+set local topVisibleRow topVisibleRowAfterEnter
+branch resetQuitAndLoop
+
+label handleBackspace
+call fileRowBackspaceCall math.addI64
+arg fileRowBackspaceCall left topVisibleRow
+arg fileRowBackspaceCall right cursorScreenRow
+run fileRowBackspaceCall
+bind fileRowBackspace CSignedInt64 fileRowBackspaceCall
+call fileColBackspaceCall math.addI64
+arg fileColBackspaceCall left leftVisibleColumn
+arg fileColBackspaceCall right cursorColumn
+run fileColBackspaceCall
+bind fileColBackspace CSignedInt64 fileColBackspaceCall
+call atStartFileCall math.equalI64
+arg atStartFileCall left fileRowBackspace
+arg atStartFileCall right zeroI64
+run atStartFileCall
+bind atFirstRow Bool atStartFileCall
+call atFirstColCall math.equalI64
+arg atFirstColCall left fileColBackspace
+arg atFirstColCall right zeroI64
+run atFirstColCall
+bind atFirstCol Bool atFirstColCall
+branchIf atFirstRow maybeIgnoreStartBackspace
+branch backspaceNotStart
+label maybeIgnoreStartBackspace
+branchIf atFirstCol resetQuitAndLoop
+branch backspaceNotStart
+label backspaceNotStart
+branchIf atFirstCol joinWithPreviousRow
+call deleteColumnCall math.subtractI64
+arg deleteColumnCall left fileColBackspace
+arg deleteColumnCall right oneI64
+run deleteColumnCall
+bind deleteColumn CSignedInt64 deleteColumnCall
+call deleteCharCall deleteCharInRow
+arg deleteCharCall rowsBuffer rowsBuffer
+arg deleteCharCall rowLengths rowLengths
+arg deleteCharCall rowIndex fileRowBackspace
+arg deleteCharCall columnIndex deleteColumn
+arg deleteCharCall rowCapacity rowCapacity
+run deleteCharCall
+ignoreValue deleteCharCall CSignedInt64
+call cursorColumnAtLineStartForBackspaceCall math.equalI64
+arg cursorColumnAtLineStartForBackspaceCall left cursorColumn
+arg cursorColumnAtLineStartForBackspaceCall right zeroI64
+run cursorColumnAtLineStartForBackspaceCall
+bind cursorColumnAtLineStartForBackspace Bool cursorColumnAtLineStartForBackspaceCall
+branchIf cursorColumnAtLineStartForBackspace scrollLeftBackspace
+call cursorColumnAfterBackspaceCall math.subtractI64
+arg cursorColumnAfterBackspaceCall left cursorColumn
+arg cursorColumnAfterBackspaceCall right oneI64
+run cursorColumnAfterBackspaceCall
+bind cursorColumnAfterBackspace CSignedInt64 cursorColumnAfterBackspaceCall
+set local cursorColumn cursorColumnAfterBackspace
+set local dirty oneI64
+branch resetQuitAndLoop
+label scrollLeftBackspace
+call leftVisibleColumnIsPositiveCall math.greaterThanI64
+arg leftVisibleColumnIsPositiveCall left leftVisibleColumn
+arg leftVisibleColumnIsPositiveCall right zeroI64
+run leftVisibleColumnIsPositiveCall
+bind leftVisibleColumnIsPositive Bool leftVisibleColumnIsPositiveCall
+branchIf leftVisibleColumnIsPositive decrementLeftVisibleColumnBackspace
+branch markDirtyAfterBackspace
+label decrementLeftVisibleColumnBackspace
+call leftVisibleColumnAfterBackspaceCall math.subtractI64
+arg leftVisibleColumnAfterBackspaceCall left leftVisibleColumn
+arg leftVisibleColumnAfterBackspaceCall right oneI64
+run leftVisibleColumnAfterBackspaceCall
+bind leftVisibleColumnAfterBackspace CSignedInt64 leftVisibleColumnAfterBackspaceCall
+set local leftVisibleColumn leftVisibleColumnAfterBackspace
+set local dirty oneI64
+branch resetQuitAndLoop
+label joinWithPreviousRow
+call prevRowIndexCall math.subtractI64
+arg prevRowIndexCall left fileRowBackspace
+arg prevRowIndexCall right oneI64
+run prevRowIndexCall
+bind prevRowIndex CSignedInt64 prevRowIndexCall
+call prevLengthCall loadRowLength
+arg prevLengthCall rowLengths rowLengths
+arg prevLengthCall rowIndex prevRowIndex
+run prevLengthCall
+bind prevLength CSignedInt64 prevLengthCall
+call appendPrevCall appendRowToPrevious
+arg appendPrevCall rowsBuffer rowsBuffer
+arg appendPrevCall rowLengths rowLengths
+arg appendPrevCall activeRowCount activeRowCount
+arg appendPrevCall rowIndex fileRowBackspace
+arg appendPrevCall rowCapacity rowCapacity
+run appendPrevCall
+bind rowsAfterJoin CSignedInt64 appendPrevCall
+set local activeRowCount rowsAfterJoin
+set local cursorColumn prevLength
+set local leftVisibleColumn zeroI64
+call cursorAtTopForJoinCall math.equalI64
+arg cursorAtTopForJoinCall left cursorScreenRow
+arg cursorAtTopForJoinCall right zeroI64
+run cursorAtTopForJoinCall
+bind cursorAtTopForJoin Bool cursorAtTopForJoinCall
+branchIf cursorAtTopForJoin decrementTopVisibleRowJoin
+call cursorScreenRowAfterJoinCall math.subtractI64
+arg cursorScreenRowAfterJoinCall left cursorScreenRow
+arg cursorScreenRowAfterJoinCall right oneI64
+run cursorScreenRowAfterJoinCall
+bind cursorScreenRowAfterJoin CSignedInt64 cursorScreenRowAfterJoinCall
+set local cursorScreenRow cursorScreenRowAfterJoin
+branch markDirtyAfterBackspace
+label decrementTopVisibleRowJoin
+call topVisibleRowCanDecreaseAfterJoinCall math.greaterThanI64
+arg topVisibleRowCanDecreaseAfterJoinCall left topVisibleRow
+arg topVisibleRowCanDecreaseAfterJoinCall right zeroI64
+run topVisibleRowCanDecreaseAfterJoinCall
+bind topVisibleRowCanDecreaseAfterJoin Bool topVisibleRowCanDecreaseAfterJoinCall
+branchIf topVisibleRowCanDecreaseAfterJoin lowerTopVisibleRowJoin
+branch markDirtyAfterBackspace
+label lowerTopVisibleRowJoin
+call topVisibleRowAfterJoinCall math.subtractI64
+arg topVisibleRowAfterJoinCall left topVisibleRow
+arg topVisibleRowAfterJoinCall right oneI64
+run topVisibleRowAfterJoinCall
+bind topVisibleRowAfterJoin CSignedInt64 topVisibleRowAfterJoinCall
+set local topVisibleRow topVisibleRowAfterJoin
+branch markDirtyAfterBackspace
+label markDirtyAfterBackspace
+set local dirty oneI64
+branch resetQuitAndLoop
+
+label handleDeleteKey
+call rightOnceForDeleteCall math.addI64
+arg rightOnceForDeleteCall left cursorColumn
+arg rightOnceForDeleteCall right oneI64
+run rightOnceForDeleteCall
+bind cursorColumnAfterDeleteNext CSignedInt64 rightOnceForDeleteCall
+set local cursorColumn cursorColumnAfterDeleteNext
+branch handleBackspace
+
+label insertTab
+set local insertByte tabByte
+call observeTabInsertByteCall math.equalCSignedInt32
+arg observeTabInsertByteCall left insertByte
+arg observeTabInsertByteCall right tabByte
+run observeTabInsertByteCall
+ignoreValue observeTabInsertByteCall Bool
+branch insertByteAtCursor
+
+label insertPrintable
+set local insertByte pressedKey
+branch insertByteAtCursor
+
+label insertByteAtCursor
+call fileRowInsertCall math.addI64
+arg fileRowInsertCall left topVisibleRow
+arg fileRowInsertCall right cursorScreenRow
+run fileRowInsertCall
+bind fileRowInsert CSignedInt64 fileRowInsertCall
+call rowExistsInsertCall math.lessThanI64
+arg rowExistsInsertCall left fileRowInsert
+arg rowExistsInsertCall right activeRowCount
+run rowExistsInsertCall
+bind rowExistsInsert Bool rowExistsInsertCall
+branchIf rowExistsInsert insertIntoExistingRow
+call insertRowForCharCall insertEmptyRowAt
+arg insertRowForCharCall rowsBuffer rowsBuffer
+arg insertRowForCharCall rowLengths rowLengths
+arg insertRowForCharCall activeRowCount activeRowCount
+arg insertRowForCharCall rowIndex activeRowCount
+arg insertRowForCharCall maxRows maxRows
+arg insertRowForCharCall rowCapacity rowCapacity
+run insertRowForCharCall
+bind rowsAfterCharRowInsert CSignedInt64 insertRowForCharCall
+set local activeRowCount rowsAfterCharRowInsert
+label insertIntoExistingRow
+call fileColInsertCall math.addI64
+arg fileColInsertCall left leftVisibleColumn
+arg fileColInsertCall right cursorColumn
+run fileColInsertCall
+bind fileColInsert CSignedInt64 fileColInsertCall
+call insertCharCall insertCharInRow
+arg insertCharCall rowsBuffer rowsBuffer
+arg insertCharCall rowLengths rowLengths
+arg insertCharCall rowIndex fileRowInsert
+arg insertCharCall columnIndex fileColInsert
+arg insertCharCall rowCapacity rowCapacity
+arg insertCharCall character insertByte
+run insertCharCall
+ignoreValue insertCharCall CSignedInt64
+set local dirty oneI64
+call atRightEdgeCall math.greaterThanOrEqualI64
+arg atRightEdgeCall left cursorColumn
+arg atRightEdgeCall right screenCols
+run atRightEdgeCall
+bind atRightEdge Bool atRightEdgeCall
+branchIf atRightEdge scrollRightAfterInsert
+call cursorColumnAfterInsertCall math.addI64
+arg cursorColumnAfterInsertCall left cursorColumn
+arg cursorColumnAfterInsertCall right oneI64
+run cursorColumnAfterInsertCall
+bind cursorColumnAfterInsert CSignedInt64 cursorColumnAfterInsertCall
+set local cursorColumn cursorColumnAfterInsert
+branch resetQuitAndLoop
+label scrollRightAfterInsert
+call leftVisibleColumnAfterInsertCall math.addI64
+arg leftVisibleColumnAfterInsertCall left leftVisibleColumn
+arg leftVisibleColumnAfterInsertCall right oneI64
+run leftVisibleColumnAfterInsertCall
+bind leftVisibleColumnAfterInsert CSignedInt64 leftVisibleColumnAfterInsertCall
+set local leftVisibleColumn leftVisibleColumnAfterInsert
+branch resetQuitAndLoop
+
+label moveLeft
+call cursorCanMoveLeftWithinScreenCall math.greaterThanI64
+arg cursorCanMoveLeftWithinScreenCall left cursorColumn
+arg cursorCanMoveLeftWithinScreenCall right zeroI64
+run cursorCanMoveLeftWithinScreenCall
+bind cursorCanMoveLeftWithinScreen Bool cursorCanMoveLeftWithinScreenCall
+branchIf cursorCanMoveLeftWithinScreen decrementCursorColumnLeft
+call canScrollLeftByColumnCall math.greaterThanI64
+arg canScrollLeftByColumnCall left leftVisibleColumn
+arg canScrollLeftByColumnCall right zeroI64
+run canScrollLeftByColumnCall
+bind canScrollLeftByColumn Bool canScrollLeftByColumnCall
+branchIf canScrollLeftByColumn decrementLeftVisibleColumnLeft
+branch resetQuitAndLoop
+label decrementCursorColumnLeft
+call cursorColumnAfterLeftCall math.subtractI64
+arg cursorColumnAfterLeftCall left cursorColumn
+arg cursorColumnAfterLeftCall right oneI64
+run cursorColumnAfterLeftCall
+bind cursorColumnAfterLeft CSignedInt64 cursorColumnAfterLeftCall
+set local cursorColumn cursorColumnAfterLeft
+branch resetQuitAndLoop
+label decrementLeftVisibleColumnLeft
+call leftVisibleColumnAfterLeftCall math.subtractI64
+arg leftVisibleColumnAfterLeftCall left leftVisibleColumn
+arg leftVisibleColumnAfterLeftCall right oneI64
+run leftVisibleColumnAfterLeftCall
+bind leftVisibleColumnAfterLeft CSignedInt64 leftVisibleColumnAfterLeftCall
+set local leftVisibleColumn leftVisibleColumnAfterLeft
+branch resetQuitAndLoop
+
+label moveRight
+call fileRowRightCall math.addI64
+arg fileRowRightCall left topVisibleRow
+arg fileRowRightCall right cursorScreenRow
+run fileRowRightCall
+bind fileRowRight CSignedInt64 fileRowRightCall
+call existsRightCall math.lessThanI64
+arg existsRightCall left fileRowRight
+arg existsRightCall right activeRowCount
+run existsRightCall
+bind existsRight Bool existsRightCall
+branchIf existsRight checkRightWithinRow
+branch resetQuitAndLoop
+label checkRightWithinRow
+call fileColRightCall math.addI64
+arg fileColRightCall left leftVisibleColumn
+arg fileColRightCall right cursorColumn
+run fileColRightCall
+bind fileColRight CSignedInt64 fileColRightCall
+call rightLengthCall loadRowLength
+arg rightLengthCall rowLengths rowLengths
+arg rightLengthCall rowIndex fileRowRight
+run rightLengthCall
+bind rightRowLength CSignedInt64 rightLengthCall
+call canMoveRightCall math.lessThanI64
+arg canMoveRightCall left fileColRight
+arg canMoveRightCall right rightRowLength
+run canMoveRightCall
+bind canMoveRight Bool canMoveRightCall
+branchIf canMoveRight applyMoveRight
+branch resetQuitAndLoop
+label applyMoveRight
+call rightEdgeMoveCall math.greaterThanOrEqualI64
+arg rightEdgeMoveCall left cursorColumn
+arg rightEdgeMoveCall right screenCols
+run rightEdgeMoveCall
+bind rightEdgeMove Bool rightEdgeMoveCall
+branchIf rightEdgeMove incrementLeftVisibleColumnRight
+call cursorColumnAfterRightCall math.addI64
+arg cursorColumnAfterRightCall left cursorColumn
+arg cursorColumnAfterRightCall right oneI64
+run cursorColumnAfterRightCall
+bind cursorColumnAfterRight CSignedInt64 cursorColumnAfterRightCall
+set local cursorColumn cursorColumnAfterRight
+branch resetQuitAndLoop
+label incrementLeftVisibleColumnRight
+call leftVisibleColumnAfterRightCall math.addI64
+arg leftVisibleColumnAfterRightCall left leftVisibleColumn
+arg leftVisibleColumnAfterRightCall right oneI64
+run leftVisibleColumnAfterRightCall
+bind leftVisibleColumnAfterRight CSignedInt64 leftVisibleColumnAfterRightCall
+set local leftVisibleColumn leftVisibleColumnAfterRight
+branch resetQuitAndLoop
+
+label moveUp
+call cursorCanMoveUpWithinScreenCall math.greaterThanI64
+arg cursorCanMoveUpWithinScreenCall left cursorScreenRow
+arg cursorCanMoveUpWithinScreenCall right zeroI64
+run cursorCanMoveUpWithinScreenCall
+bind cursorCanMoveUpWithinScreen Bool cursorCanMoveUpWithinScreenCall
+branchIf cursorCanMoveUpWithinScreen decrementCursorScreenRowUp
+call topVisibleRowCanDecreaseForUpCall math.greaterThanI64
+arg topVisibleRowCanDecreaseForUpCall left topVisibleRow
+arg topVisibleRowCanDecreaseForUpCall right zeroI64
+run topVisibleRowCanDecreaseForUpCall
+bind topVisibleRowCanDecreaseForUp Bool topVisibleRowCanDecreaseForUpCall
+branchIf topVisibleRowCanDecreaseForUp decrementTopVisibleRowUp
+branch resetQuitAndLoop
+label decrementCursorScreenRowUp
+call cursorScreenRowAfterUpCall math.subtractI64
+arg cursorScreenRowAfterUpCall left cursorScreenRow
+arg cursorScreenRowAfterUpCall right oneI64
+run cursorScreenRowAfterUpCall
+bind cursorScreenRowAfterUp CSignedInt64 cursorScreenRowAfterUpCall
+set local cursorScreenRow cursorScreenRowAfterUp
+branch clampCursorAfterVerticalMove
+label decrementTopVisibleRowUp
+call topVisibleRowAfterUpCall math.subtractI64
+arg topVisibleRowAfterUpCall left topVisibleRow
+arg topVisibleRowAfterUpCall right oneI64
+run topVisibleRowAfterUpCall
+bind topVisibleRowAfterUp CSignedInt64 topVisibleRowAfterUpCall
+set local topVisibleRow topVisibleRowAfterUp
+branch clampCursorAfterVerticalMove
+
+label moveDown
+call currentFileRowDownCall math.addI64
+arg currentFileRowDownCall left topVisibleRow
+arg currentFileRowDownCall right cursorScreenRow
+run currentFileRowDownCall
+bind currentFileRowDown CSignedInt64 currentFileRowDownCall
+call belowNextCall math.addI64
+arg belowNextCall left currentFileRowDown
+arg belowNextCall right oneI64
+run belowNextCall
+bind nextFileRowDown CSignedInt64 belowNextCall
+call canMoveDownCall math.lessThanI64
+arg canMoveDownCall left nextFileRowDown
+arg canMoveDownCall right activeRowCount
+run canMoveDownCall
+bind canMoveDown Bool canMoveDownCall
+branchIf canMoveDown applyMoveDown
+branch resetQuitAndLoop
+label applyMoveDown
+call screenBottomIndexCall math.subtractI64
+arg screenBottomIndexCall left screenRows
+arg screenBottomIndexCall right oneI64
+run screenBottomIndexCall
+bind screenBottomIndex CSignedInt64 screenBottomIndexCall
+call cursorAtScreenBottomCall math.greaterThanOrEqualI64
+arg cursorAtScreenBottomCall left cursorScreenRow
+arg cursorAtScreenBottomCall right screenBottomIndex
+run cursorAtScreenBottomCall
+bind cursorAtScreenBottom Bool cursorAtScreenBottomCall
+branchIf cursorAtScreenBottom incrementTopVisibleRowDown
+call cursorScreenRowAfterDownCall math.addI64
+arg cursorScreenRowAfterDownCall left cursorScreenRow
+arg cursorScreenRowAfterDownCall right oneI64
+run cursorScreenRowAfterDownCall
+bind cursorScreenRowAfterDown CSignedInt64 cursorScreenRowAfterDownCall
+set local cursorScreenRow cursorScreenRowAfterDown
+branch clampCursorAfterVerticalMove
+label incrementTopVisibleRowDown
+call topVisibleRowAfterDownCall math.addI64
+arg topVisibleRowAfterDownCall left topVisibleRow
+arg topVisibleRowAfterDownCall right oneI64
+run topVisibleRowAfterDownCall
+bind topVisibleRowAfterDown CSignedInt64 topVisibleRowAfterDownCall
+set local topVisibleRow topVisibleRowAfterDown
+branch clampCursorAfterVerticalMove
+
+label clampCursorAfterVerticalMove
+call fileRowClampCall math.addI64
+arg fileRowClampCall left topVisibleRow
+arg fileRowClampCall right cursorScreenRow
+run fileRowClampCall
+bind fileRowClamp CSignedInt64 fileRowClampCall
+call existsClampCall math.lessThanI64
+arg existsClampCall left fileRowClamp
+arg existsClampCall right activeRowCount
+run existsClampCall
+bind existsClamp Bool existsClampCall
+branchIf existsClamp clampToExistingRow
+branch resetQuitAndLoop
+label clampToExistingRow
+call rowLenClampCall loadRowLength
+arg rowLenClampCall rowLengths rowLengths
+arg rowLenClampCall rowIndex fileRowClamp
+run rowLenClampCall
+bind rowLenClamp CSignedInt64 rowLenClampCall
+call fileColClampCall math.addI64
+arg fileColClampCall left leftVisibleColumn
+arg fileColClampCall right cursorColumn
+run fileColClampCall
+bind fileColClamp CSignedInt64 fileColClampCall
+call tooFarRightCall math.greaterThanI64
+arg tooFarRightCall left fileColClamp
+arg tooFarRightCall right rowLenClamp
+run tooFarRightCall
+bind tooFarRight Bool tooFarRightCall
+branchIf tooFarRight moveEnd
+branch resetQuitAndLoop
+
+label movePageUp
+set local cursorScreenRow zeroI64
+call canSubtractPageCall math.greaterThanI64
+arg canSubtractPageCall left topVisibleRow
+arg canSubtractPageCall right screenRows
+run canSubtractPageCall
+bind canSubtractPage Bool canSubtractPageCall
+branchIf canSubtractPage subtractPageFromTopVisibleRow
+set local topVisibleRow zeroI64
+branch clampCursorAfterVerticalMove
+label subtractPageFromTopVisibleRow
+call pageUpTopVisibleRowCall math.subtractI64
+arg pageUpTopVisibleRowCall left topVisibleRow
+arg pageUpTopVisibleRowCall right screenRows
+run pageUpTopVisibleRowCall
+bind pageUpTopVisibleRow CSignedInt64 pageUpTopVisibleRowCall
+set local topVisibleRow pageUpTopVisibleRow
+branch clampCursorAfterVerticalMove
+
+label movePageDown
+call hasRowsForPageDownCall math.greaterThanI64
+arg hasRowsForPageDownCall left activeRowCount
+arg hasRowsForPageDownCall right zeroI64
+run hasRowsForPageDownCall
+bind hasRowsForPageDown Bool hasRowsForPageDownCall
+branchIf hasRowsForPageDown pageDownWithRows
+branch resetQuitAndLoop
+label pageDownWithRows
+call screenBottomForPageCall math.subtractI64
+arg screenBottomForPageCall left screenRows
+arg screenBottomForPageCall right oneI64
+run screenBottomForPageCall
+bind screenBottomForPage CSignedInt64 screenBottomForPageCall
+set local cursorScreenRow screenBottomForPage
+call desiredPageDownTopVisibleRowCall math.addI64
+arg desiredPageDownTopVisibleRowCall left topVisibleRow
+arg desiredPageDownTopVisibleRowCall right screenRows
+run desiredPageDownTopVisibleRowCall
+bind desiredPageDownTopVisibleRow CSignedInt64 desiredPageDownTopVisibleRowCall
+call maxPageTopVisibleRowCall math.subtractI64
+arg maxPageTopVisibleRowCall left activeRowCount
+arg maxPageTopVisibleRowCall right oneI64
+run maxPageTopVisibleRowCall
+bind maxPageTopVisibleRow CSignedInt64 maxPageTopVisibleRowCall
+call pageBeyondEndCall math.greaterThanI64
+arg pageBeyondEndCall left desiredPageDownTopVisibleRow
+arg pageBeyondEndCall right maxPageTopVisibleRow
+run pageBeyondEndCall
+bind pageBeyondEnd Bool pageBeyondEndCall
+branchIf pageBeyondEnd clampPageDownTopVisibleRow
+set local topVisibleRow desiredPageDownTopVisibleRow
+branch clampCursorAfterVerticalMove
+label clampPageDownTopVisibleRow
+set local topVisibleRow maxPageTopVisibleRow
+set local cursorScreenRow zeroI64
+branch clampCursorAfterVerticalMove
+
+label moveHome
+set local cursorColumn zeroI64
+set local leftVisibleColumn zeroI64
+branch resetQuitAndLoop
+
+label moveEnd
+call fileRowEndCall math.addI64
+arg fileRowEndCall left topVisibleRow
+arg fileRowEndCall right cursorScreenRow
+run fileRowEndCall
+bind fileRowEnd CSignedInt64 fileRowEndCall
+call existsEndCall math.lessThanI64
+arg existsEndCall left fileRowEnd
+arg existsEndCall right activeRowCount
+run existsEndCall
+bind existsEnd Bool existsEndCall
+branchIf existsEnd setEndColumn
+branch resetQuitAndLoop
+label setEndColumn
+call endLengthCall loadRowLength
+arg endLengthCall rowLengths rowLengths
+arg endLengthCall rowIndex fileRowEnd
+run endLengthCall
+bind endLength CSignedInt64 endLengthCall
+call endFitsCall math.lessThanI64
+arg endFitsCall left endLength
+arg endFitsCall right screenCols
+run endFitsCall
+bind endFits Bool endFitsCall
+branchIf endFits setEndCursorColumnOnly
+call leftVisibleColumnAtLineEndCall math.subtractI64
+arg leftVisibleColumnAtLineEndCall left endLength
+arg leftVisibleColumnAtLineEndCall right screenCols
+run leftVisibleColumnAtLineEndCall
+bind leftVisibleColumnAtLineEnd CSignedInt64 leftVisibleColumnAtLineEndCall
+set local leftVisibleColumn leftVisibleColumnAtLineEnd
+set local cursorColumn screenCols
+branch resetQuitAndLoop
+label setEndCursorColumnOnly
+set local leftVisibleColumn zeroI64
+set local cursorColumn endLength
+branch resetQuitAndLoop
+
+label resetQuitAndLoop
+set local quitWarningsRemaining quitWarningCount
+call observeStatusMessageCall c.strlen
+arg observeStatusMessageCall string statusMessage
+run observeStatusMessageCall
+ignoreValue observeStatusMessageCall CByteCount
+call observeCursorColumnCall math.addI64
+arg observeCursorColumnCall left cursorColumn
+arg observeCursorColumnCall right zeroI64
+run observeCursorColumnCall
+ignoreValue observeCursorColumnCall CSignedInt64
+call observeColumnOffsetCall math.addI64
+arg observeColumnOffsetCall left leftVisibleColumn
+arg observeColumnOffsetCall right zeroI64
+run observeColumnOffsetCall
+ignoreValue observeColumnOffsetCall CSignedInt64
+call observeQuitWarningsCall math.addI64
+arg observeQuitWarningsCall left quitWarningsRemaining
+arg observeQuitWarningsCall right zeroI64
+run observeQuitWarningsCall
+ignoreValue observeQuitWarningsCall CSignedInt64
+branch replLoop
+
+label allocationAfterLineFailed
+call freeLineAfterSearchFailCall c.free
+arg freeLineAfterSearchFailCall ptr lineBuffer
+run freeLineAfterSearchFailCall
+ignoreValue freeLineAfterSearchFailCall Void
+label allocationAfterLengthsFailed
+call freeLengthsAfterLineFailCall c.free
+arg freeLengthsAfterLineFailCall ptr rowLengths
+run freeLengthsAfterLineFailCall
+ignoreValue freeLengthsAfterLineFailCall Void
+label allocationAfterRowsFailed
+call freeRowsAfterFailCall c.free
+arg freeRowsAfterFailCall ptr rowsBuffer
+run freeRowsAfterFailCall
+ignoreValue freeRowsAfterFailCall Void
+label allocationFailed
+storage local immutable allocationFailedText CNullTerminatedByteString "Kilo port allocation failed.\n"
+call allocFailedCall c.printf
+arg allocFailedCall format allocationFailedText
+run allocFailedCall
+ignoreValue allocFailedCall CSignedInt32
+returnValue failureExitCode
+
+label quitProgram
+call clearQuitCall clearScreen
+run clearQuitCall
+ignoreValue clearQuitCall CSignedInt32
+call showQuitCall showCursor
+run showQuitCall
+ignoreValue showQuitCall CSignedInt32
+call disableRawCall c.terminalDisableRaw
+run disableRawCall
+ignoreValue disableRawCall CSignedInt32
+call goodbyeCall c.printf
+arg goodbyeCall format goodbyeText
+run goodbyeCall
+ignoreValue goodbyeCall CSignedInt32
+call freeSearchCall c.free
+arg freeSearchCall ptr searchBuffer
+run freeSearchCall
+ignoreValue freeSearchCall Void
+call freeLineCall c.free
+arg freeLineCall ptr lineBuffer
+run freeLineCall
+ignoreValue freeLineCall Void
+call freeLengthsCall c.free
+arg freeLengthsCall ptr rowLengths
+run freeLengthsCall
+ignoreValue freeLengthsCall Void
+call freeRowsCall c.free
+arg freeRowsCall ptr rowsBuffer
+run freeRowsCall
+ignoreValue freeRowsCall Void
+returnValue successExitCode
