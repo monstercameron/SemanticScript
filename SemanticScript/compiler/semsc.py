@@ -1780,9 +1780,9 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
         #   languageMode MODE              (per-file declaration)
         #   languageMode PROJECT MODE      (build.sem project-wide row)
         # When the build.sem form is used the row applies to every source
-        # parsed into the program; this is how a project opts the whole
-        # source tree out of the default strict executable wall without
-        # editing each .sem file.
+        # parsed into the program; this is how a project can opt the whole
+        # source tree into strict executable validation without editing each
+        # .sem file.
         project_name = None
         if len(args) == 1:
             language_mode = args[0]
