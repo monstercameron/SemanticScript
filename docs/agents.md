@@ -70,7 +70,9 @@ Prefer: accountLookupCall validatedTaskTitle consoleStdoutWriter.
   returnValue writeFailedExitCode
 
 No entry => library mode: compile all ops + stub main returns 0, except routed
-`target webServer` programs, which emit a native HTTP entrypoint.
+`target webServer` programs, which emit a native HTTP entrypoint. Reserved
+`target windowsGui` should also be a no-entry target, but only through the
+small native GUI bridge described below.
 
 Top:
   project NAME
@@ -81,6 +83,74 @@ Top:
   entry console OPERATION
   importModule DOTTED.PATH [as ALIAS]
   section NAME
+
+== std imports ==
+Std is a library tree, not a build project. Do not add `std/build.sem`.
+Root relay: `SemanticScript/std/module.sem`.
+Module entries: `SemanticScript/std/<module>/main.sem`.
+Self-tests: `SemanticScript/std/<module>/main.test.sem`.
+
+Preferred imports:
+  importModule html standard.html
+  importModule http standard.http
+  importModule json standard.json
+  importModule sqlite standard.sqlite
+  importModule gui standard.gui
+
+Std resolution order:
+  --std-path PATH
+  SEMANTICSCRIPT_STD_PATH or SEMSC_STD_PATH
+  vendored ancestor std/
+  current-working-directory std/
+  compiler-bundled compiler/../std
+
+This means apps outside the repo can still import `standard.*` when compiled by
+the installed compiler, or when the std root is passed explicitly.
+
+== windows gui ==
+Compiler-owned GUI surface should stay minimal:
+  target windowsGui
+  targetRuntime PROJECT windowsGui
+  native GUI runtime link/codegen bridge
+  preserve GuiSession and GuiEvent handler ABI inputs
+  consume a normalized app/main-window descriptor
+
+Do not add `entry windowsGui OPERATION`. Do not move control/event validation
+into a giant compiler grammar. `standard.gui` owns GUI declarations,
+contracts, capabilities, and most validation. Preferred import:
+  importModule gui standard.gui
+
+Standard GUI metadata shape:
+  guiApplication helloGuiApp
+  guiApplicationTitle helloGuiApp "Hello GUI"
+  guiApplicationMainWindow helloGuiApp mainWindow
+  guiWindow mainWindow
+  guiWindowApplication mainWindow helloGuiApp
+  guiWindowTitle mainWindow "Hello GUI"
+  guiWindowWidth mainWindow 800
+  guiWindowHeight mainWindow 480
+  guiWindowLayout mainWindow verticalStack
+  guiWindowResizable mainWindow yes
+
+Use per-kind controls, not `guiControl CONTROL KIND`:
+  guiButton saveButton
+  guiTextBox titleTextBox
+  guiTextLabel titleLabel
+  guiControlWindow saveButton mainWindow
+  guiControlAccessibleName saveButton "Save"
+  guiControlEvent saveButton click saveClicked
+
+GUI handler ABI:
+  input saveClicked session GuiSession
+  input saveClicked event GuiEvent
+  output saveClicked CSignedInt32
+
+Reserved gui.* targets live under standard.gui contracts:
+  gui.textBoxText gui.textBoxSetText
+  gui.listBoxSelectedIndex gui.listBoxAppendItem gui.listBoxClear
+  gui.windowClose
+  gui.eventKeyCode gui.eventSelectedIndex
+  gui.eventWindowWidth gui.eventWindowHeight
 
 == operation ==
   operation OP
@@ -326,7 +396,7 @@ emit an explicit `call ... c.free` cleanup on every ownership path. A
 compiler lowering treats non-user-op defer targets as metadata, so do not claim
 that row alone proves runtime leak freedom. Linters should accept either a
 defer row or an explicit cleanup call that consumes the bound allocation.
-There is no general stdlib free wrapper today; stdlib_sem/README explicitly says
+There is no general stdlib free wrapper today; std/README explicitly says
 c.free is one of the host C calls with no useful pure-SemanticScript substitute. Prefer a
 domain-specific stdlib release op when the matching allocator provides one
 (example: createDeterministicRandomState -> releaseDeterministicRandomState).

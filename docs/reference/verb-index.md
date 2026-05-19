@@ -34,7 +34,7 @@ partial       mixed behavior; see owning language doc
 | `mainOperation` | `mainOperation PROJECT OPERATION` | partial |
 | `testRoot` | `testRoot PROJECT "PATH"` | metadata |
 | `testPattern` | `testPattern PROJECT "GLOB"` | metadata |
-| `targetRuntime` | `targetRuntime PROJECT nativeExe|webServer|library` | partial |
+| `targetRuntime` | `targetRuntime PROJECT nativeExe\|webServer\|windowsGui\|library` | partial |
 | `buildProfile` | `buildProfile PROJECT dev|prod` | partial |
 | `runtimeChecks` | `runtimeChecks PROJECT off|traps|panic` | partial |
 | `optLevel` | `optLevel PROJECT 0|1|2|3` | partial |
@@ -50,13 +50,24 @@ partial       mixed behavior; see owning language doc
 | `cpuTune` | `cpuTune PROJECT generic|native|CPU_NAME` | partial |
 | `cpuFeature` | `cpuFeature PROJECT FEATURE on|off` | partial |
 | `cpuFeatureCheck` | `cpuFeatureCheck PROJECT auto|off|warn|require` | partial |
+| `dependency` | `dependency PROJECT ALIAS MODULE_PATH VERSION_OR_REF` | partial |
+| `dependencySource` | `dependencySource PROJECT ALIAS [local|path|github|http] SOURCE [REF]` | partial |
+| `dependencyFetch` | `dependencyFetch PROJECT ALIAS github OWNER/REPO REF` or `dependencyFetch PROJECT ALIAS http "https://..."` | partial |
+| `dependencyCache` | `dependencyCache PROJECT "PATH"` | partial |
+| `dependencyLock` | `dependencyLock PROJECT "PATH"` | partial |
+| `dependencyIntegrity` | `dependencyIntegrity PROJECT ALIAS sha256:<64-hex>|commit:<7-40-hex>` | partial |
 | `nativeOutput` | `nativeOutput PROJECT "PATH"` | partial |
 | `nativeHttpHost` | `nativeHttpHost PROJECT "HOST"` | metadata |
 | `nativeHttpPort` | `nativeHttpPort PROJECT PORT` | metadata |
 | `formatterSetting` | `formatterSetting PROJECT KEY VALUE` | metadata |
 | `linterSetting` | `linterSetting PROJECT KEY VALUE` | metadata |
 | `docsOutput` | `docsOutput PROJECT "PATH"` | metadata |
-| `importModule` | `importModule DOTTED.PATH [as ALIAS]` | lowered pre-parse |
+| `importModule` | `importModule ALIAS DOTTED.PATH` or `importModule DOTTED.PATH [as ALIAS]` | lowered pre-parse |
+| `importOperation` | `importOperation LOCAL_NAME MODULE_ALIAS EXPORTED_OPERATION` | partial |
+| `importType` | `importType LOCAL_NAME MODULE_ALIAS EXPORTED_TYPE` | partial |
+| `importError` | `importError LOCAL_NAME MODULE_ALIAS EXPORTED_ERROR` | partial |
+| `importCapability` | `importCapability LOCAL_NAME MODULE_ALIAS EXPORTED_CAPABILITY` | partial |
+| `importConstant` | `importConstant LOCAL_NAME MODULE_ALIAS EXPORTED_CONSTANT` | partial |
 | `section` | `section NAME` | metadata |
 
 Module export rows are module-local metadata: `exportType`, `exportError`,
@@ -150,6 +161,103 @@ trustBoundaryValidator trustBoundarySource
 
 Primitive JSON generated targets have some lowering support. Record-level codec
 contracts are primarily metadata today.
+
+## HTML Templates
+
+Standard-library modules are imported through the `standard.*` namespace. The
+compiler resolves them through the std search path; the library root contains
+`module.sem`, and each child module lives at `<module>/main.sem`.
+
+Import `standard.html` with the canonical `html` alias before using this
+surface in app modules:
+
+```text
+importModule html standard.html
+```
+
+| Verb | Schema | Status |
+|---|---|---|
+| `htmlTemplate` | `htmlTemplate NAME` | lowered |
+| `htmlArg` | `htmlArg TEMPLATE ARG_NAME TYPE` | lowered |
+| `htmlBody` | `htmlBody TEMPLATE` followed by indented HTML/SSX lines | lowered |
+
+`html.hydrate.TemplateName` is a generated call target, not a standalone verb.
+It is exposed through the imported `standard.html` namespace and assembles the
+template body with explicit `arg` rows whose names match declared `htmlArg`
+inputs. Dynamic holes must be declared `htmlArg` references, written as
+`{htmlArg.name}` or the same reference with surrounding whitespace. Other brace
+holes are rejected outside raw `<style>` and `<script>` text.
+Hydration escapes `HtmlText` in text and quoted attribute sinks. `class`
+attributes require `HtmlClass`, URL attributes such as `href` / `src` require
+`SafeUrl`, and `HtmlFragment` / `HtmlTrustedFragment` / `HtmlDocument` values
+can only hydrate text-content positions where raw markup is intentional.
+
+## Native Windows GUI
+
+`target windowsGui` and `targetRuntime PROJECT windowsGui` are the
+compiler/build bridge. The larger GUI vocabulary belongs to `standard.gui` as
+metadata, contracts, capabilities, and validation rules. The compiler should
+consume only the small normalized descriptor needed to link and start the
+native GUI runtime. There is no `entry windowsGui` row; the application starts
+from one `standard.gui` application descriptor and its
+`guiApplicationMainWindow` edge. The preferred standard-library import is:
+
+```text
+importModule gui standard.gui
+```
+
+| Verb | Schema | Status |
+|---|---|---|
+| `guiApplication` | `guiApplication APP` | metadata |
+| `guiApplicationTitle` | `guiApplicationTitle APP "text"` | metadata |
+| `guiApplicationIcon` | `guiApplicationIcon APP ICON_GROUP` | metadata |
+| `guiApplicationMainWindow` | `guiApplicationMainWindow APP WINDOW` | metadata |
+| `guiApplicationOnExit` | `guiApplicationOnExit APP OPERATION` | metadata |
+| `guiWindow` | `guiWindow WINDOW` | metadata |
+| `guiWindowApplication` | `guiWindowApplication WINDOW APP` | metadata |
+| `guiWindowTitle` | `guiWindowTitle WINDOW "text"` | metadata |
+| `guiWindowWidth` / `guiWindowHeight` | `guiWindowWidth WINDOW PIXELS` / `guiWindowHeight WINDOW PIXELS` | metadata |
+| `guiWindowMinimumWidth` / `guiWindowMinimumHeight` | `guiWindowMinimumWidth WINDOW PIXELS` / `guiWindowMinimumHeight WINDOW PIXELS` | metadata |
+| `guiWindowLayout` | `guiWindowLayout WINDOW verticalStack|horizontalStack|grid|absolute` | metadata |
+| `guiWindowResizable` | `guiWindowResizable WINDOW yes|no` | metadata |
+| `guiWindowEvent` | `guiWindowEvent WINDOW EVENT OPERATION` | metadata |
+| Control declarators | `guiButton CONTROL`, `guiTextBox CONTROL`, `guiListBox CONTROL`, `guiCheckBox CONTROL`, `guiMenuItem CONTROL`, `guiStatusBar CONTROL`, `guiTextLabel CONTROL` | metadata |
+| Common control rows | `guiControlWindow`, `guiControlEnabled`, `guiControlVisible`, `guiControlTabIndex`, `guiControlAccessibleName`, `guiControlEvent` | metadata |
+| Kind-specific control rows | `guiButtonText`, `guiButtonIsDefault`, `guiTextBoxPlaceholder`, `guiTextBoxMaxLength`, `guiListBoxSelectionMode`, `guiCheckBoxChecked`, `guiTextLabelText` | metadata |
+
+GUI handler operations use:
+
+```text
+input HANDLER session GuiSession
+input HANDLER event GuiEvent
+output HANDLER CSignedInt32
+```
+
+Reserved GUI opaque types are `GuiSession`, `GuiEvent`, `GuiWindow`,
+`GuiControl`, `GuiButton`, `GuiTextBox`, `GuiListBox`, `GuiCheckBox`,
+`GuiMenuItem`, `GuiStatusBar`, and `GuiTextLabel`. Reserved enum/closed-token
+types are `GuiWindowLayout`, `GuiListBoxSelectionMode`, and `GuiEventKind`.
+
+Reserved `gui.*` runtime call targets:
+
+```text
+gui.textBoxText
+gui.textBoxSetText
+gui.listBoxSelectedIndex
+gui.listBoxAppendItem
+gui.listBoxClear
+gui.windowClose
+gui.eventKeyCode
+gui.eventSelectedIndex
+gui.eventWindowWidth
+gui.eventWindowHeight
+```
+
+No `gui.eventCancelClose` target is committed yet; cancellable close events are
+deferred. Runtime calls that touch live GUI state take `session GuiSession` and
+a kind-specific declarative handle such as `textBox GuiTextBox`,
+`listBox GuiListBox`, or `window GuiWindow`. Event payload readers take
+`event GuiEvent`.
 
 ## Cleanup, Concurrency, Time
 

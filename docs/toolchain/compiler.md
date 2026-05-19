@@ -49,12 +49,24 @@ CLI flags:
 | `--build-profile dev\|prod` | Runtime safety profile for compiled output. `dev` is the default and embeds `SSRUN001` panic context; `prod` keeps trap checks but hides source context. |
 | `--runtime-checks off\|traps\|panic` | Override the profile default. `off` emits no runtime checks, `traps` emits silent `llvm.trap` checks, and `panic` embeds the SemanticScript panic message before trapping. |
 | `--build-file PATH` | Merge build-time declarations (project metadata, icon registry, build switches) from this `.sem` / `.sscript` file into the main Program before codegen. Conflicting redeclarations are rejected. Unused by `build.sem` entry points that use `importModule` directly. |
+| `--std-path PATH` | Add an explicit standard-library root. May be repeated. Accepts a `std` root containing `module.sem`, a `SemanticScript` root containing `std/`, or a repo root containing `SemanticScript/std`. |
 | `--keep-resources` | Retain the intermediate Windows resource files (`.rc` / `.res` / `.ico`) next to the executable for debugging. Default behavior writes them to a tempdir and deletes after linking — the bytes survive only inside the `.exe`'s PE resource section. Overrides `keepResources PROJECT no` in the build tape. |
 | `--resource-dir PATH` | Explicit directory for intermediate resource files. Implies `--keep-resources`. Path resolves relative to the source file's directory unless absolute. Overrides `resourcesDir PROJECT "path"` in the build tape. |
 | `--quiet` | Suppress success messages. |
 
 Set `SEMSC_CLANG` to override the clang executable used by `--emit-exe`.
-Set `SEMSC_TRACEBACK=1` to print Python tracebacks for parse/codegen failures.
+Set `SEMANTICSCRIPT_STD_PATH` or `SEMSC_STD_PATH` to one or more std roots
+separated by the platform path separator when the standard library is installed
+outside the compiler bundle. Set `SEMSC_TRACEBACK=1` to print Python
+tracebacks for parse/codegen failures.
+
+For example, both of these allow an app outside the repository to import
+`standard.*` modules:
+
+```powershell
+python C:\tools\SemanticScript\compiler\semsc.py C:\apps\demo\main.sem --run
+python C:\tools\SemanticScript\compiler\semsc.py C:\apps\demo\main.sem --std-path C:\tools\SemanticScript\std
+```
 
 Generated `.exe`, `.ll`, linker resource files, and temporary link inputs live
 under the managed build directory by default. A basename such as
@@ -161,6 +173,7 @@ embedded.
 | VS Code extension | Supported editor tooling | `vscode-semanticscript/` registers `.sscript` and `.sem`, provides highlighting, hovers, semantic roles, and optional `semlint` / `semlint` diagnostics. | Highlighted or hovered syntax is not automatically executable compiler support. The compiler and `SYNTAX.md` decide runtime support. |
 | Refined syntax | Partial, inspectable | The parser accepts many refined declarative lines for AST, linter, and editor inspection. Pure metadata is preserved or skipped safely. Some concurrency and dataflow forms lower to documented synchronous fallbacks. | Refined syntax is not uniformly runtime-complete. Use `--parse-only` for forms whose backend is intentionally absent. |
 | Web / HTTP runtime | Preview, release-tested | Routed `target webServer` programs emit a native HTTP/1.1 listener with exact method/path dispatch. Handlers use `input request HttpRequest`, `input response HttpResponse`, and `output CSignedInt32`. The native adapter supports request method/path/header/query/body text/body bytes reads, bounded multipart part reads, response text/bytes/SSE-event/header writes, and one path-scoped middleware callback. | HTTP/2/H2O, path params, route timeout enforcement, static-file serving, graceful shutdown hooks, structured body decoders, long-lived streaming bodies, method-scoped middleware, and persistent state are not 1.0 guarantees. Unrouted webserver files still compile as library/stub programs. |
+| Windows GUI runtime | Reserved / partial | The committed compiler-owned surface should stay to `target windowsGui`, `targetRuntime PROJECT windowsGui`, native runtime linking, handler ABI preservation for `GuiSession` / `GuiEvent`, and a small metadata hook for the normalized `standard.gui` application/main-window descriptor. | `standard.gui` owns the GUI vocabulary, declaration contracts, capabilities, and validation semantics. There is no `entry windowsGui` row, and the current reference compiler does not yet provide a complete GUI bridge/runtime path. |
 | Partial syntax rows | Explicitly partial | Rows marked partial in `SYNTAX.md` may parse, lint, lower synchronously, or emit structural stubs exactly as documented there. | A partial row must not be treated as full application-runtime support. Unsupported runtime semantics should fail rather than silently disappear. |
 | Runtime and diagnostics flags | Supported compiler interface | `--build-profile dev\|prod`, `--runtime-checks off\|traps\|panic`, `--persist-llvm-ir auto\|yes\|no`, `--diagnostics-format agent\|json\|raw`, and `--opt-level 0..3` are the 1.0 flag surface. | These flags do not change language support. `prod` hides panic source context; `off` removes runtime checks and should be chosen deliberately. |
 
@@ -177,19 +190,32 @@ embedded.
 
 ## Import Resolution
 
-`importModule DOTTED.PATH [as ALIAS]` is resolved before parsing. If the root
+`importModule ALIAS DOTTED.PATH` and the compatibility form
+`importModule DOTTED.PATH [as ALIAS]` are resolved before parsing. If the root
 source declares modules with `registerModule PROJECT MODULE_PATH "PATH"`, the
 compiler resolves those registered module paths first. A registered path may
 point at a source file or a folder with `main.sem`, `index.sem`, the leaf module
 file, or exactly one non-test `.sem` / `.sscript`.
 
-If no registered module matches, the legacy resolver searches source-relative
-paths, `stdlib_sem/`, and the project root. Imports are inlined with cycle
-detection.
+If no project-registered module matches, canonical standard-library module
+paths resolve through the std search path. `standard` maps to `std/module.sem`
+and `standard.<module>` maps to `std/<module>/main.sem`. Search order is:
+explicit `--std-path` roots, `SEMANTICSCRIPT_STD_PATH` / `SEMSC_STD_PATH`,
+vendored `std/` folders found while walking up from the source file, `std/`
+under the current working directory, then the compiler-bundled `../std`.
+After that, the legacy resolver searches source-relative paths, std roots, and
+the project root. Imports are inlined with cycle detection, and the import row
+is preserved so alias and
+singular-import metadata remain visible after inlining.
 
-The alias is recorded for tools; it is not currently a full namespace boundary.
-New project code should keep `registerModule` rows in `build.sem`; module files
-should keep their own `module`, `importModule`, and `export*` rows.
+Project aliases are namespace boundaries for exported provider operations,
+types, errors, capabilities, and constants. Qualified calls such as
+`provider.publicOperation` lower to the inlined provider operation only when
+the provider exports that operation. Singular import rows such as
+`importOperation localName provider publicOperation` bind an exported provider
+symbol to a local facade name. New project code should keep `registerModule`
+rows in `build.sem`; module files should keep their own `module`,
+`importModule`, singular import, and `export*` rows.
 
 ## Entry and Library Modes
 
@@ -203,6 +229,15 @@ Without an `entry`, the compiler usually:
 
 Routed `target webServer` programs are the exception: `webServer` / `route`
 metadata selects the native HTTP entry generator instead of the stub.
+
+`target windowsGui` is the reserved second no-entry exception. Its compiler
+responsibility should stay small: select/link the native Windows GUI runtime,
+preserve `GuiSession` and `GuiEvent` handler ABI parameters, and consume a
+normalized application/main-window descriptor produced from `standard.gui`
+metadata. The GUI row vocabulary and most validation belong in `standard.gui`
+and lint/tooling, not in a large compiler-owned grammar. The form
+`entry windowsGui OPERATION` is rejected; `targetRuntime PROJECT windowsGui`
+build tapes should not declare `entry console`.
 
 The stub mode supports stdlib files and refined syntax showcases that need
 parse/codegen inspection without a runtime host.
@@ -224,6 +259,11 @@ Opaque input names:
 ```text
 console environment process httpRequest databaseClient clock
 ```
+
+GUI handlers are a target-specific ABI exception. `GuiSession` and `GuiEvent`
+are preserved for handlers wired by `standard.gui` metadata, while ordinary
+opaque dependency inputs outside HTTP and GUI ABIs keep the usual dropped-token
+behavior.
 
 ## Soft Metadata vs Runtime Features
 
