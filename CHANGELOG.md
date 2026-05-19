@@ -2,6 +2,10 @@
 
 ## 2026-05-19
 
+- `ba4fa855a4984f26314130421647b4920fd6bc75` - `docs: mark JSON CRUD verbs lowered`
+  - Updates the verb index so JSON document lifecycle, navigation, cursor-reader, mutator, and delete/clear call rows are listed as lowered rather than proposed.
+- `54f725d1a8038d42fb70aa6696d35d35428b8f50` - `docs: update changelog for JSON syntax status`
+  - Adds changelog coverage for the JSON syntax-status and strict-rollout documentation follow-ups.
 - `a2845b7b4d380f9dfc7438d9334d4ff9118c81de` - `docs: mark JSON CRUD syntax implemented`
   - Promotes the JSON document lifecycle, navigation, cursor-reader, mutator, and delete/clear rows in `SYNTAX.md` from Proposed to Impl'd now that the native runtime and compiler dispatch are wired.
 - `d165a4429a33a05cb40b686ae547737d2400fc41` - `docs: correct strict rollout changelog`
