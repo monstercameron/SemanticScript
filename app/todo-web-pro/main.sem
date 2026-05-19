@@ -17,6 +17,7 @@ importModule standard.sqlite
 importModule standard.json
 importModule standard.bcrypt
 importModule standard.html
+importModule standard.log
 
 # HomePageTemplate + homePageHandler live in their own folder module
 # at modules/pages/main.sem. The import line is at the BOTTOM of this
@@ -141,6 +142,23 @@ storage module immutable randomByteCountArg CSignedInt32 32
 storage module immutable tokenBufferCapacity CSignedInt64 64
 storage module immutable tokenCapacityArg CSignedInt32 64
 storage module immutable cookieHeaderCapacity CSignedInt64 256
+
+# Structured-log bootstrap constants. The web server writes one
+# JSON-per-line audit file at `<cwd>/logs/log.log` — for a build/-launched
+# exe that means `app/todo-web-pro/build/logs/log.log`. The directory is
+# created lazily on first request; the log file is opened in append mode
+# so re-running the server preserves history across restarts.
+storage module immutable logsDirectoryPath  CNullTerminatedByteString "logs"
+storage module immutable logFilePath        CNullTerminatedByteString "logs/log.log"
+storage module immutable serverStartLogMessage CNullTerminatedByteString "server.started"
+storage module immutable userRegisteredLogMessage CNullTerminatedByteString "user.registered"
+storage module immutable userLoginSucceededLogMessage CNullTerminatedByteString "user.login.succeeded"
+storage module immutable userLoginFailedLogMessage CNullTerminatedByteString "user.login.failed"
+storage module immutable userLogoutLogMessage CNullTerminatedByteString "user.logout"
+storage module immutable todoCreatedLogMessage CNullTerminatedByteString "todo.created"
+storage module immutable todoCompletedLogMessage CNullTerminatedByteString "todo.completed"
+storage module immutable todoUncompletedLogMessage CNullTerminatedByteString "todo.uncompleted"
+storage module immutable todoDeletedLogMessage CNullTerminatedByteString "todo.deleted"
 
 # Per-row scratch holds one serialized todo (id + title + done + priority).
 # Title is capped at 280 chars by the schema; the JSON envelope adds ~80 chars,
@@ -270,6 +288,25 @@ call ensureImagesDirCall http.ensureDirectory
 arg ensureImagesDirCall directoryPath imagesDirectoryPath
 run ensureImagesDirCall
 ignoreOk ensureImagesDirCall CSignedInt32
+
+# Bootstrap the structured-log file alongside the images dir. Both
+# need to happen exactly once at server start; co-locating them in
+# the lazy-init path means a refine that adds another startup-once
+# step has a single obvious home.
+call ensureLogsDirCall http.ensureDirectory
+arg ensureLogsDirCall directoryPath logsDirectoryPath
+run ensureLogsDirCall
+ignoreOk ensureLogsDirCall CSignedInt32
+
+call openLogFileCall openLogFile
+arg openLogFileCall filePath logFilePath
+run openLogFileCall
+ignoreOk openLogFileCall CSignedInt32
+
+call serverStartLogCall logInfo
+arg serverStartLogCall messageText serverStartLogMessage
+run serverStartLogCall
+ignoreOk serverStartLogCall CSignedInt32
 
 call openCall sqlite.openDatabase
 arg openCall path databasePath
@@ -929,6 +966,12 @@ arg writeRegisterResponseCall status httpStatusCreated
 arg writeRegisterResponseCall jsonBody responseBodyText
 run writeRegisterResponseCall
 bind registerResponseStatus CSignedInt32 writeRegisterResponseCall
+
+call registerLogCall logInfo
+arg registerLogCall messageText userRegisteredLogMessage
+run registerLogCall
+ignoreOk registerLogCall CSignedInt32
+
 returnValue registerResponseStatus
 
 # ----- registerHandler failure labels -----
@@ -1282,6 +1325,12 @@ arg writeLogoutOkCall status httpStatusOk
 arg writeLogoutOkCall jsonBody logoutResponseBody
 run writeLogoutOkCall
 bind writeLogoutStatus CSignedInt32 writeLogoutOkCall
+
+call logoutLogCall logInfo
+arg logoutLogCall messageText userLogoutLogMessage
+run logoutLogCall
+ignoreOk logoutLogCall CSignedInt32
+
 returnValue writeLogoutStatus
 
 # ----- loginHandler -----
@@ -1618,6 +1667,12 @@ arg writeLoginResponseCall status httpStatusOk
 arg writeLoginResponseCall jsonBody loginResponseBodyText
 run writeLoginResponseCall
 bind writeLoginStatus CSignedInt32 writeLoginResponseCall
+
+call loginSucceededLogCall logInfo
+arg loginSucceededLogCall messageText userLoginSucceededLogMessage
+run loginSucceededLogCall
+ignoreOk loginSucceededLogCall CSignedInt32
+
 returnValue writeLoginStatus
 
 # ----- loginHandler failure labels -----
@@ -1650,6 +1705,12 @@ arg writeLoginInvalidCall status httpStatusUnauthorized
 arg writeLoginInvalidCall messageBody loginInvalidCredentialsBody
 run writeLoginInvalidCall
 bind writeLoginInvalidStatus CSignedInt32 writeLoginInvalidCall
+
+call loginFailedLogCall logWarn
+arg loginFailedLogCall messageText userLoginFailedLogMessage
+run loginFailedLogCall
+ignoreOk loginFailedLogCall CSignedInt32
+
 returnValue writeLoginInvalidStatus
 
 label loginInsertSessionFailed
@@ -1894,6 +1955,12 @@ arg writeCreateResponseCall status httpStatusCreated
 arg writeCreateResponseCall jsonBody createResponseBodyText
 run writeCreateResponseCall
 bind writeCreateStatus CSignedInt32 writeCreateResponseCall
+
+call todoCreatedLogCall logInfo
+arg todoCreatedLogCall messageText todoCreatedLogMessage
+run todoCreatedLogCall
+ignoreOk todoCreatedLogCall CSignedInt32
+
 returnValue writeCreateStatus
 
 label createUnauthorizedHandler
@@ -2364,6 +2431,12 @@ arg writeDeleteOkCall status httpStatusOk
 arg writeDeleteOkCall jsonBody deleteOkBody
 run writeDeleteOkCall
 bind writeDeleteOkStatus CSignedInt32 writeDeleteOkCall
+
+call todoDeletedLogCall logInfo
+arg todoDeletedLogCall messageText todoDeletedLogMessage
+run todoDeletedLogCall
+ignoreOk todoDeletedLogCall CSignedInt32
+
 returnValue writeDeleteOkStatus
 
 label deleteUnauthorizedHandler
@@ -2542,6 +2615,12 @@ arg writeCompleteOkCall status httpStatusOk
 arg writeCompleteOkCall jsonBody completeOkBody
 run writeCompleteOkCall
 bind writeCompleteOkStatus CSignedInt32 writeCompleteOkCall
+
+call todoCompletedLogCall logInfo
+arg todoCompletedLogCall messageText todoCompletedLogMessage
+run todoCompletedLogCall
+ignoreOk todoCompletedLogCall CSignedInt32
+
 returnValue writeCompleteOkStatus
 
 label completeUnauthorizedHandler
@@ -2711,6 +2790,12 @@ arg writeUncompleteOkCall status httpStatusOk
 arg writeUncompleteOkCall jsonBody uncompleteOkBody
 run writeUncompleteOkCall
 bind writeUncompleteOkStatus CSignedInt32 writeUncompleteOkCall
+
+call todoUncompletedLogCall logInfo
+arg todoUncompletedLogCall messageText todoUncompletedLogMessage
+run todoUncompletedLogCall
+ignoreOk todoUncompletedLogCall CSignedInt32
+
 returnValue writeUncompleteOkStatus
 
 label uncompleteUnauthorizedHandler
