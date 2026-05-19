@@ -125,6 +125,16 @@ CONIO = {
     "_getch":     ("CSignedInt32", [], False),
 }
 
+# ---- SemanticScript native terminal adapter ----
+SEM_TERMINAL = {
+    "ss_terminal_enable_raw":      ("CSignedInt32", [], False),
+    "ss_terminal_disable_raw":     ("CSignedInt32", [], False),
+    "ss_terminal_read_key":        ("CSignedInt32", [], False),
+    "ss_terminal_get_window_rows": ("CSignedInt64", [], False),
+    "ss_terminal_get_window_cols": ("CSignedInt64", [], False),
+    "ss_terminal_first_argument":  ("CNullTerminatedByteString", [], False),
+}
+
 # ---- <stdlib.h> ----
 STDLIB = {
     "malloc":     ("COpaqueMemoryAddress", ["CByteCount"], False),
@@ -559,7 +569,7 @@ WCTYPE = {
 
 # ---- merge everything into a single dispatch dict ----
 ALL_FUNCTIONS = {}
-for bucket in (STDIO, CONIO, STDLIB, STRING, MATH, CTYPE, TIME,
+for bucket in (STDIO, CONIO, SEM_TERMINAL, STDLIB, STRING, MATH, CTYPE, TIME,
                SETJMP, SIGNAL, LOCALE, WCHAR, WCTYPE,
                FENV, COMPLEX, UCHAR, THREADS):
     for name, sig in bucket.items():
@@ -578,6 +588,13 @@ SEMANTICSCRIPT_FACING_ALIASES = {
     "getsSafe":                    "gets_s",
     # ---- <conio.h> ----
     "consoleGetch":                "_getch",
+    # ---- SemanticScript native terminal adapter ----
+    "terminalEnableRaw":           "ss_terminal_enable_raw",
+    "terminalDisableRaw":          "ss_terminal_disable_raw",
+    "terminalReadKey":             "ss_terminal_read_key",
+    "terminalGetWindowRows":       "ss_terminal_get_window_rows",
+    "terminalGetWindowCols":       "ss_terminal_get_window_cols",
+    "terminalFirstArgument":       "ss_terminal_first_argument",
     # ---- <stdlib.h> ----
     "alignedAlloc":                "aligned_alloc",
     "processExitWithoutCleanup":   "_Exit",

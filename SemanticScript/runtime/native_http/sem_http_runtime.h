@@ -24,6 +24,13 @@ typedef struct SSHttpServerConfig {
     unsigned short port;
     const SSHttpRoute *routes;
     size_t route_count;
+    /* Optional fallback handler invoked when no route matches the
+     * incoming request. NULL keeps the historic behavior (plaintext
+     * `404 not found\n`). When set, the handler receives the request
+     * + a fresh response and is responsible for writing the body /
+     * content-type; the dispatcher only sends what the handler
+     * produced. */
+    SSHttpHandler not_found_handler;
 } SSHttpServerConfig;
 
 /* ss_http_server_run() result codes. */
@@ -152,6 +159,44 @@ long long ss_http_now_millis(void);
  * "directory already exists".
  */
 int ss_http_filesystem_ensure_directory(const char *directory_path);
+
+/*
+ * Parses an application/x-www-form-urlencoded body for a named field,
+ * URL-decodes the value, and writes it into the caller's scratch
+ * buffer. Returns the scratch pointer on success or NULL when the
+ * field is absent, the body is NULL, the decoded value would
+ * overflow the scratch, or the body contains an invalid percent
+ * escape. Same shape as ss_json_find_string so apps can call either
+ * (or both) depending on the request's Content-Type header.
+ *
+ * URL-decoding handles `+` -> space and `%XX` -> hex byte. Field
+ * names are matched as plain bytes (no decoding) since browsers and
+ * the standard library both submit field names in their literal
+ * form for ASCII identifiers.
+ */
+const char *ss_http_form_find_field(
+    const char *body_text,
+    const char *field_name,
+    char *scratch_buffer,
+    size_t scratch_capacity
+);
+
+/*
+ * Structured-log API. The runtime auto-writes an access log line per
+ * served request; apps can call ss_app_log_write_line directly to emit
+ * additional structured business events. Default log file path is
+ * `logs/log.log` relative to the process cwd; ss_app_log_set_path can
+ * override the path before the first write lands.
+ *
+ * `line` must be a pre-formatted, JSON-valid string. The runtime
+ * appends a trailing '\n' and fflushes immediately so a crash loses at
+ * most the one in-flight write.
+ *
+ * Both functions return SS_HTTP_OK on success or SS_HTTP_ERR_CONFIG /
+ * SS_HTTP_ERR_ENGINE on argument or I/O failure.
+ */
+int ss_app_log_set_path(const char *new_path);
+int ss_app_log_write_line(const char *line);
 
 const char *ss_http_multipart_part_text(SSHttpRequest *request, const char *name);
 const void *ss_http_multipart_part_bytes(SSHttpRequest *request, const char *name);

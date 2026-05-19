@@ -267,7 +267,19 @@ class CompilerProvenance:
 
     def _backend_excerpt(self, stderr: str) -> str:
         lines = [line for line in stderr.strip().splitlines() if line.strip()]
-        return "\n".join(lines[:12])
+        # Prefer ERROR lines over benign deprecation warnings: pluck out
+        # the actual error band so the excerpt is useful even when MSVC
+        # buries it under fopen() noise.
+        error_lines = [
+            ln for ln in lines
+            if ("error:" in ln.lower()
+                or "undefined" in ln.lower()
+                or "unresolved" in ln.lower()
+                or "fatal" in ln.lower())
+        ]
+        if error_lines:
+            return "\n".join(error_lines[:24])
+        return "\n".join(lines[:24])
 
     def explain_backend_error(self, stderr: str, cmd=None) -> CompilerDiagnostic:
         undefined = re.search(r"undefined symbol:\s*([A-Za-z_][A-Za-z0-9_]*)", stderr)
@@ -686,6 +698,15 @@ _BUILD_TAPE_PROJECT_VERBS = frozenset({
     "dependency", "dependencySource", "dependencyFetch",
     "dependencyCache", "dependencyLock", "dependencyIntegrity",
     "comptimeOperation",
+    # buildConstant PROJECT NAME TYPE VALUE — hoist a compile-time
+    # constant into the program. Equivalent to declaring `storage
+    # module immutable NAME TYPE VALUE` at the top of the program,
+    # but visible to every imported module (so build.sem can be the
+    # single source of truth for shared config like host/port/paths).
+    # Type must be one of the standard primitives; VALUE is a quoted
+    # string for textual types and a bare numeric literal for int /
+    # float types.
+    "buildConstant",
 })
 
 _BUILD_TAPE_SINGLETON_VERBS = frozenset({
@@ -724,6 +745,7 @@ _BUILD_TAPE_MIN_ARITY = {
     "formatterSetting": 3,
     "linterSetting": 3,
     "registerModule": 3,
+    "buildConstant": 4,
 }
 
 _BUILD_TAPE_CHOICES = {
@@ -1802,6 +1824,29 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
             raise SyntaxError("authority requires: authority TARGET EFFECT_PATH ACCESS")
         prog.hard_metadata.setdefault(args[0], {}).setdefault(
             "authority", []).append(" ".join(args[1:]))
+        return
+
+    # ----- buildConstant: hoist a build-tape value into the program
+    # `buildConstant PROJECT NAME TYPE VALUE` registers VALUE under
+    # NAME on prog.consts, making it visible to every imported module
+    # exactly as if a `storage module immutable NAME TYPE VALUE` row
+    # had been declared at the top of the program. The PROJECT arg
+    # exists for parity with the other build-tape rows (the build-
+    # tape pre-pass uses it to associate the row with the active
+    # buildProject); the codegen path only cares about (NAME, TYPE,
+    # VALUE). Standard build-tape verb — not a language extension. -----
+    if verb == "buildConstant":
+        if len(args) < 4:
+            raise SyntaxError(
+                "buildConstant requires: buildConstant PROJECT NAME TYPE VALUE")
+        const_name = args[1]
+        const_type = args[2]
+        raw_value = _unwrap(args[3])
+        # Numeric vs string discrimination: if the unwrap left the
+        # value bare (no surrounding quotes in source), it was a
+        # numeric / identifier literal — keep as-is for emit_const_value.
+        # Quoted strings come back as plain Python strings already.
+        prog.consts[const_name] = (const_type, raw_value)
         return
 
     # ----- mutex / shared / channel (top-level concurrency primitives) -----
@@ -3610,7 +3655,10 @@ class Codegen:
         handler_fnty = ir.FunctionType(I32, [I8P, I8P])
         handler_ptr_ty = handler_fnty.as_pointer()
         route_ty = ir.LiteralStructType([I8P, I8P, handler_ptr_ty, handler_ptr_ty])
-        config_ty = ir.LiteralStructType([I8P, I16, route_ty.as_pointer(), I64])
+        # Trailing field is the optional `not_found_handler` function
+        # pointer (NULL when the program didn't declare routeNotFound).
+        config_ty = ir.LiteralStructType(
+            [I8P, I16, route_ty.as_pointer(), I64, handler_ptr_ty])
         server_run = self._runtime_func("ss_http_server_run", I32, [config_ty.as_pointer()])
 
         fnty = ir.FunctionType(I32, [])
@@ -3662,6 +3710,23 @@ class Codegen:
             config_slot, [zero_i32, ir.Constant(I32, 2)], inbounds=True))
         builder.store(ir.Constant(I64, route_count), builder.gep(
             config_slot, [zero_i32, ir.Constant(I32, 3)], inbounds=True))
+
+        # not_found_handler slot — populated by convention: if the app
+        # declared a route at the wildcard path "*", use its handler as
+        # the dispatcher's fallback. Keeps the compiler thin — no
+        # special verb needed; the app just writes
+        # `route SERVER GET "*" myNotFoundHandler` and the runtime
+        # pulls it out of the route table at config-build time.
+        nf_ptr = ir.Constant(handler_ptr_ty, None)
+        for _method, _path, handler_name in server.routes:
+            if _path == "*":
+                nf_fn = self._user_ops[handler_name]["fn"]
+                nf_ptr = nf_fn
+                if nf_ptr.type != handler_ptr_ty:
+                    nf_ptr = builder.bitcast(nf_ptr, handler_ptr_ty)
+                break
+        builder.store(nf_ptr, builder.gep(
+            config_slot, [zero_i32, ir.Constant(I32, 4)], inbounds=True))
 
         rc = builder.call(server_run, [config_slot], name="ss_http_server_status")
         builder.ret(rc)
@@ -7124,6 +7189,18 @@ _LIBC_REQUIRED_EFFECTS = {
     "getchar":     [("read", "console.stdin")],
     "consoleGetch": [("read", "console.stdin")],
     "_getch":      [("read", "console.stdin")],
+    "terminalEnableRaw": [("configure", "console.terminal")],
+    "ss_terminal_enable_raw": [("configure", "console.terminal")],
+    "terminalDisableRaw": [("configure", "console.terminal")],
+    "ss_terminal_disable_raw": [("configure", "console.terminal")],
+    "terminalReadKey": [("read", "console.stdin")],
+    "ss_terminal_read_key": [("read", "console.stdin")],
+    "terminalGetWindowRows": [("read", "console.terminal")],
+    "ss_terminal_get_window_rows": [("read", "console.terminal")],
+    "terminalGetWindowCols": [("read", "console.terminal")],
+    "ss_terminal_get_window_cols": [("read", "console.terminal")],
+    "terminalFirstArgument": [("read", "process.arguments")],
+    "ss_terminal_first_argument": [("read", "process.arguments")],
     "getsSafe":    [("read", "console.stdin")],
     "gets_s":      [("read", "console.stdin")],
     # filesystem
@@ -8947,6 +9024,52 @@ def _native_json_link_inputs(prog: Program):
     return [runtime_source], []
 
 
+_NATIVE_TERMINAL_TARGETS = frozenset({
+    "terminalEnableRaw",
+    "terminalDisableRaw",
+    "terminalReadKey",
+    "terminalGetWindowRows",
+    "terminalGetWindowCols",
+    "terminalFirstArgument",
+    "ss_terminal_enable_raw",
+    "ss_terminal_disable_raw",
+    "ss_terminal_read_key",
+    "ss_terminal_get_window_rows",
+    "ss_terminal_get_window_cols",
+    "ss_terminal_first_argument",
+})
+
+
+def _program_uses_terminal_runtime(prog: Program) -> bool:
+    """True when a program calls the generic native terminal adapter.
+
+    This is link plumbing only. Editor behavior belongs in SemanticScript
+    source or in the runtime adapter implementation, not in compiler lowering.
+    """
+    for op in prog.operations.values():
+        for verb, args, _lineno in op.lines:
+            if verb != "call" or len(args) < 2:
+                continue
+            target = args[1]
+            if not target.startswith("c."):
+                continue
+            semantic_name = target[2:]
+            c_symbol = libc_registry.resolve_c_symbol(semantic_name)
+            if semantic_name in _NATIVE_TERMINAL_TARGETS or c_symbol in _NATIVE_TERMINAL_TARGETS:
+                return True
+    return False
+
+
+def _native_terminal_link_inputs(prog: Program):
+    if not _program_uses_terminal_runtime(prog):
+        return [], []
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    runtime_source = os.path.join(
+        repo_root, "SemanticScript", "runtime", "native_terminal",
+        "sem_terminal_runtime.c")
+    return [runtime_source], []
+
+
 _NATIVE_BCRYPT_TARGETS = frozenset({
     "bcrypt.hashPassword",
     "bcrypt.verifyPassword",
@@ -9289,6 +9412,10 @@ def main():
             if json_sources:
                 extra_sources = list(extra_sources or []) + json_sources
                 extra_link_args = list(extra_link_args or []) + json_link_args
+            terminal_sources, terminal_link_args = _native_terminal_link_inputs(prog)
+            if terminal_sources:
+                extra_sources = list(extra_sources or []) + terminal_sources
+                extra_link_args = list(extra_link_args or []) + terminal_link_args
             bcrypt_sources, bcrypt_link_args = _native_bcrypt_link_inputs(prog)
             if bcrypt_sources:
                 extra_sources = list(extra_sources or []) + bcrypt_sources

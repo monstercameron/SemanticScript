@@ -586,7 +586,225 @@ long long ss_http_now_millis(void) {
 #endif
 }
 
+/* ----- ss_app_log_*  (structured JSON log) -----
+ *
+ * Owns one append-mode FILE* opened lazily on the first write. The file
+ * lives at `logs/log.log` relative to the process cwd by default, which
+ * for the todo-web-pro app is the build/ directory so the on-disk file
+ * is `app/todo-web-pro/build/logs/log.log`. The path is overridable via
+ * ss_app_log_set_path() if a refine needs to redirect logs.
+ *
+ * Each call to ss_app_log_write_line writes one JSON object followed by
+ * '\n' and flushes — losing one log line because of a crash is
+ * acceptable; corrupting the file because the OS buffered ten lines
+ * across a crash boundary is not. Append mode is durable enough for a
+ * single-process server; if the app scales to multiple workers we'd
+ * need an actual log shipper.
+ *
+ * The dispatcher (handle_client) calls ss_app_log_access() once per
+ * served request with the captured method, path, status, and latency.
+ * AS handlers can call ss_app_log_write_line() via the
+ * `http.appendLogLine` call target to emit structured business events
+ * (login success/failure, todo created/completed/deleted, etc.). */
+
+#include <stdarg.h>
+
+static char  g_app_log_path[1024] = "logs/log.log";
+static int   g_app_log_path_locked = 0;        /* set true after first open */
+static FILE *g_app_log_file = NULL;
+
+/* Make sure the directory holding g_app_log_path exists. Tries the
+ * parent of the configured path (e.g. "logs" for "logs/log.log") via
+ * the existing ss_http_filesystem_ensure_directory helper. */
+static void ss_app_log_ensure_parent_directory(void) {
+    char parent[1024];
+    size_t i;
+    size_t slash_at = 0;
+    int has_slash = 0;
+    for (i = 0; g_app_log_path[i] != '\0' && i < sizeof(parent) - 1; ++i) {
+        parent[i] = g_app_log_path[i];
+        if (g_app_log_path[i] == '/' || g_app_log_path[i] == '\\') {
+            slash_at = i;
+            has_slash = 1;
+        }
+    }
+    parent[i] = '\0';
+    if (!has_slash) {
+        return;                                /* file in cwd; nothing to mkdir */
+    }
+    parent[slash_at] = '\0';
+    (void)ss_http_filesystem_ensure_directory(parent);
+}
+
+static FILE *ss_app_log_open_if_needed(void) {
+    if (g_app_log_file != NULL) {
+        return g_app_log_file;
+    }
+    ss_app_log_ensure_parent_directory();
+    g_app_log_file = fopen(g_app_log_path, "ab");
+    if (g_app_log_file == NULL) {
+        return NULL;
+    }
+    g_app_log_path_locked = 1;
+    return g_app_log_file;
+}
+
+/* Optional: redirect the log path. Refusing to switch after a write has
+ * landed keeps the audit trail in one file even if a misbehaving caller
+ * changes it mid-run. */
+int ss_app_log_set_path(const char *new_path) {
+    if (new_path == NULL || new_path[0] == '\0') return SS_HTTP_ERR_CONFIG;
+    if (g_app_log_path_locked) return SS_HTTP_ERR_CONFIG;
+    size_t len = strlen(new_path);
+    if (len >= sizeof(g_app_log_path)) return SS_HTTP_ERR_CONFIG;
+    memcpy(g_app_log_path, new_path, len + 1);
+    return SS_HTTP_OK;
+}
+
+/* Write `line` followed by '\n'. Caller is responsible for producing a
+ * valid JSON object. Empty / NULL lines are dropped so an accidentally
+ * absent appendLogLine arg in AS doesn't corrupt the file. */
+int ss_app_log_write_line(const char *line) {
+    if (line == NULL || line[0] == '\0') return SS_HTTP_OK;
+    FILE *fp = ss_app_log_open_if_needed();
+    if (fp == NULL) return SS_HTTP_ERR_ENGINE;
+    size_t len = strlen(line);
+    fwrite(line, 1, len, fp);
+    fputc('\n', fp);
+    fflush(fp);
+    return SS_HTTP_OK;
+}
+
+/* Escape a string for embedding inside JSON ("..."). Writes at most
+ * dst_capacity bytes including the trailing '\0'. Skips control chars
+ * other than the JSON-required escapes; that's a deliberate
+ * simplification — the only field we ever pass through here is the
+ * request path, which is ASCII per the route table. If a refine later
+ * wants to log user-provided text it should funnel through a more
+ * complete escaper. */
+static void ss_app_log_escape_json(char *dst, size_t dst_capacity, const char *src) {
+    size_t out = 0;
+    if (dst_capacity == 0) return;
+    if (src == NULL) src = "";
+    for (; *src != '\0' && out + 2 < dst_capacity; ++src) {
+        char c = *src;
+        if (c == '"' || c == '\\') {
+            if (out + 3 >= dst_capacity) break;
+            dst[out++] = '\\';
+            dst[out++] = c;
+        } else if ((unsigned char)c < 0x20) {
+            if (out + 7 >= dst_capacity) break;
+            int written = snprintf(dst + out, dst_capacity - out, "\\u%04x", (unsigned char)c);
+            if (written < 0) break;
+            out += (size_t)written;
+        } else {
+            dst[out++] = c;
+        }
+    }
+    dst[out] = '\0';
+}
+
+/* One-line structured access log written automatically by handle_client
+ * once per dispatched request. Format:
+ *   {"ts":<ms>,"level":"info","event":"http.access","method":"...",
+ *    "path":"...","status":N,"latency_ms":N}
+ * Kept on one line so jq / grep / a log shipper can ingest it without
+ * any reshaping. */
+static void ss_app_log_access(const char *method, const char *path,
+                              int http_status, long long start_ms) {
+    long long now = ss_http_now_millis();
+    long long latency = now - start_ms;
+    if (latency < 0) latency = 0;
+    char path_buf[1024];
+    char method_buf[16];
+    ss_app_log_escape_json(method_buf, sizeof(method_buf),
+                           method != NULL ? method : "");
+    ss_app_log_escape_json(path_buf, sizeof(path_buf),
+                           path != NULL ? path : "");
+    char line[1280];
+    int n = snprintf(line, sizeof(line),
+        "{\"ts\":%lld,\"level\":\"info\",\"event\":\"http.access\","
+        "\"method\":\"%s\",\"path\":\"%s\",\"status\":%d,"
+        "\"latency_ms\":%lld}",
+        now, method_buf, path_buf, http_status, latency);
+    if (n <= 0) return;
+    if ((size_t)n >= sizeof(line)) n = (int)sizeof(line) - 1;
+    line[n] = '\0';
+    (void)ss_app_log_write_line(line);
+}
+
 /* ----- ss_http_filesystem_ensure_directory ----- */
+
+/* ----- ss_http_form_find_field ----- */
+
+static int hex_to_nibble(char c, int *out) {
+    if (c >= '0' && c <= '9') { *out = c - '0'; return 1; }
+    if (c >= 'a' && c <= 'f') { *out = 10 + (c - 'a'); return 1; }
+    if (c >= 'A' && c <= 'F') { *out = 10 + (c - 'A'); return 1; }
+    return 0;
+}
+
+const char *ss_http_form_find_field(
+    const char *body_text,
+    const char *field_name,
+    char *scratch_buffer,
+    size_t scratch_capacity
+) {
+    if (body_text == NULL || field_name == NULL
+        || scratch_buffer == NULL || scratch_capacity == 0) {
+        return NULL;
+    }
+    size_t name_length = strlen(field_name);
+    if (name_length == 0) return NULL;
+
+    const char *scan = body_text;
+    while (*scan != '\0') {
+        /* Skip leading separator (& or initial position). */
+        while (*scan == '&') ++scan;
+        if (*scan == '\0') return NULL;
+
+        const char *pair_name_start = scan;
+        while (*scan != '\0' && *scan != '=' && *scan != '&') ++scan;
+        size_t pair_name_length = (size_t)(scan - pair_name_start);
+        const char *pair_value_start = "";
+        const char *pair_value_end = pair_value_start;
+        if (*scan == '=') {
+            ++scan;
+            pair_value_start = scan;
+            while (*scan != '\0' && *scan != '&') ++scan;
+            pair_value_end = scan;
+        }
+        if (pair_name_length == name_length
+            && memcmp(pair_name_start, field_name, name_length) == 0) {
+            /* Decode value into scratch. `+` -> space, `%XX` -> byte. */
+            size_t written = 0;
+            const char *src = pair_value_start;
+            while (src < pair_value_end) {
+                if (written + 1 >= scratch_capacity) return NULL;
+                char c = *src;
+                if (c == '+') {
+                    scratch_buffer[written++] = ' ';
+                    ++src;
+                } else if (c == '%' && (pair_value_end - src) >= 3) {
+                    int hi = 0, lo = 0;
+                    if (!hex_to_nibble(src[1], &hi)) return NULL;
+                    if (!hex_to_nibble(src[2], &lo)) return NULL;
+                    scratch_buffer[written++] = (char)((hi << 4) | lo);
+                    src += 3;
+                } else if (c == '%') {
+                    /* Truncated escape — refuse rather than emit garbage. */
+                    return NULL;
+                } else {
+                    scratch_buffer[written++] = c;
+                    ++src;
+                }
+            }
+            scratch_buffer[written] = '\0';
+            return scratch_buffer;
+        }
+    }
+    return NULL;
+}
 
 int ss_http_filesystem_ensure_directory(const char *directory_path) {
     if (directory_path == NULL || directory_path[0] == '\0') {
@@ -1368,7 +1586,28 @@ static int compile_routes(const SSHttpServerConfig *config) {
         compiled->route = route;
         compiled->segment_count = 0;
 
-        if (route->path == NULL || route->path[0] != '/') {
+        if (route->path == NULL) {
+            free_compiled_routes();
+            return SS_HTTP_ERR_CONFIG;
+        }
+        /* Wildcard route ("*") is a registered convention for the
+         * not-found-handler slot — semsc-side codegen pulls its handler
+         * into config->not_found_handler. Skip it during pattern
+         * compilation; leave segment_count at 0 with a special marker
+         * so the matcher never falls back to it on real lookups. */
+        if (route->path[0] == '*' && route->path[1] == '\0') {
+            compiled->segment_count = 0;
+            /* Mark with a sentinel literal so try_match_compiled_route
+             * doesn't accept "/" (zero-segment match) as a hit on this
+             * pseudo-route. */
+            compiled->segments[0].is_param = 0;
+            compiled->segments[0].literal = "__wildcard_not_found__";
+            compiled->segments[0].literal_length = 22;
+            compiled->segments[0].param_name = NULL;
+            compiled->segment_count = 1;
+            continue;
+        }
+        if (route->path[0] != '/') {
             free_compiled_routes();
             return SS_HTTP_ERR_CONFIG;
         }
@@ -1626,6 +1865,11 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
     long content_length;
     size_t total_expected;
     size_t total_read;
+    /* Capture start_ms BEFORE blocking on recv() so the access-log
+     * latency includes time spent reading the request body — i.e. a
+     * slow client shows up as high latency_ms instead of being hidden
+     * inside our process. */
+    long long start_ms = ss_http_now_millis();
     int read_count = recv(client_socket, request_buffer, (int)(sizeof(request_buffer) - 1), 0);
     const SSHttpRoute *route;
     SSHttpRequest request;
@@ -1640,38 +1884,44 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
 
     body_start = (char *)find_header_end(request_buffer, (size_t)read_count, &header_bytes);
     if (body_start == NULL || header_bytes > (size_t)read_count) {
-        return send_response(
+        int rs = send_response(
             client_socket,
             400,
             "text/plain; charset=utf-8",
             "bad request\n",
             NULL
         );
+        ss_app_log_access("?", "?", 400, start_ms);
+        return rs;
     }
 
     content_length = parse_content_length(request_buffer, body_start);
     if (content_length < 0 ||
             (size_t)content_length > SS_HTTP_MAX_REQUEST_BYTES ||
             header_bytes + (size_t)content_length > SS_HTTP_MAX_REQUEST_BYTES) {
-        return send_response(
+        int rs = send_response(
             client_socket,
             413,
             "text/plain; charset=utf-8",
             "payload too large\n",
             NULL
         );
+        ss_app_log_access("?", "?", 413, start_ms);
+        return rs;
     }
 
     total_expected = header_bytes + (size_t)content_length;
     request_storage = (char *)malloc(total_expected + 1);
     if (request_storage == NULL) {
-        return send_response(
+        int rs = send_response(
             client_socket,
             503,
             "text/plain; charset=utf-8",
             "request allocation failed\n",
             NULL
         );
+        ss_app_log_access("?", "?", 503, start_ms);
+        return rs;
     }
 
     total_read = (size_t)read_count > total_expected ? total_expected : (size_t)read_count;
@@ -1685,13 +1935,15 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
         );
         if (next_read <= 0) {
             free(request_storage);
-            return send_response(
+            int rs = send_response(
                 client_socket,
                 400,
                 "text/plain; charset=utf-8",
                 "bad request\n",
                 NULL
             );
+            ss_app_log_access("?", "?", 400, start_ms);
+            return rs;
         }
         total_read += (size_t)next_read;
     }
@@ -1700,13 +1952,15 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
 
     if (parse_request_line(request_storage, &method, &path, &query, &header_start) != SS_HTTP_OK) {
         free(request_storage);
-        return send_response(
+        int rs = send_response(
             client_socket,
             400,
             "text/plain; charset=utf-8",
             "bad request\n",
             NULL
         );
+        ss_app_log_access("?", "?", 400, start_ms);
+        return rs;
     }
 
     /* Initialize the request struct BEFORE route matching so the
@@ -1724,6 +1978,40 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
 
     route = find_compiled_route(method, path, &request);
     if (route == NULL) {
+        /* If the caller registered a not-found handler, give it the
+         * same (request, response) pair every route handler sees so it
+         * can return an HTML page, JSON envelope, or whatever shape
+         * the app wants. Falls back to the historic plaintext body
+         * when no handler is configured (compat with old apps). */
+        if (config->not_found_handler != NULL) {
+            memset(&response, 0, sizeof(response));
+            response.status = 404;
+            response.body = NULL;
+            response.body_length = 0;
+            response.content_type = "text/plain; charset=utf-8";
+            response.owned_body = NULL;
+            response.backend_response = NULL;
+            int nf_status = config->not_found_handler(&request, &response);
+            if (nf_status == SS_HTTP_OK && response.body != NULL) {
+                response_status = send_response(
+                    client_socket,
+                    response.status,
+                    response.content_type,
+                    response.body,
+                    &response);
+            } else {
+                response_status = send_response(
+                    client_socket,
+                    404,
+                    "text/plain; charset=utf-8",
+                    response.body != NULL ? response.body : "not found\n",
+                    &response);
+            }
+            clear_owned_response_body(&response);
+            free(request_storage);
+            ss_app_log_access(method, path, response.status, start_ms);
+            return response_status;
+        }
         response_status = send_response(
             client_socket,
             404,
@@ -1732,6 +2020,7 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
             NULL
         );
         free(request_storage);
+        ss_app_log_access(method, path, 404, start_ms);
         return response_status;
     }
 
@@ -1777,6 +2066,7 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
             }
             clear_owned_response_body(&response);
             free(request_storage);
+            ss_app_log_access(method, path, response.status, start_ms);
             return response_status;
         }
         if (handler_status != SS_HTTP_OK) {
@@ -1794,6 +2084,7 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
             );
             clear_owned_response_body(&response);
             free(request_storage);
+            ss_app_log_access(method, path, 500, start_ms);
             return response_status;
         }
     }
@@ -1809,6 +2100,7 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
         );
         clear_owned_response_body(&response);
         free(request_storage);
+        ss_app_log_access(method, path, 500, start_ms);
         return response_status;
     }
     if (response.body == NULL) {
@@ -1821,6 +2113,7 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
         );
         clear_owned_response_body(&response);
         free(request_storage);
+        ss_app_log_access(method, path, 500, start_ms);
         return response_status;
     }
 
@@ -1831,8 +2124,10 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
         response.body,
         &response
     );
+    int sent_status = response.status;
     clear_owned_response_body(&response);
     free(request_storage);
+    ss_app_log_access(method, path, sent_status, start_ms);
     return response_status;
 }
 

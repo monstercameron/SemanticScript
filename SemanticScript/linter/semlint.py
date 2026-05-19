@@ -1164,6 +1164,7 @@ VERB_MINIMUM_ARITY: Dict[str, int] = {
     "cpuFeatureCheck": 2,
     "keepResources": 2, "resourcesDir": 2,
     "registerModule": 3,
+    "buildConstant": 4,
     "moduleFolder": 2, "modulePurpose": 2, "moduleOwns": 2,
     "moduleDoesNotOwn": 2, "moduleDependency": 2, "moduleWarning": 2,
     "moduleInvariant": 2, "moduleSecurity": 2, "moduleObservability": 2,
@@ -1297,6 +1298,7 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "dependencyFetch", "dependencyCache", "dependencyLock", "dependencyIntegrity",
     "buildProfile", "runtimeChecks", "persistLlvmIr",
     "nativeOutput", "targetRuntime", "comptimeOperation", "registerModule",
+    "buildConstant",
     "projectVersion", "projectLicense", "testRoot", "nativeHttpHost",
     "nativeHttpPort", "formatterSetting", "linterSetting", "docsOutput",
     "optLevel", "emitLlvmIr", "llvmIrOutput", "emitOptimizedLlvmIr",
@@ -8660,6 +8662,7 @@ BUILD_TAPE_PROJECT_VERBS: Set[str] = {
     "dependency", "dependencySource", "dependencyFetch",
     "dependencyCache", "dependencyLock", "dependencyIntegrity",
     "comptimeOperation",
+    "buildConstant",
 }
 
 BUILD_TAPE_SINGLETON_VERBS: Set[str] = {
@@ -8716,6 +8719,8 @@ BUILD_TAPE_MIN_ARITY: Dict[str, int] = {
     "formatterSetting": 3,
     "linterSetting": 3,
     "registerModule": 3,
+    # buildConstant PROJECT NAME TYPE VALUE — minimum arity 4.
+    "buildConstant": 4,
 }
 
 BUILD_TAPE_ALLOWED_NON_PROJECT_VERBS: Set[str] = {

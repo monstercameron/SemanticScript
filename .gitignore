@@ -51,6 +51,8 @@ SemanticScript/bootstrap/bootstrap_general.ll
 .claude/
 
 app/todo/todos.json
+app/Kilo_port/kilo.txt
+app/Kilo_port/upstream-kilo/
 
 .DS_Store
 Thumbs.db
