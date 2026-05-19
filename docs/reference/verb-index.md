@@ -186,13 +186,13 @@ the row-level implementation status before relying on them in executable code.
 | `json.elementInt64`, `json.elementDouble`, `json.elementBool`, `json.elementString`, `json.elementNull` | `call NAME json.element*` with `builder` and value args where needed | lowered |
 | `json.finishBuilder`, `json.builderLength` | `call NAME json.<target>` with `builder` | lowered |
 | `json.hasField`, `json.findString`, `json.findInt64`, `json.findDouble`, `json.findBool` | `call NAME json.<target>` with `jsonText`, `fieldName`, and scratch/default args where needed | lowered |
-| `json.createDocument`, `json.createEmptyDocument`, `json.destroyDocument` | Document lifecycle over `JsonDocument` handles and caller-supplied capacity | proposed |
-| `json.serializeDocument`, `json.documentLength`, `json.documentRoot` | Document serialization, size query, and root cursor access | proposed |
-| `json.objectFieldAt`, `json.arrayElementAt`, `json.cursorParent`, `json.cursorAtPath` | Navigation returning `Result JsonCursor JsonAccessError` | proposed |
-| `json.cursorKind`, `json.cursorIsNull`, `json.cursorInt64`, `json.cursorDouble`, `json.cursorBool`, `json.cursorString`, `json.cursorArrayLength`, `json.cursorObjectFieldCount`, `json.cursorObjectFieldNameAt`, `json.cursorObjectFieldValueAt` | Cursor readers over one `JsonDocument` and `JsonCursor` | proposed |
-| `json.setObjectFieldString`, `json.setObjectFieldInt64`, `json.setObjectFieldDouble`, `json.setObjectFieldBool`, `json.setObjectFieldNull`, `json.setObjectFieldObject`, `json.setObjectFieldArray`, `json.setObjectFieldJsonText` | Object field mutators with `JsonAccessError` status on failure | proposed |
-| `json.appendArrayElement*`, `json.insertArrayElement*`, `json.replaceArrayElement*` | Array mutators for scalar, container, and raw JSON text values | proposed |
-| `json.removeObjectField`, `json.removeArrayElementAt`, `json.clearObject`, `json.clearArray` | Delete and clear calls that preserve the owning document handle | proposed |
+| `json.createDocument`, `json.createEmptyDocument`, `json.destroyDocument` | Document lifecycle over `JsonDocument` handles and caller-supplied capacity | lowered |
+| `json.serializeDocument`, `json.documentLength`, `json.documentRoot` | Document serialization, size query, and root cursor access | lowered |
+| `json.objectFieldAt`, `json.arrayElementAt`, `json.cursorParent`, `json.cursorAtPath` | Navigation returning `Result JsonCursor JsonAccessError` | lowered |
+| `json.cursorKind`, `json.cursorIsNull`, `json.cursorInt64`, `json.cursorDouble`, `json.cursorBool`, `json.cursorString`, `json.cursorArrayLength`, `json.cursorObjectFieldCount`, `json.cursorObjectFieldNameAt`, `json.cursorObjectFieldValueAt` | Cursor readers over one `JsonDocument` and `JsonCursor` | lowered |
+| `json.setObjectFieldString`, `json.setObjectFieldInt64`, `json.setObjectFieldDouble`, `json.setObjectFieldBool`, `json.setObjectFieldNull`, `json.setObjectFieldObject`, `json.setObjectFieldArray`, `json.setObjectFieldJsonText` | Object field mutators with `JsonAccessError` status on failure | lowered |
+| `json.appendArrayElement*`, `json.insertArrayElement*`, `json.replaceArrayElement*` | Array mutators for scalar, container, and raw JSON text values | lowered |
+| `json.removeObjectField`, `json.removeArrayElementAt`, `json.clearObject`, `json.clearArray` | Delete and clear calls that preserve the owning document handle | lowered |
 | `json.stringify.<TypeName>`, `json.parse.<TypeName>` | Typed high-level JSON entry points for primitives and generated record codecs | partial |
 | `jsonBody` | `jsonBody NAME` followed by an indented JSON island bound to matching storage | partial |
 
