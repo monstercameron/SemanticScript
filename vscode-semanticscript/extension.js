@@ -12,7 +12,7 @@ const declarationVerbs = new Set([
   'dependencyFunctionOutput', 'dependencyFunctionEffect', 'dependencyFunctionAsync',
   'buildProject', 'modulePath', 'languageVersion', 'sourceRoot', 'registerModule',
   'projectVersion', 'projectLicense', 'mainFile', 'mainOperation', 'testPattern', 'testRoot',
-  'dependencySource', 'dependencyIntegrity',
+  'dependencySource', 'dependencyFetch', 'dependencyCache', 'dependencyLock', 'dependencyIntegrity',
   'targetRuntime', 'buildProfile', 'runtimeChecks', 'optLevel', 'persistLlvmIr',
   'emitLlvmIr', 'llvmIrOutput', 'emitOptimizedLlvmIr', 'optimizedLlvmIrOutput',
   'buildDir', 'buildRoot', 'buildFolderName',
@@ -24,14 +24,29 @@ const declarationVerbs = new Set([
   'exportOperation', 'exportCapability', 'exportConstant',
   'version', 'publisher', 'description', 'copyright', 'productName',
   'internalName', 'originalFilename', 'trademark', 'comments', 'metadata',
-  'importModule', 'type', 'typeParameter', 'typeInvariant', 'typeRepresentation', 'typeTrust',
+  'importModule', 'importOperation', 'importType', 'importError',
+  'importCapability', 'importConstant',
+  'type', 'typeParameter', 'typeInvariant', 'typeRepresentation', 'typeTrust',
   'typeMemory', 'typeLayout', 'typeLiteralEncoding', 'typeLiteralTerminator',
   'record', 'recordLayout', 'recordAlign', 'field', 'fieldDefault', 'fieldInvariant',
   'enum', 'enumCase', 'error',
   'errorCase', 'operation', 'webServer', 'serverHost', 'serverPort', 'route',
   'routeTimeout', 'routeMiddleware', 'routeTimeoutOptOut', 'routeMiddlewareOptOut',
+  'guiApplication', 'guiApplicationTitle', 'guiApplicationIcon',
+  'guiApplicationMainWindow', 'guiApplicationOnExit',
+  'guiWindow', 'guiWindowApplication', 'guiWindowTitle',
+  'guiWindowWidth', 'guiWindowHeight', 'guiWindowMinimumWidth',
+  'guiWindowMinimumHeight', 'guiWindowLayout', 'guiWindowResizable',
+  'guiWindowEvent',
+  'guiButton', 'guiTextBox', 'guiListBox', 'guiCheckBox',
+  'guiMenuItem', 'guiStatusBar', 'guiTextLabel',
+  'guiControlWindow', 'guiControlEnabled', 'guiControlVisible',
+  'guiControlTabIndex', 'guiControlAccessibleName', 'guiControlEvent',
+  'guiButtonText', 'guiButtonIsDefault', 'guiTextBoxPlaceholder',
+  'guiTextBoxMaxLength', 'guiListBoxSelectionMode', 'guiCheckBoxChecked',
+  'guiTextLabelText',
   'storage', 'sharedState', 'domainLiteral',
-  'literal', 'listLiteral', 'jsonCodec', 'policy', 'errorPolicy',
+  'literal', 'listLiteral', 'htmlTemplate', 'jsonCodec', 'policy', 'errorPolicy',
   'validator', 'codec', 'schema', 'unknownFields', 'resource', 'resourceKey',
   'resourceValue', 'resourceKind', 'adapter', 'boundary', 'mapper', 'retryPolicy',
   'timeoutBudget', 'capability', 'authority', 'mutex', 'shared', 'channel',
@@ -45,7 +60,7 @@ const contextVerbs = new Set([
   'memoryAllocationSource', 'memoryStackLimit', 'async', 'operationBody',
   'purpose', 'invariant', 'warning', 'precondition', 'failure', 'guarantee', 'security',
   'timing', 'observability',
-  'pinsNullBodyFailurePath', 'responseBodyForwarder', 'rationale',
+  'pinsNullBodyFailurePath', 'responseBodyForwarder', 'htmlArg', 'htmlBody', 'rationale',
   'dependencyPath', 'dependencyFailure', 'intrinsicName',
   'runtimeBinding', 'runtimeBindingPrecondition', 'runtimeBindingFailure',
   'recordConstructor', 'recordConstructorFailure', 'recordBuildFailure',
@@ -93,7 +108,7 @@ const controlVerbs = new Set([
   'returnValue',
 ]);
 
-const roleSuffixPattern = /(Call|Error|Failed|Failure|Result|Option|Request|Response|Token|Timeout|Deadline|Defer|Group|Policy|Codec|Validator|Mapper|Adapter|Boundary|Resource|Capability|Authority|Channel|Mutex|Lock|Guard|State|Storage|Select|Record|Builder|Field|Enum|Variant|Value|Counter|Count|Index|Length|Capacity|Allocator|Source|Target|Step|Accumulator|Divisor|Remainder|Span|Metric|Trace)$/;
+const roleSuffixPattern = /(Call|Error|Failed|Failure|Result|Option|Request|Response|Token|Timeout|Deadline|Defer|Group|Policy|Codec|Validator|Mapper|Adapter|Boundary|Resource|Capability|Authority|Channel|Mutex|Lock|Guard|State|Storage|Select|Record|Builder|Field|Enum|Variant|Template|Html|Document|Fragment|Class|Value|Counter|Count|Index|Length|Capacity|Allocator|Source|Target|Step|Accumulator|Divisor|Remainder|Span|Metric|Trace)$/;
 
 const primitiveTargets = new Map([
   ['console.writeLine', 'puts(text) -> i32. Writes one text line.'],
@@ -161,6 +176,16 @@ const primitiveTargets = new Map([
   ['http.multipartPartLength', 'Native multipart part length reader: request, name -> CByteCount.'],
   ['http.multipartPartFilename', 'Native nullable multipart filename reader: request, name -> string or NULL.'],
   ['http.multipartPartContentType', 'Native nullable multipart content-type reader: request, name -> string or NULL.'],
+  ['gui.textBoxText', 'Native GUI reader: session, textBox -> text. Requires read gui.control.textBox.text.'],
+  ['gui.textBoxSetText', 'Native GUI writer: session, textBox, text -> status. Requires write gui.control.textBox.text.'],
+  ['gui.listBoxSelectedIndex', 'Native GUI reader: session, listBox -> selected index. Requires read gui.control.listBox.selection.'],
+  ['gui.listBoxAppendItem', 'Native GUI writer: session, listBox, text -> status. Requires write gui.control.listBox.items.'],
+  ['gui.listBoxClear', 'Native GUI writer: session, listBox -> status. Requires write gui.control.listBox.items.'],
+  ['gui.windowClose', 'Native GUI writer: session, window -> status. Requires write gui.window.'],
+  ['gui.eventKeyCode', 'Native GUI event reader: event -> key code. Requires read gui.event.'],
+  ['gui.eventSelectedIndex', 'Native GUI event reader: event -> selected index. Requires read gui.event.'],
+  ['gui.eventWindowWidth', 'Native GUI event reader: event -> window width. Requires read gui.event.'],
+  ['gui.eventWindowHeight', 'Native GUI event reader: event -> window height. Requires read gui.event.'],
   ['math.subI64', 'Alias for math.subtractI64.'],
   ['math.mulI64', 'Alias for math.multiplyI64.'],
   ['math.divI64', 'Alias for math.divideI64.'],
@@ -173,7 +198,7 @@ const primitiveTargets = new Map([
   ['math.geI64', 'Alias for math.greaterThanOrEqualI64.'],
 ]);
 
-const generatedTargetPattern = /^(?:json\.(?:decode|encode)\.[A-Z][A-Za-z0-9_]*)$/;
+const generatedTargetPattern = /^(?:json\.(?:decode|encode)\.[A-Z][A-Za-z0-9_]*|html\.hydrate\.[A-Z][A-Za-z0-9_]*)$/;
 const cRuntimeTargetPattern = /^c\.[A-Za-z_][A-Za-z0-9_]*$/;
 const jsonPrimitiveTargetTypes = new Set([
   'I64', 'CSignedInt64', 'CSignedInt32', 'CUnsignedInt32',
@@ -201,6 +226,10 @@ const generatedTargetHoverText = (text) => {
 
   if (text.startsWith('json.encode.')) {
     return 'Generated JSON encode target. It should be declared by jsonCodecEncodeTarget and backed by jsonCodec input, output, failure, strictness, and limit metadata.';
+  }
+
+  if (text.startsWith('html.hydrate.')) {
+    return 'Generated HTML template hydration target. It is declared by htmlTemplate/htmlArg/htmlBody rows and lowers explicit arg rows into one hydrated HtmlDocument or HtmlFragment value.';
   }
 
   return 'Generated SemanticScript target declared by metadata.';
@@ -233,6 +262,30 @@ const schemaValues = new Map([
   ['error', 'Generic/result type parameter role for the error value.'],
   ['decode', 'Codec direction: bytes into typed record.'],
   ['encode', 'Codec direction: typed record into bytes.'],
+  ['github', 'Dependency fetch kind for a GitHub owner/repo/ref source.'],
+  ['http', 'Dependency fetch kind for an HTTPS archive or API source. Plain HTTP URLs are rejected.'],
+  ['as', 'Legacy importModule alias separator. Prefer importModule ALIAS MODULE_PATH in new code.'],
+  ['dev', 'Build profile that keeps development diagnostics visible.'],
+  ['prod', 'Build profile that hides source context and favors release defaults.'],
+  ['auto', 'Toolchain policy: let the compiler choose from build.sem and platform context.'],
+  ['windowsGui', 'Windows desktop GUI target runtime. Source entry is discovered from guiApplication metadata.'],
+  ['verticalStack', 'GUI window layout token: stack child controls vertically.'],
+  ['horizontalStack', 'GUI window layout token: stack child controls horizontally.'],
+  ['grid', 'GUI window layout token: arrange controls in a grid.'],
+  ['absolute', 'GUI window layout token: use explicit control positions.'],
+  ['single', 'GUI list-box selection mode: one selected item.'],
+  ['multiple', 'GUI list-box selection mode: multiple selected items.'],
+  ['click', 'GUI event token.'],
+  ['valueChanged', 'GUI event token.'],
+  ['selectionChanged', 'GUI event token.'],
+  ['enterPressed', 'GUI event token.'],
+  ['keyPressed', 'GUI event token.'],
+  ['focusGained', 'GUI event token.'],
+  ['focusLost', 'GUI event token.'],
+  ['closeRequested', 'GUI event token.'],
+  ['resized', 'GUI event token.'],
+  ['shown', 'GUI event token.'],
+  ['hidden', 'GUI event token.'],
   ['reject', 'Codec unknown-field policy: reject unknown fields.'],
   ['ignore', 'Codec unknown-field policy: ignore unknown fields.'],
   ['keep', 'Codec unknown-field policy: preserve unknown fields.'],
@@ -298,6 +351,24 @@ const primitiveTypes = new Map([
   ['RawUtf8Text', 'Unvalidated UTF-8 text bytes.'],
   ['RawJsonBytes', 'Untrusted JSON byte input.'],
   ['JsonBytes', 'Validated/generated JSON bytes.'],
+  ['HtmlText', 'Escaped HTML text value safe for text content and quoted attributes during template hydration.'],
+  ['HtmlClass', 'HTML class attribute value. Template sink checks require this for class attributes.'],
+  ['SafeUrl', 'Trusted URL value for URL-bearing HTML attributes such as href, src, action, formaction, and poster.'],
+  ['HtmlFragment', 'Hydrated HTML fragment inserted raw only into text-content positions.'],
+  ['HtmlTrustedFragment', 'Trusted HTML fragment inserted raw only into text-content positions.'],
+  ['HtmlDocument', 'Full hydrated HTML document value produced by html.hydrate.* targets.'],
+  ['GuiApplication', 'Declarative Windows GUI application handle.'],
+  ['GuiSession', 'Opaque GUI session input passed to GUI event handlers.'],
+  ['GuiEvent', 'Opaque GUI event input passed to GUI event handlers.'],
+  ['GuiWindow', 'Declarative Windows GUI window handle.'],
+  ['GuiControl', 'Common declarative GUI control handle.'],
+  ['GuiButton', 'Declarative GUI button handle.'],
+  ['GuiTextBox', 'Declarative GUI text-box handle.'],
+  ['GuiListBox', 'Declarative GUI list-box handle.'],
+  ['GuiCheckBox', 'Declarative GUI check-box handle.'],
+  ['GuiMenuItem', 'Declarative GUI menu-item handle.'],
+  ['GuiStatusBar', 'Declarative GUI status-bar handle.'],
+  ['GuiTextLabel', 'Declarative GUI text-label handle.'],
   ['CNullTerminatedByteString', 'Validated null-terminated C byte string.'],
   ['RawCStringPointer', 'Raw C string pointer before trust-boundary validation.'],
   ['COpaqueMemoryAddress', 'Opaque memory address value.'],
@@ -357,7 +428,7 @@ const verbHoverText = new Map([
   ['mainOperation', 'Build tape native executable entry: mainOperation PROJECT OPERATION.'],
   ['testRoot', 'Build tape test root: testRoot PROJECT "PATH".'],
   ['testPattern', 'Build tape test glob: testPattern PROJECT "*.test.sem".'],
-  ['targetRuntime', 'Build tape runtime target: targetRuntime PROJECT nativeExe|webServer|library.'],
+  ['targetRuntime', 'Build tape runtime target: targetRuntime PROJECT nativeExe|webServer|library|windowsGui.'],
   ['buildProfile', 'Build tape profile: buildProfile PROJECT dev|prod.'],
   ['runtimeChecks', 'Build tape runtime checks: runtimeChecks PROJECT off|traps|panic.'],
   ['optLevel', 'Build tape LLVM optimization level: optLevel PROJECT 0|1|2|3.'],
@@ -396,6 +467,10 @@ const verbHoverText = new Map([
   ['comments', 'Project metadata: comments field for executable VERSIONINFO.'],
   ['metadata', 'Project metadata: metadata "key" "value" adds a custom VERSIONINFO string-table entry.'],
   ['dependency', 'Dependency declaration. Dependency contract metadata is parsed for tooling context.'],
+  ['dependencySource', 'Build tape dependency source metadata: dependencySource PROJECT ALIAS KIND LOCATION.'],
+  ['dependencyFetch', 'Build tape remote dependency fetch edge: dependencyFetch PROJECT ALIAS github OWNER/REPO REF or dependencyFetch PROJECT ALIAS http "https://...".'],
+  ['dependencyCache', 'Build tape dependency cache directory: dependencyCache PROJECT ".semcache".'],
+  ['dependencyLock', 'Build tape dependency lock tape path: dependencyLock PROJECT "sem.lock".'],
   ['dependencyEffect', 'Dependency effect declaration.'],
   ['dependencyExports', 'Dependency export declaration.'],
   ['dependencyFunction', 'Dependency function declaration metadata.'],
@@ -403,7 +478,12 @@ const verbHoverText = new Map([
   ['dependencyFunctionOutput', 'Dependency function output metadata.'],
   ['dependencyFunctionEffect', 'Dependency function effect metadata.'],
   ['dependencyFunctionAsync', 'Dependency function async metadata.'],
-  ['importModule', 'Import declaration: importModule DOTTED.PATH as ALIAS.'],
+  ['importModule', 'Import declaration: importModule LOCAL_ALIAS MODULE_PATH. The older MODULE_PATH as ALIAS form may exist in legacy samples.'],
+  ['importOperation', 'Singular import declaration: importOperation LOCAL_NAME MODULE_ALIAS EXPORTED_OPERATION.'],
+  ['importType', 'Singular import declaration: importType LOCAL_NAME MODULE_ALIAS EXPORTED_TYPE.'],
+  ['importError', 'Singular import declaration: importError LOCAL_NAME MODULE_ALIAS EXPORTED_ERROR.'],
+  ['importCapability', 'Singular import declaration: importCapability LOCAL_NAME MODULE_ALIAS EXPORTED_CAPABILITY.'],
+  ['importConstant', 'Singular import declaration: importConstant LOCAL_NAME MODULE_ALIAS EXPORTED_CONSTANT.'],
   ['type', 'Type alias declaration: type ALIAS UNDERLYING [extra-tokens].'],
   ['typeInvariant', 'Type metadata: typeInvariant TYPE "text". Multi-valued invariant context for a type.'],
   ['typeRepresentation', 'Type metadata: typeRepresentation TYPE UNDERLYING ARGS...'],
@@ -425,6 +505,44 @@ const verbHoverText = new Map([
   ['routeMiddleware', 'Web server route middleware metadata keyed by exact route path. Native codegen invokes the middleware before the handler.'],
   ['routeTimeoutOptOut', 'Web server route timeout opt-out: routeTimeoutOptOut SERVER PATH "rationale". Used by semlint route coverage checks.'],
   ['routeMiddlewareOptOut', 'Web server route middleware opt-out: routeMiddlewareOptOut SERVER PATH "rationale". Used by semlint route coverage checks.'],
+  ['guiApplication', 'Declarative Windows GUI application: guiApplication APP.'],
+  ['guiApplicationTitle', 'GUI application title metadata: guiApplicationTitle APP "text".'],
+  ['guiApplicationIcon', 'GUI application icon metadata: guiApplicationIcon APP ICON_GROUP.'],
+  ['guiApplicationMainWindow', 'GUI application entry window: guiApplicationMainWindow APP WINDOW.'],
+  ['guiApplicationOnExit', 'GUI application exit hook metadata: guiApplicationOnExit APP OPERATION.'],
+  ['guiWindow', 'Declarative Windows GUI window: guiWindow WINDOW.'],
+  ['guiWindowApplication', 'GUI window ownership metadata: guiWindowApplication WINDOW APP.'],
+  ['guiWindowTitle', 'GUI window title metadata: guiWindowTitle WINDOW "text".'],
+  ['guiWindowWidth', 'GUI window width metadata: guiWindowWidth WINDOW PIXELS.'],
+  ['guiWindowHeight', 'GUI window height metadata: guiWindowHeight WINDOW PIXELS.'],
+  ['guiWindowMinimumWidth', 'GUI window minimum width metadata: guiWindowMinimumWidth WINDOW PIXELS.'],
+  ['guiWindowMinimumHeight', 'GUI window minimum height metadata: guiWindowMinimumHeight WINDOW PIXELS.'],
+  ['guiWindowLayout', 'GUI window layout metadata: guiWindowLayout WINDOW verticalStack|horizontalStack|grid|absolute.'],
+  ['guiWindowResizable', 'GUI window resizing metadata: guiWindowResizable WINDOW yes|no.'],
+  ['guiWindowEvent', 'GUI window event binding: guiWindowEvent WINDOW EVENT OPERATION.'],
+  ['guiButton', 'Declarative GUI button control: guiButton CONTROL.'],
+  ['guiTextBox', 'Declarative GUI text-box control: guiTextBox CONTROL.'],
+  ['guiListBox', 'Declarative GUI list-box control: guiListBox CONTROL.'],
+  ['guiCheckBox', 'Declarative GUI check-box control: guiCheckBox CONTROL.'],
+  ['guiMenuItem', 'Declarative GUI menu-item control: guiMenuItem CONTROL.'],
+  ['guiStatusBar', 'Declarative GUI status-bar control: guiStatusBar CONTROL.'],
+  ['guiTextLabel', 'Declarative GUI text label: guiTextLabel CONTROL.'],
+  ['guiControlWindow', 'GUI control placement metadata: guiControlWindow CONTROL WINDOW.'],
+  ['guiControlEnabled', 'GUI control enabled metadata: guiControlEnabled CONTROL yes|no.'],
+  ['guiControlVisible', 'GUI control visibility metadata: guiControlVisible CONTROL yes|no.'],
+  ['guiControlTabIndex', 'GUI control tab order metadata: guiControlTabIndex CONTROL N.'],
+  ['guiControlAccessibleName', 'GUI control accessibility metadata: guiControlAccessibleName CONTROL "text".'],
+  ['guiControlEvent', 'GUI control event binding: guiControlEvent CONTROL EVENT OPERATION.'],
+  ['guiButtonText', 'GUI button text metadata: guiButtonText BUTTON "text".'],
+  ['guiButtonIsDefault', 'GUI default-button metadata: guiButtonIsDefault BUTTON yes|no.'],
+  ['guiTextBoxPlaceholder', 'GUI text-box placeholder metadata: guiTextBoxPlaceholder TEXTBOX "text".'],
+  ['guiTextBoxMaxLength', 'GUI text-box length metadata: guiTextBoxMaxLength TEXTBOX N.'],
+  ['guiListBoxSelectionMode', 'GUI list-box selection metadata: guiListBoxSelectionMode LISTBOX single|multiple.'],
+  ['guiCheckBoxChecked', 'GUI check-box checked-state metadata: guiCheckBoxChecked CHECKBOX yes|no.'],
+  ['guiTextLabelText', 'GUI text-label text metadata: guiTextLabelText LABEL "text".'],
+  ['htmlTemplate', 'First-class HTML/SSX template declaration: htmlTemplate NAME. The body starts at htmlBody NAME.'],
+  ['htmlArg', 'HTML template hydration input: htmlArg TEMPLATE ARG_NAME TYPE. Body holes must reference declared args as {htmlArg.ARG_NAME}.'],
+  ['htmlBody', 'Starts the indentation-sensitive HTML/SSX body island for a template. The island ends at the next non-empty column-0 SemanticScript line.'],
   ['jsonCodec', 'Contract-heavy JSON codec declaration.'],
   ['codec', 'Contract-heavy codec declaration.'],
   ['schema', 'Codec schema attachment: schema CODEC_NAME RECORD_NAME.'],
@@ -855,6 +973,14 @@ const classifyLine = (lineText) => {
   return classifyVerb(verb);
 };
 
+const isHtmlBodyContentLine = (lineText) => {
+  if (lineText.trim().length === 0) {
+    return true;
+  }
+
+  return lineText.startsWith(' ') || lineText.startsWith('\t');
+};
+
 const createDecorationOptions = (backgroundColor, overviewRulerColor) => {
   const options = {
     isWholeLine: true,
@@ -957,8 +1083,19 @@ const updateSegmentDecorations = (editor) => {
     unknown: [],
   };
 
+  let insideHtmlBody = false;
+
   for (let lineIndex = 0; lineIndex < editor.document.lineCount; lineIndex += 1) {
     const line = editor.document.lineAt(lineIndex);
+
+    if (insideHtmlBody) {
+      if (isHtmlBodyContentLine(line.text)) {
+        continue;
+      }
+
+      insideHtmlBody = false;
+    }
+
     const kind = classifyLine(line.text);
 
     if (!kind || !rangesByKind[kind]) {
@@ -978,6 +1115,10 @@ const updateSegmentDecorations = (editor) => {
           lineIndex,
           verbStart + verbText.length
         ));
+      }
+
+      if (verbText === 'htmlBody') {
+        insideHtmlBody = true;
       }
     }
   }
@@ -1075,6 +1216,9 @@ const operationHoverReferencePositions = new Map([
   ['entry', 2],
   ['route', 4],
   ['routeMiddleware', 3],
+  ['guiApplicationOnExit', 2],
+  ['guiWindowEvent', 3],
+  ['guiControlEvent', 3],
   ['trustBoundaryValidator', 2],
   ['jsonCodecDecodeTarget', 2],
   ['jsonCodecEncodeTarget', 2],
@@ -1091,8 +1235,10 @@ const namedDeclarationVerbs = new Set([
   'jsonCodec', 'validator', 'mapper', 'adapter', 'boundary', 'policy',
   'errorPolicy', 'retryPolicy', 'timeoutBudget', 'resource', 'capability',
   'mutex', 'shared', 'channel', 'section', 'domainLiteral', 'literal',
-  'listLiteral', 'listType', 'arrayType', 'sliceType', 'smallListType',
+  'listLiteral', 'htmlTemplate', 'listType', 'arrayType', 'sliceType', 'smallListType',
   'mapType', 'collectionOperation', 'interval', 'workerPool', 'work',
+  'guiApplication', 'guiWindow', 'guiButton', 'guiTextBox', 'guiListBox',
+  'guiCheckBox', 'guiMenuItem', 'guiStatusBar', 'guiTextLabel',
   'buildProject', 'registerModule', 'modulePath', 'mainFile', 'mainOperation',
   'targetRuntime', 'buildProfile', 'optLevel', 'cpuBaseline', 'cpuTune',
   'cpuFeature', 'cpuFeatureCheck', 'nativeOutput',
@@ -1319,8 +1465,14 @@ const buildDocumentSymbolIndex = (document) => {
       case 'enum':
       case 'error':
       case 'dependency':
+      case 'importOperation':
+      case 'importType':
+      case 'importError':
+      case 'importCapability':
+      case 'importConstant':
       case 'codec':
       case 'jsonCodec':
+      case 'htmlTemplate':
       case 'validator':
       case 'mapper':
       case 'adapter':
@@ -1332,6 +1484,15 @@ const buildDocumentSymbolIndex = (document) => {
       case 'resource':
       case 'capability':
       case 'webServer':
+      case 'guiApplication':
+      case 'guiWindow':
+      case 'guiButton':
+      case 'guiTextBox':
+      case 'guiListBox':
+      case 'guiCheckBox':
+      case 'guiMenuItem':
+      case 'guiStatusBar':
+      case 'guiTextLabel':
       case 'interval':
       case 'workerPool':
       case 'group':
@@ -1350,8 +1511,42 @@ const buildDocumentSymbolIndex = (document) => {
         }));
         break;
 
+      case 'importModule': {
+        const aliasIndex = importModuleAliasIndex(tokens);
+        const pathIndex = importModulePathIndex(tokens);
+        addSymbolDeclaration(symbols, tokenText(tokens, aliasIndex), declarationBase('module import', tokens, lineIndex, {
+          name: tokenText(tokens, aliasIndex),
+          details: tokenText(tokens, pathIndex),
+        }));
+        break;
+      }
+
+      case 'dependencyFetch':
+        addSymbolDeclaration(symbols, tokenText(tokens, 2), declarationBase('dependency fetch', tokens, lineIndex, {
+          name: tokenText(tokens, 2),
+          owner: tokenText(tokens, 1),
+          details: tokenTailText(tokens, 3),
+        }));
+        break;
+
+      case 'dependencyCache':
+      case 'dependencyLock':
+        addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase(readableVerbName(verb).toLowerCase(), tokens, lineIndex, {
+          name: tokenText(tokens, 1),
+          details: tokenTailText(tokens, 2),
+        }));
+        break;
+
       case 'field':
         addSymbolDeclaration(symbols, tokenText(tokens, 2), declarationBase('record field', tokens, lineIndex, {
+          name: tokenText(tokens, 2),
+          owner: tokenText(tokens, 1),
+          type: tokenText(tokens, 3),
+        }));
+        break;
+
+      case 'htmlArg':
+        addSymbolDeclaration(symbols, tokenText(tokens, 2), declarationBase('html template argument', tokens, lineIndex, {
           name: tokenText(tokens, 2),
           owner: tokenText(tokens, 1),
           type: tokenText(tokens, 3),
@@ -1549,6 +1744,48 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
   }
 
   if (verb === 'type' && index === 1) {
+    return 'semanticscriptDeclaredName';
+  }
+
+  if (verb === 'htmlTemplate' && index === 1) {
+    return 'semanticscriptDeclaredName';
+  }
+
+  if ((verb === 'htmlArg' || verb === 'htmlBody') && index === 1) {
+    return 'semanticscriptDeclaredName';
+  }
+
+  if (verb === 'htmlArg' && index === 2) {
+    return 'semanticscriptArgumentName';
+  }
+
+  if (verb === 'importModule') {
+    if (index === importModuleAliasIndex(tokens)) {
+      return 'semanticscriptDeclaredName';
+    }
+
+    if (index === importModulePathIndex(tokens)) {
+      return 'namespace';
+    }
+
+    return null;
+  }
+
+  if (['importOperation', 'importType', 'importError', 'importCapability', 'importConstant'].includes(verb) && index === 1) {
+    return 'semanticscriptDeclaredName';
+  }
+
+  if (verb === 'dependencyFetch' && index === 2) {
+    return 'semanticscriptDeclaredName';
+  }
+
+  if (verb.startsWith('gui') && index === 1) {
+    return 'semanticscriptDeclaredName';
+  }
+
+  if ((verb === 'guiApplicationOnExit' && index === 2)
+    || (verb === 'guiWindowEvent' && index === 3)
+    || (verb === 'guiControlEvent' && index === 3)) {
     return 'semanticscriptDeclaredName';
   }
 
@@ -1879,9 +2116,19 @@ const canSplitRoleSuffix = (tokenType) => roleSuffixBaseTokenTypes.has(tokenType
 
 const provideDocumentSemanticTokens = (document) => {
   const builder = new vscode.SemanticTokensBuilder(semanticLegend);
+  let insideHtmlBody = false;
 
   for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex += 1) {
     const lineText = document.lineAt(lineIndex).text;
+
+    if (insideHtmlBody) {
+      if (isHtmlBodyContentLine(lineText)) {
+        continue;
+      }
+
+      insideHtmlBody = false;
+    }
+
     const tokens = tokenizeLine(lineText);
 
     tokens.forEach((token, tokenIndex) => {
@@ -1908,6 +2155,10 @@ const provideDocumentSemanticTokens = (document) => {
         builder.push(lineIndex, token.start, token.length, tokenType, []);
       }
     });
+
+    if (tokens[0] && tokens[0].text === 'htmlBody') {
+      insideHtmlBody = true;
+    }
   }
 
   return builder.build();
@@ -1947,6 +2198,81 @@ const getTokenAtPosition = (document, position) => {
   return null;
 };
 
+const getHtmlArgReferenceAtPosition = (document, position) => {
+  const lineText = document.lineAt(position.line).text;
+  const referencePattern = /\{\s*htmlArg\.([A-Za-z_][A-Za-z0-9_]*)\s*\}/g;
+  let match;
+
+  while ((match = referencePattern.exec(lineText)) !== null) {
+    const start = match.index;
+    const end = match.index + match[0].length;
+
+    if (position.character >= start && position.character <= end) {
+      return {
+        text: match[1],
+        range: new vscode.Range(position.line, start, position.line, end),
+      };
+    }
+  }
+
+  return null;
+};
+
+const htmlBodyTemplateAtLine = (document, targetLine) => {
+  let insideHtmlBody = false;
+  let templateName = null;
+
+  for (let lineIndex = 0; lineIndex <= targetLine; lineIndex += 1) {
+    const lineText = document.lineAt(lineIndex).text;
+
+    if (insideHtmlBody) {
+      if (isHtmlBodyContentLine(lineText)) {
+        if (lineIndex === targetLine) {
+          return templateName;
+        }
+
+        continue;
+      }
+
+      insideHtmlBody = false;
+      templateName = null;
+    }
+
+    const tokens = tokenizeLine(lineText);
+
+    if (tokens[0] && tokens[0].text === 'htmlBody' && tokens[1]) {
+      insideHtmlBody = true;
+      templateName = tokens[1].text;
+
+      if (lineIndex === targetLine) {
+        return templateName;
+      }
+    }
+  }
+
+  return null;
+};
+
+const chooseHtmlArgDeclaration = (document, argName, lineIndex) => {
+  const index = getDocumentSymbolIndex(document);
+  const entry = index.symbols.get(argName);
+
+  if (!entry) {
+    return null;
+  }
+
+  const templateName = htmlBodyTemplateAtLine(document, lineIndex);
+  const htmlArgDeclarations = entry.declarations.filter((declaration) => declaration.kind === 'html template argument');
+
+  if (templateName) {
+    return htmlArgDeclarations.find((declaration) => declaration.owner === templateName)
+      || htmlArgDeclarations[0]
+      || null;
+  }
+
+  return htmlArgDeclarations[0] || null;
+};
+
 const markdownHover = (title, body) => {
   const markdown = new vscode.MarkdownString();
   markdown.appendMarkdown(`**${title}**\n\n`);
@@ -1965,6 +2291,14 @@ const tokenText = (tokens, index, fallback = '?') => (
 
 const tokenTailText = (tokens, startIndex) => (
   tokens.slice(startIndex).map((token) => token.text).join(' ') || '?'
+);
+
+const importModuleAliasIndex = (tokens) => (
+  tokens[2] && tokens[2].text === 'as' && tokens[3] ? 3 : 1
+);
+
+const importModulePathIndex = (tokens) => (
+  tokens[2] && tokens[2].text === 'as' && tokens[3] ? 1 : 2
 );
 
 const readableVerbName = (verb) => (
@@ -2017,6 +2351,60 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
         `Type: ${inlineCode(tokenText(tokens, 4))}`,
         `Initial value: ${inlineCode(tokenTailText(tokens, 5))}`,
         'Reads and writes should name the guard token with `protectedBy`.',
+      ]);
+
+    case 'importModule':
+      return detailHover(`Module import: ${tokenText(tokens, importModuleAliasIndex(tokens))}`, [
+        `Local alias: ${inlineCode(tokenText(tokens, importModuleAliasIndex(tokens)))}`,
+        `Module path: ${inlineCode(tokenText(tokens, importModulePathIndex(tokens)))}`,
+        'Registered module imports make cross-module references explicit for agents and tooling.',
+      ]);
+
+    case 'importOperation':
+    case 'importType':
+    case 'importError':
+    case 'importCapability':
+    case 'importConstant':
+      return detailHover(`${readableVerbName(verb)}: ${tokenText(tokens, 1)}`, [
+        `Local name: ${inlineCode(tokenText(tokens, 1))}`,
+        `Provider alias: ${inlineCode(tokenText(tokens, 2))}`,
+        `Exported name: ${inlineCode(tokenText(tokens, 3))}`,
+        'Singular imports expose only one declared export instead of importing the provider module wholesale.',
+      ]);
+
+    case 'dependencyFetch':
+      return detailHover(`Dependency fetch: ${tokenText(tokens, 2)}`, [
+        `Project: ${inlineCode(tokenText(tokens, 1))}`,
+        `Alias: ${inlineCode(tokenText(tokens, 2))}`,
+        `Fetch kind: ${inlineCode(tokenText(tokens, 3))}`,
+        `Source: ${inlineCode(tokenTailText(tokens, 4))}`,
+      ]);
+
+    case 'dependencyCache':
+    case 'dependencyLock':
+      return detailHover(`${readableVerbName(verb)}: ${tokenText(tokens, 1)}`, [
+        `Project: ${inlineCode(tokenText(tokens, 1))}`,
+        `Path: ${inlineCode(tokenTailText(tokens, 2))}`,
+      ]);
+
+    case 'htmlTemplate':
+      return detailHover(`HTML template: ${tokenText(tokens, 1)}`, [
+        `Declares first-class HTML/SSX template ${inlineCode(tokenText(tokens, 1))}.`,
+        'Follow with explicit `htmlArg` rows and exactly one `htmlBody` island for the same template name.',
+      ]);
+
+    case 'htmlArg':
+      return detailHover(`HTML argument: ${tokenText(tokens, 2)}`, [
+        `Template: ${inlineCode(tokenText(tokens, 1))}`,
+        `Argument: ${inlineCode(tokenText(tokens, 2))}`,
+        `Type: ${inlineCode(tokenText(tokens, 3))}`,
+        'Inside the body, dynamic holes must reference this as `{htmlArg.NAME}`.',
+      ]);
+
+    case 'htmlBody':
+      return detailHover(`HTML body: ${tokenText(tokens, 1)}`, [
+        `Starts the HTML/SSX body for template ${inlineCode(tokenText(tokens, 1))}.`,
+        'Indented following lines are parsed as markup until the next non-empty column-0 SemanticScript line.',
       ]);
 
     case 'operation':
@@ -2737,6 +3125,22 @@ const roleSuffixHover = (token, character) => {
 };
 
 const provideHover = (document, position) => {
+  const htmlArgReference = getHtmlArgReferenceAtPosition(document, position);
+
+  if (htmlArgReference) {
+    const declaration = chooseHtmlArgDeclaration(document, htmlArgReference.text, position.line);
+    const templateName = declaration ? declaration.owner : htmlBodyTemplateAtLine(document, position.line);
+
+    return markdownHover(
+      `HTML arg reference: ${htmlArgReference.text}`,
+      [
+        templateName ? `Template: ${inlineCode(templateName)}` : '',
+        declaration && declaration.type ? `Declared type: ${inlineCode(declaration.type)}` : '',
+        'Dynamic HTML holes must resolve to a declared `htmlArg TEMPLATE NAME TYPE` row. The compiler checks sink context before lowering hydration.',
+      ].filter(Boolean).join('\n\n')
+    );
+  }
+
   const found = getTokenAtPosition(document, position);
 
   if (!found) {
@@ -2854,6 +3258,16 @@ const declarationRange = (document, declaration) => {
 };
 
 const provideDefinition = (document, position) => {
+  const htmlArgReference = getHtmlArgReferenceAtPosition(document, position);
+
+  if (htmlArgReference) {
+    const declaration = chooseHtmlArgDeclaration(document, htmlArgReference.text, position.line);
+
+    if (declaration) {
+      return new vscode.Location(document.uri, declarationRange(document, declaration));
+    }
+  }
+
   const tokenInfo = getTokenAtPosition(document, position);
 
   if (!tokenInfo || tokenInfo.tokenIndex === 0) {
@@ -2882,6 +3296,12 @@ const documentSymbolNameIndex = (verb, tokens) => {
   switch (verb) {
     case 'input':
       return 2;
+    case 'htmlArg':
+      return 2;
+    case 'dependencyFetch':
+      return 2;
+    case 'importModule':
+      return importModuleAliasIndex(tokens);
     case 'field':
     case 'enumCase':
     case 'errorCase':
@@ -2900,8 +3320,36 @@ const documentSymbolKind = (verb) => {
   switch (verb) {
     case 'operation':
       return vscode.SymbolKind.Function;
+    case 'htmlTemplate':
+      return vscode.SymbolKind.Class;
+    case 'htmlArg':
+      return vscode.SymbolKind.Field;
+    case 'importModule':
+      return vscode.SymbolKind.Module;
+    case 'importOperation':
+      return vscode.SymbolKind.Function;
+    case 'importType':
+      return vscode.SymbolKind.TypeParameter;
+    case 'importError':
+      return vscode.SymbolKind.Enum;
+    case 'importCapability':
+      return vscode.SymbolKind.Key;
+    case 'importConstant':
+      return vscode.SymbolKind.Constant;
     case 'webServer':
       return vscode.SymbolKind.Namespace;
+    case 'guiApplication':
+      return vscode.SymbolKind.Namespace;
+    case 'guiWindow':
+      return vscode.SymbolKind.Namespace;
+    case 'guiButton':
+    case 'guiTextBox':
+    case 'guiListBox':
+    case 'guiCheckBox':
+    case 'guiMenuItem':
+    case 'guiStatusBar':
+    case 'guiTextLabel':
+      return vscode.SymbolKind.Object;
     case 'route':
       return vscode.SymbolKind.Event;
     case 'record':
@@ -2941,6 +3389,22 @@ const symbolDetailText = (verb, tokens) => {
     return `${tokenText(tokens, 3)} -> ${tokenText(tokens, 4)}`;
   }
 
+  if (verb === 'htmlArg') {
+    return `${tokenText(tokens, 1)}: ${tokenText(tokens, 3)}`;
+  }
+
+  if (verb === 'importModule') {
+    return tokenText(tokens, importModulePathIndex(tokens));
+  }
+
+  if (['importOperation', 'importType', 'importError', 'importCapability', 'importConstant'].includes(verb)) {
+    return `${tokenText(tokens, 2)}.${tokenText(tokens, 3)}`;
+  }
+
+  if (verb === 'dependencyFetch') {
+    return `${tokenText(tokens, 3)} ${tokenTailText(tokens, 4)}`;
+  }
+
   if (verb === 'call') {
     return tokenText(tokens, 2);
   }
@@ -2966,13 +3430,18 @@ const provideDocumentSymbols = (document) => {
     'persistLlvmIr', 'emitLlvmIr', 'llvmIrOutput', 'buildDir',
     'buildRoot', 'buildFolderName', 'cpuBaseline', 'cpuTune',
     'cpuFeature', 'cpuFeatureCheck', 'nativeOutput', 'docsOutput',
+    'dependencyFetch', 'dependencyCache', 'dependencyLock',
+    'importModule', 'importOperation', 'importType', 'importError',
+    'importCapability', 'importConstant',
     'exportOperation', 'exportType',
     'exportError', 'exportCapability', 'exportConstant',
     'operation', 'input', 'webServer', 'route', 'record', 'field',
+    'guiApplication', 'guiWindow', 'guiButton', 'guiTextBox', 'guiListBox',
+    'guiCheckBox', 'guiMenuItem', 'guiStatusBar', 'guiTextLabel',
     'enum', 'enumCase', 'error', 'errorCase', 'type', 'capability',
     'authority', 'timeoutBudget', 'storage', 'sharedState', 'const',
     'var', 'call', 'label', 'jsonCodec', 'policy', 'retryPolicy',
-    'workerPool', 'work', 'interval',
+    'workerPool', 'work', 'interval', 'htmlTemplate', 'htmlArg',
   ]);
 
   for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex += 1) {
@@ -3050,6 +3519,23 @@ const primitiveCompletionItems = () => (
   ))
 );
 
+const generatedCompletionItems = (document) => {
+  const targets = new Map();
+
+  for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex += 1) {
+    const tokens = tokenizeLine(document.lineAt(lineIndex).text);
+
+    if (tokens[0] && tokens[0].text === 'htmlTemplate' && tokens[1]) {
+      const target = `html.hydrate.${tokens[1].text}`;
+      targets.set(target, generatedTargetHoverText(target));
+    }
+  }
+
+  return Array.from(targets.entries()).sort(([left], [right]) => left.localeCompare(right)).map(([target, detail]) => (
+    completionItem(target, vscode.CompletionItemKind.Function, 'SemanticScript generated target', detail)
+  ));
+};
+
 const symbolCompletionItems = (document, position) => {
   const index = getDocumentSymbolIndex(document);
   const currentOperation = index.lineOperations.get(position.line) || null;
@@ -3083,7 +3569,7 @@ const provideCompletions = (document, position) => {
   }
 
   if (tokens[0] && tokens[0].text === 'call' && tokens.length <= 3) {
-    return primitiveCompletionItems();
+    return primitiveCompletionItems().concat(generatedCompletionItems(document));
   }
 
   return symbolCompletionItems(document, position);

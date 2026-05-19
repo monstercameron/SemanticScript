@@ -4,8 +4,8 @@ Local VS Code extension for SemanticScript `.sscript` and `.sem` files.
 
 This extension is editor tooling. It recognizes the current executable
 SemanticScript surface plus the design/spec syntax used across the repository,
-including native HTTP server APIs, route metadata, explicit runtime checks, and
-refinement-only documentation forms.
+including native HTTP server APIs, first-class HTML templates, route metadata,
+explicit runtime checks, and refinement-only documentation forms.
 
 ## Contents
 
@@ -17,7 +17,7 @@ refinement-only documentation forms.
 
 ## Current Status
 
-Active editor tooling. Version `1.0.1` supports highlighting, semantic tokens,
+Active editor tooling. Version `1.0.2` supports highlighting, semantic tokens,
 hovers, same-file navigation, completions, lint integration, and direct
 `semsc.py` executable builds from VS Code.
 
@@ -37,7 +37,7 @@ builds after accepting the publisher metadata constraint for the target release.
 - Language registration for `.sscript` and `.sem`.
 - TextMate highlighting for verbs, types, strings, numbers, comments, symbols,
   qualified paths, error variants, schema values, primitive targets, generated
-  targets, and domain targets.
+  targets, domain targets, and embedded `htmlBody` markup islands.
 - Semantic token coloring for declaration, context, action, and control verbs.
 - Semantic roles for declared names, immutable values, mutable values, call
   objects, argument names, labels, effect paths, opaque inputs, generated
@@ -55,7 +55,8 @@ builds after accepting the publisher metadata constraint for the target release.
   records, fields, capabilities, constants, storage, calls, labels, and key
   project declarations.
 - Completion suggestions for verbs, primitive/native call targets, and same-file
-  symbols.
+  symbols, including `html.hydrate.TemplateName` targets declared by local
+  `htmlTemplate` rows.
 - Optional diagnostics from the canonical `semlint.py` engine.
 - `SemanticScript: Compile Current File` runs `semsc.py --emit-exe` with
   configurable build profile, runtime checks, and LLVM IR persistence.
@@ -89,6 +90,20 @@ The extension recognizes the recent syntax families from the refined example:
   `http.multipartPartText`, `http.multipartPartBytes`,
   `http.multipartPartLength`, `http.multipartPartFilename`, and
   `http.multipartPartContentType`.
+- Declarative Windows GUI target metadata:
+  `target windowsGui`, `targetRuntime PROJECT windowsGui`, `guiApplication*`,
+  `guiWindow*`, per-kind controls such as `guiButton` and `guiTextBox`,
+  shared `guiControl*` rows, `GuiSession`/`GuiEvent` handler inputs, and
+  primitive `gui.*` runtime call targets such as `gui.textBoxText` and
+  `gui.windowClose`.
+- First-class HTML templates:
+  `htmlTemplate`, `htmlArg`, `htmlBody`, `HtmlText`, `HtmlClass`, `SafeUrl`,
+  `HtmlFragment`, `HtmlTrustedFragment`, `HtmlDocument`, embedded HTML/SSX
+  highlighting, `{htmlArg.name}` hole hovers, and generated hydration targets
+  such as `html.hydrate.TodoDashboardPageTemplate`.
+- Module/dependency build tape:
+  `importModule`, singular imports such as `importOperation` and `importType`,
+  plus `dependencyFetch`, `dependencyCache`, and `dependencyLock`.
 - Memory contracts:
   `memoryHeap`, `memoryArena`, `memoryAllocationSource`, `memoryStackLimit`.
 - Trust and literals:
