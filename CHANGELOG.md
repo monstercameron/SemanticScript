@@ -2,6 +2,10 @@
 
 ## 2026-05-19
 
+- `d5433a347d34daf0fd187637c901495bc120e8ad` - `docs: mark JSON feature and migration TODOs complete`
+  - Marks the completed JSON feature-test, documentation, Todo Web migration, deprecation-lint, and semlint edge-case checklist items in `TODO.md`.
+- `c7ae8b4355e12a38bc9a10e0937a69745fdc2490` - `docs: update changelog for JSON TODO status`
+  - Adds changelog coverage for the JSON TODO-status follow-up.
 - `6c1c4b4645f0e93e071c8a6e5c1240f87d129ef1` - `docs: mark JSON lint and syntax TODOs complete`
   - Marks the completed primitive `json.stringify` / `json.parse` reuse, JSON semlint rules, and syntax-row checklist items in `TODO.md`.
 - `d4c057d544434ed96af3759b9435acc2ca62ca71` - `docs: update changelog for JSON verb status`
