@@ -37,6 +37,17 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
+_SEMANTICSCRIPT_ROOT = Path(__file__).resolve().parents[1]
+if str(_SEMANTICSCRIPT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SEMANTICSCRIPT_ROOT))
+from call_contracts import (
+    EXPLICIT_DISPOSITION_FALLIBLE_CALL_TARGETS as SHARED_EXPLICIT_DISPOSITION_FALLIBLE_CALL_TARGETS,
+    KNOWN_FALLIBLE_CALL_TARGETS as SHARED_KNOWN_FALLIBLE_CALL_TARGETS,
+    RESULT_FALLIBLE_CALL_TARGETS as SHARED_RESULT_FALLIBLE_CALL_TARGETS,
+    SUPPORTED_HTTP_ROUTE_METHODS as SHARED_SUPPORTED_HTTP_ROUTE_METHODS,
+    is_supported_route_method,
+)
+
 __version__ = "0.3.0"
 
 
@@ -314,6 +325,13 @@ BUILTIN_TYPE_ALIASES: Dict[str, str] = {
     "GuiRuntimeStatusCode": "CSignedInt32",
     "GuiKeywordToken": "CNullTerminatedByteString",
     "GuiRuntimeTarget": "CNullTerminatedByteString",
+    "JsonText": "CNullTerminatedByteString",
+    "JsonBuilder": "COpaqueMemoryAddress",
+    "JsonDocument": "COpaqueMemoryAddress",
+    "JsonCursor": "CSignedInt64",
+    "JsonPath": "CNullTerminatedByteString",
+    "JsonScratchBuffer": "COpaqueMemoryAddress",
+    "JsonCapacityBytes": "CByteCount",
 }
 
 BUILTIN_ABSTRACTIONS: Dict[str, str] = {
@@ -760,29 +778,12 @@ OPAQUE_DEPENDENCY_INPUT_NAMES: frozenset = frozenset({
 
 
 # Call targets that return Result-shaped or can fail at the runtime level.
-# Calls to these MUST have both `bindError` and `branchIfError` (or be
-# explicitly discarded with documented rationale). This is the
+# Result-shaped calls need explicit success/error disposition; C-style
+# status/pointer fallibles need an explicit value disposition. This is the
 # hiddenFailure detection surface.
-KNOWN_FALLIBLE_CALL_TARGETS: frozenset = frozenset({
-    "console.writeLine",
-    "console.writeIntegerLine",
-    "console.writeInteger",
-    "console.writeFloatLine",
-    "math.checkedMultiplyI64",
-    # libc with errno-or-EOF semantics
-    "c.fopen", "c.fread", "c.fwrite", "c.fclose",
-    "c.malloc", "c.calloc", "c.realloc",
-    "c.fputs", "c.fputc", "c.putchar",
-    "c.fgets", "c.fseek", "c.ftell",
-    "c.open", "c.read", "c.write", "c.close",
-})
-
-C_SENTINEL_FALLIBLE_CALL_TARGETS: frozenset = frozenset({
-    "c.fopen", "c.fread", "c.fwrite", "c.fclose",
-    "c.fputs", "c.fputc", "c.putchar",
-    "c.fgets", "c.fseek", "c.ftell",
-    "c.open", "c.read", "c.write", "c.close",
-})
+KNOWN_FALLIBLE_CALL_TARGETS: frozenset = SHARED_KNOWN_FALLIBLE_CALL_TARGETS
+RESULT_FALLIBLE_CALL_TARGETS: frozenset = SHARED_RESULT_FALLIBLE_CALL_TARGETS
+C_SENTINEL_FALLIBLE_CALL_TARGETS: frozenset = SHARED_EXPLICIT_DISPOSITION_FALLIBLE_CALL_TARGETS
 
 
 # Metadata edges that should be consistent across sibling operations in
@@ -804,6 +805,31 @@ HEAP_ALLOCATION_CALL_TARGETS: frozenset = frozenset({
 
 HEAP_DEALLOCATION_CALL_TARGETS: frozenset = frozenset({
     "c.free",
+})
+
+C_STRING_ACCUMULATOR_CALL_TARGETS: frozenset = frozenset({
+    "c.strcat", "c.strncat", "c.strcatSafe", "c.strncatSafe",
+})
+
+SQLITE_DATABASE_OPEN_TARGETS: frozenset = frozenset({
+    "sqlite.openDatabase",
+})
+
+SQLITE_DATABASE_CLOSE_TARGETS: frozenset = frozenset({
+    "sqlite.closeDatabase",
+})
+
+SQLITE_STATEMENT_PREPARE_TARGETS: frozenset = frozenset({
+    "sqlite.prepareStatement",
+})
+
+SQLITE_STATEMENT_FINALIZE_TARGETS: frozenset = frozenset({
+    "sqlite.finalizeStatement",
+})
+
+FIXED_ROW_COUNT_MUTATION_TARGETS: frozenset = frozenset({
+    "insertEmptyRowAt",
+    "splitRowAt",
 })
 
 
@@ -1116,6 +1142,76 @@ SUPPORTED_JSON_RUNTIME_TARGETS: frozenset = frozenset({
     "json.finishBuilder", "json.builderLength",
     "json.hasField", "json.findString",
     "json.findInt64", "json.findDouble", "json.findBool",
+    "json.createDocument", "json.createEmptyDocument", "json.destroyDocument",
+    "json.serializeDocument", "json.documentLength", "json.documentRoot",
+    "json.objectFieldAt", "json.arrayElementAt", "json.cursorParent",
+    "json.cursorAtPath", "json.cursorKind", "json.cursorIsNull",
+    "json.cursorInt64", "json.cursorDouble", "json.cursorBool",
+    "json.cursorString", "json.cursorArrayLength",
+    "json.cursorObjectFieldCount", "json.cursorObjectFieldNameAt",
+    "json.cursorObjectFieldValueAt",
+    "json.setObjectFieldString", "json.setObjectFieldInt64",
+    "json.setObjectFieldDouble", "json.setObjectFieldBool",
+    "json.setObjectFieldNull", "json.setObjectFieldObject",
+    "json.setObjectFieldArray", "json.setObjectFieldJsonText",
+    "json.appendArrayElementString", "json.appendArrayElementInt64",
+    "json.appendArrayElementDouble", "json.appendArrayElementBool",
+    "json.appendArrayElementNull", "json.appendArrayElementObject",
+    "json.appendArrayElementArray", "json.appendArrayElementJsonText",
+    "json.insertArrayElementString", "json.insertArrayElementInt64",
+    "json.insertArrayElementDouble", "json.insertArrayElementBool",
+    "json.insertArrayElementNull", "json.insertArrayElementObject",
+    "json.insertArrayElementArray", "json.insertArrayElementJsonText",
+    "json.replaceArrayElementString", "json.replaceArrayElementInt64",
+    "json.replaceArrayElementDouble", "json.replaceArrayElementBool",
+    "json.replaceArrayElementNull", "json.replaceArrayElementObject",
+    "json.replaceArrayElementArray", "json.replaceArrayElementJsonText",
+    "json.removeObjectField", "json.removeArrayElementAt",
+    "json.clearObject", "json.clearArray",
+})
+
+JSON_FALLIBLE_CURSOR_NAVIGATOR_TARGETS: frozenset = frozenset({
+    "json.objectFieldAt",
+    "json.arrayElementAt",
+    "json.cursorParent",
+    "json.cursorAtPath",
+    "json.cursorObjectFieldValueAt",
+})
+
+JSON_STRUCTURAL_CURSOR_MUTATOR_TARGETS: frozenset = frozenset({
+    "json.removeObjectField",
+    "json.removeArrayElementAt",
+    "json.clearObject",
+    "json.clearArray",
+    "json.setObjectFieldObject",
+    "json.setObjectFieldArray",
+    "json.insertArrayElementString",
+    "json.insertArrayElementInt64",
+    "json.insertArrayElementDouble",
+    "json.insertArrayElementBool",
+    "json.insertArrayElementNull",
+    "json.insertArrayElementObject",
+    "json.insertArrayElementArray",
+    "json.insertArrayElementJsonText",
+    "json.replaceArrayElementObject",
+    "json.replaceArrayElementArray",
+    "json.replaceArrayElementJsonText",
+})
+
+DEPRECATED_JSON_BUILDER_TARGETS: frozenset = frozenset({
+    "json.createBuilder", "json.destroyBuilder",
+    "json.finishBuilder", "json.builderLength",
+    "json.objectOpen", "json.objectClose",
+    "json.arrayOpen", "json.arrayClose",
+    "json.fieldInt64", "json.fieldDouble", "json.fieldBool",
+    "json.fieldString", "json.fieldNull",
+    "json.elementInt64", "json.elementDouble", "json.elementBool",
+    "json.elementString", "json.elementNull",
+})
+
+DEPRECATED_JSON_FINDER_TARGETS: frozenset = frozenset({
+    "json.findString", "json.findInt64", "json.findDouble",
+    "json.findBool", "json.hasField",
 })
 
 SUPPORTED_GUI_RUNTIME_TARGETS: frozenset = frozenset({
@@ -2103,6 +2199,31 @@ def collect_operation_calls(operation: OperationFact) -> Dict[str, CallFact]:
     return operationCalls
 
 
+def operation_input_types(operation: OperationFact) -> Dict[str, str]:
+    inputs: Dict[str, str] = {}
+    for sourceLine in operation.lines:
+        if (not is_comment(sourceLine) and sourceLine.tokens
+                and sourceLine.verb == "input" and len(sourceLine.args) >= 3
+                and sourceLine.args[0] == operation.name):
+            inputs[sourceLine.args[1]] = sourceLine.args[2]
+    return inputs
+
+
+def call_arg_values(callFact: CallFact) -> Dict[str, List[str]]:
+    values: Dict[str, List[str]] = {}
+    for argLine in callFact.arg_lines:
+        if len(argLine.args) >= 3:
+            values.setdefault(argLine.args[1], []).append(argLine.args[2])
+    return values
+
+
+def call_arg_value(callFact: CallFact, argumentName: str) -> Optional[str]:
+    values = call_arg_values(callFact).get(argumentName)
+    if not values:
+        return None
+    return values[-1]
+
+
 def call_success_value_names(callFact: CallFact) -> Set[str]:
     """Names that carry a call's successful return value in this operation."""
     names: Set[str] = set()
@@ -2110,6 +2231,14 @@ def call_success_value_names(callFact: CallFact) -> Set[str]:
         if bindLine.args:
             names.add(bindLine.args[0])
     return names
+
+
+def call_success_value_lines(callFact: CallFact) -> List[Tuple[str, SourceLine]]:
+    values: List[Tuple[str, SourceLine]] = []
+    for bindLine in callFact.bind_lines + callFact.bind_ok_lines:
+        if bindLine.args:
+            values.append((bindLine.args[0], bindLine))
+    return values
 
 
 def call_has_value_disposition(callFact: CallFact) -> bool:
@@ -2127,6 +2256,64 @@ def call_consumes_any_value(callFact: CallFact, valueNames: Set[str]) -> bool:
         return False
     for argLine in callFact.arg_lines:
         if len(argLine.args) >= 3 and argLine.args[2] in valueNames:
+            return True
+    return False
+
+
+def defer_consumes_any_value(
+    deferLines: List[Tuple[SourceLine, str]],
+    cleanupTargets: Set[str],
+    valueNames: Set[str],
+    afterLine: Optional[int] = None,
+) -> bool:
+    if not valueNames:
+        return False
+    for deferLine, deferTarget in deferLines:
+        if deferTarget not in cleanupTargets:
+            continue
+        if afterLine is not None and deferLine.number <= afterLine:
+            continue
+        if any(arg in valueNames for arg in deferLine.args[2:]):
+            return True
+    return False
+
+
+def operation_label_body_lines(operation: OperationFact, labelName: str) -> List[SourceLine]:
+    labelIndex: Optional[int] = None
+    for index, sourceLine in enumerate(operation.lines):
+        if (not is_comment(sourceLine) and sourceLine.tokens
+                and sourceLine.verb == "label" and sourceLine.args
+                and sourceLine.args[0] == labelName):
+            labelIndex = index
+            break
+    if labelIndex is None:
+        return []
+    bodyLines: List[SourceLine] = []
+    for sourceLine in operation.lines[labelIndex + 1:]:
+        if (not is_comment(sourceLine) and sourceLine.tokens
+                and sourceLine.verb == "label"):
+            break
+        bodyLines.append(sourceLine)
+    return bodyLines
+
+
+def label_body_calls_cleanup_for_value(
+    operation: OperationFact,
+    labelName: str,
+    cleanupTargets: Set[str],
+    valueNames: Set[str],
+) -> bool:
+    if not valueNames:
+        return False
+    labelLines = operation_label_body_lines(operation, labelName)
+    if not labelLines:
+        return False
+    labelOperation = OperationFact(operation.name, operation.line, labelLines)
+    labelCalls = collect_operation_calls(labelOperation)
+    for cleanupCall in labelCalls.values():
+        if cleanupCall.target not in cleanupTargets:
+            continue
+        if call_consumes_any_value(cleanupCall, valueNames):
             return True
     return False
 
@@ -2150,6 +2337,144 @@ def call_has_later_cleanup_call(
     return False
 
 
+def _line_declares_value(sourceLine: SourceLine, valueName: str) -> bool:
+    if is_comment(sourceLine) or not sourceLine.tokens or not sourceLine.args:
+        return False
+    verb = sourceLine.verb
+    args = sourceLine.args
+    if verb in {"bind", "bindOk", "bindError", "const", "var", "literal",
+                "domainLiteral", "makeError", "declareFailure", "receive"}:
+        return args[0] == valueName
+    if verb == "storage" and len(args) >= 3:
+        return args[2] == valueName
+    if verb == "sharedState" and len(args) >= 3:
+        return args[2] == valueName
+    if verb == "input" and len(args) >= 2:
+        return args[1] == valueName
+    if verb == "read" and len(args) >= 2:
+        return args[1] == valueName
+    return False
+
+
+def _line_uses_value(sourceLine: SourceLine, valueName: str) -> bool:
+    if is_comment(sourceLine) or not sourceLine.tokens:
+        return False
+    if _line_declares_value(sourceLine, valueName):
+        return False
+    return any(token.text == valueName for token in sourceLine.tokens)
+
+
+def _first_value_use_after_line(
+    operation: OperationFact,
+    valueName: str,
+    afterLineNumber: int,
+) -> Optional[SourceLine]:
+    for sourceLine in operation.lines:
+        if sourceLine.number <= afterLineNumber:
+            continue
+        if _line_uses_value(sourceLine, valueName):
+            return sourceLine
+    return None
+
+
+def _literal_assignment(sourceLine: SourceLine) -> Optional[Tuple[str, str, str]]:
+    if is_comment(sourceLine) or not sourceLine.tokens:
+        return None
+    args = sourceLine.args
+    if sourceLine.verb in {"const", "literal"} and len(args) >= 3:
+        return args[0], args[1], args[2]
+    if sourceLine.verb == "storage" and len(args) >= 5:
+        return args[2], args[3], args[4]
+    return None
+
+
+def _module_literal_assignments(facts: ExtendedFacts) -> Dict[str, Tuple[str, str, SourceLine]]:
+    operationLineKeys = {
+        (sourceLine.path, sourceLine.number)
+        for operation in facts.base.operations.values()
+        for sourceLine in operation.lines
+    }
+    literals: Dict[str, Tuple[str, str, SourceLine]] = {}
+    for sourceLine in facts.base.lines:
+        if (sourceLine.path, sourceLine.number) in operationLineKeys:
+            continue
+        assignment = _literal_assignment(sourceLine)
+        if assignment is None:
+            continue
+        name, typeName, value = assignment
+        literals[name] = (typeName, value, sourceLine)
+    return literals
+
+
+def _operation_literal_assignments(
+    facts: ExtendedFacts,
+    operation: OperationFact,
+) -> Dict[str, Tuple[str, str, SourceLine]]:
+    literals = dict(_module_literal_assignments(facts))
+    for sourceLine in operation.lines:
+        assignment = _literal_assignment(sourceLine)
+        if assignment is None:
+            continue
+        name, typeName, value = assignment
+        literals[name] = (typeName, value, sourceLine)
+    return literals
+
+
+def _json_path_malformed_reason(pathText: str) -> Optional[str]:
+    if pathText == "":
+        return None
+
+    index = 0
+    while index < len(pathText):
+        current = pathText[index]
+        if current == ".":
+            index += 1
+            if index >= len(pathText) or pathText[index] in {".", "["}:
+                return "emptyObjectFieldSegment"
+            while index < len(pathText) and pathText[index] not in {".", "["}:
+                if pathText[index] == "]":
+                    return "malformedObjectFieldSegment"
+                if pathText[index] == "\\":
+                    if index + 1 < len(pathText) and pathText[index + 1] == ".":
+                        index += 2
+                        continue
+                    return "malformedObjectFieldEscape"
+                index += 1
+            continue
+        if current == "[":
+            closeIndex = pathText.find("]", index + 1)
+            if closeIndex == -1:
+                return "unmatchedArrayIndexBracket"
+            indexText = pathText[index + 1:closeIndex]
+            if not indexText or not indexText.isdigit():
+                return "nonNumericArrayIndex"
+            index = closeIndex + 1
+            continue
+        return "pathStepMustStartWithDotOrBracket"
+    return None
+
+
+def _format_contains_json_string_percent_s(formatText: str) -> bool:
+    if "%s" not in formatText:
+        return False
+    if not any(marker in formatText for marker in ("{", ":", ",")):
+        return False
+
+    searchIndex = 0
+    while True:
+        percentIndex = formatText.find("%s", searchIndex)
+        if percentIndex == -1:
+            return False
+        if percentIndex > 0 and formatText[percentIndex - 1] == "%":
+            searchIndex = percentIndex + 2
+            continue
+        priorQuote = formatText.rfind('"', 0, percentIndex)
+        nextQuote = formatText.find('"', percentIndex + 2)
+        if priorQuote != -1 and nextQuote != -1:
+            return True
+        searchIndex = percentIndex + 2
+
+
 # ==========================================================================
 # Checkers
 #
@@ -2170,10 +2495,15 @@ def call_has_later_cleanup_call(
 #            SS3111 undeclaredBodyEffect, SS3112 unknownErrorVariant
 #   AS32xx — performance discipline           (T3 refinement)
 #            SS3201 deadStore, SS3202 allocationInLoop,
-#            SS3204 bindThenIgnore
+#            SS3203 stringAccumulatorAppendInLoop,
+#            SS3204 bindThenIgnore,
+#            SS3205 snprintfI32OffsetWithoutWidening,
+#            SS3206 selectedListAppendInHandler,
+#            SS3207 rowCountMutationUnchecked
 #   AS33xx — memory / resource discipline     (T3 refinement)
 #            SS3301 heapContradiction, SS3302 allocationSourceMissing,
-#            SS3303 allocateFreeUnpaired, SS3304 stackLimitOverrun
+#            SS3303 allocateFreeUnpaired, SS3304 stackLimitOverrun,
+#            SS3305 uncheckedHeapAllocation
 #   AS34xx — layout / representation          (T3 refinement)
 #            SS3401 recordAlignNotPowerOfTwo, SS3404 arrayLengthZero,
 #            SS3405 inlineCapacityWithoutSpillAllocator,
@@ -2183,7 +2513,7 @@ def call_has_later_cleanup_call(
 #            SS3506 unawaitedSubmitWork, SS3507 selectWithoutCases,
 #            SS3508 selectCaseReferencesUnknownSelect,
 #            SS3510 asyncCallMissingBoundary
-#   SS36xx — webserver discipline             (T3 refinement / T1 spec)
+#   SS36xx — JSON / webserver discipline      (T3 refinement / T1 spec)
 #            SS3601 invalidRouteMethod (whitelist: GET/HEAD/POST/PUT/PATCH/
 #                   DELETE/OPTIONS; the native dispatcher silently never
 #                   matches anything outside this set),
@@ -2228,7 +2558,14 @@ def call_has_later_cleanup_call(
 #            SS3613 narrativeReferencesLineNumber (narrative attachments
 #                   should cite STABLE identifiers — function names,
 #                   rule IDs, grep-anchors — never `<file>:<line>` or
-#                   `line <N>` patterns that drift on the next edit)
+#                   `line <N>` patterns that drift on the next edit),
+#            SS3615 responseBodyForwarderMissing (user-op wrappers around
+#                   http.responseText/Bytes/SSE must declare the forwarded
+#                   body input so SS3603 remains transitive),
+#            SS3620 unguardedJsonAccess, SS3621 staleJsonCursor,
+#            SS3622 malformedJsonPath, SS3623 unescapedJsonStringInterpolation,
+#            SS3624 deprecatedJsonBuilderCall,
+#            SS3625 deprecatedJsonFinderCall
 #   SS37xx — type system discipline           (T3 refinement)
 #            SS3701 circularAlias
 #   SS38xx — codec discipline                 (T3 refinement)
@@ -2239,7 +2576,9 @@ def call_has_later_cleanup_call(
 #   SS39xx — resource lifecycle               (T3 refinement)
 #            SS3901 fileHandleNotClosed,
 #            SS3903 guardTokenSourceWithoutRelease,
-#            SS3904 guardTokenDoesNotProtectSharedState
+#            SS3904 guardTokenDoesNotProtectSharedState,
+#            SS3905 sqliteDatabaseFailureCleanupMissing,
+#            SS3906 sqliteStatementFinalizeMissing
 #   AS40xx — style discipline                 (T4 style)
 #            SS4001 callObjectSuffix, SS4002 bindErrorSuffix,
 #            SS4003 makeErrorSuffix, SS4004 vagueName,
@@ -3194,10 +3533,7 @@ def check_unused_bind_slots(facts: ExtendedFacts) -> List[Diagnostic]:
 
 
 def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
-    """Calls to known-fallible targets without both `bindError` AND
-    `branchIfError` (or an explicit ignoreOk + bindError pair) silently
-    drop failures. Matches semlint.py's hiddenFailure rule but on the new
-    structured schema."""
+    """Known-fallible calls must expose their failure/status disposition."""
     diagnostics: List[Diagnostic] = []
     for operation in facts.base.operations.values():
         operationCitations = narrative_citations_for_operation(facts, operation.name)
@@ -4751,6 +5087,323 @@ def check_allocation_in_loop(facts: ExtendedFacts) -> List[Diagnostic]:
     return diagnostics
 
 
+def check_string_accumulator_append_in_loop(facts: ExtendedFacts) -> List[Diagnostic]:
+    """Repeated strcat-style appends in loops rescan the accumulator."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        labelIndexByName: Dict[str, int] = {}
+        for lineIndex, sourceLine in enumerate(operation.lines):
+            if is_comment(sourceLine) or not sourceLine.tokens:
+                continue
+            if sourceLine.verb == "label" and sourceLine.args:
+                labelIndexByName[sourceLine.args[0]] = lineIndex
+
+        loopBodyRanges: List[Tuple[int, int, str]] = []
+        for lineIndex, sourceLine in enumerate(operation.lines):
+            if is_comment(sourceLine) or not sourceLine.tokens:
+                continue
+            verb = sourceLine.verb
+            args = sourceLine.args
+            branchTarget: Optional[str] = None
+            if verb == "branch" and args:
+                branchTarget = args[0]
+            elif verb == "branchIf" and len(args) >= 2:
+                branchTarget = args[1]
+            elif verb in {"branchIfError", "branchIfGroupError", "branchIfChannelClosed"} and len(args) >= 2:
+                branchTarget = args[1]
+            elif verb == "branchSelected" and len(args) >= 3:
+                branchTarget = args[2]
+            if not branchTarget:
+                continue
+            labelIndex = labelIndexByName.get(branchTarget)
+            if labelIndex is None or labelIndex >= lineIndex:
+                continue
+            loopBodyRanges.append((labelIndex, lineIndex, branchTarget))
+
+        for loopStart, loopEnd, loopLabel in loopBodyRanges:
+            for bodyLine in operation.lines[loopStart:loopEnd]:
+                if is_comment(bodyLine) or not bodyLine.tokens:
+                    continue
+                if bodyLine.verb != "call" or len(bodyLine.args) < 2:
+                    continue
+                if bodyLine.args[1] not in C_STRING_ACCUMULATOR_CALL_TARGETS:
+                    continue
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS3203",
+                    kind="performanceDiscipline.stringAccumulatorAppendInLoop",
+                    severity=Severity.WARNING,
+                    subjectName=bodyLine.args[0],
+                    subjectKind="call",
+                    gapEdge="cursorBuilder",
+                    intentSlogan="strcat-style accumulator append in loop",
+                    primary=span_of_line(bodyLine, "stringAppendInLoop"),
+                    related=[
+                        span_of_line(operation.lines[loopStart], "loopHeaderLabel"),
+                        span_of_line(operation.line, "enclosingOperation"),
+                    ],
+                    invariantRule=(
+                        f"`{bodyLine.args[1]}` rescans the destination on every "
+                        f"iteration of `label {loopLabel}`; track a write offset "
+                        "and copy or format at that cursor instead"
+                    ),
+                    specAnchor="docs/optimization-guide.md#bounded-string-accumulators",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="useCursorBasedBuilder",
+                            shape=(
+                                f"# track writeOffset outside `label {loopLabel}`\n"
+                                "# write at pointer.offset(destination, writeOffset)\n"
+                                "# increment writeOffset by the bytes written"
+                            ),
+                            evidence=[span_of_line(bodyLine)],
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_string_accumulator_append_in_loop",
+                    agentHint=(
+                        "strcat and strncat are bounded by NUL-terminated scans; "
+                        "hot loops should append with an explicit cursor"
+                    ),
+                ))
+    return diagnostics
+
+
+def check_snprintf_i32_offset_without_widening(facts: ExtendedFacts) -> List[Diagnostic]:
+    """A c.snprintf byte count is CSignedInt32; cursor offsets are i64."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        operationCalls = collect_operation_calls(operation)
+        snprintfResultNames: Dict[str, SourceLine] = {}
+        for callFact in operationCalls.values():
+            if callFact.target != "c.snprintf":
+                continue
+            for resultName, bindLine in call_success_value_lines(callFact):
+                snprintfResultNames[resultName] = bindLine
+        if not snprintfResultNames:
+            continue
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        for callFact in operationCalls.values():
+            if callFact.target != "math.addI64":
+                continue
+            for argLine in callFact.arg_lines:
+                if len(argLine.args) < 3:
+                    continue
+                argValue = argLine.args[2]
+                if argValue not in snprintfResultNames:
+                    continue
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS3205",
+                    kind="performanceDiscipline.snprintfI32OffsetWithoutWidening",
+                    severity=Severity.WARNING,
+                    subjectName=callFact.name,
+                    subjectKind="call",
+                    gapEdge="signExtendCSignedInt32ToCSignedInt64",
+                    intentSlogan="snprintf count added to i64 cursor",
+                    primary=span_of_line(argLine, "i64AddArgument"),
+                    related=[
+                        span_of_line(snprintfResultNames[argValue], "snprintfResultBind"),
+                        span_of_line(operation.line, "enclosingOperation"),
+                    ],
+                    invariantRule=(
+                        "`c.snprintf` returns a CSignedInt32 byte count; "
+                        "cursor math using math.addI64 must first widen it "
+                        "with math.signExtendCSignedInt32ToCSignedInt64"
+                    ),
+                    specAnchor="docs/optimization-guide.md#bounded-string-accumulators",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="widenSnprintfResultBeforeCursorMath",
+                            shape=(
+                                f"call widen{argValue}Call math.signExtendCSignedInt32ToCSignedInt64\n"
+                                f"arg widen{argValue}Call inputValue {argValue}\n"
+                                f"run widen{argValue}Call\n"
+                                f"bind {argValue}I64 CSignedInt64 widen{argValue}Call\n"
+                                f"# use `{argValue}I64` in `{callFact.name}`"
+                            ),
+                            evidence=[span_of_line(argLine)],
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_snprintf_i32_offset_without_widening",
+                    agentHint=(
+                        "cursor builders should keep offsets in one width; "
+                        "explicit widening prevents silent no-op or width-drift lowering"
+                    ),
+                ))
+    return diagnostics
+
+
+def check_gui_selection_handler_appends_list_item(facts: ExtendedFacts) -> List[Diagnostic]:
+    """Reading list selection and appending an item in the same GUI handler
+    is usually an accidental growth path, not a completion/update."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        operationCalls = collect_operation_calls(operation)
+        selectionReads = [
+            callFact for callFact in operationCalls.values()
+            if callFact.target == "gui.listBoxSelectedIndex"
+        ]
+        if not selectionReads:
+            continue
+        appendCalls = [
+            callFact for callFact in operationCalls.values()
+            if callFact.target == "gui.listBoxAppendItem"
+        ]
+        if not appendCalls:
+            continue
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        for appendCall in appendCalls:
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3206",
+                kind="performanceDiscipline.selectedListAppendInHandler",
+                severity=Severity.WARNING,
+                subjectName=operation.name,
+                subjectKind="operation",
+                gapEdge="selectionMutationBoundary",
+                intentSlogan="selection handler appends list item",
+                primary=span_of_line(appendCall.line, "listAppendCall"),
+                related=[
+                    span_of_line(selectionReads[0].line, "selectionReadCall"),
+                    span_of_line(operation.line, "enclosingOperation"),
+                ],
+                invariantRule=(
+                    "an operation that reads gui.listBoxSelectedIndex should "
+                    "not also append to the same list; complete/update handlers "
+                    "must mutate status or selected-row state without growing the collection"
+                ),
+                specAnchor="docs/optimization-guide.md#gui-event-mutation-boundaries",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="separateAddAndSelectionHandlers",
+                        shape=(
+                            "# keep gui.listBoxAppendItem in the add/create handler\n"
+                            "# keep selection handlers to selected-index reads and status/row updates"
+                        ),
+                        evidence=[span_of_line(appendCall.line)],
+                    ),
+                ],
+                confidence=Confidence.MEDIUM,
+                effort=Effort.LOCAL,
+                passProvenance="check_gui_selection_handler_appends_list_item",
+                agentHint=(
+                    "this catches the completed-task button pattern that grows "
+                    "a list every click instead of updating the selected item"
+                ),
+            ))
+    return diagnostics
+
+
+def _row_count_mutation_target_needs_guard(callFact: CallFact) -> bool:
+    if callFact.target in FIXED_ROW_COUNT_MUTATION_TARGETS:
+        return True
+    target = callFact.target.lower()
+    if not (target.startswith("insert") or target.startswith("split")):
+        return False
+    return (
+        "row" in target
+        and call_arg_value(callFact, "activeRowCount") is not None
+        and call_arg_value(callFact, "maxRows") is not None
+    )
+
+
+def check_row_count_mutation_unchecked(facts: ExtendedFacts) -> List[Diagnostic]:
+    """Fixed-capacity row mutators return the old row count when full; callers
+    must branch before moving cursors or marking dirty state."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        operationCalls = collect_operation_calls(operation)
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        for callFact in operationCalls.values():
+            if not _row_count_mutation_target_needs_guard(callFact):
+                continue
+            activeCountName = call_arg_value(callFact, "activeRowCount")
+            if activeCountName is None:
+                continue
+            resultNames = call_success_value_names(callFact)
+            if not resultNames:
+                continue
+            comparisonBoolNames: Set[str] = set()
+            comparisonLines: List[SourceLine] = []
+            for compareCall in operationCalls.values():
+                if compareCall.line.number <= callFact.line.number:
+                    continue
+                if compareCall.target not in {"math.equalI64", "math.equalCSignedInt64"}:
+                    continue
+                leftValue = call_arg_value(compareCall, "left")
+                rightValue = call_arg_value(compareCall, "right")
+                if not (
+                    (leftValue in resultNames and rightValue == activeCountName)
+                    or (rightValue in resultNames and leftValue == activeCountName)
+                ):
+                    continue
+                comparisonBoolNames.update(call_success_value_names(compareCall))
+                comparisonLines.append(compareCall.line)
+            hasBranch = False
+            if comparisonBoolNames:
+                for sourceLine in operation.lines:
+                    if (not is_comment(sourceLine) and sourceLine.tokens
+                            and sourceLine.verb == "branchIf"
+                            and len(sourceLine.args) >= 2
+                            and sourceLine.args[0] in comparisonBoolNames):
+                        hasBranch = True
+                        break
+            if hasBranch:
+                continue
+            related = [span_of_line(operation.line, "enclosingOperation")]
+            related.extend(span_of_line(line, "rowCountComparison") for line in comparisonLines[:1])
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3207",
+                kind="performanceDiscipline.rowCountMutationUnchecked",
+                severity=Severity.WARNING,
+                subjectName=callFact.name,
+                subjectKind="call",
+                gapEdge="capacityFailureBranch",
+                intentSlogan="row-count mutation lacks full-buffer branch",
+                primary=span_of_line(callFact.line, "rowCountMutationCall"),
+                related=related,
+                invariantRule=(
+                    f"`{callFact.target}` returns the unchanged activeRowCount "
+                    "when the fixed row buffer is full; callers must compare "
+                    "the returned row count to the prior count and branch before "
+                    "moving cursors, setting dirty state, or writing into the row"
+                ),
+                specAnchor="docs/optimization-guide.md#fixed-capacity-row-mutations",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="branchOnUnchangedRowCount",
+                        shape=(
+                            f"call {callFact.name}FailedCheckCall math.equalI64\n"
+                            f"arg {callFact.name}FailedCheckCall left <rowsAfterMutation>\n"
+                            f"arg {callFact.name}FailedCheckCall right {activeCountName}\n"
+                            f"run {callFact.name}FailedCheckCall\n"
+                            f"bind {callFact.name}Failed Bool {callFact.name}FailedCheckCall\n"
+                            f"branchIf {callFact.name}Failed <noMutationLabel>"
+                        ),
+                        evidence=[span_of_line(callFact.line)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                effort=Effort.LOCAL,
+                passProvenance="check_row_count_mutation_unchecked",
+                agentHint=(
+                    "fixed-capacity editors must treat unchanged row count as "
+                    "a refused insert/split before deriving cursor positions from it"
+                ),
+            ))
+    return diagnostics
+
+
 def check_bind_then_ignore(facts: ExtendedFacts) -> List[Diagnostic]:
     """`bind X T call` immediately followed by `ignoreValue X T` declares a
     binding only to discard it. Use `ignoreValue call T` directly instead."""
@@ -4916,6 +5569,64 @@ def check_allocation_source_missing(facts: ExtendedFacts) -> List[Diagnostic]:
             passProvenance="check_allocation_source_missing",
             agentHint="the allocation source points callers at the specific call that may fail with out-of-memory",
         ))
+    return diagnostics
+
+
+def check_unchecked_heap_allocation(facts: ExtendedFacts) -> List[Diagnostic]:
+    """Heap allocation calls must explicitly handle allocation failure."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        operationCalls = collect_operation_calls(operation)
+        for callFact in operationCalls.values():
+            if callFact.target not in HEAP_ALLOCATION_CALL_TARGETS:
+                continue
+            missingDisposition: List[str] = []
+            if not callFact.bind_error_lines:
+                missingDisposition.append("bindError")
+            if not callFact.branch_error_lines:
+                missingDisposition.append("branchIfError")
+            if not missingDisposition:
+                continue
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3305",
+                kind="memoryDiscipline.uncheckedHeapAllocation",
+                severity=Severity.WARNING,
+                subjectName=callFact.name,
+                subjectKind="call",
+                gapEdge=",".join(missingDisposition),
+                intentSlogan="heap allocation without failure path",
+                primary=span_of_line(callFact.line, "allocationCall"),
+                related=[span_of_line(operation.line, "enclosingOperation")],
+                invariantRule=(
+                    f"`{callFact.target}` can fail under memory pressure; "
+                    "allocation calls must have both `bindError` and "
+                    "`branchIfError`"
+                ),
+                specAnchor="SYNTAX.md#bindError",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="addAllocationFailurePath",
+                        shape=(
+                            f"bindError {callFact.name}Error <ErrorType> {callFact.name}\n"
+                            f"branchIfError {callFact.name} <allocationFailedLabel>\n"
+                            f"# ...success continuation...\n"
+                            f"label <allocationFailedLabel>\n"
+                            f"returnError {callFact.name}Error"
+                        ),
+                        evidence=[span_of_line(callFact.line)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                effort=Effort.LOCAL,
+                passProvenance="check_unchecked_heap_allocation",
+                agentHint=(
+                    "allocator failure must be represented in the operation's "
+                    "control flow before the returned pointer is used"
+                ),
+            ))
     return diagnostics
 
 
@@ -5605,6 +6316,187 @@ def check_file_handle_not_closed(facts: ExtendedFacts) -> List[Diagnostic]:
                 agentHint=(
                     "if the op returns the handle to the caller, declare output "
                     "type `CFileHandle` to suppress this check"
+                ),
+            ))
+    return diagnostics
+
+
+def check_sqlite_database_failure_cleanup_missing(facts: ExtendedFacts) -> List[Diagnostic]:
+    """After sqlite.openDatabase succeeds, later setup failures must close
+    the fresh handle unless a close defer already owns the lifetime."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        operationCalls = collect_operation_calls(operation)
+        operationDefers = facts.operationDefers.get(operation.name, [])
+        for openCall in operationCalls.values():
+            if openCall.target not in SQLITE_DATABASE_OPEN_TARGETS:
+                continue
+            databaseNames = call_success_value_names(openCall)
+            if not databaseNames:
+                continue
+            if defer_consumes_any_value(
+                operationDefers,
+                set(SQLITE_DATABASE_CLOSE_TARGETS),
+                databaseNames,
+                afterLine=openCall.line.number,
+            ):
+                continue
+            transferLineNumber: Optional[int] = None
+            for sourceLine in operation.lines:
+                if sourceLine.number <= openCall.line.number:
+                    continue
+                if is_comment(sourceLine) or not sourceLine.tokens:
+                    continue
+                args = sourceLine.args
+                transfersDatabase = False
+                if sourceLine.verb == "set" and args and args[-1] in databaseNames:
+                    transfersDatabase = True
+                elif sourceLine.verb in {"returnOk", "returnValue"} and args and args[0] in databaseNames:
+                    transfersDatabase = True
+                if transfersDatabase:
+                    transferLineNumber = sourceLine.number
+                    break
+            for sourceLine in operation.lines:
+                if (is_comment(sourceLine) or not sourceLine.tokens
+                        or sourceLine.verb != "branchIfError"
+                        or len(sourceLine.args) < 2):
+                    continue
+                if sourceLine.args[0] == openCall.name:
+                    continue
+                if sourceLine.number <= openCall.line.number:
+                    continue
+                if transferLineNumber is not None and sourceLine.number >= transferLineNumber:
+                    continue
+                failureLabel = sourceLine.args[1]
+                if label_body_calls_cleanup_for_value(
+                    operation,
+                    failureLabel,
+                    set(SQLITE_DATABASE_CLOSE_TARGETS),
+                    databaseNames,
+                ):
+                    continue
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS3905",
+                    kind="resourceLifecycle.sqliteDatabaseFailureCleanupMissing",
+                    severity=Severity.WARNING,
+                    subjectName=openCall.name,
+                    subjectKind="call",
+                    gapEdge="failureLabel.closeDatabase",
+                    intentSlogan="sqlite open handle leaks on setup failure",
+                    primary=span_of_line(sourceLine, "postOpenFailureBranch"),
+                    related=[
+                        span_of_line(openCall.line, "sqliteOpenCall"),
+                        span_of_line(operation.line, "enclosingOperation"),
+                    ],
+                    invariantRule=(
+                        "after sqlite.openDatabase succeeds, every later "
+                        "branchIfError before ownership transfer must close "
+                        "the fresh SqliteDatabase handle or install a close defer"
+                    ),
+                    specAnchor="docs/optimization-guide.md#sqlite-bootstrap-cleanup",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="closeFreshDatabaseInFailureLabel",
+                            shape=(
+                                f"label {failureLabel}\n"
+                                f"call closeDatabaseAfterFailureCall sqlite.closeDatabase\n"
+                                f"arg closeDatabaseAfterFailureCall database <freshDatabase>\n"
+                                f"run closeDatabaseAfterFailureCall\n"
+                                f"ignoreOk closeDatabaseAfterFailureCall Void\n"
+                                f"returnError <setupError>"
+                            ),
+                            evidence=[span_of_line(sourceLine)],
+                        ),
+                        FixCandidate(
+                            name="installCloseDeferAfterOpen",
+                            shape="defer closeFreshDatabaseDefer sqlite.closeDatabase <freshDatabase>",
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_sqlite_database_failure_cleanup_missing",
+                    agentHint=(
+                        "schema/bootstrap code often opens once then applies "
+                        "DDL; every DDL failure path must release that fresh handle"
+                    ),
+                ))
+    return diagnostics
+
+
+def check_sqlite_statement_finalize_missing(facts: ExtendedFacts) -> List[Diagnostic]:
+    """Prepared SQLite statements must be finalized by defer or explicit
+    cleanup in the same operation unless the op returns the statement."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        operationCalls = collect_operation_calls(operation)
+        operationDefers = facts.operationDefers.get(operation.name, [])
+        for prepareCall in operationCalls.values():
+            if prepareCall.target not in SQLITE_STATEMENT_PREPARE_TARGETS:
+                continue
+            statementNames = call_success_value_names(prepareCall)
+            if not statementNames:
+                continue
+            if defer_consumes_any_value(
+                operationDefers,
+                set(SQLITE_STATEMENT_FINALIZE_TARGETS),
+                statementNames,
+                afterLine=prepareCall.line.number,
+            ):
+                continue
+            if call_has_later_cleanup_call(
+                prepareCall,
+                operationCalls,
+                set(SQLITE_STATEMENT_FINALIZE_TARGETS),
+            ):
+                continue
+            outputTransfersStatement = False
+            for sourceLine in operation.lines:
+                if (not is_comment(sourceLine) and sourceLine.tokens
+                        and sourceLine.verb == "output"
+                        and len(sourceLine.args) >= 2
+                        and sourceLine.args[0] == operation.name):
+                    if sourceLine.args[1] == "SqliteStatement":
+                        outputTransfersStatement = True
+                    elif (sourceLine.args[1] == "Result" and len(sourceLine.args) >= 3
+                            and sourceLine.args[2] == "SqliteStatement"):
+                        outputTransfersStatement = True
+            if outputTransfersStatement:
+                continue
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3906",
+                kind="resourceLifecycle.sqliteStatementFinalizeMissing",
+                severity=Severity.WARNING,
+                subjectName=prepareCall.name,
+                subjectKind="call",
+                gapEdge="defer.finalizeStatement",
+                intentSlogan="prepared statement lacks finalize",
+                primary=span_of_line(prepareCall.line, "sqlitePrepareCall"),
+                related=[span_of_line(operation.line, "enclosingOperation")],
+                invariantRule=(
+                    "every sqlite.prepareStatement success handle should be "
+                    "paired with defer sqlite.finalizeStatement or an explicit "
+                    "finalize call in the same operation"
+                ),
+                specAnchor="docs/optimization-guide.md#sqlite-statement-lifetime",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="addFinalizeDefer",
+                        shape="defer finalizeStatementDefer sqlite.finalizeStatement <statement>",
+                        evidence=[span_of_line(prepareCall.line)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                effort=Effort.TRIVIAL,
+                passProvenance="check_sqlite_statement_finalize_missing",
+                agentHint=(
+                    "SQLite statements retain native resources until finalized; "
+                    "use a defer immediately after a successful prepare"
                 ),
             ))
     return diagnostics
@@ -7093,6 +7985,412 @@ def check_duplicate_declarations(facts: ExtendedFacts) -> List[Diagnostic]:
 
 
 # ==========================================================================
+# SS36xx — JSON CRUD discipline
+# ==========================================================================
+
+def check_unguarded_json_access(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3620 — a JsonCursor returned from a fallible navigator must not be
+    consumed before the call's error branch is installed."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        operationCalls = collect_operation_calls(operation)
+        for callFact in operationCalls.values():
+            if callFact.target not in JSON_FALLIBLE_CURSOR_NAVIGATOR_TARGETS:
+                continue
+            runLineNumber = min(
+                (runLine.number for runLine in callFact.run_lines),
+                default=callFact.line.number,
+            )
+            for bindLine in callFact.bind_ok_lines:
+                if len(bindLine.args) < 3 or bindLine.args[1] != "JsonCursor":
+                    continue
+                cursorName = bindLine.args[0]
+                firstUseLine = _first_value_use_after_line(
+                    operation, cursorName, bindLine.number,
+                )
+                if firstUseLine is None:
+                    continue
+                guardedBeforeUse = any(
+                    runLineNumber < branchLine.number < firstUseLine.number
+                    for branchLine in callFact.branch_error_lines
+                )
+                if guardedBeforeUse:
+                    continue
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS3620",
+                    kind="json.unguardedJsonAccess",
+                    severity=Severity.WARNING,
+                    subjectName=cursorName,
+                    subjectKind="JsonCursor",
+                    gapEdge="branchIfErrorBeforeCursorUse",
+                    intentSlogan="JsonCursor used before error guard",
+                    primary=span_of_line(firstUseLine, "firstCursorUse"),
+                    related=[
+                        span_of_line(callFact.line, "jsonNavigatorCall"),
+                        span_of_line(bindLine, "cursorBindOk"),
+                        span_of_line(operation.line, "enclosingOperation"),
+                    ],
+                    invariantRule=(
+                        f"`{callFact.target}` returns `Result JsonCursor "
+                        "JsonAccessError`; install `branchIfError` after `run` "
+                        "and before the first use of the cursor"
+                    ),
+                    specAnchor="SYNTAX.md#json-cursor-navigation",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="guardJsonNavigatorBeforeCursorUse",
+                            shape=(
+                                f"bindError {callFact.name}Error JsonAccessError {callFact.name}\n"
+                                f"branchIfError {callFact.name} <jsonAccessFailedLabel>\n"
+                                f"# use `{cursorName}` only after the branch"
+                            ),
+                            evidence=[
+                                span_of_line(callFact.line),
+                                span_of_line(firstUseLine),
+                            ],
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_unguarded_json_access",
+                    agentHint=(
+                        "json.documentRoot is total, but objectFieldAt, "
+                        "arrayElementAt, cursorParent, cursorAtPath, and "
+                        "cursorObjectFieldValueAt can fail before producing a "
+                        "usable cursor"
+                    ),
+                ))
+    return diagnostics
+
+
+def check_stale_json_cursor(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3621 — cursors bound before a structural mutation should be
+    re-found before they are read again."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        operationCalls = collect_operation_calls(operation)
+        cursorDocuments: Dict[str, Tuple[str, SourceLine]] = {}
+        staleCursors: Dict[str, Tuple[CallFact, SourceLine, SourceLine]] = {}
+
+        for sourceLine in operation.lines:
+            if is_comment(sourceLine) or not sourceLine.tokens:
+                continue
+
+            if (sourceLine.verb in {"bind", "bindOk"} and len(sourceLine.args) >= 3
+                    and sourceLine.args[1] == "JsonCursor"):
+                cursorName = sourceLine.args[0]
+                sourceCall = operationCalls.get(sourceLine.args[2])
+                documentName = call_arg_value(sourceCall, "document") if sourceCall else None
+                if documentName:
+                    cursorDocuments[cursorName] = (documentName, sourceLine)
+                    staleCursors.pop(cursorName, None)
+                continue
+
+            for cursorName, (mutatorCall, mutatorRunLine, cursorBindLine) in list(staleCursors.items()):
+                if not _line_uses_value(sourceLine, cursorName):
+                    continue
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS3621",
+                    kind="json.staleJsonCursor",
+                    severity=Severity.WARNING,
+                    subjectName=cursorName,
+                    subjectKind="JsonCursor",
+                    gapEdge="freshCursorAfterStructuralMutation",
+                    intentSlogan="stale JsonCursor read",
+                    primary=span_of_line(sourceLine, "staleCursorUse"),
+                    related=[
+                        span_of_line(mutatorRunLine, "structuralMutatorRun"),
+                        span_of_line(mutatorCall.line, "structuralMutatorCall"),
+                        span_of_line(cursorBindLine, "cursorBinding"),
+                        span_of_line(operation.line, "enclosingOperation"),
+                    ],
+                    invariantRule=(
+                        f"`{cursorName}` was bound before structural mutator "
+                        f"`{mutatorCall.target}` ran on the same JsonDocument; "
+                        "reacquire a cursor before reading it again"
+                    ),
+                    specAnchor="SYNTAX.md#json-cursor-lifetime",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="refreshJsonCursorAfterMutation",
+                            shape=(
+                                "# reacquire the cursor after the mutator\n"
+                                "call refreshJsonCursorCall json.cursorAtPath\n"
+                                "arg refreshJsonCursorCall document <document>\n"
+                                "arg refreshJsonCursorCall path <JsonPath>\n"
+                                "run refreshJsonCursorCall\n"
+                                f"bindOk {cursorName} JsonCursor refreshJsonCursorCall"
+                            ),
+                            evidence=[
+                                span_of_line(mutatorRunLine),
+                                span_of_line(sourceLine),
+                            ],
+                        ),
+                    ],
+                    confidence=Confidence.MEDIUM,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_stale_json_cursor",
+                    agentHint=(
+                        "structural mutations can invalidate prior cursor "
+                        "indices; use objectFieldAt, arrayElementAt, or "
+                        "cursorAtPath to reacquire the position"
+                    ),
+                ))
+                staleCursors.pop(cursorName, None)
+
+            if sourceLine.verb != "run" or not sourceLine.args:
+                continue
+            mutatorCall = operationCalls.get(sourceLine.args[0])
+            if mutatorCall is None:
+                continue
+            if mutatorCall.target not in JSON_STRUCTURAL_CURSOR_MUTATOR_TARGETS:
+                continue
+            documentName = call_arg_value(mutatorCall, "document")
+            if not documentName:
+                continue
+            for cursorName, (cursorDocumentName, cursorBindLine) in cursorDocuments.items():
+                if cursorDocumentName != documentName:
+                    continue
+                if cursorBindLine.number >= sourceLine.number:
+                    continue
+                staleCursors[cursorName] = (mutatorCall, sourceLine, cursorBindLine)
+    return diagnostics
+
+
+def check_malformed_json_path(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3622 — statically-declared JsonPath literals must follow the
+    `.field` / `[index]` grammar before runtime navigation sees them."""
+    diagnostics: List[Diagnostic] = []
+    for sourceLine in facts.base.lines:
+        assignment = _literal_assignment(sourceLine)
+        if assignment is None:
+            continue
+        pathName, typeName, pathText = assignment
+        if typeName != "JsonPath":
+            continue
+        malformedReason = _json_path_malformed_reason(pathText)
+        if malformedReason is None:
+            continue
+        diagnostics.append(Diagnostic(
+            tier=Tier.T1_SPEC,
+            code="SS3622",
+            kind="json.malformedJsonPath",
+            severity=Severity.ERROR,
+            subjectName=pathName,
+            subjectKind="JsonPath",
+            gapEdge=malformedReason,
+            intentSlogan="malformed JsonPath literal",
+            primary=span_of_line(sourceLine, "jsonPathLiteral"),
+            invariantRule=(
+                "JsonPath literals accept only `.fieldName` object steps and "
+                "`[index]` array steps with non-negative decimal indices"
+            ),
+            specAnchor="SYNTAX.md#JsonPath",
+            fixCandidates=[
+                FixCandidate(
+                    name="rewriteJsonPathLiteral",
+                    shape='storage local immutable <name> JsonPath ".field[0].child"',
+                    evidence=[span_of_line(sourceLine)],
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            blocksCompile=True,
+            effort=Effort.TRIVIAL,
+            passProvenance="check_malformed_json_path",
+            agentHint=(
+                "this is syntactic only: a valid path may still miss at runtime, "
+                "but malformed bracket/index/segment shapes should stop earlier"
+            ),
+        ))
+    return diagnostics
+
+
+def check_unescaped_json_string_interpolation(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3623 — c.snprintf `%s` inside JSON string content bypasses JSON
+    escaping and should move to the native JSON surface."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        operationCalls = collect_operation_calls(operation)
+        literalValues = _operation_literal_assignments(facts, operation)
+        for callFact in operationCalls.values():
+            if callFact.target != "c.snprintf":
+                continue
+            for argLine in callFact.arg_lines:
+                if len(argLine.args) < 3 or argLine.args[1] != "format":
+                    continue
+                formatName = argLine.args[2]
+                literal = literalValues.get(formatName)
+                if literal is None:
+                    continue
+                _typeName, formatText, literalLine = literal
+                if not _format_contains_json_string_percent_s(formatText):
+                    continue
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS3623",
+                    kind="json.unescapedJsonStringInterpolation",
+                    severity=Severity.WARNING,
+                    subjectName=callFact.name,
+                    subjectKind="call",
+                    gapEdge="jsonStringEscape",
+                    intentSlogan="snprintf interpolates JSON string",
+                    primary=span_of_line(argLine, "snprintfFormatArgument"),
+                    related=[
+                        span_of_line(literalLine, "formatLiteral"),
+                        span_of_line(callFact.line, "snprintfCall"),
+                        span_of_line(operation.line, "enclosingOperation"),
+                    ],
+                    invariantRule=(
+                        f"`{formatName}` contains `%s` inside JSON string "
+                        "content; interpolated bytes are not JSON-escaped"
+                    ),
+                    specAnchor="SYNTAX.md#json.stringify",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="useJsonStringifyOrDocumentApi",
+                            shape=(
+                                "call stringifyCall json.stringify.<TypeName>\n"
+                                "# or build a JsonDocument and call json.serializeDocument"
+                            ),
+                            evidence=[
+                                span_of_line(literalLine),
+                                span_of_line(argLine),
+                            ],
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_unescaped_json_string_interpolation",
+                    agentHint=(
+                        "raw `%s` in a JSON string can break syntax or inject "
+                        "fields; use json.stringify.<TypeName> or "
+                        "json.serializeDocument"
+                    ),
+                ))
+    return diagnostics
+
+
+def _deprecated_json_call_diagnostic(
+    facts: ExtendedFacts,
+    operation: OperationFact,
+    sourceLine: SourceLine,
+    targetName: str,
+    subjectName: str,
+    subjectKind: str,
+    code: str,
+    kind: str,
+    intentSlogan: str,
+    replacementShape: str,
+    agentHint: str,
+) -> Diagnostic:
+    return Diagnostic(
+        tier=Tier.T1_SPEC,
+        code=code,
+        kind=kind,
+        severity=Severity.ERROR,
+        subjectName=subjectName,
+        subjectKind=subjectKind,
+        gapEdge="replacementJsonCrudApi",
+        intentSlogan=intentSlogan,
+        primary=span_of_line(sourceLine, "deprecatedJsonCall"),
+        related=[span_of_line(operation.line, "enclosingOperation")],
+        invariantRule=(
+            f"`{targetName}` is the legacy JSON surface; new source should use "
+            "json.stringify.<TypeName>, json.parse.<TypeName>, or the "
+            "JsonDocument cursor/mutator API"
+        ),
+        specAnchor="SYNTAX.md#json-crud-api",
+        citations=narrative_citations_for_operation(facts, operation.name),
+        fixCandidates=[
+            FixCandidate(
+                name="migrateToJsonCrudApi",
+                shape=replacementShape,
+                evidence=[span_of_line(sourceLine)],
+            ),
+        ],
+        confidence=Confidence.HIGH,
+        blocksCompile=True,
+        effort=Effort.LOCAL,
+        passProvenance="check_deprecated_json_calls",
+        agentHint=agentHint,
+    )
+
+
+def check_deprecated_json_builder_calls(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3624 — legacy JsonBuilder calls should not remain in user source."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        for sourceLine in operation.lines:
+            if is_comment(sourceLine) or not sourceLine.tokens or len(sourceLine.args) < 2:
+                continue
+            if sourceLine.verb not in {"call", "defer"}:
+                continue
+            targetName = sourceLine.args[1]
+            if targetName not in DEPRECATED_JSON_BUILDER_TARGETS:
+                continue
+            diagnostics.append(_deprecated_json_call_diagnostic(
+                facts=facts,
+                operation=operation,
+                sourceLine=sourceLine,
+                targetName=targetName,
+                subjectName=sourceLine.args[0],
+                subjectKind=sourceLine.verb,
+                code="SS3624",
+                kind="json.deprecatedJsonBuilderCall",
+                intentSlogan="legacy JsonBuilder call",
+                replacementShape=(
+                    "call stringifyCall json.stringify.<TypeName>\n"
+                    "# or: json.createEmptyDocument + setObjectField*/appendArrayElement*"
+                ),
+                agentHint=(
+                    "builder calls expose manual JSON assembly; migrate to typed "
+                    "stringify or the document mutator API before removing the "
+                    "legacy runtime surface"
+                ),
+            ))
+    return diagnostics
+
+
+def check_deprecated_json_finder_calls(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3625 — legacy one-shot JSON finder calls should move to cursors."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        for callFact in collect_operation_calls(operation).values():
+            if callFact.target not in DEPRECATED_JSON_FINDER_TARGETS:
+                continue
+            diagnostics.append(_deprecated_json_call_diagnostic(
+                facts=facts,
+                operation=operation,
+                sourceLine=callFact.line,
+                targetName=callFact.target,
+                subjectName=callFact.name,
+                subjectKind="call",
+                code="SS3625",
+                kind="json.deprecatedJsonFinderCall",
+                intentSlogan="legacy JSON finder call",
+                replacementShape=(
+                    "call createDocumentCall json.createDocument\n"
+                    "call cursorAtPathCall json.cursorAtPath\n"
+                    "call readCursorCall json.cursor<Type>"
+                ),
+                agentHint=(
+                    "finder calls hide traversal and type errors behind one "
+                    "operation; create a document, navigate to a cursor, then "
+                    "read through a typed cursor accessor"
+                ),
+            ))
+    return diagnostics
+
+
+# ==========================================================================
 # SS36xx — webserver discipline
 # ==========================================================================
 
@@ -7121,9 +8419,7 @@ def check_duplicate_declarations(facts: ExtendedFacts) -> List[Diagnostic]:
 # the client which is a known information-disclosure footgun. A handler
 # bound to a route whose METHOD is outside this set is dead code — the
 # dispatcher silently never matches it.
-HTTP_METHOD_WHITELIST: frozenset = frozenset({
-    "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS",
-})
+HTTP_METHOD_WHITELIST: frozenset = SHARED_SUPPORTED_HTTP_ROUTE_METHODS
 
 # http.* request readers that return a non-null pointer for any
 # dispatched request. Handlers that bind from these do NOT need a
@@ -7369,6 +8665,85 @@ def check_response_body_forwarder_declaration_honored(facts: ExtendedFacts) -> L
     return diagnostics
 
 
+def check_response_body_forwarder_missing(facts: ExtendedFacts) -> List[Diagnostic]:
+    """Any user operation that forwards one of its inputs to a response body
+    writer must declare responseBodyForwarder so SS3603 follows wrappers."""
+    diagnostics: List[Diagnostic] = []
+    responseBodyWriters = _collect_transitive_response_body_writers(facts)
+    declaredForwarders: Set[Tuple[str, str]] = set()
+    declaredForwarderOps: Set[str] = set()
+    for sourceLine in facts.base.lines:
+        if (is_comment(sourceLine) or not sourceLine.tokens
+                or sourceLine.verb != "responseBodyForwarder"
+                or len(sourceLine.args) < 2):
+            continue
+        declaredForwarders.add((sourceLine.args[0], sourceLine.args[1]))
+        declaredForwarderOps.add(sourceLine.args[0])
+
+    for operation in facts.base.operations.values():
+        inputTypes = operation_input_types(operation)
+        if not inputTypes:
+            continue
+        operationCalls = collect_operation_calls(operation)
+        for callFact in operationCalls.values():
+            if callFact.target not in responseBodyWriters:
+                continue
+            for argLine in callFact.arg_lines:
+                if len(argLine.args) < 3:
+                    continue
+                if argLine.args[1] != "body":
+                    continue
+                bodyValueName = argLine.args[2]
+                if bodyValueName not in inputTypes:
+                    continue
+                if (operation.name, bodyValueName) in declaredForwarders:
+                    continue
+                # If the op already declared a different forwarded input, let
+                # SS3607 and SS3603 reason about that explicit contract rather
+                # than double-reporting a second missing declaration here.
+                if operation.name in declaredForwarderOps:
+                    continue
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS3615",
+                    kind="webserver.responseBodyForwarderMissing",
+                    severity=Severity.WARNING,
+                    subjectName=operation.name,
+                    subjectKind="operation",
+                    gapEdge="responseBodyForwarder",
+                    intentSlogan="response wrapper lacks forwarder declaration",
+                    primary=span_of_line(argLine, "forwardedBodyArgument"),
+                    related=[
+                        span_of_line(callFact.line, "responseWriterCall"),
+                        span_of_line(operation.line, "enclosingOperation"),
+                    ],
+                    invariantRule=(
+                        f"`{operation.name}` forwards input `{bodyValueName}` "
+                        "to a response body writer; declare "
+                        f"`responseBodyForwarder {operation.name} {bodyValueName}` "
+                        "so nullable request-body/header values are checked "
+                        "transitively through this wrapper"
+                    ),
+                    specAnchor="SYNTAX.md#responseBodyForwarder",
+                    citations=narrative_citations_for_operation(facts, operation.name),
+                    fixCandidates=[
+                        FixCandidate(
+                            name="declareResponseBodyForwarder",
+                            shape=f"responseBodyForwarder {operation.name} {bodyValueName}",
+                            evidence=[span_of_line(argLine)],
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    effort=Effort.TRIVIAL,
+                    passProvenance="check_response_body_forwarder_missing",
+                    agentHint=(
+                        "without the forwarder verb, SS3603 cannot see nullable "
+                        "request values that flow through this helper"
+                    ),
+                ))
+    return diagnostics
+
+
 def check_invalid_route_method(facts: ExtendedFacts) -> List[Diagnostic]:
     """SS3601 — `route SERVER METHOD PATH HANDLER` METHOD must be in the
     native dispatcher's whitelist. Unrecognized verbs never match at
@@ -7376,7 +8751,7 @@ def check_invalid_route_method(facts: ExtendedFacts) -> List[Diagnostic]:
     diagnostics: List[Diagnostic] = []
     allowedList = ", ".join(sorted(HTTP_METHOD_WHITELIST))
     for routeFact in facts.base.routes:
-        if routeFact.method in HTTP_METHOD_WHITELIST:
+        if is_supported_route_method(routeFact.method):
             continue
         diagnostics.append(Diagnostic(
             tier=Tier.T3_REFINEMENT,
@@ -11068,9 +12443,14 @@ CHECKERS = [
     # C-style discipline (AS32xx perf, AS33xx memory, AS34xx layout)
     check_dead_store,
     check_allocation_in_loop,
+    check_string_accumulator_append_in_loop,
+    check_snprintf_i32_offset_without_widening,
+    check_gui_selection_handler_appends_list_item,
+    check_row_count_mutation_unchecked,
     check_bind_then_ignore,
     check_memory_heap_contradiction,
     check_allocation_source_missing,
+    check_unchecked_heap_allocation,
     check_allocate_free_unpaired,
     check_stack_limit_overrun,
     check_record_align_power_of_two,
@@ -11093,14 +12473,23 @@ CHECKERS = [
     check_select_case_references_unknown_select,
     check_async_call_missing_boundary,
     check_file_handle_not_closed,
+    check_sqlite_database_failure_cleanup_missing,
+    check_sqlite_statement_finalize_missing,
     check_guard_token_source_without_release,
     check_guard_token_protects_shared_state_access,
     check_circular_type_alias,
     check_json_codec_incomplete,
     check_runtime_backing_missing,
-    # Webserver discipline (SS36xx) — route methods, middleware contracts,
-    # nullable-input footgun detection, coverage drift, and
-    # explicit-verb migrations
+    # JSON CRUD / webserver discipline (SS36xx) — cursor safety, static
+    # JsonPath checks, migration off legacy JSON helpers, route methods,
+    # middleware contracts, nullable-input footgun detection, coverage
+    # drift, and explicit-verb migrations
+    check_unguarded_json_access,
+    check_stale_json_cursor,
+    check_malformed_json_path,
+    check_unescaped_json_string_interpolation,
+    check_deprecated_json_builder_calls,
+    check_deprecated_json_finder_calls,
     check_invalid_route_method,
     check_middleware_missing_response_effect,
     check_unguarded_http_input,
@@ -11108,6 +12497,7 @@ CHECKERS = [
     check_legacy_null_body_marker,
     check_pins_null_body_failure_path_missing_rationale,
     check_response_body_forwarder_declaration_honored,
+    check_response_body_forwarder_missing,
     check_rationale_call_references_known_call,
     check_route_handler_input_names,
     check_middleware_return_type_is_middleware_control,

@@ -43,7 +43,7 @@ CLI flags:
 | `--run` | JIT-execute `main` and return its exit code. |
 | `--emit-exe [PATH]` | AOT compile with clang. With no path, writes to the managed build directory. |
 | `--lint` | Run built-in compiler lint pass. |
-| `--strict` | Treat compiler lint diagnostics as fatal. |
+| `--strict` | Run the compiler's built-in lint pass, enable the current strict fallible-call disposition checks, and treat diagnostics as fatal. This is a CI strictness flag; it is separate from source-level `languageMode strictExecutable`. |
 | `--parse-only` | Parse, optionally lint, and stop before codegen. |
 | `--opt-level N` | LLVM optimization level `0..3`, default `2` unless `build.sem` provides `optLevel PROJECT N`. |
 | `--build-profile dev\|prod` | Runtime safety profile for compiled output. `dev` is the default and embeds `SSRUN001` panic context; `prod` keeps trap checks but hides source context. |
@@ -59,6 +59,60 @@ Set `SEMANTICSCRIPT_STD_PATH` or `SEMSC_STD_PATH` to one or more std roots
 separated by the platform path separator when the standard library is installed
 outside the compiler bundle. Set `SEMSC_TRACEBACK=1` to print Python
 tracebacks for parse/codegen failures.
+
+## Strictness and Safe Defaults
+
+The current compiler has three strictness layers:
+
+- Always-on compiler checks. These are part of parsing or codegen and do not
+  require `--lint`: build-tape schema validation, unsupported hard runtime
+  verbs refusing codegen, exact math operand widths, `returnVoid` only on
+  Void/CVoid outputs, and routed webserver handler ABI validation.
+- Source-level `languageMode strictExecutable`. This opt-in row closes the
+  executable grammar from that point in the resolved source stream: unknown
+  lowercase top-level and operation-body verbs become parse errors without
+  requiring `--lint`. Use `languageMode refinedSyntax` for research/metadata
+  files that intentionally rely on permissive lowercase rows. The two modes are
+  mutually exclusive.
+- The `--strict` flag. This runs the compiler's built-in lint pass and promotes
+  its diagnostics to fatal exit code `2`. It also activates the current
+  strict fallible-call disposition checks. Result-shaped targets such as
+  `sqlite.prepareStatement` must use the legacy checked pattern (`run`,
+  `bindOk` or `ignoreOk`, `bindError`, and `branchIfError`) until
+  `runChecked` syntax exists. Explicit-disposition targets such as heap
+  allocation and native HTTP response writers are still tracked as hardening
+  work unless the local compiler tests prove otherwise.
+
+The source-level strict row is:
+
+```semanticscript
+languageMode strictExecutable
+```
+
+`runChecked`, `bindOwned`, `bindOkOwned`, and `requireNonNull` remain research
+syntax only. Do not document them as current syntax until parser/compiler tests
+exist for them.
+
+Use these commands when checking whether a rule is compiler-enforced or still a
+linter migration rule:
+
+```powershell
+python SemanticScript\compiler\semsc.py PATH\to\file.sem --parse-only --quiet
+python SemanticScript\compiler\semsc.py PATH\to\file.sem --parse-only --strict --quiet
+python SemanticScript\linter\semlint.py PATH\to\file.sem --summary
+```
+
+If the first command fails, the behavior is compiler-enforced. If only
+`--strict` fails, the behavior is compiler-owned strict lint. If only
+`semlint.py` fails, the behavior is still standalone-linter guidance. Current
+compiler strict-lint diagnostics include invalid route methods (`SS3601`),
+route-bound input shape (`SS3609`), middleware output type (`SS3610`), response
+forwarding declarations (`SS3615`/`SS3607`), nullable HTTP body flow (`SS3603`),
+and unchecked Result-shaped fallible calls. Current standalone hardening
+diagnostics include explicit Void returns (`SS3612`), heap allocation
+disposition (`SS3305`), SQLite cleanup (`SS3905`/`SS3906`), row-count mutation
+guards (`SS3207`), GUI selection/list mutation boundaries (`SS3206`), and
+cursor-based string accumulation (`SS3203`/`SS3205`).
 
 For example, both of these allow an app outside the repository to import
 `standard.*` modules:

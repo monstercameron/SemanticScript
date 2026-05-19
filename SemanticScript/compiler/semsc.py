@@ -48,6 +48,7 @@ External call targets:
 
 import argparse
 import ctypes
+import hashlib
 import json
 import os
 import re
@@ -56,9 +57,19 @@ from dataclasses import dataclass, field
 from llvmlite import ir
 import llvmlite.binding as llvm
 
-# Make sibling-module imports work when the compiler is invoked by path.
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Make sibling/shared-module imports work when the compiler is invoked by path.
+_COMPILER_DIR = os.path.dirname(os.path.abspath(__file__))
+_SEMANTICSCRIPT_ROOT = os.path.dirname(_COMPILER_DIR)
+for _import_path in (_COMPILER_DIR, _SEMANTICSCRIPT_ROOT):
+    if _import_path not in sys.path:
+        sys.path.insert(0, _import_path)
 import libc_registry
+from call_contracts import (
+    KNOWN_FALLIBLE_CALL_TARGETS,
+    SUPPORTED_HTTP_ROUTE_METHODS,
+    fallibility_kind,
+    is_supported_route_method,
+)
 
 __version__ = "1.0.0"
 
@@ -471,10 +482,20 @@ class HtmlTemplate:
         self.body_line = 0
 
 
+class JsonBodyLiteral:
+    def __init__(self, name, storage_type, canonical_text, decl_line, body_lines):
+        self.name = name
+        self.storage_type = storage_type
+        self.canonical_text = canonical_text
+        self.decl_line = decl_line
+        self.body_lines = body_lines  # list[(raw_body_text, lineno)]
+
+
 class Program:
     def __init__(self):
         self.source_path = ""
         self.source_lines = {}        # line -> raw source text in parsed stream
+        self.source_origins = {}      # line -> original source path/line before import flattening
         # ---- declarations relevant to codegen ----
         self.project_name = None
         self.module_name = None
@@ -515,6 +536,8 @@ class Program:
         self.enums = {}                # name -> Enum
         self.web_servers = {}          # name -> WebServer
         self.html_templates = {}       # name -> HtmlTemplate
+        self.json_bodies = []          # list[JsonBodyLiteral]
+        self.storage_declarations = [] # parsed storage rows for jsonBody binding
         self.type_metadata = {}        # type_name -> {invariant: [...], trust:..., memory:..., layout:..., representation:...}
         self.capabilities = {}         # name -> {effect_path, access}
         self.codecs = {}               # name -> {kind, schema, unknownFields, ...}
@@ -537,6 +560,7 @@ class Program:
         }
         self.operation_aliases = {}     # source call target -> internal op name
         self.modes = []                # list[str]  -- e.g. ["capturedOutputReplay"]
+        self.language_modes = []       # list[str]  -- e.g. ["strictExecutable"]
         # Module-scope `# group NAME` / `# endGroup NAME` anchors collected from
         # source order so the linter can pair them and warn on imbalance.
         self.module_group_anchors = []  # list[("group"|"endGroup", name, lineno)]
@@ -556,7 +580,7 @@ BODY_VERBS_CODEGEN = {
     "input", "output", "effect", "memory", "async",
     "purpose", "invariant", "warning",
     "label", "const", "var", "set",
-    "call", "arg", "timeout", "cancelOn", "run", "start", "await",
+    "call", "arg", "timeout", "cancelOn", "run", "runChecked", "start", "await",
     "bind", "bindOk", "bindError", "ignoreOk", "ignoreValue",
     "makeError",
     "branch", "branchIf", "branchIfError",
@@ -635,6 +659,22 @@ BODY_VERBS = BODY_VERBS_CODEGEN | BODY_VERBS_RESERVED
 # Closed set of recognized `mode` declarations. See AST.md §10.
 _KNOWN_MODES = {
     "capturedOutputReplay",
+}
+
+_KNOWN_LANGUAGE_MODES = {
+    "strictExecutable",
+    "refinedSyntax",
+    # `permissiveExecutable` is the explicit opt-out from the strict
+    # executable wall. It exists so that bootstrap, research, and legacy
+    # files can compile without claiming strictness; strict is the default
+    # for every other source.
+    "permissiveExecutable",
+}
+
+_INCOMPATIBLE_LANGUAGE_MODES = {
+    frozenset(("strictExecutable", "refinedSyntax")),
+    frozenset(("strictExecutable", "permissiveExecutable")),
+    frozenset(("refinedSyntax", "permissiveExecutable")),
 }
 
 _MODULE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
@@ -991,6 +1031,43 @@ def _register_builtin_sqlite_surface(prog: Program) -> None:
         prog.type_aliases[failure_alias] = "CSignedInt32"
 
 
+def _register_builtin_json_surface(prog: Program) -> None:
+    """Pre-register the compiler-owned `standard.json` type surface.
+
+    The stdlib module also declares these rows for source-level imports, but
+    built-in registration lets standalone compiler smoke tests reference the
+    native JSON document enum and role aliases without restating the standard
+    module. Values must stay aligned with the native_json C ABI.
+    """
+    json_value_kind = Enum("JsonValueKind")
+    json_value_kind.repr = "CSignedInt32"
+    json_value_kind.cases.append(("objectJsonValueKind", 0))
+    json_value_kind.cases.append(("arrayJsonValueKind", 1))
+    json_value_kind.cases.append(("stringJsonValueKind", 2))
+    json_value_kind.cases.append(("integerJsonValueKind", 3))
+    json_value_kind.cases.append(("doubleJsonValueKind", 4))
+    json_value_kind.cases.append(("booleanJsonValueKind", 5))
+    json_value_kind.cases.append(("nullJsonValueKind", 6))
+    prog.enums["JsonValueKind"] = json_value_kind
+    prog.consts["objectJsonValueKind"] = ("JsonValueKind", 0)
+    prog.consts["arrayJsonValueKind"] = ("JsonValueKind", 1)
+    prog.consts["stringJsonValueKind"] = ("JsonValueKind", 2)
+    prog.consts["integerJsonValueKind"] = ("JsonValueKind", 3)
+    prog.consts["doubleJsonValueKind"] = ("JsonValueKind", 4)
+    prog.consts["booleanJsonValueKind"] = ("JsonValueKind", 5)
+    prog.consts["nullJsonValueKind"] = ("JsonValueKind", 6)
+
+    prog.type_aliases.setdefault("JsonBuilder", "COpaqueMemoryAddress")
+    prog.type_aliases.setdefault("JsonDocument", "COpaqueMemoryAddress")
+    prog.type_aliases.setdefault("JsonCursor", "CSignedInt64")
+    prog.type_aliases.setdefault("JsonText", "CNullTerminatedByteString")
+    prog.type_aliases.setdefault("JsonFieldName", "CNullTerminatedByteString")
+    prog.type_aliases.setdefault("JsonPath", "CNullTerminatedByteString")
+    prog.type_aliases.setdefault("JsonStringValue", "CNullTerminatedByteString")
+    prog.type_aliases.setdefault("JsonScratchBuffer", "COpaqueMemoryAddress")
+    prog.type_aliases.setdefault("JsonCapacityBytes", "CByteCount")
+
+
 def _parse_import_module_args(args):
     if not args:
         return "", None, "malformed"
@@ -1076,12 +1153,184 @@ def _finalize_import_aliases(prog: Program) -> None:
                 prog.consts.setdefault(local_name, prog.consts[exported_name])
 
 
+def _reject_json_constant(token: str):
+    raise ValueError(f"non-standard JSON constant `{token}`")
+
+
+def _is_json_text_type(prog: Program, type_name: str) -> bool:
+    name = type_name
+    seen = set()
+    while True:
+        if name == "JsonText":
+            return True
+        if name in seen or name not in prog.type_aliases:
+            return False
+        seen.add(name)
+        next_target = prog.type_aliases[name]
+        if isinstance(next_target, list):
+            if not next_target:
+                return False
+            name = next_target[0]
+        else:
+            name = next_target
+
+
+def _record_type_for_json_body(prog: Program, type_name: str) -> str | None:
+    name = type_name
+    seen = set()
+    while True:
+        if name in prog.records:
+            return name
+        if name in seen or name not in prog.type_aliases:
+            return None
+        seen.add(name)
+        next_target = prog.type_aliases[name]
+        if isinstance(next_target, list):
+            if not next_target:
+                return None
+            name = next_target[0]
+        else:
+            name = next_target
+
+
+def _bind_json_body_target(prog: Program, declaration: dict,
+                           canonical_text: str) -> None:
+    name = declaration["name"]
+    type_name = declaration["type"]
+    op = declaration.get("operation")
+    if declaration.get("scope") == "local" and op is not None:
+        op.consts[name] = (type_name, canonical_text)
+    else:
+        prog.consts[name] = (type_name, canonical_text)
+    declaration["has_json_body"] = True
+
+
+def _canonicalize_json_body(name: str, body_lines: list, decl_line: int) -> str:
+    if not body_lines or not any(text.strip() for text, _line in body_lines):
+        raise SyntaxError(
+            f"line {decl_line}: emptyJsonBody: jsonBody `{name}` requires "
+            "at least one indented JSON line")
+    body_text = "\n".join(text for text, _line in body_lines)
+    try:
+        parsed = json.loads(body_text, parse_constant=_reject_json_constant)
+    except json.JSONDecodeError as exc:
+        source_line = decl_line
+        if 1 <= exc.lineno <= len(body_lines):
+            source_line = body_lines[exc.lineno - 1][1]
+        raise SyntaxError(
+            f"line {decl_line}: invalidJsonBody: jsonBody `{name}` contains "
+            f"invalid JSON at island line {exc.lineno} column {exc.colno} "
+            f"(source line {source_line}): {exc.msg}") from exc
+    except ValueError as exc:
+        raise SyntaxError(
+            f"line {decl_line}: invalidJsonBody: jsonBody `{name}` contains "
+            f"invalid JSON: {exc}") from exc
+    return json.dumps(parsed, ensure_ascii=False, allow_nan=False,
+                      separators=(",", ":"))
+
+
+def _record_storage_declaration(prog: Program, args, lineno: int):
+    if len(args) < 4:
+        return
+    scope, mutability = args[0], args[1]
+    name, type_name = args[2], args[3]
+    op = prog.current_op if scope == "local" else None
+    prog.storage_declarations.append({
+        "name": name,
+        "type": type_name,
+        "scope": scope,
+        "mutability": mutability,
+        "line": lineno,
+        "operation": op,
+        "value_present": len(args) > 4,
+        "has_json_body": False,
+    })
+
+
+def _find_json_body_target(prog: Program, name: str):
+    current_op = prog.current_op
+    for declaration in reversed(prog.storage_declarations):
+        if declaration["name"] != name:
+            continue
+        if (declaration["scope"] == "local"
+                and declaration.get("operation") is not current_op):
+            continue
+        if declaration["scope"] not in ("local", "module"):
+            return declaration, "bad_scope"
+        if declaration["mutability"] != "immutable":
+            return declaration, "mutable"
+        if declaration["value_present"]:
+            return declaration, "valued"
+        if declaration["has_json_body"]:
+            return declaration, "duplicate"
+        return declaration, None
+    return None, "missing"
+
+
+def _start_json_body_literal(prog: Program, name: str, lineno: int) -> dict:
+    declaration, problem = _find_json_body_target(prog, name)
+    if declaration is None:
+        raise SyntaxError(
+            f"line {lineno}: jsonBodyMissingTarget: jsonBody `{name}` "
+            "requires a preceding `storage local|module immutable "
+            f"{name} TYPE` row with no inline value")
+    if problem == "bad_scope":
+        raise SyntaxError(
+            f"line {lineno}: jsonBodyMissingTarget: jsonBody `{name}` "
+            "can only bind storage declared with local or module scope")
+    if problem == "mutable":
+        raise SyntaxError(
+            f"line {lineno}: jsonBodyMissingTarget: jsonBody `{name}` "
+            "can only bind immutable storage")
+    if problem == "valued":
+        raise SyntaxError(
+            f"line {lineno}: jsonBodyTargetAlreadyValued: jsonBody `{name}` "
+            f"targets storage declared on line {declaration['line']} with "
+            "an inline value")
+    if problem == "duplicate":
+        raise SyntaxError(
+            f"line {lineno}: duplicateJsonBody: storage `{name}` already "
+            "has a jsonBody literal")
+
+    type_name = declaration["type"]
+    if _is_json_text_type(prog, type_name):
+        return {"name": name, "line": lineno, "target": declaration,
+                "body_lines": []}
+    record_type = _record_type_for_json_body(prog, type_name)
+    if record_type is not None:
+        raise SyntaxError(
+            f"line {lineno}: jsonBodyRecordLiteralUnsupported: jsonBody "
+            f"`{name}` targets record type `{record_type}`, but record-typed "
+            "jsonBody literals are not implemented yet; use JsonText for "
+            "validated JSON text literals")
+    raise SyntaxError(
+        f"line {lineno}: jsonBodyUnsupportedType: jsonBody `{name}` "
+        f"targets `{type_name}`, expected JsonText or a declared record type")
+
+
+def _finish_json_body_literal(prog: Program, active_json_body: dict) -> None:
+    name = active_json_body["name"]
+    declaration = active_json_body["target"]
+    canonical = _canonicalize_json_body(
+        name, active_json_body["body_lines"], active_json_body["line"])
+    _bind_json_body_target(prog, declaration, canonical)
+    prog.json_bodies.append(JsonBodyLiteral(
+        name,
+        declaration["type"],
+        canonical,
+        active_json_body["line"],
+        list(active_json_body["body_lines"]),
+    ))
+
+
 def parse(source: str) -> Program:
     prog = Program()
     _register_builtin_middleware_control_enum(prog)
     _register_builtin_sqlite_surface(prog)
+    _register_builtin_json_surface(prog)
     active_html_template = None
     active_html_base_indent = None
+    active_json_body = None
     lines = list(enumerate(source.splitlines(), start=1))
     index = 0
 
@@ -1090,10 +1339,27 @@ def parse(source: str) -> Program:
         active_html_template = None
         active_html_base_indent = None
 
+    def _finish_json_body():
+        nonlocal active_json_body
+        if active_json_body is not None:
+            _finish_json_body_literal(prog, active_json_body)
+            active_json_body = None
+
     while index < len(lines):
         lineno, raw = lines[index]
         index += 1
         prog.source_lines[lineno] = raw
+
+        if active_json_body is not None:
+            if raw.strip() and raw[0].isspace():
+                active_json_body["body_lines"].append((raw, lineno))
+                continue
+            if not raw.strip():
+                active_json_body["body_lines"].append(("", lineno))
+                continue
+            # A non-empty column-0 line ends the JSON syntax island and is
+            # immediately reprocessed as normal SemanticScript.
+            _finish_json_body()
 
         if active_html_template is not None:
             if raw.strip() and raw[0].isspace():
@@ -1142,8 +1408,19 @@ def parse(source: str) -> Program:
             continue
         verb = toks[0]
         args = toks[1:]
+        if verb == "jsonBody":
+            if raw[:1].isspace():
+                raise SyntaxError(
+                    f"line {lineno}: jsonBody must start at column 0")
+            if len(args) != 1:
+                raise SyntaxError(
+                    f"line {lineno}: jsonBody requires: jsonBody NAME")
+            active_json_body = _start_json_body_literal(prog, args[0], lineno)
+            continue
         try:
             handle_top(prog, verb, args, lineno)
+            if verb == "storage":
+                _record_storage_declaration(prog, args, lineno)
             if verb == "htmlBody":
                 if not args:
                     raise SyntaxError("htmlBody requires: htmlBody TEMPLATE")
@@ -1155,6 +1432,7 @@ def parse(source: str) -> Program:
             raise
         except Exception as e:
             raise SyntaxError(f"line {lineno}: {e}\n  >> {raw}") from e
+    _finish_json_body()
     _finish_html_body()
     _finalize_import_aliases(prog)
     return prog
@@ -1168,6 +1446,14 @@ def _looks_like_build_tape(source: str) -> bool:
     for raw in source.splitlines():
         toks = tokenize_line(raw)
         if toks and toks[0] == "buildProject":
+            return True
+    return False
+
+
+def _declares_language_mode(source: str) -> bool:
+    for raw in source.splitlines():
+        toks = tokenize_line(raw)
+        if toks and toks[0] == "languageMode":
             return True
     return False
 
@@ -1201,7 +1487,7 @@ def _validate_build_tape_source(source: str, source_path: str) -> None:
     target_runtime_by_project = {}
     allowed_non_project_verbs = (
         {"buildProject", "project", "target", "runtime", "entry", "importModule",
-         "moduleFolder"}
+         "moduleFolder", "languageMode"}
         | set(_PROJECT_METADATA_VERBS)
         | {
             "metadata",
@@ -1403,6 +1689,34 @@ def _parse_typed_comment(comment_body: str):
     return (kind, text.strip())
 
 
+def _has_language_mode(prog: Program, mode: str) -> bool:
+    return mode in prog.language_modes
+
+
+def _strict_executable_is_active(prog: Program) -> bool:
+    """Strict executable is opt-in for the initial rollout."""
+    return _has_language_mode(prog, "strictExecutable")
+
+
+def _strict_unknown_lowercase_verb_error(prog: Program, verb: str, lineno: int):
+    scope = "operation-body" if prog.current_op is not None else "top-level"
+    raise SyntaxError(
+        f"line {lineno}: unknown lowercase {scope} verb `{verb}` is not "
+        "allowed under `languageMode strictExecutable`; declare "
+        "`languageMode refinedSyntax` for research files that intentionally "
+        "rely on permissive metadata rows")
+
+
+def _validate_run_checked_args(args, lineno: int) -> None:
+    if (len(args) != 9
+            or args[1] != "ok"
+            or args[4] != "error"
+            or args[7] != "else"):
+        raise SyntaxError(
+            f"line {lineno}: runChecked requires: runChecked CALL ok "
+            "VALUE TYPE error ERROR TYPE else LABEL")
+
+
 def handle_top(prog: Program, verb: str, args, lineno: int):
     # ===== always-allowed top-level decls =====
     if verb == "project":
@@ -1443,6 +1757,58 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
                 f"mode: `{args[0]}` is not a known mode value; expected one of "
                 f"{sorted(_KNOWN_MODES)}")
         prog.modes.append(args[0])
+        return
+    if verb == "buildProject":
+        if len(args) != 1:
+            raise SyntaxError(
+                f"line {lineno}: buildProject requires: buildProject PROJECT")
+        prog.hard_metadata.setdefault(args[0], {}).setdefault(
+            "buildProject", []).append([])
+        return
+    if verb in _BUILD_TAPE_PROJECT_VERBS:
+        minimum_arity = _BUILD_TAPE_MIN_ARITY.get(verb, 2)
+        if len(args) < minimum_arity:
+            raise SyntaxError(
+                f"line {lineno}: {verb} requires at least "
+                f"{minimum_arity} argument(s)")
+        project_name = args[0]
+        prog.hard_metadata.setdefault(project_name, {}).setdefault(
+            verb, []).append(list(args[1:]))
+        return
+    if verb == "languageMode":
+        # Two accepted forms:
+        #   languageMode MODE              (per-file declaration)
+        #   languageMode PROJECT MODE      (build.sem project-wide row)
+        # When the build.sem form is used the row applies to every source
+        # parsed into the program; this is how a project opts the whole
+        # source tree out of the default strict executable wall without
+        # editing each .sem file.
+        project_name = None
+        if len(args) == 1:
+            language_mode = args[0]
+        elif len(args) == 2:
+            project_name = args[0]
+            language_mode = args[1]
+        else:
+            raise SyntaxError(
+                f"line {lineno}: languageMode requires: languageMode MODE  or  "
+                f"languageMode PROJECT MODE")
+        if language_mode not in _KNOWN_LANGUAGE_MODES:
+            raise SyntaxError(
+                f"line {lineno}: languageMode: `{language_mode}` is not a known language "
+                f"mode value; expected one of {sorted(_KNOWN_LANGUAGE_MODES)}")
+        if project_name is not None:
+            prog.hard_metadata.setdefault(project_name, {}).setdefault(
+                "languageMode", []).append([language_mode])
+        if language_mode in prog.language_modes:
+            return
+        for existing_mode in prog.language_modes:
+            mode_pair = frozenset((existing_mode, language_mode))
+            if mode_pair in _INCOMPATIBLE_LANGUAGE_MODES:
+                raise SyntaxError(
+                    f"line {lineno}: languageMode: `{language_mode}` cannot be combined with "
+                    f"`{existing_mode}`")
+        prog.language_modes.append(language_mode)
         return
     if verb == "entry":
         prog.entry = (args[0], args[1])
@@ -1908,6 +2274,8 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
     if verb in BODY_VERBS:
         if prog.current_op is None:
             raise SyntaxError(f"{verb} appears outside any operation")
+        if verb == "runChecked":
+            _validate_run_checked_args(args, lineno)
         # Spec §9 — operation header lines (input/output/effect/memory/async/
         # purpose/invariant/warning + hard-metadata kinds) include the
         # owning operation's name as the first arg so each line is
@@ -1990,6 +2358,17 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
     # needing its own handler. The line is stored under hard_metadata
     # keyed by the first arg (the declared name) for tooling indexing.
     if verb and verb[0].islower():
+        # The unknown-lowercase-verb gate is the *strict-vocabulary* level,
+        # not the default. Most .sem files use refined-syntax metadata
+        # verbs (modulePurpose, memoryHeap, moduleObservability,
+        # moduleDependency, …) that are not in the hardcoded allow-list,
+        # and rejecting them at parse time would be enormous churn for
+        # very little safety gain. The default strict wall still enforces
+        # all the SS3xxx bug-class checks via validate_strict_executable.
+        # Files that opt into `languageMode strictExecutable` explicitly
+        # also get the verb-vocabulary tightening on top.
+        if _has_language_mode(prog, "strictExecutable"):
+            _strict_unknown_lowercase_verb_error(prog, verb, lineno)
         if prog.current_op is not None:
             prog.current_op.lines.append((verb, args, lineno))
             return
@@ -2039,6 +2418,38 @@ OPAQUE_INPUTS = {
     "console", "environment", "process",
     "httpRequest", "databaseClient", "clock",
 }
+
+HTTP_METHOD_WHITELIST = SUPPORTED_HTTP_ROUTE_METHODS
+
+NULLABLE_HTTP_REQUEST_READS = frozenset({
+    "http.requestHeader",
+    "http.requestQueryParam",
+    "http.requestPathParam",
+    "http.requestCookie",
+    "http.requestBodyText",
+    "http.requestBodyBytes",
+    "http.multipartPartText",
+    "http.multipartPartBytes",
+    "http.multipartPartFilename",
+    "http.multipartPartContentType",
+})
+
+HTTP_RESPONSE_BODY_WRITERS = frozenset({
+    "http.responseText",
+    "http.responseBytes",
+    "http.responseSseEvent",
+})
+
+HTTP_RESPONSE_NULLABLE_SLOTS = {
+    "http.responseText": frozenset({"body"}),
+    "http.responseBytes": frozenset({"body"}),
+    "http.responseSseEvent": frozenset({"event", "data"}),
+}
+
+LEGACY_HTTP_NULL_GUARD_OPT_OUT_MARKERS = (
+    "null-body failure path",
+    "null-body 500",
+)
 
 
 def resolve_alias(prog: Program, name: str) -> str:
@@ -2200,7 +2611,7 @@ def llvm_type_for(prog: Program, typename: str):
     # via `defer json.destroyBuilder`. Generated code never
     # dereferences the handle directly — same opaque-pointer contract
     # as HttpRequest / SqliteDatabase.
-    if typename == "JsonBuilder":
+    if typename in ("JsonBuilder", "JsonDocument"):
         return I8P
     return None
 
@@ -2293,6 +2704,160 @@ _TARGET_ALIASES = {
     "math.convertSignedInt32ToSignedInt64": "math.signExtendCSignedInt32ToCSignedInt64",
     "math.convertSignedInt64ToSignedInt32": "math.truncateCSignedInt64ToCSignedInt32",
 }
+
+_JSON_STRINGIFY_PRIMITIVE_TARGETS = {
+    "I64": "json.encode.I64",
+    "CSignedInt64": "json.encode.CSignedInt64",
+    "CSignedInt32": "json.encode.CSignedInt32",
+    "CUnsignedInt32": "json.encode.CUnsignedInt32",
+    "CSignedInt16": "json.encode.CSignedInt16",
+    "CUnsignedInt16": "json.encode.CUnsignedInt16",
+    "CSignedByte": "json.encode.CSignedByte",
+    "CUnsignedByte": "json.encode.CUnsignedByte",
+    "DurationMilliseconds": "json.encode.DurationMilliseconds",
+    "MonotonicMilliseconds": "json.encode.MonotonicMilliseconds",
+    "UtcMilliseconds": "json.encode.UtcMilliseconds",
+    "Bool": "json.encode.Bool",
+    "F64": "json.encode.F64",
+    "CFloat64": "json.encode.CFloat64",
+    "CFloat32": "json.encode.CFloat32",
+    "String": "json.encode.String",
+    "CNullTerminatedByteString": "json.encode.CNullTerminatedByteString",
+}
+
+_JSON_PARSE_PRIMITIVE_TARGETS = {
+    "I64": "json.decode.I64",
+    "CSignedInt64": "json.decode.CSignedInt64",
+    "CSignedInt32": "json.decode.CSignedInt32",
+    "CUnsignedInt32": "json.decode.CUnsignedInt32",
+    "CSignedInt16": "json.decode.CSignedInt16",
+    "CUnsignedInt16": "json.decode.CUnsignedInt16",
+    "CSignedByte": "json.decode.CSignedByte",
+    "CUnsignedByte": "json.decode.CUnsignedByte",
+    "DurationMilliseconds": "json.decode.DurationMilliseconds",
+    "MonotonicMilliseconds": "json.decode.MonotonicMilliseconds",
+    "UtcMilliseconds": "json.decode.UtcMilliseconds",
+    "Bool": "json.decode.Bool",
+    "F64": "json.decode.F64",
+    "CFloat64": "json.decode.CFloat64",
+    "CFloat32": "json.decode.CFloat32",
+}
+
+_STRICT_FALLIBLE_CALL_TARGETS = KNOWN_FALLIBLE_CALL_TARGETS
+
+_STRICT_HEAP_ALLOCATION_TARGETS = frozenset({
+    "c.malloc",
+    "c.calloc",
+    "c.realloc",
+})
+
+_STRICT_HEAP_CLEANUP_TARGETS = frozenset({
+    "c.free",
+})
+
+_STRICT_SQLITE_DATABASE_OPEN_TARGETS = frozenset({
+    "sqlite.openDatabase",
+})
+
+_STRICT_SQLITE_DATABASE_CLOSE_TARGETS = frozenset({
+    "sqlite.closeDatabase",
+})
+
+_STRICT_SQLITE_STATEMENT_PREPARE_TARGETS = frozenset({
+    "sqlite.prepareStatement",
+})
+
+_STRICT_SQLITE_STATEMENT_FINALIZE_TARGETS = frozenset({
+    "sqlite.finalizeStatement",
+})
+
+_STRICT_FORBIDDEN_CALL_TARGETS_WITH_ADVICE = {
+    "c.strcat": (
+        "use `c.snprintf(cursor, remainingCapacity, ...)` into a tracked "
+        "write offset instead; strcat has no bounded form and rescans the "
+        "accumulator every call"
+    ),
+    "c.strcpy": (
+        "use `c.snprintf(buffer, capacity, \"%s\", source)` with a bounded "
+        "capacity"
+    ),
+    "c.strncat": (
+        "use `c.snprintf(cursor, remainingCapacity, ...)`; strncat's count "
+        "argument bounds the source, not the destination"
+    ),
+    "c.sprintf": (
+        "use `c.snprintf(buffer, capacity, format, ...)`; sprintf has no "
+        "destination-size argument"
+    ),
+    "c.gets": (
+        "use `c.fgets(buffer, capacity, stream)` or `c.read(fd, buffer, "
+        "capacity)` so a maximum byte count bounds the read"
+    ),
+}
+
+_STRICT_CONSTANT_FORMAT_TARGETS = frozenset({
+    "c.snprintf",
+    "c.printf",
+    "c.fprintf",
+    "c.sprintf",
+    "c.vsnprintf",
+    "c.vfprintf",
+    "c.vprintf",
+})
+
+_STRICT_FORMAT_ARG_SLOTS = frozenset({"format"})
+
+_STRICT_SQL_STRING_TARGETS = frozenset({
+    "sqlite.prepareStatement",
+    "sqlite.exec",
+})
+
+_STRICT_SQL_ARG_SLOTS = frozenset({"sql"})
+
+_STRICT_RESPONSE_WRITER_TARGETS = frozenset({
+    "writeJsonOkResponse",
+    "writeErrorJsonResponse",
+    "writeJsonResponse",
+    "http.responseText",
+    "http.responseBytes",
+    "http.responseSseEvent",
+    "http.responseFile",
+})
+
+_STRICT_OVERFLOW_SENSITIVE_TARGETS = frozenset({
+    "math.addI64",
+    "math.subtractI64",
+    "math.multiplyI64",
+    "math.addCSignedInt64",
+    "math.subtractCSignedInt64",
+    "math.multiplyCSignedInt64",
+})
+
+_STRICT_CHECKED_ARITHMETIC_TARGETS = frozenset({
+    "math.checkedAddI64",
+    "math.checkedSubtractI64",
+    "math.checkedMultiplyI64",
+    "math.checkedAddCSignedInt64",
+    "math.checkedSubtractCSignedInt64",
+    "math.checkedMultiplyCSignedInt64",
+})
+
+_STRICT_OVERFLOW_SENSITIVE_NAME_RE = re.compile(
+    # Suffixes that almost always indicate overflow-risky arithmetic:
+    # timestamps that add lifetimes, raw byte counts, and capacities
+    # that multiply. `*Count`, `*Length`, `*Size`, `*Offset` are
+    # excluded — they show up on bounded loop counters and fixed
+    # array offsets so often that flagging them is more noise than
+    # signal. The bytewise/timewise patterns left here are the ones
+    # where real-world overflow is reachable from untrusted input.
+    r"(?:Ms|AtMs|Milliseconds|Bytes|Capacity)$"
+)
+
+_STRICT_MUTEX_CAPABILITY_SUBSTRINGS = (
+    "Mutex", "Lock", "mutex", "lock", "Semaphore", "semaphore",
+)
+
+_STRICT_MINIMUM_BCRYPT_COST = 10
 
 _BINOP_TO_LLVM = {
     "math.addI64":      "add",
@@ -2414,9 +2979,11 @@ _DOMAIN_METHOD_TO_I32_PRIMITIVE = {
 # ============================================================
 
 class Codegen:
-    def __init__(self, prog: Program, runtime_checks: str = "off"):
+    def __init__(self, prog: Program, runtime_checks: str = "off",
+                 trace_events: bool = False):
         self.prog = prog
         self.runtime_checks = runtime_checks
+        self.trace_events = trace_events
         self.module = ir.Module(name=prog.project_name or "semanticscript_module")
         self.module.triple = llvm.get_default_triple()
         self.provenance = CompilerProvenance(prog)
@@ -2424,6 +2991,8 @@ class Codegen:
         self._next_str_id = 0
         self._next_html_buffer_id = 0
         self._web_route_handler_names = set()
+        self._trace_seq_global = None
+        self._trace_decimal_writer_id = 0
         self._declare_externals()
 
     def _declare_externals(self):
@@ -2580,6 +3149,139 @@ class Codegen:
             ptr,
             ir.Constant(I64, byte_count),
         ])
+
+    def _emit_runtime_buffer_write(self, builder, ptr, byte_count_i32):
+        triple = (self.module.triple or "").lower()
+        if "windows" in triple or "win32" in triple or "msvc" in triple:
+            handle = builder.call(
+                self.win_get_std_handle, [ir.Constant(I32, -12)],
+                name="traceStderr")
+            bytes_written = builder.alloca(I32, name="traceBytesWritten")
+            builder.call(self.win_write_file, [
+                handle,
+                ptr,
+                byte_count_i32,
+                bytes_written,
+                ir.Constant(I8P, None),
+            ])
+            return
+        byte_count_i64 = builder.zext(byte_count_i32, I64, name="traceWriteLen64")
+        builder.call(self.posix_write, [
+            ir.Constant(I32, 2),
+            ptr,
+            byte_count_i64,
+        ])
+
+    def _trace_sequence_global(self):
+        if self._trace_seq_global is None:
+            gv = ir.GlobalVariable(self.module, I64, name="as.trace.seq")
+            gv.linkage = "internal"
+            gv.global_constant = False
+            gv.initializer = ir.Constant(I64, 0)
+            self._trace_seq_global = gv
+        return self._trace_seq_global
+
+    def _emit_runtime_const_write(self, builder, text: str):
+        if not text:
+            return
+        ptr = self._i8p(builder, text)
+        byte_count = len(text.encode("utf-8"))
+        self._emit_runtime_buffer_write(builder, ptr, ir.Constant(I32, byte_count))
+
+    def _emit_runtime_u64_decimal_write(self, builder, value):
+        writer_id = self._trace_decimal_writer_id
+        self._trace_decimal_writer_id += 1
+        fn = builder.function
+        buffer_ty = ir.ArrayType(I8, 32)
+        buffer = builder.alloca(buffer_ty, name=f"traceSeqDigits{writer_id}")
+        number_slot = builder.alloca(I64, name=f"traceSeqNumber{writer_id}")
+        index_slot = builder.alloca(I32, name=f"traceSeqIndex{writer_id}")
+        builder.store(value, number_slot)
+        builder.store(ir.Constant(I32, 32), index_slot)
+
+        loop_block = fn.append_basic_block(f"traceSeqDigitsLoop{writer_id}")
+        after_block = fn.append_basic_block(f"traceSeqDigitsDone{writer_id}")
+        builder.branch(loop_block)
+        builder.position_at_end(loop_block)
+
+        number = builder.load(number_slot, name=f"traceSeqNumberLoad{writer_id}")
+        digit = builder.urem(number, ir.Constant(I64, 10),
+                             name=f"traceSeqDigit{writer_id}")
+        quotient = builder.udiv(number, ir.Constant(I64, 10),
+                                name=f"traceSeqQuotient{writer_id}")
+        index = builder.load(index_slot, name=f"traceSeqIndexLoad{writer_id}")
+        next_index = builder.sub(index, ir.Constant(I32, 1),
+                                 name=f"traceSeqNextIndex{writer_id}")
+        digit_i8 = builder.trunc(digit, I8, name=f"traceSeqDigitI8{writer_id}")
+        digit_char = builder.add(digit_i8, ir.Constant(I8, ord("0")),
+                                 name=f"traceSeqDigitChar{writer_id}")
+        digit_ptr = builder.gep(
+            buffer, [ir.Constant(I32, 0), next_index],
+            inbounds=True, name=f"traceSeqDigitPtr{writer_id}")
+        builder.store(digit_char, digit_ptr)
+        builder.store(next_index, index_slot)
+        builder.store(quotient, number_slot)
+        has_more = builder.icmp_unsigned("!=", quotient, ir.Constant(I64, 0),
+                                         name=f"traceSeqHasMore{writer_id}")
+        builder.cbranch(has_more, loop_block, after_block)
+
+        builder.position_at_end(after_block)
+        start_index = builder.load(index_slot, name=f"traceSeqStart{writer_id}")
+        byte_count = builder.sub(ir.Constant(I32, 32), start_index,
+                                 name=f"traceSeqDigitCount{writer_id}")
+        start_ptr = builder.gep(
+            buffer, [ir.Constant(I32, 0), start_index],
+            inbounds=True, name=f"traceSeqStartPtr{writer_id}")
+        self._emit_runtime_buffer_write(builder, start_ptr, byte_count)
+
+    def _trace_json_parts(self, event: str, site_kind: str,
+                          operation: str = "", name: str = "",
+                          target: str = "", lineno: int = 0,
+                          value_name: str = "",
+                          value_status: str = "") -> tuple[str, str, str]:
+        payload = {
+            "schemaVersion": "sem.traceEvent.v0",
+            "runId": "native",
+            "seq": "__SEM_TRACE_SEQ__",
+            "timestampNs": "__SEM_TRACE_TIMESTAMP__",
+            "timestampSource": "sequenceCounter",
+            "event": event,
+            "siteId": _trace_site_id(
+                self.prog, site_kind, operation, name, target, lineno),
+            "siteKind": site_kind,
+            "operation": operation or "",
+            "name": name or "",
+            "target": target or "",
+            "source": _json_source_span(self.prog, lineno),
+        }
+        if value_name or value_status:
+            payload["valueName"] = value_name or ""
+            payload["valueStatus"] = value_status or ""
+        text = json.dumps(payload, separators=(",", ":"))
+        seq_marker = '"__SEM_TRACE_SEQ__"'
+        timestamp_marker = '"__SEM_TRACE_TIMESTAMP__"'
+        prefix, rest = text.split(seq_marker, 1)
+        middle, suffix = rest.split(timestamp_marker, 1)
+        return prefix, middle, suffix + "\n"
+
+    def _emit_trace_event(self, builder, event: str, site_kind: str,
+                          operation: str = "", name: str = "",
+                          target: str = "", lineno: int = 0,
+                          value_name: str = "", value_status: str = ""):
+        if not self.trace_events:
+            return
+        seq_global = self._trace_sequence_global()
+        current_seq = builder.load(seq_global, name="traceSeqCurrent")
+        next_seq = builder.add(current_seq, ir.Constant(I64, 1), name="traceSeqNext")
+        builder.store(next_seq, seq_global)
+        prefix, middle, suffix = self._trace_json_parts(
+            event, site_kind, operation, name, target, lineno,
+            value_name=value_name, value_status=value_status)
+        self._emit_runtime_const_write(builder, prefix)
+        self._emit_runtime_u64_decimal_write(builder, next_seq)
+        self._emit_runtime_const_write(builder, middle)
+        self._emit_runtime_u64_decimal_write(builder, next_seq)
+        self._emit_runtime_const_write(builder, suffix)
 
     def _emit_runtime_failure(self, builder, call, reason: str):
         if self.runtime_checks == "panic":
@@ -3210,6 +3912,7 @@ class Codegen:
 
     # ---------- entry ----------
     def compile(self):
+        validate_strict_executable(self.prog)
         # Emit mutable module globals first so any operation body that
         # reads or writes one sees the LLVM global already in scope.
         self._emit_mutable_globals()
@@ -3780,6 +4483,24 @@ class Codegen:
                 labels[name] = fn.append_basic_block(name)
             return labels[name]
 
+        def error_condition_for_call(call_name):
+            call = calls[call_name]
+            err_cond = call["error_cond"]
+            if err_cond is not None:
+                return err_cond
+            result = call["result"]
+            if result is None:
+                raise ValueError(
+                    f"branchIfError/runChecked: call `{call_name}` has no "
+                    "result or explicit error condition")
+            if isinstance(result.type, ir.PointerType):
+                nullptr = ir.Constant(result.type, None)
+                return builder.icmp_unsigned(
+                    "==", result, nullptr, name=f"{call_name}_isErr")
+            zero = ir.Constant(result.type, 0)
+            return builder.icmp_signed(
+                "<", result, zero, name=f"{call_name}_isErr")
+
         def emit_const_value(typ, raw):
             llty = llvm_type_for(prog, typ)
             resolved = resolve_alias(prog, typ)
@@ -4005,6 +4726,8 @@ class Codegen:
             # native impl runs unconditionally on a non-NULL handle.
             "json.destroyBuilder": (
                 "ss_json_builder_destroy", VOID, [I8P]),
+            "json.destroyDocument": (
+                "ss_json_document_destroy", VOID, [I8P]),
         }
 
         def emit_defers(exit_path, active=None):
@@ -4082,6 +4805,18 @@ class Codegen:
                 while len(arg_vals) < len(param_lltys):
                     arg_vals.append(ir.Constant(param_lltys[len(arg_vals)], 0))
                 builder.call(target_fn, arg_vals)
+
+        def trace_call_event(event, call_name):
+            call = calls.get(call_name)
+            if call is None:
+                return
+            self._emit_trace_event(
+                builder, event, "call", op.name, call_name,
+                call.get("target", ""), call.get("line", 0))
+
+        self._emit_trace_event(
+            builder, "op.enter", "operation", op.name, op.name,
+            "", op.decl_line)
 
         for verb, args, _ln in op.lines:
             # ----- metadata: ignored at codegen -----
@@ -4251,8 +4986,10 @@ class Codegen:
                 call_name = args[0]
                 policy_name = retry_attachments.get(call_name)
                 if policy_name is None:
+                    trace_call_event("call.start", call_name)
                     self._emit_run(builder, call_name, calls,
                                    resolve, opaque_inputs, SENTINEL)
+                    trace_call_event("call.end", call_name)
                     continue
                 # Retry loop: alloca an attempt counter; loop up to
                 # `retryMaxAttempts` times; exit on success or attempt
@@ -4278,8 +5015,10 @@ class Codegen:
                     "<", cur_attempt, ir.Constant(I64, max_attempts))
                 builder.cbranch(cond, retry_body, retry_exit)
                 builder.position_at_end(retry_body)
+                trace_call_event("call.start", call_name)
                 self._emit_run(builder, call_name, calls,
                                resolve, opaque_inputs, SENTINEL)
+                trace_call_event("call.end", call_name)
                 call_obj = calls[call_name]
                 result_ssa = call_obj.get("result")
                 result_slot = None
@@ -4321,10 +5060,44 @@ class Codegen:
                     call_obj["error_cond"] = None
                 continue
 
+            if verb == "runChecked":
+                (call_name, _ok_keyword, ok_name, _ok_type,
+                 _error_keyword, error_name, _error_type,
+                 _else_keyword, fail_label) = args
+                if call_name in retry_attachments:
+                    raise ValueError(
+                        f"runChecked: call `{call_name}` has useRetry policy "
+                        "metadata, but runChecked retry lowering is not "
+                        "implemented yet; use explicit `run` plus checked "
+                        "bindings for retry-managed calls")
+                trace_call_event("call.start", call_name)
+                self._emit_run(builder, call_name, calls,
+                               resolve, opaque_inputs, SENTINEL)
+                trace_call_event("call.end", call_name)
+                call = calls[call_name]
+                binds[ok_name] = call["result"]
+                slot = call.get("handle_slot")
+                if slot is not None:
+                    bind_slots[ok_name] = slot
+                binds[error_name] = (
+                    call["error_value"]
+                    if call["error_value"] is not None
+                    else call["result"]
+                )
+                err_cond = error_condition_for_call(call_name)
+                cont = builder.function.append_basic_block(
+                    f"after_{call_name}_checked")
+                record_label_defers(fail_label, active_defers)
+                builder.cbranch(err_cond, get_block(fail_label), cont)
+                builder.position_at_end(cont)
+                continue
+
             if verb in ("start", "await"):
                 # synchronous fallback for this implementation level
                 if verb == "await":
+                    trace_call_event("call.start", args[0])
                     self._emit_run(builder, args[0], calls, resolve, opaque_inputs, SENTINEL)
+                    trace_call_event("call.end", args[0])
                 continue
 
             if verb in ("bindOk", "bind"):
@@ -4566,21 +5339,12 @@ class Codegen:
 
             if verb == "branchIfError":
                 call_name, fail_label = args[0], args[1]
-                call = calls[call_name]
-                err_cond = call["error_cond"]
-                if err_cond is None:
-                    # Default convention:
-                    #   - integer return  -> negative value means failure (icmp slt result, 0)
-                    #   - pointer return  -> NULL means failure (icmp eq result, null)
-                    result = call["result"]
-                    if isinstance(result.type, ir.PointerType):
-                        nullptr = ir.Constant(result.type, None)
-                        err_cond = builder.icmp_unsigned("==", result, nullptr, name=f"{call_name}_isErr")
-                    else:
-                        zero = ir.Constant(result.type, 0)
-                        err_cond = builder.icmp_signed("<", result, zero, name=f"{call_name}_isErr")
+                err_cond = error_condition_for_call(call_name)
                 cont = builder.function.append_basic_block(f"after_{call_name}")
                 record_label_defers(fail_label, active_defers)
+                self._emit_trace_event(
+                    builder, "branch.decision", "branch", op.name,
+                    call_name, fail_label, _ln)
                 builder.cbranch(err_cond, get_block(fail_label), cont)
                 builder.position_at_end(cont)
                 continue
@@ -4596,6 +5360,9 @@ class Codegen:
                         cond_val = builder.icmp_signed("!=", cond_val, ir.Constant(cond_val.type, 0))
                     cont = builder.function.append_basic_block(f"after_branchIf_{cond_name}")
                     record_label_defers(t_label, active_defers)
+                    self._emit_trace_event(
+                        builder, "branch.decision", "branch", op.name,
+                        cond_name, t_label, _ln)
                     builder.cbranch(cond_val, get_block(t_label), cont)
                     builder.position_at_end(cont)
                 else:
@@ -4605,6 +5372,9 @@ class Codegen:
                         cond_val = builder.icmp_signed("!=", cond_val, ir.Constant(cond_val.type, 0))
                     record_label_defers(t_label, active_defers)
                     record_label_defers(f_label, active_defers)
+                    self._emit_trace_event(
+                        builder, "branch.decision", "branch", op.name,
+                        cond_name, f"{t_label}|{f_label}", _ln)
                     builder.cbranch(cond_val, get_block(t_label), get_block(f_label))
                     dead = builder.function.append_basic_block(f"after_branchIf_{cond_name}")
                     builder.position_at_end(dead)
@@ -4613,6 +5383,9 @@ class Codegen:
 
             if verb == "branch":
                 record_label_defers(args[0], active_defers)
+                self._emit_trace_event(
+                    builder, "branch.decision", "branch", op.name,
+                    "branch", args[0], _ln)
                 builder.branch(get_block(args[0]))
                 dead = builder.function.append_basic_block(f"after_branch_{args[0]}")
                 builder.position_at_end(dead)
@@ -4648,6 +5421,13 @@ class Codegen:
                         f"`returnVoid` is only legal when output is `Void`."
                     )
                 emit_defers("returnVoid")
+                self._emit_trace_event(
+                    builder, "return.value", "return", op.name,
+                    "returnVoid", "", _ln,
+                    value_name="", value_status="void")
+                self._emit_trace_event(
+                    builder, "op.exit", "operation", op.name, op.name,
+                    "", op.decl_line)
                 target_type = fn.function_type.return_type
                 if isinstance(target_type, ir.IntType):
                     builder.ret(ir.Constant(target_type, 0))
@@ -4663,6 +5443,14 @@ class Codegen:
 
             if verb in ("returnOk", "returnError", "returnValue"):
                 emit_defers(verb)
+                value_name = args[0] if args else ""
+                self._emit_trace_event(
+                    builder, "return.value", "return", op.name,
+                    verb, value_name, _ln,
+                    value_name=value_name, value_status="redacted")
+                self._emit_trace_event(
+                    builder, "op.exit", "operation", op.name, op.name,
+                    "", op.decl_line)
                 val = resolve(args[0])
                 if val is SENTINEL:
                     raise ValueError(f"{verb}: cannot return opaque input")
@@ -4768,7 +5556,9 @@ class Codegen:
                 op.consts[args[2]] = (args[3], raw_value)
                 continue
             if verb == "storage" and len(args) >= 4:
-                op.consts[args[2]] = (args[3], _unwrap(args[4]) if len(args) > 4 else 0)
+                if len(args) > 4 or args[2] not in op.consts:
+                    op.consts[args[2]] = (
+                        args[3], _unwrap(args[4]) if len(args) > 4 else 0)
                 continue
 
             # Refined-syntax / experimental verbs that have no executable
@@ -4810,6 +5600,9 @@ class Codegen:
             # no-ops (runtimeBinding / intrinsic / dependencyPath), this
             # gives the linker a well-typed `ret` instruction.
             emit_defers("fallthrough")
+            self._emit_trace_event(
+                builder, "op.exit", "operation", op.name, op.name,
+                "", op.decl_line)
             rty = fn.function_type.return_type
             if isinstance(rty, ir.PointerType):
                 builder.ret(ir.Constant(rty, None))
@@ -5004,6 +5797,41 @@ class Codegen:
 
         def require_f64(v, context: str):
             return require_exact_type(v, F64, "F64", context)
+
+        if target.startswith("json.stringify.") or target.startswith("json.parse."):
+            is_stringify = target.startswith("json.stringify.")
+            prefix = "json.stringify." if is_stringify else "json.parse."
+            type_name = target[len(prefix):]
+            primitive_targets = (
+                _JSON_STRINGIFY_PRIMITIVE_TARGETS
+                if is_stringify
+                else _JSON_PARSE_PRIMITIVE_TARGETS
+            )
+            resolved_type = resolve_alias(self.prog, type_name)
+            primitive_target = (
+                primitive_targets.get(type_name)
+                or primitive_targets.get(resolved_type)
+            )
+            if primitive_target is None:
+                if type_name in self.prog.records or resolved_type in self.prog.records:
+                    action = "stringify" if is_stringify else "parse"
+                    raise ValueError(
+                        f"{call_name}: json.{action}.{type_name} record "
+                        "lowering is not implemented in this compiler yet; "
+                        "record JSON codegen must walk declared record fields "
+                        "and honor generic recordFieldJsonName / "
+                        "recordFieldJsonOmitWhen metadata instead of falling "
+                        "through to a fake external result")
+                raise ValueError(
+                    f"{call_name}: unsupported high-level JSON target "
+                    f"`{target}`; primitive aliases currently cover "
+                    f"{sorted(primitive_targets)}")
+            if not is_stringify and "value" not in call["args"]:
+                for json_text_arg in ("jsonText", "text"):
+                    if json_text_arg in call["args"]:
+                        call["args"]["value"] = call["args"][json_text_arg]
+                        break
+            target = primitive_target
 
         if target.startswith(_HTML_HYDRATE_PREFIX):
             template_name = target[len(_HTML_HYDRATE_PREFIX):]
@@ -5773,6 +6601,475 @@ class Codegen:
         # sem_json_runtime.c when any of these targets is actually
         # referenced (see _native_json_link_inputs).
         # ------------------------------------------------------------
+
+        def json_arg_any(*arg_names):
+            for arg_name in arg_names:
+                if arg_name in call["args"]:
+                    return arg_val_named(arg_name)
+            expected = " / ".join(arg_names)
+            raise ValueError(
+                f"{call_name}: missing required arg `{expected}` for {target}")
+
+        def json_as_i8p(value, arg_name: str):
+            if value.type == I8P:
+                return value
+            if isinstance(value.type, ir.PointerType):
+                return builder.bitcast(value, I8P)
+            if isinstance(value.type, ir.IntType):
+                return builder.inttoptr(value, I8P)
+            raise ValueError(
+                f"{call_name}: {target} arg `{arg_name}` must be pointer-shaped")
+
+        def json_i8p_arg(*arg_names):
+            return json_as_i8p(json_arg_any(*arg_names), arg_names[0])
+
+        def json_i64_value(value, arg_name: str):
+            if isinstance(value.type, ir.IntType):
+                if value.type.width < 64:
+                    return builder.sext(value, I64)
+                if value.type.width > 64:
+                    return builder.trunc(value, I64)
+                return value
+            if isinstance(value.type, ir.PointerType):
+                return builder.ptrtoint(value, I64)
+            raise ValueError(
+                f"{call_name}: {target} arg `{arg_name}` must be integer-shaped")
+
+        def json_i64_arg(*arg_names):
+            return json_i64_value(json_arg_any(*arg_names), arg_names[0])
+
+        def json_i32_value(value, arg_name: str):
+            if isinstance(value.type, ir.IntType):
+                if value.type.width < 32:
+                    extend = builder.zext if value.type.width == 1 else builder.sext
+                    return extend(value, I32)
+                if value.type.width > 32:
+                    return builder.trunc(value, I32)
+                return value
+            raise ValueError(
+                f"{call_name}: {target} arg `{arg_name}` must be a 32-bit integer")
+
+        def json_i32_arg(*arg_names):
+            return json_i32_value(json_arg_any(*arg_names), arg_names[0])
+
+        def json_f64_value(value, arg_name: str):
+            if value.type == F64:
+                return value
+            if isinstance(value.type, ir.FloatType):
+                return builder.fpext(value, F64)
+            if isinstance(value.type, ir.IntType):
+                return builder.sitofp(value, F64)
+            raise ValueError(
+                f"{call_name}: {target} arg `{arg_name}` must be numeric")
+
+        def json_out_slot(slot_type, suffix: str):
+            with builder.goto_entry_block():
+                slot = builder.alloca(slot_type, name=f"{call_name}_{suffix}")
+                if isinstance(slot_type, ir.PointerType):
+                    builder.store(ir.Constant(slot_type, None), slot)
+                elif isinstance(slot_type, (ir.FloatType, ir.DoubleType)):
+                    builder.store(ir.Constant(slot_type, 0.0), slot)
+                else:
+                    builder.store(ir.Constant(slot_type, 0), slot)
+            return slot
+
+        def json_status_is_error(status):
+            return builder.icmp_signed(
+                "!=", status, ir.Constant(I32, 0),
+                name=f"{call_name}_isError")
+
+        def json_result(success_value, status):
+            call["result"] = success_value
+            call["error_value"] = status
+            call["error_cond"] = json_status_is_error(status)
+
+        def json_status_result(status):
+            json_result(ir.Constant(I32, 0), status)
+
+        if target == "json.createDocument":
+            json_text = json_i8p_arg("jsonText", "text", "value")
+            capacity = json_i64_arg("capacityBytes", "capacity")
+            doc_slot = json_out_slot(I8P, "documentSlot")
+            create_fn = self._runtime_func(
+                "ss_json_document_create_from_text",
+                I32, [I8P, I64, I8P.as_pointer()])
+            self.provenance.record_external(
+                "ss_json_document_create_from_text", call)
+            status = builder.call(
+                create_fn, [json_text, capacity, doc_slot],
+                name=f"{call_name}_status")
+            document = builder.load(doc_slot, name=f"{call_name}_document")
+            json_result(document, status)
+            call["handle_slot"] = doc_slot
+            return
+
+        if target == "json.createEmptyDocument":
+            capacity = json_i64_arg("capacityBytes", "capacity")
+            root_kind = json_i32_arg("rootKind", "kind")
+            doc_slot = json_out_slot(I8P, "documentSlot")
+            create_fn = self._runtime_func(
+                "ss_json_document_create_empty",
+                I32, [I64, I32, I8P.as_pointer()])
+            self.provenance.record_external(
+                "ss_json_document_create_empty", call)
+            status = builder.call(
+                create_fn, [capacity, root_kind, doc_slot],
+                name=f"{call_name}_status")
+            document = builder.load(doc_slot, name=f"{call_name}_document")
+            json_result(document, status)
+            call["handle_slot"] = doc_slot
+            return
+
+        if target == "json.destroyDocument":
+            document = json_i8p_arg("document")
+            destroy_fn = self._runtime_func(
+                "ss_json_document_destroy", VOID, [I8P])
+            self.provenance.record_external("ss_json_document_destroy", call)
+            builder.call(destroy_fn, [document])
+            call["result"] = ir.Constant(I32, 0)
+            return
+
+        if target == "json.serializeDocument":
+            document = json_i8p_arg("document")
+            scratch = json_i8p_arg("scratch", "scratchBuffer")
+            scratch_capacity = json_i64_arg("scratchCapacity", "capacityBytes")
+            out_slot = json_out_slot(I8P, "jsonTextSlot")
+            serialize_fn = self._runtime_func(
+                "ss_json_document_serialize",
+                I32, [I8P, I8P, I64, I8P.as_pointer()])
+            self.provenance.record_external(
+                "ss_json_document_serialize", call)
+            status = builder.call(
+                serialize_fn, [document, scratch, scratch_capacity, out_slot],
+                name=f"{call_name}_status")
+            json_text = builder.load(out_slot, name=f"{call_name}_jsonText")
+            json_result(json_text, status)
+            return
+
+        if target == "json.documentLength":
+            document = json_i8p_arg("document")
+            fn = self._runtime_func(
+                "ss_json_document_length", I64, [I8P])
+            self.provenance.record_external("ss_json_document_length", call)
+            call["result"] = builder.call(
+                fn, [document], name=f"{call_name}_length")
+            return
+
+        if target == "json.documentRoot":
+            document = json_i8p_arg("document")
+            fn = self._runtime_func(
+                "ss_json_document_root", I64, [I8P])
+            self.provenance.record_external("ss_json_document_root", call)
+            call["result"] = builder.call(
+                fn, [document], name=f"{call_name}_root")
+            return
+
+        if target in (
+            "json.objectFieldAt",
+            "json.arrayElementAt",
+            "json.cursorParent",
+            "json.cursorAtPath",
+        ):
+            document = json_i8p_arg("document")
+            out_slot = json_out_slot(I64, "cursorSlot")
+            if target == "json.objectFieldAt":
+                cursor = json_i64_arg("cursor")
+                field_name = json_i8p_arg("fieldName", "name")
+                symbol = "ss_json_navigate_object_field"
+                param_tys = [I8P, I64, I8P, I64.as_pointer()]
+                args_for_call = [document, cursor, field_name, out_slot]
+            elif target == "json.arrayElementAt":
+                cursor = json_i64_arg("cursor")
+                index = json_i64_arg("index")
+                symbol = "ss_json_navigate_array_element"
+                param_tys = [I8P, I64, I64, I64.as_pointer()]
+                args_for_call = [document, cursor, index, out_slot]
+            elif target == "json.cursorParent":
+                cursor = json_i64_arg("cursor")
+                symbol = "ss_json_cursor_parent"
+                param_tys = [I8P, I64, I64.as_pointer()]
+                args_for_call = [document, cursor, out_slot]
+            else:
+                path = json_i8p_arg("path", "jsonPath")
+                symbol = "ss_json_cursor_at_path"
+                param_tys = [I8P, I8P, I64.as_pointer()]
+                args_for_call = [document, path, out_slot]
+            fn = self._runtime_func(symbol, I32, param_tys)
+            self.provenance.record_external(symbol, call)
+            status = builder.call(fn, args_for_call, name=f"{call_name}_status")
+            cursor_value = builder.load(out_slot, name=f"{call_name}_cursor")
+            json_result(cursor_value, status)
+            return
+
+        if target == "json.cursorKind":
+            document = json_i8p_arg("document")
+            cursor = json_i64_arg("cursor")
+            fn = self._runtime_func(
+                "ss_json_cursor_kind", I32, [I8P, I64])
+            self.provenance.record_external("ss_json_cursor_kind", call)
+            call["result"] = builder.call(
+                fn, [document, cursor], name=f"{call_name}_kind")
+            return
+
+        if target == "json.cursorIsNull":
+            document = json_i8p_arg("document")
+            cursor = json_i64_arg("cursor")
+            fn = self._runtime_func(
+                "ss_json_cursor_is_null", I32, [I8P, I64])
+            self.provenance.record_external("ss_json_cursor_is_null", call)
+            raw = builder.call(fn, [document, cursor], name=f"{call_name}_raw")
+            call["result"] = builder.icmp_signed(
+                "!=", raw, ir.Constant(I32, 0), name=f"{call_name}_isNull")
+            return
+
+        if target in ("json.cursorInt64", "json.cursorDouble", "json.cursorBool"):
+            document = json_i8p_arg("document")
+            cursor = json_i64_arg("cursor")
+            if target == "json.cursorInt64":
+                missing_default = json_i64_arg("missingDefault", "default")
+                symbol = "ss_json_cursor_int64"
+                return_ty = I64
+                param_tys = [I8P, I64, I64]
+                args_for_call = [document, cursor, missing_default]
+                result_name = "int64"
+            elif target == "json.cursorDouble":
+                missing_default = json_f64_value(
+                    json_arg_any("missingDefault", "default"),
+                    "missingDefault")
+                symbol = "ss_json_cursor_double"
+                return_ty = F64
+                param_tys = [I8P, I64, F64]
+                args_for_call = [document, cursor, missing_default]
+                result_name = "double"
+            else:
+                missing_default = json_i32_value(
+                    json_arg_any("missingDefault", "default"),
+                    "missingDefault")
+                symbol = "ss_json_cursor_bool"
+                return_ty = I32
+                param_tys = [I8P, I64, I32]
+                args_for_call = [document, cursor, missing_default]
+                result_name = "boolRaw"
+            fn = self._runtime_func(symbol, return_ty, param_tys)
+            self.provenance.record_external(symbol, call)
+            loaded = builder.call(fn, args_for_call, name=f"{call_name}_{result_name}")
+            if target == "json.cursorBool":
+                loaded = builder.icmp_signed(
+                    "!=", loaded, ir.Constant(I32, 0),
+                    name=f"{call_name}_bool")
+            call["result"] = loaded
+            return
+
+        if target in (
+            "json.cursorString",
+            "json.cursorArrayLength",
+            "json.cursorObjectFieldCount",
+            "json.cursorObjectFieldNameAt",
+            "json.cursorObjectFieldValueAt",
+        ):
+            document = json_i8p_arg("document")
+            cursor = json_i64_arg("cursor")
+            if target == "json.cursorString":
+                scratch = json_i8p_arg("scratch", "scratchBuffer")
+                scratch_capacity = json_i64_arg("scratchCapacity", "capacityBytes")
+                out_slot = json_out_slot(I8P, "stringSlot")
+                symbol = "ss_json_cursor_string"
+                param_tys = [I8P, I64, I8P, I64, I8P.as_pointer()]
+                args_for_call = [document, cursor, scratch, scratch_capacity, out_slot]
+                result_name = "string"
+            elif target == "json.cursorArrayLength":
+                out_slot = json_out_slot(I64, "arrayLengthSlot")
+                symbol = "ss_json_cursor_array_length"
+                param_tys = [I8P, I64, I64.as_pointer()]
+                args_for_call = [document, cursor, out_slot]
+                result_name = "arrayLength"
+            elif target == "json.cursorObjectFieldCount":
+                out_slot = json_out_slot(I64, "fieldCountSlot")
+                symbol = "ss_json_cursor_object_field_count"
+                param_tys = [I8P, I64, I64.as_pointer()]
+                args_for_call = [document, cursor, out_slot]
+                result_name = "fieldCount"
+            elif target == "json.cursorObjectFieldNameAt":
+                index = json_i64_arg("index")
+                scratch = json_i8p_arg("scratch", "scratchBuffer")
+                scratch_capacity = json_i64_arg("scratchCapacity", "capacityBytes")
+                out_slot = json_out_slot(I8P, "fieldNameSlot")
+                symbol = "ss_json_cursor_object_field_name_at"
+                param_tys = [I8P, I64, I64, I8P, I64, I8P.as_pointer()]
+                args_for_call = [
+                    document, cursor, index, scratch, scratch_capacity, out_slot]
+                result_name = "fieldName"
+            else:
+                index = json_i64_arg("index")
+                out_slot = json_out_slot(I64, "fieldValueSlot")
+                symbol = "ss_json_cursor_object_field_value_at"
+                param_tys = [I8P, I64, I64, I64.as_pointer()]
+                args_for_call = [document, cursor, index, out_slot]
+                result_name = "fieldValue"
+            fn = self._runtime_func(symbol, I32, param_tys)
+            self.provenance.record_external(symbol, call)
+            status = builder.call(fn, args_for_call, name=f"{call_name}_status")
+            value = builder.load(out_slot, name=f"{call_name}_{result_name}")
+            json_result(value, status)
+            return
+
+        object_field_mutators = {
+            "json.setObjectFieldString": ("ss_json_set_object_field_string", "string"),
+            "json.setObjectFieldInt64": ("ss_json_set_object_field_int64", "int64"),
+            "json.setObjectFieldDouble": ("ss_json_set_object_field_double", "double"),
+            "json.setObjectFieldBool": ("ss_json_set_object_field_bool", "bool"),
+            "json.setObjectFieldNull": ("ss_json_set_object_field_null", "null"),
+            "json.setObjectFieldObject": ("ss_json_set_object_field_object", "container"),
+            "json.setObjectFieldArray": ("ss_json_set_object_field_array", "container"),
+            "json.setObjectFieldJsonText": ("ss_json_set_object_field_json_text", "jsonText"),
+        }
+        if target in object_field_mutators:
+            symbol, value_kind = object_field_mutators[target]
+            document = json_i8p_arg("document")
+            cursor = json_i64_arg("cursor")
+            field_name = json_i8p_arg("fieldName", "name")
+            param_tys = [I8P, I64, I8P]
+            args_for_call = [document, cursor, field_name]
+            cursor_out_slot = None
+            if value_kind == "string":
+                param_tys.append(I8P)
+                args_for_call.append(json_i8p_arg("value", "stringValue"))
+            elif value_kind == "int64":
+                param_tys.append(I64)
+                args_for_call.append(json_i64_arg("value"))
+            elif value_kind == "double":
+                param_tys.append(F64)
+                args_for_call.append(json_f64_value(json_arg_any("value"), "value"))
+            elif value_kind == "bool":
+                param_tys.append(I32)
+                args_for_call.append(json_i32_value(json_arg_any("value"), "value"))
+            elif value_kind == "container":
+                cursor_out_slot = json_out_slot(I64, "cursorSlot")
+                param_tys.append(I64.as_pointer())
+                args_for_call.append(cursor_out_slot)
+            elif value_kind == "jsonText":
+                param_tys.append(I8P)
+                args_for_call.append(json_i8p_arg("jsonText", "value"))
+                cursor_out_slot = json_out_slot(I64, "cursorSlot")
+                param_tys.append(I64.as_pointer())
+                args_for_call.append(cursor_out_slot)
+            fn = self._runtime_func(symbol, I32, param_tys)
+            self.provenance.record_external(symbol, call)
+            status = builder.call(fn, args_for_call, name=f"{call_name}_status")
+            if cursor_out_slot is not None:
+                child_cursor = builder.load(cursor_out_slot, name=f"{call_name}_cursor")
+                json_result(child_cursor, status)
+            else:
+                json_status_result(status)
+            return
+
+        array_mutators = {
+            "json.appendArrayElementString": ("ss_json_append_array_element_string", "append", "string"),
+            "json.appendArrayElementInt64": ("ss_json_append_array_element_int64", "append", "int64"),
+            "json.appendArrayElementDouble": ("ss_json_append_array_element_double", "append", "double"),
+            "json.appendArrayElementBool": ("ss_json_append_array_element_bool", "append", "bool"),
+            "json.appendArrayElementNull": ("ss_json_append_array_element_null", "append", "null"),
+            "json.appendArrayElementObject": ("ss_json_append_array_element_object", "append", "container"),
+            "json.appendArrayElementArray": ("ss_json_append_array_element_array", "append", "container"),
+            "json.appendArrayElementJsonText": ("ss_json_append_array_element_json_text", "append", "jsonText"),
+            "json.insertArrayElementString": ("ss_json_insert_array_element_string", "indexed", "string"),
+            "json.insertArrayElementInt64": ("ss_json_insert_array_element_int64", "indexed", "int64"),
+            "json.insertArrayElementDouble": ("ss_json_insert_array_element_double", "indexed", "double"),
+            "json.insertArrayElementBool": ("ss_json_insert_array_element_bool", "indexed", "bool"),
+            "json.insertArrayElementNull": ("ss_json_insert_array_element_null", "indexed", "null"),
+            "json.insertArrayElementObject": ("ss_json_insert_array_element_object", "indexed", "container"),
+            "json.insertArrayElementArray": ("ss_json_insert_array_element_array", "indexed", "container"),
+            "json.insertArrayElementJsonText": ("ss_json_insert_array_element_json_text", "indexed", "jsonText"),
+            "json.replaceArrayElementString": ("ss_json_replace_array_element_string", "indexed", "string"),
+            "json.replaceArrayElementInt64": ("ss_json_replace_array_element_int64", "indexed", "int64"),
+            "json.replaceArrayElementDouble": ("ss_json_replace_array_element_double", "indexed", "double"),
+            "json.replaceArrayElementBool": ("ss_json_replace_array_element_bool", "indexed", "bool"),
+            "json.replaceArrayElementNull": ("ss_json_replace_array_element_null", "indexed", "null"),
+            "json.replaceArrayElementObject": ("ss_json_replace_array_element_object", "indexed", "container"),
+            "json.replaceArrayElementArray": ("ss_json_replace_array_element_array", "indexed", "container"),
+            "json.replaceArrayElementJsonText": ("ss_json_replace_array_element_json_text", "indexed", "jsonText"),
+        }
+        if target in array_mutators:
+            symbol, index_kind, value_kind = array_mutators[target]
+            document = json_i8p_arg("document")
+            cursor = json_i64_arg("cursor")
+            param_tys = [I8P, I64]
+            args_for_call = [document, cursor]
+            cursor_out_slot = None
+            if index_kind == "indexed":
+                param_tys.append(I64)
+                args_for_call.append(json_i64_arg("index"))
+            if value_kind == "string":
+                param_tys.append(I8P)
+                args_for_call.append(json_i8p_arg("value", "stringValue"))
+            elif value_kind == "int64":
+                param_tys.append(I64)
+                args_for_call.append(json_i64_arg("value"))
+            elif value_kind == "double":
+                param_tys.append(F64)
+                args_for_call.append(json_f64_value(json_arg_any("value"), "value"))
+            elif value_kind == "bool":
+                param_tys.append(I32)
+                args_for_call.append(json_i32_value(json_arg_any("value"), "value"))
+            elif value_kind == "container":
+                cursor_out_slot = json_out_slot(I64, "cursorSlot")
+                param_tys.append(I64.as_pointer())
+                args_for_call.append(cursor_out_slot)
+            elif value_kind == "jsonText":
+                param_tys.append(I8P)
+                args_for_call.append(json_i8p_arg("jsonText", "value"))
+                cursor_out_slot = json_out_slot(I64, "cursorSlot")
+                param_tys.append(I64.as_pointer())
+                args_for_call.append(cursor_out_slot)
+            fn = self._runtime_func(symbol, I32, param_tys)
+            self.provenance.record_external(symbol, call)
+            status = builder.call(fn, args_for_call, name=f"{call_name}_status")
+            if cursor_out_slot is not None:
+                child_cursor = builder.load(cursor_out_slot, name=f"{call_name}_cursor")
+                json_result(child_cursor, status)
+            else:
+                json_status_result(status)
+            return
+
+        if target == "json.removeObjectField":
+            document = json_i8p_arg("document")
+            cursor = json_i64_arg("cursor")
+            field_name = json_i8p_arg("fieldName", "name")
+            fn = self._runtime_func(
+                "ss_json_remove_object_field", I32, [I8P, I64, I8P])
+            self.provenance.record_external("ss_json_remove_object_field", call)
+            status = builder.call(
+                fn, [document, cursor, field_name], name=f"{call_name}_status")
+            json_status_result(status)
+            return
+
+        if target == "json.removeArrayElementAt":
+            document = json_i8p_arg("document")
+            cursor = json_i64_arg("cursor")
+            index = json_i64_arg("index")
+            fn = self._runtime_func(
+                "ss_json_remove_array_element_at", I32, [I8P, I64, I64])
+            self.provenance.record_external(
+                "ss_json_remove_array_element_at", call)
+            status = builder.call(
+                fn, [document, cursor, index], name=f"{call_name}_status")
+            json_status_result(status)
+            return
+
+        if target in ("json.clearObject", "json.clearArray"):
+            document = json_i8p_arg("document")
+            cursor = json_i64_arg("cursor")
+            symbol = (
+                "ss_json_clear_object"
+                if target == "json.clearObject"
+                else "ss_json_clear_array"
+            )
+            fn = self._runtime_func(symbol, I32, [I8P, I64])
+            self.provenance.record_external(symbol, call)
+            status = builder.call(
+                fn, [document, cursor], name=f"{call_name}_status")
+            json_status_result(status)
+            return
 
         if target == "json.createBuilder":
             capacity = arg_val_named("capacity")
@@ -6875,6 +8172,1340 @@ class Codegen:
 # Linter (agent-safety checks)
 # ============================================================
 
+def _source_rows(prog: Program, verb_name: str):
+    for lineno in sorted(prog.source_lines):
+        raw = prog.source_lines[lineno]
+        toks = tokenize_line(raw)
+        if not toks or toks[0] == "#":
+            continue
+        if toks[0] == verb_name:
+            yield lineno, toks[1:]
+
+
+def _operation_inputs(op: Operation) -> dict:
+    inputs = {}
+    for verb, args, lineno in op.lines:
+        if verb == "input" and len(args) >= 3 and args[0] == op.name:
+            inputs[args[1]] = {"type": args[2], "line": lineno}
+    return inputs
+
+
+def _operation_input_sequence(op: Operation) -> list:
+    sequence = []
+    for verb, args, lineno in op.lines:
+        if verb == "input" and len(args) >= 3 and args[0] == op.name:
+            sequence.append((args[1], args[2], lineno))
+    return sequence
+
+
+def _operation_call_targets(op: Operation) -> dict:
+    targets = {}
+    for verb, args, _lineno in op.lines:
+        if verb == "call" and len(args) >= 2:
+            targets[args[0]] = args[1]
+    return targets
+
+
+def _declared_response_body_forwarders(prog: Program) -> dict:
+    forwarders = {}
+    for op in prog.operations.values():
+        for verb, args, lineno in op.lines:
+            if (verb == "responseBodyForwarder" and len(args) >= 2
+                    and args[0] == op.name):
+                forwarders[op.name] = {"arg": args[1], "line": lineno}
+    return forwarders
+
+
+def _response_body_writer_slots(prog: Program) -> dict:
+    """Return writer target -> response-body argument names.
+
+    Runtime writers expose fixed body slots. User wrappers only become
+    response-body writers when they explicitly declare
+    `responseBodyForwarder OP ARG` and their body actually forwards ARG to
+    an already-known writer. This mirrors semlint's SS3603/SS3615 walk so
+    strict compiler mode does not infer hidden wrapper contracts from names.
+    """
+    slots_by_target = dict(HTTP_RESPONSE_NULLABLE_SLOTS)
+    declared = _declared_response_body_forwarders(prog)
+    changed = True
+    while changed:
+        changed = False
+        for op_name, claim in declared.items():
+            if op_name in slots_by_target:
+                continue
+            op = prog.operations.get(op_name)
+            if op is None:
+                continue
+            call_targets = _operation_call_targets(op)
+            claimed_arg = claim["arg"]
+            forwards_claim = False
+            for verb, args, _lineno in op.lines:
+                if verb != "arg" or len(args) < 3:
+                    continue
+                call_name, arg_name, value_name = args[0], args[1], args[2]
+                target = call_targets.get(call_name)
+                accepted_slots = slots_by_target.get(target)
+                if (accepted_slots is not None
+                        and arg_name in accepted_slots
+                        and value_name == claimed_arg):
+                    forwards_claim = True
+                    break
+            if forwards_claim:
+                slots_by_target[op_name] = frozenset({claimed_arg})
+                changed = True
+    return slots_by_target
+
+
+def _operation_has_null_body_opt_out(op: Operation) -> bool:
+    for verb, args, _lineno in op.lines:
+        if verb == "pinsNullBodyFailurePath" and args and args[0] == op.name:
+            return True
+        if verb == "warning" and len(args) >= 2 and args[0] == op.name:
+            warning_text = " ".join(str(_unwrap(arg)) for arg in args[1:])
+            if any(marker in warning_text
+                   for marker in LEGACY_HTTP_NULL_GUARD_OPT_OUT_MARKERS):
+                return True
+    return False
+
+
+def _check_http_route_methods(prog: Program, diags):
+    allowed = ", ".join(sorted(HTTP_METHOD_WHITELIST))
+    for lineno, args in _source_rows(prog, "route"):
+        if len(args) < 4:
+            continue
+        method = args[1]
+        if is_supported_route_method(method):
+            continue
+        diags.append((lineno,
+            f"SS3601 invalidRouteMethod: route method `{method}` is not "
+            f"supported by the native HTTP dispatcher; expected one of {allowed}"))
+
+
+def _check_http_route_handler_input_shape(prog: Program, diags):
+    binding_sites = {}
+    for lineno, args in _source_rows(prog, "route"):
+        if len(args) >= 4:
+            binding_sites.setdefault(args[3], []).append(lineno)
+    for lineno, args in _source_rows(prog, "routeMiddleware"):
+        if len(args) >= 3:
+            binding_sites.setdefault(args[2], []).append(lineno)
+
+    expected = [("request", "HttpRequest"), ("response", "HttpResponse")]
+    for op_name, lines in sorted(binding_sites.items()):
+        op = prog.operations.get(op_name)
+        if op is None:
+            continue
+        carried_inputs = [
+            (name, typ, lineno)
+            for name, typ, lineno in _operation_input_sequence(op)
+            if name not in OPAQUE_INPUTS
+        ]
+        actual_shape = [(name, typ) for name, typ, _line in carried_inputs]
+        if actual_shape == expected:
+            continue
+        primary_line = carried_inputs[0][2] if carried_inputs else lines[0]
+        rendered = ", ".join(
+            f"{name}:{typ}" for name, typ, _line in carried_inputs
+        ) or "<none>"
+        diags.append((primary_line,
+            f"SS3609 routeHandlerInputNameMismatch: route-bound operation "
+            f"`{op_name}` must declare exactly `input {op_name} request "
+            f"HttpRequest` then `input {op_name} response HttpResponse` "
+            f"for the native HTTP ABI; found {rendered}"))
+
+
+def _check_http_middleware_output_contract(prog: Program, diags):
+    middleware_ops = set()
+    for _lineno, args in _source_rows(prog, "routeMiddleware"):
+        if len(args) >= 3:
+            middleware_ops.add(args[2])
+    for op_name in sorted(middleware_ops):
+        op = prog.operations.get(op_name)
+        if op is None:
+            continue
+        contract = _operation_output_contract(prog, op)
+        if contract.problem:
+            continue
+        if contract.ok_type == "MiddlewareControl":
+            continue
+        diags.append((contract.line,
+            f"SS3610 middlewareReturnNotMiddlewareControl: middleware "
+            f"`{op_name}` returns `{contract.ok_type}`, but every operation "
+            f"bound via `routeMiddleware` must declare `output {op_name} "
+            f"MiddlewareControl` so continue/short-circuit semantics are "
+            f"type checked"))
+
+
+def _check_http_nullable_response_inputs(prog: Program, diags):
+    slots_by_writer = _response_body_writer_slots(prog)
+    for op in prog.operations.values():
+        call_targets = _operation_call_targets(op)
+        nullable_binds = {}
+        for verb, args, lineno in op.lines:
+            if verb not in ("bind", "bindOk") or len(args) < 3:
+                continue
+            call_name = args[2]
+            if call_targets.get(call_name) in NULLABLE_HTTP_REQUEST_READS:
+                nullable_binds[args[0]] = lineno
+        if not nullable_binds or _operation_has_null_body_opt_out(op):
+            continue
+
+        guarded = set()
+        pointer_is_null_calls = set()
+        for verb, args, lineno in op.lines:
+            if verb == "call" and len(args) >= 2 and args[1] == "pointer.isNull":
+                pointer_is_null_calls.add(args[0])
+                continue
+            if (verb == "arg" and len(args) >= 3
+                    and args[0] in pointer_is_null_calls
+                    and args[1] == "pointer"
+                    and args[2] in nullable_binds):
+                guarded.add(args[2])
+                continue
+            if verb != "arg" or len(args) < 3:
+                continue
+            call_name, arg_name, value_name = args[0], args[1], args[2]
+            target = call_targets.get(call_name)
+            accepted_slots = slots_by_writer.get(target)
+            if (accepted_slots is not None
+                    and arg_name in accepted_slots
+                    and value_name in nullable_binds
+                    and value_name not in guarded):
+                diags.append((lineno,
+                    f"SS3603 unguardedHttpInput: nullable HTTP request value "
+                    f"`{value_name}` reaches `{target}` argument `{arg_name}` "
+                    f"without a preceding `pointer.isNull` guard"))
+
+
+def _check_http_response_body_forwarders(prog: Program, diags):
+    slots_by_writer = _response_body_writer_slots(prog)
+    declared = _declared_response_body_forwarders(prog)
+    for op_name, claim in sorted(declared.items()):
+        if op_name in slots_by_writer:
+            continue
+        diags.append((claim["line"],
+            f"SS3607 forwarderDeclarationNotHonored: "
+            f"`responseBodyForwarder {op_name} {claim['arg']}` is not backed "
+            f"by an `arg <writerCall> <body-slot> {claim['arg']}` flow into "
+            f"a known response body writer or declared forwarder"))
+
+    declared_ops = set(declared)
+    for op in prog.operations.values():
+        inputs = _operation_inputs(op)
+        if not inputs:
+            continue
+        call_targets = _operation_call_targets(op)
+        for verb, args, lineno in op.lines:
+            if verb != "arg" or len(args) < 3:
+                continue
+            call_name, arg_name, value_name = args[0], args[1], args[2]
+            target = call_targets.get(call_name)
+            accepted_slots = slots_by_writer.get(target)
+            if accepted_slots is None or arg_name not in accepted_slots:
+                continue
+            if value_name not in inputs:
+                continue
+            if (op.name in declared
+                    and declared[op.name]["arg"] == value_name):
+                continue
+            if op.name in declared_ops:
+                continue
+            diags.append((lineno,
+                f"SS3615 responseBodyForwarderMissing: operation `{op.name}` "
+                f"forwards input `{value_name}` to response body writer "
+                f"`{target}`; declare `responseBodyForwarder {op.name} "
+                f"{value_name}` so nullable request values are checked "
+                f"through the wrapper"))
+
+
+def _check_http_contracts(prog: Program, diags):
+    _check_http_route_methods(prog, diags)
+    _check_http_route_handler_input_shape(prog, diags)
+    _check_http_middleware_output_contract(prog, diags)
+    _check_http_response_body_forwarders(prog, diags)
+    _check_http_nullable_response_inputs(prog, diags)
+
+
+def _strict_raise_first_http_contract(prog: Program, diags):
+    if not diags:
+        return
+    lineno, message = sorted(diags)[0]
+    code_match = re.match(r"(SS\d+)", message)
+    code = code_match.group(1) if code_match else "SS3600"
+    span = _strict_span(prog, lineno)
+    raise CompilerDiagnosticError(CompilerDiagnostic(
+        code=code,
+        phase="semantic.strictExecutable",
+        message=message,
+        primary=span,
+        semantic_stack=[
+            DiagnosticFrame(
+                kind="strictExecutable HTTP contract validation",
+                span=span,
+                note=(
+                    "native HTTP route, middleware, nullable, and response "
+                    "forwarding contracts are compile-blocking in "
+                    "strictExecutable mode"
+                ),
+            ),
+        ],
+        direction=(
+            "`languageMode strictExecutable` requires native HTTP metadata "
+            "to match the executable dispatcher ABI. Fix the route/middleware "
+            "shape or add the explicit response forwarding/nullability "
+            "contract named by the diagnostic."
+        ),
+    ))
+
+
+def _strict_raise_first_fallible_contract(prog: Program, diags):
+    if not diags:
+        return
+    lineno, message = sorted(diags)[0]
+    span = _strict_span(prog, lineno)
+    raise CompilerDiagnosticError(CompilerDiagnostic(
+        code="SS3201",
+        phase="semantic.strictExecutable",
+        message=message,
+        primary=span,
+        semantic_stack=[
+            DiagnosticFrame(
+                kind="strictExecutable fallible-call validation",
+                span=span,
+                note=(
+                    "known fallible calls require executable success and "
+                    "failure disposition in strictExecutable mode"
+                ),
+            ),
+        ],
+        direction=(
+            "`languageMode strictExecutable` rejects plain `run` for known "
+            "fallible targets. Use `runChecked`, or the legacy explicit "
+            "`run` + `bindOk`/`ignoreOk` + `bindError` + `branchIfError` "
+            "shape."
+        ),
+    ))
+
+
+def _strict_span(prog: Program, lineno: int, role: str = "primary") -> DiagnosticSpan:
+    return DiagnosticSpan(
+        path=prog.source_path or "<source>",
+        line=lineno or 0,
+        column=1,
+        raw=prog.source_lines.get(lineno, ""),
+        role=role,
+    )
+
+
+def _strict_target(prog: Program, target: str) -> str:
+    canonical = _TARGET_ALIASES.get(target, target)
+    return prog.operation_aliases.get(canonical, canonical)
+
+
+def _strict_raise(
+    prog: Program,
+    code: str,
+    message: str,
+    op: Operation,
+    lineno: int,
+    *,
+    call_name: str = "",
+    call_target: str = "",
+    note: str = "",
+    suggested_fixes: list | None = None,
+) -> None:
+    span = _strict_span(prog, lineno)
+    raise CompilerDiagnosticError(CompilerDiagnostic(
+        code=code,
+        phase="semantic.strictExecutable",
+        message=message,
+        primary=span,
+        semantic_stack=[
+            DiagnosticFrame(
+                kind="strictExecutable owned-resource validation",
+                operation=op.name,
+                call_name=call_name,
+                call_target=call_target,
+                span=span,
+                note=note,
+            ),
+        ],
+        direction=(
+            "`languageMode strictExecutable` makes ownership and failure "
+            "cleanup compile-blocking. The compiler only accepts resource "
+            "lifetimes it can see in executable control flow."
+        ),
+        suggested_fixes=suggested_fixes or [],
+    ))
+
+
+def _strict_collect_calls(prog: Program, op: Operation) -> dict:
+    calls = {}
+    for verb, args, lineno in op.lines:
+        if verb == "call" and len(args) >= 2:
+            calls[args[0]] = {
+                "name": args[0],
+                "target": _strict_target(prog, args[1]),
+                "line": lineno,
+                "args": [],
+                "binds": [],
+                "bind_oks": [],
+                "bind_errors": [],
+                "branch_errors": [],
+            }
+            continue
+        if not args:
+            continue
+        if verb == "arg" and len(args) >= 3 and args[0] in calls:
+            calls[args[0]]["args"].append((args[1], args[2], lineno))
+        elif verb == "bind" and len(args) >= 3 and args[2] in calls:
+            calls[args[2]]["binds"].append((args[0], args[1], lineno))
+        elif verb == "bindOk" and len(args) >= 3 and args[2] in calls:
+            calls[args[2]]["bind_oks"].append((args[0], args[1], lineno))
+        elif verb == "bindError" and len(args) >= 3 and args[2] in calls:
+            calls[args[2]]["bind_errors"].append((args[0], args[1], lineno))
+        elif verb == "branchIfError" and args[0] in calls:
+            label = args[1] if len(args) >= 2 else ""
+            calls[args[0]]["branch_errors"].append((label, lineno))
+        elif verb == "runChecked" and len(args) == 9 and args[0] in calls:
+            call_info = calls[args[0]]
+            call_info["bind_oks"].append((args[2], args[3], lineno))
+            call_info["bind_errors"].append((args[5], args[6], lineno))
+            call_info["branch_errors"].append((args[8], lineno))
+    return calls
+
+
+def _strict_success_names(call_info: dict) -> set:
+    return {
+        name
+        for name, _typ, _line in (
+            list(call_info.get("binds", []))
+            + list(call_info.get("bind_oks", []))
+        )
+    }
+
+
+def _strict_call_consumes_any(call_info: dict, names: set) -> bool:
+    return any(value_name in names
+               for _arg_name, value_name, _line in call_info.get("args", []))
+
+
+def _strict_cleanup_calls(calls: dict, cleanup_targets: set, names: set,
+                          after_line: int = 0) -> list:
+    matches = []
+    for cleanup_call in calls.values():
+        if cleanup_call["target"] not in cleanup_targets:
+            continue
+        if cleanup_call["line"] <= after_line:
+            continue
+        if _strict_call_consumes_any(cleanup_call, names):
+            matches.append(cleanup_call)
+    return matches
+
+
+def _strict_collect_defers(op: Operation) -> list:
+    defers = []
+    by_name = {}
+    for verb, args, lineno in op.lines:
+        if verb in ("defer", "deferLog", "deferAwaitLog") and len(args) >= 2:
+            entry = {
+                "name": args[0],
+                "target": args[1],
+                "args": list(args[2:]),
+                "line": lineno,
+                "run_on": set(),
+            }
+            defers.append(entry)
+            by_name[args[0]] = entry
+        elif verb == "deferWhenExitLog" and len(args) >= 3:
+            entry = {
+                "name": args[0],
+                "target": args[2],
+                "args": list(args[3:]),
+                "line": lineno,
+                "run_on": set(),
+            }
+            defers.append(entry)
+            by_name[args[0]] = entry
+        elif verb == "deferRunOn" and len(args) >= 2:
+            entry = by_name.get(args[0])
+            if entry is not None:
+                entry["run_on"].add(args[1])
+    for entry in defers:
+        if not entry["run_on"]:
+            entry["run_on"] = {"all"}
+    return defers
+
+
+def _strict_defer_is_all_paths(defer_info: dict) -> bool:
+    return bool(defer_info.get("run_on", set()) & {"all", "always"})
+
+
+def _strict_first_cleanup_line(calls: dict, defers: list, cleanup_targets: set,
+                               names: set, after_line: int = 0,
+                               *, accept_defers: bool) -> int | None:
+    lines = [
+        call_info["line"]
+        for call_info in _strict_cleanup_calls(
+            calls, cleanup_targets, names, after_line)
+    ]
+    if accept_defers:
+        for defer_info in defers:
+            if defer_info["target"] not in cleanup_targets:
+                continue
+            if defer_info["line"] <= after_line:
+                continue
+            if not _strict_defer_is_all_paths(defer_info):
+                continue
+            if any(arg in names for arg in defer_info["args"]):
+                lines.append(defer_info["line"])
+    return min(lines) if lines else None
+
+
+def _strict_label_body_lines(op: Operation, label_name: str) -> list:
+    label_index = None
+    for index, (verb, args, _lineno) in enumerate(op.lines):
+        if verb == "label" and args and args[0] == label_name:
+            label_index = index
+            break
+    if label_index is None:
+        return []
+    body = []
+    for entry in op.lines[label_index + 1:]:
+        verb, _args, _lineno = entry
+        if verb == "label":
+            break
+        body.append(entry)
+    return body
+
+
+def _strict_label_has_cleanup(prog: Program, op: Operation, label_name: str,
+                              cleanup_targets: set, names: set) -> bool:
+    label_op = Operation(op.name, op.decl_line)
+    label_op.lines = _strict_label_body_lines(op, label_name)
+    if not label_op.lines:
+        return False
+    label_calls = _strict_collect_calls(prog, label_op)
+    return bool(_strict_cleanup_calls(label_calls, cleanup_targets, names))
+
+
+def _strict_transfer_line(op: Operation, names: set, after_line: int = 0) -> int | None:
+    for verb, args, lineno in op.lines:
+        if lineno <= after_line:
+            continue
+        if verb in ("returnOk", "returnValue") and args and args[0] in names:
+            return lineno
+        if verb == "set" and args and args[-1] in names:
+            return lineno
+    return None
+
+
+def _strict_output_success_type(op: Operation) -> str | None:
+    for verb, args, _lineno in op.lines:
+        if verb != "output" or len(args) < 2 or args[0] != op.name:
+            continue
+        if args[1] == "Result" and len(args) >= 3:
+            return args[2]
+        return args[1]
+    return None
+
+
+def _strict_validate_heap_resources(prog: Program, op: Operation,
+                                    calls: dict, defers: list) -> None:
+    del defers  # c.free defers are metadata today; strict mode requires calls.
+    owned_by_name = {}
+    for call_info in calls.values():
+        if call_info["target"] not in _STRICT_HEAP_ALLOCATION_TARGETS:
+            continue
+        names = _strict_success_names(call_info)
+        if not call_info["bind_errors"] or not call_info["branch_errors"]:
+            _strict_raise(
+                prog,
+                "SS3305",
+                f"SS3305 uncheckedHeapAllocation: `{call_info['name']}` "
+                f"targets `{call_info['target']}` without an executable OOM "
+                "branch",
+                op,
+                call_info["line"],
+                call_name=call_info["name"],
+                call_target=call_info["target"],
+                note="heap allocations must bind and branch on allocation failure",
+                suggested_fixes=[
+                    f"Add `bindError <errorName> <ErrorType> {call_info['name']}`.",
+                    f"Add `branchIfError {call_info['name']} <allocationFailedLabel>`.",
+                ],
+            )
+        if not names:
+            _strict_raise(
+                prog,
+                "SS3305",
+                f"SS3305 uncheckedHeapAllocation: `{call_info['name']}` "
+                "does not bind its successful heap pointer",
+                op,
+                call_info["line"],
+                call_name=call_info["name"],
+                call_target=call_info["target"],
+                note="strict resource tracking needs a named owned pointer",
+            )
+        for name in names:
+            owned_by_name[name] = call_info
+        cleanup_line = _strict_first_cleanup_line(
+            calls, [], _STRICT_HEAP_CLEANUP_TARGETS, names,
+            call_info["line"], accept_defers=False)
+        transfer_line = _strict_transfer_line(
+            op, names, call_info["line"])
+        if cleanup_line is None and transfer_line is None:
+            _strict_raise(
+                prog,
+                "SS3303",
+                f"SS3303 resourceLifecycle.allocateFreeUnpaired: "
+                f"`{call_info['name']}` allocates heap memory without an "
+                "executable `c.free` cleanup call",
+                op,
+                call_info["line"],
+                call_name=call_info["name"],
+                call_target=call_info["target"],
+                note="`defer ... c.free` is metadata-only in this backend",
+                suggested_fixes=[
+                    "Add an explicit `call <freeCall> c.free` path before every return.",
+                    "Add explicit `c.free` cleanup in later failure labels before returning.",
+                ],
+            )
+        # When ownership transfers to the caller (returnOk / returnValue
+        # of the owned pointer), failure paths reachable before that
+        # transfer still need explicit cleanup. The original heap check
+        # used `cleanup_line` exclusively; we now bound the failure-
+        # branch scan with whichever appears first.
+        boundary_lines = [
+            line for line in (cleanup_line, transfer_line)
+            if line is not None
+        ]
+        boundary_line = min(boundary_lines) if boundary_lines else 0
+        for verb, args, lineno in op.lines:
+            if lineno <= call_info["line"]:
+                continue
+            if boundary_line and lineno >= boundary_line:
+                continue
+            if verb != "branchIfError" or len(args) < 2:
+                continue
+            if args[0] == call_info["name"]:
+                continue
+            failure_label = args[1]
+            if _strict_label_has_cleanup(
+                    prog, op, failure_label,
+                    _STRICT_HEAP_CLEANUP_TARGETS, names):
+                continue
+            _strict_raise(
+                prog,
+                "SS3303",
+                f"SS3303 resourceLifecycle.allocateFreeUnpaired: "
+                f"`{call_info['name']}` heap pointer can reach failure label "
+                f"`{failure_label}` before `c.free`",
+                op,
+                lineno,
+                call_name=call_info["name"],
+                call_target=call_info["target"],
+                note="failure labels after heap acquisition must release the owned pointer",
+            )
+
+    released_in_segment = set()
+    for verb, args, _lineno in op.lines:
+        if verb == "label":
+            released_in_segment = set()
+            continue
+        if verb == "call" and args:
+            call_info = calls.get(args[0])
+            if (call_info is not None
+                    and call_info["target"] in _STRICT_HEAP_CLEANUP_TARGETS):
+                consumed = {
+                    value_name
+                    for _arg_name, value_name, _line in call_info.get("args", [])
+                    if value_name in owned_by_name
+                }
+                for value_name in consumed:
+                    if value_name in released_in_segment:
+                        producer = owned_by_name[value_name]
+                        _strict_raise(
+                            prog,
+                            "SS3307",
+                            f"SS3307 resourceLifecycle.heapDoubleFree: "
+                            f"`{value_name}` is released more than once on "
+                            "the same strictExecutable path",
+                            op,
+                            call_info["line"],
+                            call_name=call_info["name"],
+                            call_target=call_info["target"],
+                            note=f"first owner was produced by `{producer['name']}`",
+                        )
+                    released_in_segment.add(value_name)
+        if verb in ("returnOk", "returnError", "returnValue", "returnVoid", "branch"):
+            released_in_segment = set()
+
+
+def _strict_validate_sqlite_database_cleanup(prog: Program, op: Operation,
+                                             calls: dict, defers: list) -> None:
+    for open_call in calls.values():
+        if open_call["target"] not in _STRICT_SQLITE_DATABASE_OPEN_TARGETS:
+            continue
+        database_names = _strict_success_names(open_call)
+        if not database_names:
+            continue
+        transfer_line = _strict_transfer_line(
+            op, database_names, open_call["line"])
+        cleanup_line = _strict_first_cleanup_line(
+            calls, defers, _STRICT_SQLITE_DATABASE_CLOSE_TARGETS,
+            database_names, open_call["line"], accept_defers=True)
+        if transfer_line is None and cleanup_line is None:
+            _strict_raise(
+                prog,
+                "SS3905",
+                f"SS3905 resourceLifecycle.sqliteDatabaseFailureCleanupMissing: "
+                f"`{open_call['name']}` opens a SQLite database without "
+                "close or ownership transfer",
+                op,
+                open_call["line"],
+                call_name=open_call["name"],
+                call_target=open_call["target"],
+                note="strict mode requires a close call, lowered close defer, set, or return transfer",
+            )
+        stop_line = min(
+            line for line in (transfer_line, cleanup_line)
+            if line is not None
+        ) if (transfer_line is not None or cleanup_line is not None) else None
+        for verb, args, lineno in op.lines:
+            if lineno <= open_call["line"]:
+                continue
+            if stop_line is not None and lineno >= stop_line:
+                continue
+            if verb != "branchIfError" or len(args) < 2:
+                continue
+            if args[0] == open_call["name"]:
+                continue
+            failure_label = args[1]
+            if _strict_label_has_cleanup(
+                    prog, op, failure_label,
+                    _STRICT_SQLITE_DATABASE_CLOSE_TARGETS, database_names):
+                continue
+            _strict_raise(
+                prog,
+                "SS3905",
+                f"SS3905 resourceLifecycle.sqliteDatabaseFailureCleanupMissing: "
+                f"`{open_call['name']}` database handle can reach failure "
+                f"label `{failure_label}` without `sqlite.closeDatabase`",
+                op,
+                lineno,
+                call_name=open_call["name"],
+                call_target=open_call["target"],
+                note="SQLite bootstrap failures after open must close the fresh handle",
+            )
+
+
+def _strict_validate_sqlite_statement_cleanup(prog: Program, op: Operation,
+                                             calls: dict, defers: list) -> None:
+    output_success_type = _strict_output_success_type(op)
+    for prepare_call in calls.values():
+        if prepare_call["target"] not in _STRICT_SQLITE_STATEMENT_PREPARE_TARGETS:
+            continue
+        statement_names = _strict_success_names(prepare_call)
+        if not statement_names:
+            continue
+        cleanup_line = _strict_first_cleanup_line(
+            calls, defers, _STRICT_SQLITE_STATEMENT_FINALIZE_TARGETS,
+            statement_names, prepare_call["line"], accept_defers=True)
+        output_transfers_statement = output_success_type == "SqliteStatement"
+        if cleanup_line is None and not output_transfers_statement:
+            _strict_raise(
+                prog,
+                "SS3906",
+                f"SS3906 resourceLifecycle.sqliteStatementFinalizeMissing: "
+                f"`{prepare_call['name']}` prepares a SQLite statement "
+                "without `sqlite.finalizeStatement`",
+                op,
+                prepare_call["line"],
+                call_name=prepare_call["name"],
+                call_target=prepare_call["target"],
+                note="prepared statements must be finalized by call or lowered SQLite defer",
+                suggested_fixes=[
+                    "Add `defer <name> sqlite.finalizeStatement <statement>` after the successful prepare.",
+                    "Or add an explicit `sqlite.finalizeStatement` call on every exit path.",
+                ],
+            )
+        if cleanup_line is None:
+            continue
+        for verb, args, lineno in op.lines:
+            if lineno <= prepare_call["line"] or lineno >= cleanup_line:
+                continue
+            if verb != "branchIfError" or len(args) < 2:
+                continue
+            if args[0] == prepare_call["name"]:
+                continue
+            failure_label = args[1]
+            if _strict_label_has_cleanup(
+                    prog, op, failure_label,
+                    _STRICT_SQLITE_STATEMENT_FINALIZE_TARGETS, statement_names):
+                continue
+            _strict_raise(
+                prog,
+                "SS3906",
+                f"SS3906 resourceLifecycle.sqliteStatementFinalizeMissing: "
+                f"`{prepare_call['name']}` statement can reach failure label "
+                f"`{failure_label}` before finalize",
+                op,
+                lineno,
+                call_name=prepare_call["name"],
+                call_target=prepare_call["target"],
+                note="failure labels after prepare must finalize the owned statement",
+            )
+
+
+def _strict_collect_constant_string_names(prog: Program,
+                                          op: Operation = None) -> set:
+    names = set()
+    for name, (typ, _value) in prog.consts.items():
+        if typ != "CNullTerminatedByteString":
+            continue
+        if name in prog.mutable_globals:
+            continue
+        names.add(name)
+    if op is not None:
+        for name, (typ, _value) in op.consts.items():
+            if typ == "CNullTerminatedByteString":
+                names.add(name)
+        for verb, args, _lineno in op.lines:
+            if verb != "storage" or len(args) < 4:
+                continue
+            if args[0] != "local" or args[1] != "immutable":
+                continue
+            if args[3] != "CNullTerminatedByteString":
+                continue
+            names.add(args[2])
+    return names
+
+
+def _strict_call_target_map(op: Operation) -> dict:
+    targets = {}
+    for verb, args, lineno in op.lines:
+        if verb == "call" and len(args) >= 2:
+            targets[args[0]] = (args[1], lineno)
+    return targets
+
+
+def _strict_raise_first_simple(prog: Program, diags, default_code: str,
+                               phase_note: str, direction: str) -> None:
+    if not diags:
+        return
+    lineno, message = sorted(diags)[0]
+    code_match = re.match(r"(SS\d+)", message)
+    diag_code = code_match.group(1) if code_match else default_code
+    span = _strict_span(prog, lineno)
+    raise CompilerDiagnosticError(CompilerDiagnostic(
+        code=diag_code,
+        phase="semantic.strictExecutable",
+        message=message,
+        primary=span,
+        semantic_stack=[
+            DiagnosticFrame(
+                kind=phase_note,
+                span=span,
+                note=(
+                    "`languageMode strictExecutable` holds this source to "
+                    "the executable contract wall"
+                ),
+            ),
+        ],
+        direction=direction,
+    ))
+
+
+def _check_strict_forbidden_call_targets(prog: Program, diags) -> None:
+    """SS3313 — reject stdlib targets that have no bounded form (strcat,
+    strcpy, sprintf, gets, strncat)."""
+    for op_name, op in prog.operations.items():
+        for verb, args, lineno in op.lines:
+            if verb != "call" or len(args) < 2:
+                continue
+            call_name, target = args[0], args[1]
+            canonical = _strict_target(prog, target)
+            advice = (
+                _STRICT_FORBIDDEN_CALL_TARGETS_WITH_ADVICE.get(canonical)
+                or _STRICT_FORBIDDEN_CALL_TARGETS_WITH_ADVICE.get(target)
+            )
+            if advice is None:
+                continue
+            diags.append((lineno,
+                f"SS3313 forbiddenUnsafeCallTarget: operation `{op_name}` "
+                f"declares `call {call_name} {target}`, which has no "
+                f"bounded form; {advice}"))
+
+
+def _strict_raise_first_forbidden_target(prog: Program, diags) -> None:
+    _strict_raise_first_simple(
+        prog, diags, "SS3313",
+        "strictExecutable forbidden call-target validation",
+        "Strict executable (the default) rejects unsafe stdlib targets "
+        "that have no bounded form. Migrate to the bounded variant the "
+        "diagnostic names.",
+    )
+
+
+def _check_strict_format_string_is_constant(prog: Program, diags) -> None:
+    """SS3310 — c.snprintf / c.printf / c.fprintf / c.sprintf-family
+    `format` arg must reference a `storage * immutable
+    CNullTerminatedByteString` row so `%n` / `%s` conversions cannot be
+    injected from runtime data."""
+    for op_name, op in prog.operations.items():
+        constant_names = _strict_collect_constant_string_names(prog, op)
+        call_targets = _strict_call_target_map(op)
+        for verb, args, lineno in op.lines:
+            if verb != "arg" or len(args) < 3:
+                continue
+            call_name, arg_name, value_name = args[0], args[1], args[2]
+            target_info = call_targets.get(call_name)
+            if target_info is None:
+                continue
+            target = _strict_target(prog, target_info[0])
+            if target not in _STRICT_CONSTANT_FORMAT_TARGETS:
+                continue
+            if arg_name not in _STRICT_FORMAT_ARG_SLOTS:
+                continue
+            if value_name in constant_names:
+                continue
+            diags.append((lineno,
+                f"SS3310 formatStringMustBeConstant: in operation "
+                f"`{op_name}`, call `{call_name}` (target `{target}`) "
+                f"uses `{value_name}` as `format`; the format-string "
+                f"argument must reference a `storage * immutable "
+                f"CNullTerminatedByteString` row so `%n` / `%s` "
+                f"conversions cannot be injected"))
+
+
+def _check_strict_sql_string_is_constant(prog: Program, diags) -> None:
+    """SS3911 — sqlite.prepareStatement / sqlite.exec `sql` arg must be
+    a module-scope immutable byte string. Forces parameterised
+    statements: dynamic values go through sqlite.bind*, not into the
+    SQL text itself."""
+    module_constant_names = set()
+    for name, (typ, _value) in prog.consts.items():
+        if typ != "CNullTerminatedByteString":
+            continue
+        if name in prog.mutable_globals:
+            continue
+        module_constant_names.add(name)
+    for op_name, op in prog.operations.items():
+        call_targets = _strict_call_target_map(op)
+        for verb, args, lineno in op.lines:
+            if verb != "arg" or len(args) < 3:
+                continue
+            call_name, arg_name, value_name = args[0], args[1], args[2]
+            target_info = call_targets.get(call_name)
+            if target_info is None:
+                continue
+            target = _strict_target(prog, target_info[0])
+            if target not in _STRICT_SQL_STRING_TARGETS:
+                continue
+            if arg_name not in _STRICT_SQL_ARG_SLOTS:
+                continue
+            if value_name in module_constant_names:
+                continue
+            diags.append((lineno,
+                f"SS3911 sqlMustBeConstant: in operation `{op_name}`, "
+                f"call `{call_name}` (target `{target}`) uses "
+                f"`{value_name}` as `sql`; SQL text must reference a "
+                f"`storage module immutable CNullTerminatedByteString` "
+                f"row. Use `?` placeholders and `sqlite.bind*` for "
+                f"dynamic values"))
+
+
+def _strict_raise_first_constant_string_violation(prog: Program, diags) -> None:
+    _strict_raise_first_simple(
+        prog, diags, "SS3310",
+        "strictExecutable constant-string validation",
+        "Strict executable requires every format string and SQL "
+        "statement to come from a `storage * immutable "
+        "CNullTerminatedByteString` row.",
+    )
+
+
+def _check_strict_step_result_disposition(prog: Program, diags) -> None:
+    """SS3912 — sqlite.stepStatement result must be bound, EXCEPT when
+    the call already has an executable error disposition (bindError +
+    branchIfError) that exits the segment. That pattern is the
+    legitimate DELETE/UPDATE shape: the user only cares whether the
+    step errored, not whether it returned `row` vs `done`. SELECT
+    iteration still needs an actual `bindOk` so the loop knows when
+    to terminate.
+    """
+    for op_name, op in prog.operations.items():
+        step_calls = {}
+        for verb, args, lineno in op.lines:
+            if (verb == "call" and len(args) >= 2
+                    and _strict_target(prog, args[1]) == "sqlite.stepStatement"):
+                step_calls[args[0]] = lineno
+        if not step_calls:
+            continue
+        dispositions = {}
+        has_bind_error = set()
+        has_branch_if_error = set()
+        for verb, args, _lineno in op.lines:
+            if not args:
+                continue
+            if verb in ("bind", "bindOk") and len(args) >= 3:
+                if args[2] in step_calls:
+                    dispositions[args[2]] = "bind"
+            elif (verb == "runChecked" and len(args) >= 9
+                    and args[0] in step_calls):
+                dispositions[args[0]] = "runChecked"
+            elif (verb in ("ignoreOk", "ignoreValue")
+                    and args[0] in step_calls):
+                dispositions.setdefault(args[0], "ignore")
+            elif verb == "bindError" and len(args) >= 3:
+                if args[2] in step_calls:
+                    has_bind_error.add(args[2])
+            elif verb == "branchIfError" and args[0] in step_calls:
+                has_branch_if_error.add(args[0])
+        for call_name, lineno in step_calls.items():
+            disposition = dispositions.get(call_name)
+            if disposition in ("bind", "runChecked"):
+                continue
+            if (disposition == "ignore"
+                    and call_name in has_bind_error
+                    and call_name in has_branch_if_error):
+                # DELETE/UPDATE shape: row/done collapses to "done"
+                # whenever errors are routed elsewhere. The user has
+                # explicitly opted in to dropping the success value.
+                continue
+            diags.append((lineno,
+                f"SS3912 sqliteStepResultIgnored: in operation `{op_name}`, "
+                f"call `{call_name}` (target `sqlite.stepStatement`) does "
+                f"not bind its SqliteStepResult; bind it with `bindOk` or "
+                f"`runChecked` (SELECT iteration) or add `bindError` + "
+                f"`branchIfError` alongside `ignoreOk` (DELETE/UPDATE)"))
+
+
+def _strict_raise_first_step_disposition(prog: Program, diags) -> None:
+    _strict_raise_first_simple(
+        prog, diags, "SS3912",
+        "strictExecutable sqlite-step disposition validation",
+        "Strict executable requires every `sqlite.stepStatement` result "
+        "to be bound so the row/done/error outcome is inspected.",
+    )
+
+
+def _check_strict_bcrypt_cost_minimum(prog: Program, diags) -> None:
+    """SS3615 — bcrypt.hashPassword cost arg must be a compile-time
+    constant integer >= _STRICT_MINIMUM_BCRYPT_COST. Keeps work-factor
+    decisions out of runtime configuration and visible to source
+    review."""
+    for op_name, op in prog.operations.items():
+        bcrypt_calls = {}
+        for verb, args, lineno in op.lines:
+            if (verb == "call" and len(args) >= 2
+                    and _strict_target(prog, args[1]) == "bcrypt.hashPassword"):
+                bcrypt_calls[args[0]] = lineno
+        if not bcrypt_calls:
+            continue
+        for verb, args, lineno in op.lines:
+            if verb != "arg" or len(args) < 3:
+                continue
+            call_name, arg_name, value_name = args[0], args[1], args[2]
+            if call_name not in bcrypt_calls:
+                continue
+            if arg_name != "cost":
+                continue
+            const = prog.consts.get(value_name)
+            if const is None or value_name in prog.mutable_globals:
+                diags.append((lineno,
+                    f"SS3615 bcryptCostMustBeConstant: in operation "
+                    f"`{op_name}`, call `{call_name}` uses "
+                    f"`{value_name}` as bcrypt cost; the cost arg must "
+                    f"reference a `storage * immutable` integer row"))
+                continue
+            try:
+                cost = int(const[1])
+            except (TypeError, ValueError):
+                continue
+            if cost < _STRICT_MINIMUM_BCRYPT_COST:
+                diags.append((lineno,
+                    f"SS3615 bcryptCostTooLow: in operation `{op_name}`, "
+                    f"call `{call_name}` uses cost `{cost}` (via "
+                    f"`{value_name}`); minimum acceptable bcrypt cost is "
+                    f"{_STRICT_MINIMUM_BCRYPT_COST} (12 recommended)"))
+
+
+def _strict_raise_first_bcrypt_cost(prog: Program, diags) -> None:
+    _strict_raise_first_simple(
+        prog, diags, "SS3615",
+        "strictExecutable bcrypt cost validation",
+        "Strict executable requires bcrypt cost to be a compile-time "
+        f"constant >= {_STRICT_MINIMUM_BCRYPT_COST}.",
+    )
+
+
+def _check_strict_handler_writes_response(prog: Program, diags) -> None:
+    """SS3614 — every route/middleware handler must call at least one
+    response-body writer somewhere in its body, with one exception for
+    middleware that only ever returns `continueMiddlewareControl`.
+
+    This is a weaker contract than per-return-path inspection, but
+    accurate per-path tracking requires dataflow reconstruction across
+    labels and branches. Catching the "handler forgot to write a body
+    entirely" shape with a simple any-writer-in-body check covers the
+    actually-common bug at zero false-positive rate; per-path holes are
+    deferred to the existing SS3607/SS3615 forwarder contract walks.
+    """
+    handler_ops = set()
+    for _lineno, args in _source_rows(prog, "route"):
+        if len(args) >= 4:
+            handler_ops.add(args[3])
+    middleware_ops = set()
+    for _lineno, args in _source_rows(prog, "routeMiddleware"):
+        if len(args) >= 3:
+            middleware_ops.add(args[2])
+            handler_ops.add(args[2])
+    writer_targets = set(_STRICT_RESPONSE_WRITER_TARGETS)
+    writer_targets.update(_response_body_writer_slots(prog).keys())
+    for op_name in handler_ops:
+        op = prog.operations.get(op_name)
+        if op is None:
+            continue
+        has_writer = False
+        only_continue_returns = True
+        return_lines = []
+        for verb, args, lineno in op.lines:
+            if verb == "call" and len(args) >= 2:
+                if _strict_target(prog, args[1]) in writer_targets:
+                    has_writer = True
+            elif verb in ("returnOk", "returnValue"):
+                return_lines.append(lineno)
+                if not (args and args[0] == "continueMiddlewareControl"):
+                    only_continue_returns = False
+        if has_writer:
+            continue
+        # Middleware whose every return is `continueMiddlewareControl`
+        # legitimately never writes a body — the downstream handler will.
+        if op_name in middleware_ops and only_continue_returns and return_lines:
+            continue
+        primary_line = return_lines[0] if return_lines else op.decl_line
+        diags.append((primary_line,
+            f"SS3614 handlerReturnsWithoutResponse: handler "
+            f"`{op_name}` never calls a response body writer "
+            f"(writeJsonOkResponse / writeErrorJsonResponse / "
+            f"http.responseText|Bytes|SseEvent|File or a declared "
+            f"responseBodyForwarder); every route handler must produce "
+            f"an HTTP response. Middleware that delegates must return "
+            f"`continueMiddlewareControl`"))
+
+
+def _strict_raise_first_handler_response(prog: Program, diags) -> None:
+    _strict_raise_first_simple(
+        prog, diags, "SS3614",
+        "strictExecutable handler response-writer validation",
+        "Strict executable requires every reachable return from a route "
+        "handler to follow a response body writer on the same "
+        "control-flow segment.",
+    )
+
+
+def _check_strict_shared_state_lock(prog: Program, diags) -> None:
+    """SS3408 — when multiple operations write to the same module-mutable
+    storage, every writer must declare a mutex/lock capability via
+    `useCapability OP <Mutex|Lock|Semaphore>`. Single-writer storages are
+    not flagged (no race surface)."""
+    writers_by_target = {}
+    capabilities_by_op = {}
+    effect_line_by_op_target = {}
+    for op_name, op in prog.operations.items():
+        for verb, args, lineno in op.lines:
+            if (verb == "useCapability" and len(args) >= 2
+                    and args[0] == op_name):
+                capabilities_by_op.setdefault(op_name, set()).add(args[1])
+            if (verb == "effect" and len(args) >= 3
+                    and args[0] == op_name):
+                effect_kind = args[1]
+                effect_target = args[2]
+                if effect_kind in ("readWrite", "writeOnly", "write"):
+                    if effect_target in prog.mutable_globals:
+                        writers_by_target.setdefault(
+                            effect_target, []).append(op_name)
+                        effect_line_by_op_target[
+                            (op_name, effect_target)] = lineno
+    for target, writers in writers_by_target.items():
+        unique_writers = set(writers)
+        if len(unique_writers) < 2:
+            continue
+        for op_name in unique_writers:
+            caps = capabilities_by_op.get(op_name, set())
+            if any(any(token in cap for token in
+                       _STRICT_MUTEX_CAPABILITY_SUBSTRINGS)
+                   for cap in caps):
+                continue
+            lineno = effect_line_by_op_target.get((op_name, target), 0)
+            diags.append((lineno,
+                f"SS3408 sharedStateLockRequired: operation `{op_name}` "
+                f"writes to `storage module mutable {target}` which has "
+                f"{len(unique_writers)} concurrent writers; declare a "
+                f"mutex capability with `useCapability {op_name} "
+                f"<MutexOrLock>`"))
+
+
+def _strict_raise_first_shared_state(prog: Program, diags) -> None:
+    _strict_raise_first_simple(
+        prog, diags, "SS3408",
+        "strictExecutable shared-state mutex validation",
+        "Strict executable requires operations that write shared "
+        "`storage module mutable` state with multiple writers to declare "
+        "a mutex capability.",
+    )
+
+
+def _check_strict_checked_arithmetic(prog: Program, diags) -> None:
+    """SS3402 — math.addI64 / subtractI64 / multiplyI64 results that
+    look like sizes, byte counts, offsets, or timestamps must use the
+    checked variant (`math.checkedAddI64` + bindError + branchIfError).
+    Heuristic on bound-name suffix; false negatives possible if the
+    binding name is opaque."""
+    for op_name, op in prog.operations.items():
+        call_targets = _strict_call_target_map(op)
+        for verb, args, _lineno in op.lines:
+            if verb not in ("bind", "bindOk") or len(args) < 3:
+                continue
+            bound_name, _bound_type, source_call = args[0], args[1], args[2]
+            target_info = call_targets.get(source_call)
+            if target_info is None:
+                continue
+            target = _strict_target(prog, target_info[0])
+            if target in _STRICT_CHECKED_ARITHMETIC_TARGETS:
+                continue
+            if target not in _STRICT_OVERFLOW_SENSITIVE_TARGETS:
+                continue
+            if not _STRICT_OVERFLOW_SENSITIVE_NAME_RE.search(bound_name):
+                continue
+            call_line = target_info[1]
+            diags.append((call_line,
+                f"SS3402 uncheckedSizeOrTimeArithmetic: in operation "
+                f"`{op_name}`, call `{source_call}` (target `{target}`) "
+                f"produces `{bound_name}` whose name suggests a "
+                f"size/timestamp/byte-count; use the checked variant "
+                f"(e.g. `math.checkedAddI64` with `bindError` + "
+                f"`branchIfError`)"))
+
+
+def _strict_raise_first_overflow(prog: Program, diags) -> None:
+    _strict_raise_first_simple(
+        prog, diags, "SS3402",
+        "strictExecutable checked-arithmetic validation",
+        "Strict executable requires size/timestamp/byte-count arithmetic "
+        "to use checked math primitives so overflow is observable.",
+    )
+
+
+def _strict_validate_use_after_free(prog: Program, op: Operation,
+                                    calls: dict) -> None:
+    """SS3309 — every read of a heap-owned pointer must precede its free.
+
+    Walks the operation linearly per segment. A `run` of a c.free target
+    marks the freed pointer as released; subsequent `arg` reads of that
+    pointer on the same segment are flagged. Mutating control-flow verbs
+    (label, returnOk/Error/Value/Void, branch) clear the freed set so a
+    pointer freed on one path is not considered freed on a sibling path.
+    Double-free is intentionally not reported here — SS3307 already
+    covers that.
+    """
+    heap_owners = {}
+    for call_info in calls.values():
+        if call_info["target"] not in _STRICT_HEAP_ALLOCATION_TARGETS:
+            continue
+        for name in _strict_success_names(call_info):
+            heap_owners[name] = call_info["name"]
+    if not heap_owners:
+        return
+    cleanup_pointer_by_call = {}
+    for call_info in calls.values():
+        if call_info["target"] not in _STRICT_HEAP_CLEANUP_TARGETS:
+            continue
+        for arg_name, value_name, _line in call_info["args"]:
+            if arg_name in ("pointer", "address", "ptr"):
+                cleanup_pointer_by_call[call_info["name"]] = value_name
+                break
+    freed = set()
+    for verb, args, lineno in op.lines:
+        if verb == "label":
+            freed = set()
+            continue
+        if verb in ("returnOk", "returnError", "returnValue",
+                    "returnVoid", "branch"):
+            freed = set()
+            continue
+        if verb == "arg" and len(args) >= 3:
+            call_name, _arg_name, value_name = args[0], args[1], args[2]
+            if value_name in heap_owners and value_name in freed:
+                call_info = calls.get(call_name)
+                target = call_info["target"] if call_info else ""
+                if target not in _STRICT_HEAP_CLEANUP_TARGETS:
+                    _strict_raise(
+                        prog,
+                        "SS3309",
+                        f"SS3309 resourceLifecycle.useAfterFree: "
+                        f"`{value_name}` is read by `{call_name}` after "
+                        f"being released earlier on this control-flow "
+                        f"segment",
+                        op,
+                        lineno,
+                        call_name=call_name,
+                        call_target=target,
+                        note=(
+                            f"`{value_name}` is owned by "
+                            f"`{heap_owners[value_name]}`; releasing it "
+                            "before the last read is undefined behavior"
+                        ),
+                    )
+            continue
+        if verb == "run" and args:
+            value_name = cleanup_pointer_by_call.get(args[0])
+            if value_name in heap_owners:
+                freed.add(value_name)
+
+
+def validate_strict_executable(prog: Program) -> None:
+    if not _strict_executable_is_active(prog):
+        return
+    fallible_call_diags = []
+    _check_strict_checked_fallible_calls(prog, fallible_call_diags)
+    _strict_raise_first_fallible_contract(prog, fallible_call_diags)
+    http_contract_diags = []
+    _check_http_contracts(prog, http_contract_diags)
+    _strict_raise_first_http_contract(prog, http_contract_diags)
+    forbidden_call_diags = []
+    _check_strict_forbidden_call_targets(prog, forbidden_call_diags)
+    _strict_raise_first_forbidden_target(prog, forbidden_call_diags)
+    constant_string_diags = []
+    _check_strict_format_string_is_constant(prog, constant_string_diags)
+    _check_strict_sql_string_is_constant(prog, constant_string_diags)
+    _strict_raise_first_constant_string_violation(prog, constant_string_diags)
+    step_disposition_diags = []
+    _check_strict_step_result_disposition(prog, step_disposition_diags)
+    _strict_raise_first_step_disposition(prog, step_disposition_diags)
+    bcrypt_cost_diags = []
+    _check_strict_bcrypt_cost_minimum(prog, bcrypt_cost_diags)
+    _strict_raise_first_bcrypt_cost(prog, bcrypt_cost_diags)
+    handler_response_diags = []
+    _check_strict_handler_writes_response(prog, handler_response_diags)
+    _strict_raise_first_handler_response(prog, handler_response_diags)
+    shared_state_diags = []
+    _check_strict_shared_state_lock(prog, shared_state_diags)
+    _strict_raise_first_shared_state(prog, shared_state_diags)
+    overflow_diags = []
+    _check_strict_checked_arithmetic(prog, overflow_diags)
+    _strict_raise_first_overflow(prog, overflow_diags)
+    for op in prog.operations.values():
+        calls = _strict_collect_calls(prog, op)
+        defers = _strict_collect_defers(op)
+        _strict_validate_heap_resources(prog, op, calls, defers)
+        _strict_validate_sqlite_database_cleanup(prog, op, calls, defers)
+        _strict_validate_sqlite_statement_cleanup(prog, op, calls, defers)
+        _strict_validate_use_after_free(prog, op, calls)
+
+
 def lint(prog: Program, strict: bool = False):
     """Walk the parsed Program and emit linter diagnostics to stderr.
 
@@ -6944,7 +9575,9 @@ def lint(prog: Program, strict: bool = False):
                 target = args[1] if len(args) >= 2 else ""
                 calls[call_name] = {
                     "lineno": lineno,
-                    "target": target,
+                    "target": prog.operation_aliases.get(
+                        _TARGET_ALIASES.get(target, target),
+                        _TARGET_ALIASES.get(target, target)),
                     "has_bindError": False,
                     "has_branchIfError": False,
                 }
@@ -7056,8 +9689,22 @@ def lint(prog: Program, strict: bool = False):
     # ---- per-operation: declared effects must cover called c.* effects ----
     _check_libc_effect_coverage(prog, diags)
 
+    # ---- strict-only: fallible calls must use checked error flow ----
+    if strict:
+        _check_strict_checked_fallible_calls(prog, diags)
+
     # ---- per-operation: Result A B contract is checked at returns ----
     _check_result_contract(prog, diags)
+
+    # ---- native HTTP strict-executable contracts mirrored from SS36xx ----
+    _check_http_contracts(prog, diags)
+
+    # ---- performance advisories: arena + prepared-statement cache hints ----
+    # These don't catch correctness bugs; they catch patterns where the
+    # request hot path is doing avoidable work. Each is opt-out by removing
+    # the matching pattern (or coalescing into the suggested primitive).
+    _check_many_small_mallocs_in_op(prog, diags)
+    _check_repeated_prepare_statement_same_sql(prog, diags)
 
     for diag in sorted(diags):
         sys.stderr.write(f"warning line {diag[0]}: {diag[1]}\n")
@@ -7392,6 +10039,126 @@ def _check_effect_authority_coverage(prog: Program, diags):
                 f"`{action} {effect_path}` without an authorizing capability or authority; {hint}"))
 
 
+_MANY_MALLOCS_THRESHOLD_COUNT = 4
+_MANY_MALLOCS_THRESHOLD_BYTES = 8192
+_MALLOC_FAMILY_TARGETS = frozenset({"c.malloc", "c.calloc", "c.realloc"})
+
+
+def _check_many_small_mallocs_in_op(prog: Program, diags):
+    """SS3318 — advisory: if an operation issues ≥4 c.malloc-family calls
+    whose declared sizes sum to ≤ 8 KiB and none of the returned pointers
+    escape via returnOk/returnValue, recommend an arena (one upfront
+    malloc + pointer.offset advances). The per-malloc allocator round-trip
+    is the bottleneck for small short-lived buffers; coalescing into one
+    allocation also colocates the scratch surface so the CPU prefetcher
+    sees contiguous accesses instead of randomly-placed pages.
+    """
+    for op_name, op in prog.operations.items():
+        malloc_calls = []
+        call_targets = _strict_call_target_map(op)
+        for call_name, (target, lineno) in call_targets.items():
+            if _strict_target(prog, target) in _MALLOC_FAMILY_TARGETS:
+                malloc_calls.append((call_name, lineno))
+        if len(malloc_calls) < _MANY_MALLOCS_THRESHOLD_COUNT:
+            continue
+        size_arg_by_call = {}
+        for verb, args, _lineno in op.lines:
+            if verb != "arg" or len(args) < 3:
+                continue
+            if args[0] in dict(malloc_calls) and args[1] == "size":
+                size_arg_by_call[args[0]] = args[2]
+        total_bytes = 0
+        unresolved = False
+        for call_name, _line in malloc_calls:
+            size_name = size_arg_by_call.get(call_name)
+            if size_name is None:
+                unresolved = True
+                break
+            const = prog.consts.get(size_name)
+            if const is None:
+                unresolved = True
+                break
+            try:
+                total_bytes += int(const[1])
+            except (TypeError, ValueError):
+                unresolved = True
+                break
+        if unresolved or total_bytes > _MANY_MALLOCS_THRESHOLD_BYTES:
+            continue
+        # Skip when any malloc's bound name appears in a returnOk/returnValue.
+        # That marks the allocation as escaping ownership to the caller, so
+        # an arena coalesce would break the caller's lifetime contract.
+        owned_names = set()
+        for verb, args, _lineno in op.lines:
+            if verb in ("bind", "bindOk") and len(args) >= 3:
+                if args[2] in dict(malloc_calls):
+                    owned_names.add(args[0])
+        escapes = False
+        for verb, args, _lineno in op.lines:
+            if verb in ("returnOk", "returnValue") and args:
+                if args[0] in owned_names:
+                    escapes = True
+                    break
+        if escapes:
+            continue
+        primary_line = malloc_calls[0][1]
+        diags.append((primary_line,
+            f"SS3318 manySmallMallocsSuggestArena: operation `{op_name}` "
+            f"issues {len(malloc_calls)} c.malloc-family calls totalling "
+            f"{total_bytes} bytes within the request lifetime; consider one "
+            f"upfront `c.malloc handlerArena <total>` + `pointer.offset` "
+            f"advances. Each per-buffer malloc costs an allocator round-trip "
+            f"(~100ns) and scatters the scratch surface across heap pages, "
+            f"defeating the prefetcher"))
+
+
+def _check_repeated_prepare_statement_same_sql(prog: Program, diags):
+    """SS3319 — advisory: if a `storage * immutable CNullTerminatedByteString`
+    SQL constant is passed as the `sql` arg to `sqlite.prepareStatement`
+    in more than one operation (or more than once in any single
+    operation), recommend a prepared-statement cache. Every prepare/
+    finalize pair re-runs the SQLite parser + planner; for hot lookups
+    like `sqlSelectSessionByToken` that runs on every authenticated
+    request, this is the dominant per-request cost.
+    """
+    sql_usage = {}  # sql_const_name -> list[(op_name, call_name, lineno)]
+    for op_name, op in prog.operations.items():
+        call_targets = _strict_call_target_map(op)
+        for verb, args, lineno in op.lines:
+            if verb != "arg" or len(args) < 3:
+                continue
+            call_name, arg_name, value_name = args[0], args[1], args[2]
+            target_info = call_targets.get(call_name)
+            if target_info is None:
+                continue
+            if _strict_target(prog, target_info[0]) != "sqlite.prepareStatement":
+                continue
+            if arg_name != "sql":
+                continue
+            sql_usage.setdefault(value_name, []).append(
+                (op_name, call_name, lineno))
+    for sql_name, sites in sql_usage.items():
+        if len(sites) < 2:
+            continue
+        op_set = {op for op, _call, _line in sites}
+        primary_line = sites[0][2]
+        if len(op_set) > 1:
+            diags.append((primary_line,
+                f"SS3319 repeatedPrepareSuggestStatementCache: SQL constant "
+                f"`{sql_name}` is prepared by {len(op_set)} different "
+                f"operations ({sorted(op_set)}); each call re-runs the "
+                f"SQLite parser + planner. Consider a prepared-statement "
+                f"cache keyed by the SQL constant so the first request "
+                f"plans and subsequent requests reuse via "
+                f"`sqlite3_reset`"))
+        else:
+            diags.append((primary_line,
+                f"SS3319 repeatedPrepareSuggestStatementCache: operation "
+                f"`{sites[0][0]}` prepares SQL constant `{sql_name}` "
+                f"{len(sites)} times; hoist the prepare out of the loop "
+                f"or cache the statement"))
+
+
 def _check_libc_effect_coverage(prog: Program, diags):
     """For every c.* / pointer.* call in an operation, verify that the
     operation's `effect` lines declare the required effects (spec §17
@@ -7429,6 +10196,116 @@ def _check_libc_effect_coverage(prog: Program, diags):
                         f"missingEffectDeclaration: call `{tgt}` requires "
                         f"`effect {op_name} {action} {path}` but operation "
                         f"`{op_name}` doesn't declare it (§17)"))
+
+
+def _strict_normalized_call_target(prog: Program, target: str) -> str:
+    target = _TARGET_ALIASES.get(target, target)
+    target = prog.operation_aliases.get(target, target)
+    if target.startswith("c."):
+        semantic_name = target[2:]
+        c_symbol = libc_registry.resolve_c_symbol(semantic_name)
+        if c_symbol:
+            normalized = f"c.{c_symbol}"
+            if normalized in _STRICT_FALLIBLE_CALL_TARGETS:
+                return normalized
+    return target
+
+
+def _check_strict_checked_fallible_calls(prog: Program, diags):
+    """Strict executable mode rejects unchecked fallible call sites.
+
+    A result-shaped fallible call is checked when it uses `runChecked`, or
+    when it uses the legacy explicit shape: `run`, a success disposition
+    (`bindOk` or `ignoreOk`), `bindError`, and `branchIfError`.
+    """
+    for op_name, op in prog.operations.items():
+        calls = {}
+        for verb, args, lineno in op.lines:
+            if verb == "call" and len(args) >= 2:
+                target = _strict_normalized_call_target(prog, args[1])
+                calls[args[0]] = {
+                    "target": target,
+                    "source_target": args[1],
+                    "call_lineno": lineno,
+                    "run_lineno": None,
+                    "has_run_checked": False,
+                    "has_success_disposition": False,
+                    "has_value_disposition": False,
+                    "has_bind_error": False,
+                    "has_branch_if_error": False,
+                }
+                continue
+            if not args:
+                continue
+            if verb == "run":
+                info = calls.get(args[0])
+                if info is not None:
+                    info["run_lineno"] = lineno
+                continue
+            if verb == "runChecked":
+                info = calls.get(args[0])
+                if info is not None:
+                    info["has_run_checked"] = True
+                continue
+            if verb in ("bind", "bindOk", "ignoreOk", "ignoreValue") and len(args) >= 1:
+                if verb in ("bind", "bindOk"):
+                    call_name = args[2] if len(args) >= 3 else ""
+                else:
+                    call_name = args[0]
+                info = calls.get(call_name)
+                if info is not None:
+                    info["has_value_disposition"] = True
+                    if verb in ("bindOk", "ignoreOk"):
+                        info["has_success_disposition"] = True
+                continue
+            if verb == "bindError" and len(args) >= 3:
+                info = calls.get(args[2])
+                if info is not None:
+                    info["has_bind_error"] = True
+                continue
+            if verb == "branchIfError" and len(args) >= 1:
+                info = calls.get(args[0])
+                if info is not None:
+                    info["has_branch_if_error"] = True
+
+        for call_name, info in calls.items():
+            kind = fallibility_kind(info["target"])
+            if kind is None:
+                continue
+            if info["has_run_checked"]:
+                continue
+            if info["run_lineno"] is None:
+                continue
+            missing = []
+            if kind == "result":
+                if not info["has_success_disposition"]:
+                    missing.append("bindOk|ignoreOk")
+                if not info["has_bind_error"]:
+                    missing.append("bindError")
+                if not info["has_branch_if_error"]:
+                    missing.append("branchIfError")
+            else:
+                if not info["has_value_disposition"]:
+                    missing.append("bind|ignoreValue")
+            if not missing:
+                continue
+            if kind == "result":
+                advice = (
+                    "Use `runChecked`, or the legacy checked pattern: `run`, "
+                    "`bindOk`/`ignoreOk`, `bindError`, and `branchIfError`."
+                )
+            else:
+                advice = (
+                    "Bind the returned status/pointer or explicitly discard it "
+                    "with `ignoreValue` after documenting why the failure is "
+                    "non-actionable."
+                )
+            diags.append((info["run_lineno"],
+                f"uncheckedFallibleCall: strict mode rejects plain `run` "
+                f"for known fallible target `{info['source_target']}` in "
+                f"operation `{op_name}`; call `{call_name}` was declared on "
+                f"line {info['call_lineno']} and is missing "
+                f"{', '.join(missing)}. {advice}"))
 
 
 def _check_result_contract(prog: Program, diags):
@@ -8212,7 +11089,7 @@ def _build_metadata_value(prog: Program, key: str) -> str:
             continue
         first_row = rows[0]
         if first_row:
-            return str(first_row[0])
+            return str(_unwrap(first_row[0]))
     return None
 
 
@@ -8665,7 +11542,8 @@ def _standard_library_roots(start_dir: str, explicit_std_paths=None):
     return _dedupe_existing_std_roots(candidates)
 
 
-def _resolve_imports(source: str, source_path: str, explicit_std_paths=None) -> str:
+def _resolve_imports(source: str, source_path: str, explicit_std_paths=None,
+                     return_origins: bool = False):
     src_dir = os.path.dirname(os.path.abspath(source_path))
     def find_project_root(start_dir: str) -> str:
         current = os.path.abspath(start_dir)
@@ -8720,6 +11598,7 @@ def _resolve_imports(source: str, source_path: str, explicit_std_paths=None) -> 
 
     seen: set = set()
     out_lines: list = []
+    out_origins: list = []
     pending: list = [(source, src_dir)]
 
     def find_module_file(dotted: str, from_dir: str):
@@ -8775,8 +11654,19 @@ def _resolve_imports(source: str, source_path: str, explicit_std_paths=None) -> 
         "moduleObservability ", "moduleDependency ",
     )
 
-    def process(text: str, base_dir: str, is_root: bool):
-        for line in text.splitlines():
+    def append_line(line: str, origin_path: str, origin_line: int,
+                    imported: bool) -> None:
+        out_lines.append(line)
+        out_origins.append({
+            "path": os.path.abspath(origin_path) if origin_path else "",
+            "line": origin_line,
+            "column": 1,
+            "raw": line,
+            "imported": imported,
+        })
+
+    def process(text: str, base_dir: str, is_root: bool, origin_path: str):
+        for origin_line, line in enumerate(text.splitlines(), start=1):
             stripped = line.strip()
             if stripped.startswith("importModule "):
                 parts = stripped.split()
@@ -8789,21 +11679,32 @@ def _resolve_imports(source: str, source_path: str, explicit_std_paths=None) -> 
                             with open(path, "r", encoding="utf-8") as f:
                                 imported = f.read()
                         except OSError:
-                            out_lines.append(line)
+                            append_line(line, origin_path, origin_line,
+                                        imported=not is_root)
                             continue
-                        process(imported, os.path.dirname(path), is_root=False)
+                        process(imported, os.path.dirname(path), is_root=False,
+                                origin_path=path)
                     if path is None:
-                        out_lines.append(line)
+                        append_line(line, origin_path, origin_line,
+                                    imported=not is_root)
                         continue
-                    out_lines.append(line)
+                    append_line(line, origin_path, origin_line,
+                                imported=not is_root)
                     continue
             if not is_root and stripped.startswith(header_skip):
                 continue
-            out_lines.append(line)
+            append_line(line, origin_path, origin_line, imported=not is_root)
 
     seen.add(os.path.abspath(source_path))
-    process(source, src_dir, is_root=True)
-    return "\n".join(out_lines) + "\n"
+    process(source, src_dir, is_root=True, origin_path=source_path)
+    resolved = "\n".join(out_lines) + "\n"
+    if not return_origins:
+        return resolved
+    origins_by_line = {
+        line_number: origin
+        for line_number, origin in enumerate(out_origins, start=1)
+    }
+    return resolved, origins_by_line
 
 
 def _load_external_literals(prog: Program, source_path: str) -> None:
@@ -8980,9 +11881,12 @@ def _native_sqlite_link_inputs(prog: Program):
 
 # Set of json.* call targets owned by the native_json runtime adapter
 # (sem_json_runtime.h). Membership-only check — used by the linker
-# trigger and intentionally excludes the older primitive json.encode.X
-# / json.decode.X surfaces which are inlined as libc snprintf/atoll
-# stubs and need no native runtime.
+# trigger and intentionally excludes primitive json.encode.X /
+# json.decode.X and json.stringify/parse primitive aliases, which are
+# inlined as libc snprintf/atoll/strcmp/atof stubs and need no native
+# runtime. The document CRUD names are listed even while the C adapter
+# implementation is landing so any executable use links the native_json
+# translation unit rather than silently compiling a dangling extern.
 _NATIVE_JSON_TARGETS = frozenset({
     "json.createBuilder", "json.destroyBuilder",
     "json.objectOpen", "json.objectClose",
@@ -8994,16 +11898,44 @@ _NATIVE_JSON_TARGETS = frozenset({
     "json.finishBuilder", "json.builderLength",
     "json.hasField", "json.findString",
     "json.findInt64", "json.findDouble", "json.findBool",
+    "json.createDocument", "json.createEmptyDocument",
+    "json.destroyDocument", "json.serializeDocument",
+    "json.documentLength", "json.documentRoot",
+    "json.objectFieldAt", "json.arrayElementAt",
+    "json.cursorParent", "json.cursorAtPath",
+    "json.cursorKind", "json.cursorIsNull",
+    "json.cursorInt64", "json.cursorDouble", "json.cursorBool",
+    "json.cursorString", "json.cursorArrayLength",
+    "json.cursorObjectFieldCount", "json.cursorObjectFieldNameAt",
+    "json.cursorObjectFieldValueAt",
+    "json.setObjectFieldString", "json.setObjectFieldInt64",
+    "json.setObjectFieldDouble", "json.setObjectFieldBool",
+    "json.setObjectFieldNull", "json.setObjectFieldObject",
+    "json.setObjectFieldArray", "json.setObjectFieldJsonText",
+    "json.appendArrayElementString", "json.appendArrayElementInt64",
+    "json.appendArrayElementDouble", "json.appendArrayElementBool",
+    "json.appendArrayElementNull", "json.appendArrayElementObject",
+    "json.appendArrayElementArray", "json.appendArrayElementJsonText",
+    "json.insertArrayElementString", "json.insertArrayElementInt64",
+    "json.insertArrayElementDouble", "json.insertArrayElementBool",
+    "json.insertArrayElementNull", "json.insertArrayElementObject",
+    "json.insertArrayElementArray", "json.insertArrayElementJsonText",
+    "json.replaceArrayElementString", "json.replaceArrayElementInt64",
+    "json.replaceArrayElementDouble", "json.replaceArrayElementBool",
+    "json.replaceArrayElementNull", "json.replaceArrayElementObject",
+    "json.replaceArrayElementArray", "json.replaceArrayElementJsonText",
+    "json.removeObjectField", "json.removeArrayElementAt",
+    "json.clearObject", "json.clearArray",
 })
 
 
 def _program_uses_json_runtime(prog: Program) -> bool:
     """True when any operation contains a call into the native_json
-    runtime (the builder + finder API). Triggers separately from the
-    primitive json.encode.* / json.decode.* dispatchers, which don't
-    need the runtime linked in. Defer-only references count too —
-    `defer X json.destroyBuilder builderName` is enough to pull the
-    runtime in."""
+    runtime (the builder, finder, and document CRUD API). Triggers
+    separately from primitive json.encode.* / json.decode.* dispatchers
+    and json.stringify/parse primitive aliases, which don't need the
+    runtime linked in. Defer-only references count too — `defer X
+    json.destroyDocument documentName` is enough to pull the runtime in."""
     for op in prog.operations.values():
         for verb, args, _lineno in op.lines:
             if verb == "call" and len(args) >= 2 and args[1] in _NATIVE_JSON_TARGETS:
@@ -9123,6 +12055,506 @@ def _native_bcrypt_link_inputs(prog: Program):
     return extra_sources, extra_link_args
 
 
+def _native_runtime_link_inputs(prog: Program):
+    """Return aggregate native runtime link inputs plus per-runtime details.
+
+    Keeping this as one collector matters for agent tooling: `sem inspect-ir`
+    and `--emit-exe` must describe and use the same native runtime surface.
+    """
+    components = []
+    aggregate_sources = []
+    aggregate_args = []
+    collectors = [
+        ("native_http", _native_http_link_inputs),
+        ("native_sqlite", _native_sqlite_link_inputs),
+        ("native_json", _native_json_link_inputs),
+        ("native_terminal", _native_terminal_link_inputs),
+        ("native_bcrypt", _native_bcrypt_link_inputs),
+        ("native_gui", _native_gui_link_inputs),
+    ]
+    for component_name, collector in collectors:
+        sources, link_args = collector(prog)
+        sources = list(sources or [])
+        link_args = list(link_args or [])
+        if not sources and not link_args:
+            continue
+        aggregate_sources.extend(sources)
+        aggregate_args.extend(link_args)
+        components.append({
+            "component": component_name,
+            "sources": sources,
+            "linkArgs": link_args,
+        })
+    return aggregate_sources, aggregate_args, components
+
+
+def _sha256_text(text: str) -> str:
+    return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
+
+
+def _program_source_fingerprint(prog: Program) -> str:
+    parts = []
+    for lineno in sorted(prog.source_lines):
+        parts.append(f"{lineno}\0{prog.source_lines[lineno]}")
+    return _sha256_text("\n".join(parts))
+
+
+def _source_origin_summary(prog: Program) -> list:
+    origins = {}
+    root_path = os.path.abspath(prog.source_path) if prog.source_path else ""
+    for origin in prog.source_origins.values():
+        path = os.path.abspath(origin.get("path", "")) if origin.get("path") else ""
+        if not path or path == root_path:
+            continue
+        item = origins.setdefault(path, {
+            "path": path,
+            "imported": bool(origin.get("imported", False)),
+            "lineCount": 0,
+            "firstLine": int(origin.get("line") or 0),
+            "lastLine": int(origin.get("line") or 0),
+        })
+        line = int(origin.get("line") or 0)
+        item["lineCount"] += 1
+        if line:
+            item["firstLine"] = min(item["firstLine"] or line, line)
+            item["lastLine"] = max(item["lastLine"] or line, line)
+    return [origins[path] for path in sorted(origins)]
+
+
+def _json_source_span(prog: Program, lineno: int, role: str = "source") -> dict:
+    span = {
+        "path": os.path.abspath(prog.source_path) if prog.source_path else "",
+        "line": int(lineno or 0),
+        "column": 1,
+        "raw": prog.source_lines.get(lineno, ""),
+        "role": role,
+    }
+    origin = prog.source_origins.get(lineno)
+    if origin:
+        span["origin"] = {
+            "path": os.path.abspath(origin.get("path", "")) if origin.get("path") else "",
+            "line": int(origin.get("line") or 0),
+            "column": int(origin.get("column") or 1),
+            "imported": bool(origin.get("imported", False)),
+            "raw": origin.get("raw", ""),
+        }
+    return span
+
+
+def _trace_site_id(prog: Program, kind: str, operation: str = "",
+                   name: str = "", target: str = "", lineno: int = 0) -> str:
+    raw = prog.source_lines.get(lineno, "")
+    origin = prog.source_origins.get(lineno, {})
+    basis = "\0".join([
+        os.path.abspath(prog.source_path) if prog.source_path else "",
+        str(lineno or 0),
+        os.path.abspath(origin.get("path", "")) if origin.get("path") else "",
+        str(origin.get("line", "") or ""),
+        kind or "",
+        operation or "",
+        name or "",
+        target or "",
+        raw or "",
+    ])
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
+
+
+def _trace_site(prog: Program, kind: str, operation: str = "",
+                name: str = "", target: str = "", lineno: int = 0,
+                extra: dict = None) -> dict:
+    site = {
+        "siteId": _trace_site_id(prog, kind, operation, name, target, lineno),
+        "kind": kind,
+        "operation": operation or "",
+        "name": name or "",
+        "target": target or "",
+        "sourceSpan": _json_source_span(prog, lineno),
+    }
+    if extra:
+        site.update(extra)
+    return site
+
+
+def _operation_llvm_function_name(prog: Program, op_name: str) -> str:
+    if prog.entry and len(prog.entry) >= 2 and prog.entry[1] == op_name:
+        return "main"
+    return op_name
+
+
+def _operation_summary_for_agents(prog: Program, op: Operation) -> dict:
+    inputs = []
+    labels = []
+    calls = []
+    branches = []
+    returns = []
+    effects = []
+    call_args = {}
+    for verb, args, lineno in op.lines:
+        if verb == "input" and len(args) >= 3 and args[0] == op.name:
+            inputs.append({
+                "name": args[1],
+                "type": args[2],
+                "sourceSpan": _json_source_span(prog, lineno),
+            })
+        elif verb == "effect" and len(args) >= 3 and args[0] == op.name:
+            effects.append({
+                "action": args[1],
+                "path": args[2],
+                "sourceSpan": _json_source_span(prog, lineno),
+            })
+        elif verb == "label" and args:
+            labels.append({
+                "name": args[0],
+                "siteId": _trace_site_id(prog, "label", op.name, args[0], "", lineno),
+                "sourceSpan": _json_source_span(prog, lineno),
+            })
+        elif verb == "arg" and len(args) >= 3:
+            call_args.setdefault(args[0], []).append({
+                "name": args[1],
+                "value": args[2],
+                "sourceSpan": _json_source_span(prog, lineno),
+            })
+        elif verb == "call" and len(args) >= 2:
+            calls.append({
+                "name": args[0],
+                "target": args[1],
+                "siteId": _trace_site_id(prog, "call", op.name, args[0], args[1], lineno),
+                "args": [],
+                "sourceSpan": _json_source_span(prog, lineno),
+            })
+        elif verb in ("branch", "branchIf", "branchIfError"):
+            name = args[0] if args else ""
+            target = args[-1] if args else ""
+            branches.append({
+                "verb": verb,
+                "name": name,
+                "target": target,
+                "siteId": _trace_site_id(prog, "branch", op.name, name, target, lineno),
+                "sourceSpan": _json_source_span(prog, lineno),
+            })
+        elif verb in ("returnOk", "returnError", "returnValue", "returnVoid"):
+            value = args[0] if args else ""
+            returns.append({
+                "verb": verb,
+                "value": value,
+                "siteId": _trace_site_id(prog, "return", op.name, verb, value, lineno),
+                "sourceSpan": _json_source_span(prog, lineno),
+            })
+    for call in calls:
+        call["args"] = call_args.get(call["name"], [])
+
+    output = {}
+    contract = _operation_output_contract(prog, op)
+    output["tokens"] = list(contract.tokens)
+    output["okType"] = contract.ok_type
+    output["llvmType"] = str(contract.llvm_type) if contract.llvm_type is not None else ""
+    output["sourceSpan"] = _json_source_span(prog, contract.line)
+    if contract.problem:
+        output["problem"] = contract.problem
+        output["message"] = contract.message
+
+    return {
+        "name": op.name,
+        "siteId": _trace_site_id(prog, "operation", op.name, op.name, "", op.decl_line),
+        "llvmFunction": _operation_llvm_function_name(prog, op.name),
+        "sourceSpan": _json_source_span(prog, op.decl_line, role="operation"),
+        "output": output,
+        "inputs": inputs,
+        "effects": effects,
+        "labels": labels,
+        "calls": calls,
+        "branches": branches,
+        "returns": returns,
+    }
+
+
+def _route_summaries_for_agents(prog: Program) -> list:
+    routes = []
+    for lineno, args in _source_rows(prog, "route"):
+        if len(args) < 4:
+            continue
+        server_name = args[0]
+        method = args[1]
+        path = _unwrap(args[2])
+        handler = args[3]
+        routes.append({
+            "server": server_name,
+            "method": method,
+            "path": path,
+            "handler": handler,
+            "siteId": _trace_site_id(
+                prog, "route", handler, f"{method} {path}", server_name, lineno),
+            "sourceSpan": _json_source_span(prog, lineno, role="route"),
+            "nativeAbi": {
+                "kind": "httpHandler",
+                "semanticSignature": "CSignedInt32(HttpRequest, HttpResponse)",
+                "llvmSignature": "i32 (i8*, i8*)",
+            },
+        })
+    return routes
+
+
+def _function_summaries_for_agents(prog: Program, mod, routes: list) -> list:
+    function_to_operation = {}
+    for op_name in prog.operations:
+        function_to_operation[_operation_llvm_function_name(prog, op_name)] = op_name
+    routes_by_handler = {}
+    for route in routes:
+        routes_by_handler.setdefault(route["handler"], []).append({
+            "server": route["server"],
+            "method": route["method"],
+            "path": route["path"],
+            "siteId": route["siteId"],
+        })
+
+    functions = []
+    for fn in mod.functions:
+        blocks = []
+        try:
+            blocks = [{"name": block.name} for block in fn.blocks]
+        except Exception:
+            blocks = []
+        op_name = function_to_operation.get(fn.name, "")
+        abi = None
+        if op_name in routes_by_handler:
+            abi = {
+                "kind": "httpHandler",
+                "semanticSignature": "CSignedInt32(HttpRequest, HttpResponse)",
+                "llvmSignature": "i32 (i8*, i8*)",
+                "routes": routes_by_handler[op_name],
+            }
+        functions.append({
+            "name": fn.name,
+            "signature": str(fn.function_type),
+            "isDeclaration": len(blocks) == 0,
+            "operation": op_name,
+            "sourceSpan": _json_source_span(
+                prog,
+                prog.operations[op_name].decl_line if op_name in prog.operations else 0,
+                role="operation" if op_name else "llvm"),
+            "blocks": blocks,
+            "nativeAbi": abi,
+        })
+    return functions
+
+
+def _runtime_symbol_summaries_for_agents(prog: Program,
+                                         provenance: CompilerProvenance) -> list:
+    symbols = []
+    for symbol in sorted(provenance.externals):
+        frames = []
+        for frame in provenance.externals[symbol]:
+            span = frame.span
+            frames.append({
+                "operation": frame.operation,
+                "callName": frame.call_name,
+                "callTarget": frame.call_target,
+                "siteId": _trace_site_id(
+                    prog, "runtime.external", frame.operation,
+                    frame.call_name, symbol, span.line),
+                "sourceSpan": _json_source_span(prog, span.line, role=span.role),
+            })
+        symbols.append({
+            "symbol": symbol,
+            "frames": frames,
+        })
+    return symbols
+
+
+def _trace_map_for_agents(prog: Program, cg: Codegen, mod,
+                          runtime_link_components: list) -> dict:
+    routes = _route_summaries_for_agents(prog)
+    sites = []
+    for op in sorted(prog.operations.values(), key=lambda item: (item.decl_line, item.name)):
+        sites.append(_trace_site(
+            prog, "operation", op.name, op.name, "", op.decl_line))
+        for verb, args, lineno in op.lines:
+            if verb == "label" and args:
+                sites.append(_trace_site(prog, "label", op.name, args[0], "", lineno))
+            elif verb == "call" and len(args) >= 2:
+                sites.append(_trace_site(prog, "call", op.name, args[0], args[1], lineno))
+            elif verb in ("branch", "branchIf", "branchIfError"):
+                name = args[0] if args else ""
+                target = args[-1] if args else ""
+                sites.append(_trace_site(prog, "branch", op.name, name, target, lineno,
+                                         {"verb": verb}))
+            elif verb in ("returnOk", "returnError", "returnValue", "returnVoid"):
+                value = args[0] if args else ""
+                sites.append(_trace_site(prog, "return", op.name, verb, value, lineno,
+                                         {"verb": verb}))
+    for route in routes:
+        sites.append({
+            "siteId": route["siteId"],
+            "kind": "route",
+            "operation": route["handler"],
+            "name": f"{route['method']} {route['path']}",
+            "target": route["server"],
+            "sourceSpan": route["sourceSpan"],
+            "nativeAbi": route["nativeAbi"],
+        })
+    for symbol in _runtime_symbol_summaries_for_agents(prog, cg.provenance):
+        for frame in symbol["frames"]:
+            sites.append({
+                "siteId": frame["siteId"],
+                "kind": "runtime.external",
+                "operation": frame["operation"],
+                "name": frame["callName"],
+                "target": symbol["symbol"],
+                "sourceSpan": frame["sourceSpan"],
+            })
+    for component in runtime_link_components:
+        for source in component["sources"]:
+            sites.append({
+                "siteId": _trace_site_id(
+                    prog, "runtime.linkInput", "", component["component"], source, 0),
+                "kind": "runtime.linkInput",
+                "operation": "",
+                "name": component["component"],
+                "target": source,
+                "sourceSpan": _json_source_span(prog, 0, role="runtimeLink"),
+            })
+
+    return {
+        "schemaVersion": "sem.traceMap.v0",
+        "source": {
+            "path": os.path.abspath(prog.source_path) if prog.source_path else "",
+            "fingerprint": _program_source_fingerprint(prog),
+            "sourceModel": "flattenedResolvedStreamWithOrigins",
+            "lineCount": len(prog.source_lines),
+            "importedSources": _source_origin_summary(prog),
+        },
+        "redaction": {
+            "sourceRows": "included",
+            "runtimeValues": "redactedByDefault",
+            "sensitiveMetadata": "notYetModeled",
+        },
+        "llvm": {
+            "triple": str(getattr(mod, "triple", "") or ""),
+        },
+        "sites": sites,
+    }
+
+
+def _build_fingerprint_for_agents(prog: Program, ir_text: str,
+                                  build_profile: str, runtime_checks: str,
+                                  opt_level: int, cpu_config: CpuBuildConfig,
+                                  runtime_link_components: list) -> str:
+    payload = {
+        "sourceFingerprint": _program_source_fingerprint(prog),
+        "irSha256": _sha256_text(ir_text),
+        "buildProfile": build_profile,
+        "runtimeChecks": runtime_checks,
+        "optLevel": opt_level,
+        "cpu": cpu_config.summary() if cpu_config is not None else "",
+        "runtimeLink": runtime_link_components,
+    }
+    return _sha256_text(json.dumps(payload, sort_keys=True))
+
+
+def _inspect_ir_payload_for_agents(prog: Program, cg: Codegen, mod, ir_text: str,
+                                   build_profile: str, runtime_checks: str,
+                                   opt_level: int, cpu_config: CpuBuildConfig,
+                                   persisted_ir_path: str,
+                                   emit_optimized_ir_path: str,
+                                   runtime_link_components: list) -> dict:
+    routes = _route_summaries_for_agents(prog)
+    trace_map = _trace_map_for_agents(prog, cg, mod, runtime_link_components)
+    llvm_version = getattr(llvm, "llvm_version_info", ())
+    return {
+        "schemaVersion": "sem.inspectIr.v0",
+        "tool": {
+            "name": "semsc",
+            "version": __version__,
+            "llvmVersion": list(llvm_version) if llvm_version else [],
+        },
+        "source": {
+            "path": os.path.abspath(prog.source_path) if prog.source_path else "",
+            "fingerprint": _program_source_fingerprint(prog),
+            "sourceModel": "flattenedResolvedStreamWithOrigins",
+            "lineCount": len(prog.source_lines),
+            "importedSources": _source_origin_summary(prog),
+        },
+        "redaction": {
+            "sourceRows": "included",
+            "runtimeValues": "redactedByDefault",
+            "sensitiveMetadata": "notYetModeled",
+        },
+        "build": {
+            "fingerprint": _build_fingerprint_for_agents(
+                prog, ir_text, build_profile, runtime_checks,
+                opt_level, cpu_config, runtime_link_components),
+            "profile": build_profile,
+            "runtimeChecks": runtime_checks,
+            "optLevel": opt_level,
+            "cpu": {
+                "summary": cpu_config.summary() if cpu_config is not None else "",
+                "baseline": cpu_config.baseline if cpu_config is not None else "",
+                "tune": cpu_config.tune if cpu_config is not None else "",
+                "featureCheck": cpu_config.feature_check if cpu_config is not None else "",
+                "llvmCpu": cpu_config.llvm_cpu if cpu_config is not None else "",
+                "llvmFeatures": cpu_config.llvm_features if cpu_config is not None else "",
+                "clangArgs": list(cpu_config.clang_args) if cpu_config is not None else [],
+            },
+        },
+        "artifacts": {
+            "llvmIrPath": persisted_ir_path or "",
+            "optimizedLlvmIrPath": emit_optimized_ir_path or "",
+        },
+        "entry": {
+            "mode": prog.entry[0] if prog.entry else "",
+            "operation": prog.entry[1] if prog.entry and len(prog.entry) >= 2 else "",
+        },
+        "operations": [
+            _operation_summary_for_agents(prog, op)
+            for op in sorted(prog.operations.values(), key=lambda item: (item.decl_line, item.name))
+        ],
+        "routes": routes,
+        "llvm": {
+            "triple": str(getattr(mod, "triple", "") or ""),
+            "irSha256": _sha256_text(ir_text),
+            "irLineCount": len(ir_text.splitlines()),
+            "functions": _function_summaries_for_agents(prog, mod, routes),
+            "runtimeSymbols": _runtime_symbol_summaries_for_agents(prog, cg.provenance),
+        },
+        "runtimeLink": {
+            "components": runtime_link_components,
+            "sources": [
+                source
+                for component in runtime_link_components
+                for source in component["sources"]
+            ],
+            "linkArgs": [
+                arg
+                for component in runtime_link_components
+                for arg in component["linkArgs"]
+            ],
+        },
+        "traceMap": trace_map,
+    }
+
+
+def _resolve_agent_json_output_path(source_path: str, build_dir: str,
+                                    request: str, suffix: str) -> str:
+    if request is None or request == "-":
+        return None
+    if request == "":
+        stem = os.path.splitext(os.path.basename(source_path))[0] or "program"
+        return os.path.abspath(os.path.join(build_dir, stem + suffix))
+    return _resolve_build_output_path(source_path, build_dir, request)
+
+
+def _write_agent_json_payload(payload: dict, output_path: str) -> None:
+    text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    if output_path is None:
+        sys.stdout.write(text)
+        return
+    output_dir = os.path.dirname(os.path.abspath(output_path))
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as output_file:
+        output_file.write(text)
+
+
 def main():
     ap = argparse.ArgumentParser(
         prog="semsc",
@@ -9154,10 +12586,20 @@ def main():
                           "--emit-ir, yes writes a .ll sidecar when needed, "
                           "no disables IR persistence"))
     ap.add_argument("--run", action="store_true", help="JIT-execute main after compile")
+    ap.add_argument("--trace", action="store_true",
+                    help=("instrument generated LLVM IR to emit agent JSONL "
+                          "trace events to stderr at runtime"))
     ap.add_argument("--lint", action="store_true",
                     help="run agent-safety lint pass and report diagnostics")
     ap.add_argument("--strict", action="store_true",
-                    help="treat lint diagnostics as fatal")
+                    help=("enable strictExecutable semantic validation and "
+                          "treat lint diagnostics as fatal"))
+    ap.add_argument("--language-mode", action="append", default=[],
+                    metavar="MODE",
+                    help=("inject a `languageMode MODE` row before semantic "
+                          "validation. Used by the `sem` driver to forward "
+                          "build.sem language-mode rows. May be passed "
+                          "multiple times."))
     ap.add_argument("--parse-only", action="store_true",
                     help="parse the source, run lint (if requested), and exit without codegen")
     ap.add_argument("--opt-level", type=int, default=None,
@@ -9165,6 +12607,16 @@ def main():
                           "default 2 or optLevel from build.sem"))
     ap.add_argument("--emit-optimized-ir",
                     help="write the post-optimization LLVM IR to this path (after --opt-level passes run)")
+    ap.add_argument("--inspect-ir", nargs="?", const="-",
+                    help=("emit machine-readable JSON describing generated LLVM "
+                          "IR, source provenance, trace-map ids, native ABI "
+                          "signatures, and linked runtime inputs. With no "
+                          "path, writes JSON to stdout; use '-' explicitly "
+                          "for stdout."))
+    ap.add_argument("--emit-trace-map", nargs="?", const="",
+                    help=("write the agent trace-map sidecar JSON. With no "
+                          "path, writes SOURCE.trace-map.json in the "
+                          "compiler-managed build directory."))
     ap.add_argument("--cpu-baseline",
                     choices=tuple(sorted(_BUILD_TAPE_CHOICES["cpuBaseline"])),
                     default=None,
@@ -9242,12 +12694,29 @@ def main():
         print("semsc: source file must use .sscript or .sem", file=sys.stderr)
         sys.exit(2)
 
-    if _is_build_tape_path(args.source) or _looks_like_build_tape(source):
+    is_build_tape_source = _is_build_tape_path(args.source) or _looks_like_build_tape(source)
+    if is_build_tape_source:
         try:
             _validate_build_tape_source(source, args.source)
         except SyntaxError as e:
             print(f"semsc: build-tape error in {args.source}: {e}", file=sys.stderr)
             sys.exit(2)
+
+    prelude_language_modes = []
+    if is_build_tape_source and not _declares_language_mode(source):
+        prelude_language_modes.append("permissiveExecutable")
+    for forwarded_mode in args.language_mode or []:
+        if forwarded_mode not in _KNOWN_LANGUAGE_MODES:
+            print(f"semsc: --language-mode `{forwarded_mode}` is not a "
+                  f"known language mode (expected one of "
+                  f"{sorted(_KNOWN_LANGUAGE_MODES)})", file=sys.stderr)
+            sys.exit(2)
+        if forwarded_mode not in prelude_language_modes:
+            prelude_language_modes.append(forwarded_mode)
+    if prelude_language_modes:
+        source = "".join(
+            f"languageMode {mode}\n" for mode in prelude_language_modes
+        ) + source
 
     try:
         # Resolve cross-file imports. `importModule DOTTED.PATH [as ALIAS]`
@@ -9255,9 +12724,11 @@ def main():
         # modules before legacy filesystem/std-lib fallback. Imported file
         # content is inlined; transitive imports are followed with cycle
         # detection.
-        source = _resolve_imports(source, args.source, args.std_path)
+        source, source_origins = _resolve_imports(
+            source, args.source, args.std_path, return_origins=True)
         prog = parse(source)
         prog.source_path = args.source
+        prog.source_origins = source_origins
     except SyntaxError as e:
         import traceback as _tb
         print(f"semsc: parse error in {args.source}: {e}", file=sys.stderr)
@@ -9280,6 +12751,44 @@ def main():
     # literal's const value so name references see the actual bytes.
     _load_external_literals(prog, args.source)
 
+    # `--language-mode` carries project-level language modes from build.sem
+    # into the per-file semantic validator. The `sem` driver is responsible
+    # for reading `languageMode PROJECT MODE` rows out of build.sem and
+    # passing one --language-mode per row here; direct semsc invocations opt
+    # into the strict executable wall with either an in-source languageMode row
+    # or `--strict`.
+    forwarded_modes = list(args.language_mode or [])
+    if args.strict:
+        forwarded_modes.append("strictExecutable")
+    for forwarded_mode in forwarded_modes:
+        if forwarded_mode not in _KNOWN_LANGUAGE_MODES:
+            print(f"semsc: --language-mode `{forwarded_mode}` is not a "
+                  f"known language mode (expected one of "
+                  f"{sorted(_KNOWN_LANGUAGE_MODES)})", file=sys.stderr)
+            sys.exit(2)
+        if forwarded_mode in prog.language_modes:
+            continue
+        conflict = next(
+            (existing for existing in prog.language_modes
+             if frozenset((existing, forwarded_mode))
+             in _INCOMPATIBLE_LANGUAGE_MODES),
+            None,
+        )
+        if conflict is not None:
+            print(f"semsc: --language-mode `{forwarded_mode}` conflicts with "
+                  f"in-source `languageMode {conflict}`", file=sys.stderr)
+            sys.exit(2)
+        prog.language_modes.append(forwarded_mode)
+
+    try:
+        validate_strict_executable(prog)
+    except CompilerDiagnosticError as e:
+        print(e.diagnostic.render(args.diagnostics_format), file=sys.stderr)
+        if os.environ.get("SEMSC_TRACEBACK"):
+            import traceback as _tb
+            _tb.print_exc(file=sys.stderr)
+        sys.exit(3)
+
     if args.lint or args.strict:
         lint(prog, strict=args.strict)
 
@@ -9289,10 +12798,11 @@ def main():
         build_folder_override = args.build_folder_name
         if build_dir_override is None:
             build_dir_override = _build_metadata_value(prog, "buildDir")
-        if build_root_override is None:
-            build_root_override = _build_metadata_value(prog, "buildRoot")
-        if build_folder_override is None:
-            build_folder_override = _build_metadata_value(prog, "buildFolderName")
+        if build_dir_override is None:
+            if build_root_override is None:
+                build_root_override = _build_metadata_value(prog, "buildRoot")
+            if build_folder_override is None:
+                build_folder_override = _build_metadata_value(prog, "buildFolderName")
         build_dir = _resolve_build_dir(
             args.source,
             build_dir=build_dir_override,
@@ -9344,6 +12854,13 @@ def main():
                 emit_ir_request = ""
         if emit_ir_request is not None and persist_llvm_ir == "no":
             ap.error("--emit-ir cannot be used with --persist-llvm-ir no")
+        if args.parse_only and (
+                args.inspect_ir is not None or args.emit_trace_map is not None):
+            ap.error("--inspect-ir and --emit-trace-map require codegen; "
+                     "remove --parse-only")
+        if args.run and args.inspect_ir == "-":
+            ap.error("--run cannot be combined with --inspect-ir stdout output; "
+                     "write --inspect-ir to a path")
         persisted_ir_path = _resolve_persisted_ir_path(
             args.source,
             emit_exe=ir_sidecar_basis_path,
@@ -9378,7 +12895,8 @@ def main():
         return
 
     try:
-        cg = Codegen(prog, runtime_checks=runtime_checks)
+        cg = Codegen(prog, runtime_checks=runtime_checks,
+                     trace_events=args.trace)
         mod = cg.compile()
     except CompilerDiagnosticError as e:
         print(e.diagnostic.render(args.diagnostics_format), file=sys.stderr)
@@ -9398,8 +12916,36 @@ def main():
         sys.exit(3)
     ir_text = str(mod)
 
+    runtime_sources, runtime_link_args, runtime_link_components = (
+        _native_runtime_link_inputs(prog))
+    inspect_ir_path = _resolve_agent_json_output_path(
+        args.source, build_dir, args.inspect_ir, ".inspect-ir.json")
+    trace_map_path = _resolve_agent_json_output_path(
+        args.source, build_dir, args.emit_trace_map, ".trace-map.json")
+    inspect_payload = None
+    wrote_stdout_json = False
     did_output = False
     outputs = []
+    if args.inspect_ir is not None or args.emit_trace_map is not None:
+        inspect_payload = _inspect_ir_payload_for_agents(
+            prog, cg, mod, ir_text, build_profile, runtime_checks,
+            opt_level, cpu_config, persisted_ir_path, emit_optimized_ir_path,
+            runtime_link_components)
+    if args.inspect_ir is not None:
+        _write_agent_json_payload(inspect_payload, inspect_ir_path)
+        if inspect_ir_path is None:
+            wrote_stdout_json = True
+        else:
+            did_output = True
+            outputs.append(("inspect ir json", inspect_ir_path))
+    if args.emit_trace_map is not None:
+        _write_agent_json_payload(inspect_payload["traceMap"], trace_map_path)
+        if trace_map_path is None:
+            wrote_stdout_json = True
+        else:
+            did_output = True
+            outputs.append(("trace map json", trace_map_path))
+
     if persisted_ir_path:
         persisted_ir_dir = os.path.dirname(os.path.abspath(persisted_ir_path))
         if persisted_ir_dir:
@@ -9411,27 +12957,8 @@ def main():
 
     if emit_exe_path:
         try:
-            extra_sources, extra_link_args = _native_http_link_inputs(prog)
-            sqlite_sources, sqlite_link_args = _native_sqlite_link_inputs(prog)
-            if sqlite_sources:
-                extra_sources = list(extra_sources or []) + sqlite_sources
-                extra_link_args = list(extra_link_args or []) + sqlite_link_args
-            json_sources, json_link_args = _native_json_link_inputs(prog)
-            if json_sources:
-                extra_sources = list(extra_sources or []) + json_sources
-                extra_link_args = list(extra_link_args or []) + json_link_args
-            terminal_sources, terminal_link_args = _native_terminal_link_inputs(prog)
-            if terminal_sources:
-                extra_sources = list(extra_sources or []) + terminal_sources
-                extra_link_args = list(extra_link_args or []) + terminal_link_args
-            bcrypt_sources, bcrypt_link_args = _native_bcrypt_link_inputs(prog)
-            if bcrypt_sources:
-                extra_sources = list(extra_sources or []) + bcrypt_sources
-                extra_link_args = list(extra_link_args or []) + bcrypt_link_args
-            gui_sources, gui_link_args = _native_gui_link_inputs(prog)
-            if gui_sources:
-                extra_sources = list(extra_sources or []) + gui_sources
-                extra_link_args = list(extra_link_args or []) + gui_link_args
+            extra_sources = list(runtime_sources)
+            extra_link_args = list(runtime_link_args)
             resolved_resource_dir = _resolve_resource_dir(
                 prog, args.source, build_dir,
                 args.keep_resources, args.resource_dir)
@@ -9465,7 +12992,7 @@ def main():
         did_output = True
         outputs.append(("executable", emit_exe_path))
 
-    if did_output and not args.quiet and not args.run:
+    if did_output and not args.quiet and not args.run and not wrote_stdout_json:
         print(_render_success_message(
             "SSOK001",
             "SemanticScript compile complete",
@@ -9487,7 +13014,7 @@ def main():
                      cpu_config=cpu_config)
         sys.exit(rc)
 
-    if not did_output and not args.quiet:
+    if not did_output and not wrote_stdout_json and not args.quiet:
         # Reaching this branch means the source compiled successfully but
         # no output flag was given. Tell the user what they could do next
         # instead of exiting silently.

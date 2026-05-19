@@ -7,6 +7,7 @@ Run from repo root:
 from __future__ import annotations
 
 import io
+import json
 import os
 import sys
 import unittest
@@ -94,6 +95,30 @@ class TestFormatSource(unittest.TestCase):
         once = semfmt.format_source(source)
         twice = semfmt.format_source(once)
         self.assertEqual(once, twice)
+
+    def test_preserves_json_body_indented_island(self) -> None:
+        source = (
+            "storage   module immutable payloadJsonText JsonText\n"
+            "jsonBody   payloadJsonText\n"
+            "  {\n"
+            '    "message": "keep  spaces",\n'
+            '    "items": [1, 2, 3]\n'
+            "  }\n"
+            "operation   main\n"
+        )
+        formatted = semfmt.format_source(source)
+        expected = (
+            "storage module immutable payloadJsonText JsonText\n"
+            "jsonBody payloadJsonText\n"
+            "  {\n"
+            '    "message": "keep  spaces",\n'
+            '    "items": [1, 2, 3]\n'
+            "  }\n"
+            "operation main\n"
+        )
+        self.assertEqual(formatted, expected)
+        island = "\n".join(formatted.splitlines()[2:6])
+        self.assertEqual(json.loads(island)["message"], "keep  spaces")
 
 
 class TestCollectPaths(unittest.TestCase):

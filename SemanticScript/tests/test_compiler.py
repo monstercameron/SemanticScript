@@ -193,6 +193,119 @@ def test_parser_module_namespace_contract():
           f"raised={raised} msg={msg!r}")
 
 
+def test_parser_language_mode_strict_executable():
+    strict_source = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictMode",
+        "operation main",
+        "output main Result ExitCode MainError",
+        "precondition main \"caller validates inputs\"",
+        "label startMain",
+        "const exitCodeValue ExitCode 0",
+        "returnOk exitCodeValue",
+        "",
+    ])
+    prog = semsc.parse(strict_source)
+    check("parser: strictExecutable language mode recorded",
+          prog.language_modes == ["strictExecutable"],
+          f"got {prog.language_modes!r}")
+    main_op = prog.operations.get("main")
+    check("parser: documented strict body metadata still parses",
+          main_op is not None
+          and any(verb == "precondition" for verb, _args, _line in main_op.lines),
+          f"lines = {main_op.lines if main_op is not None else None!r}")
+
+    permissive_source = "\n".join([
+        "project NonStrictMode",
+        "misspelledTopLevel Row",
+        "operation main",
+        "misspelledBody row",
+        "",
+    ])
+    prog = semsc.parse(permissive_source)
+    main_op = prog.operations.get("main")
+    check("parser: non-strict keeps permissive top-level metadata",
+          "Row" in prog.hard_metadata
+          and "misspelledTopLevel" in prog.hard_metadata["Row"],
+          f"metadata = {prog.hard_metadata!r}")
+    check("parser: non-strict keeps permissive body metadata",
+          main_op is not None
+          and any(verb == "misspelledBody" for verb, _args, _line in main_op.lines),
+          f"lines = {main_op.lines if main_op is not None else None!r}")
+
+    refined_source = "\n".join([
+        "languageMode refinedSyntax",
+        "project RefinedMode",
+        "researchTop Row \"metadata\"",
+        "operation main",
+        "researchBody row",
+        "",
+    ])
+    prog = semsc.parse(refined_source)
+    main_op = prog.operations.get("main")
+    check("parser: refinedSyntax language mode recorded",
+          prog.language_modes == ["refinedSyntax"],
+          f"got {prog.language_modes!r}")
+    check("parser: refinedSyntax preserves permissive top-level metadata",
+          "Row" in prog.hard_metadata
+          and "researchTop" in prog.hard_metadata["Row"],
+          f"metadata = {prog.hard_metadata!r}")
+    check("parser: refinedSyntax preserves permissive body metadata",
+          main_op is not None
+          and any(verb == "researchBody" for verb, _args, _line in main_op.lines),
+          f"lines = {main_op.lines if main_op is not None else None!r}")
+
+    bad_mode_raised = False
+    bad_mode_msg = ""
+    try:
+        semsc.parse("languageMode strictExecutabel\n")
+    except SyntaxError as e:
+        bad_mode_raised = True
+        bad_mode_msg = str(e)
+    check("parser: unknown languageMode is rejected",
+          bad_mode_raised and "not a known language mode value" in bad_mode_msg,
+          f"msg = {bad_mode_msg!r}")
+
+    incompatible_raised = False
+    incompatible_msg = ""
+    try:
+        semsc.parse("languageMode strictExecutable\nlanguageMode refinedSyntax\n")
+    except SyntaxError as e:
+        incompatible_raised = True
+        incompatible_msg = str(e)
+    check("parser: incompatible language modes are rejected",
+          incompatible_raised and "cannot be combined" in incompatible_msg,
+          f"msg = {incompatible_msg!r}")
+
+    bad_top = "\n".join([
+        "languageMode strictExecutable",
+        "project BadTop",
+        "misspelledTopLevel Row",
+        "",
+    ])
+    proc = run_semsc_source(bad_top, "--parse-only", "--quiet")
+    check("parser: strictExecutable rejects unknown lowercase top-level verb without lint",
+          proc.returncode == 2
+          and "misspelledTopLevel" in proc.stderr
+          and "languageMode refinedSyntax" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    bad_body = "\n".join([
+        "languageMode strictExecutable",
+        "project BadBody",
+        "operation main",
+        "label startMain",
+        "misspelledBody row",
+        "",
+    ])
+    proc = run_semsc_source(bad_body, "--parse-only", "--quiet")
+    check("parser: strictExecutable rejects unknown lowercase body verb without lint",
+          proc.returncode == 2
+          and "misspelledBody" in proc.stderr
+          and "operation-body" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+
 def test_build_registry_imports_registered_module():
     with tempfile.TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
@@ -479,6 +592,672 @@ def test_strict_requires_effect_capability_or_authority():
     check("strict lint: inline authority covers effect",
           authorized.returncode == 0,
           f"rc={authorized.returncode} stderr={authorized.stderr!r}")
+
+
+def _strict_http_route_source(
+        route_method="GET",
+        handler_inputs=None,
+        middleware_output="MiddlewareControl",
+        middleware_return="continueMiddlewareControl",
+        wrapper_forwarder_line="responseBodyForwarder writeTextResponse body",
+        handler_body=None):
+    if handler_inputs is None:
+        handler_inputs = [
+            "input healthHandler request HttpRequest",
+            "input healthHandler response HttpResponse",
+        ]
+    if handler_body is None:
+        handler_body = [
+            "const okStatus CSignedInt32 200",
+            "const okBody CNullTerminatedByteString \"ok\\n\"",
+            "call wrapperCall writeTextResponse",
+            "arg wrapperCall response response",
+            "arg wrapperCall status okStatus",
+            "arg wrapperCall body okBody",
+            "run wrapperCall",
+            "bind responseStatus CSignedInt32 wrapperCall",
+            "returnValue responseStatus",
+        ]
+    wrapper_forwarder_lines = (
+        [wrapper_forwarder_line] if wrapper_forwarder_line else []
+    )
+    return "\n".join([
+        "languageMode strictExecutable",
+        "project StrictHttpContracts",
+        "target webServer",
+        "runtime native 1",
+        "webServer strictServer",
+        "purpose strictServer \"strict HTTP fixture server\"",
+        "serverHost strictServer \"127.0.0.1\"",
+        "serverPort strictServer 18083",
+        f"route strictServer {route_method} \"/health\" healthHandler",
+        "routeMiddleware strictServer \"/health\" auditMiddleware",
+        "authority auditMiddleware http.response write",
+        "authority writeTextResponse http.response write",
+        "authority healthHandler http.response write",
+        "authority healthHandler http.request read",
+        "",
+        "operation auditMiddleware",
+        "input auditMiddleware request HttpRequest",
+        "input auditMiddleware response HttpResponse",
+        f"output auditMiddleware {middleware_output}",
+        "effect auditMiddleware write http.response",
+        "purpose auditMiddleware \"strict middleware ABI fixture\"",
+        "invariant auditMiddleware \"middleware output shape is explicit\"",
+        "memory auditMiddleware arena request",
+        "async auditMiddleware no",
+        "label startAuditMiddleware",
+        f"returnValue {middleware_return}",
+        "",
+        "operation writeTextResponse",
+        "input writeTextResponse response HttpResponse",
+        "input writeTextResponse status CSignedInt32",
+        "input writeTextResponse body CNullTerminatedByteString",
+        "output writeTextResponse CSignedInt32",
+        "effect writeTextResponse write http.response",
+        "purpose writeTextResponse \"strict response wrapper fixture\"",
+        "invariant writeTextResponse \"wrapper forwards body explicitly\"",
+        "memory writeTextResponse arena request",
+        "async writeTextResponse no",
+        *wrapper_forwarder_lines,
+        "label startWriteTextResponse",
+        "call writeCall http.responseText",
+        "arg writeCall response response",
+        "arg writeCall status status",
+        "arg writeCall body body",
+        "run writeCall",
+        "bindOk writeStatus CSignedInt32 writeCall",
+        "bindError writeCallError CSignedInt32 writeCall",
+        "branchIfError writeCall writeFailed",
+        "returnValue writeStatus",
+        "label writeFailed",
+        "returnValue writeCallError",
+        "",
+        "operation healthHandler",
+        *handler_inputs,
+        "output healthHandler CSignedInt32",
+        "effect healthHandler read http.request",
+        "effect healthHandler write http.response",
+        "purpose healthHandler \"strict route handler ABI fixture\"",
+        "invariant healthHandler \"route handler writes exactly one response\"",
+        "memory healthHandler arena request",
+        "async healthHandler no",
+        "label startHealthHandler",
+        *handler_body,
+        "",
+    ])
+
+
+def test_strict_web_contracts_reject_invalid_route_method():
+    src = _strict_http_route_source(route_method="CONNECT")
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strict HTTP: invalid route method is compile-blocking without lint",
+          proc.returncode == 3 and "SS3601" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_web_contracts_accept_lowercase_route_method():
+    src = _strict_http_route_source(route_method="get")
+    proc = run_semsc_source(src, "--parse-only", "--strict", "--quiet")
+    check("strict HTTP: supported route methods are case-insensitive",
+          proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_mode_rejects_http_contracts_without_lint_flag():
+    src = _strict_http_route_source(route_method="CONNECT")
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable HTTP: invalid route method blocks compile",
+          proc.returncode == 3
+          and "SS3601" in proc.stderr
+          and "semantic.strictExecutable" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_web_contracts_reject_middleware_i32_output():
+    src = _strict_http_route_source(
+        middleware_output="CSignedInt32",
+        middleware_return="0",
+    )
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strict HTTP: middleware return is compile-blocking without lint",
+          proc.returncode == 3 and "SS3610" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_web_contracts_reject_handler_input_name_mismatch():
+    src = _strict_http_route_source(handler_inputs=[
+        "input healthHandler req HttpRequest",
+        "input healthHandler res HttpResponse",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strict HTTP: route handler names are compile-blocking without lint",
+          proc.returncode == 3 and "SS3609" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_web_contracts_reject_missing_response_forwarder():
+    src = _strict_http_route_source(wrapper_forwarder_line=None)
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strict HTTP: missing forwarder is compile-blocking without lint",
+          proc.returncode == 3 and "SS3615" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_web_contracts_reject_wrong_response_forwarder():
+    src = _strict_http_route_source(
+        wrapper_forwarder_line="responseBodyForwarder writeTextResponse wrongBody")
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strict HTTP: wrong forwarder is compile-blocking without lint",
+          proc.returncode == 3 and "SS3607" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_web_contracts_reject_nullable_header_response_body():
+    handler_body = [
+        "const okStatus CSignedInt32 200",
+        "const tokenHeaderName CNullTerminatedByteString \"X-Token\"",
+        "call headerReadCall http.requestHeader",
+        "arg headerReadCall request request",
+        "arg headerReadCall name tokenHeaderName",
+        "run headerReadCall",
+        "bind maybeToken CNullTerminatedByteString headerReadCall",
+        "call writeCall http.responseText",
+        "arg writeCall response response",
+        "arg writeCall status okStatus",
+        "arg writeCall body maybeToken",
+        "run writeCall",
+        "bind responseStatus CSignedInt32 writeCall",
+        "returnValue responseStatus",
+    ]
+    src = _strict_http_route_source(handler_body=handler_body)
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strict HTTP: nullable request header is compile-blocking without lint",
+          proc.returncode == 3 and "SS3603" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_web_contracts_accept_valid_route_middleware_and_forwarder():
+    src = _strict_http_route_source()
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strict HTTP: valid route/middleware/forwarder contract passes without lint",
+          proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_rejects_plain_run_for_fallible_heap_allocation():
+    src = "\n".join([
+        "project StrictUncheckedMalloc",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError OutOfMemory",
+        "authority main heap allocate",
+        "operation main",
+        "output main Result Void MainError",
+        "effect main allocate heap",
+        "purpose main \"exercise strict fallible call diagnostics\"",
+        "invariant main \"heap allocation failure must be explicit\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "const allocationSize CByteCount 8",
+        "call mallocCall c.malloc",
+        "arg mallocCall size allocationSize",
+        "run mallocCall",
+        "returnOk noResult",
+        "",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--strict", "--quiet")
+    check("strict checked calls: c.malloc plain run is fatal",
+          proc.returncode == 3
+          and "uncheckedFallibleCall" in proc.stderr
+          and "c.malloc" in proc.stderr
+          and "bind|ignoreValue" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_accepts_complete_legacy_checked_fallible_call_pattern():
+    src = "\n".join([
+        "project StrictCheckedMalloc",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError OutOfMemory",
+        "authority main heap allocate",
+        "authority main heap free",
+        "operation main",
+        "output main Result Void MainError",
+        "effect main allocate heap",
+        "effect main free heap",
+        "purpose main \"exercise accepted legacy checked call pattern\"",
+        "invariant main \"heap allocation failure branches before use\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "const allocationSize CByteCount 8",
+        "call mallocCall c.malloc",
+        "arg mallocCall size allocationSize",
+        "run mallocCall",
+        "bindOk heapBuffer COpaqueMemoryAddress mallocCall",
+        "bindError mallocCallError MainError mallocCall",
+        "branchIfError mallocCall allocationFailed",
+        "call freeCall c.free",
+        "arg freeCall ptr heapBuffer",
+        "run freeCall",
+        "returnOk noResult",
+        "label allocationFailed",
+        "returnError mallocCallError",
+        "",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--strict", "--quiet")
+    check("strict checked calls: complete legacy pattern is accepted",
+          proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_run_checked_heap_allocation_lowers():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictRunCheckedMalloc",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError OutOfMemory",
+        "authority main heap allocate",
+        "authority main heap free",
+        "operation main",
+        "output main Result Void MainError",
+        "effect main allocate heap",
+        "effect main free heap",
+        "purpose main \"exercise source-level checked heap allocation\"",
+        "invariant main \"allocation failure and cleanup are executable\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "const allocationSize CByteCount 8",
+        "call mallocCall c.malloc",
+        "arg mallocCall size allocationSize",
+        "runChecked mallocCall ok heapBuffer COpaqueMemoryAddress error mallocStatus MainError else allocationFailed",
+        "call freeCall c.free",
+        "arg freeCall ptr heapBuffer",
+        "run freeCall",
+        "returnVoid",
+        "label allocationFailed",
+        "makeError allocationFailure MainError.OutOfMemory",
+        "returnError allocationFailure",
+        "",
+    ])
+    proc = run_semsc_source(src, "--emit-ir", "--quiet")
+    check("strict checked calls: runChecked malloc compiles without lint flag",
+          proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_rejects_plain_run_for_fallible_sqlite_prepare():
+    src = "\n".join([
+        "project StrictUncheckedSqlitePrepare",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError PrepareFailed",
+        "operation main",
+        "output main Result Void MainError",
+        "purpose main \"exercise strict sqlite fallible call diagnostics\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "const database SqliteDatabase 0",
+        "const sqlText CNullTerminatedByteString \"select 1\"",
+        "call prepareStatementCall sqlite.prepareStatement",
+        "arg prepareStatementCall database database",
+        "arg prepareStatementCall sql sqlText",
+        "run prepareStatementCall",
+        "bindOk statement SqliteStatement prepareStatementCall",
+        "returnOk noResult",
+        "",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--strict", "--quiet")
+    check("strict checked calls: sqlite.prepareStatement plain run is fatal",
+          proc.returncode == 3
+          and "uncheckedFallibleCall" in proc.stderr
+          and "sqlite.prepareStatement" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_rejects_missing_status_for_fallible_http_response_write():
+    src = "\n".join([
+        "project StrictUncheckedHttpResponseWrite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError ResponseWriteFailed",
+        "authority main http.response write",
+        "operation main",
+        "input main response HttpResponse",
+        "output main Result Void MainError",
+        "effect main write http.response",
+        "purpose main \"exercise strict HTTP response status diagnostics\"",
+        "invariant main \"response write failure must branch explicitly\"",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "const okStatus CSignedInt32 200",
+        "const bodyText CNullTerminatedByteString \"ok\"",
+        "const plainType CNullTerminatedByteString \"text/plain\"",
+        "call writeResponseCall http.responseText",
+        "arg writeResponseCall response response",
+        "arg writeResponseCall status okStatus",
+        "arg writeResponseCall body bodyText",
+        "arg writeResponseCall contentType plainType",
+        "run writeResponseCall",
+        "returnOk noResult",
+        "",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--strict", "--quiet")
+    check("strict checked calls: missing HTTP response status disposition is fatal",
+          proc.returncode == 3
+          and "uncheckedFallibleCall" in proc.stderr
+          and "http.responseText" in proc.stderr
+          and "bind|ignoreValue" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_heap_allocation_without_oom_branch():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictOwnedHeapUnchecked",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError OutOfMemory",
+        "operation main",
+        "output main Result Void MainError",
+        "purpose main \"strict heap allocation must branch on OOM\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "const allocationSize CByteCount 8",
+        "call allocationCall c.malloc",
+        "arg allocationCall size allocationSize",
+        "run allocationCall",
+        "bindOk heapBuffer COpaqueMemoryAddress allocationCall",
+        "returnOk noResult",
+        "",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable owned resources: unchecked heap allocation fails",
+          proc.returncode == 3
+          and "SS3305" in proc.stderr
+          and "allocationCall" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_heap_allocation_without_free():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictOwnedHeapMissingFree",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError OutOfMemory",
+        "operation main",
+        "output main Result Void MainError",
+        "purpose main \"strict heap allocation must have executable free\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "const allocationSize CByteCount 8",
+        "call allocationCall c.malloc",
+        "arg allocationCall size allocationSize",
+        "run allocationCall",
+        "bindOk heapBuffer COpaqueMemoryAddress allocationCall",
+        "bindError allocationError MainError allocationCall",
+        "branchIfError allocationCall allocationFailed",
+        "returnOk noResult",
+        "label allocationFailed",
+        "returnError allocationError",
+        "",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable owned resources: missing heap free fails",
+          proc.returncode == 3
+          and "SS3303" in proc.stderr
+          and "c.free" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_double_heap_free():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictOwnedHeapDoubleFree",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError OutOfMemory",
+        "operation main",
+        "output main Result Void MainError",
+        "purpose main \"strict heap cleanup must not double free\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "const allocationSize CByteCount 8",
+        "call allocationCall c.malloc",
+        "arg allocationCall size allocationSize",
+        "run allocationCall",
+        "bindOk heapBuffer COpaqueMemoryAddress allocationCall",
+        "bindError allocationError MainError allocationCall",
+        "branchIfError allocationCall allocationFailed",
+        "call firstFreeCall c.free",
+        "arg firstFreeCall ptr heapBuffer",
+        "run firstFreeCall",
+        "call secondFreeCall c.free",
+        "arg secondFreeCall ptr heapBuffer",
+        "run secondFreeCall",
+        "returnOk noResult",
+        "label allocationFailed",
+        "returnError allocationError",
+        "",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable owned resources: double heap free fails",
+          proc.returncode == 3
+          and "SS3307" in proc.stderr
+          and "heapBuffer" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_accepts_explicit_heap_free():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictOwnedHeapExplicitFree",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError OutOfMemory",
+        "operation main",
+        "output main Result Void MainError",
+        "purpose main \"strict heap cleanup is executable\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "const allocationSize CByteCount 8",
+        "call allocationCall c.malloc",
+        "arg allocationCall size allocationSize",
+        "run allocationCall",
+        "bindOk heapBuffer COpaqueMemoryAddress allocationCall",
+        "bindError allocationError MainError allocationCall",
+        "branchIfError allocationCall allocationFailed",
+        "call freeCall c.free",
+        "arg freeCall ptr heapBuffer",
+        "run freeCall",
+        "returnOk noResult",
+        "label allocationFailed",
+        "returnError allocationError",
+        "",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable owned resources: explicit heap free passes",
+          proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_sqlite_open_setup_failure_without_close():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictSqliteOpenCleanupMissing",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError OpenFailed",
+        "errorCase MainError SchemaFailed",
+        "storage module immutable schemaSql CNullTerminatedByteString \"create table t(id integer)\"",
+        "operation main",
+        "output main Result SqliteDatabase MainError",
+        "purpose main \"SQLite setup failure must close fresh handle\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "const databasePath CNullTerminatedByteString \":memory:\"",
+        "call openCall sqlite.openDatabase",
+        "arg openCall path databasePath",
+        "arg openCall mode inMemorySqliteOpenMode",
+        "run openCall",
+        "bindOk database SqliteDatabase openCall",
+        "bindError openError MainError openCall",
+        "branchIfError openCall openFailed",
+        "call schemaCall sqlite.exec",
+        "arg schemaCall database database",
+        "arg schemaCall sql schemaSql",
+        "run schemaCall",
+        "ignoreOk schemaCall Void",
+        "bindError schemaError MainError schemaCall",
+        "branchIfError schemaCall schemaFailed",
+        "returnOk database",
+        "label openFailed",
+        "returnError openError",
+        "label schemaFailed",
+        "returnError schemaError",
+        "",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable owned resources: sqlite setup failure without close fails",
+          proc.returncode == 3
+          and "SS3905" in proc.stderr
+          and "schemaFailed" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_accepts_sqlite_open_setup_failure_close():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictSqliteOpenCleanup",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError OpenFailed",
+        "errorCase MainError SchemaFailed",
+        "storage module immutable schemaSql CNullTerminatedByteString \"create table t(id integer)\"",
+        "operation main",
+        "output main Result SqliteDatabase MainError",
+        "purpose main \"SQLite setup failure closes fresh handle\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "const databasePath CNullTerminatedByteString \":memory:\"",
+        "call openCall sqlite.openDatabase",
+        "arg openCall path databasePath",
+        "arg openCall mode inMemorySqliteOpenMode",
+        "run openCall",
+        "bindOk database SqliteDatabase openCall",
+        "bindError openError MainError openCall",
+        "branchIfError openCall openFailed",
+        "call schemaCall sqlite.exec",
+        "arg schemaCall database database",
+        "arg schemaCall sql schemaSql",
+        "run schemaCall",
+        "ignoreOk schemaCall Void",
+        "bindError schemaError MainError schemaCall",
+        "branchIfError schemaCall schemaFailed",
+        "returnOk database",
+        "label openFailed",
+        "returnError openError",
+        "label schemaFailed",
+        "call closeAfterSchemaFailureCall sqlite.closeDatabase",
+        "arg closeAfterSchemaFailureCall database database",
+        "run closeAfterSchemaFailureCall",
+        "ignoreOk closeAfterSchemaFailureCall Void",
+        "bindError closeError MainError closeAfterSchemaFailureCall",
+        "branchIfError closeAfterSchemaFailureCall closeFailed",
+        "returnError schemaError",
+        "label closeFailed",
+        "returnError closeError",
+        "",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable owned resources: sqlite setup failure close passes",
+          proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_sqlite_prepare_without_finalize():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictSqlitePrepareMissingFinalize",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError PrepareFailed",
+        "storage module immutable selectSql CNullTerminatedByteString \"select 1\"",
+        "operation main",
+        "output main Result Void MainError",
+        "purpose main \"SQLite statements must be finalized\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "const database SqliteDatabase 0",
+        "call prepareCall sqlite.prepareStatement",
+        "arg prepareCall database database",
+        "arg prepareCall sql selectSql",
+        "run prepareCall",
+        "bindOk statement SqliteStatement prepareCall",
+        "bindError prepareError MainError prepareCall",
+        "branchIfError prepareCall prepareFailed",
+        "returnOk noResult",
+        "label prepareFailed",
+        "returnError prepareError",
+        "",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable owned resources: sqlite prepare without finalize fails",
+          proc.returncode == 3
+          and "SS3906" in proc.stderr
+          and "prepareCall" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_accepts_sqlite_prepare_finalize_defer():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictSqlitePrepareFinalize",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError PrepareFailed",
+        "storage module immutable selectSql CNullTerminatedByteString \"select 1\"",
+        "operation main",
+        "output main Result Void MainError",
+        "purpose main \"SQLite statement finalize defer is lowered\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "const database SqliteDatabase 0",
+        "call prepareCall sqlite.prepareStatement",
+        "arg prepareCall database database",
+        "arg prepareCall sql selectSql",
+        "run prepareCall",
+        "bindOk statement SqliteStatement prepareCall",
+        "bindError prepareError MainError prepareCall",
+        "branchIfError prepareCall prepareFailed",
+        "defer finalizeStatementDefer sqlite.finalizeStatement statement",
+        "returnOk noResult",
+        "label prepareFailed",
+        "returnError prepareError",
+        "",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable owned resources: sqlite finalize defer passes",
+          proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
 
 
 # ============================================================
@@ -1829,6 +2608,473 @@ def test_cli_emit_ir_without_path_uses_build_dir():
               f"rc={proc.returncode} stderr={proc.stderr!r}")
 
 
+def test_cli_inspect_ir_outputs_agent_json():
+    src = "\n".join([
+        "project InspectIrJson",
+        "target console",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError Placeholder CSignedInt32",
+        "operation main",
+        "input main console Console",
+        "output main Result ExitCode MainError",
+        "effect main write console.stdout",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "const greeting String \"hello\"",
+        "const ok ExitCode 0",
+        "call writeGreeting console.writeLine",
+        "arg writeGreeting text greeting",
+        "run writeGreeting",
+        "returnOk ok",
+        "",
+    ])
+    proc = run_semsc_source(src, "--inspect-ir")
+    try:
+        payload = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        payload = {}
+        decode_error = str(exc)
+    else:
+        decode_error = ""
+
+    check("inspect-ir: stdout is JSON",
+          proc.returncode == 0 and payload.get("schemaVersion") == "sem.inspectIr.v0",
+          f"rc={proc.returncode} stderr={proc.stderr!r} decode={decode_error!r}")
+    functions = {fn["name"]: fn for fn in payload.get("llvm", {}).get("functions", [])}
+    check("inspect-ir: maps entry operation to LLVM main",
+          functions.get("main", {}).get("operation") == "main"
+          and any(block.get("name") == "entry" for block in functions.get("main", {}).get("blocks", [])),
+          functions.get("main"))
+    op = next((item for item in payload.get("operations", [])
+               if item.get("name") == "main"), {})
+    call = next((item for item in op.get("calls", [])
+                 if item.get("name") == "writeGreeting"), {})
+    trace_sites = payload.get("traceMap", {}).get("sites", [])
+    check("inspect-ir: call site id appears in trace map",
+          bool(call.get("siteId"))
+          and any(site.get("siteId") == call.get("siteId")
+                  and site.get("kind") == "call"
+                  for site in trace_sites),
+          f"call={call} sites={trace_sites}")
+    runtime_symbols = {
+        item.get("symbol")
+        for item in payload.get("llvm", {}).get("runtimeSymbols", [])
+    }
+    check("inspect-ir: records runtime external provenance",
+          "puts" in runtime_symbols,
+          runtime_symbols)
+
+
+def test_cli_emit_trace_map_sidecar():
+    src = "\n".join([
+        "project TraceMapSidecar",
+        "entry console main",
+        "operation main",
+        "output main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "returnValue 0",
+        "",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "trace_map_sidecar.sem"
+        trace_map_path = Path(tmpdir) / "build" / "trace_map_sidecar.trace-map.json"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-trace-map", "--quiet"],
+            capture_output=True, text=True,
+        )
+        if trace_map_path.exists():
+            payload = json.loads(trace_map_path.read_text(encoding="utf-8"))
+        else:
+            payload = {}
+        check("trace-map: default sidecar path is written",
+              proc.returncode == 0
+              and not proc.stdout
+              and payload.get("schemaVersion") == "sem.traceMap.v0"
+              and any(site.get("kind") == "operation"
+                      for site in payload.get("sites", [])),
+              f"rc={proc.returncode} stdout={proc.stdout!r} stderr={proc.stderr!r}")
+
+
+def test_sem_inspect_ir_command():
+    src = "\n".join([
+        "project SemInspectIrCommand",
+        "entry console main",
+        "operation main",
+        "output main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "returnValue 0",
+        "",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "sem_inspect_ir.sem"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(ROOT / "tools" / "sem.py"),
+             "inspect-ir", str(src_path)],
+            capture_output=True, text=True,
+        )
+        try:
+            payload = json.loads(proc.stdout)
+        except json.JSONDecodeError as exc:
+            payload = {}
+            decode_error = str(exc)
+        else:
+            decode_error = ""
+        check("sem inspect-ir: delegates to compiler JSON output",
+              proc.returncode == 0
+              and payload.get("schemaVersion") == "sem.inspectIr.v0"
+              and payload.get("entry", {}).get("operation") == "main",
+              f"rc={proc.returncode} stderr={proc.stderr!r} decode={decode_error!r}")
+
+
+def test_inspect_ir_reports_http_abi_and_runtime_link_inputs():
+    src_path = ROOT / "tests" / "path_param_smoke.sscript"
+    proc = subprocess.run(
+        [sys.executable, str(COMPILER_DIR / "semsc.py"),
+         str(src_path), "--inspect-ir"],
+        capture_output=True, text=True,
+    )
+    try:
+        payload = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        payload = {}
+        decode_error = str(exc)
+    else:
+        decode_error = ""
+
+    route = next((item for item in payload.get("routes", [])
+                  if item.get("handler") == "echoSlugHandler"), {})
+    functions = payload.get("llvm", {}).get("functions", [])
+    handler_fn = next((item for item in functions
+                       if item.get("operation") == "echoSlugHandler"), {})
+    components = {
+        item.get("component")
+        for item in payload.get("runtimeLink", {}).get("components", [])
+    }
+    site_kinds = {
+        item.get("kind")
+        for item in payload.get("traceMap", {}).get("sites", [])
+    }
+    check("inspect-ir: reports HTTP route native ABI",
+          proc.returncode == 0
+          and route.get("nativeAbi", {}).get("llvmSignature") == "i32 (i8*, i8*)"
+          and handler_fn.get("nativeAbi", {}).get("kind") == "httpHandler",
+          f"rc={proc.returncode} stderr={proc.stderr!r} decode={decode_error!r}")
+    check("inspect-ir: reports native HTTP runtime link inputs",
+          "native_http" in components and "runtime.linkInput" in site_kinds,
+          f"components={components} siteKinds={site_kinds}")
+
+
+def test_inspect_ir_preserves_imported_source_origins():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        module_dir = root / "app"
+        module_dir.mkdir()
+        imported_path = module_dir / "lib.sem"
+        imported_path.write_text("\n".join([
+            "module app.lib",
+            "exportOperation app.lib helper",
+            "operation helper",
+            "output helper ExitCode",
+            "memory helper heap no",
+            "async helper no",
+            "label start",
+            "returnValue 0",
+            "",
+        ]), encoding="utf-8", newline="\n")
+        src_path = root / "main.sem"
+        src_path.write_text("\n".join([
+            "project ImportOrigin",
+            "entry console main",
+            "importModule app.lib",
+            "operation main",
+            "output main ExitCode",
+            "memory main heap no",
+            "async main no",
+            "label start",
+            "returnValue 0",
+            "",
+        ]), encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--inspect-ir"],
+            capture_output=True, text=True,
+        )
+        payload = json.loads(proc.stdout) if proc.returncode == 0 else {}
+        imported_sources = payload.get("source", {}).get("importedSources", [])
+        helper = next((op for op in payload.get("operations", [])
+                       if op.get("name") == "helper"), {})
+        origin = helper.get("sourceSpan", {}).get("origin", {})
+        check("inspect-ir: source model preserves imported file origins",
+              proc.returncode == 0
+              and payload.get("source", {}).get("sourceModel") == "flattenedResolvedStreamWithOrigins"
+              and any(item.get("path") == str(imported_path.resolve())
+                      for item in imported_sources)
+              and origin.get("path") == str(imported_path.resolve())
+              and origin.get("line") == 3
+              and origin.get("imported") is True,
+              f"rc={proc.returncode} stderr={proc.stderr!r} payload={payload}")
+
+
+def test_sem_run_trace_emits_agent_jsonl_events():
+    src = "\n".join([
+        "project TraceRunJsonl",
+        "entry console main",
+        "operation main",
+        "output main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "const leftValue CSignedInt32 -1",
+        "const rightValue CSignedInt32 0",
+        "const successExit ExitCode 0",
+        "call negativeCheckCall math.lessThanCSignedInt32",
+        "arg negativeCheckCall left leftValue",
+        "arg negativeCheckCall right rightValue",
+        "run negativeCheckCall",
+        "bind statusIsNegative Bool negativeCheckCall",
+        "branchIf statusIsNegative returnSuccess",
+        "returnValue rightValue",
+        "label returnSuccess",
+        "returnValue successExit",
+        "",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "trace_run.sem"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(ROOT / "tools" / "sem.py"),
+             "run", "--trace", str(src_path)],
+            capture_output=True, text=True,
+        )
+        try:
+            events = [json.loads(line) for line in proc.stderr.splitlines()
+                      if line.strip()]
+        except json.JSONDecodeError as exc:
+            events = []
+            decode_error = str(exc)
+        else:
+            decode_error = ""
+        event_names = [event.get("event") for event in events]
+        seqs = [event.get("seq") for event in events]
+        check("sem run --trace: emits clean agent JSONL",
+              proc.returncode == 0
+              and proc.stdout == ""
+              and event_names[:3] == ["op.enter", "call.start", "call.end"]
+              and "branch.decision" in event_names
+              and "return.value" in event_names
+              and "op.exit" in event_names
+              and seqs == list(range(1, len(events) + 1))
+              and all(event.get("schemaVersion") == "sem.traceEvent.v0"
+                      and event.get("siteId")
+                      and event.get("timestampNs") == event.get("seq")
+                      for event in events)
+              and any(event.get("valueStatus") == "redacted"
+                      for event in events),
+              f"rc={proc.returncode} stdout={proc.stdout!r} stderr={proc.stderr!r} decode={decode_error!r}")
+
+
+def test_sem_profile_json_writes_agent_artifacts_and_deltas():
+    src = "\n".join([
+        "project ProfileJson",
+        "entry console main",
+        "operation main",
+        "output main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "returnValue 0",
+        "",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "profile.sem"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(ROOT / "tools" / "sem.py"),
+             "run", "--profile", "--json", str(src_path)],
+            capture_output=True, text=True,
+        )
+        try:
+            payload = json.loads(proc.stdout)
+        except json.JSONDecodeError as exc:
+            payload = {}
+            decode_error = str(exc)
+        else:
+            decode_error = ""
+        artifacts = payload.get("artifacts", {})
+        artifact_paths_exist = all(
+            Path(path).exists()
+            for key, path in artifacts.items()
+            if key.endswith("Path") and path
+        )
+        index_path = artifacts.get("artifactIndexPath", "")
+        delta_proc = subprocess.run(
+            [sys.executable, str(ROOT / "tools" / "sem.py"),
+             "compare-profiles", index_path, index_path],
+            capture_output=True, text=True,
+        ) if index_path else subprocess.CompletedProcess([], 1, "", "missing index")
+        try:
+            delta_payload = json.loads(delta_proc.stdout)
+        except json.JSONDecodeError:
+            delta_payload = {}
+        check("sem run --profile --json: writes profile artifacts and deltas",
+              proc.returncode == 0
+              and payload.get("schemaVersion") == "sem.profile.v0"
+              and payload.get("run", {}).get("traceEventCount", 0) >= 3
+              and payload.get("run", {}).get("wallTimeNs", 0) >= payload.get("run", {}).get("durationNs", 0)
+              and "startupTimeNs" in payload.get("run", {})
+              and payload.get("hot", {}).get("operations", {}).get("main") == 1
+              and artifact_paths_exist
+              and payload.get("optimizationLoop", {}).get("schemaVersion") == "sem.optimizationLoop.v0"
+              and delta_proc.returncode == 0
+              and delta_payload.get("schemaVersion") == "sem.profileDelta.v0"
+              and delta_payload.get("run", {}).get("traceEventCount", {}).get("delta") == 0,
+              f"rc={proc.returncode} stderr={proc.stderr!r} decode={decode_error!r} payload={payload} delta={delta_proc.stderr!r}")
+
+
+def test_sem_profile_compile_failure_uses_failure_schema():
+    src = "\n".join([
+        "project ProfileCompileFailure",
+        "entry console main",
+        "operation main",
+        "output main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "returnValue 0",
+        "",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "profile_failure.sem"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(ROOT / "tools" / "sem.py"),
+             "run", "--profile", "--json", str(src_path), "--",
+             "--build-dir", "exact", "--build-root", "elsewhere"],
+            capture_output=True, text=True,
+        )
+        try:
+            payload = json.loads(proc.stdout)
+        except json.JSONDecodeError as exc:
+            payload = {}
+            decode_error = str(exc)
+        else:
+            decode_error = ""
+        artifacts = payload.get("artifacts", {})
+        check("sem run --profile: compile failures use failure schema",
+              proc.returncode != 0
+              and payload.get("schemaVersion") == "sem.profileFailure.v0"
+              and payload.get("phase") == "compile"
+              and payload.get("suspectedCategory") == "compileFailure"
+              and payload.get("compile", {}).get("returnCode") != 0
+              and Path(artifacts.get("artifactIndexPath", "")).exists()
+              and Path(artifacts.get("profilePath", "")).exists(),
+              f"rc={proc.returncode} stderr={proc.stderr!r} decode={decode_error!r} payload={payload}")
+
+
+def test_sem_explain_crash_reports_runtime_panic_context():
+    import shutil
+    clang = (os.environ.get("SEMSC_CLANG")
+             or shutil.which("clang")
+             or r"C:/Program Files/LLVM/bin/clang.exe")
+    if not Path(clang).exists():
+        check("sem explain-crash: clang available", False,
+              f"clang not found at {clang}")
+        return
+    src = "\n".join([
+        "project RuntimePanicDiagnostic",
+        "entry console main",
+        "operation main",
+        "output main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "const numeratorValue CSignedInt64 7",
+        "const zeroDivisor CSignedInt64 0",
+        "call divideByZeroCall math.divideI64",
+        "arg divideByZeroCall left numeratorValue",
+        "arg divideByZeroCall right zeroDivisor",
+        "run divideByZeroCall",
+        "bind quotientValue CSignedInt64 divideByZeroCall",
+        "returnValue quotientValue",
+        "",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "runtime_panic.sem"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(ROOT / "tools" / "sem.py"),
+             "run", "--explain-crash", str(src_path)],
+            capture_output=True, text=True,
+            timeout=300,
+        )
+        try:
+            payload = json.loads(proc.stdout)
+        except json.JSONDecodeError as exc:
+            payload = {}
+            decode_error = str(exc)
+        else:
+            decode_error = ""
+        artifacts = payload.get("artifacts", {})
+        event_names = [event.get("event")
+                       for event in payload.get("lastTraceEvents", [])]
+        check("sem run --explain-crash: reports panic and durable artifacts",
+              proc.returncode == 0
+              and payload.get("schemaVersion") == "sem.crash.v0"
+              and payload.get("suspectedCategory") == "runtimePanic"
+              and payload.get("panic", {}).get("code") == "SSRUN001"
+              and payload.get("panic", {}).get("operation") == "main"
+              and payload.get("semanticContext", {}).get("operation") == "main"
+              and "divideByZeroCall -> math.divideI64" in payload.get("panic", {}).get("call", "")
+              and event_names == ["op.enter", "call.start"]
+              and Path(artifacts.get("artifactIndexPath", "")).exists()
+              and Path(artifacts.get("traceEventsPath", "")).exists(),
+              f"rc={proc.returncode} stderr={proc.stderr!r} decode={decode_error!r} payload={payload}")
+
+
+def test_sem_bench_json_reports_stable_deltas():
+    import shutil
+    clang = (os.environ.get("SEMSC_CLANG")
+             or shutil.which("clang")
+             or r"C:/Program Files/LLVM/bin/clang.exe")
+    if not Path(clang).exists():
+        check("sem bench json: clang available", False,
+              f"clang not found at {clang}")
+        return
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "tools" / "sem.py"),
+         "bench", "--json", "--runs", "1", "--warmup", "0",
+         "--benchmark", "arith"],
+        capture_output=True, text=True,
+        timeout=300,
+    )
+    try:
+        payload = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        payload = {}
+        decode_error = str(exc)
+    else:
+        decode_error = ""
+    bench = next((item for item in payload.get("benchmarks", [])
+                  if item.get("name") == "arith"), {})
+    check("sem bench --json: reports stable benchmark deltas",
+          proc.returncode in (0, 1)
+          and payload.get("schemaVersion") == "sem.benchmark.v0"
+          and payload.get("summary", {}).get("benchmarkCount") == 1
+          and "semanticToCRatio" in bench.get("delta", {})
+          and "semanticMinusCClockTicks" in bench.get("delta", {})
+          and Path(bench.get("artifacts", {}).get("semanticExecutablePath", "")).exists(),
+          f"rc={proc.returncode} stderr={proc.stderr!r} decode={decode_error!r} payload={payload}")
+
+
 def test_cli_build_root_and_folder_name():
     src = "\n".join([
         "project EmitIrBuildRoot",
@@ -1857,6 +3103,64 @@ def test_cli_build_root_and_folder_name():
         check("build root: emit-ir writes under custom managed build folder",
               proc.returncode == 0 and build_ir_path.exists(),
               f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_cli_build_dir_overrides_build_tape_folder_metadata():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        build_path = root / "build.sem"
+        module_path = root / "main.sem"
+        override_build_dir = root / "agent-artifacts"
+        build_path.write_text("\n".join([
+            "buildProject buildDirOverride",
+            "project BuildDirOverride",
+            "modulePath buildDirOverride github.com/example/build-dir-override",
+            "languageVersion buildDirOverride \"1.0\"",
+            "projectVersion buildDirOverride \"1.0.0\"",
+            "projectLicense buildDirOverride MIT",
+            "sourceRoot buildDirOverride \".\"",
+            "registerModule buildDirOverride app.build_dir_override \".\"",
+            "mainFile buildDirOverride \"main.sem\"",
+            "mainOperation buildDirOverride main",
+            "targetRuntime buildDirOverride nativeExe",
+            "buildProfile buildDirOverride dev",
+            "runtimeChecks buildDirOverride panic",
+            "persistLlvmIr buildDirOverride auto",
+            "optLevel buildDirOverride 0",
+            "buildFolderName buildDirOverride build-from-tape",
+            "target console",
+            "runtime native 1",
+            "entry console main",
+            "importModule app.build_dir_override",
+            "",
+        ]), encoding="utf-8", newline="\n")
+        module_path.write_text("\n".join([
+            "module app.build_dir_override",
+            "exportOperation app.build_dir_override main",
+            "operation main",
+            "output main ExitCode",
+            "memory main heap no",
+            "async main no",
+            "returnValue 0",
+            "",
+        ]), encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(ROOT / "tools" / "sem.py"),
+             "inspect-ir", str(root), "--", "--build-dir", str(override_build_dir)],
+            capture_output=True, text=True,
+        )
+        try:
+            payload = json.loads(proc.stdout)
+        except json.JSONDecodeError as exc:
+            payload = {}
+            decode_error = str(exc)
+        else:
+            decode_error = ""
+        check("build dir: CLI override ignores buildFolderName metadata",
+              proc.returncode == 0
+              and payload.get("schemaVersion") == "sem.inspectIr.v0"
+              and "cannot be combined" not in proc.stderr,
+              f"rc={proc.returncode} stderr={proc.stderr!r} decode={decode_error!r}")
 
 
 def test_build_tape_path_normalization():
@@ -2013,10 +3317,10 @@ def test_hello_gui_sample_uses_refined_gui_surface():
     check("hello gui sample: avoids GUI-specific top-level keyword rows",
           heavy_gui_decl is None,
           heavy_gui_decl.group(0) if heavy_gui_decl else main_text)
-    check("hello gui sample: keeps construction explicit in the operation body",
-          "GuiSession" not in main_text
-          and "GuiEvent" not in main_text
-          and "gui." in main_text,
+    check("hello gui sample: keeps construction explicit in operation bodies",
+          "gui." in main_text
+          and "input addTaskFromInput session GuiSession" in main_text
+          and "input addTaskFromInput event GuiEvent" in main_text,
           main_text)
 
 
@@ -2970,6 +4274,7 @@ def main():
     test_parser_minimal()
     test_parser_syntax_error_has_line()
     test_parser_module_namespace_contract()
+    test_parser_language_mode_strict_executable()
     test_build_registry_imports_registered_module()
     test_build_registry_qualified_import_call_lowers()
     test_build_registry_singular_import_call_lowers()
@@ -2977,6 +4282,28 @@ def main():
     test_strict_rejects_missing_output_contract()
     test_strict_rejects_unknown_output_contract_type()
     test_strict_requires_effect_capability_or_authority()
+    test_strict_web_contracts_reject_invalid_route_method()
+    test_strict_web_contracts_accept_lowercase_route_method()
+    test_strict_executable_mode_rejects_http_contracts_without_lint_flag()
+    test_strict_web_contracts_reject_middleware_i32_output()
+    test_strict_web_contracts_reject_handler_input_name_mismatch()
+    test_strict_web_contracts_reject_missing_response_forwarder()
+    test_strict_web_contracts_reject_wrong_response_forwarder()
+    test_strict_web_contracts_reject_nullable_header_response_body()
+    test_strict_web_contracts_accept_valid_route_middleware_and_forwarder()
+    test_strict_rejects_plain_run_for_fallible_heap_allocation()
+    test_strict_accepts_complete_legacy_checked_fallible_call_pattern()
+    test_strict_executable_run_checked_heap_allocation_lowers()
+    test_strict_rejects_plain_run_for_fallible_sqlite_prepare()
+    test_strict_rejects_missing_status_for_fallible_http_response_write()
+    test_strict_executable_rejects_heap_allocation_without_oom_branch()
+    test_strict_executable_rejects_heap_allocation_without_free()
+    test_strict_executable_rejects_double_heap_free()
+    test_strict_executable_accepts_explicit_heap_free()
+    test_strict_executable_rejects_sqlite_open_setup_failure_without_close()
+    test_strict_executable_accepts_sqlite_open_setup_failure_close()
+    test_strict_executable_rejects_sqlite_prepare_without_finalize()
+    test_strict_executable_accepts_sqlite_prepare_finalize_defer()
     test_compile_hello_world_to_ir()
     test_compile_i32_comparison_to_i32_ir()
     test_compile_rejects_implicit_i32_to_i64_math()
@@ -3001,7 +4328,18 @@ def main():
     test_build_dir_path_resolution()
     test_cli_persist_llvm_ir_flag()
     test_cli_emit_ir_without_path_uses_build_dir()
+    test_cli_inspect_ir_outputs_agent_json()
+    test_cli_emit_trace_map_sidecar()
+    test_sem_inspect_ir_command()
+    test_inspect_ir_reports_http_abi_and_runtime_link_inputs()
+    test_inspect_ir_preserves_imported_source_origins()
+    test_sem_run_trace_emits_agent_jsonl_events()
+    test_sem_profile_json_writes_agent_artifacts_and_deltas()
+    test_sem_profile_compile_failure_uses_failure_schema()
+    test_sem_explain_crash_reports_runtime_panic_context()
+    test_sem_bench_json_reports_stable_deltas()
     test_cli_build_root_and_folder_name()
+    test_cli_build_dir_overrides_build_tape_folder_metadata()
     test_build_tape_path_normalization()
     test_build_tape_validation_rejects_missing_required_rows()
     test_build_tape_validation_accepts_dependency_fetch_rows()

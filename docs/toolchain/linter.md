@@ -149,9 +149,14 @@ undeclared body effects
 unknown error variants
 dead stores
 allocation in loops
+string accumulator appends in loops
+snprintf byte counts used as i64 offsets without explicit widening
+GUI selection handlers that also append list items
+fixed-capacity row mutations without unchanged-count branches
 bind-then-ignore
 memory heap contradictions
 missing allocation sources
+unchecked heap allocation disposition for c.malloc/c.calloc/c.realloc
 unpaired allocate/free calls, accepting defer metadata or explicit c.free
 stack-limit overruns
 record alignment
@@ -162,6 +167,8 @@ locks without cleanup
 selects without cases
 async calls without timeout/cancel boundary
 file handles not closed, accepting defer metadata or explicit close calls
+SQLite database setup failures without close cleanup
+SQLite statements without finalize cleanup
 guard tokens without release
 circular type aliases
 incomplete JSON codecs
@@ -176,8 +183,15 @@ duplicate declarations
 ## App-Scale Checks
 
 The `semlint.py` surface includes conservative app-scale checks for JSON
-serialization boundaries, fixed-format parser contracts, and direct scalar-width
-drift.
+serialization boundaries, fixed-format parser contracts, direct scalar-width
+drift, cursor-based string builders, heap/SQLite cleanup, GUI event mutation
+boundaries, and native HTTP wrapper contracts.
+
+Some hardening rules intentionally remain in the standalone linter even when
+the compiler has matching strict-lint coverage. Treat `blocksCompile=True`
+diagnostics such as `SS3610 middlewareReturnNotMiddlewareControl` as release
+blockers, but verify new parser/codegen hardening with `semsc.py --parse-only`
+without `--lint` before marking a TODO item as always-on compiler behavior.
 
 ## Serialization Checks
 

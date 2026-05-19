@@ -2182,6 +2182,212 @@ branchIf someCondition loopHeader
         self.assertNotIn("SS3202", _codes(diagnostics))
 
 
+class TestStringAccumulatorAppendInLoop(unittest.TestCase):
+    def test_strcat_in_back_edge_loop_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+memoryHeap main no
+label loopHeader
+call appendCall c.strcat
+arg appendCall destination accumulator
+arg appendCall source fragment
+run appendCall
+branch loopHeader
+""")
+        self.assertIn("SS3203", _codes(diagnostics))
+        matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS3203")[0]
+        self.assertEqual(matchingDiagnostic.subjectName, "appendCall")
+        self.assertEqual(matchingDiagnostic.gapEdge, "cursorBuilder")
+
+    def test_strncat_in_back_edge_loop_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+memoryHeap main no
+label loopHeader
+call appendCall c.strncat
+arg appendCall destination accumulator
+arg appendCall source fragment
+arg appendCall count fragmentByteCount
+run appendCall
+branch loopHeader
+""")
+        self.assertIn("SS3203", _codes(diagnostics))
+
+    def test_strcat_outside_loop_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+memoryHeap main no
+call appendCall c.strcat
+arg appendCall destination accumulator
+arg appendCall source fragment
+run appendCall
+label loopHeader
+branchIf someCondition loopHeader
+""")
+        self.assertNotIn("SS3203", _codes(diagnostics))
+
+
+class TestSnprintfI32OffsetWithoutWidening(unittest.TestCase):
+    def test_snprintf_result_added_to_i64_cursor_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+storage local immutable buffer COpaqueMemoryAddress 0
+storage local immutable capacity CSignedInt64 256
+storage local immutable format CNullTerminatedByteString "%s"
+storage local immutable text CNullTerminatedByteString "row"
+storage local mutable writeOffset CSignedInt64 0
+call formatRowCall c.snprintf
+arg formatRowCall buffer buffer
+arg formatRowCall size capacity
+arg formatRowCall format format
+arg formatRowCall first text
+run formatRowCall
+bind rowBytesWritten CSignedInt32 formatRowCall
+call afterRowOffsetCall math.addI64
+arg afterRowOffsetCall left writeOffset
+arg afterRowOffsetCall right rowBytesWritten
+run afterRowOffsetCall
+bind afterRowOffset CSignedInt64 afterRowOffsetCall
+""")
+        self.assertIn("SS3205", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3205")[0]
+        self.assertEqual(matching.subjectName, "afterRowOffsetCall")
+        self.assertEqual(matching.gapEdge, "signExtendCSignedInt32ToCSignedInt64")
+
+    def test_explicit_widen_before_i64_cursor_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+storage local immutable buffer COpaqueMemoryAddress 0
+storage local immutable capacity CSignedInt64 256
+storage local immutable format CNullTerminatedByteString "%s"
+storage local immutable text CNullTerminatedByteString "row"
+storage local mutable writeOffset CSignedInt64 0
+call formatRowCall c.snprintf
+arg formatRowCall buffer buffer
+arg formatRowCall size capacity
+arg formatRowCall format format
+arg formatRowCall first text
+run formatRowCall
+bind rowBytesWritten CSignedInt32 formatRowCall
+call widenRowBytesWrittenCall math.signExtendCSignedInt32ToCSignedInt64
+arg widenRowBytesWrittenCall inputValue rowBytesWritten
+run widenRowBytesWrittenCall
+bind rowBytesWrittenI64 CSignedInt64 widenRowBytesWrittenCall
+call afterRowOffsetCall math.addI64
+arg afterRowOffsetCall left writeOffset
+arg afterRowOffsetCall right rowBytesWrittenI64
+run afterRowOffsetCall
+bind afterRowOffset CSignedInt64 afterRowOffsetCall
+""")
+        self.assertNotIn("SS3205", _codes(diagnostics))
+
+
+class TestGuiSelectionHandlerAppendsListItem(unittest.TestCase):
+    def test_selection_reader_and_append_in_same_handler_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation markSelectedTask
+input markSelectedTask session GuiSession
+input markSelectedTask event GuiEvent
+output markSelectedTask CSignedInt32
+purpose markSelectedTask "complete selected task"
+invariant markSelectedTask "selection handler"
+call selectedIndexCall gui.listBoxSelectedIndex
+arg selectedIndexCall session session
+arg selectedIndexCall listBox taskListHandle
+run selectedIndexCall
+bind selectedTaskIndex CSignedInt32 selectedIndexCall
+call appendCompletedCall gui.listBoxAppendItem
+arg appendCompletedCall session session
+arg appendCompletedCall listBox taskListHandle
+arg appendCompletedCall text completedText
+run appendCompletedCall
+bind appendStatus CSignedInt32 appendCompletedCall
+""")
+        self.assertIn("SS3206", _codes(diagnostics))
+
+    def test_selection_reader_without_append_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation markSelectedTask
+input markSelectedTask session GuiSession
+input markSelectedTask event GuiEvent
+output markSelectedTask CSignedInt32
+purpose markSelectedTask "complete selected task"
+invariant markSelectedTask "selection handler"
+call selectedIndexCall gui.listBoxSelectedIndex
+arg selectedIndexCall session session
+arg selectedIndexCall listBox taskListHandle
+run selectedIndexCall
+bind selectedTaskIndex CSignedInt32 selectedIndexCall
+call statusCall gui.textLabelSetText
+arg statusCall session session
+arg statusCall textLabel statusLabelHandle
+arg statusCall text completedText
+run statusCall
+bind status CSignedInt32 statusCall
+""")
+        self.assertNotIn("SS3206", _codes(diagnostics))
+
+
+class TestRowCountMutationUnchecked(unittest.TestCase):
+    def test_insert_empty_row_without_unchanged_count_branch_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation handleEnter
+output handleEnter Void
+purpose handleEnter "insert row"
+storage local mutable activeRowCount CSignedInt64 4
+storage local immutable maxRows CSignedInt64 4
+call addEmptyAtEndCall insertEmptyRowAt
+arg addEmptyAtEndCall rowsBuffer rowsBuffer
+arg addEmptyAtEndCall rowLengths rowLengths
+arg addEmptyAtEndCall activeRowCount activeRowCount
+arg addEmptyAtEndCall rowIndex activeRowCount
+arg addEmptyAtEndCall maxRows maxRows
+arg addEmptyAtEndCall rowCapacity rowCapacity
+run addEmptyAtEndCall
+bind rowsAfterAddEmpty CSignedInt64 addEmptyAtEndCall
+set local activeRowCount rowsAfterAddEmpty
+""")
+        self.assertIn("SS3207", _codes(diagnostics))
+
+    def test_insert_empty_row_with_unchanged_count_branch_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation handleEnter
+output handleEnter Void
+purpose handleEnter "insert row"
+storage local mutable activeRowCount CSignedInt64 4
+storage local immutable maxRows CSignedInt64 4
+call addEmptyAtEndCall insertEmptyRowAt
+arg addEmptyAtEndCall rowsBuffer rowsBuffer
+arg addEmptyAtEndCall rowLengths rowLengths
+arg addEmptyAtEndCall activeRowCount activeRowCount
+arg addEmptyAtEndCall rowIndex activeRowCount
+arg addEmptyAtEndCall maxRows maxRows
+arg addEmptyAtEndCall rowCapacity rowCapacity
+run addEmptyAtEndCall
+bind rowsAfterAddEmpty CSignedInt64 addEmptyAtEndCall
+call addEmptyAtEndFailedCheckCall math.equalI64
+arg addEmptyAtEndFailedCheckCall left rowsAfterAddEmpty
+arg addEmptyAtEndFailedCheckCall right activeRowCount
+run addEmptyAtEndFailedCheckCall
+bind addEmptyAtEndFailed Bool addEmptyAtEndFailedCheckCall
+branchIf addEmptyAtEndFailed noMutation
+set local activeRowCount rowsAfterAddEmpty
+label noMutation
+returnVoid
+""")
+        self.assertNotIn("SS3207", _codes(diagnostics))
+
+
 class TestBindThenIgnore(unittest.TestCase):
     def test_bind_then_ignore_value_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
@@ -2250,6 +2456,76 @@ call allocationCall c.malloc
 run allocationCall
 """)
         self.assertNotIn("SS3302", _codes(diagnostics))
+
+
+class TestUncheckedHeapAllocation(unittest.TestCase):
+    def _allocation_source(self, targetName: str, disposition: str) -> str:
+        return f"""project Test
+error MainError
+errorCase MainError OutOfMemory
+operation main
+output main Result Void MainError
+purpose main "smoke"
+effect main allocate heap
+authority main heap allocate
+memoryHeap main yes
+memoryAllocationSource main allocationCall
+storage local immutable allocationSize CByteCount 8
+call allocationCall {targetName}
+arg allocationCall size allocationSize
+run allocationCall
+{disposition}
+"""
+
+    def test_heap_allocators_without_error_disposition_are_flagged(self) -> None:
+        for targetName in ("c.malloc", "c.calloc", "c.realloc"):
+            with self.subTest(targetName=targetName):
+                diagnostics = _lint_source(self._allocation_source(
+                    targetName,
+                    """defer releaseAllocationCall c.free allocationCall
+returnOk noResult""",
+                ))
+                self.assertIn("SS3305", _codes(diagnostics))
+                matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS3305")[0]
+                self.assertEqual(matchingDiagnostic.subjectName, "allocationCall")
+                self.assertEqual(matchingDiagnostic.subjectKind, "call")
+                self.assertEqual(matchingDiagnostic.gapEdge, "bindError,branchIfError")
+                self.assertIn(targetName, matchingDiagnostic.invariantRule)
+
+    def test_heap_allocator_with_bind_error_and_branch_not_flagged(self) -> None:
+        diagnostics = _lint_source(self._allocation_source(
+            "c.malloc",
+            """bindError allocationCallError MainError allocationCall
+branchIfError allocationCall allocationFailed
+defer releaseAllocationCall c.free allocationCall
+returnOk noResult
+label allocationFailed
+returnError allocationCallError""",
+        ))
+        self.assertNotIn("SS3305", _codes(diagnostics))
+
+    def test_heap_allocator_with_bind_error_only_is_flagged(self) -> None:
+        diagnostics = _lint_source(self._allocation_source(
+            "c.calloc",
+            """bindError allocationCallError MainError allocationCall
+defer releaseAllocationCall c.free allocationCall
+returnError allocationCallError""",
+        ))
+        matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS3305")[0]
+        self.assertEqual(matchingDiagnostic.gapEdge, "branchIfError")
+
+    def test_heap_allocator_with_branch_only_is_flagged(self) -> None:
+        diagnostics = _lint_source(self._allocation_source(
+            "c.realloc",
+            """branchIfError allocationCall allocationFailed
+defer releaseAllocationCall c.free allocationCall
+returnOk noResult
+label allocationFailed
+makeError allocationFailure MainError.OutOfMemory
+returnError allocationFailure""",
+        ))
+        matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS3305")[0]
+        self.assertEqual(matchingDiagnostic.gapEdge, "bindError")
 
 
 class TestAllocateFreeUnpaired(unittest.TestCase):
@@ -2636,6 +2912,115 @@ returnValue openedFileHandle
         self.assertNotIn("SS3901", _codes(diagnostics))
 
 
+class TestSqliteDatabaseFailureCleanupMissing(unittest.TestCase):
+    def test_post_open_failure_without_close_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+error DbError
+errorCase DbError OpenFailed SqliteDatabaseOpenFailure
+errorCase DbError SchemaFailed SqliteDatabaseExecFailure
+operation openConfiguredDb
+output openConfiguredDb Result SqliteDatabase DbError
+purpose openConfiguredDb "open and bootstrap sqlite"
+storage local immutable databasePath CNullTerminatedByteString ":memory:"
+storage local immutable schemaSql CNullTerminatedByteString "CREATE TABLE t(id INTEGER);"
+call openCall sqlite.openDatabase
+arg openCall path databasePath
+arg openCall mode inMemorySqliteOpenMode
+run openCall
+bindOk freshDatabase SqliteDatabase openCall
+bindError openError DbError.OpenFailed openCall
+branchIfError openCall databaseOpenFailed
+call applySchemaCall sqlite.exec
+arg applySchemaCall database freshDatabase
+arg applySchemaCall sql schemaSql
+run applySchemaCall
+ignoreOk applySchemaCall Void
+bindError schemaError DbError.SchemaFailed applySchemaCall
+branchIfError applySchemaCall schemaApplyFailed
+returnOk freshDatabase
+label databaseOpenFailed
+returnError openError
+label schemaApplyFailed
+returnError schemaError
+""")
+        self.assertIn("SS3905", _codes(diagnostics))
+
+    def test_post_open_failure_with_close_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+error DbError
+errorCase DbError OpenFailed SqliteDatabaseOpenFailure
+errorCase DbError SchemaFailed SqliteDatabaseExecFailure
+operation openConfiguredDb
+output openConfiguredDb Result SqliteDatabase DbError
+purpose openConfiguredDb "open and bootstrap sqlite"
+storage local immutable databasePath CNullTerminatedByteString ":memory:"
+storage local immutable schemaSql CNullTerminatedByteString "CREATE TABLE t(id INTEGER);"
+call openCall sqlite.openDatabase
+arg openCall path databasePath
+arg openCall mode inMemorySqliteOpenMode
+run openCall
+bindOk freshDatabase SqliteDatabase openCall
+bindError openError DbError.OpenFailed openCall
+branchIfError openCall databaseOpenFailed
+call applySchemaCall sqlite.exec
+arg applySchemaCall database freshDatabase
+arg applySchemaCall sql schemaSql
+run applySchemaCall
+ignoreOk applySchemaCall Void
+bindError schemaError DbError.SchemaFailed applySchemaCall
+branchIfError applySchemaCall schemaApplyFailed
+returnOk freshDatabase
+label databaseOpenFailed
+returnError openError
+label schemaApplyFailed
+call closeFreshDatabaseCall sqlite.closeDatabase
+arg closeFreshDatabaseCall database freshDatabase
+run closeFreshDatabaseCall
+ignoreOk closeFreshDatabaseCall Void
+returnError schemaError
+""")
+        self.assertNotIn("SS3905", _codes(diagnostics))
+
+
+class TestSqliteStatementFinalizeMissing(unittest.TestCase):
+    def test_prepare_without_finalize_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation queryDb
+output queryDb Void
+purpose queryDb "query sqlite"
+call prepareCall sqlite.prepareStatement
+arg prepareCall database database
+arg prepareCall sql selectSql
+run prepareCall
+bindOk statement SqliteStatement prepareCall
+bindError prepareError SqliteStatementPrepareFailure prepareCall
+branchIfError prepareCall prepareFailed
+returnVoid
+label prepareFailed
+returnVoid
+""")
+        self.assertIn("SS3906", _codes(diagnostics))
+
+    def test_prepare_with_finalize_defer_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation queryDb
+output queryDb Void
+purpose queryDb "query sqlite"
+call prepareCall sqlite.prepareStatement
+arg prepareCall database database
+arg prepareCall sql selectSql
+run prepareCall
+bindOk statement SqliteStatement prepareCall
+bindError prepareError SqliteStatementPrepareFailure prepareCall
+branchIfError prepareCall prepareFailed
+defer finalizeStatementDefer sqlite.finalizeStatement statement
+returnVoid
+label prepareFailed
+returnVoid
+""")
+        self.assertNotIn("SS3906", _codes(diagnostics))
+
+
 class TestGuardTokenSourceWithoutRelease(unittest.TestCase):
     def test_source_without_release_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
@@ -2822,6 +3207,230 @@ bindOk updatedTaskList I64 appendTaskCall
         self.assertIn("SS3804", _codes(diagnostics))
         matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS3804")[0]
         self.assertEqual(matchingDiagnostic.subjectName, "TaskList.append")
+
+
+class TestJsonCrudSafetyRules(unittest.TestCase):
+    def test_unguarded_json_access_fires_when_cursor_used_before_error_branch(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation readTitle
+input readTitle document JsonDocument
+output readTitle Void
+purpose readTitle "generic JSON cursor safety fixture"
+storage local immutable titlePath JsonPath ".title"
+call cursorAtPathCall json.cursorAtPath
+arg cursorAtPathCall document document
+arg cursorAtPathCall path titlePath
+run cursorAtPathCall
+bindOk titleCursor JsonCursor cursorAtPathCall
+call kindCall json.cursorKind
+arg kindCall document document
+arg kindCall cursor titleCursor
+run kindCall
+branchIfError cursorAtPathCall jsonFailed
+label jsonFailed
+returnVoid
+""")
+        self.assertIn("SS3620", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3620")[0]
+        self.assertEqual(matching.subjectName, "titleCursor")
+        self.assertEqual(matching.gapEdge, "branchIfErrorBeforeCursorUse")
+
+    def test_guarded_json_access_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation readTitle
+input readTitle document JsonDocument
+output readTitle Void
+purpose readTitle "generic JSON cursor safety fixture"
+storage local immutable titlePath JsonPath ".title"
+call cursorAtPathCall json.cursorAtPath
+arg cursorAtPathCall document document
+arg cursorAtPathCall path titlePath
+run cursorAtPathCall
+bindOk titleCursor JsonCursor cursorAtPathCall
+branchIfError cursorAtPathCall jsonFailed
+call kindCall json.cursorKind
+arg kindCall document document
+arg kindCall cursor titleCursor
+run kindCall
+label jsonFailed
+returnVoid
+""")
+        self.assertNotIn("SS3620", _codes(diagnostics))
+
+    def test_document_root_cursor_is_exempt_from_unguarded_access(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation readRoot
+input readRoot document JsonDocument
+output readRoot Void
+purpose readRoot "json.documentRoot is total"
+call rootCall json.documentRoot
+arg rootCall document document
+run rootCall
+bind rootCursor JsonCursor rootCall
+call kindCall json.cursorKind
+arg kindCall document document
+arg kindCall cursor rootCursor
+run kindCall
+returnVoid
+""")
+        self.assertNotIn("SS3620", _codes(diagnostics))
+
+    def test_structural_mutators_make_prior_cursor_stale(self) -> None:
+        structuralMutators = sorted(semlint.JSON_STRUCTURAL_CURSOR_MUTATOR_TARGETS)
+        for targetName in structuralMutators:
+            with self.subTest(targetName=targetName):
+                diagnostics = _lint_source(f"""project Test
+operation mutateDocument
+input mutateDocument document JsonDocument
+output mutateDocument Void
+purpose mutateDocument "generic JSON structural mutation fixture"
+storage local immutable titlePath JsonPath ".title"
+call cursorAtPathCall json.cursorAtPath
+arg cursorAtPathCall document document
+arg cursorAtPathCall path titlePath
+run cursorAtPathCall
+bindOk titleCursor JsonCursor cursorAtPathCall
+branchIfError cursorAtPathCall jsonFailed
+call mutateCall {targetName}
+arg mutateCall document document
+arg mutateCall cursor titleCursor
+run mutateCall
+call kindCall json.cursorKind
+arg kindCall document document
+arg kindCall cursor titleCursor
+run kindCall
+label jsonFailed
+returnVoid
+""")
+                self.assertIn("SS3621", _codes(diagnostics))
+                matching = _diagnostics_with_code(diagnostics, "SS3621")[0]
+                self.assertEqual(matching.subjectName, "titleCursor")
+                self.assertEqual(matching.gapEdge, "freshCursorAfterStructuralMutation")
+
+    def test_fresh_cursor_after_structural_mutator_is_not_stale(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation mutateDocument
+input mutateDocument document JsonDocument
+output mutateDocument Void
+purpose mutateDocument "generic JSON structural mutation fixture"
+storage local immutable titlePath JsonPath ".title"
+call cursorAtPathCall json.cursorAtPath
+arg cursorAtPathCall document document
+arg cursorAtPathCall path titlePath
+run cursorAtPathCall
+bindOk titleCursor JsonCursor cursorAtPathCall
+branchIfError cursorAtPathCall jsonFailed
+call clearCall json.clearObject
+arg clearCall document document
+arg clearCall cursor titleCursor
+run clearCall
+call refreshCursorAtPathCall json.cursorAtPath
+arg refreshCursorAtPathCall document document
+arg refreshCursorAtPathCall path titlePath
+run refreshCursorAtPathCall
+bindOk titleCursor JsonCursor refreshCursorAtPathCall
+branchIfError refreshCursorAtPathCall jsonFailed
+call kindCall json.cursorKind
+arg kindCall document document
+arg kindCall cursor titleCursor
+run kindCall
+label jsonFailed
+returnVoid
+""")
+        self.assertNotIn("SS3621", _codes(diagnostics))
+
+    def test_malformed_json_path_literals_block_compile(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable missingBracket JsonPath ".items[0"
+storage module immutable emptySegment JsonPath ".items..name"
+storage module immutable nonNumericIndex JsonPath ".items[abc]"
+storage module immutable missingStepPrefix JsonPath "items[0]"
+""")
+        self.assertEqual(4, len(_diagnostics_with_code(diagnostics, "SS3622")))
+        for matching in _diagnostics_with_code(diagnostics, "SS3622"):
+            self.assertTrue(matching.blocksCompile)
+            self.assertEqual(matching.tier, semlint.Tier.T1_SPEC)
+
+    def test_valid_json_path_literal_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable nestedPath JsonPath ".items[0].title"
+""")
+        self.assertNotIn("SS3622", _codes(diagnostics))
+
+    def test_json_snprintf_string_interpolation_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation renderRow
+output renderRow Void
+purpose renderRow "generic JSON formatting fixture"
+storage local immutable buffer COpaqueMemoryAddress 0
+storage local immutable capacity CSignedInt64 256
+storage local immutable rowFormat CNullTerminatedByteString "{\\"title\\":\\"%s\\"}"
+storage local immutable title CNullTerminatedByteString "hello"
+call formatRowCall c.snprintf
+arg formatRowCall buffer buffer
+arg formatRowCall size capacity
+arg formatRowCall format rowFormat
+arg formatRowCall first title
+run formatRowCall
+returnVoid
+""")
+        self.assertIn("SS3623", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3623")[0]
+        self.assertEqual(matching.subjectName, "formatRowCall")
+        self.assertEqual(matching.gapEdge, "jsonStringEscape")
+
+    def test_non_json_snprintf_string_interpolation_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation renderText
+output renderText Void
+purpose renderText "plain text formatting fixture"
+storage local immutable buffer COpaqueMemoryAddress 0
+storage local immutable capacity CSignedInt64 256
+storage local immutable rowFormat CNullTerminatedByteString "title=%s"
+storage local immutable title CNullTerminatedByteString "hello"
+call formatRowCall c.snprintf
+arg formatRowCall buffer buffer
+arg formatRowCall size capacity
+arg formatRowCall format rowFormat
+arg formatRowCall first title
+run formatRowCall
+returnVoid
+""")
+        self.assertNotIn("SS3623", _codes(diagnostics))
+
+    def test_deprecated_json_builder_call_blocks_compile(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation legacyBuilder
+output legacyBuilder Void
+purpose legacyBuilder "legacy JSON builder fixture"
+storage local immutable capacity CByteCount 128
+call createBuilderCall json.createBuilder
+arg createBuilderCall capacity capacity
+run createBuilderCall
+returnVoid
+""")
+        self.assertIn("SS3624", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3624")[0]
+        self.assertTrue(matching.blocksCompile)
+        self.assertEqual(matching.subjectName, "createBuilderCall")
+
+    def test_deprecated_json_finder_call_blocks_compile(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation legacyFinder
+input legacyFinder jsonText JsonText
+output legacyFinder Void
+purpose legacyFinder "legacy JSON finder fixture"
+storage local immutable titlePath JsonPath ".title"
+call findTitleCall json.findString
+arg findTitleCall json jsonText
+arg findTitleCall path titlePath
+run findTitleCall
+returnVoid
+""")
+        self.assertIn("SS3625", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3625")[0]
+        self.assertTrue(matching.blocksCompile)
+        self.assertEqual(matching.subjectName, "findTitleCall")
 
 
 class TestArgumentArity(unittest.TestCase):
@@ -3868,12 +4477,11 @@ returnValue writeStatus
         diagnostics = _lint_source(self._WHITELIST_ROUTE_TEMPLATE.format(method="TRACE"))
         self.assertIn("SS3601", _codes(diagnostics))
 
-    def test_lowercase_method_is_flagged(self) -> None:
-        # The whitelist is intentionally case-sensitive: the native dispatcher
-        # uppercases on parse, and a lowercase verb in source is a typo, not
-        # a request to dispatch a different method.
+    def test_lowercase_method_is_not_flagged(self) -> None:
+        # Route method validation is case-insensitive; the native dispatcher
+        # normalizes supported methods before matching.
         diagnostics = _lint_source(self._WHITELIST_ROUTE_TEMPLATE.format(method="get"))
-        self.assertIn("SS3601", _codes(diagnostics))
+        self.assertNotIn("SS3601", _codes(diagnostics))
 
     def test_whitelisted_methods_are_not_flagged(self) -> None:
         for whitelistedMethod in ("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"):
@@ -4360,9 +4968,8 @@ class TestResponseBodyForwarderVerb(unittest.TestCase):
     """Wrappers around http.response* writers must declare
     `responseBodyForwarder OP bodyArgName` for SS3603 to follow the body
     through the wrapper. A wrapper that does NOT declare the verb is
-    invisible to the lint — callers can pass nullable binds to it
-    without tripping SS3603 (which is the correct behavior, since the
-    wrapper might be safe-by-construction or have its own guard)."""
+    flagged by SS3615 so nullable-body flows do not disappear behind
+    helper operations."""
 
     _CALLER_PROGRAM = """project WebTest
 target webServer
@@ -4428,21 +5035,22 @@ returnValue writeWrapperStatus
         diagnostics = _lint_source(self._CALLER_PROGRAM.format(
             wrapperForwarderDeclaration="responseBodyForwarder writeTextResponseWrapper body\n"
         ))
-        self.assertIn("SS3603", _codes(diagnostics))
+        codes = _codes(diagnostics)
+        self.assertIn("SS3603", codes)
+        self.assertNotIn("SS3615", codes)
         matching = _diagnostics_with_code(diagnostics, "SS3603")[0]
         self.assertEqual(matching.subjectName, "tokenValue")
 
-    def test_wrapper_without_declaration_does_not_propagate_SS3603(self) -> None:
-        # Without the verb, the wrapper is treated as an opaque user op
-        # whose internal contract is invisible to the lint. The caller's
-        # pass of a nullable bind is NOT flagged — which is the correct
-        # default: the wrapper might enforce non-nullity internally or
-        # accept null intentionally; without a declaration, we don't
-        # know. The verb is the explicit declaration that closes the gap.
+    def test_wrapper_without_declaration_trips_SS3615(self) -> None:
         diagnostics = _lint_source(self._CALLER_PROGRAM.format(
             wrapperForwarderDeclaration=""
         ))
-        self.assertNotIn("SS3603", _codes(diagnostics))
+        codes = _codes(diagnostics)
+        self.assertNotIn("SS3603", codes)
+        self.assertIn("SS3615", codes)
+        matching = _diagnostics_with_code(diagnostics, "SS3615")[0]
+        self.assertEqual(matching.subjectName, "writeTextResponseWrapper")
+        self.assertEqual(matching.gapEdge, "responseBodyForwarder")
 
     def test_unhonored_forwarder_declaration_trips_SS3607(self) -> None:
         # An op declares responseBodyForwarder but does NOT actually

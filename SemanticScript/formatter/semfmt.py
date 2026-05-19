@@ -55,6 +55,11 @@ TYPED_COMMENT_PREFIXES = frozenset({
     "todo",
 })
 
+INDENTED_ISLAND_VERBS = frozenset({
+    "htmlBody",
+    "jsonBody",
+})
+
 
 class FormatError(ValueError):
     """Raised when the formatter cannot safely tokenize a source line."""
@@ -182,8 +187,18 @@ def format_source(
     newline = detect_newline(source)
     output_lines: List[str] = []
     blank_run = 0
+    inside_indented_island = False
 
     for line in split_preserving_physical_lines(source):
+        if inside_indented_island:
+            if not line.strip():
+                output_lines.append("")
+                continue
+            if line.startswith((" ", "\t")):
+                output_lines.append(line.rstrip())
+                continue
+            inside_indented_island = False
+
         formatted_line = format_line(
             line,
             normalize_comment_headings=normalize_comment_headings,
@@ -195,6 +210,9 @@ def format_source(
             continue
         blank_run = 0
         output_lines.append(formatted_line)
+        head = formatted_line.split(" ", 1)[0]
+        if head in INDENTED_ISLAND_VERBS:
+            inside_indented_island = True
 
     while output_lines and output_lines[-1] == "":
         output_lines.pop()
@@ -396,4 +414,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
