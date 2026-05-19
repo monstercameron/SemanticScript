@@ -2,14 +2,16 @@
 
 ## 2026-05-18
 
+- `b51bb28cea1a50c5fbd66c2e1b090621951821d3` - `runtime: keep access logging out of native HTTP`
+  - Removes the automatic access-log implementation from the native HTTP dispatcher so logging remains a separate runtime/stdlib concern through `native_log`.
 - `c1d5d5d39ae4b7d67c39d2214da6372f6d3ebc5f` - `runtime: keep HTTP log helpers internal`
-  - Keeps the HTTP runtime's automatic access-log helpers internal to `native_http` while the reusable public logging C ABI lives in the new `native_log` adapter.
+  - Removes the native HTTP header declarations for HTTP-specific log helper functions while the reusable public logging C ABI lives in the new `native_log` adapter.
 - `43d24ca8780bfe85404db506c122986849a9779d` - `app: expand todo web dashboard flow`
   - Adds the Todo Web Pro dashboard shell, reusable HTML component module, dashboard JavaScript, login flow, logout/session validation coverage, todo create/list/complete/uncomplete/delete flows, seeded demo data under `sql/schema.sql`, and expanded end-to-end route tests.
 - `aebc47b52b5d4966d8b0d1923d0e2cd0bed02809` - `app: add SemanticScript kilo port`
   - Adds a native-executable SemanticScript port of antirez/kilo with editor row storage, file load/save, rendering, navigation, search, tab handling, JavaScript highlighting, parity notes, and executable smoke coverage under `app/Kilo_port/`.
 - `fccfbcb2213240f586356558fd7880cc7372e96b` - `runtime: extend native app support surfaces`
-  - Adds generic native terminal runtime support and compiler/linter registration for terminal calls, extends native HTTP with form-field parsing, not-found fallback handlers, structured request logging support, adds a native log runtime adapter, improves backend error excerpts, and introduces `buildConstant` build-tape values for shared app configuration.
+  - Adds generic native terminal runtime support and compiler/linter registration for terminal calls, extends native HTTP with form-field parsing and not-found fallback handlers, adds a native log runtime adapter, improves backend error excerpts, and introduces `buildConstant` build-tape values for shared app configuration.
 - `3d0541d8e0bd6c9aa318f008a29d5c6e7b9ba0b8` - `app: seed todo web demo data`
   - Seeds the Todo Web Pro SQLite schema with a demo user and sample todos and updates the schema literal byte count so the app can compile the expanded schema asset consistently.
 - `0c8fdc92ad078c76da1fbde97d4fd91437dcdfae` - `app: serve todo web home assets`
