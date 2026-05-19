@@ -29,6 +29,16 @@ App modules import them with rows such as `importModule html standard.html`,
 `importModule json standard.json`.
 The compiler resolves `standard.<module>` directly to `std/<module>/main.sem`.
 
+`standard.json` currently exports the implemented builder/finder aliases
+(`JsonBuilder`, `JsonText`, `JsonFieldName`, `JsonStringValue`,
+`JsonScratchBuffer`, `JsonCapacityBytes`) plus the public document CRUD
+contracts (`JsonDocument`, `JsonCursor`, `JsonPath`, `JsonValueKind`,
+`JsonAccessError`, `JsonEncodeError`, and `JsonDecodeError`). The document
+CRUD, `jsonBody`, and typed `json.stringify.<TypeName>` /
+`json.parse.<TypeName>` entry points are documented in
+`docs/language/json-crud.md`; check `SYNTAX.md` for the current lowering
+status before using a surface in executable code.
+
 This library tree intentionally has no `build.sem`. Add standard modules under
 `std/<module>/main.sem` and relay them from `std/module.sem`.
 

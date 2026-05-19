@@ -1,0 +1,170 @@
+# expect.stdout: ship json\n{"count":2}\n
+# expect.exit: 0
+languageMode permissiveExecutable
+project JsonDocumentCrudRoundTrip
+target console
+runtime AgentRuntime 0.1
+module jsonDocumentCrudRoundTrip
+
+importModule standard.json as json
+dependency standard.json version 0.1 source standard
+
+entry console main
+
+error MainError
+errorCase MainError JsonAccessFailed CSignedInt32
+errorCase MainError ConsoleWriteFailed CSignedInt32
+
+capability jsonCrudStdout console.stdout write
+purpose jsonCrudStdout "Authority to print the JSON CRUD round-trip results."
+
+capability jsonCrudHeapAllocate heap allocate
+purpose jsonCrudHeapAllocate "Authority to allocate JSON serialization scratch space."
+
+capability jsonCrudHeapFree heap free
+purpose jsonCrudHeapFree "Authority to release JSON serialization scratch space."
+
+storage module immutable successExit ExitCode 0
+storage module immutable jsonAccessFailedCode CSignedInt32 1
+storage module immutable consoleFailedCode CSignedInt32 2
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+effect main allocate heap
+effect main free heap
+effect main read json.document.tree
+effect main write json.document.tree
+memory main heap auto
+async main no
+useCapability main jsonCrudStdout
+useCapability main jsonCrudHeapAllocate
+useCapability main jsonCrudHeapFree
+purpose main "Create an object document, mutate fields, read a field through a path cursor, delete that field, serialize the final document, and print both observable results."
+invariant main "A no-op document lowering cannot pass because stdout depends on cursorString reading title and serializeDocument reflecting update/delete mutations."
+
+label startMain
+
+const documentCapacity JsonCapacityBytes 2048
+const scratchCapacity JsonCapacityBytes 512
+const objectRootKind CSignedInt32 0
+
+call allocateScratchCall c.malloc
+arg allocateScratchCall size scratchCapacity
+run allocateScratchCall
+bind serializationScratch COpaqueMemoryAddress allocateScratchCall
+defer releaseScratchDefer c.free serializationScratch
+
+call createDocumentCall json.createEmptyDocument
+arg createDocumentCall capacityBytes documentCapacity
+arg createDocumentCall rootKind objectRootKind
+run createDocumentCall
+bindOk todoDocument JsonDocument createDocumentCall
+bindError createDocumentError JsonAccessError createDocumentCall
+branchIfError createDocumentCall jsonAccessFailed
+
+defer releaseDocumentDefer json.destroyDocument todoDocument
+
+call rootCursorCall json.documentRoot
+arg rootCursorCall document todoDocument
+run rootCursorCall
+bind rootCursor JsonCursor rootCursorCall
+
+const titleField CNullTerminatedByteString "title"
+const titleValue CNullTerminatedByteString "ship json"
+call setTitleCall json.setObjectFieldString
+arg setTitleCall document todoDocument
+arg setTitleCall cursor rootCursor
+arg setTitleCall fieldName titleField
+arg setTitleCall value titleValue
+run setTitleCall
+ignoreOk setTitleCall CSignedInt32
+bindError setTitleError CSignedInt32 setTitleCall
+branchIfError setTitleCall jsonAccessFailed
+
+const countField CNullTerminatedByteString "count"
+const initialCount I64 1
+call setInitialCountCall json.setObjectFieldInt64
+arg setInitialCountCall document todoDocument
+arg setInitialCountCall cursor rootCursor
+arg setInitialCountCall fieldName countField
+arg setInitialCountCall value initialCount
+run setInitialCountCall
+ignoreOk setInitialCountCall CSignedInt32
+bindError setInitialCountError CSignedInt32 setInitialCountCall
+branchIfError setInitialCountCall jsonAccessFailed
+
+const titlePath CNullTerminatedByteString ".title"
+call findTitleCursorCall json.cursorAtPath
+arg findTitleCursorCall document todoDocument
+arg findTitleCursorCall path titlePath
+run findTitleCursorCall
+bindOk titleCursor JsonCursor findTitleCursorCall
+bindError findTitleCursorError JsonAccessError findTitleCursorCall
+branchIfError findTitleCursorCall jsonAccessFailed
+
+call readTitleCall json.cursorString
+arg readTitleCall document todoDocument
+arg readTitleCall cursor titleCursor
+arg readTitleCall scratch serializationScratch
+arg readTitleCall scratchCapacity scratchCapacity
+run readTitleCall
+bindOk recoveredTitle JsonText readTitleCall
+bindError readTitleError JsonAccessError readTitleCall
+branchIfError readTitleCall jsonAccessFailed
+
+call writeTitleCall console.writeLine
+arg writeTitleCall console console
+arg writeTitleCall text recoveredTitle
+run writeTitleCall
+ignoreOk writeTitleCall Void
+bindError writeTitleError ConsoleWriteError writeTitleCall
+branchIfError writeTitleCall consoleWriteFailed
+
+const updatedCount I64 2
+call updateCountCall json.setObjectFieldInt64
+arg updateCountCall document todoDocument
+arg updateCountCall cursor rootCursor
+arg updateCountCall fieldName countField
+arg updateCountCall value updatedCount
+run updateCountCall
+ignoreOk updateCountCall CSignedInt32
+bindError updateCountError CSignedInt32 updateCountCall
+branchIfError updateCountCall jsonAccessFailed
+
+call removeTitleCall json.removeObjectField
+arg removeTitleCall document todoDocument
+arg removeTitleCall cursor rootCursor
+arg removeTitleCall fieldName titleField
+run removeTitleCall
+ignoreOk removeTitleCall CSignedInt32
+bindError removeTitleError CSignedInt32 removeTitleCall
+branchIfError removeTitleCall jsonAccessFailed
+
+call serializeDocumentCall json.serializeDocument
+arg serializeDocumentCall document todoDocument
+arg serializeDocumentCall scratch serializationScratch
+arg serializeDocumentCall scratchCapacity scratchCapacity
+run serializeDocumentCall
+bindOk serializedDocument JsonText serializeDocumentCall
+bindError serializeDocumentError JsonAccessError serializeDocumentCall
+branchIfError serializeDocumentCall jsonAccessFailed
+
+call writeSerializedCall console.writeLine
+arg writeSerializedCall console console
+arg writeSerializedCall text serializedDocument
+run writeSerializedCall
+ignoreOk writeSerializedCall Void
+bindError writeSerializedError ConsoleWriteError writeSerializedCall
+branchIfError writeSerializedCall consoleWriteFailed
+
+returnOk successExit
+
+label jsonAccessFailed
+makeError jsonAccessFailure MainError.JsonAccessFailed jsonAccessFailedCode
+returnError jsonAccessFailure
+
+label consoleWriteFailed
+makeError consoleFailure MainError.ConsoleWriteFailed consoleFailedCode
+returnError consoleFailure

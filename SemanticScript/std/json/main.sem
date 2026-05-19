@@ -11,33 +11,86 @@
 # that intrinsic namespace.
 
 module standard.json
-modulePurpose standard.json "Standard-library namespace and contracts for JSON encode/decode, builder, and finder intrinsics."
-moduleOwns standard.json "The official import path `standard.json`, semantic JSON type aliases, default constants, and the compiler-owned `json.*` intrinsic namespace contract."
+modulePurpose standard.json "Standard-library namespace and contracts for JSON encode/decode, builder, finder, document CRUD, and typed stringify/parse intrinsics."
+moduleOwns standard.json "The official import path `standard.json`, semantic JSON type aliases, enum tokens, error domains, default constants, and the compiler-owned `json.*` intrinsic namespace contract."
 moduleDoesNotOwn standard.json "Application codecs, record-specific generated codecs, native JSON runtime memory internals, or caller-owned scratch-buffer allocation."
 moduleInvariant standard.json "The standard module entry is this file; new modules may import it as alias `json` before using compiler-owned targets in the `json.*` namespace."
+moduleInvariant standard.json "Document CRUD handles are capacity-bounded, cursor-addressed native runtime values; source code must use Result-aware access paths and defer cleanup for owned documents."
 
 type JsonBuilder COpaqueMemoryAddress
+type JsonDocument COpaqueMemoryAddress
+type JsonCursor CSignedInt64
 type JsonText CNullTerminatedByteString
 type JsonFieldName CNullTerminatedByteString
+type JsonPath CNullTerminatedByteString
 type JsonStringValue CNullTerminatedByteString
 type JsonScratchBuffer COpaqueMemoryAddress
 type JsonCapacityBytes CByteCount
 
+enum JsonValueKind repr CSignedInt32
+enumCase JsonValueKind objectJsonValueKind 0
+enumCase JsonValueKind arrayJsonValueKind 1
+enumCase JsonValueKind stringJsonValueKind 2
+enumCase JsonValueKind integerJsonValueKind 3
+enumCase JsonValueKind doubleJsonValueKind 4
+enumCase JsonValueKind booleanJsonValueKind 5
+enumCase JsonValueKind nullJsonValueKind 6
+
+error JsonAccessError
+errorCase JsonAccessError PathNotFound CSignedInt32
+errorCase JsonAccessError WrongType CSignedInt32
+errorCase JsonAccessError IndexOutOfRange CSignedInt32
+errorCase JsonAccessError FieldNameTooLong CSignedInt32
+errorCase JsonAccessError DocumentNotMutable CSignedInt32
+errorCase JsonAccessError CapacityExceeded CSignedInt32
+errorCase JsonAccessError MalformedPath CSignedInt32
+errorCase JsonAccessError ScratchTooSmall CSignedInt32
+
+error JsonEncodeError
+errorCase JsonEncodeError CapacityExceeded CSignedInt32
+errorCase JsonEncodeError WrongType CSignedInt32
+errorCase JsonEncodeError OutputBufferTooSmall CSignedInt32
+
+error JsonDecodeError
+errorCase JsonDecodeError UnexpectedToken CSignedInt32
+errorCase JsonDecodeError MissingRequired CSignedInt32
+errorCase JsonDecodeError WrongType CSignedInt32
+errorCase JsonDecodeError Oversize CSignedInt32
+errorCase JsonDecodeError Truncated CSignedInt32
+errorCase JsonDecodeError EscapeMalformed CSignedInt32
+
 exportType standard.json JsonBuilder
+exportType standard.json JsonDocument
+exportType standard.json JsonCursor
 exportType standard.json JsonText
 exportType standard.json JsonFieldName
+exportType standard.json JsonPath
 exportType standard.json JsonStringValue
 exportType standard.json JsonScratchBuffer
 exportType standard.json JsonCapacityBytes
+exportType standard.json JsonValueKind
+exportError standard.json JsonAccessError
+exportError standard.json JsonEncodeError
+exportError standard.json JsonDecodeError
 exportConstant standard.json jsonModuleVersionText
 exportConstant standard.json defaultJsonBuilderCapacityBytes
 exportConstant standard.json defaultJsonScratchCapacityBytes
+exportConstant standard.json objectJsonValueKind
+exportConstant standard.json arrayJsonValueKind
+exportConstant standard.json stringJsonValueKind
+exportConstant standard.json integerJsonValueKind
+exportConstant standard.json doubleJsonValueKind
+exportConstant standard.json booleanJsonValueKind
+exportConstant standard.json nullJsonValueKind
 
 typeInvariant JsonBuilder "Opaque handle created by json.createBuilder and freed by json.destroyBuilder."
+typeInvariant JsonDocument "Opaque mutable document handle created by json.createDocument or json.createEmptyDocument and freed with defer json.destroyDocument; its backing buffer grows only up to capacityBytes and reports JsonAccessError.CapacityExceeded beyond that bound."
+typeInvariant JsonCursor "Stable signed node index within one JsonDocument. Non-structural value replacements preserve existing cursors; removeObjectField, removeArrayElementAt, clearObject, clearArray, setObjectFieldObject, setObjectFieldArray, insertArrayElement*, and replaceArrayElement* with a container value invalidate descendants of the structurally changed node."
 typeInvariant JsonText "Null-terminated JSON document or fragment text returned by json.finishBuilder or accepted by json.find* readers."
 typeInvariant JsonFieldName "Top-level field name passed to json.field* and json.find* targets."
+typeInvariant JsonPath "Null-terminated path parsed as zero or more .fieldName object steps and [index] array steps; every other segment form returns JsonAccessError.MalformedPath."
 typeInvariant JsonStringValue "String value written by json.fieldString or json.elementString."
-typeInvariant JsonScratchBuffer "Caller-owned byte buffer used by json.findString for unescaped output."
+typeInvariant JsonScratchBuffer "Caller-owned byte buffer used by json.findString, json.cursorString, json.cursorObjectFieldNameAt, and json.serializeDocument for unescaped or serialized output."
 typeInvariant JsonCapacityBytes "Capacity argument for JSON builder or scratch-buffer operations."
 
 storage module immutable jsonModuleVersionText JsonText "standard.json 0.1"

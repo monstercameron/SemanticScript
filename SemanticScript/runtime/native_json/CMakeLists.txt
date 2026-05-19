@@ -7,7 +7,9 @@ project(sem_json_runtime C)
 # not know this, so we override CMAKE_AR / CMAKE_RANLIB to point at the
 # same zig binary and rewrite the archive commands accordingly. Mirrors
 # the shim in native_sqlite/CMakeLists.txt.
-if(CMAKE_C_COMPILER MATCHES "zig(\\.exe)?$" AND CMAKE_C_COMPILER_ARG1 STREQUAL "cc")
+set(_SEM_JSON_C_COMPILER_ARG1 "${CMAKE_C_COMPILER_ARG1}")
+string(STRIP "${_SEM_JSON_C_COMPILER_ARG1}" _SEM_JSON_C_COMPILER_ARG1)
+if(CMAKE_C_COMPILER MATCHES "zig(\\.exe)?$" AND _SEM_JSON_C_COMPILER_ARG1 STREQUAL "cc")
     set(CMAKE_AR "${CMAKE_C_COMPILER}" CACHE FILEPATH "Zig archiver" FORCE)
     set(CMAKE_RANLIB "${CMAKE_C_COMPILER}" CACHE FILEPATH "Zig ranlib" FORCE)
     set(CMAKE_C_ARCHIVE_CREATE "<CMAKE_AR> ar qc <TARGET> <LINK_FLAGS> <OBJECTS>")

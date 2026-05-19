@@ -1,0 +1,158 @@
+# expect.stdout: 42\n42\ntrue\nparsedTrue\nfalse\nparsedFalse\n
+# expect.exit: 0
+languageMode permissiveExecutable
+project JsonStringifyParsePrimitiveAliases
+target console
+runtime AgentRuntime 0.1
+module jsonStringifyParsePrimitiveAliases
+
+importModule standard.json as json
+dependency standard.json version 0.1 source standard
+
+entry console main
+
+error MainError
+errorCase MainError EncodeFailed CSignedInt32
+errorCase MainError DecodeFailed CSignedInt32
+errorCase MainError RoundTripMismatch CSignedInt32
+errorCase MainError ConsoleWriteFailed CSignedInt32
+
+capability jsonAliasStdout console.stdout write
+purpose jsonAliasStdout "Authority to write the primitive JSON alias smoke output."
+
+storage module immutable successExit ExitCode 0
+storage module immutable encodeFailedCode CSignedInt32 1
+storage module immutable decodeFailedCode CSignedInt32 2
+storage module immutable mismatchCode CSignedInt32 3
+storage module immutable consoleFailedCode CSignedInt32 4
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+async main no
+useCapability main jsonAliasStdout
+purpose main "Round-trip I64 and Bool values through json.stringify/json.parse primitive aliases and print byte-observable markers."
+invariant main "A no-op alias lowering cannot satisfy this test: stdout depends on real JSON text and parsed primitive control flow."
+
+label startMain
+
+const fortyTwoValue I64 42
+call stringifyIntegerCall json.stringify.I64
+arg stringifyIntegerCall value fortyTwoValue
+run stringifyIntegerCall
+bindOk encodedInteger JsonText stringifyIntegerCall
+bindError stringifyIntegerError JsonEncodeError stringifyIntegerCall
+branchIfError stringifyIntegerCall encodeFailed
+
+call writeEncodedIntegerCall console.writeLine
+arg writeEncodedIntegerCall console console
+arg writeEncodedIntegerCall text encodedInteger
+run writeEncodedIntegerCall
+ignoreOk writeEncodedIntegerCall Void
+bindError writeEncodedIntegerError ConsoleWriteError writeEncodedIntegerCall
+branchIfError writeEncodedIntegerCall consoleWriteFailed
+
+call parseIntegerCall json.parse.I64
+arg parseIntegerCall jsonText encodedInteger
+run parseIntegerCall
+bindOk decodedInteger I64 parseIntegerCall
+bindError parseIntegerError JsonDecodeError parseIntegerCall
+branchIfError parseIntegerCall decodeFailed
+
+call writeDecodedIntegerCall console.writeIntegerLine
+arg writeDecodedIntegerCall console console
+arg writeDecodedIntegerCall value decodedInteger
+run writeDecodedIntegerCall
+ignoreOk writeDecodedIntegerCall Void
+bindError writeDecodedIntegerError ConsoleWriteError writeDecodedIntegerCall
+branchIfError writeDecodedIntegerCall consoleWriteFailed
+
+const trueValue Bool 1
+call stringifyTrueCall json.stringify.Bool
+arg stringifyTrueCall value trueValue
+run stringifyTrueCall
+bindOk encodedTrue JsonText stringifyTrueCall
+bindError stringifyTrueError JsonEncodeError stringifyTrueCall
+branchIfError stringifyTrueCall encodeFailed
+
+call writeEncodedTrueCall console.writeLine
+arg writeEncodedTrueCall console console
+arg writeEncodedTrueCall text encodedTrue
+run writeEncodedTrueCall
+ignoreOk writeEncodedTrueCall Void
+bindError writeEncodedTrueError ConsoleWriteError writeEncodedTrueCall
+branchIfError writeEncodedTrueCall consoleWriteFailed
+
+call parseTrueCall json.parse.Bool
+arg parseTrueCall jsonText encodedTrue
+run parseTrueCall
+bindOk decodedTrue Bool parseTrueCall
+bindError parseTrueError JsonDecodeError parseTrueCall
+branchIfError parseTrueCall decodeFailed
+
+branchIf decodedTrue parsedTrueOk
+branch roundTripMismatch
+
+label parsedTrueOk
+const parsedTrueMarker CNullTerminatedByteString "parsedTrue"
+call writeParsedTrueCall console.writeLine
+arg writeParsedTrueCall console console
+arg writeParsedTrueCall text parsedTrueMarker
+run writeParsedTrueCall
+ignoreOk writeParsedTrueCall Void
+bindError writeParsedTrueError ConsoleWriteError writeParsedTrueCall
+branchIfError writeParsedTrueCall consoleWriteFailed
+
+const falseValue Bool 0
+call stringifyFalseCall json.stringify.Bool
+arg stringifyFalseCall value falseValue
+run stringifyFalseCall
+bindOk encodedFalse JsonText stringifyFalseCall
+bindError stringifyFalseError JsonEncodeError stringifyFalseCall
+branchIfError stringifyFalseCall encodeFailed
+
+call writeEncodedFalseCall console.writeLine
+arg writeEncodedFalseCall console console
+arg writeEncodedFalseCall text encodedFalse
+run writeEncodedFalseCall
+ignoreOk writeEncodedFalseCall Void
+bindError writeEncodedFalseError ConsoleWriteError writeEncodedFalseCall
+branchIfError writeEncodedFalseCall consoleWriteFailed
+
+call parseFalseCall json.parse.Bool
+arg parseFalseCall jsonText encodedFalse
+run parseFalseCall
+bindOk decodedFalse Bool parseFalseCall
+bindError parseFalseError JsonDecodeError parseFalseCall
+branchIfError parseFalseCall decodeFailed
+
+branchIf decodedFalse roundTripMismatch
+
+const parsedFalseMarker CNullTerminatedByteString "parsedFalse"
+call writeParsedFalseCall console.writeLine
+arg writeParsedFalseCall console console
+arg writeParsedFalseCall text parsedFalseMarker
+run writeParsedFalseCall
+ignoreOk writeParsedFalseCall Void
+bindError writeParsedFalseError ConsoleWriteError writeParsedFalseCall
+branchIfError writeParsedFalseCall consoleWriteFailed
+
+returnOk successExit
+
+label encodeFailed
+makeError encodeFailure MainError.EncodeFailed encodeFailedCode
+returnError encodeFailure
+
+label decodeFailed
+makeError decodeFailure MainError.DecodeFailed decodeFailedCode
+returnError decodeFailure
+
+label roundTripMismatch
+makeError mismatchFailure MainError.RoundTripMismatch mismatchCode
+returnError mismatchFailure
+
+label consoleWriteFailed
+makeError consoleFailure MainError.ConsoleWriteFailed consoleFailedCode
+returnError consoleFailure

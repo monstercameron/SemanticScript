@@ -42,12 +42,14 @@
  */
 
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 typedef struct SSJsonBuilder SSJsonBuilder;
+typedef struct SSJsonDocument SSJsonDocument;
 
 enum {
     SS_JSON_OK                 = 0,
@@ -56,6 +58,36 @@ enum {
     SS_JSON_ERR_STRUCTURE      = 3,  /* Mismatched open/close, or a field outside any object. */
     SS_JSON_ERR_ALLOCATION     = 4   /* malloc failed in builder creation. */
 };
+
+/*
+ * Document-access error codes. These are numerically aligned with the
+ * planned standard.json JsonAccessError case ordinals. The older
+ * builder/finder SS_JSON_ERR_CONFIG / OVERFLOW / STRUCTURE /
+ * ALLOCATION names above stay available for source and ABI
+ * compatibility with the pre-document runtime.
+ */
+enum {
+    SS_JSON_ERR_PATH_NOT_FOUND    = 1,
+    SS_JSON_ERR_WRONG_TYPE        = 2,
+    SS_JSON_ERR_INDEX_OUT_OF_RANGE = 3,
+    SS_JSON_ERR_FIELD_NAME_TOO_LONG = 4,
+    SS_JSON_ERR_DOCUMENT_NOT_MUTABLE = 5,
+    SS_JSON_ERR_CAPACITY_EXCEEDED = 6,
+    SS_JSON_ERR_MALFORMED_PATH    = 7,
+    SS_JSON_ERR_SCRATCH_TOO_SMALL = 8
+};
+
+typedef enum SSJsonNodeKind {
+    SS_JSON_NODE_OBJECT  = 0,
+    SS_JSON_NODE_ARRAY   = 1,
+    SS_JSON_NODE_STRING  = 2,
+    SS_JSON_NODE_INTEGER = 3,
+    SS_JSON_NODE_DOUBLE  = 4,
+    SS_JSON_NODE_BOOLEAN = 5,
+    SS_JSON_NODE_NULL    = 6
+} SSJsonNodeKind;
+
+#define SS_JSON_MAX_FIELD_NAME_BYTES 1024
 
 /* Suggested default capacity for response bodies. Callers may pass any
  * positive size_t into ss_json_builder_create(); this constant exists
@@ -146,6 +178,357 @@ int ss_json_find_bool(
     const char *field_name,
     int missing_default
 );
+
+/* ----- document tree (CRUD side) -----
+ *
+ * SSJsonDocument owns a mutable parsed JSON tree. Cursors are stable
+ * int64_t node-table indices; cursor 0 is always the root for a valid
+ * document. Scalar updates mutate the existing node so previously held
+ * cursors to that node remain valid. The structural operations below
+ * invalidate removed/replaced descendant cursors by marking their
+ * backing nodes inactive:
+ *   - ss_json_remove_object_field
+ *   - ss_json_remove_array_element_at
+ *   - ss_json_clear_object
+ *   - ss_json_clear_array
+ *   - ss_json_set_object_field_object
+ *   - ss_json_set_object_field_array
+ *   - ss_json_set_object_field_json_text when the grafted value is a
+ *     container or replaces an existing container
+ *   - ss_json_insert_array_element_* for position-based path lookups
+ *   - ss_json_replace_array_element_object
+ *   - ss_json_replace_array_element_array
+ *   - ss_json_replace_array_element_json_text when the grafted value
+ *     is a container or replaces an existing container
+ *
+ * The document keeps copied string values and field names in a
+ * capacity-bounded arena. CapacityExceeded means appending the new
+ * bytes would exceed capacity_bytes; failed copies do not advance the
+ * arena. Removed strings are not reclaimed until document destroy.
+ */
+
+int ss_json_document_create_from_text(
+    const char *json_text,
+    int64_t capacity_bytes,
+    SSJsonDocument **out
+);
+
+int ss_json_document_create_empty(
+    int64_t capacity_bytes,
+    int32_t root_kind,
+    SSJsonDocument **out
+);
+
+void ss_json_document_destroy(SSJsonDocument *document);
+
+int ss_json_document_serialize(
+    SSJsonDocument *document,
+    char *scratch,
+    int64_t scratch_capacity,
+    const char **out
+);
+
+int64_t ss_json_document_length(SSJsonDocument *document);
+int64_t ss_json_document_root(SSJsonDocument *document);
+
+int ss_json_navigate_object_field(
+    SSJsonDocument *document,
+    int64_t cursor,
+    const char *field_name,
+    int64_t *out
+);
+
+int ss_json_navigate_array_element(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t index,
+    int64_t *out
+);
+
+int ss_json_cursor_parent(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t *out
+);
+
+int ss_json_cursor_at_path(
+    SSJsonDocument *document,
+    const char *path,
+    int64_t *out
+);
+
+int32_t ss_json_cursor_kind(SSJsonDocument *document, int64_t cursor);
+int ss_json_cursor_is_null(SSJsonDocument *document, int64_t cursor);
+long long ss_json_cursor_int64(
+    SSJsonDocument *document,
+    int64_t cursor,
+    long long missing_default
+);
+double ss_json_cursor_double(
+    SSJsonDocument *document,
+    int64_t cursor,
+    double missing_default
+);
+int ss_json_cursor_bool(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int missing_default
+);
+
+int ss_json_cursor_string(
+    SSJsonDocument *document,
+    int64_t cursor,
+    char *scratch,
+    int64_t scratch_capacity,
+    const char **out
+);
+
+int ss_json_cursor_array_length(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t *out
+);
+
+int ss_json_cursor_object_field_count(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t *out
+);
+
+int ss_json_cursor_object_field_name_at(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t index,
+    char *scratch,
+    int64_t scratch_capacity,
+    const char **out
+);
+
+int ss_json_cursor_object_field_value_at(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t index,
+    int64_t *out
+);
+
+int ss_json_set_object_field_string(
+    SSJsonDocument *document,
+    int64_t cursor,
+    const char *field_name,
+    const char *value
+);
+int ss_json_set_object_field_int64(
+    SSJsonDocument *document,
+    int64_t cursor,
+    const char *field_name,
+    long long value
+);
+int ss_json_set_object_field_double(
+    SSJsonDocument *document,
+    int64_t cursor,
+    const char *field_name,
+    double value
+);
+int ss_json_set_object_field_bool(
+    SSJsonDocument *document,
+    int64_t cursor,
+    const char *field_name,
+    int value_truthiness
+);
+int ss_json_set_object_field_null(
+    SSJsonDocument *document,
+    int64_t cursor,
+    const char *field_name
+);
+
+/* Container setters replace any existing field child and invalidate
+ * that old child subtree. The new container cursor is returned in out. */
+int ss_json_set_object_field_object(
+    SSJsonDocument *document,
+    int64_t cursor,
+    const char *field_name,
+    int64_t *out
+);
+int ss_json_set_object_field_array(
+    SSJsonDocument *document,
+    int64_t cursor,
+    const char *field_name,
+    int64_t *out
+);
+int ss_json_set_object_field_json_text(
+    SSJsonDocument *document,
+    int64_t cursor,
+    const char *field_name,
+    const char *json_text,
+    int64_t *out
+);
+
+int ss_json_append_array_element_string(
+    SSJsonDocument *document,
+    int64_t cursor,
+    const char *value
+);
+int ss_json_append_array_element_int64(
+    SSJsonDocument *document,
+    int64_t cursor,
+    long long value
+);
+int ss_json_append_array_element_double(
+    SSJsonDocument *document,
+    int64_t cursor,
+    double value
+);
+int ss_json_append_array_element_bool(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int value_truthiness
+);
+int ss_json_append_array_element_null(
+    SSJsonDocument *document,
+    int64_t cursor
+);
+int ss_json_append_array_element_object(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t *out
+);
+int ss_json_append_array_element_array(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t *out
+);
+int ss_json_append_array_element_json_text(
+    SSJsonDocument *document,
+    int64_t cursor,
+    const char *json_text,
+    int64_t *out
+);
+
+/* Insert shifts later array positions; existing node cursors remain
+ * valid, but path/index lookups after the insertion observe the new
+ * positions. Container inserts return the inserted cursor in out. */
+int ss_json_insert_array_element_string(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t index,
+    const char *value
+);
+int ss_json_insert_array_element_int64(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t index,
+    long long value
+);
+int ss_json_insert_array_element_double(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t index,
+    double value
+);
+int ss_json_insert_array_element_bool(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t index,
+    int value_truthiness
+);
+int ss_json_insert_array_element_null(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t index
+);
+int ss_json_insert_array_element_object(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t index,
+    int64_t *out
+);
+int ss_json_insert_array_element_array(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t index,
+    int64_t *out
+);
+int ss_json_insert_array_element_json_text(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t index,
+    const char *json_text,
+    int64_t *out
+);
+
+int ss_json_replace_array_element_string(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t index,
+    const char *value
+);
+int ss_json_replace_array_element_int64(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t index,
+    long long value
+);
+int ss_json_replace_array_element_double(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t index,
+    double value
+);
+int ss_json_replace_array_element_bool(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t index,
+    int value_truthiness
+);
+int ss_json_replace_array_element_null(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t index
+);
+
+/* Replacing with a container invalidates the old element subtree and
+ * returns the new container cursor in out. */
+int ss_json_replace_array_element_object(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t index,
+    int64_t *out
+);
+int ss_json_replace_array_element_array(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t index,
+    int64_t *out
+);
+int ss_json_replace_array_element_json_text(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t index,
+    const char *json_text,
+    int64_t *out
+);
+
+/* Returns 0 when a field was removed and 1 when it was absent; returns
+ * SS_JSON_ERR_WRONG_TYPE for non-object cursors. Removed child cursors
+ * and descendants are invalidated. */
+int ss_json_remove_object_field(
+    SSJsonDocument *document,
+    int64_t cursor,
+    const char *field_name
+);
+
+/* Removal shifts later array positions and invalidates the removed
+ * element subtree. */
+int ss_json_remove_array_element_at(
+    SSJsonDocument *document,
+    int64_t cursor,
+    int64_t index
+);
+
+/* Clear preserves the cursor's kind and invalidates all removed child
+ * subtrees. */
+int ss_json_clear_object(SSJsonDocument *document, int64_t cursor);
+int ss_json_clear_array(SSJsonDocument *document, int64_t cursor);
 
 #ifdef __cplusplus
 }
