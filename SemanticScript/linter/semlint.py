@@ -142,6 +142,23 @@ class RouteFact:
 
 
 @dataclass
+class ImportModuleFact:
+    module_name: str
+    alias: Optional[str]
+    line: SourceLine
+    syntax: str
+
+
+@dataclass
+class SingularImportFact:
+    kind: str
+    local_name: str
+    module_alias: str
+    exported_name: str
+    line: SourceLine
+
+
+@dataclass
 class ProgramFacts:
     path: Path
     lines: List[SourceLine] = field(default_factory=list)
@@ -156,6 +173,8 @@ class ProgramFacts:
     capabilities: Dict[str, BaseCapabilityFact] = field(default_factory=dict)
     routes: List[RouteFact] = field(default_factory=list)
     imports: Set[str] = field(default_factory=set)
+    module_imports: List[ImportModuleFact] = field(default_factory=list)
+    singular_imports: List[SingularImportFact] = field(default_factory=list)
 
 
 BUILTIN_VALUE_TYPES: Dict[str, str] = {
@@ -202,6 +221,113 @@ BUILTIN_ABSTRACTIONS: Dict[str, str] = {
     "SqliteStepResult": "enum",
     "SqliteColumnType": "enum",
 }
+
+GUI_HANDLE_VERB_TYPES: Dict[str, str] = {
+    "guiApplication": "GuiApplication",
+    "guiWindow": "GuiWindow",
+    "guiButton": "GuiButton",
+    "guiTextBox": "GuiTextBox",
+    "guiListBox": "GuiListBox",
+    "guiCheckBox": "GuiCheckBox",
+    "guiMenuItem": "GuiMenuItem",
+    "guiStatusBar": "GuiStatusBar",
+    "guiTextLabel": "GuiTextLabel",
+}
+
+
+_STDLIB_PATH_ENV_VARS = ("SEMANTICSCRIPT_STD_PATH", "SEMSC_STD_PATH")
+_CLI_STDLIB_PATHS: List[str] = []
+
+
+def _std_root_candidates_from_path(rawPath: str) -> List[Path]:
+    if not rawPath:
+        return []
+    expanded = Path(os.path.expandvars(os.path.expanduser(rawPath))).resolve()
+    if expanded.is_file():
+        expanded = expanded.parent
+    return [
+        expanded,
+        expanded / "std",
+        expanded / "SemanticScript" / "std",
+    ]
+
+
+def _split_std_path_list(rawValue: str) -> List[str]:
+    if not rawValue:
+        return []
+    return [part for part in rawValue.split(os.pathsep) if part]
+
+
+def _ancestor_std_candidates(startPath: Optional[Path]) -> List[Path]:
+    if startPath is None:
+        return []
+    current = startPath.resolve()
+    if current.is_file():
+        current = current.parent
+    candidates: List[Path] = []
+    for ancestor in [current, *current.parents]:
+        candidates.append(ancestor / "std")
+        candidates.append(ancestor / "SemanticScript" / "std")
+    return candidates
+
+
+def _standard_library_roots(startPath: Optional[Path] = None) -> List[Path]:
+    candidates: List[Path] = []
+    for rawPath in _CLI_STDLIB_PATHS:
+        candidates.extend(_std_root_candidates_from_path(rawPath))
+    for envName in _STDLIB_PATH_ENV_VARS:
+        for rawPath in _split_std_path_list(os.environ.get(envName, "")):
+            candidates.extend(_std_root_candidates_from_path(rawPath))
+    candidates.extend(_ancestor_std_candidates(startPath))
+    cwd = Path.cwd()
+    candidates.append(cwd / "std")
+    candidates.append(cwd / "SemanticScript" / "std")
+    candidates.append(Path(__file__).resolve().parents[1] / "std")
+
+    roots: List[Path] = []
+    seen: Set[Path] = set()
+    for candidate in candidates:
+        root = candidate.resolve()
+        if not (root / "module.sem").is_file():
+            continue
+        if root in seen:
+            continue
+        seen.add(root)
+        roots.append(root)
+    return roots
+
+
+def _standard_module_source(
+    moduleName: str,
+    startPath: Optional[Path] = None,
+) -> Optional[Path]:
+    if moduleName != "standard" and not moduleName.startswith("standard."):
+        return None
+    for stdlibRoot in _standard_library_roots(startPath):
+        if moduleName == "standard":
+            relayPath = stdlibRoot / "module.sem"
+            if relayPath.is_file():
+                return relayPath.resolve()
+            continue
+        relativeModule = Path(*moduleName.split(".")[1:])
+        candidateDir = stdlibRoot / relativeModule
+        if candidateDir.is_dir():
+            for candidateName in ("main.sem", "main.sscript", "index.sem", "index.sscript"):
+                candidate = candidateDir / candidateName
+                if candidate.is_file():
+                    return candidate.resolve()
+        for suffix in (".sscript", ".sem"):
+            candidate = stdlibRoot / relativeModule.with_suffix(suffix)
+            if candidate.is_file():
+                return candidate.resolve()
+    return None
+
+
+def _is_known_standard_module(
+    moduleName: str,
+    startPath: Optional[Path] = None,
+) -> bool:
+    return _standard_module_source(moduleName, startPath) is not None
 
 
 def _builtin_line(path: Path, raw: str) -> SourceLine:
@@ -342,14 +468,48 @@ def parse_group_comment(line: SourceLine) -> Optional[Tuple[str, str, SourceLine
     return None
 
 
+def parse_import_module_args(args: Sequence[str]) -> Tuple[str, Optional[str], str]:
+    """Return (module_path, alias, syntax_shape) for supported import forms.
+
+    Compatibility form:
+      importModule MODULE_PATH [as ALIAS]
+
+    Preferred project form:
+      importModule ALIAS MODULE_PATH
+    """
+    if not args:
+        return "", None, "malformed"
+    if len(args) >= 3 and args[1] == "as":
+        return args[0], args[2], "module-as-alias"
+    if len(args) == 2 and args[1] != "as":
+        return args[1], args[0], "alias-module"
+    return args[0], None, "module-only"
+
+
+SINGULAR_IMPORT_VERB_KINDS: Dict[str, str] = {
+    "importOperation": "operation",
+    "importType": "type",
+    "importError": "error",
+    "importCapability": "capability",
+    "importConstant": "constant",
+}
+
+
 def parse_file(path: Path) -> ProgramFacts:
     program = ProgramFacts(path=path)
     _register_builtin_surface(program)
     current_op: Optional[OperationFact] = None
+    active_html_body = False
 
     with path.open("r", encoding="utf-8") as source_file:
         for line_number, raw_line in enumerate(source_file, start=1):
             raw = raw_line.rstrip("\n")
+            if active_html_body:
+                if raw.strip() and raw[0].isspace():
+                    continue
+                if not raw.strip():
+                    continue
+                active_html_body = False
             line = SourceLine(path=path, number=line_number, raw=raw,
                               tokens=tokenize_line(raw))
             program.lines.append(line)
@@ -382,7 +542,19 @@ def parse_file(path: Path) -> ProgramFacts:
             if verb == "mode" and args:
                 program.modes.add(args[0])
             elif verb == "importModule" and args:
-                program.imports.add(args[0])
+                moduleName, alias, syntax = parse_import_module_args(args)
+                if moduleName:
+                    program.imports.add(moduleName)
+                    program.module_imports.append(
+                        ImportModuleFact(moduleName, alias, line, syntax))
+            elif verb in SINGULAR_IMPORT_VERB_KINDS and len(args) >= 3:
+                program.singular_imports.append(SingularImportFact(
+                    kind=SINGULAR_IMPORT_VERB_KINDS[verb],
+                    local_name=args[0],
+                    module_alias=args[1],
+                    exported_name=args[2],
+                    line=line,
+                ))
             elif verb == "const" and len(args) >= 3:
                 program.consts[args[0]] = ConstFact(
                     args[0], args[1], args[2], line)
@@ -396,6 +568,18 @@ def parse_file(path: Path) -> ProgramFacts:
             elif verb == "route" and len(args) >= 4:
                 program.routes.append(
                     RouteFact(args[0], args[1], args[2], args[3], line))
+            elif verb == "htmlTemplate" and args:
+                program.abstractions.setdefault(
+                    args[0], AbstractionFact(verb, args[0], line))
+            elif verb == "htmlBody" and args:
+                active_html_body = True
+            elif verb in GUI_HANDLE_VERB_TYPES and args:
+                program.abstractions.setdefault(
+                    args[0], AbstractionFact(verb, args[0], line))
+                program.consts.setdefault(
+                    args[0],
+                    ConstFact(args[0], GUI_HANDLE_VERB_TYPES[verb], args[0], line),
+                )
             elif verb in _PARSER_CONTRACT_HEAVY_KINDS and args:
                 program.abstractions.setdefault(
                     args[0], AbstractionFact(verb, args[0], line))
@@ -473,6 +657,7 @@ VAGUE_NAME_BLACKLIST: frozenset = frozenset({
 OPAQUE_DEPENDENCY_INPUT_NAMES: frozenset = frozenset({
     "console", "environment", "process",
     "httpRequest", "databaseClient", "clock",
+    "session", "event",
 })
 
 
@@ -580,6 +765,18 @@ CALL_TARGET_IMPLIED_EFFECTS: Dict[str, Tuple[str, str]] = {
     "c.close":                   ("close", "file"),
     "c.read":                    ("read",  "file"),
     "c.write":                   ("write", "file"),
+    # GUI runtime calls. Richer control/event validation belongs in
+    # standard.gui; these entries only feed the generic effect coverage pass.
+    "gui.textBoxText":           ("read",  "gui.control.textBox.text"),
+    "gui.textBoxSetText":        ("write", "gui.control.textBox.text"),
+    "gui.listBoxSelectedIndex":  ("read",  "gui.control.listBox.selection"),
+    "gui.listBoxAppendItem":     ("write", "gui.control.listBox.items"),
+    "gui.listBoxClear":          ("write", "gui.control.listBox.items"),
+    "gui.windowClose":           ("write", "gui.window"),
+    "gui.eventKeyCode":          ("read",  "gui.event"),
+    "gui.eventSelectedIndex":    ("read",  "gui.event"),
+    "gui.eventWindowWidth":      ("read",  "gui.event"),
+    "gui.eventWindowHeight":     ("read",  "gui.event"),
 }
 
 
@@ -686,6 +883,49 @@ BUILTIN_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
     "c.putchar":                  [("c", "CSignedInt32")],
 }
 
+GUI_RUNTIME_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
+    "gui.textBoxText": [
+        ("session", "GuiSession"),
+        ("textBox", "GuiTextBox"),
+    ],
+    "gui.textBoxSetText": [
+        ("session", "GuiSession"),
+        ("textBox", "GuiTextBox"),
+        ("text", "CNullTerminatedByteString"),
+    ],
+    "gui.listBoxSelectedIndex": [
+        ("session", "GuiSession"),
+        ("listBox", "GuiListBox"),
+    ],
+    "gui.listBoxAppendItem": [
+        ("session", "GuiSession"),
+        ("listBox", "GuiListBox"),
+        ("text", "CNullTerminatedByteString"),
+    ],
+    "gui.listBoxClear": [
+        ("session", "GuiSession"),
+        ("listBox", "GuiListBox"),
+    ],
+    "gui.windowClose": [
+        ("session", "GuiSession"),
+        ("window", "GuiWindow"),
+    ],
+    "gui.eventKeyCode": [
+        ("event", "GuiEvent"),
+    ],
+    "gui.eventSelectedIndex": [
+        ("event", "GuiEvent"),
+    ],
+    "gui.eventWindowWidth": [
+        ("event", "GuiEvent"),
+    ],
+    "gui.eventWindowHeight": [
+        ("event", "GuiEvent"),
+    ],
+}
+
+BUILTIN_TARGET_SIGNATURES.update(GUI_RUNTIME_TARGET_SIGNATURES)
+
 
 # Minimum argument count per verb. SemanticScript lines are `verb arg1 arg2 …`; verbs
 # with too few args can't be interpreted by any downstream pass. Ported
@@ -712,6 +952,27 @@ SUPPORTED_JSON_PRIMITIVE_TARGETS: frozenset = frozenset({
     "json.decode.F64", "json.decode.CFloat64", "json.decode.CFloat32",
 })
 
+SUPPORTED_JSON_RUNTIME_TARGETS: frozenset = frozenset({
+    "json.createBuilder", "json.destroyBuilder",
+    "json.objectOpen", "json.objectClose",
+    "json.arrayOpen", "json.arrayClose",
+    "json.fieldInt64", "json.fieldDouble", "json.fieldBool",
+    "json.fieldString", "json.fieldNull",
+    "json.elementInt64", "json.elementDouble", "json.elementBool",
+    "json.elementString", "json.elementNull",
+    "json.finishBuilder", "json.builderLength",
+    "json.hasField", "json.findString",
+    "json.findInt64", "json.findDouble", "json.findBool",
+})
+
+SUPPORTED_GUI_RUNTIME_TARGETS: frozenset = frozenset({
+    "gui.textBoxText", "gui.textBoxSetText",
+    "gui.listBoxSelectedIndex", "gui.listBoxAppendItem", "gui.listBoxClear",
+    "gui.windowClose",
+    "gui.eventKeyCode", "gui.eventSelectedIndex",
+    "gui.eventWindowWidth", "gui.eventWindowHeight",
+})
+
 COLLECTION_RUNTIME_METHODS: frozenset = frozenset({
     "append", "get", "set", "insert", "remove", "length", "clear",
     "contains", "slice", "borrow", "capacity", "reserve",
@@ -726,9 +987,12 @@ VERB_MINIMUM_ARITY: Dict[str, int] = {
     # Project structure
     "project": 1, "target": 1, "runtime": 2, "entry": 2, "mode": 1,
     "module": 1, "section": 1, "importModule": 1,
+    "importOperation": 3, "importType": 3, "importError": 3,
+    "importCapability": 3, "importConstant": 3,
     "buildProject": 1, "modulePath": 2, "languageVersion": 2,
     "sourceRoot": 2, "mainFile": 2, "mainOperation": 2,
-    "testPattern": 2, "dependencySource": 3, "dependencyIntegrity": 3,
+    "testPattern": 2, "dependencySource": 3, "dependencyFetch": 4,
+    "dependencyCache": 2, "dependencyLock": 2, "dependencyIntegrity": 3,
     "buildProfile": 2, "runtimeChecks": 2, "persistLlvmIr": 2,
     "nativeOutput": 2, "targetRuntime": 2, "comptimeOperation": 2,
     "projectVersion": 2, "projectLicense": 2, "testRoot": 2,
@@ -751,6 +1015,26 @@ VERB_MINIMUM_ARITY: Dict[str, int] = {
     "iconImageFormat": 2, "iconImageWidth": 2, "iconImageHeight": 2,
     "iconImageScale": 2, "iconImageDepth": 2, "iconImagePlatform": 2,
     "iconImagePurpose": 2,
+    # Declarative Windows GUI metadata. Semantic validation is expected to
+    # move into standard.gui contracts; semlint keeps the row shapes visible.
+    "guiApplication": 1, "guiApplicationTitle": 2,
+    "guiApplicationIcon": 2, "guiApplicationMainWindow": 2,
+    "guiApplicationOnExit": 2,
+    "guiWindow": 1, "guiWindowApplication": 2, "guiWindowTitle": 2,
+    "guiWindowWidth": 2, "guiWindowHeight": 2,
+    "guiWindowMinimumWidth": 2, "guiWindowMinimumHeight": 2,
+    "guiWindowLayout": 2, "guiWindowResizable": 2,
+    "guiWindowEvent": 3,
+    "guiButton": 1, "guiTextBox": 1, "guiListBox": 1,
+    "guiCheckBox": 1, "guiMenuItem": 1, "guiStatusBar": 1,
+    "guiTextLabel": 1,
+    "guiControlWindow": 2, "guiControlEnabled": 2,
+    "guiControlVisible": 2, "guiControlTabIndex": 2,
+    "guiControlAccessibleName": 2, "guiControlEvent": 3,
+    "guiButtonText": 2, "guiButtonIsDefault": 2,
+    "guiTextBoxPlaceholder": 2, "guiTextBoxMaxLength": 2,
+    "guiListBoxSelectionMode": 2, "guiCheckBoxChecked": 2,
+    "guiTextLabelText": 2,
     # Types / records / errors
     "type": 2, "typeInvariant": 2, "typeRepresentation": 2, "typeTrust": 2,
     "typeMemory": 2, "typeLayout": 2, "typeLiteralEncoding": 2,
@@ -758,6 +1042,8 @@ VERB_MINIMUM_ARITY: Dict[str, int] = {
     "record": 1, "field": 3, "recordLayout": 2, "recordAlign": 2,
     "new": 2, "fieldSet": 3, "fieldGet": 4,
     "error": 1, "errorCase": 2, "enum": 1, "enumCase": 2,
+    # HTML / SSX
+    "htmlTemplate": 1, "htmlArg": 3, "htmlBody": 1,
     # Operations + narrative
     "operation": 1, "operationBody": 2,
     "input": 2, "output": 2, "effect": 3,
@@ -868,8 +1154,9 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     # Project structure
     "project", "target", "runtime", "entry", "module", "mode",
     "buildProject", "modulePath", "languageVersion", "sourceRoot",
-    "mainFile", "mainOperation", "testPattern", "dependencySource",
-    "dependencyIntegrity", "buildProfile", "runtimeChecks", "persistLlvmIr",
+    "mainFile", "mainOperation", "testPattern", "dependency", "dependencySource",
+    "dependencyFetch", "dependencyCache", "dependencyLock", "dependencyIntegrity",
+    "buildProfile", "runtimeChecks", "persistLlvmIr",
     "nativeOutput", "targetRuntime", "comptimeOperation", "registerModule",
     "projectVersion", "projectLicense", "testRoot", "nativeHttpHost",
     "nativeHttpPort", "formatterSetting", "linterSetting", "docsOutput",
@@ -886,13 +1173,27 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "iconImage", "iconImageGroup", "iconImagePath", "iconImageFormat",
     "iconImageWidth", "iconImageHeight", "iconImageScale", "iconImageDepth",
     "iconImagePlatform", "iconImagePurpose",
+    "guiApplication", "guiApplicationTitle", "guiApplicationIcon",
+    "guiApplicationMainWindow", "guiApplicationOnExit",
+    "guiWindow", "guiWindowApplication", "guiWindowTitle",
+    "guiWindowWidth", "guiWindowHeight", "guiWindowMinimumWidth",
+    "guiWindowMinimumHeight", "guiWindowLayout", "guiWindowResizable",
+    "guiWindowEvent",
+    "guiButton", "guiTextBox", "guiListBox", "guiCheckBox",
+    "guiMenuItem", "guiStatusBar", "guiTextLabel",
+    "guiControlWindow", "guiControlEnabled", "guiControlVisible",
+    "guiControlTabIndex", "guiControlAccessibleName", "guiControlEvent",
+    "guiButtonText", "guiButtonIsDefault",
+    "guiTextBoxPlaceholder", "guiTextBoxMaxLength",
+    "guiListBoxSelectionMode", "guiCheckBoxChecked", "guiTextLabelText",
     # Project metadata (lowered to OS-native formats — Windows VERSIONINFO —
     # at --emit-exe; values are still parsed and indexed on other platforms
     # so future tooling and IDE tooltips can read them).
     "version", "publisher", "description", "copyright", "productName",
     "internalName", "originalFilename", "trademark", "comments", "metadata",
     # Imports & sections
-    "importModule", "section",
+    "importModule", "importOperation", "importType", "importError",
+    "importCapability", "importConstant", "section",
     # Groups
     "group", "groupPurpose", "groupInput", "groupOutput", "groupError",
     "groupFailure", "groupTiming",
@@ -954,6 +1255,7 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     # Web
     "webServer", "serverHost", "serverPort", "route",
     "routeTimeout", "routeMiddleware",
+    "htmlTemplate", "htmlArg", "htmlBody",
     # SS3604 coverage opt-outs — declare a route's intentional omission
     # of the cross-cutting timeout / middleware contract.
     "routeTimeoutOptOut", "routeMiddlewareOptOut",
@@ -1199,6 +1501,56 @@ class SharedStateAccessFact:
     slotName: str
     hasProtection: bool                # whether `protectedBy <token>` clause present
     protectedByToken: Optional[str] = None
+
+
+@dataclass
+class ExportContractEdge:
+    moduleName: str
+    exportVerb: str
+    symbolName: str
+    edgeKind: str
+    values: Tuple[str, ...]
+    line: SourceLine
+
+
+@dataclass
+class ConstantDeclarationFact:
+    name: str
+    line: SourceLine
+    typeName: str
+    value: str
+    scope: str = "module"
+    mutability: str = "immutable"
+    declarationVerb: str = "const"
+
+
+@dataclass
+class ImportedModuleContract:
+    moduleName: str
+    alias: str
+    sourcePath: Path
+    importLine: SourceLine
+    exportsByKind: Dict[str, Set[str]]
+    contractTape: List[ExportContractEdge]
+
+
+@dataclass
+class ImportedSymbolContract:
+    kind: str
+    localName: str
+    qualifiedName: str
+    moduleAlias: str
+    moduleName: str
+    exportedName: str
+    edges: List[ExportContractEdge]
+    importLine: SourceLine
+
+
+@dataclass
+class ImportContractIndex:
+    modulesByAlias: Dict[str, ImportedModuleContract] = field(default_factory=dict)
+    qualifiedSymbols: Dict[str, ImportedSymbolContract] = field(default_factory=dict)
+    singularSymbols: Dict[str, ImportedSymbolContract] = field(default_factory=dict)
 
 
 @dataclass
@@ -1774,6 +2126,21 @@ def call_has_later_cleanup_call(
 #   AS43xx — type integrity                   (T1 spec — blocks compile)
 #            SS4301 argumentTypeMismatch (resolves type aliases + primitive
 #                   equivalences; skips unknowns to avoid false positives)
+#   SS25xx â€” project module / export contracts
+#            SS2501 missing registered module source, SS2502 export row in
+#                   build tape, SS2503 unregistered module declaration,
+#                   SS2504 unregistered import, SS2505 export target mismatch,
+#                   SS2506 unknown export, SS2507 duplicate export,
+#                   SS2508 mutable storage export, SS2509 non-module state
+#                   export, SS2510 private import access, SS2511 exported
+#                   op missing purpose, SS2512 generic exported name,
+#                   SS2513 exported op undeclared effect, SS2514 exported
+#                   dependency wrapper missing module ownership context
+#            SS2530-SS2542 import alias, qualified-reference, singular-import,
+#                   shadowing, implicit-import, import-cycle, and imported
+#                   effect propagation contracts
+#            SS2550-SS2555 dependency fetch/cache/lock/source/integrity
+#                   build-tape contracts
 # ==========================================================================
 
 def check_unused_calls(facts: ExtendedFacts) -> List[Diagnostic]:
@@ -1829,7 +2196,7 @@ def check_unused_calls(facts: ExtendedFacts) -> List[Diagnostic]:
 def _is_entry_anchor_label(labelName: str, operationName: str) -> bool:
     """Stdlib convention: `label start<OperationNamePascalCase>` placed at the
     top of an operation body as a section anchor for readability — never
-    branched to. 213 such labels across stdlib_sem. Treating these as unused
+    branched to. 213 such labels across std. Treating these as unused
     drowns the queue, so we suppress that one shape and keep everything else."""
     expectedAnchor = "start" + operationName[:1].upper() + operationName[1:]
     return labelName == expectedAnchor
@@ -1875,8 +2242,17 @@ def check_unused_labels(facts: ExtendedFacts) -> List[Diagnostic]:
 
 def check_unused_capabilities(facts: ExtendedFacts) -> List[Diagnostic]:
     diagnostics: List[Diagnostic] = []
+    exportedCapabilities = {
+        sourceLine.args[1]
+        for sourceLine in facts.base.lines
+        if sourceLine.tokens and not is_comment(sourceLine)
+        and sourceLine.verb == "exportCapability"
+        and len(sourceLine.args) >= 2
+    }
     for capabilityName, capabilityFact in facts.capabilities.items():
         if capabilityName in facts.capabilityUses:
+            continue
+        if capabilityName in exportedCapabilities:
             continue
         diagnostics.append(Diagnostic(
             tier=Tier.T3_REFINEMENT,
@@ -3735,7 +4111,10 @@ def check_enum_repr_comparison(facts: ExtendedFacts) -> List[Diagnostic]:
     if not enumNames:
         return diagnostics
 
-    moduleScopeValueTypes: Dict[str, str] = dict(BUILTIN_VALUE_TYPES)
+    moduleScopeValueTypes: Dict[str, str] = {
+        name: constFact.type_name
+        for name, constFact in facts.base.consts.items()
+    }
     insideOperation = False
     for sourceLine in facts.base.lines:
         if not sourceLine.tokens or is_comment(sourceLine):
@@ -5512,6 +5891,21 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
     leftovers. T1 spec — should block compile (downstream lowering can't
     resolve the reference)."""
     diagnostics: List[Diagnostic] = []
+    importIndex = build_import_contract_index(facts)
+    importedCapabilityNames = {
+        name for name, symbol in importIndex.qualifiedSymbols.items()
+        if symbol.kind == "capability"
+    } | {
+        name for name, symbol in importIndex.singularSymbols.items()
+        if symbol.kind == "capability"
+    }
+    importedConstantNames = {
+        name for name, symbol in importIndex.qualifiedSymbols.items()
+        if symbol.kind == "constant"
+    } | {
+        name for name, symbol in importIndex.singularSymbols.items()
+        if symbol.kind == "constant"
+    }
 
     # Build per-op sets of declared call objects + labels.
     operationCallsByOperationName: Dict[str, Set[str]] = {}
@@ -5519,6 +5913,8 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
     moduleScopeValueNames: Set[str] = (
         set(OPAQUE_DEPENDENCY_INPUT_NAMES) | set(BUILTIN_VALUE_TYPES)
     )
+    moduleScopeValueNames.update(facts.base.consts.keys())
+    moduleScopeValueNames.update(importedConstantNames)
     currentOperationDuringValueScan: Optional[str] = None
     for sourceLine in facts.base.lines:
         if not sourceLine.tokens or is_comment(sourceLine):
@@ -5650,7 +6046,8 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
             # useCapability references — args[1] is the capability name
             if verb == "useCapability" and len(sourceLine.args) >= 2:
                 referencedCapabilityName = sourceLine.args[1]
-                if referencedCapabilityName not in facts.capabilities:
+                if (referencedCapabilityName not in facts.capabilities
+                        and referencedCapabilityName not in importedCapabilityNames):
                     diagnostics.append(_unresolved_reference_diagnostic(
                         sourceLine=sourceLine,
                         operation=operation,
@@ -6015,7 +6412,23 @@ def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
     TYPE` rows (for user ops). Skipped when either type is unknown — we
     err on the side of false negatives rather than false positives."""
     diagnostics: List[Diagnostic] = []
-    typeAliases = facts.base.type_aliases
+    importIndex = build_import_contract_index(facts)
+    typeAliases = dict(facts.base.type_aliases)
+    for importedSymbol in (
+        list(importIndex.qualifiedSymbols.values())
+        + list(importIndex.singularSymbols.values())
+    ):
+        if importedSymbol.kind not in {"type", "error"}:
+            continue
+        aliasTarget: Optional[str] = None
+        for edge in importedSymbol.edges:
+            if edge.edgeKind == "type.alias" and len(edge.values) >= 2:
+                aliasTarget = edge.values[1]
+                break
+        typeAliases.setdefault(
+            importedSymbol.localName,
+            aliasTarget or importedSymbol.exportedName,
+        )
 
     # Build per-user-op signature: argName → declared type
     enumReprs, _enumCasesByType, _enumCaseValuesByType, _enumTypeByCase = _enum_context(facts)
@@ -6029,10 +6442,34 @@ def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
                     and sourceLine.args[0] == operation.name):
                 signature[sourceLine.args[1]] = sourceLine.args[2]
         userOperationSignatures[operation.name] = signature
+    for importedSymbol in (
+        list(importIndex.qualifiedSymbols.values())
+        + list(importIndex.singularSymbols.values())
+    ):
+        if importedSymbol.kind != "operation":
+            continue
+        signature: Dict[str, str] = {}
+        for edge in importedSymbol.edges:
+            if edge.edgeKind == "operation.input" and len(edge.values) >= 3:
+                signature[edge.values[1]] = edge.values[2]
+        userOperationSignatures[importedSymbol.localName] = signature
 
     # Build module-scope value-name → type map from forms that survive
     # outside any operation body (domain literals, module storage, etc.).
-    moduleScopeValueTypes: Dict[str, str] = dict(BUILTIN_VALUE_TYPES)
+    moduleScopeValueTypes: Dict[str, str] = {
+        name: constFact.type_name
+        for name, constFact in facts.base.consts.items()
+    }
+    for importedSymbol in (
+        list(importIndex.qualifiedSymbols.values())
+        + list(importIndex.singularSymbols.values())
+    ):
+        if importedSymbol.kind != "constant":
+            continue
+        for edge in importedSymbol.edges:
+            if edge.edgeKind == "constant.value" and edge.values:
+                moduleScopeValueTypes[importedSymbol.localName] = edge.values[0]
+                break
     currentOperationDuringScan: Optional[str] = None
     for sourceLine in facts.base.lines:
         if not sourceLine.tokens or is_comment(sourceLine):
@@ -6167,7 +6604,10 @@ def check_math_operand_width_drift(facts: ExtendedFacts) -> List[Diagnostic]:
     typeAliases = facts.base.type_aliases
     enumReprs, _enumCasesByType, _enumCaseValuesByType, enumTypeByCase = _enum_context(facts)
 
-    moduleScopeValueTypes: Dict[str, str] = dict(BUILTIN_VALUE_TYPES)
+    moduleScopeValueTypes: Dict[str, str] = {
+        name: constFact.type_name
+        for name, constFact in facts.base.consts.items()
+    }
     currentOperationDuringScan: Optional[str] = None
     for sourceLine in facts.base.lines:
         if not sourceLine.tokens or is_comment(sourceLine):
@@ -6557,6 +6997,12 @@ NON_NULLABLE_HTTP_REQUEST_READS: frozenset = frozenset({
 NULLABLE_HTTP_REQUEST_READS: frozenset = frozenset({
     "http.requestHeader",
     "http.requestQueryParam",
+    # ss_http_request_path_param returns NULL when the named param isn't
+    # part of the matched route's pattern (or when the matched route is
+    # literal-only). Treated the same as the other absent-input readers
+    # so SS3603 forces a pointer.isNull guard before the value flows
+    # into a response body writer.
+    "http.requestPathParam",
     "http.requestBodyText",
     "http.requestBodyBytes",
     "http.multipartPartText",
@@ -8048,7 +8494,8 @@ BUILD_TAPE_PROJECT_VERBS: Set[str] = {
     "buildDir", "buildRoot", "buildFolderName",
     "cpuBaseline", "cpuTune", "cpuFeature", "cpuFeatureCheck",
     "registerModule",
-    "dependency", "dependencySource", "dependencyIntegrity",
+    "dependency", "dependencySource", "dependencyFetch",
+    "dependencyCache", "dependencyLock", "dependencyIntegrity",
     "comptimeOperation",
 }
 
@@ -8061,6 +8508,7 @@ BUILD_TAPE_SINGLETON_VERBS: Set[str] = {
     "emitOptimizedLlvmIr", "optimizedLlvmIrOutput",
     "buildDir", "buildRoot", "buildFolderName", "comptimeOperation",
     "cpuBaseline", "cpuTune", "cpuFeatureCheck",
+    "dependencyCache", "dependencyLock",
 }
 
 BUILD_TAPE_REQUIRED_VERBS: Set[str] = {
@@ -8070,7 +8518,7 @@ BUILD_TAPE_REQUIRED_VERBS: Set[str] = {
 }
 
 BUILD_TAPE_CHOICES: Dict[str, Set[str]] = {
-    "targetRuntime": {"nativeExe", "webServer", "library"},
+    "targetRuntime": {"nativeExe", "webServer", "library", "windowsGui"},
     "buildProfile": {"dev", "prod"},
     "runtimeChecks": {"off", "traps", "panic"},
     "persistLlvmIr": {"auto", "yes", "no"},
@@ -8091,12 +8539,16 @@ BUILD_TAPE_PATH_VERBS: Set[str] = {
     "sourceRoot", "mainFile", "testPattern", "testRoot", "nativeOutput",
     "resourcesDir", "docsOutput", "llvmIrOutput",
     "optimizedLlvmIrOutput", "buildDir", "buildRoot",
+    "dependencyCache", "dependencyLock",
 }
 
 BUILD_TAPE_MIN_ARITY: Dict[str, int] = {
     "dependency": 4,
     "dependencySource": 3,
+    "dependencyFetch": 4,
     "dependencyIntegrity": 3,
+    "dependencyCache": 2,
+    "dependencyLock": 2,
     "cpuFeature": 3,
     "formatterSetting": 3,
     "linterSetting": 3,
@@ -8113,6 +8565,46 @@ BUILD_TAPE_ALLOWED_NON_PROJECT_VERBS: Set[str] = {
     "iconImageWidth", "iconImageHeight", "iconImageScale",
     "iconImageDepth", "iconImagePlatform", "iconImagePurpose",
 }
+
+
+REMOTE_DEPENDENCY_KINDS: Set[str] = {"github", "http"}
+DEPENDENCY_SOURCE_KINDS: Set[str] = {"local", "path", "github", "http"}
+DEPENDENCY_FETCH_KINDS: Set[str] = {"github", "http"}
+
+
+def _is_https_url(value: str) -> bool:
+    return value.startswith("https://") and " " not in value and len(value) > len("https://")
+
+
+def _github_owner_repo_is_valid(value: str) -> bool:
+    if value.startswith("github.com/"):
+        value = value[len("github.com/"):]
+    parts = value.split("/")
+    return len(parts) >= 2 and all(parts[:2]) and not any(part in {".", ".."} for part in parts[:2])
+
+
+def _dependency_source_kind(args: Sequence[str]) -> Tuple[str, Sequence[str]]:
+    if len(args) >= 4:
+        return args[2], args[3:]
+    if len(args) >= 3:
+        sourceText = args[2]
+        if sourceText.startswith(("https://", "http://")):
+            return "http", args[2:3]
+        if sourceText.startswith("github.com/"):
+            return "github", args[2:3]
+        return "local", args[2:3]
+    return "", ()
+
+
+def _dependency_integrity_is_strong(value: str) -> bool:
+    lowered = value.lower()
+    if lowered.startswith("sha256:"):
+        digest = lowered[len("sha256:"):]
+        return len(digest) == 64 and all(char in "0123456789abcdef" for char in digest)
+    if lowered.startswith("commit:"):
+        commit = lowered[len("commit:"):]
+        return 7 <= len(commit) <= 40 and all(char in "0123456789abcdef" for char in commit)
+    return False
 
 
 def _collect_declared_export_symbols(facts: ExtendedFacts) -> Dict[str, Set[str]]:
@@ -8150,6 +8642,237 @@ def _collect_declared_export_symbols(facts: ExtendedFacts) -> Dict[str, Set[str]
         elif verb in {"storage", "sharedState"} and len(args) >= 3:
             declared["constant"].add(args[2])
     return declared
+
+
+def _collect_constant_declarations(
+    facts: ExtendedFacts,
+) -> Dict[str, ConstantDeclarationFact]:
+    declarations: Dict[str, ConstantDeclarationFact] = {}
+    for name, constFact in facts.base.consts.items():
+        declarations[name] = ConstantDeclarationFact(
+            name=name,
+            line=constFact.line,
+            typeName=constFact.type_name,
+            value=constFact.value,
+            declarationVerb="const",
+        )
+    for sourceLine in facts.base.lines:
+        if not sourceLine.tokens or is_comment(sourceLine):
+            continue
+        verb = sourceLine.verb
+        args = sourceLine.args
+        if verb == "domainLiteral" and len(args) >= 3:
+            declarations[args[0]] = ConstantDeclarationFact(
+                name=args[0],
+                line=sourceLine,
+                typeName=args[1],
+                value=args[2],
+                declarationVerb=verb,
+            )
+        elif verb == "literal" and len(args) >= 3:
+            declarations[args[0]] = ConstantDeclarationFact(
+                name=args[0],
+                line=sourceLine,
+                typeName=args[1],
+                value=args[2],
+                declarationVerb=verb,
+            )
+        elif verb == "storage" and len(args) >= 4:
+            declarations[args[2]] = ConstantDeclarationFact(
+                name=args[2],
+                line=sourceLine,
+                typeName=args[3],
+                value=args[4] if len(args) >= 5 else "",
+                scope=args[0],
+                mutability=args[1],
+                declarationVerb=verb,
+            )
+        elif verb == "sharedState" and len(args) >= 4:
+            declarations[args[2]] = ConstantDeclarationFact(
+                name=args[2],
+                line=sourceLine,
+                typeName=args[3],
+                value=args[4] if len(args) >= 5 else "",
+                scope=f"sharedState.{args[0]}",
+                mutability=args[1],
+                declarationVerb=verb,
+            )
+    return declarations
+
+
+def _export_rows(
+    facts: ExtendedFacts,
+) -> List[Tuple[str, str, str, SourceLine]]:
+    rows: List[Tuple[str, str, str, SourceLine]] = []
+    for sourceLine in facts.base.lines:
+        if (not sourceLine.tokens or is_comment(sourceLine)
+                or sourceLine.verb not in MODULE_EXPORT_VERBS
+                or len(sourceLine.args) < 2):
+            continue
+        rows.append((
+            sourceLine.verb,
+            sourceLine.args[0],
+            sourceLine.args[1],
+            sourceLine,
+        ))
+    return rows
+
+
+def build_export_contract_tape(
+    facts: ExtendedFacts,
+) -> List[ExportContractEdge]:
+    """Extract the public module contract carried by explicit export rows.
+
+    This is intentionally a tape, not a nested object graph: consumers can
+    stream it, diff it, and preserve every source row that contributed to the
+    public API. Symbols without an export row are absent by design.
+    """
+    edges: List[ExportContractEdge] = []
+    constantDeclarations = _collect_constant_declarations(facts)
+
+    def add_edge(
+        moduleName: str,
+        exportVerb: str,
+        symbolName: str,
+        edgeKind: str,
+        values: Sequence[str],
+        line: SourceLine,
+    ) -> None:
+        edges.append(ExportContractEdge(
+            moduleName=moduleName,
+            exportVerb=exportVerb,
+            symbolName=symbolName,
+            edgeKind=edgeKind,
+            values=tuple(values),
+            line=line,
+        ))
+
+    for exportVerb, moduleName, symbolName, exportLine in _export_rows(facts):
+        add_edge(moduleName, exportVerb, symbolName, "export.row",
+                 [exportVerb, moduleName, symbolName], exportLine)
+
+        if exportVerb == "exportOperation":
+            operation = facts.base.operations.get(symbolName)
+            if operation is None:
+                continue
+            for opLine in operation.lines:
+                if not opLine.tokens or is_comment(opLine):
+                    continue
+                verb = opLine.verb
+                args = opLine.args
+                if verb in {
+                    "input", "output", "effect", "useCapability", "authority",
+                    "failure", "async", "timing", "memory", "memoryHeap",
+                    "memoryStackLimit", "timeout", "cancelOn", "purpose",
+                    "invariant", "warning", "guarantee", "security",
+                    "observability",
+                }:
+                    add_edge(moduleName, exportVerb, symbolName,
+                             f"operation.{verb}", args, opLine)
+                    if (verb == "output" and len(args) >= 4
+                            and args[1] == "Result"):
+                        failureType = args[3]
+                        add_edge(moduleName, exportVerb, symbolName,
+                                 "operation.failureType", [failureType], opLine)
+                        for (errorName, caseName), caseFact in facts.errorCases.items():
+                            if errorName == failureType:
+                                add_edge(moduleName, exportVerb, symbolName,
+                                         "operation.failureCase",
+                                         [errorName, caseName], caseFact.line)
+            continue
+
+        if exportVerb == "exportType":
+            for sourceLine in facts.base.lines:
+                if not sourceLine.tokens or is_comment(sourceLine):
+                    continue
+                verb = sourceLine.verb
+                args = sourceLine.args
+                if not args:
+                    continue
+                if verb == "type" and args[0] == symbolName:
+                    add_edge(moduleName, exportVerb, symbolName,
+                             "type.alias", args, sourceLine)
+                elif verb == "record" and args[0] == symbolName:
+                    add_edge(moduleName, exportVerb, symbolName,
+                             "type.record", args, sourceLine)
+                elif (verb in {"field", "recordLayout", "recordAlign"}
+                      and args[0] == symbolName):
+                    add_edge(moduleName, exportVerb, symbolName,
+                             f"type.{verb}", args, sourceLine)
+                elif verb == "enum" and args[0] == symbolName:
+                    add_edge(moduleName, exportVerb, symbolName,
+                             "type.enum", args, sourceLine)
+                elif verb == "enumCase" and args[0] == symbolName:
+                    add_edge(moduleName, exportVerb, symbolName,
+                             "type.enumCase", args, sourceLine)
+                elif (verb in {"invariant", "warning", "purpose"}
+                      and args[0] == symbolName):
+                    add_edge(moduleName, exportVerb, symbolName,
+                             f"type.{verb}", args, sourceLine)
+            continue
+
+        if exportVerb == "exportError":
+            for (errorName, caseName), caseFact in facts.errorCases.items():
+                if errorName == symbolName:
+                    add_edge(moduleName, exportVerb, symbolName,
+                             "error.case", [errorName, caseName], caseFact.line)
+            for sourceLine in facts.base.lines:
+                if (sourceLine.verb == "error" and sourceLine.args
+                        and sourceLine.args[0] == symbolName):
+                    add_edge(moduleName, exportVerb, symbolName,
+                             "error.declaration", sourceLine.args, sourceLine)
+            continue
+
+        if exportVerb == "exportCapability":
+            capability = facts.base.capabilities.get(symbolName)
+            if capability is not None:
+                add_edge(moduleName, exportVerb, symbolName,
+                         "capability.authority",
+                         [capability.effect_path, capability.access],
+                         capability.line)
+            continue
+
+        if exportVerb == "exportConstant":
+            declaration = constantDeclarations.get(symbolName)
+            if declaration is not None:
+                add_edge(moduleName, exportVerb, symbolName,
+                         "constant.value",
+                         [
+                             declaration.typeName,
+                             declaration.value,
+                             declaration.scope,
+                             declaration.mutability,
+                             declaration.declarationVerb,
+                         ],
+                         declaration.line)
+                for sourceLine in facts.base.lines:
+                    if (sourceLine.args and sourceLine.args[0] == symbolName
+                            and sourceLine.verb in {
+                                "literalEncoding", "literalSource",
+                                "literalDigest", "literalTrust",
+                            }):
+                        add_edge(moduleName, exportVerb, symbolName,
+                                 f"constant.{sourceLine.verb}",
+                                 sourceLine.args, sourceLine)
+
+    return edges
+
+
+def _exported_symbols_by_kind(
+    facts: ExtendedFacts,
+) -> Dict[str, Set[str]]:
+    exported: Dict[str, Set[str]] = {
+        "type": set(),
+        "error": set(),
+        "operation": set(),
+        "capability": set(),
+        "constant": set(),
+    }
+    for exportVerb, _moduleName, symbolName, _line in _export_rows(facts):
+        exportKind = EXPORT_VERB_DECLARATION_KIND.get(exportVerb)
+        if exportKind is not None:
+            exported.setdefault(exportKind, set()).add(symbolName)
+    return exported
 
 
 def _is_build_tape(facts: ExtendedFacts) -> bool:
@@ -8195,6 +8918,313 @@ def _build_tape_diagnostic(
             "instead of compensating in module source files"
         ),
     )
+
+
+def _check_dependency_build_rows(
+    facts: ExtendedFacts,
+    projectName: str,
+) -> List[Diagnostic]:
+    diagnostics: List[Diagnostic] = []
+    declaredDependencies: Dict[str, SourceLine] = {}
+    sourceRows: Dict[str, List[Tuple[SourceLine, str]]] = {}
+    fetchRows: Dict[str, List[Tuple[SourceLine, str]]] = {}
+    integrityRows: Dict[str, SourceLine] = {}
+    cacheRows: List[SourceLine] = []
+    lockRows: List[SourceLine] = []
+
+    def add_dependency_diag(
+        sourceLine: SourceLine,
+        code: str,
+        kind: str,
+        subjectName: str,
+        subjectKind: str,
+        gapEdge: str,
+        intentSlogan: str,
+        invariantRule: str,
+        fixShape: str,
+        severity: Severity = Severity.WARNING,
+        blocksCompile: bool = False,
+    ) -> None:
+        diagnostics.append(Diagnostic(
+            tier=Tier.T1_SPEC if severity == Severity.ERROR else Tier.T3_REFINEMENT,
+            code=code,
+            kind=kind,
+            severity=severity,
+            subjectName=subjectName,
+            subjectKind=subjectKind,
+            gapEdge=gapEdge,
+            intentSlogan=intentSlogan,
+            primary=span_of_line(sourceLine, "dependencyBuildRow"),
+            invariantRule=invariantRule,
+            specAnchor="docs/language/project-layout-build-sem.md#dependency-fetch-cache-and-lock-rows",
+            fixCandidates=[FixCandidate(name="repairDependencyRow", shape=fixShape)],
+            confidence=Confidence.HIGH,
+            blocksCompile=blocksCompile,
+            effort=Effort.LOCAL,
+            passProvenance="check_project_build_tape_schema",
+            agentHint=(
+                "dependency fetch rows are build-time authority edges; keep "
+                "the alias, source kind, cache, lock, and integrity rows "
+                "source-located in build.sem"
+            ),
+        ))
+
+    for sourceLine in facts.base.lines:
+        if not sourceLine.tokens or is_comment(sourceLine):
+            continue
+        verb = sourceLine.verb
+        args = sourceLine.args
+        if verb not in {
+            "dependency", "dependencySource", "dependencyFetch",
+            "dependencyCache", "dependencyLock", "dependencyIntegrity",
+        }:
+            continue
+        if not args or args[0] != projectName:
+            continue
+        if verb == "dependency" and len(args) >= 4:
+            alias = args[1]
+            previous = declaredDependencies.get(alias)
+            if previous is not None:
+                add_dependency_diag(
+                    sourceLine,
+                    "SS2550",
+                    "buildTape.dependencyAliasCollision",
+                    alias,
+                    "dependencyAlias",
+                    "uniqueDependencyAlias",
+                    "dependency alias is declared more than once",
+                    "Dependency aliases key cache folders, lock rows, imports, and diagnostics. Reusing one alias creates an ambiguous module authority edge.",
+                    f"dependency {projectName} {alias}Renamed <modulePath> <version-or-ref>",
+                    severity=Severity.ERROR,
+                    blocksCompile=True,
+                )
+            else:
+                declaredDependencies[alias] = sourceLine
+        elif verb == "dependencySource" and len(args) >= 3:
+            alias = args[1]
+            kind, payload = _dependency_source_kind(args)
+            sourceRows.setdefault(alias, []).append((sourceLine, kind))
+            if kind not in DEPENDENCY_SOURCE_KINDS:
+                add_dependency_diag(
+                    sourceLine,
+                    "SS2552",
+                    "buildTape.dependencySourceKind",
+                    kind,
+                    "dependencySource",
+                    "closedDependencySourceKind",
+                    "dependency source kind is not supported",
+                    "`dependencySource PROJECT ALIAS KIND ...` accepts local, path, github, or http. Legacy rows infer kind from SOURCE_TEXT.",
+                    f"dependencySource {projectName} {alias} github owner/repo",
+                    severity=Severity.ERROR,
+                    blocksCompile=True,
+                )
+            elif kind == "http":
+                url = payload[0] if payload else ""
+                if not _is_https_url(url):
+                    add_dependency_diag(
+                        sourceLine,
+                        "SS2552",
+                        "buildTape.dependencyInsecureHttpSource",
+                        alias,
+                        "dependencySource",
+                        "httpsDependencySource",
+                        "HTTP dependency sources must use https",
+                        "Remote dependency source rows are executable supply-chain inputs. Plain http is rejected so fetched source cannot be silently rewritten in transit.",
+                        f"dependencySource {projectName} {alias} http \"https://example.com/archive.tar.gz\"",
+                        severity=Severity.ERROR,
+                        blocksCompile=True,
+                    )
+            elif kind == "github":
+                repo = payload[0] if payload else ""
+                if not _github_owner_repo_is_valid(repo):
+                    add_dependency_diag(
+                        sourceLine,
+                        "SS2552",
+                        "buildTape.dependencyGithubSourceShape",
+                        alias,
+                        "dependencySource",
+                        "githubOwnerRepo",
+                        "GitHub dependency source must name owner/repo",
+                        "`dependencySource PROJECT ALIAS github OWNER/REPO [REF]` keeps the provider identity parseable for cache and lock tooling.",
+                        f"dependencySource {projectName} {alias} github monstercameron/SemanticScript main",
+                        severity=Severity.ERROR,
+                        blocksCompile=True,
+                    )
+        elif verb == "dependencyFetch" and len(args) >= 4:
+            alias = args[1]
+            kind = args[2]
+            fetchRows.setdefault(alias, []).append((sourceLine, kind))
+            if kind not in DEPENDENCY_FETCH_KINDS:
+                add_dependency_diag(
+                    sourceLine,
+                    "SS2552",
+                    "buildTape.dependencyFetchKind",
+                    kind,
+                    "dependencyFetch",
+                    "closedDependencyFetchKind",
+                    "dependency fetch kind is not supported",
+                    "`dependencyFetch` is currently intentionally narrow: github or http. Add new fetch kinds only with cache and lock semantics.",
+                    f"dependencyFetch {projectName} {alias} github owner/repo v1.0.0",
+                    severity=Severity.ERROR,
+                    blocksCompile=True,
+                )
+            elif kind == "http":
+                url = args[3] if len(args) >= 4 else ""
+                if not _is_https_url(url):
+                    add_dependency_diag(
+                        sourceLine,
+                        "SS2552",
+                        "buildTape.dependencyInsecureHttpFetch",
+                        alias,
+                        "dependencyFetch",
+                        "httpsDependencyFetch",
+                        "HTTP dependency fetches must use https",
+                        "Remote dependency fetches are supply-chain inputs. Plain http is rejected before any future fetcher performs network IO.",
+                        f"dependencyFetch {projectName} {alias} http \"https://example.com/archive.tar.gz\"",
+                        severity=Severity.ERROR,
+                        blocksCompile=True,
+                    )
+            elif kind == "github":
+                repo = args[3] if len(args) >= 4 else ""
+                ref = args[4] if len(args) >= 5 else ""
+                if not _github_owner_repo_is_valid(repo) or not ref:
+                    add_dependency_diag(
+                        sourceLine,
+                        "SS2552",
+                        "buildTape.dependencyGithubFetchShape",
+                        alias,
+                        "dependencyFetch",
+                        "githubOwnerRepoRef",
+                        "GitHub dependency fetches must name owner/repo and ref",
+                        "`dependencyFetch PROJECT ALIAS github OWNER/REPO REF` gives the future fetcher a stable cache key and gives the lock tape a concrete requested ref.",
+                        f"dependencyFetch {projectName} {alias} github monstercameron/SemanticScript main",
+                        severity=Severity.ERROR,
+                        blocksCompile=True,
+                    )
+        elif verb == "dependencyIntegrity" and len(args) >= 3:
+            alias = args[1]
+            integrityRows[alias] = sourceLine
+            if not _dependency_integrity_is_strong(args[2]):
+                add_dependency_diag(
+                    sourceLine,
+                    "SS2553",
+                    "buildTape.dependencyWeakIntegrity",
+                    alias,
+                    "dependencyIntegrity",
+                    "pinnedDependencyIntegrity",
+                    "dependency integrity should be a strong pin",
+                    "`dependencyIntegrity` should use `sha256:<64 hex>` for archives or `commit:<7-40 hex>` for GitHub commits. Freeform text is not a reproducible lock input.",
+                    f"dependencyIntegrity {projectName} {alias} sha256:<64-hex-digest>",
+                )
+        elif verb == "dependencyCache":
+            cacheRows.append(sourceLine)
+        elif verb == "dependencyLock":
+            lockRows.append(sourceLine)
+
+    remoteAliases: Set[str] = set()
+    for alias, rows in sourceRows.items():
+        if any(kind in REMOTE_DEPENDENCY_KINDS for _line, kind in rows):
+            remoteAliases.add(alias)
+    for alias, rows in fetchRows.items():
+        if any(kind in REMOTE_DEPENDENCY_KINDS for _line, kind in rows):
+            remoteAliases.add(alias)
+
+    for alias, line in list(sourceRows.items()) + list(fetchRows.items()):
+        if alias in declaredDependencies:
+            continue
+        firstLine = line[0][0]
+        add_dependency_diag(
+            firstLine,
+            "SS2551",
+            "buildTape.dependencySourceUnknownAlias",
+            alias,
+            "dependencyAlias",
+            "declaredDependencyAlias",
+            "dependency source/fetch targets an undeclared alias",
+            "`dependencySource`, `dependencyFetch`, and `dependencyIntegrity` attach to a `dependency PROJECT ALIAS MODULE_PATH VERSION_OR_REF` row.",
+            f"dependency {projectName} {alias} <modulePath> <version-or-ref>",
+            severity=Severity.ERROR,
+            blocksCompile=True,
+        )
+
+    for alias, sourceLine in integrityRows.items():
+        if alias in declaredDependencies:
+            continue
+        add_dependency_diag(
+            sourceLine,
+            "SS2551",
+            "buildTape.dependencyIntegrityUnknownAlias",
+            alias,
+            "dependencyAlias",
+            "declaredDependencyAlias",
+            "dependency integrity targets an undeclared alias",
+            "`dependencyIntegrity` must attach to a declared dependency alias so the lock tape can bind the pin to one module path.",
+            f"dependency {projectName} {alias} <modulePath> <version-or-ref>",
+            severity=Severity.ERROR,
+            blocksCompile=True,
+        )
+
+    for alias, declarationLine in declaredDependencies.items():
+        if alias not in sourceRows and alias not in fetchRows:
+            add_dependency_diag(
+                declarationLine,
+                "SS2550",
+                "buildTape.dependencyMissingFetchSource",
+                alias,
+                "dependencyAlias",
+                "dependencyFetchSource",
+                "dependency declaration lacks a source or fetch row",
+                "A dependency row names the requested module contract. A source or fetch row names how the dependency will be found for cache, lock, and future network-safe builds.",
+                f"dependencyFetch {projectName} {alias} github owner/repo <ref>",
+            )
+
+    for alias in sorted(remoteAliases):
+        sourceLine = declaredDependencies.get(alias)
+        if sourceLine is None:
+            continue
+        if alias not in integrityRows:
+            add_dependency_diag(
+                sourceLine,
+                "SS2553",
+                "buildTape.remoteDependencyMissingIntegrity",
+                alias,
+                "dependencyAlias",
+                "remoteDependencyIntegrity",
+                "remote dependency lacks an integrity pin",
+                "GitHub and HTTP dependencies should be pinned by `dependencyIntegrity` so locked builds can avoid trusting mutable network responses.",
+                f"dependencyIntegrity {projectName} {alias} commit:<resolved-commit-or-sha256-digest>",
+            )
+
+    if remoteAliases and not cacheRows:
+        firstRemoteLine = declaredDependencies.get(sorted(remoteAliases)[0])
+        if firstRemoteLine is not None:
+            add_dependency_diag(
+                firstRemoteLine,
+                "SS2554",
+                "buildTape.remoteDependencyMissingCache",
+                projectName,
+                "buildProject",
+                "dependencyCache",
+                "remote dependencies need an explicit cache directory",
+                "`dependencyCache PROJECT \"PATH\"` declares where fetched dependency source lives. The default should be `.semcache`, but spelling it in build.sem makes the authority edge visible.",
+                f"dependencyCache {projectName} \".semcache\"",
+            )
+    if remoteAliases and not lockRows:
+        firstRemoteLine = declaredDependencies.get(sorted(remoteAliases)[0])
+        if firstRemoteLine is not None:
+            add_dependency_diag(
+                firstRemoteLine,
+                "SS2555",
+                "buildTape.remoteDependencyMissingLock",
+                projectName,
+                "buildProject",
+                "dependencyLock",
+                "remote dependencies need an explicit lock tape",
+                "`dependencyLock PROJECT \"PATH\"` declares the reproducible lock tape for resolved commit, archive checksum, and transitive dependency rows.",
+                f"dependencyLock {projectName} \"sem.lock\"",
+            )
+
+    return diagnostics
 
 
 def check_project_build_tape_schema(facts: ExtendedFacts) -> List[Diagnostic]:
@@ -8450,7 +9480,7 @@ def check_project_build_tape_schema(facts: ExtendedFacts) -> List[Diagnostic]:
         ))
 
     targetRuntime = targetRuntimes.get(projectName)
-    if targetRuntime in {"nativeExe", "webServer"} and "mainFile" not in projectRows:
+    if targetRuntime in {"nativeExe", "webServer", "windowsGui"} and "mainFile" not in projectRows:
         diagnostics.append(_build_tape_diagnostic(
             projectLine,
             "SS2522",
@@ -8459,7 +9489,7 @@ def check_project_build_tape_schema(facts: ExtendedFacts) -> List[Diagnostic]:
             "buildProject",
             "mainFile",
             "`mainFile` is required for executable targets",
-            "`targetRuntime nativeExe` and `targetRuntime webServer` need an explicit default source file.",
+            "`targetRuntime nativeExe`, `targetRuntime webServer`, and `targetRuntime windowsGui` need an explicit default source file.",
             f"mainFile {projectName} \"main.sem\"",
         ))
     if targetRuntime == "nativeExe" and "mainOperation" not in projectRows:
@@ -8474,6 +9504,32 @@ def check_project_build_tape_schema(facts: ExtendedFacts) -> List[Diagnostic]:
             "`targetRuntime nativeExe` needs an explicit entry operation inside mainFile.",
             f"mainOperation {projectName} main",
         ))
+    if targetRuntime == "windowsGui":
+        entryConsoleLine = next(
+            (
+                line for line in facts.base.lines
+                if line.tokens
+                and not is_comment(line)
+                and line.verb == "entry"
+                and line.args
+                and line.args[0] == "console"
+            ),
+            None,
+        )
+        if entryConsoleLine is not None:
+            diagnostics.append(_build_tape_diagnostic(
+                entryConsoleLine,
+                "SS2525",
+                "buildTape.invalidChoiceValue",
+                "console",
+                "entry",
+                "windowsGuiEntryDiscovery",
+                "`entry console` is not valid for windowsGui build tapes",
+                "`targetRuntime windowsGui` discovers its entry from the module source GUI application metadata, not from `entry console`.",
+                "# remove `entry console ...`; declare guiApplicationMainWindow in the mainFile source",
+            ))
+
+    diagnostics.extend(_check_dependency_build_rows(facts, projectName))
 
     return diagnostics
 
@@ -8510,19 +9566,19 @@ def _collect_registered_modules(
     return registered, mainFiles
 
 
-def _registered_module_source_exists(
+def _resolve_registered_module_source(
     moduleName: str,
     rawPath: str,
     buildPath: Path,
     mainFiles: Sequence[str],
-) -> bool:
+) -> Optional[Path]:
     registeredPath = Path(rawPath)
     if not registeredPath.is_absolute():
         registeredPath = buildPath.parent / registeredPath
     if registeredPath.is_file():
-        return True
+        return registeredPath.resolve()
     if not registeredPath.is_dir():
-        return False
+        return None
 
     leafName = moduleName.rsplit(".", 1)[-1]
     candidateNames: List[str] = []
@@ -8536,8 +9592,9 @@ def _registered_module_source_exists(
         f"{leafName}.sscript",
     ])
     for candidateName in dict.fromkeys(candidateNames):
-        if (registeredPath / candidateName).is_file():
-            return True
+        candidatePath = registeredPath / candidateName
+        if candidatePath.is_file():
+            return candidatePath.resolve()
 
     moduleSources = [
         path for path in registeredPath.iterdir()
@@ -8546,7 +9603,111 @@ def _registered_module_source_exists(
         and not path.name.lower().endswith((".test.sem", ".test.sscript"))
         and path.suffix.lower() in {".sem", ".sscript"}
     ]
-    return len(moduleSources) == 1
+    if len(moduleSources) == 1:
+        return moduleSources[0].resolve()
+    return None
+
+
+def _registered_module_source_exists(
+    moduleName: str,
+    rawPath: str,
+    buildPath: Path,
+    mainFiles: Sequence[str],
+) -> bool:
+    return _resolve_registered_module_source(
+        moduleName, rawPath, buildPath, mainFiles) is not None
+
+
+def _contract_edges_for_symbol(
+    contractTape: Sequence[ExportContractEdge],
+    symbolName: str,
+) -> List[ExportContractEdge]:
+    return [edge for edge in contractTape if edge.symbolName == symbolName]
+
+
+def _import_alias_for_module(importFact: ImportModuleFact) -> Optional[str]:
+    return importFact.alias
+
+
+def build_import_contract_index(facts: ExtendedFacts) -> ImportContractIndex:
+    """Resolve imported public contracts visible from one module source.
+
+    The returned index is intentionally source-facing: keys preserve the
+    qualified name or local singular import name used by the importing file,
+    while values retain provider module/export tape provenance.
+    """
+    index = ImportContractIndex()
+    buildFacts = _nearest_build_facts(facts.base.path)
+    if buildFacts is None:
+        return index
+    registeredModules, mainFiles = _collect_registered_modules(buildFacts)
+
+    for importFact in facts.base.module_imports:
+        alias = _import_alias_for_module(importFact)
+        if not alias:
+            continue
+        registration = registeredModules.get(importFact.module_name)
+        if registration is None:
+            providerPath = _standard_module_source(
+                importFact.module_name, facts.base.path)
+            if providerPath is None:
+                continue
+        else:
+            _registrationLine, rawPath = registration
+            providerPath = _resolve_registered_module_source(
+                importFact.module_name, rawPath, buildFacts.path, mainFiles)
+        if providerPath is None or providerPath == facts.base.path.resolve():
+            continue
+        try:
+            providerFacts = gather_extended(parse_file(providerPath))
+        except OSError:
+            continue
+        contractTape = build_export_contract_tape(providerFacts)
+        exportsByKind = _exported_symbols_by_kind(providerFacts)
+        moduleContract = ImportedModuleContract(
+            moduleName=importFact.module_name,
+            alias=alias,
+            sourcePath=providerPath,
+            importLine=importFact.line,
+            exportsByKind=exportsByKind,
+            contractTape=contractTape,
+        )
+        index.modulesByAlias[alias] = moduleContract
+        for kind, names in exportsByKind.items():
+            for exportedName in names:
+                qualifiedName = f"{alias}.{exportedName}"
+                index.qualifiedSymbols[qualifiedName] = ImportedSymbolContract(
+                    kind=kind,
+                    localName=qualifiedName,
+                    qualifiedName=qualifiedName,
+                    moduleAlias=alias,
+                    moduleName=importFact.module_name,
+                    exportedName=exportedName,
+                    edges=_contract_edges_for_symbol(contractTape, exportedName),
+                    importLine=importFact.line,
+                )
+
+    for singularImport in facts.base.singular_imports:
+        moduleContract = index.modulesByAlias.get(singularImport.module_alias)
+        if moduleContract is None:
+            continue
+        exportedSymbols = moduleContract.exportsByKind.get(singularImport.kind, set())
+        if singularImport.exported_name not in exportedSymbols:
+            continue
+        qualifiedName = f"{singularImport.module_alias}.{singularImport.exported_name}"
+        index.singularSymbols[singularImport.local_name] = ImportedSymbolContract(
+            kind=singularImport.kind,
+            localName=singularImport.local_name,
+            qualifiedName=qualifiedName,
+            moduleAlias=singularImport.module_alias,
+            moduleName=moduleContract.moduleName,
+            exportedName=singularImport.exported_name,
+            edges=_contract_edges_for_symbol(
+                moduleContract.contractTape, singularImport.exported_name),
+            importLine=singularImport.line,
+        )
+
+    return index
 
 
 def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
@@ -8559,6 +9720,9 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
     registeredModules, mainFiles = _collect_registered_modules(buildFacts)
     registeredNames = set(registeredModules)
     declaredExportSymbols = _collect_declared_export_symbols(facts)
+    constantDeclarations = _collect_constant_declarations(facts)
+    exportRows = _export_rows(facts)
+    exportedSymbolsByKind = _exported_symbols_by_kind(facts)
     currentModuleNames = {
         sourceLine.args[0]
         for sourceLine in facts.base.lines
@@ -8606,6 +9770,364 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                     "resolve deterministically before changing import/export rows"
                 ),
             ))
+
+    if not currentIsBuildTape:
+        seenExportByModuleAndName: Dict[Tuple[str, str], SourceLine] = {}
+        seenExactExport: Dict[Tuple[str, str, str], SourceLine] = {}
+        for exportVerb, moduleName, exportedSymbol, sourceLine in exportRows:
+            exactKey = (moduleName, exportVerb, exportedSymbol)
+            previousExact = seenExactExport.get(exactKey)
+            previousByName = seenExportByModuleAndName.get((moduleName, exportedSymbol))
+            if previousExact is not None or previousByName is not None:
+                previousLine = previousExact or previousByName
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T1_SPEC,
+                    code="SS2507",
+                    kind="module.duplicateExport",
+                    severity=Severity.ERROR,
+                    subjectName=exportedSymbol,
+                    subjectKind=exportVerb,
+                    gapEdge="uniquePublicSymbol",
+                    intentSlogan=f"`{exportedSymbol}` is exported more than once",
+                    primary=span_of_line(sourceLine, "duplicateExport"),
+                    related=[span_of_line(previousLine, "firstExport")],
+                    invariantRule=(
+                        "A module contract tape is keyed by public symbol "
+                        "name. Exporting the same name twice, even under "
+                        "different export verbs, creates an ambiguous public "
+                        "API edge for importers and documentation tools."
+                    ),
+                    specAnchor="SYNTAX.md#exportOperation",
+                    fixCandidates=[
+                        FixCandidate(
+                            name="removeDuplicateExport",
+                            shape=f"# remove duplicate `{exportVerb} {moduleName} {exportedSymbol}`",
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    blocksCompile=True,
+                    effort=Effort.TRIVIAL,
+                    passProvenance="check_registered_module_contract",
+                    agentHint=(
+                        "keep one export row per public symbol; if two "
+                        "declarations need to be visible, rename one so the "
+                        "contract tape stays unambiguous"
+                    ),
+                ))
+            seenExactExport.setdefault(exactKey, sourceLine)
+            seenExportByModuleAndName.setdefault((moduleName, exportedSymbol), sourceLine)
+
+            if exportVerb == "exportConstant":
+                declaration = constantDeclarations.get(exportedSymbol)
+                if declaration is None:
+                    continue
+                if (declaration.declarationVerb == "storage"
+                        and declaration.scope == "module"
+                        and declaration.mutability == "mutable"):
+                    diagnostics.append(Diagnostic(
+                        tier=Tier.T1_SPEC,
+                        code="SS2508",
+                        kind="module.mutableStorageExport",
+                        severity=Severity.ERROR,
+                        subjectName=exportedSymbol,
+                        subjectKind="exportConstant",
+                        gapEdge="immutablePublicConstant",
+                        intentSlogan="mutable module storage cannot be exported as a constant",
+                        primary=span_of_line(sourceLine, "moduleExport"),
+                        related=[span_of_line(declaration.line, "storageDeclaration")],
+                        invariantRule=(
+                            "`exportConstant` is a value contract. Mutable "
+                            "module storage can change behind an importer's "
+                            "back, so cross-module mutation must go through "
+                            "an exported operation with explicit effects."
+                        ),
+                        specAnchor="SYNTAX.md#exportConstant",
+                        fixCandidates=[
+                            FixCandidate(
+                                name="exportMutationOperation",
+                                shape=f"exportOperation {moduleName} <operationThatReadsOrWrites{exportedSymbol}>",
+                            ),
+                            FixCandidate(
+                                name="makeStorageImmutable",
+                                shape=f"storage module immutable {exportedSymbol} {declaration.typeName} {declaration.value}".rstrip(),
+                            ),
+                        ],
+                        confidence=Confidence.HIGH,
+                        blocksCompile=True,
+                        effort=Effort.LOCAL,
+                        passProvenance="check_registered_module_contract",
+                        agentHint=(
+                            "public constants must be stable values; expose "
+                            "mutable state through an operation contract so "
+                            "effects and capabilities stay visible"
+                        ),
+                    ))
+                elif declaration.scope != "module":
+                    diagnostics.append(Diagnostic(
+                        tier=Tier.T1_SPEC,
+                        code="SS2509",
+                        kind="module.nonModuleStateExport",
+                        severity=Severity.ERROR,
+                        subjectName=exportedSymbol,
+                        subjectKind="exportConstant",
+                        gapEdge="moduleScopePublicConstant",
+                        intentSlogan="exported constants must be module-scope values",
+                        primary=span_of_line(sourceLine, "moduleExport"),
+                        related=[span_of_line(declaration.line, "stateDeclaration")],
+                        invariantRule=(
+                            "Local storage and sharedState slots are runtime "
+                            "state, not public value contracts. Export a "
+                            "module immutable constant or an operation that "
+                            "accesses the state with declared effects."
+                        ),
+                        specAnchor="SYNTAX.md#exportConstant",
+                        fixCandidates=[
+                            FixCandidate(
+                                name="moveToImmutableModuleStorage",
+                                shape=f"storage module immutable {exportedSymbol} {declaration.typeName} {declaration.value}".rstrip(),
+                            ),
+                            FixCandidate(
+                                name="removeStateExport",
+                                shape=f"# remove `exportConstant {moduleName} {exportedSymbol}`",
+                            ),
+                        ],
+                        confidence=Confidence.HIGH,
+                        blocksCompile=True,
+                        effort=Effort.LOCAL,
+                        passProvenance="check_registered_module_contract",
+                        agentHint=(
+                            "do not make sharedState or local slots part of "
+                            "the public API; importers need an operation "
+                            "contract, not a direct state edge"
+                        ),
+                    ))
+
+        moduleOwnsByName = {
+            sourceLine.args[0]
+            for sourceLine in facts.base.lines
+            if sourceLine.tokens
+            and not is_comment(sourceLine)
+            and sourceLine.verb == "moduleOwns"
+            and sourceLine.args
+        }
+        for exportedOperation in sorted(exportedSymbolsByKind.get("operation", set())):
+            operation = facts.base.operations.get(exportedOperation)
+            if operation is None:
+                continue
+            narrative = facts.operationNarrative.get(exportedOperation, {})
+            if "purpose" not in narrative:
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS2511",
+                    kind="module.exportedOperationMissingPurpose",
+                    severity=Severity.WARNING,
+                    subjectName=exportedOperation,
+                    subjectKind="operation",
+                    gapEdge="publicPurpose",
+                    intentSlogan="exported operation lacks purpose",
+                    primary=span_of_line(operation.line, "operationDeclaration"),
+                    invariantRule=(
+                        "An exported operation is public API. It needs a "
+                        "`purpose OP \"...\"` row so importers and agents can "
+                        "understand why the contract exists without reading "
+                        "the body first."
+                    ),
+                    specAnchor="SYNTAX.md#purpose",
+                    fixCandidates=[
+                        FixCandidate(
+                            name="addPurpose",
+                            shape=f"purpose {exportedOperation} \"Describe the public contract.\"",
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    effort=Effort.TRIVIAL,
+                    passProvenance="check_registered_module_contract",
+                    agentHint="public operations should carry their own rationale at the declaration site",
+                ))
+
+            publicName = exportedOperation
+            if publicName != "main" and publicName in VAGUE_NAME_BLACKLIST:
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T4_STYLE,
+                    code="SS2512",
+                    kind="module.exportedNameTooGeneric",
+                    severity=Severity.INFO,
+                    subjectName=publicName,
+                    subjectKind="operation",
+                    gapEdge="descriptivePublicName",
+                    intentSlogan="exported operation name is overly generic",
+                    primary=span_of_line(operation.line, "operationDeclaration"),
+                    invariantRule=(
+                        "Exported names are the module's public vocabulary. "
+                        "A generic name forces importers to recover intent "
+                        "from context that is not present at the call site."
+                    ),
+                    specAnchor="SYNTAX.md#naming",
+                    fixCandidates=[
+                        FixCandidate(
+                            name="renamePublicOperation",
+                            shape=f"operation <domainSpecific{publicName[0].upper()}{publicName[1:]}>",
+                        ),
+                    ],
+                    confidence=Confidence.MEDIUM,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_registered_module_contract",
+                    agentHint="rename the operation and its export row together",
+                ))
+
+            declaredEffectPairs = {
+                (effectLine.args[1], effectLine.args[2])
+                for effectLine in facts.operationEffects.get(exportedOperation, [])
+                if len(effectLine.args) >= 3
+            }
+            emittedEffectPairs: Set[Tuple[str, str]] = set()
+            wrapsDependency = False
+            for callFact in collect_operation_calls(operation).values():
+                if "." in callFact.target:
+                    wrapsDependency = True
+                impliedEffect = CALL_TARGET_IMPLIED_EFFECTS.get(callFact.target)
+                if not impliedEffect or impliedEffect in declaredEffectPairs:
+                    continue
+                if impliedEffect in emittedEffectPairs:
+                    continue
+                emittedEffectPairs.add(impliedEffect)
+                impliedAction, impliedPath = impliedEffect
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS2513",
+                    kind="module.exportedOperationUndeclaredEffect",
+                    severity=Severity.WARNING,
+                    subjectName=exportedOperation,
+                    subjectKind="operation",
+                    gapEdge="publicEffectContract",
+                    intentSlogan="exported operation hides an undeclared body effect",
+                    primary=span_of_line(callFact.line, "effectCausingCall"),
+                    related=[span_of_line(operation.line, "operationDeclaration")],
+                    invariantRule=(
+                        f"Public operation `{exportedOperation}` calls "
+                        f"`{callFact.target}`, which implies "
+                        f"`effect {exportedOperation} {impliedAction} "
+                        f"{impliedPath}`. Importers cannot reason about the "
+                        "effect unless it is part of the exported contract."
+                    ),
+                    specAnchor="SYNTAX.md#effect",
+                    fixCandidates=[
+                        FixCandidate(
+                            name="addPublicEffect",
+                            shape=f"effect {exportedOperation} {impliedAction} {impliedPath}",
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    effort=Effort.TRIVIAL,
+                    passProvenance="check_registered_module_contract",
+                    agentHint=(
+                        "this mirrors SS3111 but is scoped to exported API; "
+                        "public effect gaps affect every importer"
+                    ),
+                ))
+
+            if wrapsDependency and currentModuleNames and not (
+                currentModuleNames & moduleOwnsByName
+            ):
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS2514",
+                    kind="module.exportedWrapperMissingOwnershipContext",
+                    severity=Severity.WARNING,
+                    subjectName=exportedOperation,
+                    subjectKind="operation",
+                    gapEdge="moduleOwnershipContext",
+                    intentSlogan="exported dependency wrapper lacks module ownership context",
+                    primary=span_of_line(operation.line, "operationDeclaration"),
+                    invariantRule=(
+                        "When a public operation wraps dotted dependency "
+                        "behavior, the module should state what it owns via "
+                        "`moduleOwns MODULE \"...\"`. Without that context, "
+                        "agents cannot tell whether the wrapper is a facade, "
+                        "adapter, or accidental pass-through."
+                    ),
+                    specAnchor="docs/language/project-layout-build-sem.md#module-source-contracts",
+                    fixCandidates=[
+                        FixCandidate(
+                            name="addModuleOwnership",
+                            shape="moduleOwns <module.path> \"Describe the public dependency boundary this module owns.\"",
+                        ),
+                    ],
+                    confidence=Confidence.MEDIUM,
+                    effort=Effort.TRIVIAL,
+                    passProvenance="check_registered_module_contract",
+                    agentHint="add moduleOwns near modulePurpose/moduleInvariant at the top of the module file",
+                ))
+
+        for importedModuleName in sorted(facts.base.imports):
+            if importedModuleName not in registeredModules:
+                continue
+            if importedModuleName in currentModuleNames:
+                continue
+            registrationLine, rawPath = registeredModules[importedModuleName]
+            providerPath = _resolve_registered_module_source(
+                importedModuleName, rawPath, buildFacts.path, mainFiles)
+            if providerPath is None or providerPath == facts.base.path.resolve():
+                continue
+            try:
+                providerFacts = gather_extended(parse_file(providerPath))
+            except OSError:
+                continue
+            providerOperations = set(providerFacts.base.operations)
+            providerExports = _exported_symbols_by_kind(providerFacts)
+            providerExportedOperations = providerExports.get("operation", set())
+            for operation in facts.base.operations.values():
+                for callFact in collect_operation_calls(operation).values():
+                    if callFact.target in facts.base.operations:
+                        continue
+                    if callFact.target not in providerOperations:
+                        continue
+                    if callFact.target in providerExportedOperations:
+                        continue
+                    diagnostics.append(Diagnostic(
+                        tier=Tier.T1_SPEC,
+                        code="SS2510",
+                        kind="module.privateImportAccess",
+                        severity=Severity.ERROR,
+                        subjectName=callFact.target,
+                        subjectKind="callTarget",
+                        gapEdge="exportedOperationOnly",
+                        intentSlogan=(
+                            f"`{callFact.target}` is private to `{importedModuleName}`"
+                        ),
+                        primary=span_of_line(callFact.line, "privateCall"),
+                        related=[
+                            span_of_line(registrationLine, "registeredModule"),
+                            span_of_line(providerFacts.base.operations[callFact.target].line,
+                                         "providerOperation"),
+                        ],
+                        invariantRule=(
+                            "Imported module symbols are private unless the "
+                            "provider module declares a matching export row. "
+                            "The current import bridge inlines files, but the "
+                            "semantic contract is already export-only."
+                        ),
+                        specAnchor="SYNTAX.md#exportOperation",
+                        fixCandidates=[
+                            FixCandidate(
+                                name="exportProviderOperation",
+                                shape=f"exportOperation {importedModuleName} {callFact.target}",
+                            ),
+                            FixCandidate(
+                                name="callPublicFacade",
+                                shape=f"call {callFact.name} <exportedOperationFrom{importedModuleName.rsplit('.', 1)[-1].title()}>",
+                            ),
+                        ],
+                        confidence=Confidence.HIGH,
+                        blocksCompile=True,
+                        effort=Effort.CROSS_FILE,
+                        passProvenance="check_registered_module_contract",
+                        agentHint=(
+                            "do not rely on import inlining to reach private "
+                            "provider operations; add an export row or call a "
+                            "public facade operation"
+                        ),
+                    ))
 
     for sourceLine in facts.base.lines:
         if not sourceLine.tokens or is_comment(sourceLine):
@@ -8683,42 +10205,47 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                 agentHint="add a registerModule row to build.sem or correct the module path spelling",
             ))
 
-        if verb == "importModule" and args and registeredNames and args[0] not in registeredNames:
-            diagnostics.append(Diagnostic(
-                tier=Tier.T1_SPEC,
-                code="SS2504",
-                kind="module.importNotRegistered",
-                severity=Severity.ERROR,
-                subjectName=args[0],
-                subjectKind="importModule",
-                gapEdge="registeredDependency",
-                intentSlogan=f"`importModule {args[0]}` does not target a registered module",
-                primary=span_of_line(sourceLine, "moduleImport"),
-                invariantRule=(
-                    "Project module imports must target modules registered "
-                    "by build.sem; dependency modules should also be given a "
-                    "build-time registration before module source imports them."
-                ),
-                specAnchor="SYNTAX.md#importModule",
-                fixCandidates=[
-                    FixCandidate(
-                        name="registerImportedModule",
-                        shape=f"registerModule <project> {args[0]} \"relative/folder\"",
+        if verb == "importModule" and args and registeredNames:
+            importedModuleName, _alias, _syntax = parse_import_module_args(args)
+            if (importedModuleName not in registeredNames
+                    and not _is_known_standard_module(
+                        importedModuleName, facts.base.path)):
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T1_SPEC,
+                    code="SS2504",
+                    kind="module.importNotRegistered",
+                    severity=Severity.ERROR,
+                    subjectName=importedModuleName,
+                    subjectKind="importModule",
+                    gapEdge="registeredDependency",
+                    intentSlogan=f"`importModule {importedModuleName}` does not target a registered module",
+                    primary=span_of_line(sourceLine, "moduleImport"),
+                    invariantRule=(
+                        "Project module imports must target modules registered "
+                        "by build.sem; dependency modules should also be given a "
+                        "build-time registration before module source imports them."
                     ),
-                    FixCandidate(
-                        name="fixImportPath",
-                        shape="importModule <registered.module.path>",
+                    specAnchor="SYNTAX.md#importModule",
+                    fixCandidates=[
+                        FixCandidate(
+                            name="registerImportedModule",
+                            shape=f"registerModule <project> {importedModuleName} \"relative/folder\"",
+                        ),
+                        FixCandidate(
+                            name="fixImportPath",
+                            shape="importModule <alias> <registered.module.path>",
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    blocksCompile=True,
+                    effort=Effort.TRIVIAL,
+                    passProvenance="check_registered_module_contract",
+                    agentHint=(
+                        "the compiler resolves registered modules before filesystem "
+                        "fallbacks; use the same dotted path in build.sem and importModule"
                     ),
-                ],
-                confidence=Confidence.HIGH,
-                blocksCompile=True,
-                effort=Effort.TRIVIAL,
-                passProvenance="check_registered_module_contract",
-                agentHint=(
-                    "the compiler resolves registered modules before filesystem "
-                    "fallbacks; use the same dotted path in build.sem and importModule"
-                ),
-            ))
+                ))
+            continue
 
         if verb in MODULE_EXPORT_VERBS and args and registeredNames:
             moduleName = args[0]
@@ -8806,6 +10333,560 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
     return diagnostics
 
 
+def _module_import_diagnostic(
+    sourceLine: SourceLine,
+    code: str,
+    kind: str,
+    severity: Severity,
+    subjectName: str,
+    subjectKind: str,
+    gapEdge: str,
+    intentSlogan: str,
+    invariantRule: str,
+    fixShape: str,
+    related: Optional[List[Span]] = None,
+    blocksCompile: bool = True,
+    effort: Effort = Effort.LOCAL,
+) -> Diagnostic:
+    return Diagnostic(
+        tier=Tier.T1_SPEC if severity == Severity.ERROR else Tier.T3_REFINEMENT,
+        code=code,
+        kind=kind,
+        severity=severity,
+        subjectName=subjectName,
+        subjectKind=subjectKind,
+        gapEdge=gapEdge,
+        intentSlogan=intentSlogan,
+        primary=span_of_line(sourceLine, "moduleImport"),
+        related=related or [],
+        invariantRule=invariantRule,
+        specAnchor="docs/language/project-layout-build-sem.md#import-contracts",
+        fixCandidates=[FixCandidate(name="repairImportContract", shape=fixShape)],
+        confidence=Confidence.HIGH,
+        blocksCompile=blocksCompile,
+        effort=effort,
+        passProvenance="check_module_import_contracts",
+        agentHint=(
+            "imports are resolved from explicit provider export tape; keep "
+            "qualified names or singular imports source-located and unambiguous"
+        ),
+    )
+
+
+def _local_declaration_names(facts: ExtendedFacts) -> Set[str]:
+    declared = _collect_declared_export_symbols(facts)
+    names: Set[str] = set()
+    for symbols in declared.values():
+        names.update(symbols)
+    names.update(facts.base.operations)
+    return names
+
+
+def _qualified_name_parts(name: str) -> Optional[Tuple[str, str]]:
+    if "." not in name:
+        return None
+    alias, rest = name.split(".", 1)
+    if not alias or not rest:
+        return None
+    return alias, rest
+
+
+def _line_qualified_references(sourceLine: SourceLine) -> List[Tuple[str, str]]:
+    if not sourceLine.tokens or is_comment(sourceLine):
+        return []
+    verb = sourceLine.verb
+    args = sourceLine.args
+    references: List[Tuple[str, str]] = []
+    if verb == "call" and len(args) >= 2:
+        references.append(("operation", args[1]))
+    elif verb == "input" and len(args) >= 3:
+        references.append(("type", args[2]))
+    elif verb == "output" and len(args) >= 2:
+        if args[1] == "Result":
+            if len(args) >= 3:
+                references.append(("type", args[2]))
+            if len(args) >= 4:
+                references.append(("error", args[3]))
+        else:
+            references.append(("type", args[1]))
+    elif verb in {"bind", "bindOk", "bindError"} and len(args) >= 2:
+        references.append(("type", args[1]))
+    elif verb in {"ignoreOk", "ignoreValue"} and len(args) >= 2:
+        references.append(("type", args[1]))
+    elif verb == "useCapability" and len(args) >= 2:
+        references.append(("capability", args[1]))
+    elif verb == "makeError" and len(args) >= 2:
+        qualified = args[1]
+        parts = qualified.split(".")
+        if len(parts) >= 3:
+            references.append(("error", ".".join(parts[:2])))
+    elif verb == "arg" and len(args) >= 3:
+        references.append(("constant", args[2]))
+    return references
+
+
+def _mutable_public_constant_edges(
+    importedSymbol: ImportedSymbolContract,
+) -> List[ExportContractEdge]:
+    if importedSymbol.kind != "constant":
+        return []
+    mutableEdges: List[ExportContractEdge] = []
+    for edge in importedSymbol.edges:
+        if edge.edgeKind != "constant.value" or len(edge.values) < 5:
+            continue
+        _typeName, _value, scope, mutability, declarationVerb = edge.values[:5]
+        if declarationVerb == "storage" and scope == "module" and mutability == "mutable":
+            mutableEdges.append(edge)
+    return mutableEdges
+
+
+def _effect_path_covers(declaredPath: str, requiredPath: str) -> bool:
+    return declaredPath == requiredPath or requiredPath.startswith(declaredPath + ".")
+
+
+def _operation_declares_imported_effect(
+    facts: ExtendedFacts,
+    operationName: str,
+    action: str,
+    path: str,
+) -> bool:
+    for effectLine in facts.operationEffects.get(operationName, []):
+        if len(effectLine.args) < 3:
+            continue
+        declaredAction = effectLine.args[1]
+        declaredPath = effectLine.args[2]
+        if declaredAction == action and _effect_path_covers(declaredPath, path):
+            return True
+    return False
+
+
+def _imported_operation_effect_edges(
+    importedSymbol: ImportedSymbolContract,
+) -> List[ExportContractEdge]:
+    if importedSymbol.kind != "operation":
+        return []
+    return [
+        edge for edge in importedSymbol.edges
+        if edge.edgeKind == "operation.effect" and len(edge.values) >= 3
+    ]
+
+
+def _diagnose_imported_operation_effects(
+    diagnostics: List[Diagnostic],
+    facts: ExtendedFacts,
+    operation: OperationFact,
+    callFact: CallFact,
+    importedSymbol: ImportedSymbolContract,
+) -> None:
+    seenRequiredEffects: Set[Tuple[str, str]] = set()
+    for effectEdge in _imported_operation_effect_edges(importedSymbol):
+        action = effectEdge.values[1]
+        path = effectEdge.values[2]
+        key = (action, path)
+        if key in seenRequiredEffects:
+            continue
+        seenRequiredEffects.add(key)
+        if _operation_declares_imported_effect(facts, operation.name, action, path):
+            continue
+        diagnostics.append(_module_import_diagnostic(
+            callFact.line,
+            "SS2542",
+            "moduleImport.importedEffectNotDeclared",
+            Severity.WARNING,
+            callFact.target,
+            "callTarget",
+            "callerEffectContract",
+            "imported operation effect is not declared by caller",
+            (
+                f"`{operation.name}` calls imported operation "
+                f"`{callFact.target}`, whose public contract includes "
+                f"`effect {importedSymbol.exportedName} {action} {path}`. "
+                "The caller must restate the effect so file/network/database/"
+                "observability authority does not disappear through a module "
+                "boundary."
+            ),
+            f"effect {operation.name} {action} {path}",
+            related=[span_of_line(effectEdge.line, "providerEffect")],
+            blocksCompile=False,
+            effort=Effort.CROSS_FILE,
+        ))
+
+
+def _find_import_cycle(
+    startModule: str,
+    registeredModules: Dict[str, Tuple[SourceLine, str]],
+    buildPath: Path,
+    mainFiles: Sequence[str],
+) -> Optional[List[str]]:
+    visiting: Set[str] = set()
+    visited: Set[str] = set()
+
+    def imports_for(moduleName: str) -> Set[str]:
+        registration = registeredModules.get(moduleName)
+        if registration is None:
+            return set()
+        _line, rawPath = registration
+        sourcePath = _resolve_registered_module_source(
+            moduleName, rawPath, buildPath, mainFiles)
+        if sourcePath is None:
+            return set()
+        try:
+            return set(parse_file(sourcePath).imports)
+        except OSError:
+            return set()
+
+    def dfs(moduleName: str, stack: List[str]) -> Optional[List[str]]:
+        if moduleName in visiting:
+            cycleStart = stack.index(moduleName) if moduleName in stack else 0
+            return stack[cycleStart:] + [moduleName]
+        if moduleName in visited:
+            return None
+        visiting.add(moduleName)
+        stack.append(moduleName)
+        for importedName in sorted(imports_for(moduleName)):
+            if importedName not in registeredModules:
+                continue
+            cycle = dfs(importedName, stack)
+            if cycle is not None:
+                return cycle
+        stack.pop()
+        visiting.remove(moduleName)
+        visited.add(moduleName)
+        return None
+
+    return dfs(startModule, [])
+
+
+def check_module_import_contracts(facts: ExtendedFacts) -> List[Diagnostic]:
+    diagnostics: List[Diagnostic] = []
+    if _is_build_tape(facts):
+        return diagnostics
+
+    buildFacts = _nearest_build_facts(facts.base.path)
+    if buildFacts is None:
+        return diagnostics
+    registeredModules, mainFiles = _collect_registered_modules(buildFacts)
+    importIndex = build_import_contract_index(facts)
+    currentModuleNames = {
+        sourceLine.args[0]
+        for sourceLine in facts.base.lines
+        if sourceLine.tokens and not is_comment(sourceLine)
+        and sourceLine.verb == "module" and sourceLine.args
+    }
+
+    seenAliases: Dict[str, ImportModuleFact] = {}
+    localNames = _local_declaration_names(facts)
+    for importFact in facts.base.module_imports:
+        if importFact.syntax == "malformed":
+            diagnostics.append(_module_import_diagnostic(
+                importFact.line, "SS2530", "moduleImport.malformed",
+                Severity.ERROR, "importModule", "importModule",
+                "moduleAlias", "malformed importModule row",
+                "`importModule` must use either `importModule MODULE`, "
+                "`importModule MODULE as ALIAS`, or `importModule ALIAS MODULE`.",
+                "importModule alias provider.module.path",
+            ))
+            continue
+        alias = importFact.alias
+        if not alias:
+            continue
+        previous = seenAliases.get(alias)
+        if previous is not None:
+            diagnostics.append(_module_import_diagnostic(
+                importFact.line, "SS2531", "moduleImport.aliasCollision",
+                Severity.ERROR, alias, "moduleAlias", "uniqueModuleAlias",
+                "module alias collision",
+                "A module alias creates a qualified namespace. Reusing it "
+                "would make `alias.Symbol` resolve to more than one provider.",
+                f"importModule {alias} <different.module.path>",
+                related=[span_of_line(previous.line, "previousAlias")],
+            ))
+        else:
+            seenAliases[alias] = importFact
+        if alias in localNames:
+            diagnostics.append(_module_import_diagnostic(
+                importFact.line, "SS2531", "moduleImport.aliasCollision",
+                Severity.ERROR, alias, "moduleAlias", "namespaceShadow",
+                "module alias shadows local declaration",
+                "A module alias must not reuse an operation, type, error, "
+                "capability, or constant name declared in the same source.",
+                f"importModule {alias}Renamed {importFact.module_name}",
+            ))
+
+    singularByLocal: Dict[str, SingularImportFact] = {}
+    singularCountByAlias: Dict[str, int] = {}
+    for singularImport in facts.base.singular_imports:
+        singularCountByAlias[singularImport.module_alias] = (
+            singularCountByAlias.get(singularImport.module_alias, 0) + 1)
+        if "*" in {
+            singularImport.local_name,
+            singularImport.module_alias,
+            singularImport.exported_name,
+        }:
+            diagnostics.append(_module_import_diagnostic(
+                singularImport.line, "SS2532", "moduleImport.wildcardImport",
+                Severity.ERROR, singularImport.local_name, "singularImport",
+                "explicitPublicSymbol", "wildcard imports are rejected",
+                "SemanticScript import rows must name one exported symbol. "
+                "Wildcard imports erase the public contract edge agents need "
+                "for call, type, effect, and capability reasoning.",
+                "importOperation localName moduleAlias exportedOperation",
+            ))
+            continue
+
+        moduleContract = importIndex.modulesByAlias.get(singularImport.module_alias)
+        if moduleContract is None:
+            diagnostics.append(_module_import_diagnostic(
+                singularImport.line, "SS2533", "moduleImport.unknownAlias",
+                Severity.ERROR, singularImport.module_alias, "moduleAlias",
+                "registeredImportAlias", "singular import uses unknown alias",
+                "A singular import selects from a module alias declared by "
+                "`importModule ALIAS MODULE_PATH` or `importModule MODULE_PATH as ALIAS`.",
+                f"importModule {singularImport.module_alias} <registered.module.path>",
+            ))
+            continue
+
+        exportedSymbols = moduleContract.exportsByKind.get(singularImport.kind, set())
+        if singularImport.exported_name not in exportedSymbols:
+            diagnostics.append(_module_import_diagnostic(
+                singularImport.line, "SS2534", "moduleImport.privateSymbol",
+                Severity.ERROR, singularImport.exported_name, singularImport.kind,
+                "providerExportTape", "singular import targets private symbol",
+                "Singular imports can only bind symbols present in the "
+                "provider module's explicit export rows.",
+                f"export{singularImport.kind.title()} {moduleContract.moduleName} {singularImport.exported_name}",
+                related=[span_of_line(moduleContract.importLine, "moduleImport")],
+                effort=Effort.CROSS_FILE,
+            ))
+            continue
+
+        importedSingularSymbol = ImportedSymbolContract(
+            kind=singularImport.kind,
+            localName=singularImport.local_name,
+            qualifiedName=f"{singularImport.module_alias}.{singularImport.exported_name}",
+            moduleAlias=singularImport.module_alias,
+            moduleName=moduleContract.moduleName,
+            exportedName=singularImport.exported_name,
+            edges=_contract_edges_for_symbol(
+                moduleContract.contractTape, singularImport.exported_name),
+            importLine=singularImport.line,
+        )
+        mutableConstantEdges = _mutable_public_constant_edges(importedSingularSymbol)
+        if mutableConstantEdges:
+            diagnostics.append(_module_import_diagnostic(
+                singularImport.line, "SS2541", "moduleImport.mutableConstantImport",
+                Severity.ERROR, singularImport.exported_name, "constant",
+                "immutablePublicConstant", "mutable storage import rejected",
+                "A singular constant import must bind a stable value edge. "
+                "Mutable module storage can change behind an importer's back; "
+                "cross-module state access must go through an exported operation.",
+                f"exportOperation {moduleContract.moduleName} <operationThatReadsOrWrites{singularImport.exported_name}>",
+                related=[span_of_line(mutableConstantEdges[0].line, "mutableStorage")],
+                effort=Effort.CROSS_FILE,
+            ))
+            continue
+
+        previous = singularByLocal.get(singularImport.local_name)
+        if previous is not None:
+            diagnostics.append(_module_import_diagnostic(
+                singularImport.line, "SS2535", "moduleImport.singularShadow",
+                Severity.ERROR, singularImport.local_name, "singularImport",
+                "uniqueLocalImportName", "singular import shadows another import",
+                "A local singular import name must identify exactly one "
+                "provider symbol in this source file.",
+                f"import{singularImport.kind.title()} {singularImport.local_name}2 {singularImport.module_alias} {singularImport.exported_name}",
+                related=[span_of_line(previous.line, "previousImport")],
+            ))
+        else:
+            singularByLocal[singularImport.local_name] = singularImport
+
+        if singularImport.local_name in localNames:
+            diagnostics.append(_module_import_diagnostic(
+                singularImport.line, "SS2535", "moduleImport.singularShadow",
+                Severity.ERROR, singularImport.local_name, "singularImport",
+                "localDeclarationShadow", "singular import shadows local declaration",
+                "A singular import must not hide a locally declared operation, "
+                "type, error, capability, or constant. Local declarations win "
+                "at codegen, which would make the import contract misleading.",
+                f"import{singularImport.kind.title()} {singularImport.local_name}From{singularImport.module_alias.title()} {singularImport.module_alias} {singularImport.exported_name}",
+            ))
+
+        genericAliases = {
+            "get", "set", "read", "write", "load", "save", "open", "close",
+            "run", "main", "helper", "util", "handler",
+        }
+        if singularImport.local_name in genericAliases:
+            diagnostics.append(_module_import_diagnostic(
+                singularImport.line, "SS2539", "moduleImport.localAliasTooGeneric",
+                Severity.INFO, singularImport.local_name, "singularImport",
+                "providerDomainContext", "local import alias is too generic",
+                "A singular import may rename a provider symbol, but the "
+                "local name should preserve enough provider/domain context "
+                "that a call site is still readable without opening imports.",
+                f"import{singularImport.kind.title()} {singularImport.module_alias}{singularImport.exported_name[0].upper()}{singularImport.exported_name[1:]} {singularImport.module_alias} {singularImport.exported_name}",
+                blocksCompile=False,
+                effort=Effort.TRIVIAL,
+            ))
+
+    for moduleAlias, count in singularCountByAlias.items():
+        if count >= 4:
+            importLine = next(
+                (row.line for row in facts.base.singular_imports
+                 if row.module_alias == moduleAlias),
+                None,
+            )
+            if importLine is not None:
+                diagnostics.append(_module_import_diagnostic(
+                    importLine, "SS2538", "moduleImport.tooManySingularImports",
+                    Severity.WARNING, moduleAlias, "moduleAlias",
+                    "qualifiedReadability", "many singular imports reduce clarity",
+                    "When a source pulls many names from one provider, "
+                    "qualified calls usually preserve more context for agents "
+                    "and humans than a long local alias block.",
+                    f"# prefer `{moduleAlias}.symbolName` for routine use",
+                    blocksCompile=False,
+                    effort=Effort.TRIVIAL,
+                ))
+
+    for operation in facts.base.operations.values():
+        for callFact in collect_operation_calls(operation).values():
+            targetParts = _qualified_name_parts(callFact.target)
+            if targetParts is not None and targetParts[0] in importIndex.modulesByAlias:
+                moduleContract = importIndex.modulesByAlias[targetParts[0]]
+                if (moduleContract.moduleName == "standard.html"
+                        and targetParts[1].startswith("hydrate.")):
+                    continue
+                intrinsicTarget = f"{targetParts[0]}.{targetParts[1]}"
+                if (moduleContract.moduleName == "standard.http"
+                        and intrinsicTarget in ALL_NATIVE_HTTP_TARGETS):
+                    continue
+                if (moduleContract.moduleName == "standard.json"
+                        and (intrinsicTarget in SUPPORTED_JSON_PRIMITIVE_TARGETS
+                             or intrinsicTarget in SUPPORTED_JSON_RUNTIME_TARGETS
+                             or targetParts[1].startswith("encode.")
+                             or targetParts[1].startswith("decode."))):
+                    continue
+                if (moduleContract.moduleName == "standard.gui"
+                        and intrinsicTarget in SUPPORTED_GUI_RUNTIME_TARGETS):
+                    continue
+                importedSymbol = importIndex.qualifiedSymbols.get(callFact.target)
+                if importedSymbol is None or importedSymbol.kind != "operation":
+                    diagnostics.append(_module_import_diagnostic(
+                        callFact.line, "SS2534", "moduleImport.privateSymbol",
+                        Severity.ERROR, callFact.target, "callTarget",
+                        "providerExportTape", "qualified call targets private symbol",
+                        "Qualified calls may only target operations present "
+                        "in the provider module's export tape. The original "
+                        "qualified source name is preserved in this diagnostic.",
+                        f"exportOperation {moduleContract.moduleName} {targetParts[1]}",
+                        related=[span_of_line(moduleContract.importLine, "moduleImport")],
+                        effort=Effort.CROSS_FILE,
+                    ))
+                else:
+                    _diagnose_imported_operation_effects(
+                        diagnostics, facts, operation, callFact, importedSymbol)
+                continue
+
+            if callFact.target in facts.base.operations:
+                continue
+            singular = importIndex.singularSymbols.get(callFact.target)
+            if singular is not None and singular.kind == "operation":
+                _diagnose_imported_operation_effects(
+                    diagnostics, facts, operation, callFact, singular)
+                continue
+            providerAliases = [
+                alias for alias, moduleContract in importIndex.modulesByAlias.items()
+                if callFact.target in moduleContract.exportsByKind.get("operation", set())
+            ]
+            if len(providerAliases) > 1:
+                diagnostics.append(_module_import_diagnostic(
+                    callFact.line, "SS2536", "moduleImport.ambiguousUnqualifiedReference",
+                    Severity.ERROR, callFact.target, "callTarget",
+                    "qualifiedImportReference", "unqualified import is ambiguous",
+                    "More than one imported module exports this operation "
+                    "name. Use a qualified call or a singular import alias.",
+                    f"call {callFact.name} {providerAliases[0]}.{callFact.target}",
+                ))
+            elif len(providerAliases) == 1:
+                diagnostics.append(_module_import_diagnostic(
+                    callFact.line, "SS2537", "moduleImport.implicitSingularImport",
+                    Severity.ERROR, callFact.target, "callTarget",
+                    "explicitImportEdge", "implicit singular import rejected",
+                    "An aliased module import creates a namespace. Calling "
+                    "an exported provider operation by bare name skips the "
+                    "source-located import edge and should be written as a "
+                    "qualified call or explicit singular import.",
+                    f"call {callFact.name} {providerAliases[0]}.{callFact.target}",
+                ))
+
+    for sourceLine in facts.base.lines:
+        for expectedKind, qualifiedName in _line_qualified_references(sourceLine):
+            if expectedKind == "operation":
+                continue
+            parts = _qualified_name_parts(qualifiedName)
+            if parts is None:
+                continue
+            alias, _symbol = parts
+            if alias not in importIndex.modulesByAlias:
+                continue
+            importedSymbol = importIndex.qualifiedSymbols.get(qualifiedName)
+            if importedSymbol is None or importedSymbol.kind != expectedKind:
+                moduleContract = importIndex.modulesByAlias[alias]
+                diagnostics.append(_module_import_diagnostic(
+                    sourceLine, "SS2534", "moduleImport.privateSymbol",
+                    Severity.ERROR, qualifiedName, expectedKind,
+                    "providerExportTape", "qualified reference is not public",
+                    f"`{qualifiedName}` is used as a {expectedKind}, but that "
+                    "symbol is not exported with the matching kind by the "
+                    "provider module.",
+                    f"export{expectedKind.title()} {moduleContract.moduleName} {qualifiedName.split('.', 1)[1]}",
+                    related=[span_of_line(moduleContract.importLine, "moduleImport")],
+                    effort=Effort.CROSS_FILE,
+                ))
+                continue
+            mutableConstantEdges = _mutable_public_constant_edges(importedSymbol)
+            if mutableConstantEdges:
+                moduleContract = importIndex.modulesByAlias[alias]
+                diagnostics.append(_module_import_diagnostic(
+                    sourceLine, "SS2541", "moduleImport.mutableConstantImport",
+                    Severity.ERROR, qualifiedName, "constant",
+                    "immutablePublicConstant", "mutable storage import rejected",
+                    "Qualified constant access must resolve to a stable value "
+                    "edge. Mutable module storage can change behind an "
+                    "importer's back; cross-module state access must go "
+                    "through an exported operation.",
+                    f"exportOperation {moduleContract.moduleName} <operationThatReadsOrWrites{importedSymbol.exportedName}>",
+                    related=[span_of_line(mutableConstantEdges[0].line, "mutableStorage")],
+                    effort=Effort.CROSS_FILE,
+                ))
+
+    for moduleName in sorted(currentModuleNames):
+        cycle = _find_import_cycle(
+            moduleName, registeredModules, buildFacts.path, mainFiles)
+        if cycle is not None and len(cycle) > 1:
+            sourceLine = next(
+                (line for line in facts.base.lines
+                 if line.tokens and not is_comment(line)
+                 and line.verb == "module" and line.args
+                 and line.args[0] == moduleName),
+                facts.base.lines[0],
+            )
+            diagnostics.append(_module_import_diagnostic(
+                sourceLine, "SS2540", "moduleImport.cycle",
+                Severity.ERROR, moduleName, "module",
+                "acyclicImportGraph", "module import cycle rejected",
+                "Registered module imports must form an acyclic graph so "
+                "contract loading, effect propagation, and dependency cache "
+                "work can terminate deterministically.",
+                "# break the cycle with a smaller shared module or public facade",
+                blocksCompile=True,
+                effort=Effort.CROSS_FILE,
+            ))
+            break
+
+    return diagnostics
+
+
 CHECKERS = [
     # Foundational basics — run first so reference / arity / duplicate
     # errors surface before any refinement-level diagnostic.
@@ -8818,6 +10899,7 @@ CHECKERS = [
     check_unknown_verbs,
     check_project_build_tape_schema,
     check_registered_module_contract,
+    check_module_import_contracts,
     check_unused_calls,
     check_unused_labels,
     check_unused_capabilities,
@@ -9167,7 +11249,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "--summary", action="store_true",
         help="Print a tier/severity summary after diagnostics (human format only).",
     )
+    parser.add_argument(
+        "--std-path", action="append", default=None,
+        help=(
+            "standard-library root override. May be repeated. Accepts a std "
+            "root containing module.sem, a SemanticScript root containing std/, "
+            "or a repo root containing SemanticScript/std. Environment "
+            "fallbacks: SEMANTICSCRIPT_STD_PATH or SEMSC_STD_PATH."
+        ),
+    )
     args = parser.parse_args(argv)
+
+    global _CLI_STDLIB_PATHS
+    _CLI_STDLIB_PATHS = list(args.std_path or [])
 
     resolvedPaths = collect_paths(args.paths)
     if not resolvedPaths:

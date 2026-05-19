@@ -102,7 +102,7 @@ label notAnEntryAnchor
     def test_entry_anchor_pattern_is_suppressed(self) -> None:
         # The stdlib convention `label start<OperationName>` at the top of a
         # body is a readability anchor; treating it as unused causes a
-        # 213-occurrence false-positive storm across stdlib_sem.
+        # 213-occurrence false-positive storm across std.
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
@@ -507,6 +507,208 @@ iconImagePurpose todoPrimaryAt16 "Small shell icon."
         self.assertNotIn("SS0001", _codes(diagnostics))
         self.assertNotIn("SS0002", _codes(diagnostics))
 
+    def test_gui_verbs_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project GuiLint
+target windowsGui
+importModule gui standard.gui
+guiApplication todoGuiApp
+guiApplicationTitle todoGuiApp "Todo"
+guiApplicationIcon todoGuiApp todoPrimaryIcon
+guiApplicationMainWindow todoGuiApp todoMainWindow
+guiApplicationOnExit todoGuiApp onGuiExit
+guiWindow todoMainWindow
+guiWindowApplication todoMainWindow todoGuiApp
+guiWindowTitle todoMainWindow "Todo"
+guiWindowWidth todoMainWindow 640
+guiWindowHeight todoMainWindow 480
+guiWindowMinimumWidth todoMainWindow 320
+guiWindowMinimumHeight todoMainWindow 240
+guiWindowLayout todoMainWindow verticalStack
+guiWindowResizable todoMainWindow yes
+guiWindowEvent todoMainWindow closeRequested onGuiClose
+guiButton addTodoButton
+guiTextBox todoTitleTextBox
+guiListBox visibleTodosListBox
+guiCheckBox showDoneCheckBox
+guiMenuItem quitMenuItem
+guiStatusBar statusLine
+guiTextLabel titleLabel
+guiControlWindow addTodoButton todoMainWindow
+guiControlWindow todoTitleTextBox todoMainWindow
+guiControlEnabled addTodoButton yes
+guiControlVisible addTodoButton yes
+guiControlTabIndex addTodoButton 1
+guiControlAccessibleName addTodoButton "Add todo"
+guiControlEvent addTodoButton click onAddTodo
+guiButtonText addTodoButton "Add"
+guiButtonIsDefault addTodoButton yes
+guiTextBoxPlaceholder todoTitleTextBox "Title"
+guiTextBoxMaxLength todoTitleTextBox 120
+guiListBoxSelectionMode visibleTodosListBox single
+guiCheckBoxChecked showDoneCheckBox no
+guiTextLabelText titleLabel "Todos"
+operation onGuiClose
+input onGuiClose session GuiSession
+input onGuiClose event GuiEvent
+output onGuiClose CSignedInt32
+purpose onGuiClose "handle the main window close event"
+returnValue 0
+operation onGuiExit
+output onGuiExit CSignedInt32
+purpose onGuiExit "finish after the GUI message loop exits"
+returnValue 0
+operation onAddTodo
+input onAddTodo session GuiSession
+input onAddTodo event GuiEvent
+output onAddTodo CSignedInt32
+purpose onAddTodo "handle add todo button clicks"
+returnValue 0
+""")
+        self.assertNotIn("SS0001", _codes(diagnostics))
+        self.assertNotIn("SS0002", _codes(diagnostics))
+
+
+class TestHtmlSyntaxIsland(unittest.TestCase):
+    def test_html_template_verbs_and_body_lines_are_known(self) -> None:
+        diagnostics = _lint_source("""project HtmlLint
+htmlTemplate CardTemplate
+htmlArg CardTemplate titleText HtmlText
+htmlArg CardTemplate cardClassName HtmlClass
+htmlBody CardTemplate
+  <section class="{htmlArg.cardClassName}">
+    <style>
+      .meter { width: 100%; content: "{literal-braces-stay-static}"; }
+    </style>
+    <h1>{htmlArg.titleText}</h1>
+  </section>
+operation main
+output main Void
+purpose main "html lint smoke"
+""")
+        self.assertNotIn("SS0001", _codes(diagnostics))
+        self.assertNotIn("SS0002", _codes(diagnostics))
+
+    def test_html_body_can_continue_through_blank_lines_and_eof(self) -> None:
+        diagnostics = _lint_source("""project HtmlLint
+htmlTemplate CardTemplate
+htmlArg CardTemplate titleText HtmlText
+htmlBody CardTemplate
+  <section>
+
+    <h1>{htmlArg.titleText}</h1>
+  </section>
+""")
+        self.assertNotIn("SS0001", _codes(diagnostics))
+        self.assertNotIn("SS0002", _codes(diagnostics))
+
+    def test_column_zero_after_html_body_is_linted_normally(self) -> None:
+        diagnostics = _lint_source("""project HtmlLint
+htmlTemplate CardTemplate
+htmlArg CardTemplate titleText HtmlText
+htmlBody CardTemplate
+  <h1>{htmlArg.titleText}</h1>
+operation main
+output main Void
+purpose main "html lint smoke"
+definitelyNotAVerb afterHtmlBody
+""")
+        self.assertIn("SS0001", _codes(diagnostics))
+        matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS0001")[0]
+        self.assertEqual(matchingDiagnostic.subjectName, "definitelyNotAVerb")
+
+    def test_indented_markup_without_html_body_is_still_unknown(self) -> None:
+        diagnostics = _lint_source("""project HtmlLint
+  <h1>not in an htmlBody island</h1>
+operation main
+output main Void
+purpose main "html lint smoke"
+""")
+        self.assertIn("SS0001", _codes(diagnostics))
+
+    def test_html_arg_arity_is_checked(self) -> None:
+        diagnostics = _lint_source("""project HtmlLint
+htmlTemplate CardTemplate
+htmlArg CardTemplate titleText
+htmlBody CardTemplate
+  <h1>{htmlArg.titleText}</h1>
+""")
+        self.assertIn("SS0002", _codes(diagnostics))
+        matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS0002")[0]
+        self.assertEqual(matchingDiagnostic.subjectName, "htmlArg")
+
+    def test_html_body_arity_is_checked(self) -> None:
+        diagnostics = _lint_source("""project HtmlLint
+htmlTemplate CardTemplate
+htmlBody
+  <h1>missing template name</h1>
+""")
+        self.assertIn("SS0002", _codes(diagnostics))
+        matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS0002")[0]
+        self.assertEqual(matchingDiagnostic.subjectName, "htmlBody")
+
+
+class TestGuiRuntimeContracts(unittest.TestCase):
+    def test_gui_declarative_handles_feed_builtin_signature_check(self) -> None:
+        diagnostics = _lint_source("""project GuiLint
+guiWindow todoMainWindow
+guiTextBox todoTitleTextBox
+operation handleTitleChanged
+input handleTitleChanged session GuiSession
+input handleTitleChanged event GuiEvent
+output handleTitleChanged CSignedInt32
+effect handleTitleChanged read gui.control.textBox.text
+authority handleTitleChanged gui.control.textBox.text read
+purpose handleTitleChanged "read the live text box text after a GUI event"
+call titleReadCall gui.textBoxText
+arg titleReadCall session session
+arg titleReadCall textBox todoTitleTextBox
+run titleReadCall
+ignoreValue titleReadCall CNullTerminatedByteString
+returnValue 0
+""")
+        codes = _codes(diagnostics)
+        self.assertNotIn("SS4105", codes)
+        self.assertNotIn("SS4301", codes)
+        self.assertNotIn("SS3111", codes)
+
+    def test_gui_runtime_wrong_handle_type_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project GuiLint
+guiButton addTodoButton
+operation handleTitleChanged
+input handleTitleChanged session GuiSession
+input handleTitleChanged event GuiEvent
+output handleTitleChanged CSignedInt32
+effect handleTitleChanged read gui.control.textBox.text
+authority handleTitleChanged gui.control.textBox.text read
+purpose handleTitleChanged "read the live text box text after a GUI event"
+call titleReadCall gui.textBoxText
+arg titleReadCall session session
+arg titleReadCall textBox addTodoButton
+run titleReadCall
+ignoreValue titleReadCall CNullTerminatedByteString
+returnValue 0
+""")
+        self.assertIn("SS4301", _codes(diagnostics))
+
+    def test_gui_runtime_effect_uses_generic_body_effect_checker(self) -> None:
+        diagnostics = _lint_source("""project GuiLint
+guiWindow todoMainWindow
+operation handleClose
+input handleClose session GuiSession
+input handleClose event GuiEvent
+output handleClose CSignedInt32
+purpose handleClose "close the main GUI window"
+call closeCall gui.windowClose
+arg closeCall session session
+arg closeCall window todoMainWindow
+run closeCall
+ignoreValue closeCall CSignedInt32
+returnValue 0
+""")
+        matching = _diagnostics_with_code(diagnostics, "SS3111")[0]
+        self.assertEqual(matching.gapEdge, "effect")
+        self.assertIn("gui.window", matching.invariantRule)
+
 
 # ==========================================================================
 # SS252x  build.sem project build tape schema
@@ -545,6 +747,37 @@ docsOutput todoTui "docs"
 {extraRows}""", encoding="utf-8")
         return buildPath
 
+    def _write_windows_gui_project(self, root: Path, extraRows: str = "") -> Path:
+        (root / "main.sem").write_text("module app.todo_gui\n", encoding="utf-8")
+        buildPath = root / "build.sem"
+        buildPath.write_text(f"""buildProject todoGui
+project TodoGuiApp
+modulePath todoGui github.com/example/todo-gui
+languageVersion todoGui "1.0"
+projectVersion todoGui "1.0.0"
+projectLicense todoGui MIT
+sourceRoot todoGui "."
+registerModule todoGui app.todo_gui "."
+mainFile todoGui "main.sem"
+testPattern todoGui "*.test.sem"
+testRoot todoGui "."
+targetRuntime todoGui windowsGui
+buildProfile todoGui dev
+runtimeChecks todoGui panic
+persistLlvmIr todoGui auto
+optLevel todoGui 2
+emitLlvmIr todoGui auto
+emitOptimizedLlvmIr todoGui no
+buildFolderName todoGui build
+cpuBaseline todoGui generic
+cpuTune todoGui generic
+cpuFeatureCheck todoGui auto
+formatterSetting todoGui lineWidth 100
+linterSetting todoGui maxTier T4
+docsOutput todoGui "docs"
+{extraRows}""", encoding="utf-8")
+        return buildPath
+
     def test_complete_build_tape_schema_is_clean(self) -> None:
         with TemporaryDirectory() as tempDir:
             buildPath = self._write_complete_project(Path(tempDir))
@@ -556,6 +789,23 @@ docsOutput todoTui "docs"
         self.assertNotIn("SS2525", _codes(diagnostics))
         self.assertNotIn("SS2526", _codes(diagnostics))
         self.assertNotIn("SS2527", _codes(diagnostics))
+
+    def test_windows_gui_build_tape_does_not_require_main_operation(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            buildPath = self._write_windows_gui_project(Path(tempDir))
+            diagnostics = semlint.lint_path(buildPath)
+        codes = _codes(diagnostics)
+        self.assertNotIn("SS2522", codes)
+        self.assertNotIn("SS2525", codes)
+
+    def test_windows_gui_build_tape_rejects_entry_console(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            buildPath = self._write_windows_gui_project(
+                Path(tempDir),
+                extraRows="entry console main\n",
+            )
+            diagnostics = semlint.lint_path(buildPath)
+        self.assertIn("SS2525", _codes(diagnostics))
 
     def test_missing_required_rows_are_flagged(self) -> None:
         diagnostics = _lint_source("""buildProject todoTui
@@ -608,6 +858,69 @@ project TodoTuiApp
             )
             diagnostics = semlint.lint_path(buildPath)
         self.assertIn("SS2525", _codes(diagnostics))
+
+    def test_dependency_fetch_github_and_http_rows_are_clean(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            digest = "a" * 64
+            buildPath = self._write_complete_project(
+                Path(tempDir),
+                extraRows=(
+                    "dependency todoTui semstd github.com/example/semstd v1.0.0\n"
+                    "dependencyFetch todoTui semstd github example/semstd v1.0.0\n"
+                    "dependencyIntegrity todoTui semstd commit:abcdef1234567890\n"
+                    "dependency todoTui api github.com/example/api v2.0.0\n"
+                    "dependencyFetch todoTui api http \"https://example.com/api.tar.gz\"\n"
+                    f"dependencyIntegrity todoTui api sha256:{digest}\n"
+                    "dependencyCache todoTui \".semcache\"\n"
+                    "dependencyLock todoTui \"sem.lock\"\n"
+                ),
+            )
+            diagnostics = semlint.lint_path(buildPath)
+        codes = _codes(diagnostics)
+        self.assertNotIn("SS2550", codes)
+        self.assertNotIn("SS2551", codes)
+        self.assertNotIn("SS2552", codes)
+        self.assertNotIn("SS2553", codes)
+        self.assertNotIn("SS2554", codes)
+        self.assertNotIn("SS2555", codes)
+
+    def test_dependency_fetch_rejects_unknown_alias_and_insecure_http(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            buildPath = self._write_complete_project(
+                Path(tempDir),
+                extraRows="dependencyFetch todoTui missing http \"http://example.com/api.tar.gz\"\n",
+            )
+            diagnostics = semlint.lint_path(buildPath)
+        codes = _codes(diagnostics)
+        self.assertIn("SS2551", codes)
+        self.assertIn("SS2552", codes)
+
+    def test_dependency_source_rejects_unknown_explicit_kind(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            buildPath = self._write_complete_project(
+                Path(tempDir),
+                extraRows=(
+                    "dependency todoTui api github.com/example/api v1.0.0\n"
+                    "dependencySource todoTui api git \"https://example.com/api.git\"\n"
+                ),
+            )
+            diagnostics = semlint.lint_path(buildPath)
+        self.assertIn("SS2552", _codes(diagnostics))
+
+    def test_remote_dependency_warns_for_missing_integrity_cache_and_lock(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            buildPath = self._write_complete_project(
+                Path(tempDir),
+                extraRows=(
+                    "dependency todoTui semstd github.com/example/semstd main\n"
+                    "dependencyFetch todoTui semstd github example/semstd main\n"
+                ),
+            )
+            diagnostics = semlint.lint_path(buildPath)
+        codes = _codes(diagnostics)
+        self.assertIn("SS2553", codes)
+        self.assertIn("SS2554", codes)
+        self.assertIn("SS2555", codes)
 
 
 # ==========================================================================
@@ -705,6 +1018,146 @@ importModule app.missing
             diagnostics = semlint.lint_path(modulePath)
         self.assertIn("SS2504", _codes(diagnostics))
 
+    def test_standard_html_import_is_allowed_in_registered_module(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            (root / "build.sem").write_text("""buildProject todoTui
+registerModule todoTui app.todo "."
+mainFile todoTui "main.sem"
+""", encoding="utf-8")
+            modulePath = root / "main.sem"
+            modulePath.write_text("""module app.todo
+importModule html standard.html
+htmlTemplate CardTemplate
+htmlArg CardTemplate titleText HtmlText
+htmlBody CardTemplate
+  <h1>{htmlArg.titleText}</h1>
+storage module immutable titleText HtmlText "Title"
+operation main
+output main HtmlDocument
+purpose main "hydrate through the imported standard.html namespace"
+call hydrateCardCall html.hydrate.CardTemplate
+arg hydrateCardCall titleText titleText
+run hydrateCardCall
+bind cardHtml HtmlDocument hydrateCardCall
+returnValue cardHtml
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(modulePath)
+        self.assertNotIn("SS2504", _codes(diagnostics))
+        self.assertNotIn("SS2534", _codes(diagnostics))
+
+    def test_standard_import_uses_env_std_path_outside_repo(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            customStd = root / "custom-std"
+            (customStd / "customlint").mkdir(parents=True)
+            (customStd / "module.sem").write_text("""module standard
+modulePurpose standard "Temporary std relay for linter tests."
+moduleOwns standard "The standard.customlint relay import."
+moduleDoesNotOwn standard "Bundled standard-library modules."
+moduleInvariant standard "This fixture proves env-configured std discovery."
+importModule standard.customlint
+""", encoding="utf-8")
+            (customStd / "customlint" / "main.sem").write_text(
+                """module standard.customlint
+modulePurpose standard.customlint "Temporary custom std module."
+moduleOwns standard.customlint "The customLintVersionText export."
+moduleDoesNotOwn standard.customlint "Application code."
+moduleInvariant standard.customlint "The module is visible only through SEMANTICSCRIPT_STD_PATH."
+exportConstant standard.customlint customLintVersionText
+storage module immutable customLintVersionText CNullTerminatedByteString "custom"
+""", encoding="utf-8")
+            appRoot = root / "app"
+            appRoot.mkdir()
+            (appRoot / "build.sem").write_text("""buildProject appProject
+registerModule appProject app.consumer "main.sem"
+mainFile appProject "main.sem"
+""", encoding="utf-8")
+            modulePath = appRoot / "main.sem"
+            modulePath.write_text("""module app.consumer
+importModule custom standard.customlint
+importConstant importedCustomText custom customLintVersionText
+storage module immutable okCode ExitCode 0
+operation main
+output main ExitCode
+purpose main "prove linter resolves std from env path"
+returnValue okCode
+""", encoding="utf-8")
+            oldEnv = os.environ.get("SEMANTICSCRIPT_STD_PATH")
+            os.environ["SEMANTICSCRIPT_STD_PATH"] = str(customStd)
+            try:
+                diagnostics = semlint.lint_path(modulePath)
+            finally:
+                if oldEnv is None:
+                    os.environ.pop("SEMANTICSCRIPT_STD_PATH", None)
+                else:
+                    os.environ["SEMANTICSCRIPT_STD_PATH"] = oldEnv
+        self.assertNotIn("SS2504", _codes(diagnostics))
+        self.assertNotIn("SS2534", _codes(diagnostics))
+
+    def test_stdlib_module_relay_is_clean_and_exposes_standard_modules(self) -> None:
+        semanticScriptRoot = Path(_LINTER_DIRECTORY).resolve().parent
+        relayPath = semanticScriptRoot / "std" / "module.sem"
+        diagnostics = semlint.lint_path(relayPath)
+        self.assertEqual([], _codes(diagnostics))
+        relayText = relayPath.read_text(encoding="utf-8")
+        canonicalModules = (
+            "array", "assert", "bit", "bool", "char", "compare", "constants",
+            "convert", "ctype", "errno", "errno_more", "gui", "html", "http",
+            "inttypes", "iso646", "json", "limits", "math", "math_float",
+            "memory", "numeric", "process", "random", "signal", "signal_more",
+            "sqlite", "sort", "stddef", "stdio", "stdlib", "string", "time",
+        )
+        for moduleName in canonicalModules:
+            self.assertIn(
+                f"importModule standard.{moduleName}",
+                relayText,
+            )
+            self.assertTrue(
+                (semanticScriptRoot / "std" / moduleName / "main.sem").is_file()
+            )
+            self.assertTrue(
+                (semanticScriptRoot / "std" / moduleName / "main.test.sem").is_file()
+            )
+
+    def test_standard_http_and_json_imports_allow_intrinsic_targets(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            (root / "build.sem").write_text("""buildProject runtimeImports
+registerModule runtimeImports app.runtime_imports "main.sem"
+mainFile runtimeImports "main.sem"
+""", encoding="utf-8")
+            modulePath = root / "main.sem"
+            modulePath.write_text("""module app.runtime_imports
+importModule http standard.http
+importModule json standard.json
+importCapability importedHttpResponseWriter http httpResponseWriter
+storage module immutable okBody CNullTerminatedByteString "ok"
+storage module immutable plainType CNullTerminatedByteString "text/plain; charset=utf-8"
+storage module immutable builderCapacity CByteCount 128
+operation main
+output main Void
+effect main write http.response
+useCapability main importedHttpResponseWriter
+memoryHeap main yes
+purpose main "prove official stdlib imports do not hide compiler-owned http/json intrinsic targets"
+call writeCall http.responseText
+arg writeCall status 200
+arg writeCall body okBody
+arg writeCall contentType plainType
+run writeCall
+ignoreValue writeCall CSignedInt32
+call createBuilderCall json.createBuilder
+arg createBuilderCall capacity builderCapacity
+run createBuilderCall
+ignoreValue createBuilderCall JsonBuilder
+returnVoid
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(modulePath)
+        codes = _codes(diagnostics)
+        self.assertNotIn("SS2504", codes)
+        self.assertNotIn("SS2534", codes)
+
     def test_missing_registered_module_source_is_flagged(self) -> None:
         with TemporaryDirectory() as tempDir:
             buildPath = Path(tempDir) / "build.sem"
@@ -714,6 +1167,472 @@ mainFile todoTui "main.sem"
 """, encoding="utf-8")
             diagnostics = semlint.lint_path(buildPath)
         self.assertIn("SS2501", _codes(diagnostics))
+
+    def test_duplicate_export_is_flagged(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            (root / "build.sem").write_text("""buildProject todoTui
+registerModule todoTui app.todo "."
+mainFile todoTui "main.sem"
+""", encoding="utf-8")
+            modulePath = root / "main.sem"
+            modulePath.write_text("""module app.todo
+exportOperation app.todo main
+exportOperation app.todo main
+operation main
+output main Void
+purpose main "smoke"
+returnVoid
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(modulePath)
+        self.assertIn("SS2507", _codes(diagnostics))
+
+    def test_mutable_storage_export_is_flagged(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            (root / "build.sem").write_text("""buildProject todoTui
+registerModule todoTui app.todo "."
+mainFile todoTui "main.sem"
+""", encoding="utf-8")
+            modulePath = root / "main.sem"
+            modulePath.write_text("""module app.todo
+exportConstant app.todo mutableRevision
+storage module mutable mutableRevision I64 0
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(modulePath)
+        self.assertIn("SS2508", _codes(diagnostics))
+
+    def test_local_storage_export_is_flagged(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            (root / "build.sem").write_text("""buildProject todoTui
+registerModule todoTui app.todo "."
+mainFile todoTui "main.sem"
+""", encoding="utf-8")
+            modulePath = root / "main.sem"
+            modulePath.write_text("""module app.todo
+exportConstant app.todo scratchLimit
+operation main
+output main Void
+purpose main "smoke"
+storage local immutable scratchLimit I64 5
+returnVoid
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(modulePath)
+        self.assertIn("SS2509", _codes(diagnostics))
+
+    def test_private_operation_from_imported_module_is_flagged(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            (root / "build.sem").write_text("""buildProject appProject
+registerModule appProject app.consumer "main.sem"
+registerModule appProject app.provider "provider.sem"
+mainFile appProject "main.sem"
+""", encoding="utf-8")
+            (root / "provider.sem").write_text("""module app.provider
+operation hiddenProviderOperation
+output hiddenProviderOperation Void
+purpose hiddenProviderOperation "provider internal"
+returnVoid
+""", encoding="utf-8")
+            consumerPath = root / "main.sem"
+            consumerPath.write_text("""module app.consumer
+importModule app.provider
+operation main
+output main Void
+purpose main "consumer"
+call providerCall hiddenProviderOperation
+run providerCall
+returnVoid
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(consumerPath)
+        self.assertIn("SS2510", _codes(diagnostics))
+
+    def test_export_contract_tape_extracts_operation_edges(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            modulePath = Path(tempDir) / "main.sem"
+            modulePath.write_text("""module app.todo
+exportError app.todo MainError
+exportOperation app.todo main
+error MainError
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+capability stdoutWriter console.stdout write
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+useCapability main stdoutWriter
+memory main heap no
+async main no
+purpose main "public console entry"
+returnOk 0
+""", encoding="utf-8")
+            facts = semlint.gather_extended(semlint.parse_file(modulePath))
+            tape = semlint.build_export_contract_tape(facts)
+        edgeKinds = {edge.edgeKind for edge in tape}
+        self.assertIn("operation.input", edgeKinds)
+        self.assertIn("operation.output", edgeKinds)
+        self.assertIn("operation.effect", edgeKinds)
+        self.assertIn("operation.failureType", edgeKinds)
+        self.assertIn("operation.failureCase", edgeKinds)
+        self.assertTrue(all(edge.line.number > 0 for edge in tape))
+
+    def test_export_contract_tape_extracts_type_error_capability_and_constant_edges(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            modulePath = Path(tempDir) / "main.sem"
+            modulePath.write_text("""module app.todo
+exportType app.todo TodoStatus
+exportType app.todo TodoItem
+exportError app.todo TodoError
+exportCapability app.todo todoWriter
+exportConstant app.todo maxTodoCount
+enum TodoStatus repr CSignedInt32
+enumCase TodoStatus openTodoStatus 0
+record TodoItem
+field TodoItem title CNullTerminatedByteString
+error TodoError
+errorCase TodoError SaveFailed SaveTodosFailure
+capability todoWriter todo write
+storage module immutable maxTodoCount I64 128
+""", encoding="utf-8")
+            facts = semlint.gather_extended(semlint.parse_file(modulePath))
+            tape = semlint.build_export_contract_tape(facts)
+        edgeKinds = {edge.edgeKind for edge in tape}
+        self.assertIn("type.enumCase", edgeKinds)
+        self.assertIn("type.field", edgeKinds)
+        self.assertIn("error.case", edgeKinds)
+        self.assertIn("capability.authority", edgeKinds)
+        self.assertIn("constant.value", edgeKinds)
+
+    def test_exported_operation_quality_diagnostics(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            (root / "build.sem").write_text("""buildProject todoTui
+registerModule todoTui app.todo "."
+mainFile todoTui "main.sem"
+""", encoding="utf-8")
+            modulePath = root / "main.sem"
+            modulePath.write_text("""module app.todo
+exportOperation app.todo helper
+operation helper
+output helper Void
+call writeCall console.writeLine
+run writeCall
+returnVoid
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(modulePath)
+        codes = _codes(diagnostics)
+        self.assertIn("SS2511", codes)
+        self.assertIn("SS2512", codes)
+        self.assertIn("SS2513", codes)
+        self.assertIn("SS2514", codes)
+
+
+class TestProjectModuleImports(unittest.TestCase):
+    def _write_project(self, root: Path) -> Path:
+        (root / "build.sem").write_text("""buildProject appProject
+registerModule appProject app.consumer "main.sem"
+registerModule appProject app.provider "provider.sem"
+registerModule appProject app.other "other.sem"
+mainFile appProject "main.sem"
+""", encoding="utf-8")
+        (root / "provider.sem").write_text("""module app.provider
+exportType app.provider ProviderCount
+exportError app.provider ProviderError
+exportCapability app.provider providerReader
+exportConstant app.provider providerLimit
+exportConstant app.provider mutableCounter
+exportOperation app.provider providerPing
+exportOperation app.provider providerCount
+type ProviderCount I64
+error ProviderError
+errorCase ProviderError Failed ProviderFailure
+capability providerReader provider read
+storage module immutable providerLimit I64 7
+storage module mutable mutableCounter I64 0
+operation providerPing
+output providerPing Void
+purpose providerPing "public provider ping"
+returnVoid
+operation providerCount
+input providerCount count I64
+output providerCount Result I64 ProviderError
+effect providerCount read provider
+useCapability providerCount providerReader
+purpose providerCount "public provider count"
+returnOk count
+operation hiddenProviderOperation
+output hiddenProviderOperation Void
+purpose hiddenProviderOperation "provider internal"
+returnVoid
+""", encoding="utf-8")
+        (root / "other.sem").write_text("""module app.other
+exportOperation app.other providerPing
+operation providerPing
+output providerPing Void
+purpose providerPing "other public ping"
+returnVoid
+""", encoding="utf-8")
+        return root / "main.sem"
+
+    def test_import_contract_index_carries_exported_contract_edges(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            consumerPath = self._write_project(root)
+            consumerPath.write_text("""module app.consumer
+importModule svc app.provider
+operation main
+output main Void
+purpose main "consumer"
+returnVoid
+""", encoding="utf-8")
+            facts = semlint.gather_extended(semlint.parse_file(consumerPath))
+            index = semlint.build_import_contract_index(facts)
+        self.assertIn("svc.providerCount", index.qualifiedSymbols)
+        self.assertIn("svc.ProviderCount", index.qualifiedSymbols)
+        self.assertIn("svc.ProviderError", index.qualifiedSymbols)
+        self.assertIn("svc.providerReader", index.qualifiedSymbols)
+        self.assertIn("svc.providerLimit", index.qualifiedSymbols)
+        edgeKinds = {
+            edge.edgeKind
+            for edge in index.qualifiedSymbols["svc.providerCount"].edges
+        }
+        self.assertIn("operation.input", edgeKinds)
+        self.assertIn("operation.output", edgeKinds)
+        self.assertIn("operation.effect", edgeKinds)
+
+    def test_qualified_operation_call_happy_path(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            consumerPath = self._write_project(root)
+            consumerPath.write_text("""module app.consumer
+importModule svc app.provider
+operation main
+output main Void
+purpose main "consumer"
+call providerCall svc.providerPing
+run providerCall
+returnVoid
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(consumerPath)
+        codes = _codes(diagnostics)
+        self.assertNotIn("SS2534", codes)
+        self.assertNotIn("SS2537", codes)
+
+    def test_singular_operation_type_error_capability_and_constant_imports(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            consumerPath = self._write_project(root)
+            consumerPath.write_text("""module app.consumer
+importModule svc app.provider
+importOperation countProvider svc providerCount
+importType LocalProviderCount svc ProviderCount
+importError LocalProviderError svc ProviderError
+importCapability LocalProviderReader svc providerReader
+importConstant LocalProviderLimit svc providerLimit
+operation main
+output main Result LocalProviderCount LocalProviderError
+effect main read provider
+useCapability main LocalProviderReader
+purpose main "consumer"
+call providerCall countProvider
+arg providerCall count LocalProviderLimit
+run providerCall
+bindOk count LocalProviderCount providerCall
+bindError providerError LocalProviderError providerCall
+branchIfError providerCall providerFailed
+returnOk count
+label providerFailed
+returnError providerError
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(consumerPath)
+        codes = _codes(diagnostics)
+        self.assertNotIn("SS2533", codes)
+        self.assertNotIn("SS2534", codes)
+        self.assertNotIn("SS4103", codes)
+        self.assertNotIn("SS4105", codes)
+        self.assertNotIn("SS4301", codes)
+
+    def test_imported_operation_signature_checks_arguments(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            consumerPath = self._write_project(root)
+            consumerPath.write_text("""module app.consumer
+importModule svc app.provider
+importOperation countProvider svc providerCount
+const wrongCount CNullTerminatedByteString "wrong"
+operation main
+output main Void
+purpose main "consumer"
+call providerCall countProvider
+arg providerCall count wrongCount
+run providerCall
+returnVoid
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(consumerPath)
+        self.assertIn("SS4301", _codes(diagnostics))
+
+    def test_imported_operation_effect_must_be_redeclared_by_caller(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            consumerPath = self._write_project(root)
+            consumerPath.write_text("""module app.consumer
+importModule svc app.provider
+const countValue I64 1
+operation main
+output main Void
+purpose main "consumer"
+call providerCall svc.providerCount
+arg providerCall count countValue
+run providerCall
+returnVoid
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(consumerPath)
+        matching = _diagnostics_with_code(diagnostics, "SS2542")[0]
+        self.assertFalse(matching.blocksCompile)
+        self.assertEqual(matching.gapEdge, "callerEffectContract")
+
+    def test_imported_operation_effect_can_be_declared_broadly(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            consumerPath = self._write_project(root)
+            consumerPath.write_text("""module app.consumer
+importModule svc app.provider
+const countValue I64 1
+operation main
+output main Void
+effect main read provider
+purpose main "consumer"
+call providerCall svc.providerCount
+arg providerCall count countValue
+run providerCall
+returnVoid
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(consumerPath)
+        self.assertNotIn("SS2542", _codes(diagnostics))
+
+    def test_private_qualified_operation_is_rejected(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            consumerPath = self._write_project(root)
+            consumerPath.write_text("""module app.consumer
+importModule svc app.provider
+operation main
+output main Void
+purpose main "consumer"
+call providerCall svc.hiddenProviderOperation
+run providerCall
+returnVoid
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(consumerPath)
+        self.assertIn("SS2534", _codes(diagnostics))
+
+    def test_qualified_mutable_storage_constant_is_rejected(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            consumerPath = self._write_project(root)
+            consumerPath.write_text("""module app.consumer
+importModule svc app.provider
+operation main
+output main Void
+purpose main "consumer"
+call providerCall svc.providerCount
+arg providerCall count svc.mutableCounter
+run providerCall
+returnVoid
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(consumerPath)
+        self.assertIn("SS2541", _codes(diagnostics))
+
+    def test_alias_collision_is_rejected(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            consumerPath = self._write_project(root)
+            consumerPath.write_text("""module app.consumer
+importModule svc app.provider
+importModule svc app.other
+operation main
+output main Void
+purpose main "consumer"
+returnVoid
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(consumerPath)
+        self.assertIn("SS2531", _codes(diagnostics))
+
+    def test_wildcard_singular_import_is_rejected(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            consumerPath = self._write_project(root)
+            consumerPath.write_text("""module app.consumer
+importModule svc app.provider
+importOperation * svc providerPing
+operation main
+output main Void
+purpose main "consumer"
+returnVoid
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(consumerPath)
+        self.assertIn("SS2532", _codes(diagnostics))
+
+    def test_ambiguous_unqualified_import_reference_is_rejected(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            consumerPath = self._write_project(root)
+            consumerPath.write_text("""module app.consumer
+importModule svc app.provider
+importModule other app.other
+operation main
+output main Void
+purpose main "consumer"
+call providerCall providerPing
+run providerCall
+returnVoid
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(consumerPath)
+        self.assertIn("SS2536", _codes(diagnostics))
+
+    def test_implicit_singular_import_is_rejected(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            consumerPath = self._write_project(root)
+            consumerPath.write_text("""module app.consumer
+importModule svc app.provider
+operation main
+output main Void
+purpose main "consumer"
+call providerCall providerCount
+arg providerCall count providerLimit
+run providerCall
+returnVoid
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(consumerPath)
+        self.assertIn("SS2537", _codes(diagnostics))
+
+    def test_import_cycle_is_rejected(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            (root / "build.sem").write_text("""buildProject appProject
+registerModule appProject app.a "a.sem"
+registerModule appProject app.b "b.sem"
+mainFile appProject "a.sem"
+""", encoding="utf-8")
+            aPath = root / "a.sem"
+            aPath.write_text("""module app.a
+importModule b app.b
+operation main
+output main Void
+purpose main "a"
+returnVoid
+""", encoding="utf-8")
+            (root / "b.sem").write_text("""module app.b
+importModule a app.a
+operation helper
+output helper Void
+purpose helper "b"
+returnVoid
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(aPath)
+        self.assertIn("SS2540", _codes(diagnostics))
 
 
 # ==========================================================================
