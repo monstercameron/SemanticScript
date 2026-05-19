@@ -9,3 +9,7 @@ layers, not vendored third-party source.
 - `native_sqlite/` contains the embedded SQLite runtime ABI surface. It keeps
   generated SemanticScript callers isolated from the vendored SQLite header and
   implementation details.
+- `native_win32_gui/` contains the initial desktop GUI runtime adapter. It
+  exposes a small backend-neutral `ss_gui_*` C ABI over lowered application,
+  window, control, and event-edge config tables, with HWND details kept inside
+  the Win32 implementation.
