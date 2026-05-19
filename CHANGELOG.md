@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-05-19
+
+- `5252146e7773e8be90968cb160510627803735e1` - `docs: refresh README pitch`
+  - Reworks the root README around the SemanticScript sell, benefits by role, current executable apps, more syntax examples, and the context maxxing design concept while removing stale retired `const` / `var` examples and dead documentation references.
+- `df1e2c80b6027243f358d993e8207569860949d4` - `app: add todo web structured logging`
+  - Imports `standard.log` in Todo Web Pro, initializes `logs/log.log` during server bootstrap, and records structured app events for startup, register/login/logout, and todo create/complete/uncomplete/delete flows.
+- `0c44e9fe42a3c3069e93b8f5156f297729defdea` - `stdlib: add structured log module`
+  - Adds the pure SemanticScript `standard.log` module with append-mode file logging, JSON-line envelope helpers, info/warn/error shorthands, JSON string escaping, exported status constants, and a compiler import-context fix so `webServer` declarations are not mis-attributed after importing stdlib modules.
+
 ## 2026-05-18
 
 - `b51bb28cea1a50c5fbd66c2e1b090621951821d3` - `runtime: keep access logging out of native HTTP`
