@@ -2,6 +2,12 @@
 
 ## 2026-05-18
 
+- `43d24ca8780bfe85404db506c122986849a9779d` - `app: expand todo web dashboard flow`
+  - Adds the Todo Web Pro dashboard shell, reusable HTML component module, dashboard JavaScript, login flow, logout/session validation coverage, todo create/list/complete/uncomplete/delete flows, seeded demo data under `sql/schema.sql`, and expanded end-to-end route tests.
+- `aebc47b52b5d4966d8b0d1923d0e2cd0bed02809` - `app: add SemanticScript kilo port`
+  - Adds a native-executable SemanticScript port of antirez/kilo with editor row storage, file load/save, rendering, navigation, search, tab handling, JavaScript highlighting, parity notes, and executable smoke coverage under `app/Kilo_port/`.
+- `fccfbcb2213240f586356558fd7880cc7372e96b` - `runtime: extend native app support surfaces`
+  - Adds generic native terminal runtime support and compiler/linter registration for terminal calls, extends native HTTP with form-field parsing, not-found fallback handlers, structured request logging support, adds a native log runtime adapter, improves backend error excerpts, and introduces `buildConstant` build-tape values for shared app configuration.
 - `3d0541d8e0bd6c9aa318f008a29d5c6e7b9ba0b8` - `app: seed todo web demo data`
   - Seeds the Todo Web Pro SQLite schema with a demo user and sample todos and updates the schema literal byte count so the app can compile the expanded schema asset consistently.
 - `0c8fdc92ad078c76da1fbde97d4fd91437dcdfae` - `app: serve todo web home assets`
