@@ -224,12 +224,12 @@ requiring a separate linter invocation.
   - [x] Validate keyword positions such as `ok`, `error`, and `else`.
   - [x] Preserve source line information for generated diagnostics.
 - [ ] Add compiler validation for fallible targets in strict mode.
-  - [ ] Reject plain `run` for known fallible targets in strict mode.
+  - [x] Reject plain `run` for known fallible targets in strict mode.
   - [x] Reject plain `run` for Result-shaped SQLite prepare in strict mode.
-  - [ ] Require `runChecked` or an explicitly accepted legacy checked pattern
+  - [x] Require `runChecked` or an explicitly accepted legacy checked pattern
         for every known fallible target.
   - [x] Accept the legacy checked pattern for Result-shaped fallible calls.
-  - [ ] Reject unchecked explicit-disposition targets such as heap allocation
+  - [x] Reject unchecked explicit-disposition targets such as heap allocation
         and native HTTP response writers.
   - [ ] Reject `bindError` without a corresponding branch in strict mode.
   - [ ] Reject `branchIfError` on targets that the shared table marks
