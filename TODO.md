@@ -1573,7 +1573,7 @@ would fail under a no-op lowering.
         literal that includes `{` / `:` / `,`).
   - [x] Recommend `json.stringify.<TypeName>` or
         `json.serializeDocument` as the safe replacement.
-- [ ] Re-run `python SemanticScript/linter/test_semlint.py` after each new
+- [x] Re-run `python SemanticScript/linter/test_semlint.py` after each new
       rule to confirm zero regressions.
 
 #### SYNTAX.md Rows
@@ -1637,13 +1637,13 @@ would fail under a no-op lowering.
 - [ ] Add `json.stringify` / `json.parse` round-trip tests, one per
       primitive and one per record codec; each deep-audit asserts the
       lowered behavior cannot be a no-op.
-- [ ] Confirm zero XFAIL change in
+- [x] Confirm zero XFAIL change in
       `python SemanticScript/tests/feature_coverage.py` after each batch.
 
 #### Documentation
 
 - [x] Update `docs/reference/verb-index.md` with every new `json.*` verb.
-- [ ] Update `docs/language/operations-dataflow.md` with the end-to-end
+- [x] Update `docs/language/operations-dataflow.md` with the end-to-end
       CRUD example matching the design's `renameFirstTodoHandler` flow.
 - [x] Add `docs/language/json-crud.md` describing the document lifecycle,
       cursor invalidation contract, path grammar, and stringify/parse

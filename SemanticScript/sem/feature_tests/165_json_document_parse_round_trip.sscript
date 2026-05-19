@@ -1,6 +1,5 @@
 # expect.stdout: parsed json\n{"count":2}\n
 # expect.exit: 0
-# expect.xfail: bootstrap compiler does not lower json.createDocument yet.
 languageMode permissiveExecutable
 project JsonDocumentParseRoundTrip
 target console

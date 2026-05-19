@@ -3103,7 +3103,7 @@ effect findStringConstSlotByName read memory.buffer
 memory findStringConstSlotByName heap no
 memory findStringConstSlotByName stack max 4KiB
 async findStringConstSlotByName no
-purpose findStringConstSlotByName "Find which @.sN slot a given `const NAME String|CNullTerminatedByteString \"...\"` declaration maps to. Returns the zero-based count of string-const declarations appearing in the source before (and including) the matching NAME, minus one. Returns -1 when no matching declaration exists."
+purpose findStringConstSlotByName "Find which @.sN slot a quoted const/var declaration maps to. This mirrors pass1, which emits a string constant for any quoted initializer, including JsonText and JsonPath aliases. Returns the zero-based count of emitted string constants before the matching NAME. Returns -1 when no matching quoted declaration exists."
 invariant findStringConstSlotByName "Slot count exactly matches pass1's @.s<N> emission counter."
 
 label startFindStringConstSlotByName
@@ -3217,7 +3217,7 @@ arg slotTypeIsCStringCall keywordLength cstringTypeNameLength
 run slotTypeIsCStringCall
 bindOk slotTypeIsCString Bool slotTypeIsCStringCall
 branchIf slotTypeIsCString slotMaybeStringConst
-branch advanceSlotScanCursor
+branch slotMaybeStringConst
 
 label slotMaybeStringConst
 # For const X TYPE "...": TYPE ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ String/CString implies a literal.
@@ -7991,6 +7991,8 @@ const targetJsonStringifyBool CNullTerminatedByteString "json.stringify.Bool"
 const targetJsonStringifyBoolLength CByteCount 19
 const targetJsonParseBool CNullTerminatedByteString "json.parse.Bool"
 const targetJsonParseBoolLength CByteCount 15
+const targetJsonCreateDocument CNullTerminatedByteString "json.createDocument"
+const targetJsonCreateDocumentLength CByteCount 19
 const targetJsonCreateEmptyDocument CNullTerminatedByteString "json.createEmptyDocument"
 const targetJsonCreateEmptyDocumentLength CByteCount 24
 const targetJsonDocumentRoot CNullTerminatedByteString "json.documentRoot"
@@ -8073,6 +8075,16 @@ arg probeIsJsonParseBoolCall keywordLength targetJsonParseBoolLength
 run probeIsJsonParseBoolCall
 bindOk probeIsJsonParseBool Bool probeIsJsonParseBoolCall
 branchIf probeIsJsonParseBool emitJsonParseBoolRun
+branch probeJsonCreateDocument
+
+label probeJsonCreateDocument
+call probeIsJsonCreateDocumentCall lineStartsWithKeyword
+arg probeIsJsonCreateDocumentCall linePointer runTargetPointer
+arg probeIsJsonCreateDocumentCall keyword targetJsonCreateDocument
+arg probeIsJsonCreateDocumentCall keywordLength targetJsonCreateDocumentLength
+run probeIsJsonCreateDocumentCall
+bindOk probeIsJsonCreateDocument Bool probeIsJsonCreateDocumentCall
+branchIf probeIsJsonCreateDocument emitJsonCreateDocumentRun
 branch probeJsonCreateEmptyDocument
 
 label probeJsonCreateEmptyDocument
@@ -10539,6 +10551,73 @@ arg emitJsonParseBoolCall p2 jpBoolCallNamePointer
 arg emitJsonParseBoolCall n3 pendingCallNameLength
 arg emitJsonParseBoolCall p3 jpBoolCallNamePointer
 run emitJsonParseBoolCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitJsonCreateDocumentRun
+call jcdCallNamePtrCall pointer.offset
+arg jcdCallNamePtrCall base bufferBase
+arg jcdCallNamePtrCall offset pendingCallNameStartOffset
+run jcdCallNamePtrCall
+bind jcdCallNamePointer COpaqueMemoryAddress jcdCallNamePtrCall
+
+call jcdJsonPtrCall pointer.offset
+arg jcdJsonPtrCall base bufferBase
+arg jcdJsonPtrCall offset pendingCallArg1ValueStartOffset
+run jcdJsonPtrCall
+bind jcdJsonPointer COpaqueMemoryAddress jcdJsonPtrCall
+
+call jcdCapacityPtrCall pointer.offset
+arg jcdCapacityPtrCall base bufferBase
+arg jcdCapacityPtrCall offset pendingCallArg2ValueStartOffset
+run jcdCapacityPtrCall
+bind jcdCapacityPointer COpaqueMemoryAddress jcdCapacityPtrCall
+
+call jcdJsonSlotCall findStringConstSlotByName
+arg jcdJsonSlotCall bufferBase bufferBase
+arg jcdJsonSlotCall bufferEndOffset bufferEndOffset
+arg jcdJsonSlotCall targetNamePointer jcdJsonPointer
+arg jcdJsonSlotCall targetNameLength pendingCallArg1ValueLength
+run jcdJsonSlotCall
+bindOk jcdJsonSlot CSignedInt64 jcdJsonSlotCall
+
+call jcdJsonSizeCall findStringConstByteLengthByName
+arg jcdJsonSizeCall bufferBase bufferBase
+arg jcdJsonSizeCall bufferEndOffset bufferEndOffset
+arg jcdJsonSizeCall targetNamePointer jcdJsonPointer
+arg jcdJsonSizeCall targetNameLength pendingCallArg1ValueLength
+run jcdJsonSizeCall
+bindOk jcdJsonSize CSignedInt64 jcdJsonSizeCall
+
+call jcdCapacityConstCall findConstIntegerValueByNameAfterOffset
+arg jcdCapacityConstCall bufferBase bufferBase
+arg jcdCapacityConstCall bufferEndOffset bufferEndOffset
+arg jcdCapacityConstCall searchStartOffset operationBodyStartOffset
+arg jcdCapacityConstCall targetNamePointer jcdCapacityPointer
+arg jcdCapacityConstCall targetNameLength pendingCallArg2ValueLength
+run jcdCapacityConstCall
+bindOk jcdCapacityValue CSignedInt64 jcdCapacityConstCall
+
+const jsonCreateDocumentFmt CNullTerminatedByteString "  %%%.*s_slot = alloca i8*\n  store i8* null, i8** %%%.*s_slot\n  %%%.*s_status = call i32 @ss_json_document_create_from_text(i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0), i64 %lld, i8** %%%.*s_slot)\n  %%%.*s_res = load i8*, i8** %%%.*s_slot\n"
+call emitJsonCreateDocumentCall c.printf
+arg emitJsonCreateDocumentCall format jsonCreateDocumentFmt
+arg emitJsonCreateDocumentCall n1 pendingCallNameLength
+arg emitJsonCreateDocumentCall p1 jcdCallNamePointer
+arg emitJsonCreateDocumentCall n2 pendingCallNameLength
+arg emitJsonCreateDocumentCall p2 jcdCallNamePointer
+arg emitJsonCreateDocumentCall n3 pendingCallNameLength
+arg emitJsonCreateDocumentCall p3 jcdCallNamePointer
+arg emitJsonCreateDocumentCall js1 jcdJsonSize
+arg emitJsonCreateDocumentCall js2 jcdJsonSize
+arg emitJsonCreateDocumentCall jslot jcdJsonSlot
+arg emitJsonCreateDocumentCall cap jcdCapacityValue
+arg emitJsonCreateDocumentCall n4 pendingCallNameLength
+arg emitJsonCreateDocumentCall p4 jcdCallNamePointer
+arg emitJsonCreateDocumentCall n5 pendingCallNameLength
+arg emitJsonCreateDocumentCall p5 jcdCallNamePointer
+arg emitJsonCreateDocumentCall n6 pendingCallNameLength
+arg emitJsonCreateDocumentCall p6 jcdCallNamePointer
+run emitJsonCreateDocumentCall
 set blockNeedsTerminator oneFlagValue
 branch emitBindRenameForCall
 
@@ -20396,6 +20475,11 @@ const irExternAtoll CNullTerminatedByteString "declare i64 @atoll(i8*)"
 call writeIrExternAtollCall c.puts
 arg writeIrExternAtollCall text irExternAtoll
 run writeIrExternAtollCall
+
+const irExternJsonCreateFromText CNullTerminatedByteString "declare i32 @ss_json_document_create_from_text(i8*, i64, i8**)"
+call writeIrExternJsonCreateFromTextCall c.puts
+arg writeIrExternJsonCreateFromTextCall text irExternJsonCreateFromText
+run writeIrExternJsonCreateFromTextCall
 
 const irExternJsonCreateEmpty CNullTerminatedByteString "declare i32 @ss_json_document_create_empty(i64, i32, i8**)"
 call writeIrExternJsonCreateEmptyCall c.puts

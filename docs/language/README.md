@@ -42,8 +42,8 @@ time-related syntax, and planned native HTTP API shape.
   guard tokens, and pointer primitives.
 - [records-codecs-boundaries.md](records-codecs-boundaries.md) covers records,
   builders, JSON codecs, and trust boundaries.
-- [json-crud.md](json-crud.md) describes the planned native JSON document CRUD
-  API, cursor invalidation contract, path grammar, `jsonBody`, and typed
+- [json-crud.md](json-crud.md) describes the native JSON document CRUD API,
+  cursor invalidation contract, path grammar, `jsonBody`, and typed
   stringify/parse entry points.
 - [concurrency-time-cleanup.md](concurrency-time-cleanup.md) covers cleanup,
   retry, async, groups, channels, locks, and worker pools.

@@ -146,6 +146,97 @@ the source no longer has to carry a fake `CSignedInt32` value just to satisfy th
 ABI. `returnVoid` is rejected on non-Void outputs; non-Void operations should
 continue to use `returnValue`, `returnOk`, or `returnError` as appropriate.
 
+## JSON CRUD Dataflow
+
+JSON document calls follow the same call lifecycle. Parse or create a
+`JsonDocument`, bind the root cursor, navigate to child cursors with fallible
+calls, branch on access errors before using the cursor, mutate the tree, then
+serialize through caller-owned scratch storage.
+
+```semanticscript
+operation renameFirstTodoHandler
+input renameFirstTodoHandler requestBody JsonText
+input renameFirstTodoHandler scratch JsonScratchBuffer
+output renameFirstTodoHandler Result JsonText JsonAccessError
+effect renameFirstTodoHandler read json.document.tree
+effect renameFirstTodoHandler write json.document.tree
+
+const documentCapacity JsonCapacityBytes 4096
+const scratchCapacity JsonCapacityBytes 4096
+const todosPath JsonPath ".todos"
+const firstTodoIndex I64 0
+const titleField JsonFieldName "title"
+const replacementTitle JsonStringValue "ship json"
+
+call parseBodyCall json.createDocument
+arg parseBodyCall jsonText requestBody
+arg parseBodyCall capacityBytes documentCapacity
+run parseBodyCall
+bindOk document JsonDocument parseBodyCall
+bindError parseError JsonAccessError parseBodyCall
+branchIfError parseBodyCall parseFailed
+defer destroyDocumentDefer json.destroyDocument document
+
+call todosCursorCall json.cursorAtPath
+arg todosCursorCall document document
+arg todosCursorCall path todosPath
+run todosCursorCall
+bindOk todosCursor JsonCursor todosCursorCall
+bindError todosCursorError JsonAccessError todosCursorCall
+branchIfError todosCursorCall todosCursorFailed
+
+call firstTodoCall json.arrayElementAt
+arg firstTodoCall document document
+arg firstTodoCall cursor todosCursor
+arg firstTodoCall index firstTodoIndex
+run firstTodoCall
+bindOk firstTodoCursor JsonCursor firstTodoCall
+bindError firstTodoError JsonAccessError firstTodoCall
+branchIfError firstTodoCall firstTodoFailed
+
+call setTitleCall json.setObjectFieldString
+arg setTitleCall document document
+arg setTitleCall cursor firstTodoCursor
+arg setTitleCall fieldName titleField
+arg setTitleCall value replacementTitle
+run setTitleCall
+ignoreOk setTitleCall CSignedInt32
+bindError setTitleError JsonAccessError setTitleCall
+branchIfError setTitleCall setTitleFailed
+
+call serializeCall json.serializeDocument
+arg serializeCall document document
+arg serializeCall scratch scratch
+arg serializeCall scratchCapacity scratchCapacity
+run serializeCall
+bindOk responseJson JsonText serializeCall
+bindError serializeError JsonAccessError serializeCall
+branchIfError serializeCall serializeFailed
+
+returnOk responseJson
+
+label parseFailed
+returnError parseError
+
+label todosCursorFailed
+returnError todosCursorError
+
+label firstTodoFailed
+returnError firstTodoError
+
+label setTitleFailed
+returnError setTitleError
+
+label serializeFailed
+returnError serializeError
+```
+
+The important dataflow property is that every cursor produced by a fallible
+navigator is guarded before use. After structural mutations such as
+`removeArrayElementAt`, `clearObject`, or container-producing set/insert/replace
+calls, re-read any descendant cursor before consuming it again. `semlint` checks
+both patterns with `SS3620` and `SS3621`.
+
 ## Ignoring Results
 
 Ignoring a value is explicit:
