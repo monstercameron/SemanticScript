@@ -1521,7 +1521,7 @@ would fail under a no-op lowering.
 
 - [ ] Add `json.stringify.<TypeName>` dispatch in
       `SemanticScript/compiler/semsc.py`.
-  - [ ] For primitive `TypeName` (I64, Bool, F64, String,
+  - [x] For primitive `TypeName` (I64, Bool, F64, String,
         width-specific C ABI integers) reuse the existing
         `json.encode.<Primitive>` lowering at SYNTAX.md:428.
   - [ ] For record `TypeName` generate a field-by-field encoder that walks
@@ -1534,68 +1534,68 @@ would fail under a no-op lowering.
   - [ ] Surface `bindOk JsonText` / `bindError JsonEncodeError` at the
         call site.
 - [ ] Add `json.parse.<TypeName>` dispatch in `semsc.py`.
-  - [ ] Primitive: reuse `json.decode.<Primitive>` at SYNTAX.md:429.
+  - [x] Primitive: reuse `json.decode.<Primitive>` at SYNTAX.md:429.
   - [ ] Record: generate a field-by-field decoder that validates required
         fields, type-checks each field, applies `omit-when` defaults, and
         surfaces field-level failures through `JsonDecodeError`.
   - [ ] `JsonText`: validate JSON syntax and pass bytes through unchanged.
 - [ ] Add `recordFieldJsonOmitWhen` parser support if not already present;
       accept `empty`, `null`, `false`, `zero` policies.
-- [ ] Update SYNTAX.md:428 / :429 / :430 rows to cross-reference
+- [x] Update SYNTAX.md:428 / :429 / :430 rows to cross-reference
       `json.stringify.<TypeName>` and `json.parse.<TypeName>` as the
       recommended high-level entry points.
 
 #### semlint Rules
 
-- [ ] Add `SS3620 unguardedJsonAccess` to `SemanticScript/linter/semlint.py`.
-  - [ ] Flag any operation that consumes a `bindOk JsonCursor` from a
+- [x] Add `SS3620 unguardedJsonAccess` to `SemanticScript/linter/semlint.py`.
+  - [x] Flag any operation that consumes a `bindOk JsonCursor` from a
         fallible navigator without a `branchIfError` between the `run`
         and the first use of the cursor.
-  - [ ] Treat `json.documentRoot` as exempt (cannot fail).
-  - [ ] Add unit coverage in
+  - [x] Treat `json.documentRoot` as exempt (cannot fail).
+  - [x] Add unit coverage in
         `SemanticScript/linter/test_semlint.py`.
-- [ ] Add `SS3621 staleJsonCursor`.
-  - [ ] Track `JsonCursor` bindings across the operation body and warn
+- [x] Add `SS3621 staleJsonCursor`.
+  - [x] Track `JsonCursor` bindings across the operation body and warn
         when a cursor is read after a structural mutator on its document
         (full mutator list per the `typeInvariant JsonCursor` row).
-  - [ ] Surface a fix-it hint suggesting a fresh `objectFieldAt` /
+  - [x] Surface a fix-it hint suggesting a fresh `objectFieldAt` /
         `arrayElementAt` / `cursorAtPath` call.
-  - [ ] Add unit coverage with each structural-mutator case.
-- [ ] Add `SS3622 malformedJsonPath`.
-  - [ ] Parse every `JsonPath` literal at lint time and flag unmatched
+  - [x] Add unit coverage with each structural-mutator case.
+- [x] Add `SS3622 malformedJsonPath`.
+  - [x] Parse every `JsonPath` literal at lint time and flag unmatched
         `[`, empty `.` segments, unescaped dots inside field names, and
         non-numeric array indices.
-  - [ ] Block compilation when the literal is statically malformed so the
+  - [x] Block compilation when the literal is statically malformed so the
         diagnostic fires before the runtime sees the path.
-- [ ] Add `SS3623 unescapedJsonStringInterpolation`.
-  - [ ] Flag `c.snprintf` format strings that contain `%s` inside JSON
+- [x] Add `SS3623 unescapedJsonStringInterpolation`.
+  - [x] Flag `c.snprintf` format strings that contain `%s` inside JSON
         string content (heuristic: surrounded by `"` and embedded in a
         literal that includes `{` / `:` / `,`).
-  - [ ] Recommend `json.stringify.<TypeName>` or
+  - [x] Recommend `json.stringify.<TypeName>` or
         `json.serializeDocument` as the safe replacement.
 - [ ] Re-run `python SemanticScript/linter/test_semlint.py` after each new
       rule to confirm zero regressions.
 
 #### SYNTAX.md Rows
 
-- [ ] Add a row for the new `standard.json` types
+- [x] Add a row for the new `standard.json` types
       (`JsonDocument`, `JsonCursor`, `JsonPath`) mirroring SYNTAX.md:447.
-- [ ] Add a row for `JsonValueKind` next to `SqliteColumnType`.
-- [ ] Add a row for `JsonAccessError`, `JsonEncodeError`, `JsonDecodeError`.
-- [ ] Add a row for the document lifecycle calls (`json.createDocument`,
+- [x] Add a row for `JsonValueKind` next to `SqliteColumnType`.
+- [x] Add a row for `JsonAccessError`, `JsonEncodeError`, `JsonDecodeError`.
+- [x] Add a row for the document lifecycle calls (`json.createDocument`,
       `json.createEmptyDocument`, `json.destroyDocument`,
       `json.serializeDocument`, `json.documentLength`,
       `json.documentRoot`).
-- [ ] Add a row for the navigation calls (`json.objectFieldAt`,
+- [x] Add a row for the navigation calls (`json.objectFieldAt`,
       `json.arrayElementAt`, `json.cursorParent`, `json.cursorAtPath`).
-- [ ] Add a row grouping the cursor readers.
-- [ ] Add a row grouping the object mutators.
-- [ ] Add a row grouping the array mutators.
-- [ ] Add a row grouping the delete calls.
-- [ ] Add a row for `jsonBody NAME` describing the indented-island contract,
+- [x] Add a row grouping the cursor readers.
+- [x] Add a row grouping the object mutators.
+- [x] Add a row grouping the array mutators.
+- [x] Add a row grouping the delete calls.
+- [x] Add a row for `jsonBody NAME` describing the indented-island contract,
       noting it as the second indentation-sensitive exception after
       `htmlBody`.
-- [ ] Add a row for `json.stringify.<TypeName>` and `json.parse.<TypeName>`
+- [x] Add a row for `json.stringify.<TypeName>` and `json.parse.<TypeName>`
       as the high-level typed entry points.
 - [ ] Promote SYNTAX.md:430 from `Partial` to `Impl'd` once the record
       codec generator is live; verify with a feature_test per
