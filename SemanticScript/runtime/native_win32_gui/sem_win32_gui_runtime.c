@@ -20,6 +20,9 @@
 
 typedef struct SSGuiWindowState SSGuiWindowState;
 typedef struct SSGuiControlState SSGuiControlState;
+typedef struct SSGuiApplicationBuilder SSGuiApplicationBuilder;
+typedef struct SSGuiWindowBuilder SSGuiWindowBuilder;
+typedef struct SSGuiControlBuilder SSGuiControlBuilder;
 
 struct SSGuiWindowState {
     const SSGuiWindowConfig *config;
@@ -61,8 +64,38 @@ struct SSGuiEvent {
     int32_t cancel_close;
 };
 
+struct SSGuiControlBuilder {
+    SSGuiControlConfig config;
+    SSGuiEventConfig *events;
+    size_t event_count;
+    size_t event_capacity;
+};
+
+struct SSGuiWindowBuilder {
+    SSGuiWindowConfig config;
+    SSGuiControlBuilder **controls;
+    size_t control_count;
+    size_t control_capacity;
+};
+
+struct SSGuiApplicationBuilder {
+    char *title;
+    SSGuiWindowBuilder *main_window;
+};
+
 static LRESULT CALLBACK ss_gui_window_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
 static LRESULT CALLBACK ss_gui_control_subclass_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
+
+static char *ss_gui_strdup(const char *text) {
+    const char *source = text != NULL ? text : "";
+    size_t length = strlen(source);
+    char *copy = (char *)malloc(length + 1);
+    if (copy == NULL) {
+        return NULL;
+    }
+    memcpy(copy, source, length + 1);
+    return copy;
+}
 
 static int32_t normalize_layout(int32_t layout) {
     return layout == SS_GUI_WINDOW_LAYOUT_DEFAULT
@@ -1228,6 +1261,70 @@ int32_t ss_gui_list_box_clear(SSGuiSession *session, SSGuiControlId list_box_id)
     return SS_GUI_OK;
 }
 
+static SSGuiControlId ss_gui_control_id_from_handle(void *control_handle) {
+    SSGuiControlBuilder *control = (SSGuiControlBuilder *)control_handle;
+    return control != NULL ? control->config.id : 0;
+}
+
+static SSGuiWindowId ss_gui_window_id_from_handle(void *window_handle) {
+    SSGuiWindowBuilder *window = (SSGuiWindowBuilder *)window_handle;
+    return window != NULL ? window->config.id : 0;
+}
+
+const char *ss_gui_text_box_text_by_handle(SSGuiSession *session, void *text_box) {
+    return ss_gui_text_box_text(session, ss_gui_control_id_from_handle(text_box));
+}
+
+int32_t ss_gui_text_box_set_text_by_handle(
+    SSGuiSession *session,
+    void *text_box,
+    const char *text
+) {
+    return ss_gui_text_box_set_text(session, ss_gui_control_id_from_handle(text_box), text);
+}
+
+int32_t ss_gui_list_box_selected_index_by_handle(SSGuiSession *session, void *list_box) {
+    return ss_gui_list_box_selected_index(session, ss_gui_control_id_from_handle(list_box));
+}
+
+int32_t ss_gui_list_box_append_item_by_handle(
+    SSGuiSession *session,
+    void *list_box,
+    const char *text
+) {
+    return ss_gui_list_box_append_item(session, ss_gui_control_id_from_handle(list_box), text);
+}
+
+int32_t ss_gui_list_box_clear_by_handle(SSGuiSession *session, void *list_box) {
+    return ss_gui_list_box_clear(session, ss_gui_control_id_from_handle(list_box));
+}
+
+int32_t ss_gui_text_label_set_text_by_handle(
+    SSGuiSession *session,
+    void *text_label,
+    const char *text
+) {
+    SSGuiControlState *control = NULL;
+    int32_t status = ensure_control_kind(
+        session,
+        ss_gui_control_id_from_handle(text_label),
+        SS_GUI_CONTROL_TEXT_LABEL,
+        &control
+    );
+    wchar_t *wide_text;
+
+    if (status != SS_GUI_OK) {
+        return status;
+    }
+    wide_text = utf8_to_wide(text);
+    if (wide_text == NULL) {
+        return SS_GUI_ERR_ALLOCATION;
+    }
+    status = SetWindowTextW(control->hwnd, wide_text) ? SS_GUI_OK : SS_GUI_ERR_PLATFORM;
+    free(wide_text);
+    return status;
+}
+
 int32_t ss_gui_window_close(SSGuiSession *session, SSGuiWindowId window_id) {
     SSGuiWindowState *window;
     int32_t status = require_gui_thread(session);
@@ -1243,6 +1340,10 @@ int32_t ss_gui_window_close(SSGuiSession *session, SSGuiWindowId window_id) {
 
     DestroyWindow(window->hwnd);
     return SS_GUI_OK;
+}
+
+int32_t ss_gui_window_close_by_handle(SSGuiSession *session, void *window) {
+    return ss_gui_window_close(session, ss_gui_window_id_from_handle(window));
 }
 
 int32_t ss_gui_event_key_code(const SSGuiEvent *event) {
@@ -1267,6 +1368,230 @@ int32_t ss_gui_event_cancel_close(SSGuiEvent *event) {
     }
     event->cancel_close = 1;
     return SS_GUI_OK;
+}
+
+void *ss_gui_application_create(const char *title) {
+    SSGuiApplicationBuilder *application =
+        (SSGuiApplicationBuilder *)calloc(1, sizeof(SSGuiApplicationBuilder));
+    if (application == NULL) {
+        return NULL;
+    }
+    application->title = ss_gui_strdup(title != NULL ? title : "SemanticScript");
+    if (application->title == NULL) {
+        free(application);
+        return NULL;
+    }
+    return application;
+}
+
+void *ss_gui_window_create(
+    const char *title,
+    int32_t width,
+    int32_t height,
+    int32_t layout,
+    int32_t resizable
+) {
+    SSGuiWindowBuilder *window =
+        (SSGuiWindowBuilder *)calloc(1, sizeof(SSGuiWindowBuilder));
+    if (window == NULL) {
+        return NULL;
+    }
+    window->config.id = 1;
+    window->config.title = ss_gui_strdup(title != NULL ? title : "SemanticScript");
+    if (window->config.title == NULL) {
+        free(window);
+        return NULL;
+    }
+    window->config.width = width;
+    window->config.height = height;
+    window->config.minimum_width = width > 320 ? 320 : 0;
+    window->config.minimum_height = height > 180 ? 180 : 0;
+    window->config.layout = layout;
+    window->config.resizable = resizable;
+    return window;
+}
+
+static void *ss_gui_control_create(
+    int32_t kind,
+    const char *text,
+    const char *placeholder,
+    int32_t is_default,
+    int32_t max_length,
+    int32_t selection_mode
+) {
+    SSGuiControlBuilder *control =
+        (SSGuiControlBuilder *)calloc(1, sizeof(SSGuiControlBuilder));
+    if (control == NULL) {
+        return NULL;
+    }
+    control->config.kind = kind;
+    control->config.text = ss_gui_strdup(text);
+    control->config.placeholder = ss_gui_strdup(placeholder);
+    control->config.accessible_name = ss_gui_strdup(text != NULL && text[0] != '\0' ? text : placeholder);
+    if (control->config.text == NULL ||
+            control->config.placeholder == NULL ||
+            control->config.accessible_name == NULL) {
+        free((void *)control->config.text);
+        free((void *)control->config.placeholder);
+        free((void *)control->config.accessible_name);
+        free(control);
+        return NULL;
+    }
+    control->config.enabled = 1;
+    control->config.visible = 1;
+    control->config.is_default = is_default;
+    control->config.max_length = max_length;
+    control->config.selection_mode = selection_mode;
+    return control;
+}
+
+void *ss_gui_text_label_create(const char *text) {
+    return ss_gui_control_create(
+        SS_GUI_CONTROL_TEXT_LABEL, text, "", 0, 0, SS_GUI_LIST_BOX_SELECTION_DEFAULT);
+}
+
+void *ss_gui_text_box_create(const char *placeholder, int32_t max_length) {
+    return ss_gui_control_create(
+        SS_GUI_CONTROL_TEXT_BOX, "", placeholder, 0, max_length, SS_GUI_LIST_BOX_SELECTION_DEFAULT);
+}
+
+void *ss_gui_button_create(const char *text, int32_t is_default) {
+    return ss_gui_control_create(
+        SS_GUI_CONTROL_BUTTON, text, "", is_default, 0, SS_GUI_LIST_BOX_SELECTION_DEFAULT);
+}
+
+void *ss_gui_list_box_create(int32_t selection_mode) {
+    return ss_gui_control_create(
+        SS_GUI_CONTROL_LIST_BOX, "", "", 0, 0, selection_mode);
+}
+
+int32_t ss_gui_window_add_control(void *window_handle, void *control_handle) {
+    SSGuiWindowBuilder *window = (SSGuiWindowBuilder *)window_handle;
+    SSGuiControlBuilder *control = (SSGuiControlBuilder *)control_handle;
+    SSGuiControlBuilder **expanded;
+    if (window == NULL || control == NULL) {
+        return SS_GUI_ERR_CONFIG;
+    }
+    if (window->control_count == window->control_capacity) {
+        size_t new_capacity = window->control_capacity == 0
+            ? 4
+            : window->control_capacity * 2;
+        expanded = (SSGuiControlBuilder **)realloc(
+            window->controls, new_capacity * sizeof(SSGuiControlBuilder *));
+        if (expanded == NULL) {
+            return SS_GUI_ERR_ALLOCATION;
+        }
+        window->controls = expanded;
+        window->control_capacity = new_capacity;
+    }
+    control->config.id = (SSGuiControlId)(1000 + window->control_count);
+    control->config.window_id = window->config.id;
+    control->config.tab_index = (int32_t)window->control_count;
+    window->controls[window->control_count++] = control;
+    return SS_GUI_OK;
+}
+
+int32_t ss_gui_control_on_event(
+    void *control_handle,
+    int32_t event_kind,
+    SSGuiHandler handler
+) {
+    SSGuiControlBuilder *control = (SSGuiControlBuilder *)control_handle;
+    SSGuiEventConfig *expanded;
+    SSGuiEventConfig *event_config;
+
+    if (control == NULL || handler == NULL || control->config.id == 0) {
+        return SS_GUI_ERR_CONFIG;
+    }
+    if (control->event_count == control->event_capacity) {
+        size_t new_capacity = control->event_capacity == 0
+            ? 2
+            : control->event_capacity * 2;
+        expanded = (SSGuiEventConfig *)realloc(
+            control->events, new_capacity * sizeof(SSGuiEventConfig));
+        if (expanded == NULL) {
+            return SS_GUI_ERR_ALLOCATION;
+        }
+        control->events = expanded;
+        control->event_capacity = new_capacity;
+    }
+
+    event_config = &control->events[control->event_count++];
+    event_config->target_kind = SS_GUI_TARGET_CONTROL;
+    event_config->target_id = control->config.id;
+    event_config->event_kind = event_kind;
+    event_config->handler = handler;
+    return SS_GUI_OK;
+}
+
+int32_t ss_gui_application_set_main_window(void *application_handle, void *window_handle) {
+    SSGuiApplicationBuilder *application = (SSGuiApplicationBuilder *)application_handle;
+    SSGuiWindowBuilder *window = (SSGuiWindowBuilder *)window_handle;
+    if (application == NULL || window == NULL) {
+        return SS_GUI_ERR_CONFIG;
+    }
+    application->main_window = window;
+    return SS_GUI_OK;
+}
+
+int32_t ss_gui_application_run_builder(void *application_handle) {
+    SSGuiApplicationBuilder *application = (SSGuiApplicationBuilder *)application_handle;
+    SSGuiWindowBuilder *window;
+    SSGuiApplicationConfig config;
+    SSGuiControlConfig *controls = NULL;
+    SSGuiEventConfig *events = NULL;
+    size_t event_count = 0;
+    size_t event_cursor = 0;
+    size_t index;
+    size_t event_index;
+    int32_t status;
+
+    if (application == NULL || application->main_window == NULL) {
+        return SS_GUI_ERR_CONFIG;
+    }
+    window = application->main_window;
+    if (window->control_count > 0) {
+        controls = (SSGuiControlConfig *)calloc(
+            window->control_count, sizeof(SSGuiControlConfig));
+        if (controls == NULL) {
+            return SS_GUI_ERR_ALLOCATION;
+        }
+        for (index = 0; index < window->control_count; ++index) {
+            controls[index] = window->controls[index]->config;
+            event_count += window->controls[index]->event_count;
+        }
+    }
+    if (event_count > 0) {
+        events = (SSGuiEventConfig *)calloc(event_count, sizeof(SSGuiEventConfig));
+        if (events == NULL) {
+            free(controls);
+            return SS_GUI_ERR_ALLOCATION;
+        }
+        for (index = 0; index < window->control_count; ++index) {
+            SSGuiControlBuilder *control = window->controls[index];
+            for (event_index = 0; event_index < control->event_count; ++event_index) {
+                events[event_cursor] = control->events[event_index];
+                events[event_cursor].target_id = control->config.id;
+                ++event_cursor;
+            }
+        }
+    }
+
+    memset(&config, 0, sizeof(config));
+    config.application_name = "SemanticScriptGui";
+    config.title = application->title;
+    config.main_window_id = window->config.id;
+    config.windows = &window->config;
+    config.window_count = 1;
+    config.controls = controls;
+    config.control_count = window->control_count;
+    config.events = events;
+    config.event_count = event_count;
+
+    status = ss_gui_application_run(&config);
+    free(events);
+    free(controls);
+    return status;
 }
 
 int32_t ss_gui_run_window(const char *title, int32_t width, int32_t height) {
@@ -1317,6 +1642,72 @@ int32_t ss_gui_application_run(const SSGuiApplicationConfig *config) {
     return SS_GUI_ERR_RUNTIME_UNAVAILABLE;
 }
 
+void *ss_gui_application_create(const char *title) {
+    (void)title;
+    return NULL;
+}
+
+void *ss_gui_window_create(
+    const char *title,
+    int32_t width,
+    int32_t height,
+    int32_t layout,
+    int32_t resizable
+) {
+    (void)title;
+    (void)width;
+    (void)height;
+    (void)layout;
+    (void)resizable;
+    return NULL;
+}
+
+void *ss_gui_text_label_create(const char *text) {
+    (void)text;
+    return NULL;
+}
+
+void *ss_gui_text_box_create(const char *placeholder, int32_t max_length) {
+    (void)placeholder;
+    (void)max_length;
+    return NULL;
+}
+
+void *ss_gui_button_create(const char *text, int32_t is_default) {
+    (void)text;
+    (void)is_default;
+    return NULL;
+}
+
+void *ss_gui_list_box_create(int32_t selection_mode) {
+    (void)selection_mode;
+    return NULL;
+}
+
+int32_t ss_gui_window_add_control(void *window, void *control) {
+    (void)window;
+    (void)control;
+    return SS_GUI_ERR_RUNTIME_UNAVAILABLE;
+}
+
+int32_t ss_gui_control_on_event(void *control, int32_t event_kind, SSGuiHandler handler) {
+    (void)control;
+    (void)event_kind;
+    (void)handler;
+    return SS_GUI_ERR_RUNTIME_UNAVAILABLE;
+}
+
+int32_t ss_gui_application_set_main_window(void *application, void *window) {
+    (void)application;
+    (void)window;
+    return SS_GUI_ERR_RUNTIME_UNAVAILABLE;
+}
+
+int32_t ss_gui_application_run_builder(void *application) {
+    (void)application;
+    return SS_GUI_ERR_RUNTIME_UNAVAILABLE;
+}
+
 int32_t ss_gui_run_window(const char *title, int32_t width, int32_t height) {
     (void)title;
     (void)width;
@@ -1337,6 +1728,23 @@ int32_t ss_gui_text_box_set_text(
 ) {
     (void)session;
     (void)text_box_id;
+    (void)text;
+    return SS_GUI_ERR_RUNTIME_UNAVAILABLE;
+}
+
+const char *ss_gui_text_box_text_by_handle(SSGuiSession *session, void *text_box) {
+    (void)session;
+    (void)text_box;
+    return NULL;
+}
+
+int32_t ss_gui_text_box_set_text_by_handle(
+    SSGuiSession *session,
+    void *text_box,
+    const char *text
+) {
+    (void)session;
+    (void)text_box;
     (void)text;
     return SS_GUI_ERR_RUNTIME_UNAVAILABLE;
 }
@@ -1364,9 +1772,49 @@ int32_t ss_gui_list_box_clear(SSGuiSession *session, SSGuiControlId list_box_id)
     return SS_GUI_ERR_RUNTIME_UNAVAILABLE;
 }
 
+int32_t ss_gui_list_box_selected_index_by_handle(SSGuiSession *session, void *list_box) {
+    (void)session;
+    (void)list_box;
+    return SS_GUI_INVALID_INDEX;
+}
+
+int32_t ss_gui_list_box_append_item_by_handle(
+    SSGuiSession *session,
+    void *list_box,
+    const char *text
+) {
+    (void)session;
+    (void)list_box;
+    (void)text;
+    return SS_GUI_ERR_RUNTIME_UNAVAILABLE;
+}
+
+int32_t ss_gui_list_box_clear_by_handle(SSGuiSession *session, void *list_box) {
+    (void)session;
+    (void)list_box;
+    return SS_GUI_ERR_RUNTIME_UNAVAILABLE;
+}
+
+int32_t ss_gui_text_label_set_text_by_handle(
+    SSGuiSession *session,
+    void *text_label,
+    const char *text
+) {
+    (void)session;
+    (void)text_label;
+    (void)text;
+    return SS_GUI_ERR_RUNTIME_UNAVAILABLE;
+}
+
 int32_t ss_gui_window_close(SSGuiSession *session, SSGuiWindowId window_id) {
     (void)session;
     (void)window_id;
+    return SS_GUI_ERR_RUNTIME_UNAVAILABLE;
+}
+
+int32_t ss_gui_window_close_by_handle(SSGuiSession *session, void *window) {
+    (void)session;
+    (void)window;
     return SS_GUI_ERR_RUNTIME_UNAVAILABLE;
 }
 

@@ -1,0 +1,89 @@
+# ============================================================
+# SEMANTICSCRIPT STANDARD LIBRARY: native bcrypt namespace
+# ============================================================
+#
+# Import this module with:
+#
+#   importModule bcrypt standard.bcrypt
+#
+# The `bcrypt.*` call targets are compiler/runtime-owned intrinsics
+# backed by the vendored crypt_blowfish 1.3 implementation at
+# `third_party/bcrypt/` plus the platform CSPRNG (BCryptGenRandom on
+# Windows, getrandom on Linux, /dev/urandom fallback). This module owns
+# the official standard-library import path and the trust-type
+# contracts for that intrinsic namespace.
+
+module standard.bcrypt
+modulePurpose standard.bcrypt "Standard-library namespace and trust contracts for password hashing (bcrypt $2b$ with caller-chosen cost), cryptographic randomness, and base64url encoding intrinsics."
+moduleOwns standard.bcrypt "The official import path `standard.bcrypt`, the BcryptPasswordHash / BcryptPlaintextPassword / SessionToken trust types, the recommended cost-factor default, the session-token byte-count default, and the required-output-buffer-size constants for hash + base64url."
+moduleDoesNotOwn standard.bcrypt "The bcrypt algorithm implementation (crypt_blowfish.c lives under third_party/bcrypt/), the native CSPRNG (platform-specific entries in sem_bcrypt_runtime.c), caller-owned scratch-buffer allocation (apps must c.malloc the buffers themselves and defer c.free), or user-facing session storage (apps own the sessions SQL table)."
+moduleInvariant standard.bcrypt "The standard module entry is this file; downstream modules may import it as alias `bcrypt` before using compiler-owned targets in the `bcrypt.*` namespace."
+moduleSecurity standard.bcrypt "BcryptPasswordHash values MUST always carry the `$2b$NN$...` prefix and exactly 60 chars; the native runtime adapter refuses to verify against any other format so a deployment cannot silently drift to a weaker variant by writing legacy `$2a$`/`$2x$`/`$2y$` strings to the database."
+
+# ----- trust types -----
+
+type BcryptPlaintextPassword CNullTerminatedByteString
+type BcryptPasswordHash CNullTerminatedByteString
+type BcryptHashBuffer COpaqueMemoryAddress
+type BcryptRandomBuffer COpaqueMemoryAddress
+type SessionToken CNullTerminatedByteString
+type SessionTokenBuffer COpaqueMemoryAddress
+type Base64UrlBuffer COpaqueMemoryAddress
+
+exportType standard.bcrypt BcryptPlaintextPassword
+exportType standard.bcrypt BcryptPasswordHash
+exportType standard.bcrypt BcryptHashBuffer
+exportType standard.bcrypt BcryptRandomBuffer
+exportType standard.bcrypt SessionToken
+exportType standard.bcrypt SessionTokenBuffer
+exportType standard.bcrypt Base64UrlBuffer
+
+typeInvariant BcryptPlaintextPassword "Untrusted user input. Must NEVER be written to any persistent storage; only passed through bcrypt.hashPassword or bcrypt.verifyPassword."
+typeTrust BcryptPlaintextPassword untrusted
+
+typeInvariant BcryptPasswordHash "Exactly 60 characters with the `$2b$NN$...` prefix (cost NN in [4,31]). The native verify path rejects every other format so legacy `$2a$`/`$2x$`/`$2y$` hashes never validate. Storage CHECK constraints in app SQL should enforce length(password_hash) = 60."
+typeTrust BcryptPasswordHash trusted
+
+typeInvariant BcryptHashBuffer "Caller-owned byte buffer with at least bcryptHashBufferRequiredBytes (61) bytes of capacity for the bcrypt.hashPassword output. Smaller buffers are rejected with SS_BCRYPT_ERR_CONFIG."
+typeInvariant BcryptRandomBuffer "Caller-owned byte buffer of arbitrary capacity. Filled by bcrypt.randomBytes with platform-CSPRNG bytes; caller must c.free the buffer when done."
+typeInvariant SessionToken "URL-safe opaque session identifier (43-char base64url, no padding). Always issued by encoding bcrypt.randomBytes output through bcrypt.base64UrlEncode — never derived from user input or any predictable source."
+typeTrust SessionToken trusted
+
+typeInvariant SessionTokenBuffer "Caller-owned byte buffer of at least sessionTokenBufferRequiredBytes (44) bytes capacity — the 43-char base64url payload plus the null terminator."
+typeInvariant Base64UrlBuffer "Caller-owned byte buffer for base64url output. Required capacity is ((inputBytes * 4) + 2) / 3 + 1 bytes — see bcrypt.base64UrlEncode for the rounding rule."
+
+# ----- recommended defaults -----
+
+storage module immutable bcryptModuleVersionText CNullTerminatedByteString "standard.bcrypt 0.1"
+
+# Production cost factor: ~250ms per hash on a typical 2026 server CPU.
+# Increase to 13-14 for a higher security margin if the registration /
+# login latency budget can absorb 0.5s+ per hash.
+storage module immutable bcryptRecommendedCost CSignedInt32 12
+
+# Lower bound on the bcrypt format itself; below this the work factor
+# is so small that brute-forcing is trivial.
+storage module immutable bcryptMinimumCost CSignedInt32 4
+
+# Format ceiling. Cost 31 takes ~16 hours per hash on modern CPUs and
+# is impractical for interactive auth — listed only so apps can refuse
+# nonsensical caller-supplied values upfront.
+storage module immutable bcryptMaximumCost CSignedInt32 31
+
+# Output-buffer sizes the native runtime requires. Apps that hash
+# passwords must allocate a buffer of at least this many bytes; the
+# native adapter rejects undersized buffers with SS_BCRYPT_ERR_CONFIG.
+storage module immutable bcryptHashBufferRequiredBytes CSignedInt32 61
+
+# Recommended session-token entropy: 32 bytes (256 bits) of CSPRNG
+# output, base64url-encoded to a 43-char string + null terminator.
+storage module immutable sessionTokenEntropyByteCount CSignedInt32 32
+storage module immutable sessionTokenBufferRequiredBytes CSignedInt32 44
+
+exportConstant standard.bcrypt bcryptModuleVersionText
+exportConstant standard.bcrypt bcryptRecommendedCost
+exportConstant standard.bcrypt bcryptMinimumCost
+exportConstant standard.bcrypt bcryptMaximumCost
+exportConstant standard.bcrypt bcryptHashBufferRequiredBytes
+exportConstant standard.bcrypt sessionTokenEntropyByteCount
+exportConstant standard.bcrypt sessionTokenBufferRequiredBytes

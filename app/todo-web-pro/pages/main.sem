@@ -1,0 +1,193 @@
+# Todo Web Pro — pages module.
+#
+# Owns every HTML response page served by the app. The route table in
+# the parent module binds `homePageHandler` (exported here) to GET /.
+# Splitting pages into their own folder module follows the
+# html-console-demo convention: HTML templates live alongside their
+# hydration operations and don't crowd the main route table.
+
+module app.todo_web_pro.pages
+modulePurpose app.todo_web_pro.pages "Server-rendered HTML pages for Todo Web Pro: landing/home page hydrated from a standard.html template and served via http.responseText."
+moduleOwns app.todo_web_pro.pages "The HomePageTemplate htmlTemplate, its dynamic argument set, and the homePageHandler operation that hydrates + ships the document. Static landing-page copy (product name, tagline, version, API base) also lives here."
+moduleDoesNotOwn app.todo_web_pro.pages "Tailwind CSS (loaded via the official CDN for v1), API route declarations (parent module), session lookup, or any sqlite interaction. The page is intentionally static-render — interactivity is delivered via the embedded fetch() script that talks to the JSON API."
+moduleInvariant app.todo_web_pro.pages "Every dynamic hole in HomePageTemplate flows through htmlArg + standard.html trust types so user-controlled content cannot break out of HTML attribute or text contexts; static copy comes from operation-local storage rows declared inside homePageHandler."
+moduleSecurity app.todo_web_pro.pages "The Tailwind script tag points at cdn.tailwindcss.com — an external resource. v1.1 vendors tailwind.css under static/ so the page becomes fully self-contained and immune to CDN drift or supply-chain compromise."
+
+importModule standard.http
+importModule standard.html
+
+exportOperation app.todo_web_pro.pages homePageHandler
+
+# HomePageTemplate — landing page for Todo Web Pro: branded hero,
+# status panel, register-and-login form, and API route map. Every
+# dynamic hole is escaped at hydration time via the standard.html
+# trust-type wrap; raw user content cannot break out of attribute or
+# text contexts. (purpose/guarantee rows would normally document this,
+# but the parser currently couples those verbs to operations, not to
+# htmlTemplates — so we use a `#` comment block instead.)
+htmlTemplate HomePageTemplate
+htmlArg HomePageTemplate pageTitleText HtmlText
+htmlArg HomePageTemplate productNameText HtmlText
+htmlArg HomePageTemplate taglineText HtmlText
+htmlArg HomePageTemplate versionText HtmlText
+htmlArg HomePageTemplate bcryptCostText HtmlText
+htmlArg HomePageTemplate apiBaseUrlText HtmlText
+htmlBody HomePageTemplate
+  <!doctype html>
+  <html lang="en" class="h-full">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>{htmlArg.pageTitleText}</title>
+      <script src="https://cdn.tailwindcss.com"></script>
+      <style>
+        body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+      </style>
+    </head>
+    <body class="min-h-full bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-50 text-slate-900">
+      <main class="mx-auto max-w-5xl px-6 py-12">
+        <header class="mb-10 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 text-2xl font-bold text-white shadow-lg">T</div>
+            <div>
+              <h1 class="text-2xl font-semibold tracking-tight text-slate-900">{htmlArg.productNameText}</h1>
+              <p class="text-sm text-slate-500">{htmlArg.taglineText}</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1 text-sm font-medium text-emerald-700">
+            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+            Online
+          </div>
+        </header>
+
+        <section class="grid gap-6 md:grid-cols-2">
+          <article class="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+            <h2 class="text-lg font-semibold text-slate-900">Create an account</h2>
+            <p class="mt-1 text-sm text-slate-600">Sign up to get a session cookie and start managing todos.</p>
+            <form id="registerForm" class="mt-6 space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-700" for="register-username">Username</label>
+                <input id="register-username" name="username" type="text" required minlength="3" maxlength="32" class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" placeholder="alice" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700" for="register-password">Password</label>
+                <input id="register-password" name="password" type="password" required minlength="8" class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" placeholder="at least 8 characters" />
+              </div>
+              <button type="submit" class="w-full rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                Create account
+              </button>
+            </form>
+            <p id="registerResult" class="mt-3 text-sm"></p>
+          </article>
+
+          <article class="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+            <h2 class="text-lg font-semibold text-slate-900">Status</h2>
+            <p class="mt-1 text-sm text-slate-600">Real values pulled from the live API.</p>
+            <dl class="mt-6 space-y-3 text-sm">
+              <div class="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+                <dt class="font-medium text-slate-700">Version</dt>
+                <dd class="font-mono text-slate-900">{htmlArg.versionText}</dd>
+              </div>
+              <div class="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+                <dt class="font-medium text-slate-700">Bcrypt cost</dt>
+                <dd class="font-mono text-slate-900">{htmlArg.bcryptCostText}</dd>
+              </div>
+              <div class="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+                <dt class="font-medium text-slate-700">API base</dt>
+                <dd class="font-mono text-slate-900">{htmlArg.apiBaseUrlText}</dd>
+              </div>
+            </dl>
+            <h3 class="mt-8 text-sm font-semibold text-slate-700">Available endpoints</h3>
+            <ul class="mt-3 space-y-1 text-sm font-mono text-slate-600">
+              <li><span class="inline-block w-16 text-emerald-700">GET</span>   /health</li>
+              <li><span class="inline-block w-16 text-emerald-700">GET</span>   /api/version</li>
+              <li><span class="inline-block w-16 text-indigo-700">POST</span>  /api/auth/register</li>
+              <li><span class="inline-block w-16 text-indigo-700">POST</span>  /api/auth/logout</li>
+              <li><span class="inline-block w-16 text-emerald-700">GET</span>   /api/auth/me</li>
+              <li><span class="inline-block w-16 text-emerald-700">GET</span>   /api/todos</li>
+              <li><span class="inline-block w-16 text-indigo-700">POST</span>  /api/todos</li>
+            </ul>
+          </article>
+        </section>
+
+        <footer class="mt-12 border-t border-slate-200 pt-6 text-center text-xs text-slate-500">
+          Built with SemanticScript &middot; standard.http &middot; standard.sqlite &middot; standard.json &middot; standard.bcrypt &middot; standard.html
+        </footer>
+      </main>
+
+      <script>
+        document.getElementById("registerForm").addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const resultElement = document.getElementById("registerResult");
+          const formData = new FormData(event.target);
+          resultElement.className = "mt-3 text-sm text-slate-500";
+          resultElement.textContent = "Creating account...";
+          try {
+            const response = await fetch("/api/auth/register", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                username: formData.get("username"),
+                password: formData.get("password"),
+              }),
+            });
+            const payload = await response.json();
+            if (response.status === 201) {
+              resultElement.className = "mt-3 text-sm text-emerald-700";
+              resultElement.textContent = "Welcome, " + payload.user.username + "! Session cookie set.";
+            } else if (response.status === 409) {
+              resultElement.className = "mt-3 text-sm text-amber-700";
+              resultElement.textContent = "That username is already taken.";
+            } else {
+              resultElement.className = "mt-3 text-sm text-rose-700";
+              resultElement.textContent = payload.error ? payload.error.message : ("Error " + response.status);
+            }
+          } catch (err) {
+            resultElement.className = "mt-3 text-sm text-rose-700";
+            resultElement.textContent = "Network error: " + err.message;
+          }
+        });
+      </script>
+    </body>
+  </html>
+
+operation homePageHandler
+input homePageHandler request HttpRequest
+input homePageHandler response HttpResponse
+output homePageHandler CSignedInt32
+effect homePageHandler write http.response
+useCapability homePageHandler httpResponseWriter
+memory homePageHandler arena request
+async homePageHandler no
+purpose homePageHandler "GET / — hydrate HomePageTemplate into a full HTML document and write it back with text/html content type."
+invariant homePageHandler "All dynamic holes flow through htmlArg trust types; static copy comes from operation-local storage. The handler is read-only — no SQL, no auth, no cookies — so it can be served before any user has registered."
+
+label startHomePageHandler
+
+storage local immutable homePageTitleText HtmlText "Todo Web Pro"
+storage local immutable homeProductNameText HtmlText "Todo Web Pro"
+storage local immutable homeTaglineText HtmlText "Multi-user todo manager — bcrypt cost 12, SQLite-backed, session cookies."
+storage local immutable homeVersionText HtmlText "1.0.0"
+storage local immutable homeBcryptCostText HtmlText "12"
+storage local immutable homeApiBaseUrlText HtmlText "http://127.0.0.1:18090"
+
+call hydrateHomePageCall html.hydrate.HomePageTemplate
+arg hydrateHomePageCall pageTitleText homePageTitleText
+arg hydrateHomePageCall productNameText homeProductNameText
+arg hydrateHomePageCall taglineText homeTaglineText
+arg hydrateHomePageCall versionText homeVersionText
+arg hydrateHomePageCall bcryptCostText homeBcryptCostText
+arg hydrateHomePageCall apiBaseUrlText homeApiBaseUrlText
+run hydrateHomePageCall
+bind homePageHtml HtmlDocument hydrateHomePageCall
+
+call writeHomePageCall http.responseText
+arg writeHomePageCall response response
+arg writeHomePageCall status httpStatusOkLocal
+arg writeHomePageCall body homePageHtml
+arg writeHomePageCall contentType htmlContentType
+run writeHomePageCall
+bind writeHomePageStatus CSignedInt32 writeHomePageCall
+returnValue writeHomePageStatus
+
+storage module immutable httpStatusOkLocal CSignedInt32 200

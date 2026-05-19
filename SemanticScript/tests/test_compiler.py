@@ -1982,39 +1982,41 @@ def test_hello_gui_sample_uses_refined_gui_surface():
 
     build_text = build_path.read_text(encoding="utf-8")
     main_text = main_path.read_text(encoding="utf-8")
-    check("hello gui sample: build tape selects windowsGui without console entry",
+    check("hello gui sample: build tape selects windowsGui with standard entry syntax",
           "target windowsGui" in build_text
           and "targetRuntime helloGui windowsGui" in build_text
-          and not re.search(r"(?m)^entry\s+console\b", build_text)
+          and re.search(r"(?m)^entry\s+console\s+main\b", build_text)
+          and re.search(r"(?m)^mainOperation\s+helloGui\s+main\b", build_text)
           and not re.search(r"(?m)^entry\s+windowsGui\b", build_text)
-          and not re.search(r"(?m)^mainOperation\s+helloGui\b", build_text),
+          and "GuiSurface\" \"standard.gui|gui.* functions" in build_text,
           build_text)
 
     required_rows = [
         "importModule gui standard.gui",
-        "guiApplication helloGuiApp",
-        "guiApplicationTitle helloGuiApp \"Hello GUI\"",
-        "guiApplicationMainWindow helloGuiApp helloGuiMainWindow",
-        "guiWindow helloGuiMainWindow",
-        "guiWindowApplication helloGuiMainWindow helloGuiApp",
-        "guiWindowTitle helloGuiMainWindow \"Hello GUI\"",
-        "guiWindowWidth helloGuiMainWindow 420",
-        "guiWindowHeight helloGuiMainWindow 220",
-        "guiWindowLayout helloGuiMainWindow verticalStack",
+        "operation main",
+        "call createApplicationCall gui.applicationCreate",
+        "call createWindowCall gui.windowCreate",
+        "call createTitleLabelCall gui.textLabelCreate",
+        "call createTaskInputCall gui.textBoxCreate",
+        "call createAddButtonCall gui.buttonCreate",
+        "call createTaskListCall gui.listBoxCreate",
+        "call addTaskListCall gui.windowAddControl",
+        "call setMainWindowCall gui.applicationSetMainWindow",
+        "call runApplicationCall gui.applicationRun",
     ]
-    check("hello gui sample: uses standard.gui plus minimal GUI bridge rows",
+    check("hello gui sample: uses standard.gui function calls",
           all(row in main_text for row in required_rows),
           main_text)
     heavy_gui_decl = re.search(
-        r"(?m)^gui(Button|TextBox|ListBox|CheckBox|MenuItem|StatusBar|TextLabel|Control|WindowEvent|ApplicationOnExit)\b",
+        r"(?m)^gui(Application|Window|Button|TextBox|ListBox|CheckBox|MenuItem|StatusBar|TextLabel|Control)\b",
         main_text)
-    check("hello gui sample: avoids controls, events, and handler declarations",
-          heavy_gui_decl is None and "operation " not in main_text,
+    check("hello gui sample: avoids GUI-specific top-level keyword rows",
+          heavy_gui_decl is None,
           heavy_gui_decl.group(0) if heavy_gui_decl else main_text)
-    check("hello gui sample: stays on the current standard.gui contract surface",
+    check("hello gui sample: keeps construction explicit in the operation body",
           "GuiSession" not in main_text
           and "GuiEvent" not in main_text
-          and "gui." not in main_text,
+          and "gui." in main_text,
           main_text)
 
 
@@ -2033,21 +2035,28 @@ def test_hello_gui_parser_contract_when_supported():
     check("gui parser: standard.gui import alias is recorded",
           prog.import_aliases.get("gui") == "standard.gui",
           repr(prog.import_aliases))
-    applications = getattr(prog, "gui_applications", None)
-    windows = getattr(prog, "gui_windows", None)
-    controls = getattr(prog, "gui_controls", None)
-    if not isinstance(applications, dict) or not isinstance(windows, dict):
-        check("gui parser: pending until minimal application/window model lands",
-              True,
-              f"apps={applications!r} windows={windows!r}")
-        return
-    check("gui parser: minimal application/window bridge is recorded",
-          "helloGuiApp" in applications
-          and "helloGuiMainWindow" in windows,
-          f"apps={applications!r} windows={windows!r}")
-    check("gui parser: sample does not need controls or handlers",
-          isinstance(controls, dict) and not controls and not prog.operations,
-          f"controls={controls!r} operations={prog.operations!r}")
+    check("gui parser: main operation is recorded through normal operation syntax",
+          "main" in prog.operations,
+          repr(prog.operations))
+    operation = prog.operations.get("main")
+    call_targets = {
+        args[1]
+        for verb, args, _line in (operation.lines if operation else [])
+        if verb == "call" and len(args) >= 2
+    }
+    check("gui parser: GUI construction is ordinary dotted call targets",
+          {
+              "gui.applicationCreate",
+              "gui.windowCreate",
+              "gui.textLabelCreate",
+              "gui.textBoxCreate",
+              "gui.buttonCreate",
+              "gui.listBoxCreate",
+              "gui.windowAddControl",
+              "gui.applicationSetMainWindow",
+              "gui.applicationRun",
+          }.issubset(call_targets),
+          repr(sorted(call_targets)))
 
 
 def test_hello_gui_build_tape_contract_when_supported():
@@ -2077,11 +2086,11 @@ def test_hello_gui_build_tape_contract_when_supported():
     check("gui build tape: target windowsGui is recorded",
           "windowsGui" in prog.targets,
           repr(prog.targets))
-    check("gui build tape: windowsGui does not use console entry or mainOperation",
-          prog.entry is None
-          and not re.search(r"(?m)^entry\s+console\b", source)
-          and semsc._build_metadata_value(prog, "mainOperation") is None,
-          f"entry={prog.entry!r}")
+    check("gui build tape: windowsGui uses the standard entry/mainOperation rows",
+          prog.entry == ("console", "main")
+          and re.search(r"(?m)^entry\s+console\s+main\b", source)
+          and semsc._build_metadata_value(prog, "mainOperation") == "main",
+          f"entry={prog.entry!r} mainOperation={semsc._build_metadata_value(prog, 'mainOperation')!r}")
 
 
 def test_hello_gui_codegen_contract_when_supported():
@@ -2101,9 +2110,11 @@ def test_hello_gui_codegen_contract_when_supported():
             return
         ir_text = ir_path.read_text(encoding="utf-8") if ir_path.exists() else ""
 
-    check("gui codegen: declares native GUI runtime entrypoint",
-          "ss_gui_application_run" in ir_text
-          or "ss_gui_run_window" in ir_text,
+    check("gui codegen: declares standard.gui builder runtime calls",
+          "ss_gui_application_create" in ir_text
+          and "ss_gui_window_create" in ir_text
+          and "ss_gui_button_create" in ir_text
+          and "ss_gui_application_run_builder" in ir_text,
           ir_text)
     check("gui codegen: emits standard.gui window text",
           "Hello GUI" in ir_text,

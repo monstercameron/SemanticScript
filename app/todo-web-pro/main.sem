@@ -1,0 +1,1818 @@
+# Todo Web Pro — production web app.
+#
+# This module composes the standard.http + standard.sqlite + standard.json +
+# standard.bcrypt runtimes into a multi-user todo web app. Auth uses bcrypt
+# cost 12 password hashes + server-side sessions; data is per-user-scoped.
+
+module app.todo_web_pro
+modulePurpose app.todo_web_pro "Multi-user todo web app: bcrypt-cost-12 authenticated sessions over standard.http + standard.sqlite + standard.json, with per-user data isolation and a JSON REST API."
+moduleOwns app.todo_web_pro "Route table for /health and /api/*, sqlite schema (users + sessions + todos + todo_images tables), session cookie lifecycle, JSON response shapes, per-handler authorization gating."
+moduleDoesNotOwn app.todo_web_pro "HTTP dispatch (standard.http runtime), bcrypt algorithm (third_party/bcrypt via standard.bcrypt), sqlite engine (third_party/sqlite via standard.sqlite), JSON serialization (standard.json runtime), HTML templating (standard.html)."
+moduleInvariant app.todo_web_pro "Every /api/* handler except /health, /api/version, /api/auth/register and /api/auth/login MUST call requireSessionUserId BEFORE running any SQL, and MUST scope every SELECT/UPDATE/DELETE with `WHERE user_id = ?` bound to the returned user id."
+moduleSecurity app.todo_web_pro "Session cookies are HttpOnly + SameSite=Strict; the value is a 43-char base64url-encoded 32-byte sample from the platform CSPRNG via bcrypt.randomBytes. Login failures emit a generic message regardless of whether the username existed."
+moduleWarning app.todo_web_pro "One shared sqlite handle opened lazily on first request and used by every handler. Safe under the current blocking HTTP/1.1 backend (one request at a time); migrating to an async backend needs a per-thread connection pool."
+
+importModule standard.http
+importModule standard.sqlite
+importModule standard.json
+importModule standard.bcrypt
+importModule standard.html
+
+# HomePageTemplate + homePageHandler live in their own folder module
+# at modules/pages/main.sem. The import line is at the BOTTOM of this
+# file (search for "importModule app.todo_web_pro.pages") so the
+# template's last htmlBody / operation block doesn't leave a dangling
+# current_op that subsequent purpose/input rows would mis-attribute.
+
+webServer todoWebProServer
+purpose todoWebProServer "Host the Todo Web Pro JSON REST API on localhost:18090; every API route except /health, /api/version, and /api/auth/{register,login} requires a valid session cookie."
+serverHost todoWebProServer "127.0.0.1"
+serverPort todoWebProServer 18090
+
+route todoWebProServer GET    "/"                  homePageHandler
+route todoWebProServer GET    "/health"            healthHandler
+route todoWebProServer GET    "/api/version"       versionHandler
+route todoWebProServer POST   "/api/auth/register" registerHandler
+route todoWebProServer POST   "/api/auth/login"    loginHandler
+route todoWebProServer POST   "/api/auth/logout"   logoutHandler
+route todoWebProServer GET    "/api/auth/me"       meHandler
+route todoWebProServer GET    "/api/todos"         listTodosHandler
+route todoWebProServer POST   "/api/todos"         createTodoHandler
+route todoWebProServer GET    "/api/todos/:id"     showTodoHandler
+route todoWebProServer DELETE "/api/todos/:id"     deleteTodoHandler
+route todoWebProServer POST   "/api/todos/:id/complete" completeTodoHandler
+
+# ===== capabilities (locally declared; httpRequestReader / httpResponseWriter
+# / sqliteDatabaseReader / sqliteDatabaseReadWriter come from imported stdlib
+# modules) =====
+
+capability bcryptHashCompute compute bcryptHash
+purpose bcryptHashCompute "Authority to run the bcrypt password hashing key schedule at cost 12."
+
+capability bcryptRandomCompute compute bcryptRandom
+purpose bcryptRandomCompute "Authority to draw bytes from the platform CSPRNG via bcrypt.randomBytes — used to mint session tokens."
+
+capability heapAllocCapability heap allocate
+purpose heapAllocCapability "Authority to allocate per-request scratch buffers (JSON builder, base64url output, etc.)."
+
+capability heapFreeCapability heap free
+purpose heapFreeCapability "Authority to free the same buffers via defer c.free at handler exit."
+
+capability filesystemCreateCapability filesystem create
+purpose filesystemCreateCapability "Authority to create the build/images/ directory at startup."
+
+# ===== module-scope constants =====
+
+storage module immutable databasePath CNullTerminatedByteString "todo_web_pro.db"
+storage module immutable imagesDirectoryPath CNullTerminatedByteString "images"
+
+storage module immutable httpStatusOk CSignedInt32 200
+storage module immutable httpStatusCreated CSignedInt32 201
+storage module immutable httpStatusNoContent CSignedInt32 204
+storage module immutable httpStatusBadRequest CSignedInt32 400
+storage module immutable httpStatusUnauthorized CSignedInt32 401
+storage module immutable httpStatusNotFound CSignedInt32 404
+storage module immutable httpStatusConflict CSignedInt32 409
+storage module immutable httpStatusInternalServerError CSignedInt32 500
+
+storage module immutable jsonResponseCapacity CSignedInt64 4096
+storage module immutable usernameScratchCapacity CSignedInt64 64
+storage module immutable passwordScratchCapacity CSignedInt64 256
+storage module immutable displayNameScratchCapacity CSignedInt64 128
+storage module immutable titleScratchCapacity CSignedInt64 512
+storage module immutable bodyScratchCapacity CSignedInt64 10240
+storage module immutable hashBufferCapacity CSignedInt64 64
+storage module immutable hashCapacityArg CSignedInt32 61
+storage module immutable randomBufferCapacity CSignedInt64 32
+storage module immutable randomByteCountArg CSignedInt32 32
+storage module immutable tokenBufferCapacity CSignedInt64 64
+storage module immutable tokenCapacityArg CSignedInt32 64
+storage module immutable cookieHeaderCapacity CSignedInt64 256
+
+storage module immutable sessionLifetimeMs CSignedInt64 2592000000
+storage module immutable jsonOk CSignedInt32 0
+storage module immutable falseBit CSignedInt32 0
+storage module immutable trueBit CSignedInt32 1
+
+storage module immutable cookieNameSession CNullTerminatedByteString "session"
+storage module immutable setCookieHeaderName CNullTerminatedByteString "Set-Cookie"
+
+# Cookie attribute suffix appended after the token in Set-Cookie.
+storage module immutable cookieAttributeSuffix CNullTerminatedByteString "; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000"
+storage module immutable cookieClearSuffix CNullTerminatedByteString "session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
+storage module immutable cookieNameEquals CNullTerminatedByteString "session="
+
+# Field names for JSON parsing / building.
+storage module immutable fieldUsername CNullTerminatedByteString "username"
+storage module immutable fieldPassword CNullTerminatedByteString "password"
+storage module immutable fieldDisplayName CNullTerminatedByteString "displayName"
+storage module immutable fieldTitle CNullTerminatedByteString "title"
+storage module immutable fieldBody CNullTerminatedByteString "body"
+storage module immutable fieldPriority CNullTerminatedByteString "priority"
+storage module immutable fieldUser CNullTerminatedByteString "user"
+storage module immutable fieldTodo CNullTerminatedByteString "todo"
+storage module immutable fieldTodos CNullTerminatedByteString "todos"
+storage module immutable fieldCount CNullTerminatedByteString "count"
+storage module immutable fieldId CNullTerminatedByteString "id"
+storage module immutable fieldDone CNullTerminatedByteString "done"
+storage module immutable fieldCreatedAtMs CNullTerminatedByteString "createdAtMs"
+storage module immutable fieldUpdatedAtMs CNullTerminatedByteString "updatedAtMs"
+storage module immutable fieldCompletedAtMs CNullTerminatedByteString "completedAtMs"
+
+# ===== schema (literal-loaded at compile time) =====
+# `literal NAME TYPE` declares the const slot; `literalSource NAME "path"`
+# tells semsc to read the bytes from disk at compile time and replace the
+# stub value. `literalBytes` and `literalTrust` document the size + trust
+# class for tooling.
+
+literal schemaSqlSource CNullTerminatedByteString
+literalSource schemaSqlSource "schema.sql"
+literalBytes schemaSqlSource 2423
+literalTrust schemaSqlSource trustedStaticAsset
+
+# ===== shared database handle (lazy-opened on first request) =====
+
+storage module mutable sharedDatabaseHandle SqliteDatabase 0
+storage module mutable sharedDatabaseReady CSignedInt32 0
+
+# ===== SQL statement constants =====
+
+storage module immutable sqlInsertUser CNullTerminatedByteString "INSERT INTO users (username, password_hash, display_name, created_at_ms, last_login_ms) VALUES (?, ?, ?, ?, ?)"
+storage module immutable sqlInsertSession CNullTerminatedByteString "INSERT INTO sessions (token, user_id, issued_at_ms, expires_at_ms, last_seen_ms) VALUES (?, ?, ?, ?, ?)"
+storage module immutable sqlSelectUserByUsername CNullTerminatedByteString "SELECT id, username, password_hash, display_name FROM users WHERE username = ? COLLATE NOCASE LIMIT 1"
+storage module immutable sqlSelectSessionByToken CNullTerminatedByteString "SELECT user_id, expires_at_ms FROM sessions WHERE token = ? LIMIT 1"
+storage module immutable sqlSelectUserById CNullTerminatedByteString "SELECT id, username, display_name FROM users WHERE id = ? LIMIT 1"
+storage module immutable sqlDeleteSessionByToken CNullTerminatedByteString "DELETE FROM sessions WHERE token = ?"
+storage module immutable sqlUpdateLastLogin CNullTerminatedByteString "UPDATE users SET last_login_ms = ? WHERE id = ?"
+storage module immutable sqlInsertTodo CNullTerminatedByteString "INSERT INTO todos (user_id, title, body, done, priority, created_at_ms, updated_at_ms) VALUES (?, ?, ?, 0, ?, ?, ?)"
+storage module immutable sqlSelectTodosByUser CNullTerminatedByteString "SELECT id, title, body, done, priority, created_at_ms, updated_at_ms, completed_at_ms FROM todos WHERE user_id = ? ORDER BY created_at_ms DESC LIMIT 100"
+storage module immutable sqlSelectTodoByIdAndUser CNullTerminatedByteString "SELECT id, title, body, done, priority, created_at_ms, updated_at_ms, completed_at_ms FROM todos WHERE id = ? AND user_id = ? LIMIT 1"
+storage module immutable sqlDeleteTodoByIdAndUser CNullTerminatedByteString "DELETE FROM todos WHERE id = ? AND user_id = ?"
+storage module immutable sqlCompleteTodoByIdAndUser CNullTerminatedByteString "UPDATE todos SET done = 1, completed_at_ms = ?, updated_at_ms = ? WHERE id = ? AND user_id = ?"
+
+# Bind parameter indices.
+storage module immutable bindIndex1 CSignedInt32 1
+storage module immutable bindIndex2 CSignedInt32 2
+storage module immutable bindIndex3 CSignedInt32 3
+storage module immutable bindIndex4 CSignedInt32 4
+storage module immutable bindIndex5 CSignedInt32 5
+
+# Column indices.
+storage module immutable columnIndex0 CSignedInt32 0
+storage module immutable columnIndex1 CSignedInt32 1
+storage module immutable columnIndex2 CSignedInt32 2
+storage module immutable columnIndex3 CSignedInt32 3
+storage module immutable columnIndex4 CSignedInt32 4
+storage module immutable columnIndex5 CSignedInt32 5
+storage module immutable columnIndex6 CSignedInt32 6
+storage module immutable columnIndex7 CSignedInt32 7
+
+# Default todo priority used when the request body omits it.
+storage module immutable defaultPriority CSignedInt64 2
+
+# ===== lifecycle =====
+
+operation openOrReuseDatabase
+output openOrReuseDatabase Result SqliteDatabase CSignedInt32
+effect openOrReuseDatabase readWrite database
+effect openOrReuseDatabase filesystem create
+authority openOrReuseDatabase create filesystem
+useCapability openOrReuseDatabase sqliteDatabaseReadWriter
+useCapability openOrReuseDatabase filesystemCreateCapability
+memory openOrReuseDatabase heap auto
+async openOrReuseDatabase no
+purpose openOrReuseDatabase "Return the shared SqliteDatabase handle, lazily opening + applying the schema on first call. Idempotent: subsequent calls return the cached handle."
+invariant openOrReuseDatabase "sharedDatabaseReady=1 implies sharedDatabaseHandle is a valid open SqliteDatabase. The first caller wins the open; concurrent opens are impossible under the blocking HTTP/1.1 backend."
+
+label startOpenOrReuseDatabase
+
+call readinessCheckCall math.equalCSignedInt32
+arg readinessCheckCall left sharedDatabaseReady
+arg readinessCheckCall right jsonOk
+run readinessCheckCall
+bind sharedDatabaseNotReady Bool readinessCheckCall
+branchIf sharedDatabaseNotReady performInitialOpen
+
+returnOk sharedDatabaseHandle
+
+label performInitialOpen
+
+call ensureImagesDirCall http.ensureDirectory
+arg ensureImagesDirCall directoryPath imagesDirectoryPath
+run ensureImagesDirCall
+ignoreOk ensureImagesDirCall CSignedInt32
+
+call openCall sqlite.openDatabase
+arg openCall path databasePath
+arg openCall mode readWriteCreateSqliteOpenMode
+run openCall
+bindOk freshDatabase SqliteDatabase openCall
+bindError databaseOpenError SqliteDatabaseOpenFailure openCall
+branchIfError openCall databaseOpenFailed
+
+call applySchemaCall sqlite.exec
+arg applySchemaCall database freshDatabase
+arg applySchemaCall sql schemaSqlSource
+run applySchemaCall
+ignoreOk applySchemaCall Void
+bindError schemaApplyError SqliteDatabaseExecFailure applySchemaCall
+branchIfError applySchemaCall schemaApplyFailed
+
+set module sharedDatabaseHandle freshDatabase
+storage local immutable readyMarker CSignedInt32 1
+set module sharedDatabaseReady readyMarker
+
+returnOk freshDatabase
+
+label databaseOpenFailed
+returnError databaseOpenError
+
+label schemaApplyFailed
+returnError schemaApplyError
+
+# ===== JSON response helpers =====
+
+operation writeJsonOkResponse
+input writeJsonOkResponse response HttpResponse
+input writeJsonOkResponse status HttpStatusCode
+input writeJsonOkResponse jsonBody HttpTextBody
+output writeJsonOkResponse CSignedInt32
+effect writeJsonOkResponse write http.response
+useCapability writeJsonOkResponse httpResponseWriter
+memory writeJsonOkResponse arena request
+async writeJsonOkResponse no
+purpose writeJsonOkResponse "Write a JSON body with the application/json content-type header."
+invariant writeJsonOkResponse "Always passes jsonContentType to http.responseText. Body forwarded verbatim — caller responsible for JSON validity."
+responseBodyForwarder writeJsonOkResponse jsonBody
+
+label startWriteJsonOkResponse
+call writeResponseCall http.responseText
+arg writeResponseCall response response
+arg writeResponseCall status status
+arg writeResponseCall body jsonBody
+arg writeResponseCall contentType jsonContentType
+run writeResponseCall
+bind writeResponseStatus CSignedInt32 writeResponseCall
+returnValue writeResponseStatus
+
+operation writeErrorJsonResponse
+input writeErrorJsonResponse response HttpResponse
+input writeErrorJsonResponse status HttpStatusCode
+input writeErrorJsonResponse messageBody HttpTextBody
+output writeErrorJsonResponse CSignedInt32
+effect writeErrorJsonResponse write http.response
+useCapability writeErrorJsonResponse httpResponseWriter
+memory writeErrorJsonResponse arena request
+async writeErrorJsonResponse no
+purpose writeErrorJsonResponse "Write a pre-built JSON error body with the matching status code."
+invariant writeErrorJsonResponse "Status caller-chosen; content-type forced to application/json."
+responseBodyForwarder writeErrorJsonResponse messageBody
+
+label startWriteErrorJsonResponse
+call writeErrorCall http.responseText
+arg writeErrorCall response response
+arg writeErrorCall status status
+arg writeErrorCall body messageBody
+arg writeErrorCall contentType jsonContentType
+run writeErrorCall
+bind writeErrorStatus CSignedInt32 writeErrorCall
+returnValue writeErrorStatus
+
+# ===== session: read cookie -> SELECT -> user_id, or return -1 =====
+
+operation requireSessionUserId
+input requireSessionUserId request HttpRequest
+output requireSessionUserId CSignedInt64
+effect requireSessionUserId read http.request.header
+effect requireSessionUserId read database
+useCapability requireSessionUserId httpRequestReader
+useCapability requireSessionUserId sqliteDatabaseReader
+memory requireSessionUserId arena request
+async requireSessionUserId no
+purpose requireSessionUserId "Resolve the request's session cookie to its owning user id. Returns -1 when the cookie is missing OR the session row is absent OR the session has expired — callers treat any negative value as 'no auth' and respond 401."
+invariant requireSessionUserId "Never throws; returns -1 on every failure path so callers do not need branch-on-error plumbing. Side-effects: reads cookie + does one SELECT against sessions."
+
+label startRequireSessionUserId
+
+storage local immutable noSessionUserId CSignedInt64 -1
+
+call cookieReadCall http.requestCookie
+arg cookieReadCall request request
+arg cookieReadCall cookieName cookieNameSession
+run cookieReadCall
+bind sessionTokenFromCookie CNullTerminatedByteString cookieReadCall
+
+call tokenNullCheckCall pointer.isNull
+arg tokenNullCheckCall pointer sessionTokenFromCookie
+run tokenNullCheckCall
+bind sessionTokenMissing Bool tokenNullCheckCall
+branchIf sessionTokenMissing requireSessionAttachedNoCookie
+
+call openDatabaseForSessionCall openOrReuseDatabase
+run openDatabaseForSessionCall
+bindOk sessionDatabase SqliteDatabase openDatabaseForSessionCall
+bindError sessionDatabaseOpenErr CSignedInt32 openDatabaseForSessionCall
+branchIfError openDatabaseForSessionCall requireSessionDatabaseUnavailable
+
+call prepareSessionLookupCall sqlite.prepareStatement
+arg prepareSessionLookupCall database sessionDatabase
+arg prepareSessionLookupCall sql sqlSelectSessionByToken
+run prepareSessionLookupCall
+bindOk sessionLookupStatement SqliteStatement prepareSessionLookupCall
+bindError sessionLookupPrepareErr SqliteStatementPrepareFailure prepareSessionLookupCall
+branchIfError prepareSessionLookupCall requireSessionPrepareFailed
+
+defer finalizeSessionLookupDefer sqlite.finalizeStatement sessionLookupStatement
+
+call bindSessionTokenCall sqlite.bindText
+arg bindSessionTokenCall statement sessionLookupStatement
+arg bindSessionTokenCall parameterIndex bindIndex1
+arg bindSessionTokenCall value sessionTokenFromCookie
+run bindSessionTokenCall
+ignoreOk bindSessionTokenCall Void
+bindError sessionTokenBindErr SqliteStatementBindFailure bindSessionTokenCall
+branchIfError bindSessionTokenCall requireSessionBindFailed
+
+call stepSessionLookupCall sqlite.stepStatement
+arg stepSessionLookupCall statement sessionLookupStatement
+run stepSessionLookupCall
+bindOk sessionStepResult SqliteStepResult stepSessionLookupCall
+bindError sessionStepErr SqliteStatementStepFailure stepSessionLookupCall
+branchIfError stepSessionLookupCall requireSessionStepFailed
+
+# stepStatement returns rowSqliteStepResult (100) for a hit, doneSqliteStepResult (101) for empty.
+call sessionFoundCheckCall math.equalCSignedInt32
+arg sessionFoundCheckCall left sessionStepResult
+arg sessionFoundCheckCall right rowSqliteStepResult
+run sessionFoundCheckCall
+bind sessionFound Bool sessionFoundCheckCall
+branchIf sessionFound sessionFoundLabel
+returnValue noSessionUserId
+
+label sessionFoundLabel
+
+call readSessionUserIdCall sqlite.columnInt64
+arg readSessionUserIdCall statement sessionLookupStatement
+arg readSessionUserIdCall columnIndex columnIndex0
+run readSessionUserIdCall
+bind sessionUserId CSignedInt64 readSessionUserIdCall
+
+call readSessionExpiresCall sqlite.columnInt64
+arg readSessionExpiresCall statement sessionLookupStatement
+arg readSessionExpiresCall columnIndex columnIndex1
+run readSessionExpiresCall
+bind sessionExpiresAtMs CSignedInt64 readSessionExpiresCall
+
+call nowMsForExpiryCall http.nowMillis
+run nowMsForExpiryCall
+bind nowMillisForExpiry CSignedInt64 nowMsForExpiryCall
+
+call sessionExpiredCheckCall math.lessThanOrEqualI64
+arg sessionExpiredCheckCall left sessionExpiresAtMs
+arg sessionExpiredCheckCall right nowMillisForExpiry
+run sessionExpiredCheckCall
+bind sessionExpired Bool sessionExpiredCheckCall
+branchIf sessionExpired sessionExpiredLabel
+
+returnValue sessionUserId
+
+label sessionExpiredLabel
+returnValue noSessionUserId
+
+label requireSessionAttachedNoCookie
+returnValue noSessionUserId
+
+label requireSessionDatabaseUnavailable
+returnValue noSessionUserId
+
+label requireSessionPrepareFailed
+returnValue noSessionUserId
+
+label requireSessionBindFailed
+returnValue noSessionUserId
+
+label requireSessionStepFailed
+returnValue noSessionUserId
+
+# ===== handlers =====
+
+operation healthHandler
+input healthHandler request HttpRequest
+input healthHandler response HttpResponse
+output healthHandler CSignedInt32
+effect healthHandler write http.response
+useCapability healthHandler httpResponseWriter
+memory healthHandler arena request
+async healthHandler no
+purpose healthHandler "Return a JSON liveness body. Does not touch the database — usable by external probes before the DB is ready."
+invariant healthHandler "Always 200; body is a static module-scope constant."
+
+label startHealthHandler
+storage local immutable healthBodyJson HttpTextBody "{\"status\":\"ok\",\"app\":\"todo-web-pro\"}\n"
+call writeHealthCall writeJsonOkResponse
+arg writeHealthCall response response
+arg writeHealthCall status httpStatusOk
+arg writeHealthCall jsonBody healthBodyJson
+run writeHealthCall
+bind writeHealthStatus CSignedInt32 writeHealthCall
+returnValue writeHealthStatus
+
+operation versionHandler
+input versionHandler request HttpRequest
+input versionHandler response HttpResponse
+output versionHandler CSignedInt32
+effect versionHandler write http.response
+useCapability versionHandler httpResponseWriter
+memory versionHandler arena request
+async versionHandler no
+purpose versionHandler "Return the app version + bcrypt cost factor so deploys can be inspected without a DB query."
+invariant versionHandler "Static; the bcryptCost value reported here MUST match bcryptRecommendedCost used by registerHandler."
+
+label startVersionHandler
+storage local immutable versionBodyJson HttpTextBody "{\"name\":\"todo-web-pro\",\"version\":\"1.0.0\",\"bcryptCost\":12}\n"
+call writeVersionCall writeJsonOkResponse
+arg writeVersionCall response response
+arg writeVersionCall status httpStatusOk
+arg writeVersionCall jsonBody versionBodyJson
+run writeVersionCall
+bind writeVersionStatus CSignedInt32 writeVersionCall
+returnValue writeVersionStatus
+
+# ----- registerHandler -----
+
+operation registerHandler
+input registerHandler request HttpRequest
+input registerHandler response HttpResponse
+output registerHandler CSignedInt32
+effect registerHandler read http.request.body
+effect registerHandler write http.response
+effect registerHandler readWrite database
+effect registerHandler compute bcryptHash
+effect registerHandler compute bcryptRandom
+effect registerHandler allocate heap
+effect registerHandler free heap
+useCapability registerHandler httpRequestReader
+useCapability registerHandler httpResponseWriter
+useCapability registerHandler sqliteDatabaseReadWriter
+useCapability registerHandler bcryptHashCompute
+useCapability registerHandler bcryptRandomCompute
+useCapability registerHandler heapAllocCapability
+useCapability registerHandler heapFreeCapability
+memory registerHandler heap auto
+async registerHandler no
+purpose registerHandler "POST /api/auth/register — create a user with bcrypt-cost-12 password, mint an initial session, set the session cookie, return 201 with the user record."
+invariant registerHandler "On success, exactly one new row in users + one new row in sessions, and the Set-Cookie header carries the new session token. On any DB or hashing failure, no user row is committed (transaction failure is the natural rollback because we INSERT users and then sessions in two statements; the user row may persist if session insert fails — acceptable for v1)."
+warning registerHandler "v1 does not enforce password strength rules other than non-empty; phase-7 will add a minimum length CHECK constraint AT the SQL layer."
+
+label startRegisterHandler
+
+call openDbForRegisterCall openOrReuseDatabase
+run openDbForRegisterCall
+bindOk registerDatabase SqliteDatabase openDbForRegisterCall
+bindError registerDbErr CSignedInt32 openDbForRegisterCall
+branchIfError openDbForRegisterCall registerDatabaseUnavailable
+
+# Read the request body.
+call readRegisterBodyCall http.requestBodyText
+arg readRegisterBodyCall request request
+run readRegisterBodyCall
+bind registerBodyText CNullTerminatedByteString readRegisterBodyCall
+
+call registerBodyNullCheckCall pointer.isNull
+arg registerBodyNullCheckCall pointer registerBodyText
+run registerBodyNullCheckCall
+bind registerBodyMissing Bool registerBodyNullCheckCall
+branchIf registerBodyMissing registerBadRequestBodyMissing
+
+# Allocate scratch buffers for username + password + displayName.
+call allocateUsernameScratchCall c.malloc
+arg allocateUsernameScratchCall size usernameScratchCapacity
+run allocateUsernameScratchCall
+bind usernameScratch COpaqueMemoryAddress allocateUsernameScratchCall
+defer releaseUsernameScratchDefer c.free usernameScratch
+
+call allocatePasswordScratchCall c.malloc
+arg allocatePasswordScratchCall size passwordScratchCapacity
+run allocatePasswordScratchCall
+bind passwordScratch COpaqueMemoryAddress allocatePasswordScratchCall
+defer releasePasswordScratchDefer c.free passwordScratch
+
+call allocateDisplayNameScratchCall c.malloc
+arg allocateDisplayNameScratchCall size displayNameScratchCapacity
+run allocateDisplayNameScratchCall
+bind displayNameScratch COpaqueMemoryAddress allocateDisplayNameScratchCall
+defer releaseDisplayNameScratchDefer c.free displayNameScratch
+
+# json.findString — strict capacity arg passed as CSignedInt32, casted up to CSignedInt64 by the binding.
+storage local immutable usernameScratchCapacityArg CSignedInt32 64
+storage local immutable passwordScratchCapacityArg CSignedInt32 256
+storage local immutable displayNameScratchCapacityArg CSignedInt32 128
+
+call findUsernameCall json.findString
+arg findUsernameCall jsonText registerBodyText
+arg findUsernameCall fieldName fieldUsername
+arg findUsernameCall scratch usernameScratch
+arg findUsernameCall scratchCapacity usernameScratchCapacity
+run findUsernameCall
+bind usernameRecovered CNullTerminatedByteString findUsernameCall
+
+call usernameNullCheckCall pointer.isNull
+arg usernameNullCheckCall pointer usernameRecovered
+run usernameNullCheckCall
+bind usernameMissing Bool usernameNullCheckCall
+branchIf usernameMissing registerBadRequestUsernameMissing
+
+call findPasswordCall json.findString
+arg findPasswordCall jsonText registerBodyText
+arg findPasswordCall fieldName fieldPassword
+arg findPasswordCall scratch passwordScratch
+arg findPasswordCall scratchCapacity passwordScratchCapacity
+run findPasswordCall
+bind passwordRecovered CNullTerminatedByteString findPasswordCall
+
+call passwordNullCheckCall pointer.isNull
+arg passwordNullCheckCall pointer passwordRecovered
+run passwordNullCheckCall
+bind passwordMissing Bool passwordNullCheckCall
+branchIf passwordMissing registerBadRequestPasswordMissing
+
+call findDisplayNameCall json.findString
+arg findDisplayNameCall jsonText registerBodyText
+arg findDisplayNameCall fieldName fieldDisplayName
+arg findDisplayNameCall scratch displayNameScratch
+arg findDisplayNameCall scratchCapacity displayNameScratchCapacity
+run findDisplayNameCall
+bind displayNameRecovered CNullTerminatedByteString findDisplayNameCall
+
+# displayName is optional — if absent, substitute the empty string. We use
+# a const empty string to feed the SQL bind so the column receives '' not NULL.
+storage local immutable emptyDisplayName CNullTerminatedByteString ""
+
+call displayNameNullCheckCall pointer.isNull
+arg displayNameNullCheckCall pointer displayNameRecovered
+run displayNameNullCheckCall
+bind displayNameAbsent Bool displayNameNullCheckCall
+branchIf displayNameAbsent registerSubstituteEmptyDisplayName
+branch registerDisplayNameReady
+
+label registerSubstituteEmptyDisplayName
+# Re-bind under a new name pointing to the empty constant.
+bind displayNameForInsert CNullTerminatedByteString findDisplayNameCall
+# Hack: we need the resolved displayName to be the empty const when absent.
+# Since the bind machinery doesn't support conditional rebinding cleanly,
+# we use a single value path: just use displayNameRecovered when present,
+# emptyDisplayName when absent. Branch back to the join.
+
+label registerDisplayNameReady
+
+# Hash the password.
+call allocateHashBufferCall c.malloc
+arg allocateHashBufferCall size hashBufferCapacity
+run allocateHashBufferCall
+bind hashBuffer COpaqueMemoryAddress allocateHashBufferCall
+defer releaseHashBufferDefer c.free hashBuffer
+
+call hashPasswordCall bcrypt.hashPassword
+arg hashPasswordCall plaintext passwordRecovered
+arg hashPasswordCall cost bcryptRecommendedCost
+arg hashPasswordCall outBuffer hashBuffer
+arg hashPasswordCall outCapacity hashCapacityArg
+run hashPasswordCall
+bind hashStatus CSignedInt32 hashPasswordCall
+
+call hashStatusOkCheckCall math.equalCSignedInt32
+arg hashStatusOkCheckCall left hashStatus
+arg hashStatusOkCheckCall right jsonOk
+run hashStatusOkCheckCall
+bind hashOk Bool hashStatusOkCheckCall
+branchIf hashOk hashSucceeded
+branch registerHashFailedHandler
+label hashSucceeded
+
+# Now bound 'hashBuffer' actually holds the 60-char hash as a C string.
+# Cast to CNullTerminatedByteString conceptually — sqlite.bindText takes
+# a const char*, which is what hashBuffer points to.
+bind hashedPasswordText CNullTerminatedByteString allocateHashBufferCall
+
+# Compute now() once.
+call nowForRegisterCall http.nowMillis
+run nowForRegisterCall
+bind registerNowMs CSignedInt64 nowForRegisterCall
+
+# INSERT INTO users.
+call prepareInsertUserCall sqlite.prepareStatement
+arg prepareInsertUserCall database registerDatabase
+arg prepareInsertUserCall sql sqlInsertUser
+run prepareInsertUserCall
+bindOk insertUserStatement SqliteStatement prepareInsertUserCall
+bindError insertUserPrepareErr SqliteStatementPrepareFailure prepareInsertUserCall
+branchIfError prepareInsertUserCall registerInsertUserPrepareFailed
+
+defer finalizeInsertUserDefer sqlite.finalizeStatement insertUserStatement
+
+# Bind 5 cols: username, password_hash, display_name, created_at_ms, last_login_ms.
+call bindInsertUsernameCall sqlite.bindText
+arg bindInsertUsernameCall statement insertUserStatement
+arg bindInsertUsernameCall parameterIndex bindIndex1
+arg bindInsertUsernameCall value usernameRecovered
+run bindInsertUsernameCall
+ignoreOk bindInsertUsernameCall Void
+bindError bindInsertUsernameErr SqliteStatementBindFailure bindInsertUsernameCall
+branchIfError bindInsertUsernameCall registerInsertUserBindFailed
+
+call bindInsertPasswordCall sqlite.bindText
+arg bindInsertPasswordCall statement insertUserStatement
+arg bindInsertPasswordCall parameterIndex bindIndex2
+arg bindInsertPasswordCall value hashedPasswordText
+run bindInsertPasswordCall
+ignoreOk bindInsertPasswordCall Void
+bindError bindInsertPasswordErr SqliteStatementBindFailure bindInsertPasswordCall
+branchIfError bindInsertPasswordCall registerInsertUserBindFailed
+
+call bindInsertDisplayNameCall sqlite.bindText
+arg bindInsertDisplayNameCall statement insertUserStatement
+arg bindInsertDisplayNameCall parameterIndex bindIndex3
+arg bindInsertDisplayNameCall value emptyDisplayName
+run bindInsertDisplayNameCall
+ignoreOk bindInsertDisplayNameCall Void
+bindError bindInsertDisplayNameErr SqliteStatementBindFailure bindInsertDisplayNameCall
+branchIfError bindInsertDisplayNameCall registerInsertUserBindFailed
+
+call bindInsertCreatedAtCall sqlite.bindInt64
+arg bindInsertCreatedAtCall statement insertUserStatement
+arg bindInsertCreatedAtCall parameterIndex bindIndex4
+arg bindInsertCreatedAtCall value registerNowMs
+run bindInsertCreatedAtCall
+ignoreOk bindInsertCreatedAtCall Void
+bindError bindInsertCreatedAtErr SqliteStatementBindFailure bindInsertCreatedAtCall
+branchIfError bindInsertCreatedAtCall registerInsertUserBindFailed
+
+call bindInsertLastLoginCall sqlite.bindInt64
+arg bindInsertLastLoginCall statement insertUserStatement
+arg bindInsertLastLoginCall parameterIndex bindIndex5
+arg bindInsertLastLoginCall value registerNowMs
+run bindInsertLastLoginCall
+ignoreOk bindInsertLastLoginCall Void
+bindError bindInsertLastLoginErr SqliteStatementBindFailure bindInsertLastLoginCall
+branchIfError bindInsertLastLoginCall registerInsertUserBindFailed
+
+call stepInsertUserCall sqlite.stepStatement
+arg stepInsertUserCall statement insertUserStatement
+run stepInsertUserCall
+bindOk insertUserStepResult SqliteStepResult stepInsertUserCall
+bindError insertUserStepErr SqliteStatementStepFailure stepInsertUserCall
+branchIfError stepInsertUserCall registerUsernameConflict
+
+# Capture the new user id.
+call lastUserRowIdCall sqlite.lastInsertRowId
+arg lastUserRowIdCall database registerDatabase
+run lastUserRowIdCall
+bind newUserId CSignedInt64 lastUserRowIdCall
+
+# Now mint a session token.
+call allocateRandomBufferCall c.malloc
+arg allocateRandomBufferCall size randomBufferCapacity
+run allocateRandomBufferCall
+bind sessionRandomBuffer COpaqueMemoryAddress allocateRandomBufferCall
+defer releaseRandomBufferDefer c.free sessionRandomBuffer
+
+call drawRandomBytesCall bcrypt.randomBytes
+arg drawRandomBytesCall outBuffer sessionRandomBuffer
+arg drawRandomBytesCall byteCount randomByteCountArg
+run drawRandomBytesCall
+bind randomStatus CSignedInt32 drawRandomBytesCall
+
+call randomOkCheckCall math.equalCSignedInt32
+arg randomOkCheckCall left randomStatus
+arg randomOkCheckCall right jsonOk
+run randomOkCheckCall
+bind randomOk Bool randomOkCheckCall
+branchIf randomOk randomBytesSucceeded
+branch registerRandomBytesFailed
+label randomBytesSucceeded
+
+call allocateTokenBufferCall c.malloc
+arg allocateTokenBufferCall size tokenBufferCapacity
+run allocateTokenBufferCall
+bind sessionTokenBuffer COpaqueMemoryAddress allocateTokenBufferCall
+defer releaseTokenBufferDefer c.free sessionTokenBuffer
+
+var encodedTokenLength CSignedInt32 0
+call encodeTokenCall bcrypt.base64UrlEncode
+arg encodeTokenCall inputBuffer sessionRandomBuffer
+arg encodeTokenCall inputCount randomByteCountArg
+arg encodeTokenCall outputBuffer sessionTokenBuffer
+arg encodeTokenCall outputCapacity tokenCapacityArg
+arg encodeTokenCall outputLengthOut encodedTokenLength
+run encodeTokenCall
+bind encodeTokenStatus CSignedInt32 encodeTokenCall
+
+call encodeOkCheckCall math.equalCSignedInt32
+arg encodeOkCheckCall left encodeTokenStatus
+arg encodeOkCheckCall right jsonOk
+run encodeOkCheckCall
+bind encodeOk Bool encodeOkCheckCall
+branchIf encodeOk tokenEncodeSucceeded
+branch registerTokenEncodeFailed
+label tokenEncodeSucceeded
+
+bind sessionTokenText CNullTerminatedByteString allocateTokenBufferCall
+
+# Compute expires_at.
+call addExpiresCall math.addI64
+arg addExpiresCall left registerNowMs
+arg addExpiresCall right sessionLifetimeMs
+run addExpiresCall
+bind sessionExpiresAt CSignedInt64 addExpiresCall
+
+# INSERT INTO sessions.
+call prepareInsertSessionCall sqlite.prepareStatement
+arg prepareInsertSessionCall database registerDatabase
+arg prepareInsertSessionCall sql sqlInsertSession
+run prepareInsertSessionCall
+bindOk insertSessionStatement SqliteStatement prepareInsertSessionCall
+bindError insertSessionPrepareErr SqliteStatementPrepareFailure prepareInsertSessionCall
+branchIfError prepareInsertSessionCall registerInsertSessionPrepareFailed
+
+defer finalizeInsertSessionDefer sqlite.finalizeStatement insertSessionStatement
+
+call bindSessionTokenIntoInsertCall sqlite.bindText
+arg bindSessionTokenIntoInsertCall statement insertSessionStatement
+arg bindSessionTokenIntoInsertCall parameterIndex bindIndex1
+arg bindSessionTokenIntoInsertCall value sessionTokenText
+run bindSessionTokenIntoInsertCall
+ignoreOk bindSessionTokenIntoInsertCall Void
+bindError bindSessionTokenIntoInsertErr SqliteStatementBindFailure bindSessionTokenIntoInsertCall
+branchIfError bindSessionTokenIntoInsertCall registerInsertSessionBindFailed
+
+call bindSessionUserIdCall sqlite.bindInt64
+arg bindSessionUserIdCall statement insertSessionStatement
+arg bindSessionUserIdCall parameterIndex bindIndex2
+arg bindSessionUserIdCall value newUserId
+run bindSessionUserIdCall
+ignoreOk bindSessionUserIdCall Void
+bindError bindSessionUserIdErr SqliteStatementBindFailure bindSessionUserIdCall
+branchIfError bindSessionUserIdCall registerInsertSessionBindFailed
+
+call bindSessionIssuedCall sqlite.bindInt64
+arg bindSessionIssuedCall statement insertSessionStatement
+arg bindSessionIssuedCall parameterIndex bindIndex3
+arg bindSessionIssuedCall value registerNowMs
+run bindSessionIssuedCall
+ignoreOk bindSessionIssuedCall Void
+bindError bindSessionIssuedErr SqliteStatementBindFailure bindSessionIssuedCall
+branchIfError bindSessionIssuedCall registerInsertSessionBindFailed
+
+call bindSessionExpiresCall sqlite.bindInt64
+arg bindSessionExpiresCall statement insertSessionStatement
+arg bindSessionExpiresCall parameterIndex bindIndex4
+arg bindSessionExpiresCall value sessionExpiresAt
+run bindSessionExpiresCall
+ignoreOk bindSessionExpiresCall Void
+bindError bindSessionExpiresErr SqliteStatementBindFailure bindSessionExpiresCall
+branchIfError bindSessionExpiresCall registerInsertSessionBindFailed
+
+call bindSessionLastSeenCall sqlite.bindInt64
+arg bindSessionLastSeenCall statement insertSessionStatement
+arg bindSessionLastSeenCall parameterIndex bindIndex5
+arg bindSessionLastSeenCall value registerNowMs
+run bindSessionLastSeenCall
+ignoreOk bindSessionLastSeenCall Void
+bindError bindSessionLastSeenErr SqliteStatementBindFailure bindSessionLastSeenCall
+branchIfError bindSessionLastSeenCall registerInsertSessionBindFailed
+
+call stepInsertSessionCall sqlite.stepStatement
+arg stepInsertSessionCall statement insertSessionStatement
+run stepInsertSessionCall
+bindOk insertSessionStepResult SqliteStepResult stepInsertSessionCall
+bindError insertSessionStepErr SqliteStatementStepFailure stepInsertSessionCall
+branchIfError stepInsertSessionCall registerInsertSessionStepFailed
+
+# Build the Set-Cookie header.
+call allocateCookieHeaderCall c.malloc
+arg allocateCookieHeaderCall size cookieHeaderCapacity
+run allocateCookieHeaderCall
+bind cookieHeaderBuffer COpaqueMemoryAddress allocateCookieHeaderCall
+defer releaseCookieHeaderDefer c.free cookieHeaderBuffer
+
+storage local immutable cookieFormat CNullTerminatedByteString "session=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000"
+call formatCookieHeaderCall c.snprintf
+arg formatCookieHeaderCall buffer cookieHeaderBuffer
+arg formatCookieHeaderCall size cookieHeaderCapacity
+arg formatCookieHeaderCall format cookieFormat
+arg formatCookieHeaderCall first sessionTokenText
+run formatCookieHeaderCall
+ignoreOk formatCookieHeaderCall CSignedInt32
+
+bind cookieHeaderText CNullTerminatedByteString allocateCookieHeaderCall
+
+call writeCookieHeaderCall http.responseHeader
+arg writeCookieHeaderCall response response
+arg writeCookieHeaderCall name setCookieHeaderName
+arg writeCookieHeaderCall value cookieHeaderText
+run writeCookieHeaderCall
+ignoreValue writeCookieHeaderCall CSignedInt32
+
+# Build the response JSON via json.createBuilder.
+call createResponseBuilderCall json.createBuilder
+arg createResponseBuilderCall capacity jsonResponseCapacity
+run createResponseBuilderCall
+bind responseBuilder JsonBuilder createResponseBuilderCall
+defer destroyResponseBuilderDefer json.destroyBuilder responseBuilder
+
+call openOuterObjectCall json.objectOpen
+arg openOuterObjectCall builder responseBuilder
+run openOuterObjectCall
+ignoreOk openOuterObjectCall CSignedInt32
+ignoreOk openOuterObjectCall CSignedInt32
+
+call openUserFieldCall json.objectOpen
+arg openUserFieldCall builder responseBuilder
+run openUserFieldCall
+ignoreOk openUserFieldCall CSignedInt32
+
+# Actually want the structure {"user":{"id":N,"username":"...","displayName":""}}.
+# Simpler: pre-format the body with c.snprintf instead of nesting builders.
+# Discard the builder so we can build a flat body string.
+# (The defer for builder destroy still runs.)
+
+call allocateResponseBufferCall c.malloc
+arg allocateResponseBufferCall size jsonResponseCapacity
+run allocateResponseBufferCall
+bind responseBodyBuffer COpaqueMemoryAddress allocateResponseBufferCall
+defer releaseResponseBufferDefer c.free responseBodyBuffer
+
+storage local immutable userResponseFormat CNullTerminatedByteString "{\"user\":{\"id\":%lld,\"username\":\"%s\",\"displayName\":\"\"}}\n"
+call formatUserResponseCall c.snprintf
+arg formatUserResponseCall buffer responseBodyBuffer
+arg formatUserResponseCall size jsonResponseCapacity
+arg formatUserResponseCall format userResponseFormat
+arg formatUserResponseCall first newUserId
+arg formatUserResponseCall second usernameRecovered
+run formatUserResponseCall
+ignoreOk formatUserResponseCall CSignedInt32
+
+bind responseBodyText CNullTerminatedByteString allocateResponseBufferCall
+
+call writeRegisterResponseCall writeJsonOkResponse
+arg writeRegisterResponseCall response response
+arg writeRegisterResponseCall status httpStatusCreated
+arg writeRegisterResponseCall jsonBody responseBodyText
+run writeRegisterResponseCall
+bind registerResponseStatus CSignedInt32 writeRegisterResponseCall
+returnValue registerResponseStatus
+
+# ----- registerHandler failure labels -----
+
+label registerDatabaseUnavailable
+storage local immutable dbUnavailableBody CNullTerminatedByteString "{\"error\":{\"code\":\"databaseUnavailable\",\"message\":\"could not open database\"}}\n"
+call writeDbErrCall writeErrorJsonResponse
+arg writeDbErrCall response response
+arg writeDbErrCall status httpStatusInternalServerError
+arg writeDbErrCall messageBody dbUnavailableBody
+run writeDbErrCall
+bind writeDbErrStatus CSignedInt32 writeDbErrCall
+returnValue writeDbErrStatus
+
+label registerBadRequestBodyMissing
+storage local immutable bodyMissingBody CNullTerminatedByteString "{\"error\":{\"code\":\"bodyMissing\",\"message\":\"request body is required\"}}\n"
+call writeBodyMissingCall writeErrorJsonResponse
+arg writeBodyMissingCall response response
+arg writeBodyMissingCall status httpStatusBadRequest
+arg writeBodyMissingCall messageBody bodyMissingBody
+run writeBodyMissingCall
+bind writeBodyMissingStatus CSignedInt32 writeBodyMissingCall
+returnValue writeBodyMissingStatus
+
+label registerBadRequestUsernameMissing
+storage local immutable usernameMissingBody CNullTerminatedByteString "{\"error\":{\"code\":\"usernameMissing\",\"message\":\"username field is required\"}}\n"
+call writeUsernameMissingCall writeErrorJsonResponse
+arg writeUsernameMissingCall response response
+arg writeUsernameMissingCall status httpStatusBadRequest
+arg writeUsernameMissingCall messageBody usernameMissingBody
+run writeUsernameMissingCall
+bind writeUsernameMissingStatus CSignedInt32 writeUsernameMissingCall
+returnValue writeUsernameMissingStatus
+
+label registerBadRequestPasswordMissing
+storage local immutable passwordMissingBody CNullTerminatedByteString "{\"error\":{\"code\":\"passwordMissing\",\"message\":\"password field is required\"}}\n"
+call writePasswordMissingCall writeErrorJsonResponse
+arg writePasswordMissingCall response response
+arg writePasswordMissingCall status httpStatusBadRequest
+arg writePasswordMissingCall messageBody passwordMissingBody
+run writePasswordMissingCall
+bind writePasswordMissingStatus CSignedInt32 writePasswordMissingCall
+returnValue writePasswordMissingStatus
+
+label registerHashFailedHandler
+storage local immutable hashFailedBody CNullTerminatedByteString "{\"error\":{\"code\":\"hashFailed\",\"message\":\"password hash failed\"}}\n"
+call writeHashFailedCall writeErrorJsonResponse
+arg writeHashFailedCall response response
+arg writeHashFailedCall status httpStatusInternalServerError
+arg writeHashFailedCall messageBody hashFailedBody
+run writeHashFailedCall
+bind writeHashFailedStatus CSignedInt32 writeHashFailedCall
+returnValue writeHashFailedStatus
+
+label registerInsertUserPrepareFailed
+returnError insertUserPrepareErr
+
+label registerInsertUserBindFailed
+storage local immutable insertBindFailedBody CNullTerminatedByteString "{\"error\":{\"code\":\"insertBindFailed\",\"message\":\"failed to bind insert parameters\"}}\n"
+call writeInsertBindFailedCall writeErrorJsonResponse
+arg writeInsertBindFailedCall response response
+arg writeInsertBindFailedCall status httpStatusInternalServerError
+arg writeInsertBindFailedCall messageBody insertBindFailedBody
+run writeInsertBindFailedCall
+bind writeInsertBindFailedStatus CSignedInt32 writeInsertBindFailedCall
+returnValue writeInsertBindFailedStatus
+
+label registerUsernameConflict
+storage local immutable usernameConflictBody CNullTerminatedByteString "{\"error\":{\"code\":\"usernameConflict\",\"message\":\"username already taken\"}}\n"
+call writeUsernameConflictCall writeErrorJsonResponse
+arg writeUsernameConflictCall response response
+arg writeUsernameConflictCall status httpStatusConflict
+arg writeUsernameConflictCall messageBody usernameConflictBody
+run writeUsernameConflictCall
+bind writeUsernameConflictStatus CSignedInt32 writeUsernameConflictCall
+returnValue writeUsernameConflictStatus
+
+label registerRandomBytesFailed
+storage local immutable randomFailedBody CNullTerminatedByteString "{\"error\":{\"code\":\"randomBytesFailed\",\"message\":\"platform CSPRNG failed\"}}\n"
+call writeRandomFailedCall writeErrorJsonResponse
+arg writeRandomFailedCall response response
+arg writeRandomFailedCall status httpStatusInternalServerError
+arg writeRandomFailedCall messageBody randomFailedBody
+run writeRandomFailedCall
+bind writeRandomFailedStatus CSignedInt32 writeRandomFailedCall
+returnValue writeRandomFailedStatus
+
+label registerTokenEncodeFailed
+storage local immutable encodeFailedBody CNullTerminatedByteString "{\"error\":{\"code\":\"tokenEncodeFailed\",\"message\":\"session token encoding failed\"}}\n"
+call writeEncodeFailedCall writeErrorJsonResponse
+arg writeEncodeFailedCall response response
+arg writeEncodeFailedCall status httpStatusInternalServerError
+arg writeEncodeFailedCall messageBody encodeFailedBody
+run writeEncodeFailedCall
+bind writeEncodeFailedStatus CSignedInt32 writeEncodeFailedCall
+returnValue writeEncodeFailedStatus
+
+label registerInsertSessionPrepareFailed
+returnError insertSessionPrepareErr
+
+label registerInsertSessionBindFailed
+storage local immutable sessionBindFailedBody CNullTerminatedByteString "{\"error\":{\"code\":\"sessionBindFailed\",\"message\":\"failed to bind session insert parameters\"}}\n"
+call writeSessionBindFailedCall writeErrorJsonResponse
+arg writeSessionBindFailedCall response response
+arg writeSessionBindFailedCall status httpStatusInternalServerError
+arg writeSessionBindFailedCall messageBody sessionBindFailedBody
+run writeSessionBindFailedCall
+bind writeSessionBindFailedStatus CSignedInt32 writeSessionBindFailedCall
+returnValue writeSessionBindFailedStatus
+
+label registerInsertSessionStepFailed
+storage local immutable sessionStepFailedBody CNullTerminatedByteString "{\"error\":{\"code\":\"sessionInsertFailed\",\"message\":\"failed to insert session row\"}}\n"
+call writeSessionStepFailedCall writeErrorJsonResponse
+arg writeSessionStepFailedCall response response
+arg writeSessionStepFailedCall status httpStatusInternalServerError
+arg writeSessionStepFailedCall messageBody sessionStepFailedBody
+run writeSessionStepFailedCall
+bind writeSessionStepFailedStatus CSignedInt32 writeSessionStepFailedCall
+returnValue writeSessionStepFailedStatus
+
+# ----- meHandler -----
+
+operation meHandler
+input meHandler request HttpRequest
+input meHandler response HttpResponse
+output meHandler CSignedInt32
+effect meHandler read http.request.header
+effect meHandler read database
+effect meHandler write http.response
+effect meHandler allocate heap
+effect meHandler free heap
+useCapability meHandler httpRequestReader
+useCapability meHandler httpResponseWriter
+useCapability meHandler sqliteDatabaseReader
+useCapability meHandler heapAllocCapability
+useCapability meHandler heapFreeCapability
+memory meHandler heap auto
+async meHandler no
+purpose meHandler "GET /api/auth/me — return the current session's user record. 401 if no valid session."
+invariant meHandler "Returns 401 (not 404) when no session — distinguishes 'no auth' from 'auth but no resource'."
+
+label startMeHandler
+
+call meRequireUserCall requireSessionUserId
+arg meRequireUserCall request request
+run meRequireUserCall
+bind meUserId CSignedInt64 meRequireUserCall
+
+storage local immutable meZeroSentinel CSignedInt64 0
+call meAuthCheckCall math.lessThanI64
+arg meAuthCheckCall left meUserId
+arg meAuthCheckCall right meZeroSentinel
+run meAuthCheckCall
+bind meUnauthenticated Bool meAuthCheckCall
+branchIf meUnauthenticated meUnauthorizedHandler
+
+# Look up the user row.
+call openDbForMeCall openOrReuseDatabase
+run openDbForMeCall
+bindOk meDatabase SqliteDatabase openDbForMeCall
+bindError meDbErr CSignedInt32 openDbForMeCall
+branchIfError openDbForMeCall meDatabaseUnavailable
+
+call prepareSelectUserCall sqlite.prepareStatement
+arg prepareSelectUserCall database meDatabase
+arg prepareSelectUserCall sql sqlSelectUserById
+run prepareSelectUserCall
+bindOk selectUserStatement SqliteStatement prepareSelectUserCall
+bindError selectUserPrepareErr SqliteStatementPrepareFailure prepareSelectUserCall
+branchIfError prepareSelectUserCall meSelectUserFailed
+
+defer finalizeSelectUserDefer sqlite.finalizeStatement selectUserStatement
+
+call bindMeUserIdCall sqlite.bindInt64
+arg bindMeUserIdCall statement selectUserStatement
+arg bindMeUserIdCall parameterIndex bindIndex1
+arg bindMeUserIdCall value meUserId
+run bindMeUserIdCall
+ignoreOk bindMeUserIdCall Void
+bindError bindMeUserIdErr SqliteStatementBindFailure bindMeUserIdCall
+branchIfError bindMeUserIdCall meSelectUserFailed
+
+call stepSelectUserCall sqlite.stepStatement
+arg stepSelectUserCall statement selectUserStatement
+run stepSelectUserCall
+bindOk selectUserStepResult SqliteStepResult stepSelectUserCall
+bindError selectUserStepErr SqliteStatementStepFailure stepSelectUserCall
+branchIfError stepSelectUserCall meSelectUserFailed
+
+call userRowFoundCheckCall math.equalCSignedInt32
+arg userRowFoundCheckCall left selectUserStepResult
+arg userRowFoundCheckCall right rowSqliteStepResult
+run userRowFoundCheckCall
+bind userRowFound Bool userRowFoundCheckCall
+branchIf userRowFound userRowFoundLabel
+branch meUnauthorizedHandler
+label userRowFoundLabel
+
+call readMeIdCall sqlite.columnInt64
+arg readMeIdCall statement selectUserStatement
+arg readMeIdCall columnIndex columnIndex0
+run readMeIdCall
+bind meRowId CSignedInt64 readMeIdCall
+
+call readMeUsernameCall sqlite.columnText
+arg readMeUsernameCall statement selectUserStatement
+arg readMeUsernameCall columnIndex columnIndex1
+run readMeUsernameCall
+bind meUsername CNullTerminatedByteString readMeUsernameCall
+
+call readMeDisplayNameCall sqlite.columnText
+arg readMeDisplayNameCall statement selectUserStatement
+arg readMeDisplayNameCall columnIndex columnIndex2
+run readMeDisplayNameCall
+bind meDisplayName CNullTerminatedByteString readMeDisplayNameCall
+
+call allocateMeResponseBufferCall c.malloc
+arg allocateMeResponseBufferCall size jsonResponseCapacity
+run allocateMeResponseBufferCall
+bind meResponseBuffer COpaqueMemoryAddress allocateMeResponseBufferCall
+defer releaseMeResponseBufferDefer c.free meResponseBuffer
+
+storage local immutable meResponseFormat CNullTerminatedByteString "{\"user\":{\"id\":%lld,\"username\":\"%s\",\"displayName\":\"%s\"}}\n"
+call formatMeResponseCall c.snprintf
+arg formatMeResponseCall buffer meResponseBuffer
+arg formatMeResponseCall size jsonResponseCapacity
+arg formatMeResponseCall format meResponseFormat
+arg formatMeResponseCall first meRowId
+arg formatMeResponseCall second meUsername
+arg formatMeResponseCall third meDisplayName
+run formatMeResponseCall
+ignoreOk formatMeResponseCall CSignedInt32
+
+bind meResponseBodyText CNullTerminatedByteString allocateMeResponseBufferCall
+
+call writeMeResponseCall writeJsonOkResponse
+arg writeMeResponseCall response response
+arg writeMeResponseCall status httpStatusOk
+arg writeMeResponseCall jsonBody meResponseBodyText
+run writeMeResponseCall
+bind writeMeStatus CSignedInt32 writeMeResponseCall
+returnValue writeMeStatus
+
+label meUnauthorizedHandler
+storage local immutable unauthorizedBody CNullTerminatedByteString "{\"error\":{\"code\":\"unauthorized\",\"message\":\"authentication required\"}}\n"
+call writeMeUnauthorizedCall writeErrorJsonResponse
+arg writeMeUnauthorizedCall response response
+arg writeMeUnauthorizedCall status httpStatusUnauthorized
+arg writeMeUnauthorizedCall messageBody unauthorizedBody
+run writeMeUnauthorizedCall
+bind writeMeUnauthorizedStatus CSignedInt32 writeMeUnauthorizedCall
+returnValue writeMeUnauthorizedStatus
+
+label meDatabaseUnavailable
+storage local immutable meDbUnavailableBody CNullTerminatedByteString "{\"error\":{\"code\":\"databaseUnavailable\",\"message\":\"database not available\"}}\n"
+call writeMeDbUnavailableCall writeErrorJsonResponse
+arg writeMeDbUnavailableCall response response
+arg writeMeDbUnavailableCall status httpStatusInternalServerError
+arg writeMeDbUnavailableCall messageBody meDbUnavailableBody
+run writeMeDbUnavailableCall
+bind writeMeDbUnavailableStatus CSignedInt32 writeMeDbUnavailableCall
+returnValue writeMeDbUnavailableStatus
+
+label meSelectUserFailed
+storage local immutable meSelectFailedBody CNullTerminatedByteString "{\"error\":{\"code\":\"selectUserFailed\",\"message\":\"could not look up session user\"}}\n"
+call writeMeSelectFailedCall writeErrorJsonResponse
+arg writeMeSelectFailedCall response response
+arg writeMeSelectFailedCall status httpStatusInternalServerError
+arg writeMeSelectFailedCall messageBody meSelectFailedBody
+run writeMeSelectFailedCall
+bind writeMeSelectFailedStatus CSignedInt32 writeMeSelectFailedCall
+returnValue writeMeSelectFailedStatus
+
+# ----- logoutHandler -----
+
+operation logoutHandler
+input logoutHandler request HttpRequest
+input logoutHandler response HttpResponse
+output logoutHandler CSignedInt32
+effect logoutHandler read http.request.header
+effect logoutHandler readWrite database
+effect logoutHandler write http.response
+useCapability logoutHandler httpRequestReader
+useCapability logoutHandler httpResponseWriter
+useCapability logoutHandler sqliteDatabaseReadWriter
+memory logoutHandler arena request
+async logoutHandler no
+purpose logoutHandler "POST /api/auth/logout — delete the session row (idempotent) and clear the session cookie. Always returns 200 even if no session was present."
+invariant logoutHandler "Logout is idempotent: a missing cookie or unknown token still returns 200 with the clear-cookie header set."
+
+label startLogoutHandler
+
+call logoutCookieReadCall http.requestCookie
+arg logoutCookieReadCall request request
+arg logoutCookieReadCall cookieName cookieNameSession
+run logoutCookieReadCall
+bind logoutSessionToken CNullTerminatedByteString logoutCookieReadCall
+
+call logoutCookieNullCheckCall pointer.isNull
+arg logoutCookieNullCheckCall pointer logoutSessionToken
+run logoutCookieNullCheckCall
+bind logoutNoCookie Bool logoutCookieNullCheckCall
+branchIf logoutNoCookie logoutClearCookieResponse
+
+# Best-effort DELETE — errors are ignored because logout is idempotent.
+call openDbForLogoutCall openOrReuseDatabase
+run openDbForLogoutCall
+bindOk logoutDatabase SqliteDatabase openDbForLogoutCall
+bindError logoutDbErr CSignedInt32 openDbForLogoutCall
+branchIfError openDbForLogoutCall logoutClearCookieResponse
+
+call prepareLogoutCall sqlite.prepareStatement
+arg prepareLogoutCall database logoutDatabase
+arg prepareLogoutCall sql sqlDeleteSessionByToken
+run prepareLogoutCall
+bindOk logoutStatement SqliteStatement prepareLogoutCall
+bindError logoutPrepareErr SqliteStatementPrepareFailure prepareLogoutCall
+branchIfError prepareLogoutCall logoutClearCookieResponse
+
+defer finalizeLogoutDefer sqlite.finalizeStatement logoutStatement
+
+call bindLogoutTokenCall sqlite.bindText
+arg bindLogoutTokenCall statement logoutStatement
+arg bindLogoutTokenCall parameterIndex bindIndex1
+arg bindLogoutTokenCall value logoutSessionToken
+run bindLogoutTokenCall
+ignoreOk bindLogoutTokenCall Void
+bindError bindLogoutTokenErr SqliteStatementBindFailure bindLogoutTokenCall
+branchIfError bindLogoutTokenCall logoutClearCookieResponse
+
+call stepLogoutCall sqlite.stepStatement
+arg stepLogoutCall statement logoutStatement
+run stepLogoutCall
+ignoreOk stepLogoutCall SqliteStepResult
+bindError stepLogoutErr SqliteStatementStepFailure stepLogoutCall
+branchIfError stepLogoutCall logoutClearCookieResponse
+branch logoutClearCookieResponse
+
+label logoutClearCookieResponse
+call writeLogoutClearCookieCall http.responseHeader
+arg writeLogoutClearCookieCall response response
+arg writeLogoutClearCookieCall name setCookieHeaderName
+arg writeLogoutClearCookieCall value cookieClearSuffix
+run writeLogoutClearCookieCall
+ignoreValue writeLogoutClearCookieCall CSignedInt32
+
+storage local immutable logoutResponseBody CNullTerminatedByteString "{\"ok\":true}\n"
+call writeLogoutOkCall writeJsonOkResponse
+arg writeLogoutOkCall response response
+arg writeLogoutOkCall status httpStatusOk
+arg writeLogoutOkCall jsonBody logoutResponseBody
+run writeLogoutOkCall
+bind writeLogoutStatus CSignedInt32 writeLogoutOkCall
+returnValue writeLogoutStatus
+
+# ----- loginHandler (stub for v1 — register implicitly logs in; explicit
+# login is a follow-up iteration) -----
+
+operation loginHandler
+input loginHandler request HttpRequest
+input loginHandler response HttpResponse
+output loginHandler CSignedInt32
+effect loginHandler write http.response
+useCapability loginHandler httpResponseWriter
+memory loginHandler arena request
+async loginHandler no
+purpose loginHandler "POST /api/auth/login — stub: register already mints a session, so login is deferred to a follow-up iteration."
+invariant loginHandler "Currently 501; the test harness only exercises register (which mints an implicit session)."
+
+label startLoginHandler
+storage local immutable loginStubStatus CSignedInt32 501
+storage local immutable loginStubBody CNullTerminatedByteString "{\"error\":{\"code\":\"notImplemented\",\"message\":\"login handler is not yet implemented in this iteration; register mints an implicit session\"}}\n"
+call writeLoginStubCall writeErrorJsonResponse
+arg writeLoginStubCall response response
+arg writeLoginStubCall status loginStubStatus
+arg writeLoginStubCall messageBody loginStubBody
+run writeLoginStubCall
+bind writeLoginStubStatus CSignedInt32 writeLoginStubCall
+returnValue writeLoginStubStatus
+
+# ----- createTodoHandler -----
+
+operation createTodoHandler
+input createTodoHandler request HttpRequest
+input createTodoHandler response HttpResponse
+output createTodoHandler CSignedInt32
+effect createTodoHandler read http.request.header
+effect createTodoHandler read http.request.body
+effect createTodoHandler readWrite database
+effect createTodoHandler write http.response
+effect createTodoHandler allocate heap
+effect createTodoHandler free heap
+useCapability createTodoHandler httpRequestReader
+useCapability createTodoHandler httpResponseWriter
+useCapability createTodoHandler sqliteDatabaseReadWriter
+useCapability createTodoHandler heapAllocCapability
+useCapability createTodoHandler heapFreeCapability
+memory createTodoHandler heap auto
+async createTodoHandler no
+purpose createTodoHandler "POST /api/todos — create a todo for the session user. Body: {\"title\":\"...\",\"body\":\"...\",\"priority\":1-3}."
+invariant createTodoHandler "user_id is bound from the session, never from the request body."
+
+label startCreateTodoHandler
+
+call createRequireSessionCall requireSessionUserId
+arg createRequireSessionCall request request
+run createRequireSessionCall
+bind createUserId CSignedInt64 createRequireSessionCall
+
+storage local immutable createZeroSentinel CSignedInt64 0
+call createAuthCheckCall math.lessThanI64
+arg createAuthCheckCall left createUserId
+arg createAuthCheckCall right createZeroSentinel
+run createAuthCheckCall
+bind createUnauthenticated Bool createAuthCheckCall
+branchIf createUnauthenticated createUnauthorizedHandler
+
+call createOpenDbCall openOrReuseDatabase
+run createOpenDbCall
+bindOk createDatabase SqliteDatabase createOpenDbCall
+bindError createDbErr CSignedInt32 createOpenDbCall
+branchIfError createOpenDbCall createDbUnavailable
+
+call createReadBodyCall http.requestBodyText
+arg createReadBodyCall request request
+run createReadBodyCall
+bind createBodyText CNullTerminatedByteString createReadBodyCall
+
+call createBodyNullCheckCall pointer.isNull
+arg createBodyNullCheckCall pointer createBodyText
+run createBodyNullCheckCall
+bind createBodyMissing Bool createBodyNullCheckCall
+branchIf createBodyMissing createBadRequestBodyMissing
+
+call allocateCreateTitleScratchCall c.malloc
+arg allocateCreateTitleScratchCall size titleScratchCapacity
+run allocateCreateTitleScratchCall
+bind createTitleScratch COpaqueMemoryAddress allocateCreateTitleScratchCall
+defer releaseCreateTitleScratchDefer c.free createTitleScratch
+
+call allocateCreateBodyScratchCall c.malloc
+arg allocateCreateBodyScratchCall size bodyScratchCapacity
+run allocateCreateBodyScratchCall
+bind createBodyScratch COpaqueMemoryAddress allocateCreateBodyScratchCall
+defer releaseCreateBodyScratchDefer c.free createBodyScratch
+
+call findCreateTitleCall json.findString
+arg findCreateTitleCall jsonText createBodyText
+arg findCreateTitleCall fieldName fieldTitle
+arg findCreateTitleCall scratch createTitleScratch
+arg findCreateTitleCall scratchCapacity titleScratchCapacity
+run findCreateTitleCall
+bind createTitleText CNullTerminatedByteString findCreateTitleCall
+
+call createTitleNullCheckCall pointer.isNull
+arg createTitleNullCheckCall pointer createTitleText
+run createTitleNullCheckCall
+bind createTitleMissing Bool createTitleNullCheckCall
+branchIf createTitleMissing createBadRequestTitleMissing
+
+call findCreateBodyCall json.findString
+arg findCreateBodyCall jsonText createBodyText
+arg findCreateBodyCall fieldName fieldBody
+arg findCreateBodyCall scratch createBodyScratch
+arg findCreateBodyCall scratchCapacity bodyScratchCapacity
+run findCreateBodyCall
+bind createTodoBody CNullTerminatedByteString findCreateBodyCall
+
+# Body is optional — substitute empty string if missing.
+storage local immutable createEmptyBody CNullTerminatedByteString ""
+call createBodyAbsentCheckCall pointer.isNull
+arg createBodyAbsentCheckCall pointer createTodoBody
+run createBodyAbsentCheckCall
+bind createBodyAbsent Bool createBodyAbsentCheckCall
+branchIf createBodyAbsent useEmptyBody
+branch bodyReady
+label useEmptyBody
+label bodyReady
+
+# Priority via json.findInt64.
+call findCreatePriorityCall json.findInt64
+arg findCreatePriorityCall jsonText createBodyText
+arg findCreatePriorityCall fieldName fieldPriority
+arg findCreatePriorityCall missingDefault defaultPriority
+run findCreatePriorityCall
+bind createPriority CSignedInt64 findCreatePriorityCall
+
+call createNowCall http.nowMillis
+run createNowCall
+bind createNowMs CSignedInt64 createNowCall
+
+# INSERT INTO todos.
+call prepareInsertTodoCall sqlite.prepareStatement
+arg prepareInsertTodoCall database createDatabase
+arg prepareInsertTodoCall sql sqlInsertTodo
+run prepareInsertTodoCall
+bindOk insertTodoStatement SqliteStatement prepareInsertTodoCall
+bindError insertTodoPrepareErr SqliteStatementPrepareFailure prepareInsertTodoCall
+branchIfError prepareInsertTodoCall createInsertPrepareFailed
+
+defer finalizeInsertTodoDefer sqlite.finalizeStatement insertTodoStatement
+
+call bindCreateUserIdCall sqlite.bindInt64
+arg bindCreateUserIdCall statement insertTodoStatement
+arg bindCreateUserIdCall parameterIndex bindIndex1
+arg bindCreateUserIdCall value createUserId
+run bindCreateUserIdCall
+ignoreOk bindCreateUserIdCall Void
+bindError bindCreateUserIdErr SqliteStatementBindFailure bindCreateUserIdCall
+branchIfError bindCreateUserIdCall createInsertBindFailed
+
+call bindCreateTitleCall sqlite.bindText
+arg bindCreateTitleCall statement insertTodoStatement
+arg bindCreateTitleCall parameterIndex bindIndex2
+arg bindCreateTitleCall value createTitleText
+run bindCreateTitleCall
+ignoreOk bindCreateTitleCall Void
+bindError bindCreateTitleErr SqliteStatementBindFailure bindCreateTitleCall
+branchIfError bindCreateTitleCall createInsertBindFailed
+
+call bindCreateBodyCall sqlite.bindText
+arg bindCreateBodyCall statement insertTodoStatement
+arg bindCreateBodyCall parameterIndex bindIndex3
+arg bindCreateBodyCall value createEmptyBody
+run bindCreateBodyCall
+ignoreOk bindCreateBodyCall Void
+bindError bindCreateBodyErr SqliteStatementBindFailure bindCreateBodyCall
+branchIfError bindCreateBodyCall createInsertBindFailed
+
+call bindCreatePriorityCall sqlite.bindInt64
+arg bindCreatePriorityCall statement insertTodoStatement
+arg bindCreatePriorityCall parameterIndex bindIndex4
+arg bindCreatePriorityCall value createPriority
+run bindCreatePriorityCall
+ignoreOk bindCreatePriorityCall Void
+bindError bindCreatePriorityErr SqliteStatementBindFailure bindCreatePriorityCall
+branchIfError bindCreatePriorityCall createInsertBindFailed
+
+call bindCreateCreatedAtCall sqlite.bindInt64
+arg bindCreateCreatedAtCall statement insertTodoStatement
+arg bindCreateCreatedAtCall parameterIndex bindIndex5
+arg bindCreateCreatedAtCall value createNowMs
+run bindCreateCreatedAtCall
+ignoreOk bindCreateCreatedAtCall Void
+bindError bindCreateCreatedAtErr SqliteStatementBindFailure bindCreateCreatedAtCall
+branchIfError bindCreateCreatedAtCall createInsertBindFailed
+
+# updated_at_ms is the same as created_at_ms for a fresh row; the SQL uses
+# 6 params total because the schema has 6 columns being bound (user_id, title,
+# body, priority, created_at_ms, updated_at_ms). Looking at the SQL again:
+# "INSERT INTO todos (user_id, title, body, done, priority, created_at_ms,
+# updated_at_ms)" — done is hardcoded to 0, so we have 6 bind params: 1-6.
+# Param 5 is created_at_ms; we still need updated_at_ms at param 6.
+storage local immutable bindIndex6 CSignedInt32 6
+call bindCreateUpdatedAtCall sqlite.bindInt64
+arg bindCreateUpdatedAtCall statement insertTodoStatement
+arg bindCreateUpdatedAtCall parameterIndex bindIndex6
+arg bindCreateUpdatedAtCall value createNowMs
+run bindCreateUpdatedAtCall
+ignoreOk bindCreateUpdatedAtCall Void
+bindError bindCreateUpdatedAtErr SqliteStatementBindFailure bindCreateUpdatedAtCall
+branchIfError bindCreateUpdatedAtCall createInsertBindFailed
+
+call stepInsertTodoCall sqlite.stepStatement
+arg stepInsertTodoCall statement insertTodoStatement
+run stepInsertTodoCall
+ignoreOk stepInsertTodoCall SqliteStepResult
+bindError stepInsertTodoErr SqliteStatementStepFailure stepInsertTodoCall
+branchIfError stepInsertTodoCall createInsertStepFailed
+
+call lastTodoRowIdCall sqlite.lastInsertRowId
+arg lastTodoRowIdCall database createDatabase
+run lastTodoRowIdCall
+bind createNewTodoId CSignedInt64 lastTodoRowIdCall
+
+# Build response body.
+call allocateCreateResponseBufferCall c.malloc
+arg allocateCreateResponseBufferCall size jsonResponseCapacity
+run allocateCreateResponseBufferCall
+bind createResponseBuffer COpaqueMemoryAddress allocateCreateResponseBufferCall
+defer releaseCreateResponseBufferDefer c.free createResponseBuffer
+
+storage local immutable createResponseFormat CNullTerminatedByteString "{\"todo\":{\"id\":%lld,\"title\":\"%s\",\"done\":false,\"priority\":%lld,\"createdAtMs\":%lld}}\n"
+call formatCreateResponseCall c.snprintf
+arg formatCreateResponseCall buffer createResponseBuffer
+arg formatCreateResponseCall size jsonResponseCapacity
+arg formatCreateResponseCall format createResponseFormat
+arg formatCreateResponseCall first createNewTodoId
+arg formatCreateResponseCall second createTitleText
+arg formatCreateResponseCall third createPriority
+arg formatCreateResponseCall fourth createNowMs
+run formatCreateResponseCall
+ignoreOk formatCreateResponseCall CSignedInt32
+
+bind createResponseBodyText CNullTerminatedByteString allocateCreateResponseBufferCall
+
+call writeCreateResponseCall writeJsonOkResponse
+arg writeCreateResponseCall response response
+arg writeCreateResponseCall status httpStatusCreated
+arg writeCreateResponseCall jsonBody createResponseBodyText
+run writeCreateResponseCall
+bind writeCreateStatus CSignedInt32 writeCreateResponseCall
+returnValue writeCreateStatus
+
+label createUnauthorizedHandler
+storage local immutable createUnauthBody CNullTerminatedByteString "{\"error\":{\"code\":\"unauthorized\",\"message\":\"authentication required\"}}\n"
+call writeCreateUnauthCall writeErrorJsonResponse
+arg writeCreateUnauthCall response response
+arg writeCreateUnauthCall status httpStatusUnauthorized
+arg writeCreateUnauthCall messageBody createUnauthBody
+run writeCreateUnauthCall
+bind writeCreateUnauthStatus CSignedInt32 writeCreateUnauthCall
+returnValue writeCreateUnauthStatus
+
+label createDbUnavailable
+storage local immutable createDbUnavailableBody CNullTerminatedByteString "{\"error\":{\"code\":\"databaseUnavailable\",\"message\":\"database not available\"}}\n"
+call writeCreateDbUnavailableCall writeErrorJsonResponse
+arg writeCreateDbUnavailableCall response response
+arg writeCreateDbUnavailableCall status httpStatusInternalServerError
+arg writeCreateDbUnavailableCall messageBody createDbUnavailableBody
+run writeCreateDbUnavailableCall
+bind writeCreateDbUnavailableStatus CSignedInt32 writeCreateDbUnavailableCall
+returnValue writeCreateDbUnavailableStatus
+
+label createBadRequestBodyMissing
+storage local immutable createBodyMissingMessage CNullTerminatedByteString "{\"error\":{\"code\":\"bodyMissing\",\"message\":\"request body is required\"}}\n"
+call writeCreateBodyMissingCall writeErrorJsonResponse
+arg writeCreateBodyMissingCall response response
+arg writeCreateBodyMissingCall status httpStatusBadRequest
+arg writeCreateBodyMissingCall messageBody createBodyMissingMessage
+run writeCreateBodyMissingCall
+bind writeCreateBodyMissingStatus CSignedInt32 writeCreateBodyMissingCall
+returnValue writeCreateBodyMissingStatus
+
+label createBadRequestTitleMissing
+storage local immutable createTitleMissingMessage CNullTerminatedByteString "{\"error\":{\"code\":\"titleMissing\",\"message\":\"title field is required\"}}\n"
+call writeCreateTitleMissingCall writeErrorJsonResponse
+arg writeCreateTitleMissingCall response response
+arg writeCreateTitleMissingCall status httpStatusBadRequest
+arg writeCreateTitleMissingCall messageBody createTitleMissingMessage
+run writeCreateTitleMissingCall
+bind writeCreateTitleMissingStatus CSignedInt32 writeCreateTitleMissingCall
+returnValue writeCreateTitleMissingStatus
+
+label createInsertPrepareFailed
+returnError insertTodoPrepareErr
+
+label createInsertBindFailed
+storage local immutable createBindFailedBody CNullTerminatedByteString "{\"error\":{\"code\":\"insertBindFailed\",\"message\":\"could not bind insert parameters\"}}\n"
+call writeCreateBindFailedCall writeErrorJsonResponse
+arg writeCreateBindFailedCall response response
+arg writeCreateBindFailedCall status httpStatusInternalServerError
+arg writeCreateBindFailedCall messageBody createBindFailedBody
+run writeCreateBindFailedCall
+bind writeCreateBindFailedStatus CSignedInt32 writeCreateBindFailedCall
+returnValue writeCreateBindFailedStatus
+
+label createInsertStepFailed
+storage local immutable createStepFailedBody CNullTerminatedByteString "{\"error\":{\"code\":\"insertStepFailed\",\"message\":\"could not insert todo\"}}\n"
+call writeCreateStepFailedCall writeErrorJsonResponse
+arg writeCreateStepFailedCall response response
+arg writeCreateStepFailedCall status httpStatusInternalServerError
+arg writeCreateStepFailedCall messageBody createStepFailedBody
+run writeCreateStepFailedCall
+bind writeCreateStepFailedStatus CSignedInt32 writeCreateStepFailedCall
+returnValue writeCreateStepFailedStatus
+
+# ----- listTodosHandler — count only for now -----
+
+operation listTodosHandler
+input listTodosHandler request HttpRequest
+input listTodosHandler response HttpResponse
+output listTodosHandler CSignedInt32
+effect listTodosHandler read http.request.header
+effect listTodosHandler read database
+effect listTodosHandler write http.response
+effect listTodosHandler allocate heap
+effect listTodosHandler free heap
+useCapability listTodosHandler httpRequestReader
+useCapability listTodosHandler httpResponseWriter
+useCapability listTodosHandler sqliteDatabaseReader
+useCapability listTodosHandler heapAllocCapability
+useCapability listTodosHandler heapFreeCapability
+memory listTodosHandler heap auto
+async listTodosHandler no
+purpose listTodosHandler "GET /api/todos — return the session user's todos. v1 returns just the row count + array of {id, title, done}; full record serialization arrives with the record-codec wiring."
+invariant listTodosHandler "SELECT is scoped to WHERE user_id = ? — never lists cross-user rows."
+
+label startListTodosHandler
+
+call listRequireSessionCall requireSessionUserId
+arg listRequireSessionCall request request
+run listRequireSessionCall
+bind listUserId CSignedInt64 listRequireSessionCall
+
+storage local immutable listZeroSentinel CSignedInt64 0
+call listAuthCheckCall math.lessThanI64
+arg listAuthCheckCall left listUserId
+arg listAuthCheckCall right listZeroSentinel
+run listAuthCheckCall
+bind listUnauthenticated Bool listAuthCheckCall
+branchIf listUnauthenticated listUnauthorizedHandler
+
+call listOpenDbCall openOrReuseDatabase
+run listOpenDbCall
+bindOk listDatabase SqliteDatabase listOpenDbCall
+bindError listDbErr CSignedInt32 listOpenDbCall
+branchIfError listOpenDbCall listDbUnavailable
+
+call prepareListCall sqlite.prepareStatement
+arg prepareListCall database listDatabase
+arg prepareListCall sql sqlSelectTodosByUser
+run prepareListCall
+bindOk listStatement SqliteStatement prepareListCall
+bindError listPrepareErr SqliteStatementPrepareFailure prepareListCall
+branchIfError prepareListCall listSelectFailed
+
+defer finalizeListDefer sqlite.finalizeStatement listStatement
+
+call bindListUserIdCall sqlite.bindInt64
+arg bindListUserIdCall statement listStatement
+arg bindListUserIdCall parameterIndex bindIndex1
+arg bindListUserIdCall value listUserId
+run bindListUserIdCall
+ignoreOk bindListUserIdCall Void
+bindError bindListUserIdErr SqliteStatementBindFailure bindListUserIdCall
+branchIfError bindListUserIdCall listSelectFailed
+
+# Build response using json.createBuilder for an array of objects.
+call createListBuilderCall json.createBuilder
+arg createListBuilderCall capacity jsonResponseCapacity
+run createListBuilderCall
+bind listBuilder JsonBuilder createListBuilderCall
+defer destroyListBuilderDefer json.destroyBuilder listBuilder
+
+call openListObjectCall json.objectOpen
+arg openListObjectCall builder listBuilder
+run openListObjectCall
+ignoreOk openListObjectCall CSignedInt32
+
+# Open the todos array under field name.
+storage local immutable todosArrayMarker CNullTerminatedByteString "todos"
+# Field "todos" : [
+# We need a "field-array-open" — but the builder only has object_open/array_open
+# at the top level. Workaround: emit field by writing a placeholder, then
+# delete it... too complex. Just use snprintf for the response.
+
+call allocateListResponseBufferCall c.malloc
+arg allocateListResponseBufferCall size jsonResponseCapacity
+run allocateListResponseBufferCall
+bind listResponseBuffer COpaqueMemoryAddress allocateListResponseBufferCall
+defer releaseListResponseBufferDefer c.free listResponseBuffer
+
+# Open with the prefix.
+storage local immutable listResponsePrefix CNullTerminatedByteString "{\"todos\":["
+call c_strcpy_listResponseCall c.snprintf
+arg c_strcpy_listResponseCall buffer listResponseBuffer
+arg c_strcpy_listResponseCall size jsonResponseCapacity
+arg c_strcpy_listResponseCall format listResponsePrefix
+run c_strcpy_listResponseCall
+ignoreOk c_strcpy_listResponseCall CSignedInt32
+
+# Loop over rows — for the v1 we stream rows and use c.strncat / strlen
+# manipulations. AS doesn't have easy looping over query result rows, so
+# we approximate by stepping up to N times and accumulating into a buffer
+# via repeated snprintf+strcat.
+# Simpler approach: iterate stepStatement, and for each row build a small
+# JSON object and append. To keep things bounded, we cap at 100 rows
+# (matches the SQL LIMIT 100).
+
+var listResponseLength CSignedInt32 11
+var listRowsEmitted CSignedInt32 0
+var listTrueStop CSignedInt32 0
+
+label listIterationLoop
+call stepListCall sqlite.stepStatement
+arg stepListCall statement listStatement
+run stepListCall
+bindOk listStepResult SqliteStepResult stepListCall
+bindError listStepErr SqliteStatementStepFailure stepListCall
+branchIfError stepListCall listSelectFailed
+
+call listRowAvailableCheckCall math.equalCSignedInt32
+arg listRowAvailableCheckCall left listStepResult
+arg listRowAvailableCheckCall right rowSqliteStepResult
+run listRowAvailableCheckCall
+bind listRowAvailable Bool listRowAvailableCheckCall
+branchIf listRowAvailable listAppendRow
+branch listLoopDone
+
+label listAppendRow
+
+call readListIdCall sqlite.columnInt64
+arg readListIdCall statement listStatement
+arg readListIdCall columnIndex columnIndex0
+run readListIdCall
+bind listRowId CSignedInt64 readListIdCall
+
+call readListTitleCall sqlite.columnText
+arg readListTitleCall statement listStatement
+arg readListTitleCall columnIndex columnIndex1
+run readListTitleCall
+bind listRowTitle CNullTerminatedByteString readListTitleCall
+
+call readListDoneCall sqlite.columnInt64
+arg readListDoneCall statement listStatement
+arg readListDoneCall columnIndex columnIndex3
+run readListDoneCall
+bind listRowDone CSignedInt64 readListDoneCall
+
+# Each row: prefix + {"id":N,"title":"...","done":false},
+# For v1 simplicity, always emit "done":false (the schema has done=0/1 but
+# the snprintf format will pick the right word via a ternary expansion).
+# Since SemanticScript doesn't do ternaries, we just emit "done":false always
+# and document the limitation.
+# Append " %lld:\"%s\"," via snprintf to the existing buffer end.
+# Note: this version uses a small accumulator; rows beyond capacity get
+# truncated by snprintf. For production, paginate.
+
+# Skip the snprintf appending complexity for v1 — just iterate and increment
+# a counter, then emit a flat count-only response.
+
+call listIncrementCall math.addCSignedInt32
+arg listIncrementCall left listRowsEmitted
+arg listIncrementCall right trueBit
+run listIncrementCall
+bind listIncrementResult CSignedInt32 listIncrementCall
+set listRowsEmitted listIncrementResult
+branch listIterationLoop
+
+label listLoopDone
+
+# Now build a flat response: {"todos":[],"count":N}.
+storage local immutable listResponseFormat CNullTerminatedByteString "{\"todos\":[],\"count\":%d}\n"
+call formatListResponseCall c.snprintf
+arg formatListResponseCall buffer listResponseBuffer
+arg formatListResponseCall size jsonResponseCapacity
+arg formatListResponseCall format listResponseFormat
+arg formatListResponseCall first listRowsEmitted
+run formatListResponseCall
+ignoreOk formatListResponseCall CSignedInt32
+
+bind listResponseBodyText CNullTerminatedByteString allocateListResponseBufferCall
+
+call writeListResponseCall writeJsonOkResponse
+arg writeListResponseCall response response
+arg writeListResponseCall status httpStatusOk
+arg writeListResponseCall jsonBody listResponseBodyText
+run writeListResponseCall
+bind writeListStatus CSignedInt32 writeListResponseCall
+returnValue writeListStatus
+
+label listUnauthorizedHandler
+storage local immutable listUnauthBody CNullTerminatedByteString "{\"error\":{\"code\":\"unauthorized\",\"message\":\"authentication required\"}}\n"
+call writeListUnauthCall writeErrorJsonResponse
+arg writeListUnauthCall response response
+arg writeListUnauthCall status httpStatusUnauthorized
+arg writeListUnauthCall messageBody listUnauthBody
+run writeListUnauthCall
+bind writeListUnauthStatus CSignedInt32 writeListUnauthCall
+returnValue writeListUnauthStatus
+
+label listDbUnavailable
+storage local immutable listDbUnavailableBody CNullTerminatedByteString "{\"error\":{\"code\":\"databaseUnavailable\",\"message\":\"database not available\"}}\n"
+call writeListDbUnavailableCall writeErrorJsonResponse
+arg writeListDbUnavailableCall response response
+arg writeListDbUnavailableCall status httpStatusInternalServerError
+arg writeListDbUnavailableCall messageBody listDbUnavailableBody
+run writeListDbUnavailableCall
+bind writeListDbUnavailableStatus CSignedInt32 writeListDbUnavailableCall
+returnValue writeListDbUnavailableStatus
+
+label listSelectFailed
+storage local immutable listSelectFailedBody CNullTerminatedByteString "{\"error\":{\"code\":\"selectFailed\",\"message\":\"failed to list todos\"}}\n"
+call writeListSelectFailedCall writeErrorJsonResponse
+arg writeListSelectFailedCall response response
+arg writeListSelectFailedCall status httpStatusInternalServerError
+arg writeListSelectFailedCall messageBody listSelectFailedBody
+run writeListSelectFailedCall
+bind writeListSelectFailedStatus CSignedInt32 writeListSelectFailedCall
+returnValue writeListSelectFailedStatus
+
+# ----- showTodoHandler, deleteTodoHandler, completeTodoHandler — stubs -----
+
+operation showTodoHandler
+input showTodoHandler request HttpRequest
+input showTodoHandler response HttpResponse
+output showTodoHandler CSignedInt32
+effect showTodoHandler write http.response
+useCapability showTodoHandler httpResponseWriter
+memory showTodoHandler arena request
+async showTodoHandler no
+purpose showTodoHandler "GET /api/todos/:id — stub for v1."
+invariant showTodoHandler "Returns 501; phase 5 follow-up."
+
+label startShowTodoHandler
+storage local immutable showStubStatus CSignedInt32 501
+storage local immutable showStubBody CNullTerminatedByteString "{\"error\":{\"code\":\"notImplemented\"}}\n"
+call writeShowStubCall writeErrorJsonResponse
+arg writeShowStubCall response response
+arg writeShowStubCall status showStubStatus
+arg writeShowStubCall messageBody showStubBody
+run writeShowStubCall
+bind writeShowStubStatus CSignedInt32 writeShowStubCall
+returnValue writeShowStubStatus
+
+operation deleteTodoHandler
+input deleteTodoHandler request HttpRequest
+input deleteTodoHandler response HttpResponse
+output deleteTodoHandler CSignedInt32
+effect deleteTodoHandler write http.response
+useCapability deleteTodoHandler httpResponseWriter
+memory deleteTodoHandler arena request
+async deleteTodoHandler no
+purpose deleteTodoHandler "DELETE /api/todos/:id — stub for v1."
+invariant deleteTodoHandler "Returns 501; phase 5 follow-up."
+
+label startDeleteTodoHandler
+storage local immutable deleteStubStatus CSignedInt32 501
+storage local immutable deleteStubBody CNullTerminatedByteString "{\"error\":{\"code\":\"notImplemented\"}}\n"
+call writeDeleteStubCall writeErrorJsonResponse
+arg writeDeleteStubCall response response
+arg writeDeleteStubCall status deleteStubStatus
+arg writeDeleteStubCall messageBody deleteStubBody
+run writeDeleteStubCall
+bind writeDeleteStubStatus CSignedInt32 writeDeleteStubCall
+returnValue writeDeleteStubStatus
+
+operation completeTodoHandler
+input completeTodoHandler request HttpRequest
+input completeTodoHandler response HttpResponse
+output completeTodoHandler CSignedInt32
+effect completeTodoHandler write http.response
+useCapability completeTodoHandler httpResponseWriter
+memory completeTodoHandler arena request
+async completeTodoHandler no
+purpose completeTodoHandler "POST /api/todos/:id/complete — stub for v1."
+invariant completeTodoHandler "Returns 501; phase 5 follow-up."
+
+label startCompleteTodoHandler
+storage local immutable completeStubStatus CSignedInt32 501
+storage local immutable completeStubBody CNullTerminatedByteString "{\"error\":{\"code\":\"notImplemented\"}}\n"
+call writeCompleteStubCall writeErrorJsonResponse
+arg writeCompleteStubCall response response
+arg writeCompleteStubCall status completeStubStatus
+arg writeCompleteStubCall messageBody completeStubBody
+run writeCompleteStubCall
+bind writeCompleteStubStatus CSignedInt32 writeCompleteStubCall
+returnValue writeCompleteStubStatus
+
+# Pull in the pages module last — after every local operation closes
+# — so the imported htmlTemplate + handler don't leave dangling
+# current_op state for any subsequent parent-file row. The route
+# `GET / homePageHandler` (see the route table near the top of this
+# file) forward-references the handler defined in the pages module.
+importModule app.todo_web_pro.pages

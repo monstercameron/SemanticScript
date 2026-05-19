@@ -148,6 +148,23 @@ typedef struct SSGuiApplicationConfig {
     void *user_data;
 } SSGuiApplicationConfig;
 
+void *ss_gui_application_create(const char *title);
+void *ss_gui_window_create(
+    const char *title,
+    int32_t width,
+    int32_t height,
+    int32_t layout,
+    int32_t resizable
+);
+void *ss_gui_text_label_create(const char *text);
+void *ss_gui_text_box_create(const char *placeholder, int32_t max_length);
+void *ss_gui_button_create(const char *text, int32_t is_default);
+void *ss_gui_list_box_create(int32_t selection_mode);
+int32_t ss_gui_window_add_control(void *window, void *control);
+int32_t ss_gui_control_on_event(void *control, int32_t event_kind, SSGuiHandler handler);
+int32_t ss_gui_application_set_main_window(void *application, void *window);
+int32_t ss_gui_application_run_builder(void *application);
+
 int32_t ss_gui_run_window(const char *title, int32_t width, int32_t height);
 int32_t ss_gui_application_run(const SSGuiApplicationConfig *config);
 
@@ -155,6 +172,12 @@ const char *ss_gui_text_box_text(SSGuiSession *session, SSGuiControlId text_box_
 int32_t ss_gui_text_box_set_text(
     SSGuiSession *session,
     SSGuiControlId text_box_id,
+    const char *text
+);
+const char *ss_gui_text_box_text_by_handle(SSGuiSession *session, void *text_box);
+int32_t ss_gui_text_box_set_text_by_handle(
+    SSGuiSession *session,
+    void *text_box,
     const char *text
 );
 
@@ -165,8 +188,21 @@ int32_t ss_gui_list_box_append_item(
     const char *text
 );
 int32_t ss_gui_list_box_clear(SSGuiSession *session, SSGuiControlId list_box_id);
+int32_t ss_gui_list_box_selected_index_by_handle(SSGuiSession *session, void *list_box);
+int32_t ss_gui_list_box_append_item_by_handle(
+    SSGuiSession *session,
+    void *list_box,
+    const char *text
+);
+int32_t ss_gui_list_box_clear_by_handle(SSGuiSession *session, void *list_box);
+int32_t ss_gui_text_label_set_text_by_handle(
+    SSGuiSession *session,
+    void *text_label,
+    const char *text
+);
 
 int32_t ss_gui_window_close(SSGuiSession *session, SSGuiWindowId window_id);
+int32_t ss_gui_window_close_by_handle(SSGuiSession *session, void *window);
 
 int32_t ss_gui_event_key_code(const SSGuiEvent *event);
 int32_t ss_gui_event_selected_index(const SSGuiEvent *event);

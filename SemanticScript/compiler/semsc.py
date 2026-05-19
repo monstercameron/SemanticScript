@@ -3172,8 +3172,11 @@ class Codegen:
         # links and tooling can inspect each operation's IR.
         if self.prog.entry is None:
             if self._is_windows_gui_program():
-                self._compile_windows_gui_program()
-                return self.module
+                raise NotImplementedError(
+                    "target windowsGui now uses standard SemanticScript entry "
+                    "syntax: declare `entry console main` and call `gui.*` "
+                    "functions from standard.gui. The compiler does not build "
+                    "GUI application graphs from custom keywords.")
             self._compile_webserver_program()
             return self.module
         mode, opname = self.prog.entry
@@ -3226,96 +3229,6 @@ class Codegen:
             "windowsGui" in self.prog.targets
             or _build_metadata_value(self.prog, "targetRuntime") == "windowsGui"
         )
-
-    def _gui_metadata_first(self, target_name: str, verb: str, default=None):
-        rows = self.prog.hard_metadata.get(target_name, {}).get(verb)
-        if not rows:
-            return default
-        first = rows[0]
-        if not first:
-            return default
-        return first[0]
-
-    def _gui_metadata_int(self, target_name: str, verb: str, default: int) -> int:
-        value = self._gui_metadata_first(target_name, verb, default)
-        try:
-            parsed = int(str(value))
-        except (TypeError, ValueError):
-            raise ValueError(f"{verb}: expected an integer pixel value")
-        if parsed <= 0:
-            raise ValueError(f"{verb}: expected a positive pixel value")
-        return parsed
-
-    def _gui_window_descriptor(self):
-        app_names = [
-            name for name, metadata in self.prog.hard_metadata.items()
-            if "guiApplication" in metadata
-        ]
-        if not app_names:
-            raise ValueError(
-                "target windowsGui needs one guiApplication row imported from standard.gui source")
-        if len(app_names) > 1:
-            raise ValueError(
-                "target windowsGui currently supports one guiApplication row; "
-                f"found {', '.join(sorted(app_names))}")
-        app_name = app_names[0]
-        main_window = self._gui_metadata_first(
-            app_name, "guiApplicationMainWindow")
-        if main_window is None:
-            window_names = [
-                name for name, metadata in self.prog.hard_metadata.items()
-                if "guiWindow" in metadata
-            ]
-            if len(window_names) == 1:
-                main_window = window_names[0]
-            else:
-                raise ValueError(
-                    f"guiApplication `{app_name}` needs guiApplicationMainWindow APP WINDOW")
-        if main_window not in self.prog.hard_metadata:
-            raise ValueError(
-                f"guiApplicationMainWindow references unknown guiWindow `{main_window}`")
-        window_metadata = self.prog.hard_metadata.get(main_window, {})
-        if "guiWindow" not in window_metadata:
-            raise ValueError(
-                f"guiApplicationMainWindow references `{main_window}`, but no guiWindow row declares it")
-        title = (
-            self._gui_metadata_first(app_name, "guiApplicationTitle")
-            or self._gui_metadata_first(main_window, "guiWindowTitle")
-            or app_name
-        )
-        width = self._gui_metadata_int(main_window, "guiWindowWidth", 800)
-        height = self._gui_metadata_int(main_window, "guiWindowHeight", 600)
-        return {
-            "application": app_name,
-            "window": main_window,
-            "title": str(title),
-            "width": width,
-            "height": height,
-        }
-
-    def _compile_windows_gui_program(self):
-        descriptor = self._gui_window_descriptor()
-        fnty = ir.FunctionType(I32, [])
-        fn = ir.Function(self.module, fnty, name="main")
-        block = fn.append_basic_block("entry")
-        builder = ir.IRBuilder(block)
-        run_window = self._runtime_func(
-            "ss_gui_run_window", I32, [I8P, I32, I32])
-        self.provenance.record_external("ss_gui_run_window", {
-            "operation": descriptor["application"],
-            "name": descriptor["window"],
-            "target": "gui.runWindow",
-            "line": 0,
-        })
-        status = builder.call(
-            run_window,
-            [
-                self._i8p(builder, descriptor["title"]),
-                ir.Constant(I32, descriptor["width"]),
-                ir.Constant(I32, descriptor["height"]),
-            ],
-            name="gui_status")
-        builder.ret(status)
 
     # ---------- user-defined operations ----------
     def _declare_user_op(self, op: Operation):
@@ -5330,6 +5243,230 @@ class Codegen:
                 call["result"] = res
             return
 
+        def gui_i32_arg(arg_name):
+            value = arg_val_named(arg_name)
+            if isinstance(value.type, ir.IntType):
+                if value.type.width < 32:
+                    return builder.sext(value, I32)
+                if value.type.width > 32:
+                    return builder.trunc(value, I32)
+                return value
+            raise ValueError(f"{call_name}: {target} arg `{arg_name}` must be an integer")
+
+        def gui_ptr_arg(arg_name):
+            value = arg_val_named(arg_name)
+            if value.type == I8P:
+                return value
+            if isinstance(value.type, ir.PointerType):
+                return builder.bitcast(value, I8P)
+            if isinstance(value.type, ir.IntType):
+                return builder.inttoptr(value, I8P)
+            raise ValueError(f"{call_name}: {target} arg `{arg_name}` must be pointer-shaped")
+
+        def gui_handler_arg(arg_name):
+            handler_name = call["args"].get(arg_name)
+            if handler_name not in self._user_ops:
+                raise ValueError(
+                    f"{call_name}: {target} arg `{arg_name}` must name a declared operation")
+            op_info = self._user_ops[handler_name]
+            handler_fnty = ir.FunctionType(I32, [I8P, I8P])
+            handler_ptr_ty = handler_fnty.as_pointer()
+            handler_ptr = op_info["fn"]
+            if len(op_info["params"]) != 2:
+                raise ValueError(
+                    f"{call_name}: GUI handler `{handler_name}` must declare "
+                    "input HANDLER session GuiSession and input HANDLER event GuiEvent")
+            if op_info["return_type"] != I32:
+                raise ValueError(
+                    f"{call_name}: GUI handler `{handler_name}` must return CSignedInt32")
+            if handler_ptr.type != handler_ptr_ty:
+                handler_ptr = builder.bitcast(handler_ptr, handler_ptr_ty)
+            return handler_ptr
+
+        if target == "gui.applicationCreate":
+            fn = self._runtime_func("ss_gui_application_create", I8P, [I8P])
+            self.provenance.record_external("ss_gui_application_create", call)
+            call["result"] = builder.call(
+                fn, [gui_ptr_arg("title")], name=f"{call_name}_res")
+            return
+
+        if target == "gui.windowCreate":
+            fn = self._runtime_func(
+                "ss_gui_window_create", I8P, [I8P, I32, I32, I32, I32])
+            self.provenance.record_external("ss_gui_window_create", call)
+            call["result"] = builder.call(
+                fn,
+                [
+                    gui_ptr_arg("title"),
+                    gui_i32_arg("width"),
+                    gui_i32_arg("height"),
+                    gui_i32_arg("layout"),
+                    gui_i32_arg("resizable"),
+                ],
+                name=f"{call_name}_res")
+            return
+
+        if target == "gui.textLabelCreate":
+            fn = self._runtime_func("ss_gui_text_label_create", I8P, [I8P])
+            self.provenance.record_external("ss_gui_text_label_create", call)
+            call["result"] = builder.call(
+                fn, [gui_ptr_arg("text")], name=f"{call_name}_res")
+            return
+
+        if target == "gui.textBoxCreate":
+            fn = self._runtime_func("ss_gui_text_box_create", I8P, [I8P, I32])
+            self.provenance.record_external("ss_gui_text_box_create", call)
+            call["result"] = builder.call(
+                fn,
+                [gui_ptr_arg("placeholder"), gui_i32_arg("maxLength")],
+                name=f"{call_name}_res")
+            return
+
+        if target == "gui.buttonCreate":
+            fn = self._runtime_func("ss_gui_button_create", I8P, [I8P, I32])
+            self.provenance.record_external("ss_gui_button_create", call)
+            call["result"] = builder.call(
+                fn,
+                [gui_ptr_arg("text"), gui_i32_arg("isDefault")],
+                name=f"{call_name}_res")
+            return
+
+        if target == "gui.listBoxCreate":
+            fn = self._runtime_func("ss_gui_list_box_create", I8P, [I32])
+            self.provenance.record_external("ss_gui_list_box_create", call)
+            call["result"] = builder.call(
+                fn, [gui_i32_arg("selectionMode")], name=f"{call_name}_res")
+            return
+
+        if target == "gui.windowAddControl":
+            fn = self._runtime_func("ss_gui_window_add_control", I32, [I8P, I8P])
+            self.provenance.record_external("ss_gui_window_add_control", call)
+            call["result"] = builder.call(
+                fn,
+                [gui_ptr_arg("window"), gui_ptr_arg("control")],
+                name=f"{call_name}_res")
+            return
+
+        if target == "gui.controlOnEvent":
+            handler_fnty = ir.FunctionType(I32, [I8P, I8P])
+            handler_ptr_ty = handler_fnty.as_pointer()
+            fn = self._runtime_func(
+                "ss_gui_control_on_event", I32, [I8P, I32, handler_ptr_ty])
+            self.provenance.record_external("ss_gui_control_on_event", call)
+            call["result"] = builder.call(
+                fn,
+                [
+                    gui_ptr_arg("control"),
+                    gui_i32_arg("eventKind"),
+                    gui_handler_arg("handler"),
+                ],
+                name=f"{call_name}_res")
+            return
+
+        if target == "gui.applicationSetMainWindow":
+            fn = self._runtime_func(
+                "ss_gui_application_set_main_window", I32, [I8P, I8P])
+            self.provenance.record_external("ss_gui_application_set_main_window", call)
+            call["result"] = builder.call(
+                fn,
+                [gui_ptr_arg("application"), gui_ptr_arg("window")],
+                name=f"{call_name}_res")
+            return
+
+        if target == "gui.applicationRun":
+            fn = self._runtime_func("ss_gui_application_run_builder", I32, [I8P])
+            self.provenance.record_external("ss_gui_application_run_builder", call)
+            call["result"] = builder.call(
+                fn, [gui_ptr_arg("application")], name=f"{call_name}_res")
+            return
+
+        if target == "gui.textBoxText":
+            fn = self._runtime_func(
+                "ss_gui_text_box_text_by_handle", I8P, [I8P, I8P])
+            self.provenance.record_external("ss_gui_text_box_text_by_handle", call)
+            call["result"] = builder.call(
+                fn,
+                [gui_ptr_arg("session"), gui_ptr_arg("textBox")],
+                name=f"{call_name}_res")
+            return
+
+        if target == "gui.textBoxSetText":
+            fn = self._runtime_func(
+                "ss_gui_text_box_set_text_by_handle", I32, [I8P, I8P, I8P])
+            self.provenance.record_external("ss_gui_text_box_set_text_by_handle", call)
+            call["result"] = builder.call(
+                fn,
+                [
+                    gui_ptr_arg("session"),
+                    gui_ptr_arg("textBox"),
+                    gui_ptr_arg("text"),
+                ],
+                name=f"{call_name}_res")
+            return
+
+        if target == "gui.listBoxSelectedIndex":
+            fn = self._runtime_func(
+                "ss_gui_list_box_selected_index_by_handle", I32, [I8P, I8P])
+            self.provenance.record_external("ss_gui_list_box_selected_index_by_handle", call)
+            call["result"] = builder.call(
+                fn,
+                [gui_ptr_arg("session"), gui_ptr_arg("listBox")],
+                name=f"{call_name}_res")
+            return
+
+        if target == "gui.listBoxAppendItem":
+            fn = self._runtime_func(
+                "ss_gui_list_box_append_item_by_handle", I32, [I8P, I8P, I8P])
+            self.provenance.record_external("ss_gui_list_box_append_item_by_handle", call)
+            call["result"] = builder.call(
+                fn,
+                [
+                    gui_ptr_arg("session"),
+                    gui_ptr_arg("listBox"),
+                    gui_ptr_arg("text"),
+                ],
+                name=f"{call_name}_res")
+            return
+
+        if target == "gui.listBoxClear":
+            fn = self._runtime_func(
+                "ss_gui_list_box_clear_by_handle", I32, [I8P, I8P])
+            self.provenance.record_external("ss_gui_list_box_clear_by_handle", call)
+            call["result"] = builder.call(
+                fn,
+                [gui_ptr_arg("session"), gui_ptr_arg("listBox")],
+                name=f"{call_name}_res")
+            return
+
+        if target == "gui.textLabelSetText":
+            fn = self._runtime_func(
+                "ss_gui_text_label_set_text_by_handle", I32, [I8P, I8P, I8P])
+            self.provenance.record_external("ss_gui_text_label_set_text_by_handle", call)
+            call["result"] = builder.call(
+                fn,
+                [
+                    gui_ptr_arg("session"),
+                    gui_ptr_arg("textLabel"),
+                    gui_ptr_arg("text"),
+                ],
+                name=f"{call_name}_res")
+            return
+
+        if target == "gui.windowClose":
+            fn = self._runtime_func(
+                "ss_gui_window_close_by_handle", I32, [I8P, I8P])
+            self.provenance.record_external("ss_gui_window_close_by_handle", call)
+            call["result"] = builder.call(
+                fn,
+                [gui_ptr_arg("session"), gui_ptr_arg("window")],
+                name=f"{call_name}_res")
+            return
+
+        if target.startswith("gui."):
+            raise ValueError(
+                f"unsupported native gui call target: {target!r}; "
+                "add a standard.gui function/runtime lowering before using it")
+
         # User-defined operation invocation. The target is the operation name.
         # Match the call's `arg` lines to the operation's declared parameter
         # list, dropping any args that pass an opaque-dep value. The function
@@ -5404,8 +5541,18 @@ class Codegen:
                     "!=", result, ir.Constant(rt, 0),
                     name=f"{call_name}_isErr")
             elif isinstance(rt, ir.PointerType):
+                # NULL pointer is the failure marker: error_cond is
+                # `result == null`. A user op that `returnOk handlePtr`
+                # produces a non-null pointer (success); a `returnError
+                # statusCode` path inttoptr's the small status into a
+                # pointer that happens to be non-null, BUT user ops
+                # that genuinely want the Result-error path to fire on
+                # the caller side should `returnOk nullHandle` from the
+                # failure branch (or set the error code via a separate
+                # signal). For Result<Pointer, _> ops where any error
+                # encodes as a null return, this check Just Works.
                 call["error_cond"] = builder.icmp_unsigned(
-                    "!=", result, ir.Constant(rt, None),
+                    "==", result, ir.Constant(rt, None),
                     name=f"{call_name}_isErr")
             elif isinstance(rt, (ir.FloatType, ir.DoubleType)):
                 call["error_cond"] = builder.fcmp_ordered(
@@ -6115,6 +6262,68 @@ class Codegen:
             self.provenance.record_external("ss_http_request_path_param", call)
             call["result"] = builder.call(
                 request_path_param, [request, name], name=f"{call_name}_res")
+            return
+
+        if target == "http.requestCookie":
+            # Reads a single named cookie value from the request's
+            # Cookie header. NULL when the header is absent OR the
+            # cookie isn't present OR the value would overflow the
+            # 256-byte scratch. Nullable per the SS3603 contract.
+            request = arg_val_named("request")
+            cookie_name = arg_val_named("cookieName")
+            if isinstance(request.type, ir.IntType):
+                request = builder.inttoptr(request, I8P)
+            if isinstance(cookie_name.type, ir.IntType):
+                cookie_name = builder.inttoptr(cookie_name, I8P)
+            fn = self._runtime_func(
+                "ss_http_request_cookie", I8P, [I8P, I8P])
+            self.provenance.record_external("ss_http_request_cookie", call)
+            call["result"] = builder.call(
+                fn, [request, cookie_name], name=f"{call_name}_res")
+            return
+
+        if target == "http.responseFile":
+            # Serves a file from inside `rootDirectory`. Refuses path
+            # traversal and absolute paths at the runtime; the caller
+            # still owns choosing a root directory that contains only
+            # public assets.
+            response = arg_val_named("response")
+            status = arg_val_named("status")
+            root_directory = arg_val_named("rootDirectory")
+            requested_path = arg_val_named("requestedPath")
+            if isinstance(response.type, ir.IntType):
+                response = builder.inttoptr(response, I8P)
+            if isinstance(status.type, ir.IntType) and status.type.width != 32:
+                status = (builder.trunc(status, I32) if status.type.width > 32
+                          else builder.sext(status, I32))
+            if isinstance(root_directory.type, ir.IntType):
+                root_directory = builder.inttoptr(root_directory, I8P)
+            if isinstance(requested_path.type, ir.IntType):
+                requested_path = builder.inttoptr(requested_path, I8P)
+            fn = self._runtime_func(
+                "ss_http_response_file", I32, [I8P, I32, I8P, I8P])
+            self.provenance.record_external("ss_http_response_file", call)
+            call["result"] = builder.call(
+                fn, [response, status, root_directory, requested_path],
+                name=f"{call_name}_status")
+            return
+
+        if target == "http.nowMillis":
+            fn = self._runtime_func("ss_http_now_millis", I64, [])
+            self.provenance.record_external("ss_http_now_millis", call)
+            call["result"] = builder.call(fn, [], name=f"{call_name}_millis")
+            return
+
+        if target == "http.ensureDirectory":
+            directory_path = arg_val_named("directoryPath")
+            if isinstance(directory_path.type, ir.IntType):
+                directory_path = builder.inttoptr(directory_path, I8P)
+            fn = self._runtime_func(
+                "ss_http_filesystem_ensure_directory", I32, [I8P])
+            self.provenance.record_external(
+                "ss_http_filesystem_ensure_directory", call)
+            call["result"] = builder.call(
+                fn, [directory_path], name=f"{call_name}_status")
             return
 
         if target == "http.requestBodyText":

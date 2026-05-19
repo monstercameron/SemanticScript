@@ -507,65 +507,80 @@ iconImagePurpose todoPrimaryAt16 "Small shell icon."
         self.assertNotIn("SS0001", _codes(diagnostics))
         self.assertNotIn("SS0002", _codes(diagnostics))
 
-    def test_gui_verbs_not_flagged(self) -> None:
+    def test_gui_function_calls_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project GuiLint
+target windowsGui
+importModule gui standard.gui
+storage module immutable title GuiText "Todo"
+storage module immutable width GuiPixels 640
+storage module immutable height GuiPixels 480
+storage module immutable yesFlag CSignedInt32 1
+storage module immutable maxTitleLength CSignedInt32 120
+operation main
+output main ExitCode
+effect main allocate gui.application
+effect main allocate gui.window
+effect main allocate gui.control
+effect main write gui.window
+authority main gui.application allocate
+authority main gui.window allocate
+authority main gui.control allocate
+authority main gui.window write
+purpose main "compose the GUI through standard function calls"
+call createApplicationCall gui.applicationCreate
+arg createApplicationCall title title
+run createApplicationCall
+bind application GuiApplication createApplicationCall
+call createWindowCall gui.windowCreate
+arg createWindowCall title title
+arg createWindowCall width width
+arg createWindowCall height height
+arg createWindowCall layout verticalStackGuiWindowLayout
+arg createWindowCall resizable yesFlag
+run createWindowCall
+bind window GuiWindow createWindowCall
+call createTextBoxCall gui.textBoxCreate
+arg createTextBoxCall placeholder title
+arg createTextBoxCall maxLength maxTitleLength
+run createTextBoxCall
+bind textBox GuiTextBox createTextBoxCall
+call addControlCall gui.windowAddControl
+arg addControlCall window window
+arg addControlCall control textBox
+run addControlCall
+ignoreValue addControlCall CSignedInt32
+call setMainWindowCall gui.applicationSetMainWindow
+arg setMainWindowCall application application
+arg setMainWindowCall window window
+run setMainWindowCall
+ignoreValue setMainWindowCall CSignedInt32
+call runApplicationCall gui.applicationRun
+arg runApplicationCall application application
+run runApplicationCall
+bind status ExitCode runApplicationCall
+returnValue status
+""")
+        self.assertNotIn("SS0001", _codes(diagnostics))
+        self.assertNotIn("SS0002", _codes(diagnostics))
+
+    def test_gui_declarative_keyword_rows_are_not_standard_syntax(self) -> None:
         diagnostics = _lint_source("""project GuiLint
 target windowsGui
 importModule gui standard.gui
 guiApplication todoGuiApp
-guiApplicationTitle todoGuiApp "Todo"
-guiApplicationIcon todoGuiApp todoPrimaryIcon
-guiApplicationMainWindow todoGuiApp todoMainWindow
-guiApplicationOnExit todoGuiApp onGuiExit
 guiWindow todoMainWindow
-guiWindowApplication todoMainWindow todoGuiApp
-guiWindowTitle todoMainWindow "Todo"
-guiWindowWidth todoMainWindow 640
-guiWindowHeight todoMainWindow 480
-guiWindowMinimumWidth todoMainWindow 320
-guiWindowMinimumHeight todoMainWindow 240
-guiWindowLayout todoMainWindow verticalStack
-guiWindowResizable todoMainWindow yes
-guiWindowEvent todoMainWindow closeRequested onGuiClose
 guiButton addTodoButton
-guiTextBox todoTitleTextBox
-guiListBox visibleTodosListBox
-guiCheckBox showDoneCheckBox
-guiMenuItem quitMenuItem
-guiStatusBar statusLine
-guiTextLabel titleLabel
-guiControlWindow addTodoButton todoMainWindow
-guiControlWindow todoTitleTextBox todoMainWindow
-guiControlEnabled addTodoButton yes
-guiControlVisible addTodoButton yes
-guiControlTabIndex addTodoButton 1
-guiControlAccessibleName addTodoButton "Add todo"
-guiControlEvent addTodoButton click onAddTodo
-guiButtonText addTodoButton "Add"
-guiButtonIsDefault addTodoButton yes
-guiTextBoxPlaceholder todoTitleTextBox "Title"
-guiTextBoxMaxLength todoTitleTextBox 120
-guiListBoxSelectionMode visibleTodosListBox single
-guiCheckBoxChecked showDoneCheckBox no
-guiTextLabelText titleLabel "Todos"
-operation onGuiClose
-input onGuiClose session GuiSession
-input onGuiClose event GuiEvent
-output onGuiClose CSignedInt32
-purpose onGuiClose "handle the main window close event"
-returnValue 0
-operation onGuiExit
-output onGuiExit CSignedInt32
-purpose onGuiExit "finish after the GUI message loop exits"
-returnValue 0
-operation onAddTodo
-input onAddTodo session GuiSession
-input onAddTodo event GuiEvent
-output onAddTodo CSignedInt32
-purpose onAddTodo "handle add todo button clicks"
-returnValue 0
 """)
-        self.assertNotIn("SS0001", _codes(diagnostics))
-        self.assertNotIn("SS0002", _codes(diagnostics))
+        codes = _codes(diagnostics)
+        self.assertIn("SS0001", codes)
+        unknownSubjects = {
+            diagnostic.subjectName
+            for diagnostic in diagnostics
+            if diagnostic.code == "SS0001"
+        }
+        self.assertIn("guiApplication", unknownSubjects)
+        self.assertIn("guiWindow", unknownSubjects)
+        self.assertIn("guiButton", unknownSubjects)
 
 
 class TestHtmlSyntaxIsland(unittest.TestCase):
@@ -650,11 +665,11 @@ htmlBody
 class TestGuiRuntimeContracts(unittest.TestCase):
     def test_gui_declarative_handles_feed_builtin_signature_check(self) -> None:
         diagnostics = _lint_source("""project GuiLint
-guiWindow todoMainWindow
-guiTextBox todoTitleTextBox
+importModule gui standard.gui
 operation handleTitleChanged
 input handleTitleChanged session GuiSession
 input handleTitleChanged event GuiEvent
+input handleTitleChanged todoTitleTextBox GuiTextBox
 output handleTitleChanged CSignedInt32
 effect handleTitleChanged read gui.control.textBox.text
 authority handleTitleChanged gui.control.textBox.text read
@@ -673,10 +688,11 @@ returnValue 0
 
     def test_gui_runtime_wrong_handle_type_is_flagged(self) -> None:
         diagnostics = _lint_source("""project GuiLint
-guiButton addTodoButton
+importModule gui standard.gui
 operation handleTitleChanged
 input handleTitleChanged session GuiSession
 input handleTitleChanged event GuiEvent
+input handleTitleChanged addTodoButton GuiButton
 output handleTitleChanged CSignedInt32
 effect handleTitleChanged read gui.control.textBox.text
 authority handleTitleChanged gui.control.textBox.text read
@@ -692,10 +708,11 @@ returnValue 0
 
     def test_gui_runtime_effect_uses_generic_body_effect_checker(self) -> None:
         diagnostics = _lint_source("""project GuiLint
-guiWindow todoMainWindow
+importModule gui standard.gui
 operation handleClose
 input handleClose session GuiSession
 input handleClose event GuiEvent
+input handleClose todoMainWindow GuiWindow
 output handleClose CSignedInt32
 purpose handleClose "close the main GUI window"
 call closeCall gui.windowClose
@@ -708,6 +725,34 @@ returnValue 0
         matching = _diagnostics_with_code(diagnostics, "SS3111")[0]
         self.assertEqual(matching.gapEdge, "effect")
         self.assertIn("gui.window", matching.invariantRule)
+
+    def test_gui_control_event_handler_arg_is_operation_reference(self) -> None:
+        diagnostics = _lint_source("""project GuiLint
+importModule gui standard.gui
+storage module mutable addTodoButton GuiButton 0
+operation main
+output main ExitCode
+effect main write gui.control.event
+authority main gui.control.event write
+purpose main "register a GUI click handler"
+call registerClickCall gui.controlOnEvent
+arg registerClickCall control addTodoButton
+arg registerClickCall eventKind clickGuiEventKind
+arg registerClickCall handler addTaskFromInput
+run registerClickCall
+ignoreValue registerClickCall CSignedInt32
+returnValue 0
+operation addTaskFromInput
+input addTaskFromInput session GuiSession
+input addTaskFromInput event GuiEvent
+output addTaskFromInput CSignedInt32
+purpose addTaskFromInput "handle a GUI click"
+returnValue 0
+""")
+        codes = _codes(diagnostics)
+        self.assertNotIn("SS4105", codes)
+        self.assertNotIn("SS4301", codes)
+        self.assertNotIn("SS3111", codes)
 
 
 # ==========================================================================
@@ -790,22 +835,16 @@ docsOutput todoGui "docs"
         self.assertNotIn("SS2526", _codes(diagnostics))
         self.assertNotIn("SS2527", _codes(diagnostics))
 
-    def test_windows_gui_build_tape_does_not_require_main_operation(self) -> None:
+    def test_windows_gui_build_tape_allows_standard_entry_console(self) -> None:
         with TemporaryDirectory() as tempDir:
-            buildPath = self._write_windows_gui_project(Path(tempDir))
+            buildPath = self._write_windows_gui_project(
+                Path(tempDir),
+                extraRows="mainOperation todoGui main\nentry console main\n",
+            )
             diagnostics = semlint.lint_path(buildPath)
         codes = _codes(diagnostics)
         self.assertNotIn("SS2522", codes)
         self.assertNotIn("SS2525", codes)
-
-    def test_windows_gui_build_tape_rejects_entry_console(self) -> None:
-        with TemporaryDirectory() as tempDir:
-            buildPath = self._write_windows_gui_project(
-                Path(tempDir),
-                extraRows="entry console main\n",
-            )
-            diagnostics = semlint.lint_path(buildPath)
-        self.assertIn("SS2525", _codes(diagnostics))
 
     def test_missing_required_rows_are_flagged(self) -> None:
         diagnostics = _lint_source("""buildProject todoTui
@@ -4990,7 +5029,7 @@ class TestHttpTargetSourceOfTruth(unittest.TestCase):
                 f"{sorted(onlyInSemsc)}. Add each to the appropriate "
                 f"classifier set (NON_NULLABLE_HTTP_REQUEST_READS / "
                 f"NULLABLE_HTTP_REQUEST_READS / HTTP_RESPONSE_BODY_WRITERS / "
-                f"HTTP_RESPONSE_OTHER_WRITERS) and to the SYNTAX.md "
+                f"HTTP_RESPONSE_OTHER_WRITERS / HTTP_UTILITY_TARGETS) and to the SYNTAX.md "
                 f"umbrella row."
             ),
         )

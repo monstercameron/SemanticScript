@@ -5,7 +5,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define SS_HTTP_MAX_REQUEST_BYTES 65536
+/* Raised from 64 KiB to 8 MiB so multipart image uploads (capped at
+ * 5 MiB at the application layer per the todo-web-pro schema CHECK)
+ * fit inside one request buffer with headroom for the multipart
+ * framing + headers. The dispatcher still 413s anything that exceeds
+ * the cap so a malicious client can't blow up memory by streaming a
+ * huge body, but the cap is now sized for realistic web payloads
+ * rather than terse REST bodies. */
+#define SS_HTTP_MAX_REQUEST_BYTES 8388608
 #define SS_HTTP_MAX_HEADERS 32
 #define SS_HTTP_MAX_QUERY_PARAMS 32
 #define SS_HTTP_MAX_MULTIPART_PARTS 16
@@ -43,6 +50,7 @@ typedef struct SSHttpPathParam {
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <windows.h>          /* FILETIME, GetSystemTimeAsFileTime, CreateDirectoryA */
 typedef SOCKET ss_socket_t;
 #define SS_INVALID_SOCKET INVALID_SOCKET
 static void ss_close_socket(ss_socket_t socket_handle) {
@@ -51,6 +59,8 @@ static void ss_close_socket(ss_socket_t socket_handle) {
 #else
 #include <arpa/inet.h>
 #include <errno.h>
+#include <sys/stat.h>          /* mkdir for ss_http_filesystem_ensure_directory */
+#include <time.h>              /* clock_gettime for ss_http_now_millis */
 #include <netdb.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -360,6 +370,244 @@ const char *ss_http_request_path_param(const SSHttpRequest *request, const char 
         }
     }
     return NULL;
+}
+
+/* Cookie value scratch — sized so a 32-byte session token base64url
+ * (43 chars) fits with ample headroom. Anything longer than this is
+ * refused rather than truncated; see the header doc for the rationale. */
+#define SS_HTTP_COOKIE_VALUE_MAX 256
+static char g_http_cookie_value_scratch[SS_HTTP_COOKIE_VALUE_MAX];
+
+const char *ss_http_request_cookie(const SSHttpRequest *request, const char *cookie_name) {
+    if (request == NULL || cookie_name == NULL) {
+        return NULL;
+    }
+    const char *cookie_header = ss_http_request_header(request, "cookie");
+    if (cookie_header == NULL) {
+        return NULL;
+    }
+    size_t name_length = strlen(cookie_name);
+    if (name_length == 0) return NULL;
+
+    const char *scan = cookie_header;
+    while (*scan != '\0') {
+        /* Skip leading whitespace + semicolons between cookie pairs. */
+        while (*scan == ' ' || *scan == '\t' || *scan == ';') {
+            ++scan;
+        }
+        if (*scan == '\0') return NULL;
+
+        const char *pair_name_start = scan;
+        while (*scan != '\0' && *scan != '=' && *scan != ';') {
+            ++scan;
+        }
+        size_t pair_name_length = (size_t)(scan - pair_name_start);
+        const char *pair_value_start = "";
+        size_t pair_value_length = 0;
+        if (*scan == '=') {
+            ++scan;
+            pair_value_start = scan;
+            while (*scan != '\0' && *scan != ';') {
+                ++scan;
+            }
+            pair_value_length = (size_t)(scan - pair_value_start);
+        }
+        if (pair_name_length == name_length
+            && memcmp(pair_name_start, cookie_name, name_length) == 0) {
+            if (pair_value_length == 0) return "";
+            if (pair_value_length >= SS_HTTP_COOKIE_VALUE_MAX) {
+                /* Refuse to truncate — caller treats this as "absent" so
+                 * an oversize attacker-controlled cookie doesn't pass an
+                 * incomplete prefix into the session lookup. */
+                return NULL;
+            }
+            memcpy(g_http_cookie_value_scratch, pair_value_start, pair_value_length);
+            g_http_cookie_value_scratch[pair_value_length] = '\0';
+            return g_http_cookie_value_scratch;
+        }
+    }
+    return NULL;
+}
+
+/* ----- ss_http_response_file ----- */
+
+#define SS_HTTP_FILE_MAX_BYTES (16 * 1024 * 1024)
+
+static int response_file_path_is_safe(const char *requested_relative_path) {
+    if (requested_relative_path == NULL || requested_relative_path[0] == '\0') {
+        return 0;
+    }
+    /* Absolute paths refused. */
+    if (requested_relative_path[0] == '/'
+        || requested_relative_path[0] == '\\') {
+        return 0;
+    }
+#ifdef _WIN32
+    /* Drive-letter prefix refused (`C:`, `d:` etc.). */
+    if (requested_relative_path[1] == ':' && requested_relative_path[2] != '\0') {
+        return 0;
+    }
+#endif
+    /* Walk the path checking each segment for `..`. We don't need to
+     * normalize; any literal `..` segment is refused regardless of
+     * surrounding context (so even `static/foo/../../etc/passwd`
+     * fails the moment we see the first `..`). */
+    const char *segment_start = requested_relative_path;
+    const char *scan = requested_relative_path;
+    while (1) {
+        if (*scan == '/' || *scan == '\\' || *scan == '\0') {
+            size_t seg_length = (size_t)(scan - segment_start);
+            if (seg_length == 2
+                && segment_start[0] == '.'
+                && segment_start[1] == '.') {
+                return 0;
+            }
+            if (*scan == '\0') break;
+            segment_start = scan + 1;
+        }
+        ++scan;
+    }
+    return 1;
+}
+
+static const char *content_type_for_extension(const char *path) {
+    const char *dot = strrchr(path, '.');
+    if (dot == NULL || dot[1] == '\0') {
+        return "application/octet-stream";
+    }
+    /* Lowercase compare for the well-known web extensions. */
+    const char *ext = dot + 1;
+    if (ascii_case_equal(ext, "html") || ascii_case_equal(ext, "htm")) {
+        return "text/html; charset=utf-8";
+    }
+    if (ascii_case_equal(ext, "css"))  return "text/css; charset=utf-8";
+    if (ascii_case_equal(ext, "js"))   return "text/javascript; charset=utf-8";
+    if (ascii_case_equal(ext, "json")) return "application/json; charset=utf-8";
+    if (ascii_case_equal(ext, "svg"))  return "image/svg+xml";
+    if (ascii_case_equal(ext, "png"))  return "image/png";
+    if (ascii_case_equal(ext, "jpg") || ascii_case_equal(ext, "jpeg")) {
+        return "image/jpeg";
+    }
+    if (ascii_case_equal(ext, "gif"))  return "image/gif";
+    if (ascii_case_equal(ext, "webp")) return "image/webp";
+    if (ascii_case_equal(ext, "ico"))  return "image/x-icon";
+    if (ascii_case_equal(ext, "txt"))  return "text/plain; charset=utf-8";
+    if (ascii_case_equal(ext, "woff2")) return "font/woff2";
+    if (ascii_case_equal(ext, "woff"))  return "font/woff";
+    return "application/octet-stream";
+}
+
+int ss_http_response_file(
+    SSHttpResponse *response,
+    int status,
+    const char *root_directory,
+    const char *requested_relative_path
+) {
+    if (response == NULL || root_directory == NULL
+        || requested_relative_path == NULL) {
+        return SS_HTTP_ERR_CONFIG;
+    }
+    if (!response_file_path_is_safe(requested_relative_path)) {
+        return SS_HTTP_ERR_CONFIG;
+    }
+
+    char absolute_path[1024];
+    int written = snprintf(absolute_path, sizeof(absolute_path),
+                           "%s/%s", root_directory, requested_relative_path);
+    if (written < 0 || written >= (int)sizeof(absolute_path)) {
+        return SS_HTTP_ERR_CONFIG;
+    }
+
+    FILE *file_handle = fopen(absolute_path, "rb");
+    if (file_handle == NULL) {
+        return SS_HTTP_ERR_ENGINE;
+    }
+    if (fseek(file_handle, 0, SEEK_END) != 0) {
+        fclose(file_handle);
+        return SS_HTTP_ERR_ENGINE;
+    }
+    long file_size = ftell(file_handle);
+    if (file_size < 0 || file_size > SS_HTTP_FILE_MAX_BYTES) {
+        fclose(file_handle);
+        return SS_HTTP_ERR_CONFIG;
+    }
+    if (fseek(file_handle, 0, SEEK_SET) != 0) {
+        fclose(file_handle);
+        return SS_HTTP_ERR_ENGINE;
+    }
+
+    char *body_bytes = (char *)malloc((size_t)file_size + 1);
+    if (body_bytes == NULL) {
+        fclose(file_handle);
+        return SS_HTTP_ERR_ENGINE;
+    }
+    size_t bytes_read = fread(body_bytes, 1, (size_t)file_size, file_handle);
+    fclose(file_handle);
+    if (bytes_read != (size_t)file_size) {
+        free(body_bytes);
+        return SS_HTTP_ERR_ENGINE;
+    }
+    body_bytes[file_size] = '\0';
+
+    response->status = status;
+    response->content_type = content_type_for_extension(requested_relative_path);
+    response->body = body_bytes;
+    response->body_length = (size_t)file_size;
+    /* Free the previous owned body if any, then take ownership. The
+     * response dispatch path frees owned_body after sending. */
+    if (response->owned_body != NULL) {
+        free(response->owned_body);
+    }
+    response->owned_body = body_bytes;
+    return SS_HTTP_OK;
+}
+
+/* ----- ss_http_now_millis ----- */
+
+long long ss_http_now_millis(void) {
+#ifdef _WIN32
+    FILETIME file_time;
+    GetSystemTimeAsFileTime(&file_time);
+    /* FILETIME is 100ns intervals since 1601-01-01. Convert to
+     * milliseconds since 1970-01-01. */
+    ULARGE_INTEGER as_uint64;
+    as_uint64.LowPart  = file_time.dwLowDateTime;
+    as_uint64.HighPart = file_time.dwHighDateTime;
+    static const long long epoch_offset_100ns_units = 116444736000000000LL;
+    long long since_unix_epoch_100ns = (long long)as_uint64.QuadPart - epoch_offset_100ns_units;
+    return since_unix_epoch_100ns / 10000LL;
+#else
+    struct timespec now_ts;
+    if (clock_gettime(CLOCK_REALTIME, &now_ts) != 0) {
+        return 0;
+    }
+    return (long long)now_ts.tv_sec * 1000LL
+         + (long long)(now_ts.tv_nsec / 1000000L);
+#endif
+}
+
+/* ----- ss_http_filesystem_ensure_directory ----- */
+
+int ss_http_filesystem_ensure_directory(const char *directory_path) {
+    if (directory_path == NULL || directory_path[0] == '\0') {
+        return SS_HTTP_ERR_CONFIG;
+    }
+#ifdef _WIN32
+    if (CreateDirectoryA(directory_path, NULL) == 0) {
+        DWORD last_error = GetLastError();
+        if (last_error != ERROR_ALREADY_EXISTS) {
+            return SS_HTTP_ERR_ENGINE;
+        }
+    }
+    return SS_HTTP_OK;
+#else
+    if (mkdir(directory_path, 0755) != 0) {
+        if (errno != EEXIST) {
+            return SS_HTTP_ERR_ENGINE;
+        }
+    }
+    return SS_HTTP_OK;
+#endif
 }
 
 const char *ss_http_request_query_param(const SSHttpRequest *request, const char *name) {

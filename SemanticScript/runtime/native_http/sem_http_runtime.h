@@ -97,6 +97,62 @@ size_t ss_http_request_body_length(const SSHttpRequest *request);
  */
 const char *ss_http_request_path_param(const SSHttpRequest *request, const char *name);
 
+/*
+ * Returns the value of the named cookie from the request's `Cookie:`
+ * header, or NULL when the header is absent or the cookie isn't
+ * present. The returned pointer is valid for the duration of the
+ * handler call and points into a per-request scratch buffer (the
+ * decoded value is unescaped from any percent-encoding the client
+ * applied). Maximum value length is 256 bytes; longer values return
+ * NULL rather than truncate, so a session-token cookie that exceeds
+ * its expected length surfaces as "no session attached".
+ */
+const char *ss_http_request_cookie(const SSHttpRequest *request, const char *cookie_name);
+
+/*
+ * Reads `requested_relative_path` from inside `root_directory`,
+ * sniffs its content-type by extension, and writes the bytes into
+ * `response` with the given status. Refuses any relative path that
+ * contains `..` segments, starts with `/` or `\`, or contains a
+ * drive-letter prefix on Windows. Refuses files larger than 16 MiB.
+ * Returns SS_HTTP_OK on success or one of:
+ *   SS_HTTP_ERR_CONFIG  — NULL inputs, traversal attempt, or oversize.
+ *   SS_HTTP_ERR_ENGINE  — fopen / fread failure.
+ *
+ * On any error, the response is left untouched (the dispatcher's
+ * 404/500 fallback applies). On success, the response body owns its
+ * own malloc'd copy of the file bytes — the response writer frees it
+ * after sending.
+ */
+int ss_http_response_file(
+    SSHttpResponse *response,
+    int status,
+    const char *root_directory,
+    const char *requested_relative_path
+);
+
+/*
+ * Returns the wall-clock time in milliseconds since the Unix epoch.
+ * Implementation uses GetSystemTimeAsFileTime on Windows and
+ * clock_gettime(CLOCK_REALTIME) on POSIX. Used by request-log
+ * middleware for the `[ts=…]` timestamp and the `[ms=…]` request
+ * latency, by the session expiry math, and by SQL `created_at_ms`
+ * inserts when the AS source would otherwise need to call out to
+ * libc time().
+ */
+long long ss_http_now_millis(void);
+
+/*
+ * Ensures the named directory exists, creating it if missing. Refuses
+ * to create parents — the directory's parent must already exist. The
+ * todo-web-pro app uses this once at startup to make sure
+ * build/images/ is ready for uploads. Returns SS_HTTP_OK on success,
+ * SS_HTTP_ERR_CONFIG on a NULL or empty path, or SS_HTTP_ERR_ENGINE
+ * if the platform mkdir call failed for a reason other than
+ * "directory already exists".
+ */
+int ss_http_filesystem_ensure_directory(const char *directory_path);
+
 const char *ss_http_multipart_part_text(SSHttpRequest *request, const char *name);
 const void *ss_http_multipart_part_bytes(SSHttpRequest *request, const char *name);
 size_t ss_http_multipart_part_length(SSHttpRequest *request, const char *name);

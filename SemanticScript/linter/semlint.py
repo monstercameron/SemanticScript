@@ -191,6 +191,44 @@ BUILTIN_VALUE_TYPES: Dict[str, str] = {
     "textSqliteColumnType": "SqliteColumnType",
     "blobSqliteColumnType": "SqliteColumnType",
     "nullSqliteColumnType": "SqliteColumnType",
+    "windowGuiTargetKind": "GuiTargetKind",
+    "controlGuiTargetKind": "GuiTargetKind",
+    "defaultGuiWindowLayout": "GuiWindowLayout",
+    "verticalStackGuiWindowLayout": "GuiWindowLayout",
+    "horizontalStackGuiWindowLayout": "GuiWindowLayout",
+    "gridGuiWindowLayout": "GuiWindowLayout",
+    "absoluteGuiWindowLayout": "GuiWindowLayout",
+    "buttonGuiControlKind": "GuiControlKind",
+    "textBoxGuiControlKind": "GuiControlKind",
+    "listBoxGuiControlKind": "GuiControlKind",
+    "checkBoxGuiControlKind": "GuiControlKind",
+    "menuItemGuiControlKind": "GuiControlKind",
+    "statusBarGuiControlKind": "GuiControlKind",
+    "textLabelGuiControlKind": "GuiControlKind",
+    "defaultGuiListBoxSelectionMode": "GuiListBoxSelectionMode",
+    "singleGuiListBoxSelectionMode": "GuiListBoxSelectionMode",
+    "multipleGuiListBoxSelectionMode": "GuiListBoxSelectionMode",
+    "clickGuiEventKind": "GuiEventKind",
+    "valueChangedGuiEventKind": "GuiEventKind",
+    "selectionChangedGuiEventKind": "GuiEventKind",
+    "enterPressedGuiEventKind": "GuiEventKind",
+    "keyPressedGuiEventKind": "GuiEventKind",
+    "focusGainedGuiEventKind": "GuiEventKind",
+    "focusLostGuiEventKind": "GuiEventKind",
+    "closeRequestedGuiEventKind": "GuiEventKind",
+    "resizedGuiEventKind": "GuiEventKind",
+    "shownGuiEventKind": "GuiEventKind",
+    "hiddenGuiEventKind": "GuiEventKind",
+    "okGuiRuntimeStatus": "GuiRuntimeStatus",
+    "configGuiRuntimeStatus": "GuiRuntimeStatus",
+    "runtimeUnavailableGuiRuntimeStatus": "GuiRuntimeStatus",
+    "allocationGuiRuntimeStatus": "GuiRuntimeStatus",
+    "platformGuiRuntimeStatus": "GuiRuntimeStatus",
+    "notFoundGuiRuntimeStatus": "GuiRuntimeStatus",
+    "wrongKindGuiRuntimeStatus": "GuiRuntimeStatus",
+    "handlerGuiRuntimeStatus": "GuiRuntimeStatus",
+    "unsupportedGuiRuntimeStatus": "GuiRuntimeStatus",
+    "threadGuiRuntimeStatus": "GuiRuntimeStatus",
 }
 
 BUILTIN_VALUE_LITERALS: Dict[str, str] = {
@@ -207,12 +245,75 @@ BUILTIN_VALUE_LITERALS: Dict[str, str] = {
     "textSqliteColumnType": "3",
     "blobSqliteColumnType": "4",
     "nullSqliteColumnType": "5",
+    "windowGuiTargetKind": "1",
+    "controlGuiTargetKind": "2",
+    "defaultGuiWindowLayout": "0",
+    "verticalStackGuiWindowLayout": "1",
+    "horizontalStackGuiWindowLayout": "2",
+    "gridGuiWindowLayout": "3",
+    "absoluteGuiWindowLayout": "4",
+    "buttonGuiControlKind": "1",
+    "textBoxGuiControlKind": "2",
+    "listBoxGuiControlKind": "3",
+    "checkBoxGuiControlKind": "4",
+    "menuItemGuiControlKind": "5",
+    "statusBarGuiControlKind": "6",
+    "textLabelGuiControlKind": "7",
+    "defaultGuiListBoxSelectionMode": "0",
+    "singleGuiListBoxSelectionMode": "1",
+    "multipleGuiListBoxSelectionMode": "2",
+    "clickGuiEventKind": "1",
+    "valueChangedGuiEventKind": "2",
+    "selectionChangedGuiEventKind": "3",
+    "enterPressedGuiEventKind": "4",
+    "keyPressedGuiEventKind": "5",
+    "focusGainedGuiEventKind": "6",
+    "focusLostGuiEventKind": "7",
+    "closeRequestedGuiEventKind": "8",
+    "resizedGuiEventKind": "9",
+    "shownGuiEventKind": "10",
+    "hiddenGuiEventKind": "11",
+    "okGuiRuntimeStatus": "0",
+    "configGuiRuntimeStatus": "1",
+    "runtimeUnavailableGuiRuntimeStatus": "2",
+    "allocationGuiRuntimeStatus": "3",
+    "platformGuiRuntimeStatus": "4",
+    "notFoundGuiRuntimeStatus": "5",
+    "wrongKindGuiRuntimeStatus": "6",
+    "handlerGuiRuntimeStatus": "7",
+    "unsupportedGuiRuntimeStatus": "8",
+    "threadGuiRuntimeStatus": "9",
 }
 
 BUILTIN_TYPE_ALIASES: Dict[str, str] = {
     "SqliteDatabase": "COpaqueMemoryAddress",
     "SqliteStatement": "COpaqueMemoryAddress",
     "SqliteRowId": "CSignedInt64",
+    "GuiApplication": "COpaqueMemoryAddress",
+    "GuiSession": "COpaqueMemoryAddress",
+    "GuiEvent": "COpaqueMemoryAddress",
+    "GuiWindow": "COpaqueMemoryAddress",
+    "GuiControl": "COpaqueMemoryAddress",
+    "GuiWindowId": "CUnsignedInt32",
+    "GuiControlId": "CUnsignedInt32",
+    "GuiText": "CNullTerminatedByteString",
+    "GuiApplicationTitle": "GuiText",
+    "GuiWindowTitle": "GuiText",
+    "GuiControlText": "GuiText",
+    "GuiPlaceholderText": "GuiText",
+    "GuiAccessibleName": "GuiText",
+    "GuiListBoxItemText": "GuiText",
+    "GuiIconGroupName": "CNullTerminatedByteString",
+    "GuiPixels": "CSignedInt32",
+    "GuiMinimumPixels": "GuiPixels",
+    "GuiTabIndex": "CSignedInt32",
+    "GuiKeyCode": "CSignedInt32",
+    "GuiSelectedIndex": "CSignedInt32",
+    "GuiEventDimensionPixels": "GuiPixels",
+    "GuiHandlerStatus": "CSignedInt32",
+    "GuiRuntimeStatusCode": "CSignedInt32",
+    "GuiKeywordToken": "CNullTerminatedByteString",
+    "GuiRuntimeTarget": "CNullTerminatedByteString",
 }
 
 BUILTIN_ABSTRACTIONS: Dict[str, str] = {
@@ -220,20 +321,24 @@ BUILTIN_ABSTRACTIONS: Dict[str, str] = {
     "SqliteOpenMode": "enum",
     "SqliteStepResult": "enum",
     "SqliteColumnType": "enum",
+    "GuiTargetKind": "enum",
+    "GuiWindowLayout": "enum",
+    "GuiControlKind": "enum",
+    "GuiListBoxSelectionMode": "enum",
+    "GuiEventKind": "enum",
+    "GuiRuntimeStatus": "enum",
 }
 
-GUI_HANDLE_VERB_TYPES: Dict[str, str] = {
-    "guiApplication": "GuiApplication",
-    "guiWindow": "GuiWindow",
-    "guiButton": "GuiButton",
-    "guiTextBox": "GuiTextBox",
-    "guiListBox": "GuiListBox",
-    "guiCheckBox": "GuiCheckBox",
-    "guiMenuItem": "GuiMenuItem",
-    "guiStatusBar": "GuiStatusBar",
-    "guiTextLabel": "GuiTextLabel",
-}
-
+GUI_CONTROL_HANDLE_TYPES: frozenset = frozenset({
+    "GuiControl",
+    "GuiButton",
+    "GuiTextBox",
+    "GuiListBox",
+    "GuiCheckBox",
+    "GuiMenuItem",
+    "GuiStatusBar",
+    "GuiTextLabel",
+})
 
 _STDLIB_PATH_ENV_VARS = ("SEMANTICSCRIPT_STD_PATH", "SEMSC_STD_PATH")
 _CLI_STDLIB_PATHS: List[str] = []
@@ -573,13 +678,6 @@ def parse_file(path: Path) -> ProgramFacts:
                     args[0], AbstractionFact(verb, args[0], line))
             elif verb == "htmlBody" and args:
                 active_html_body = True
-            elif verb in GUI_HANDLE_VERB_TYPES and args:
-                program.abstractions.setdefault(
-                    args[0], AbstractionFact(verb, args[0], line))
-                program.consts.setdefault(
-                    args[0],
-                    ConstFact(args[0], GUI_HANDLE_VERB_TYPES[verb], args[0], line),
-                )
             elif verb in _PARSER_CONTRACT_HEAVY_KINDS and args:
                 program.abstractions.setdefault(
                     args[0], AbstractionFact(verb, args[0], line))
@@ -767,11 +865,22 @@ CALL_TARGET_IMPLIED_EFFECTS: Dict[str, Tuple[str, str]] = {
     "c.write":                   ("write", "file"),
     # GUI runtime calls. Richer control/event validation belongs in
     # standard.gui; these entries only feed the generic effect coverage pass.
+    "gui.applicationCreate":     ("allocate", "gui.application"),
+    "gui.windowCreate":          ("allocate", "gui.window"),
+    "gui.textLabelCreate":       ("allocate", "gui.control"),
+    "gui.textBoxCreate":         ("allocate", "gui.control"),
+    "gui.buttonCreate":          ("allocate", "gui.control"),
+    "gui.listBoxCreate":         ("allocate", "gui.control"),
+    "gui.windowAddControl":      ("write", "gui.window"),
+    "gui.controlOnEvent":        ("write", "gui.control.event"),
+    "gui.applicationSetMainWindow": ("write", "gui.window"),
+    "gui.applicationRun":        ("write", "gui.window"),
     "gui.textBoxText":           ("read",  "gui.control.textBox.text"),
     "gui.textBoxSetText":        ("write", "gui.control.textBox.text"),
     "gui.listBoxSelectedIndex":  ("read",  "gui.control.listBox.selection"),
     "gui.listBoxAppendItem":     ("write", "gui.control.listBox.items"),
     "gui.listBoxClear":          ("write", "gui.control.listBox.items"),
+    "gui.textLabelSetText":      ("write", "gui.control.textLabel.text"),
     "gui.windowClose":           ("write", "gui.window"),
     "gui.eventKeyCode":          ("read",  "gui.event"),
     "gui.eventSelectedIndex":    ("read",  "gui.event"),
@@ -884,6 +993,45 @@ BUILTIN_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
 }
 
 GUI_RUNTIME_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
+    "gui.applicationCreate": [
+        ("title", "GuiText"),
+    ],
+    "gui.windowCreate": [
+        ("title", "GuiText"),
+        ("width", "GuiPixels"),
+        ("height", "GuiPixels"),
+        ("layout", "GuiWindowLayout"),
+        ("resizable", "CSignedInt32"),
+    ],
+    "gui.textLabelCreate": [
+        ("text", "GuiText"),
+    ],
+    "gui.textBoxCreate": [
+        ("placeholder", "GuiText"),
+        ("maxLength", "CSignedInt32"),
+    ],
+    "gui.buttonCreate": [
+        ("text", "GuiText"),
+        ("isDefault", "CSignedInt32"),
+    ],
+    "gui.listBoxCreate": [
+        ("selectionMode", "GuiListBoxSelectionMode"),
+    ],
+    "gui.windowAddControl": [
+        ("window", "GuiWindow"),
+        ("control", "GuiControl"),
+    ],
+    "gui.controlOnEvent": [
+        ("control", "GuiControl"),
+        ("eventKind", "GuiEventKind"),
+    ],
+    "gui.applicationSetMainWindow": [
+        ("application", "GuiApplication"),
+        ("window", "GuiWindow"),
+    ],
+    "gui.applicationRun": [
+        ("application", "GuiApplication"),
+    ],
     "gui.textBoxText": [
         ("session", "GuiSession"),
         ("textBox", "GuiTextBox"),
@@ -905,6 +1053,11 @@ GUI_RUNTIME_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
     "gui.listBoxClear": [
         ("session", "GuiSession"),
         ("listBox", "GuiListBox"),
+    ],
+    "gui.textLabelSetText": [
+        ("session", "GuiSession"),
+        ("textLabel", "GuiTextLabel"),
+        ("text", "GuiText"),
     ],
     "gui.windowClose": [
         ("session", "GuiSession"),
@@ -966,9 +1119,15 @@ SUPPORTED_JSON_RUNTIME_TARGETS: frozenset = frozenset({
 })
 
 SUPPORTED_GUI_RUNTIME_TARGETS: frozenset = frozenset({
+    "gui.applicationCreate", "gui.windowCreate",
+    "gui.textLabelCreate", "gui.textBoxCreate",
+    "gui.buttonCreate", "gui.listBoxCreate",
+    "gui.windowAddControl", "gui.controlOnEvent",
+    "gui.applicationSetMainWindow",
+    "gui.applicationRun",
     "gui.textBoxText", "gui.textBoxSetText",
     "gui.listBoxSelectedIndex", "gui.listBoxAppendItem", "gui.listBoxClear",
-    "gui.windowClose",
+    "gui.textLabelSetText", "gui.windowClose",
     "gui.eventKeyCode", "gui.eventSelectedIndex",
     "gui.eventWindowWidth", "gui.eventWindowHeight",
 })
@@ -1015,26 +1174,6 @@ VERB_MINIMUM_ARITY: Dict[str, int] = {
     "iconImageFormat": 2, "iconImageWidth": 2, "iconImageHeight": 2,
     "iconImageScale": 2, "iconImageDepth": 2, "iconImagePlatform": 2,
     "iconImagePurpose": 2,
-    # Declarative Windows GUI metadata. Semantic validation is expected to
-    # move into standard.gui contracts; semlint keeps the row shapes visible.
-    "guiApplication": 1, "guiApplicationTitle": 2,
-    "guiApplicationIcon": 2, "guiApplicationMainWindow": 2,
-    "guiApplicationOnExit": 2,
-    "guiWindow": 1, "guiWindowApplication": 2, "guiWindowTitle": 2,
-    "guiWindowWidth": 2, "guiWindowHeight": 2,
-    "guiWindowMinimumWidth": 2, "guiWindowMinimumHeight": 2,
-    "guiWindowLayout": 2, "guiWindowResizable": 2,
-    "guiWindowEvent": 3,
-    "guiButton": 1, "guiTextBox": 1, "guiListBox": 1,
-    "guiCheckBox": 1, "guiMenuItem": 1, "guiStatusBar": 1,
-    "guiTextLabel": 1,
-    "guiControlWindow": 2, "guiControlEnabled": 2,
-    "guiControlVisible": 2, "guiControlTabIndex": 2,
-    "guiControlAccessibleName": 2, "guiControlEvent": 3,
-    "guiButtonText": 2, "guiButtonIsDefault": 2,
-    "guiTextBoxPlaceholder": 2, "guiTextBoxMaxLength": 2,
-    "guiListBoxSelectionMode": 2, "guiCheckBoxChecked": 2,
-    "guiTextLabelText": 2,
     # Types / records / errors
     "type": 2, "typeInvariant": 2, "typeRepresentation": 2, "typeTrust": 2,
     "typeMemory": 2, "typeLayout": 2, "typeLiteralEncoding": 2,
@@ -1173,19 +1312,6 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "iconImage", "iconImageGroup", "iconImagePath", "iconImageFormat",
     "iconImageWidth", "iconImageHeight", "iconImageScale", "iconImageDepth",
     "iconImagePlatform", "iconImagePurpose",
-    "guiApplication", "guiApplicationTitle", "guiApplicationIcon",
-    "guiApplicationMainWindow", "guiApplicationOnExit",
-    "guiWindow", "guiWindowApplication", "guiWindowTitle",
-    "guiWindowWidth", "guiWindowHeight", "guiWindowMinimumWidth",
-    "guiWindowMinimumHeight", "guiWindowLayout", "guiWindowResizable",
-    "guiWindowEvent",
-    "guiButton", "guiTextBox", "guiListBox", "guiCheckBox",
-    "guiMenuItem", "guiStatusBar", "guiTextLabel",
-    "guiControlWindow", "guiControlEnabled", "guiControlVisible",
-    "guiControlTabIndex", "guiControlAccessibleName", "guiControlEvent",
-    "guiButtonText", "guiButtonIsDefault",
-    "guiTextBoxPlaceholder", "guiTextBoxMaxLength",
-    "guiListBoxSelectionMode", "guiCheckBoxChecked", "guiTextLabelText",
     # Project metadata (lowered to OS-native formats — Windows VERSIONINFO —
     # at --emit-exe; values are still parsed and indexed on other platforms
     # so future tooling and IDE tooltips can read them).
@@ -5909,6 +6035,7 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
 
     # Build per-op sets of declared call objects + labels.
     operationCallsByOperationName: Dict[str, Set[str]] = {}
+    operationCallTargetsByOperationName: Dict[str, Dict[str, str]] = {}
     operationLabelsByOperationName: Dict[str, Set[str]] = {}
     moduleScopeValueNames: Set[str] = (
         set(OPAQUE_DEPENDENCY_INPUT_NAMES) | set(BUILTIN_VALUE_TYPES)
@@ -5934,9 +6061,14 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
             moduleScopeValueNames.add(args[2])
 
     for operation in facts.base.operations.values():
+        operationCalls = collect_operation_calls(operation)
         operationCallsByOperationName[operation.name] = set(
-            collect_operation_calls(operation).keys()
+            operationCalls.keys()
         )
+        operationCallTargetsByOperationName[operation.name] = {
+            callName: callFact.target
+            for callName, callFact in operationCalls.items()
+        }
         operationLabelsByOperationName[operation.name] = {
             sourceLine.args[0]
             for sourceLine in operation.lines
@@ -5948,6 +6080,7 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
     for operation in facts.base.operations.values():
         operationCitations = narrative_citations_for_operation(facts, operation.name)
         declaredCallNames = operationCallsByOperationName.get(operation.name, set())
+        callTargetByCallName = operationCallTargetsByOperationName.get(operation.name, {})
         declaredLabelNames = operationLabelsByOperationName.get(operation.name, set())
         declaredValueNames: Set[str] = set(moduleScopeValueNames)
         for declarationLine in operation.lines:
@@ -5996,9 +6129,17 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
 
             if verb == "arg" and len(sourceLine.args) >= 3:
                 referencedValueName = sourceLine.args[2]
+                callReferenceName = sourceLine.args[0]
+                argumentName = sourceLine.args[1]
+                referencedOperationAsArgument = (
+                    callTargetByCallName.get(callReferenceName) == "gui.controlOnEvent"
+                    and argumentName == "handler"
+                    and referencedValueName in facts.base.operations
+                )
                 if (referencedValueName not in declaredValueNames
                         and not _is_integer_literal(referencedValueName)
-                        and referencedValueName not in {"true", "false"}):
+                        and referencedValueName not in {"true", "false"}
+                        and not referencedOperationAsArgument):
                     diagnostics.append(_unresolved_reference_diagnostic(
                         sourceLine=sourceLine,
                         operation=operation,
@@ -6548,6 +6689,9 @@ def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
                 # or a name the linter hasn't yet learned.
                 continue
 
+            if expectedType == "GuiControl" and actualType in GUI_CONTROL_HANDLE_TYPES:
+                continue
+
             resolvedExpected = _resolve_type_to_canonical(expectedType, typeAliases, enumReprs)
             resolvedActual = _resolve_type_to_canonical(actualType, typeAliases, enumReprs)
             if resolvedExpected == resolvedActual:
@@ -7003,6 +7147,12 @@ NULLABLE_HTTP_REQUEST_READS: frozenset = frozenset({
     # so SS3603 forces a pointer.isNull guard before the value flows
     # into a response body writer.
     "http.requestPathParam",
+    # ss_http_request_cookie returns NULL when the Cookie header is
+    # absent, the named cookie isn't present, or the value overflows
+    # the per-request scratch. Apps reading the session-cookie value
+    # MUST pointer.isNull guard before treating the result as a real
+    # token, or SS3603 fires.
+    "http.requestCookie",
     "http.requestBodyText",
     "http.requestBodyBytes",
     "http.multipartPartText",
@@ -7025,6 +7175,18 @@ HTTP_RESPONSE_BODY_WRITERS: frozenset = frozenset({
 # writers, these form the full response-side surface.
 HTTP_RESPONSE_OTHER_WRITERS: frozenset = frozenset({
     "http.responseHeader",
+    # File responses write a body, but the linter's nullable-body
+    # propagation tracks `body`/`data` arguments specifically. The file
+    # writer has root/path arguments and is classified here so target
+    # coverage stays explicit without turning it into a body-forwarder.
+    "http.responseFile",
+})
+
+# HTTP utility calls that are compiler-dispatched but are neither
+# request readers nor response writers.
+HTTP_UTILITY_TARGETS: frozenset = frozenset({
+    "http.nowMillis",
+    "http.ensureDirectory",
 })
 
 # The union the drift test compares against semsc.py's dispatch block.
@@ -7036,6 +7198,7 @@ ALL_NATIVE_HTTP_TARGETS: frozenset = (
     | NULLABLE_HTTP_REQUEST_READS
     | HTTP_RESPONSE_BODY_WRITERS
     | HTTP_RESPONSE_OTHER_WRITERS
+    | HTTP_UTILITY_TARGETS
 )
 
 # Legacy substring markers that, when present in an operation's `warning`
@@ -9504,31 +9667,6 @@ def check_project_build_tape_schema(facts: ExtendedFacts) -> List[Diagnostic]:
             "`targetRuntime nativeExe` needs an explicit entry operation inside mainFile.",
             f"mainOperation {projectName} main",
         ))
-    if targetRuntime == "windowsGui":
-        entryConsoleLine = next(
-            (
-                line for line in facts.base.lines
-                if line.tokens
-                and not is_comment(line)
-                and line.verb == "entry"
-                and line.args
-                and line.args[0] == "console"
-            ),
-            None,
-        )
-        if entryConsoleLine is not None:
-            diagnostics.append(_build_tape_diagnostic(
-                entryConsoleLine,
-                "SS2525",
-                "buildTape.invalidChoiceValue",
-                "console",
-                "entry",
-                "windowsGuiEntryDiscovery",
-                "`entry console` is not valid for windowsGui build tapes",
-                "`targetRuntime windowsGui` discovers its entry from the module source GUI application metadata, not from `entry console`.",
-                "# remove `entry console ...`; declare guiApplicationMainWindow in the mainFile source",
-            ))
-
     diagnostics.extend(_check_dependency_build_rows(facts, projectName))
 
     return diagnostics
