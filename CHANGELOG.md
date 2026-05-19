@@ -2,6 +2,8 @@
 
 ## 2026-05-19
 
+- `207e3e34b2c65fe1c5e44e25a75e6eb1ed9813d3` - `bootstrap: lower JSON document parse round trip`
+  - Teaches the bootstrap compiler to lower `json.createDocument` through `ss_json_document_create_from_text`, aligns bootstrap string-constant slot lookup with pass1 for quoted `JsonText` / `JsonPath` aliases, removes the xfail marker from the JSON document parse round-trip feature fixture, marks the matching TODO checkpoints complete, and adds an operations/dataflow JSON CRUD example without moving app-specific behavior into the compiler.
 - `c4716f34f976f5b4f6a1130bf21ffdfef0a708e9` - `tests: document bootstrap JSON and enum feature gaps`
   - Adds the JSON document parse round-trip feature fixture and marks it plus the enum domain-method fixture as expected bootstrap gaps instead of red non-xfail failures.
 - `ab31fd479c0ed80a5df68b787e323a6082b975d8` - `docs: update changelog for JSON migration TODOs`
