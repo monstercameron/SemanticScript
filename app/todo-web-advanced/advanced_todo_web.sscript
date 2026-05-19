@@ -64,6 +64,7 @@ async writeTextResponse no
 useCapability writeTextResponse httpResponseWriter
 purpose writeTextResponse "Write a plain text HTTP response through the native runtime adapter"
 invariant writeTextResponse "The response body pointer remains valid until the runtime sends the response"
+responseBodyForwarder writeTextResponse body
 
 label startWriteTextResponse
 
@@ -335,16 +336,23 @@ async headerEchoHandler no
 useCapability headerEchoHandler httpRequestReader
 useCapability headerEchoHandler httpResponseWriter
 purpose headerEchoHandler "Return the X-Sem-Test request header value"
-invariant headerEchoHandler "The smoke test always sends X-Sem-Test so the returned pointer is non-null"
+invariant headerEchoHandler "Missing X-Sem-Test returns 400 instead of forwarding a nullable header pointer into the response writer"
 
 label startHeaderEchoHandler
 
 const headerEchoName CNullTerminatedByteString "x-sem-test"
+const headerMissingBody CNullTerminatedByteString "missing header: x-sem-test\n"
 call headerReadCall http.requestHeader
 arg headerReadCall request request
 arg headerReadCall name headerEchoName
 run headerReadCall
 bind requestHeaderValue CNullTerminatedByteString headerReadCall
+
+call headerMissingCheckCall pointer.isNull
+arg headerMissingCheckCall pointer requestHeaderValue
+run headerMissingCheckCall
+bind headerMissing Bool headerMissingCheckCall
+branchIf headerMissing headerEchoMissing
 
 call headerEchoResponseCall writeTextResponse
 arg headerEchoResponseCall response response
@@ -353,6 +361,15 @@ arg headerEchoResponseCall body requestHeaderValue
 run headerEchoResponseCall
 bind headerEchoResponseStatus CSignedInt32 headerEchoResponseCall
 returnValue headerEchoResponseStatus
+
+label headerEchoMissing
+call headerMissingResponseCall writeTextResponse
+arg headerMissingResponseCall response response
+arg headerMissingResponseCall status badRequestStatus
+arg headerMissingResponseCall body headerMissingBody
+run headerMissingResponseCall
+bind headerMissingResponseStatus CSignedInt32 headerMissingResponseCall
+returnValue headerMissingResponseStatus
 
 operation queryEchoHandler
 input queryEchoHandler request HttpRequest
@@ -411,14 +428,21 @@ async bodyEchoHandler no
 useCapability bodyEchoHandler httpRequestReader
 useCapability bodyEchoHandler httpResponseWriter
 purpose bodyEchoHandler "Return the request body text captured by the native runtime"
-invariant bodyEchoHandler "The body is bounded by the native adapter request limit and treated as UTF-8 text by the demo"
+invariant bodyEchoHandler "Missing request body returns 400 instead of forwarding a nullable body pointer into the response writer"
 
 label startBodyEchoHandler
 
+const bodyMissingBody CNullTerminatedByteString "missing request body\n"
 call bodyReadCall http.requestBodyText
 arg bodyReadCall request request
 run bodyReadCall
 bind requestBodyText CNullTerminatedByteString bodyReadCall
+
+call bodyMissingCheckCall pointer.isNull
+arg bodyMissingCheckCall pointer requestBodyText
+run bodyMissingCheckCall
+bind bodyMissing Bool bodyMissingCheckCall
+branchIf bodyMissing bodyEchoMissing
 
 call bodyEchoResponseCall writeTextResponse
 arg bodyEchoResponseCall response response
@@ -428,10 +452,19 @@ run bodyEchoResponseCall
 bind bodyEchoResponseStatus CSignedInt32 bodyEchoResponseCall
 returnValue bodyEchoResponseStatus
 
+label bodyEchoMissing
+call bodyMissingResponseCall writeTextResponse
+arg bodyMissingResponseCall response response
+arg bodyMissingResponseCall status badRequestStatus
+arg bodyMissingResponseCall body bodyMissingBody
+run bodyMissingResponseCall
+bind bodyMissingResponseStatus CSignedInt32 bodyMissingResponseCall
+returnValue bodyMissingResponseStatus
+
 operation requestLogMiddleware
 input requestLogMiddleware request HttpRequest
 input requestLogMiddleware response HttpResponse
-output requestLogMiddleware CSignedInt32
+output requestLogMiddleware MiddlewareControl
 effect requestLogMiddleware read http.request.path
 effect requestLogMiddleware write http.response
 memory requestLogMiddleware arena request
@@ -458,5 +491,4 @@ arg middlewarePathReadCall request request
 run middlewarePathReadCall
 ignoreValue middlewarePathReadCall CNullTerminatedByteString
 
-const middlewareContinueStatus CSignedInt32 0
-returnValue middlewareContinueStatus
+returnValue continueMiddlewareControl

@@ -1,5 +1,5 @@
 """
-run_benchmarks.py — head-to-head performance harness for SemanticScript vs C.
+run_benchmarks.py - head-to-head performance harness for SemanticScript vs C.
 
 For each registered benchmark this script:
   1. Compiles the C source with clang -O2.
@@ -13,6 +13,9 @@ benchmark.
 
 from __future__ import annotations
 
+import argparse
+import hashlib
+import json
 import os
 import shutil
 import statistics
@@ -41,9 +44,9 @@ class Benchmark:
 
 
 BENCHMARKS = [
-    Benchmark("arith",  HERE / "bench_arith.c",  HERE / "bench_arith.sscript"),
+    Benchmark("arith", HERE / "bench_arith.c", HERE / "bench_arith.sscript"),
     Benchmark("memset", HERE / "bench_memset.c", HERE / "bench_memset.sscript"),
-    Benchmark("math",   HERE / "bench_math.c",   HERE / "bench_math.sscript"),
+    Benchmark("math", HERE / "bench_math.c", HERE / "bench_math.sscript"),
     Benchmark("strlen", HERE / "bench_strlen.c", HERE / "bench_strlen.sscript"),
 ]
 
@@ -63,7 +66,8 @@ def compile_sem(bench: Benchmark) -> Path:
            "--emit-exe", str(out), "--opt-level", "2"]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
-        raise RuntimeError(f"semsc failed for {bench.name}:\n{proc.stderr}\n{proc.stdout}")
+        raise RuntimeError(
+            f"semsc failed for {bench.name}:\n{proc.stderr}\n{proc.stdout}")
     return out
 
 
@@ -85,39 +89,123 @@ def measure(exe: Path, runs: int, warmup: int) -> list[int]:
     return samples
 
 
-def main():
-    print(f"Using clang at {CLANG}")
-    print()
-    print(f"{'benchmark':<14} {'C median':>10} {'Semantic median':>15} {'Semantic/C':>10} {'verdict':>10}")
-    print("-" * 60)
+def sha256_file(path: Path) -> str:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return ""
+
+
+def run_benchmarks(selected_names: set[str] | None = None,
+                   runs_override: int | None = None,
+                   warmup_override: int | None = None) -> tuple[list[dict], int]:
+    results = []
     failures = 0
     for bench in BENCHMARKS:
+        if selected_names and bench.name not in selected_names:
+            continue
+        runs = runs_override if runs_override is not None else bench.runs
+        warmup = warmup_override if warmup_override is not None else bench.warmup_runs
         c_exe = compile_c(bench)
         sem_exe = compile_sem(bench)
-        c_samples = measure(c_exe, bench.runs, bench.warmup_runs)
-        sem_samples = measure(sem_exe, bench.runs, bench.warmup_runs)
+        c_samples = measure(c_exe, runs, warmup)
+        sem_samples = measure(sem_exe, runs, warmup)
         c_median = statistics.median(c_samples)
         sem_median = statistics.median(sem_samples)
         ratio = (sem_median / c_median) if c_median else float("inf")
-        # Performance goal: SemanticScript within 90% of C ⇒ ratio ≤ 1.111 (1/0.9).
-        # "SemanticScript is X% of C" = c_median / sem_median * 100, clamped to 100.
         if c_median == 0 or sem_median == 0:
             verdict = "TOO FAST"
             ok = True
+            pct_of_c = 100.0
         else:
             pct_of_c = (c_median / sem_median) * 100.0
             ok = pct_of_c >= 90.0
             verdict = f"{pct_of_c:5.1f}%"
         if not ok:
             failures += 1
+        results.append({
+            "name": bench.name,
+            "runs": runs,
+            "warmupRuns": warmup,
+            "sources": {
+                "c": str(bench.c_source),
+                "semantic": str(bench.sem_source),
+                "semanticFingerprint": sha256_file(bench.sem_source),
+            },
+            "artifacts": {
+                "cExecutablePath": str(c_exe),
+                "semanticExecutablePath": str(sem_exe),
+            },
+            "samples": {
+                "cClockTicks": c_samples,
+                "semanticClockTicks": sem_samples,
+            },
+            "median": {
+                "cClockTicks": c_median,
+                "semanticClockTicks": sem_median,
+            },
+            "delta": {
+                "semanticMinusCClockTicks": sem_median - c_median,
+                "semanticToCRatio": ratio,
+                "semanticPercentOfC": pct_of_c,
+            },
+            "ok": ok,
+            "verdict": verdict,
+        })
+    return results, failures
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Run SemanticScript LLVM benchmark comparisons against C.",
+    )
+    parser.add_argument("--json", action="store_true",
+                        help="emit a stable agent-readable benchmark report")
+    parser.add_argument("--runs", type=int,
+                        help="measured iterations per benchmark")
+    parser.add_argument("--warmup", type=int,
+                        help="warmup iterations per benchmark")
+    parser.add_argument("--benchmark", action="append", default=[],
+                        help="benchmark name to run; may be repeated")
+    args = parser.parse_args(argv)
+    selected = set(args.benchmark) if args.benchmark else None
+    results, failures = run_benchmarks(selected, args.runs, args.warmup)
+    if args.json:
+        payload = {
+            "schemaVersion": "sem.benchmark.v0",
+            "tool": {"name": "sem-bench", "compiler": str(COMPILER)},
+            "environment": {"clang": str(CLANG)},
+            "summary": {
+                "benchmarkCount": len(results),
+                "failureCount": failures,
+                "ok": failures == 0,
+            },
+            "benchmarks": results,
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 1 if failures else 0
+
+    print(f"Using clang at {CLANG}")
+    print()
+    print(f"{'benchmark':<14} {'C median':>10} {'Semantic median':>15} {'Semantic/C':>10} {'verdict':>10}")
+    print("-" * 60)
+    for result in results:
+        c_median = result["median"]["cClockTicks"]
+        sem_median = result["median"]["semanticClockTicks"]
+        ratio = result["delta"]["semanticToCRatio"]
+        verdict = result["verdict"]
+        ok = result["ok"]
         flag = "OK" if ok else "FAIL"
-        print(f"{bench.name:<14} {c_median:>10} {sem_median:>10} {ratio:>8.3f} {verdict:>10} [{flag}]")
+        print(
+            f"{result['name']:<14} {c_median:>10} {sem_median:>10} "
+            f"{ratio:>8.3f} {verdict:>10} [{flag}]")
     print()
     if failures:
         print(f"{failures} benchmark(s) below 90% of native C; failing.")
-        sys.exit(1)
+        return 1
     print("All benchmarks at or above 90% of native C performance.")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

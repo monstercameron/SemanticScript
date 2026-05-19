@@ -9,6 +9,7 @@ importModule app.html_console_demo.todo_pages as todoPages
 exportOperation app.html_console_demo main
 
 storage module immutable successCode ExitCode 0
+storage module immutable failureCode ExitCode 1
 
 operation main
 output main ExitCode
@@ -17,16 +18,28 @@ authority main console.stdout write
 memoryHeap main no
 async main no
 purpose main "Render the enterprise-style todo dashboard HTML and print it to the console."
+invariant main "The rendered HtmlDocument is bound through the C string ABI before console.writeLine, and write failure returns a non-zero exit code."
 
 label startMain
 
 call renderDashboardPageCall todoPages.renderTodoDashboardPage
 run renderDashboardPageCall
-bind dashboardHtml HtmlDocument renderDashboardPageCall
+bind dashboardHtml CNullTerminatedByteString renderDashboardPageCall
 
 call writeDashboardHtmlCall console.writeLine
 arg writeDashboardHtmlCall text dashboardHtml
 run writeDashboardHtmlCall
-ignoreValue writeDashboardHtmlCall CSignedInt32
+ignoreOk writeDashboardHtmlCall CSignedInt32
+bindError writeDashboardHtmlError CSignedInt32 writeDashboardHtmlCall
+branchIfError writeDashboardHtmlCall writeDashboardHtmlFailed
 
 returnValue successCode
+
+label writeDashboardHtmlFailed
+storage local immutable writeDashboardExpectedFailure CSignedInt32 0
+call observeWriteDashboardHtmlErrorCall math.equalCSignedInt32
+arg observeWriteDashboardHtmlErrorCall left writeDashboardHtmlError
+arg observeWriteDashboardHtmlErrorCall right writeDashboardExpectedFailure
+run observeWriteDashboardHtmlErrorCall
+ignoreValue observeWriteDashboardHtmlErrorCall Bool
+returnValue failureCode

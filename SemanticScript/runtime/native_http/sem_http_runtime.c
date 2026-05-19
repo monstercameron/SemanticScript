@@ -5,14 +5,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Raised from 64 KiB to 8 MiB so multipart image uploads (capped at
- * 5 MiB at the application layer per the todo-web-pro schema CHECK)
- * fit inside one request buffer with headroom for the multipart
- * framing + headers. The dispatcher still 413s anything that exceeds
- * the cap so a malicious client can't blow up memory by streaming a
- * huge body, but the cap is now sized for realistic web payloads
- * rather than terse REST bodies. */
-#define SS_HTTP_MAX_REQUEST_BYTES 8388608
+/* Keep request buffering capped at 64 KiB. The native backend buffers one
+ * request at a time, so larger uploads need a streaming/multipart path rather
+ * than raising this shared allocation ceiling. */
+#define SS_HTTP_MAX_REQUEST_BYTES 65536
 #define SS_HTTP_MAX_HEADERS 32
 #define SS_HTTP_MAX_QUERY_PARAMS 32
 #define SS_HTTP_MAX_MULTIPART_PARTS 16
@@ -104,6 +100,9 @@ struct SSHttpResponse {
     SSHttpNameValue headers[SS_HTTP_MAX_HEADERS];
     size_t header_count;
     char *owned_body;
+    char *owned_content_type;
+    char *owned_header_names[SS_HTTP_MAX_HEADERS];
+    char *owned_header_values[SS_HTTP_MAX_HEADERS];
     void *backend_response;
 };
 
@@ -173,10 +172,76 @@ static void trim_right(char *text) {
 }
 
 static void clear_owned_response_body(SSHttpResponse *response) {
-    if (response != NULL && response->owned_body != NULL) {
+    if (response == NULL) {
+        return;
+    }
+    if (response->owned_body != NULL) {
         free(response->owned_body);
         response->owned_body = NULL;
     }
+    response->body = NULL;
+    response->body_length = 0;
+}
+
+static void clear_owned_response_content_type(SSHttpResponse *response) {
+    if (response == NULL) {
+        return;
+    }
+    if (response->owned_content_type != NULL) {
+        free(response->owned_content_type);
+        response->owned_content_type = NULL;
+    }
+    response->content_type = NULL;
+}
+
+static void clear_owned_response_headers(SSHttpResponse *response) {
+    size_t index;
+
+    if (response == NULL) {
+        return;
+    }
+    for (index = 0; index < response->header_count; ++index) {
+        free(response->owned_header_names[index]);
+        free(response->owned_header_values[index]);
+        response->owned_header_names[index] = NULL;
+        response->owned_header_values[index] = NULL;
+        response->headers[index].name = NULL;
+        response->headers[index].value = NULL;
+    }
+    response->header_count = 0;
+}
+
+static void clear_owned_response(SSHttpResponse *response) {
+    clear_owned_response_body(response);
+    clear_owned_response_content_type(response);
+    clear_owned_response_headers(response);
+}
+
+static char *copy_bytes_with_nul(const char *source, size_t length) {
+    char *copy;
+
+    if (source == NULL && length > 0) {
+        return NULL;
+    }
+    if (length == (size_t)-1) {
+        return NULL;
+    }
+    copy = (char *)malloc(length + 1);
+    if (copy == NULL) {
+        return NULL;
+    }
+    if (length > 0) {
+        memcpy(copy, source, length);
+    }
+    copy[length] = '\0';
+    return copy;
+}
+
+static char *copy_c_string(const char *source) {
+    if (source == NULL) {
+        return NULL;
+    }
+    return copy_bytes_with_nul(source, strlen(source));
 }
 
 int ss_http_response_text(
@@ -185,15 +250,35 @@ int ss_http_response_text(
     const char *body,
     const char *content_type
 ) {
+    char *owned_body;
+    char *owned_content_type = NULL;
+
     if (response == NULL || body == NULL) {
         return SS_HTTP_ERR_CONFIG;
     }
 
+    owned_body = copy_c_string(body);
+    if (owned_body == NULL) {
+        return SS_HTTP_ERR_ENGINE;
+    }
+    if (content_type != NULL) {
+        owned_content_type = copy_c_string(content_type);
+        if (owned_content_type == NULL) {
+            free(owned_body);
+            return SS_HTTP_ERR_ENGINE;
+        }
+    }
+
     clear_owned_response_body(response);
+    clear_owned_response_content_type(response);
+    response->owned_body = owned_body;
+    response->owned_content_type = owned_content_type;
     response->status = status;
-    response->body = body;
-    response->body_length = strlen(body);
-    response->content_type = content_type != NULL ? content_type : "text/plain; charset=utf-8";
+    response->body = owned_body;
+    response->body_length = strlen(owned_body);
+    response->content_type = owned_content_type != NULL
+        ? owned_content_type
+        : "text/plain; charset=utf-8";
     return SS_HTTP_OK;
 }
 
@@ -204,15 +289,35 @@ int ss_http_response_bytes(
     size_t body_length,
     const char *content_type
 ) {
+    char *owned_body;
+    char *owned_content_type = NULL;
+
     if (response == NULL || (body == NULL && body_length > 0)) {
         return SS_HTTP_ERR_CONFIG;
     }
 
+    owned_body = copy_bytes_with_nul((const char *)body, body_length);
+    if (owned_body == NULL) {
+        return SS_HTTP_ERR_ENGINE;
+    }
+    if (content_type != NULL) {
+        owned_content_type = copy_c_string(content_type);
+        if (owned_content_type == NULL) {
+            free(owned_body);
+            return SS_HTTP_ERR_ENGINE;
+        }
+    }
+
     clear_owned_response_body(response);
+    clear_owned_response_content_type(response);
+    response->owned_body = owned_body;
+    response->owned_content_type = owned_content_type;
     response->status = status;
-    response->body = (const char *)body;
+    response->body = owned_body;
     response->body_length = body_length;
-    response->content_type = content_type != NULL ? content_type : "application/octet-stream";
+    response->content_type = owned_content_type != NULL
+        ? owned_content_type
+        : "application/octet-stream";
     return SS_HTTP_OK;
 }
 
@@ -325,6 +430,7 @@ int ss_http_response_sse_event(
     *cursor = '\0';
 
     clear_owned_response_body(response);
+    clear_owned_response_content_type(response);
     response->owned_body = payload;
     response->status = status;
     response->body = payload;
@@ -549,15 +655,14 @@ int ss_http_response_file(
     }
     body_bytes[file_size] = '\0';
 
+    /* Free the previous owned body if any, then take ownership. The
+     * response dispatch path frees owned_body after sending. */
+    clear_owned_response_body(response);
+    clear_owned_response_content_type(response);
     response->status = status;
     response->content_type = content_type_for_extension(requested_relative_path);
     response->body = body_bytes;
     response->body_length = (size_t)file_size;
-    /* Free the previous owned body if any, then take ownership. The
-     * response dispatch path frees owned_body after sending. */
-    if (response->owned_body != NULL) {
-        free(response->owned_body);
-    }
     response->owned_body = body_bytes;
     return SS_HTTP_OK;
 }
@@ -1084,6 +1189,9 @@ int ss_http_response_header(
     const char *name,
     const char *value
 ) {
+    char *owned_name;
+    char *owned_value;
+
     if (response == NULL ||
             !is_valid_header_name(name) ||
             !is_valid_header_value(value) ||
@@ -1094,8 +1202,18 @@ int ss_http_response_header(
         return SS_HTTP_ERR_CONFIG;
     }
 
-    response->headers[response->header_count].name = name;
-    response->headers[response->header_count].value = value;
+    owned_name = copy_c_string(name);
+    owned_value = copy_c_string(value);
+    if (owned_name == NULL || owned_value == NULL) {
+        free(owned_name);
+        free(owned_value);
+        return SS_HTTP_ERR_ENGINE;
+    }
+
+    response->owned_header_names[response->header_count] = owned_name;
+    response->owned_header_values[response->header_count] = owned_value;
+    response->headers[response->header_count].name = owned_name;
+    response->headers[response->header_count].value = owned_value;
     ++response->header_count;
     return SS_HTTP_OK;
 }
@@ -1310,7 +1428,7 @@ static int send_response(
 ) {
     char header[512];
     size_t body_length =
-        response != NULL && response->body == body
+        response != NULL && body != NULL && response->body == body
             ? response->body_length
             : (body != NULL ? strlen(body) : 0);
     size_t index;
@@ -1594,13 +1712,14 @@ static int try_match_compiled_route(
             }
         }
         if (*scan == '/') {
-            ++scan;
-            if (segment_index == compiled->segment_count - 1 && *scan != '\0') {
-                /* Trailing characters after the last route segment ⇒ no match. */
+            if (segment_index == compiled->segment_count - 1) {
+                /* A trailing slash is an extra empty segment. Routes are exact:
+                 * /todos and /todos/ are intentionally different paths. */
                 request->path_param_count = 0;
                 request->path_params_buffer_used = 0;
                 return 0;
             }
+            ++scan;
         }
     }
     if (*scan != '\0') {
@@ -1828,6 +1947,7 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
             response.body_length = 0;
             response.content_type = "text/plain; charset=utf-8";
             response.owned_body = NULL;
+            response.owned_content_type = NULL;
             response.backend_response = NULL;
             int nf_status = config->not_found_handler(&request, &response);
             if (nf_status == SS_HTTP_OK && response.body != NULL) {
@@ -1845,7 +1965,7 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
                     response.body != NULL ? response.body : "not found\n",
                     &response);
             }
-            clear_owned_response_body(&response);
+            clear_owned_response(&response);
             free(request_storage);
             return response_status;
         }
@@ -1869,6 +1989,7 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
     response.body_length = 0;
     response.content_type = "text/plain; charset=utf-8";
     response.owned_body = NULL;
+    response.owned_content_type = NULL;
     response.backend_response = NULL;
 
     if (route->middleware != NULL) {
@@ -1900,7 +2021,7 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
                     &response
                 );
             }
-            clear_owned_response_body(&response);
+            clear_owned_response(&response);
             free(request_storage);
             return response_status;
         }
@@ -1917,7 +2038,7 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
                 response.body != NULL ? response.body : "middleware failed\n",
                 &response
             );
-            clear_owned_response_body(&response);
+            clear_owned_response(&response);
             free(request_storage);
             return response_status;
         }
@@ -1932,7 +2053,7 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
             "handler failed\n",
             &response
         );
-        clear_owned_response_body(&response);
+        clear_owned_response(&response);
         free(request_storage);
         return response_status;
     }
@@ -1944,7 +2065,7 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
             "handler did not write a response\n",
             &response
         );
-        clear_owned_response_body(&response);
+        clear_owned_response(&response);
         free(request_storage);
         return response_status;
     }
@@ -1956,7 +2077,7 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
         response.body,
         &response
     );
-    clear_owned_response_body(&response);
+    clear_owned_response(&response);
     free(request_storage);
     return response_status;
 }

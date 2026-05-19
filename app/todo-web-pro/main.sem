@@ -75,6 +75,12 @@ purpose heapAllocCapability "Authority to allocate per-request scratch buffers (
 capability heapFreeCapability heap free
 purpose heapFreeCapability "Authority to free the same buffers via defer c.free at handler exit."
 
+capability jsonDocumentReadCapability json.document.tree read
+purpose jsonDocumentReadCapability "Authority to parse and read request JSON through the standard.json document cursor API."
+
+capability jsonDocumentWriteCapability json.document.tree write
+purpose jsonDocumentWriteCapability "Authority to build response JSON through the standard.json document mutator API."
+
 capability filesystemCreateCapability filesystem create
 purpose filesystemCreateCapability "Authority to create the build/images/ directory at startup."
 
@@ -130,6 +136,9 @@ storage module immutable httpStatusConflict CSignedInt32 409
 storage module immutable httpStatusInternalServerError CSignedInt32 500
 
 storage module immutable jsonResponseCapacity CSignedInt64 4096
+storage module immutable jsonDocumentCapacity JsonCapacityBytes 65536
+storage module immutable jsonObjectRootKind JsonValueKind 0
+storage module immutable jsonArrayRootKind JsonValueKind 1
 storage module immutable usernameScratchCapacity CSignedInt64 64
 storage module immutable passwordScratchCapacity CSignedInt64 256
 storage module immutable displayNameScratchCapacity CSignedInt64 128
@@ -141,7 +150,12 @@ storage module immutable randomBufferCapacity CSignedInt64 32
 storage module immutable randomByteCountArg CSignedInt32 32
 storage module immutable tokenBufferCapacity CSignedInt64 64
 storage module immutable tokenCapacityArg CSignedInt32 64
-storage module immutable cookieHeaderCapacity CSignedInt64 256
+# Set-Cookie buffer capacity. Actual content is "session=" (8) + 43-char
+# base64url token + "; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000"
+# (51) = 102 chars + NUL. 128 leaves 25-byte headroom while staying in the
+# small malloc size class. Old value was 256, more than double what's
+# needed — pulled the alloc into a larger slab tier on every register/login.
+storage module immutable cookieHeaderCapacity CSignedInt64 128
 
 # Structured-log bootstrap constants. The web server writes one
 # JSON-per-line audit file at `<cwd>/logs/log.log` — for a build/-launched
@@ -160,16 +174,16 @@ storage module immutable todoCompletedLogMessage CNullTerminatedByteString "todo
 storage module immutable todoUncompletedLogMessage CNullTerminatedByteString "todo.uncompleted"
 storage module immutable todoDeletedLogMessage CNullTerminatedByteString "todo.deleted"
 
-# Per-row scratch holds one serialized todo (id + title + done + priority).
-# Title is capped at 280 chars by the schema; the JSON envelope adds ~80 chars,
-# so 512 bytes is the comfortable upper bound for one row.
-storage module immutable todoRowScratchCapacity CSignedInt64 512
-# Accumulator for the full {"todos":[…],"count":N} response. With the SQL
-# LIMIT of 100 rows × ~500 bytes per row, 64 KiB is the deliberately
-# generous ceiling. The serializer also bounds the appended bytes per row
-# via snprintf into a scratch — overflow there silently truncates the
-# single row rather than corrupting the response.
-storage module immutable todosListBufferCapacity CSignedInt64 65536
+# Accumulator for the full {"todos":[...],"count":N} response. Sized at 32 KiB
+# (down from 64 KiB): the SQL LIMIT caps the body at 100 rows × ~200 bytes/row
+# (≈20 KiB typical) and the schema CHECK on title length keeps the per-row
+# upper bound bounded. 32 KiB is ~60% headroom over typical and ~1.5x the
+# realistic worst case, while staying in the smaller malloc size class —
+# most allocators step 16→32→64 KiB, so 64 KiB pulled a fresh page span on
+# every request where 32 KiB fits in an existing slab. snprintf into the
+# cursor still clamps at remaining capacity, so a degenerate oversized row
+# truncates its tail rather than overflowing the accumulator.
+storage module immutable todosListBufferCapacity CSignedInt64 32768
 
 storage module immutable sessionLifetimeMs CSignedInt64 2592000000
 storage module immutable jsonOk CSignedInt32 0
@@ -183,6 +197,16 @@ storage module immutable setCookieHeaderName CNullTerminatedByteString "Set-Cook
 storage module immutable cookieAttributeSuffix CNullTerminatedByteString "; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000"
 storage module immutable cookieClearSuffix CNullTerminatedByteString "session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
 storage module immutable cookieNameEquals CNullTerminatedByteString "session="
+
+# Single format string for the Set-Cookie header. The three %s slots fold in
+# `cookieNameEquals` (cookie prefix), the runtime session token, and
+# `cookieAttributeSuffix` (cookie attribute tail) — all already at module
+# scope. Composing from existing constants eliminates the duplicated
+# "session=...; Path=...; Max-Age=..." literal the register/login handlers
+# used to each carry as a local immutable string, saving ~75 bytes of
+# .rodata per handler and keeping the cookie content auditable from a
+# single source.
+storage module immutable cookieHeaderTripleFormat CNullTerminatedByteString "%s%s%s"
 
 # Field names for JSON parsing / building.
 storage module immutable fieldUsername CNullTerminatedByteString "username"
@@ -200,6 +224,32 @@ storage module immutable fieldDone CNullTerminatedByteString "done"
 storage module immutable fieldCreatedAtMs CNullTerminatedByteString "createdAtMs"
 storage module immutable fieldUpdatedAtMs CNullTerminatedByteString "updatedAtMs"
 storage module immutable fieldCompletedAtMs CNullTerminatedByteString "completedAtMs"
+
+# Static JSON success response bodies. `jsonBody` validates and canonicalizes
+# these constants at compile time.
+storage module immutable healthBodyJson JsonText
+jsonBody healthBodyJson
+  {"status":"ok","app":"todo-web-pro"}
+
+storage module immutable versionBodyJson JsonText
+jsonBody versionBodyJson
+  {"name":"todo-web-pro","version":"1.0.0","bcryptCost":12}
+
+storage module immutable logoutResponseBody JsonText
+jsonBody logoutResponseBody
+  {"ok":true}
+
+storage module immutable deleteOkBody JsonText
+jsonBody deleteOkBody
+  {"ok":true}
+
+storage module immutable completeOkBody JsonText
+jsonBody completeOkBody
+  {"ok":true,"done":true}
+
+storage module immutable uncompleteOkBody JsonText
+jsonBody uncompleteOkBody
+  {"ok":true,"done":false}
 
 # ===== schema (literal-loaded at compile time) =====
 # `literal NAME TYPE` declares the const slot; `literalSource NAME "path"`
@@ -225,6 +275,7 @@ storage module immutable sqlSelectUserByUsername CNullTerminatedByteString "SELE
 storage module immutable sqlSelectSessionByToken CNullTerminatedByteString "SELECT user_id, expires_at_ms FROM sessions WHERE token = ? LIMIT 1"
 storage module immutable sqlSelectUserById CNullTerminatedByteString "SELECT id, username, display_name FROM users WHERE id = ? LIMIT 1"
 storage module immutable sqlDeleteSessionByToken CNullTerminatedByteString "DELETE FROM sessions WHERE token = ?"
+storage module immutable sqlDeleteExpiredSessions CNullTerminatedByteString "DELETE FROM sessions WHERE expires_at_ms <= ?"
 storage module immutable sqlUpdateLastLogin CNullTerminatedByteString "UPDATE users SET last_login_ms = ? WHERE id = ?"
 storage module immutable sqlInsertTodo CNullTerminatedByteString "INSERT INTO todos (user_id, title, body, done, priority, created_at_ms, updated_at_ms) VALUES (?, ?, ?, 0, ?, ?, ?)"
 storage module immutable sqlSelectTodosByUser CNullTerminatedByteString "SELECT id, title, body, done, priority, created_at_ms, updated_at_ms, completed_at_ms FROM todos WHERE user_id = ? ORDER BY created_at_ms DESC LIMIT 100"
@@ -334,6 +385,19 @@ label databaseOpenFailed
 returnError databaseOpenError
 
 label schemaApplyFailed
+# Best-effort cleanup: we already have a fatal schema error to return,
+# so a secondary close failure is uninteresting. We still wire the
+# strict checked-call shape (bindError + branchIfError to the same
+# return label) so SS3201 sees a real failure disposition rather than
+# a silent drop, even though the dispositions both reach the same exit.
+call closeFreshDatabaseAfterSchemaFailureCall sqlite.closeDatabase
+arg closeFreshDatabaseAfterSchemaFailureCall database freshDatabase
+run closeFreshDatabaseAfterSchemaFailureCall
+ignoreOk closeFreshDatabaseAfterSchemaFailureCall Void
+bindError closeFreshAfterSchemaFailureCloseError SqliteDatabaseCloseFailure closeFreshDatabaseAfterSchemaFailureCall
+branchIfError closeFreshDatabaseAfterSchemaFailureCall schemaApplyReportInitialError
+
+label schemaApplyReportInitialError
 returnError schemaApplyError
 
 # ===== JSON response helpers =====
@@ -500,6 +564,50 @@ returnValue noSessionUserId
 label requireSessionStepFailed
 returnValue noSessionUserId
 
+# Best-effort maintenance: prune expired sessions on auth-write paths without
+# letting cleanup failures affect register/login responses.
+operation pruneExpiredSessionsBestEffort
+input pruneExpiredSessionsBestEffort database SqliteDatabase
+input pruneExpiredSessionsBestEffort nowMs CSignedInt64
+output pruneExpiredSessionsBestEffort CSignedInt32
+effect pruneExpiredSessionsBestEffort readWrite database
+useCapability pruneExpiredSessionsBestEffort sqliteDatabaseReadWriter
+memory pruneExpiredSessionsBestEffort arena request
+async pruneExpiredSessionsBestEffort no
+purpose pruneExpiredSessionsBestEffort "Delete expired session rows using the caller's already-open database handle."
+invariant pruneExpiredSessionsBestEffort "Best effort: prepare, bind, or step failures return jsonOk so auth handlers never fail solely because cleanup failed."
+
+label startPruneExpiredSessionsBestEffort
+
+call preparePruneExpiredSessionsCall sqlite.prepareStatement
+arg preparePruneExpiredSessionsCall database database
+arg preparePruneExpiredSessionsCall sql sqlDeleteExpiredSessions
+run preparePruneExpiredSessionsCall
+bindOk pruneExpiredSessionsStatement SqliteStatement preparePruneExpiredSessionsCall
+bindError pruneExpiredSessionsPrepareErr SqliteStatementPrepareFailure preparePruneExpiredSessionsCall
+branchIfError preparePruneExpiredSessionsCall pruneExpiredSessionsDone
+
+defer finalizePruneExpiredSessionsDefer sqlite.finalizeStatement pruneExpiredSessionsStatement
+
+call bindPruneExpiredSessionsNowCall sqlite.bindInt64
+arg bindPruneExpiredSessionsNowCall statement pruneExpiredSessionsStatement
+arg bindPruneExpiredSessionsNowCall parameterIndex bindIndex1
+arg bindPruneExpiredSessionsNowCall value nowMs
+run bindPruneExpiredSessionsNowCall
+ignoreOk bindPruneExpiredSessionsNowCall Void
+bindError pruneExpiredSessionsBindErr SqliteStatementBindFailure bindPruneExpiredSessionsNowCall
+branchIfError bindPruneExpiredSessionsNowCall pruneExpiredSessionsDone
+
+call stepPruneExpiredSessionsCall sqlite.stepStatement
+arg stepPruneExpiredSessionsCall statement pruneExpiredSessionsStatement
+run stepPruneExpiredSessionsCall
+ignoreOk stepPruneExpiredSessionsCall SqliteStepResult
+bindError pruneExpiredSessionsStepErr SqliteStatementStepFailure stepPruneExpiredSessionsCall
+branchIfError stepPruneExpiredSessionsCall pruneExpiredSessionsDone
+
+label pruneExpiredSessionsDone
+returnValue jsonOk
+
 # ===== handlers =====
 
 operation healthHandler
@@ -514,7 +622,6 @@ purpose healthHandler "Return a JSON liveness body. Does not touch the database 
 invariant healthHandler "Always 200; body is a static module-scope constant."
 
 label startHealthHandler
-storage local immutable healthBodyJson HttpTextBody "{\"status\":\"ok\",\"app\":\"todo-web-pro\"}\n"
 call writeHealthCall writeJsonOkResponse
 arg writeHealthCall response response
 arg writeHealthCall status httpStatusOk
@@ -535,7 +642,6 @@ purpose versionHandler "Return the app version + bcrypt cost factor so deploys c
 invariant versionHandler "Static; the bcryptCost value reported here MUST match bcryptRecommendedCost used by registerHandler."
 
 label startVersionHandler
-storage local immutable versionBodyJson HttpTextBody "{\"name\":\"todo-web-pro\",\"version\":\"1.0.0\",\"bcryptCost\":12}\n"
 call writeVersionCall writeJsonOkResponse
 arg writeVersionCall response response
 arg writeVersionCall status httpStatusOk
@@ -557,6 +663,8 @@ effect registerHandler compute bcryptHash
 effect registerHandler compute bcryptRandom
 effect registerHandler allocate heap
 effect registerHandler free heap
+effect registerHandler read json.document.tree
+effect registerHandler write json.document.tree
 useCapability registerHandler httpRequestReader
 useCapability registerHandler httpResponseWriter
 useCapability registerHandler sqliteDatabaseReadWriter
@@ -564,6 +672,8 @@ useCapability registerHandler bcryptHashCompute
 useCapability registerHandler bcryptRandomCompute
 useCapability registerHandler heapAllocCapability
 useCapability registerHandler heapFreeCapability
+useCapability registerHandler jsonDocumentReadCapability
+useCapability registerHandler jsonDocumentWriteCapability
 memory registerHandler heap auto
 async registerHandler no
 purpose registerHandler "POST /api/auth/register — create a user with bcrypt-cost-12 password, mint an initial session, set the session cookie, return 201 with the user record."
@@ -590,92 +700,117 @@ run registerBodyNullCheckCall
 bind registerBodyMissing Bool registerBodyNullCheckCall
 branchIf registerBodyMissing registerBadRequestBodyMissing
 
+call parseRegisterBodyCall json.createDocument
+arg parseRegisterBodyCall jsonText registerBodyText
+arg parseRegisterBodyCall capacityBytes jsonDocumentCapacity
+run parseRegisterBodyCall
+bindOk registerDocument JsonDocument parseRegisterBodyCall
+bindError parseRegisterBodyError JsonAccessError parseRegisterBodyCall
+branchIfError parseRegisterBodyCall registerBadRequestBodyMissing
+defer releaseRegisterDocumentDefer json.destroyDocument registerDocument
+
+call registerDocumentRootCall json.documentRoot
+arg registerDocumentRootCall document registerDocument
+run registerDocumentRootCall
+bind registerDocumentRoot JsonCursor registerDocumentRootCall
+
 # Allocate scratch buffers for username + password + displayName.
 call allocateUsernameScratchCall c.malloc
 arg allocateUsernameScratchCall size usernameScratchCapacity
 run allocateUsernameScratchCall
-bind usernameScratch COpaqueMemoryAddress allocateUsernameScratchCall
+bindOk usernameScratch COpaqueMemoryAddress allocateUsernameScratchCall
+bindError allocateUsernameScratchError COpaqueMemoryAddress allocateUsernameScratchCall
+branchIfError allocateUsernameScratchCall registerAllocationFailed
 defer releaseUsernameScratchDefer c.free usernameScratch
 
 call allocatePasswordScratchCall c.malloc
 arg allocatePasswordScratchCall size passwordScratchCapacity
 run allocatePasswordScratchCall
-bind passwordScratch COpaqueMemoryAddress allocatePasswordScratchCall
+bindOk passwordScratch COpaqueMemoryAddress allocatePasswordScratchCall
+bindError allocatePasswordScratchError COpaqueMemoryAddress allocatePasswordScratchCall
+branchIfError allocatePasswordScratchCall registerAllocationFailed
 defer releasePasswordScratchDefer c.free passwordScratch
 
 call allocateDisplayNameScratchCall c.malloc
 arg allocateDisplayNameScratchCall size displayNameScratchCapacity
 run allocateDisplayNameScratchCall
-bind displayNameScratch COpaqueMemoryAddress allocateDisplayNameScratchCall
+bindOk displayNameScratch COpaqueMemoryAddress allocateDisplayNameScratchCall
+bindError allocateDisplayNameScratchError COpaqueMemoryAddress allocateDisplayNameScratchCall
+branchIfError allocateDisplayNameScratchCall registerAllocationFailed
 defer releaseDisplayNameScratchDefer c.free displayNameScratch
 
-# json.findString — strict capacity arg passed as CSignedInt32, casted up to CSignedInt64 by the binding.
-storage local immutable usernameScratchCapacityArg CSignedInt32 64
-storage local immutable passwordScratchCapacityArg CSignedInt32 256
-storage local immutable displayNameScratchCapacityArg CSignedInt32 128
+call registerUsernameCursorCall json.objectFieldAt
+arg registerUsernameCursorCall document registerDocument
+arg registerUsernameCursorCall cursor registerDocumentRoot
+arg registerUsernameCursorCall fieldName fieldUsername
+run registerUsernameCursorCall
+bindOk registerUsernameCursor JsonCursor registerUsernameCursorCall
+bindError registerUsernameCursorError JsonAccessError registerUsernameCursorCall
+branchIfError registerUsernameCursorCall registerBadRequestUsernameMissing
 
-call findUsernameCall json.findString
-arg findUsernameCall jsonText registerBodyText
-arg findUsernameCall fieldName fieldUsername
-arg findUsernameCall scratch usernameScratch
-arg findUsernameCall scratchCapacity usernameScratchCapacity
-run findUsernameCall
-bind usernameRecovered CNullTerminatedByteString findUsernameCall
+call readRegisterUsernameCall json.cursorString
+arg readRegisterUsernameCall document registerDocument
+arg readRegisterUsernameCall cursor registerUsernameCursor
+arg readRegisterUsernameCall scratch usernameScratch
+arg readRegisterUsernameCall scratchCapacity usernameScratchCapacity
+run readRegisterUsernameCall
+bindOk usernameRecovered CNullTerminatedByteString readRegisterUsernameCall
+bindError readRegisterUsernameError JsonAccessError readRegisterUsernameCall
+branchIfError readRegisterUsernameCall registerBadRequestUsernameMissing
 
-call usernameNullCheckCall pointer.isNull
-arg usernameNullCheckCall pointer usernameRecovered
-run usernameNullCheckCall
-bind usernameMissing Bool usernameNullCheckCall
-branchIf usernameMissing registerBadRequestUsernameMissing
+call registerPasswordCursorCall json.objectFieldAt
+arg registerPasswordCursorCall document registerDocument
+arg registerPasswordCursorCall cursor registerDocumentRoot
+arg registerPasswordCursorCall fieldName fieldPassword
+run registerPasswordCursorCall
+bindOk registerPasswordCursor JsonCursor registerPasswordCursorCall
+bindError registerPasswordCursorError JsonAccessError registerPasswordCursorCall
+branchIfError registerPasswordCursorCall registerBadRequestPasswordMissing
 
-call findPasswordCall json.findString
-arg findPasswordCall jsonText registerBodyText
-arg findPasswordCall fieldName fieldPassword
-arg findPasswordCall scratch passwordScratch
-arg findPasswordCall scratchCapacity passwordScratchCapacity
-run findPasswordCall
-bind passwordRecovered CNullTerminatedByteString findPasswordCall
+call readRegisterPasswordCall json.cursorString
+arg readRegisterPasswordCall document registerDocument
+arg readRegisterPasswordCall cursor registerPasswordCursor
+arg readRegisterPasswordCall scratch passwordScratch
+arg readRegisterPasswordCall scratchCapacity passwordScratchCapacity
+run readRegisterPasswordCall
+bindOk passwordRecovered CNullTerminatedByteString readRegisterPasswordCall
+bindError readRegisterPasswordError JsonAccessError readRegisterPasswordCall
+branchIfError readRegisterPasswordCall registerBadRequestPasswordMissing
 
-call passwordNullCheckCall pointer.isNull
-arg passwordNullCheckCall pointer passwordRecovered
-run passwordNullCheckCall
-bind passwordMissing Bool passwordNullCheckCall
-branchIf passwordMissing registerBadRequestPasswordMissing
+storage local immutable emptyDisplayName CNullTerminatedByteString ""
+storage local mutable displayNameForInsert CNullTerminatedByteString emptyDisplayName
 
-call findDisplayNameCall json.findString
-arg findDisplayNameCall jsonText registerBodyText
-arg findDisplayNameCall fieldName fieldDisplayName
-arg findDisplayNameCall scratch displayNameScratch
-arg findDisplayNameCall scratchCapacity displayNameScratchCapacity
-run findDisplayNameCall
-bind displayNameRecovered CNullTerminatedByteString findDisplayNameCall
+call registerDisplayNameCursorCall json.objectFieldAt
+arg registerDisplayNameCursorCall document registerDocument
+arg registerDisplayNameCursorCall cursor registerDocumentRoot
+arg registerDisplayNameCursorCall fieldName fieldDisplayName
+run registerDisplayNameCursorCall
+bindOk registerDisplayNameCursor JsonCursor registerDisplayNameCursorCall
+bindError registerDisplayNameCursorError JsonAccessError registerDisplayNameCursorCall
+branchIfError registerDisplayNameCursorCall registerDisplayNameReady
+
+call readRegisterDisplayNameCall json.cursorString
+arg readRegisterDisplayNameCall document registerDocument
+arg readRegisterDisplayNameCall cursor registerDisplayNameCursor
+arg readRegisterDisplayNameCall scratch displayNameScratch
+arg readRegisterDisplayNameCall scratchCapacity displayNameScratchCapacity
+run readRegisterDisplayNameCall
+bindOk displayNameRecovered CNullTerminatedByteString readRegisterDisplayNameCall
+bindError readRegisterDisplayNameError JsonAccessError readRegisterDisplayNameCall
+branchIfError readRegisterDisplayNameCall registerDisplayNameReady
+set local displayNameForInsert displayNameRecovered
 
 # displayName is optional — if absent, substitute the empty string. We use
 # a const empty string to feed the SQL bind so the column receives '' not NULL.
-storage local immutable emptyDisplayName CNullTerminatedByteString ""
-
-call displayNameNullCheckCall pointer.isNull
-arg displayNameNullCheckCall pointer displayNameRecovered
-run displayNameNullCheckCall
-bind displayNameAbsent Bool displayNameNullCheckCall
-branchIf displayNameAbsent registerSubstituteEmptyDisplayName
-branch registerDisplayNameReady
-
-label registerSubstituteEmptyDisplayName
-# Re-bind under a new name pointing to the empty constant.
-bind displayNameForInsert CNullTerminatedByteString findDisplayNameCall
-# Hack: we need the resolved displayName to be the empty const when absent.
-# Since the bind machinery doesn't support conditional rebinding cleanly,
-# we use a single value path: just use displayNameRecovered when present,
-# emptyDisplayName when absent. Branch back to the join.
-
 label registerDisplayNameReady
 
 # Hash the password.
 call allocateHashBufferCall c.malloc
 arg allocateHashBufferCall size hashBufferCapacity
 run allocateHashBufferCall
-bind hashBuffer COpaqueMemoryAddress allocateHashBufferCall
+bindOk hashBuffer COpaqueMemoryAddress allocateHashBufferCall
+bindError allocateHashBufferError COpaqueMemoryAddress allocateHashBufferCall
+branchIfError allocateHashBufferCall registerAllocationFailed
 defer releaseHashBufferDefer c.free hashBuffer
 
 call hashPasswordCall bcrypt.hashPassword
@@ -704,6 +839,12 @@ bind hashedPasswordText CNullTerminatedByteString allocateHashBufferCall
 call nowForRegisterCall http.nowMillis
 run nowForRegisterCall
 bind registerNowMs CSignedInt64 nowForRegisterCall
+
+call pruneRegisterExpiredSessionsCall pruneExpiredSessionsBestEffort
+arg pruneRegisterExpiredSessionsCall database registerDatabase
+arg pruneRegisterExpiredSessionsCall nowMs registerNowMs
+run pruneRegisterExpiredSessionsCall
+ignoreValue pruneRegisterExpiredSessionsCall CSignedInt32
 
 # INSERT INTO users.
 call prepareInsertUserCall sqlite.prepareStatement
@@ -738,7 +879,7 @@ branchIfError bindInsertPasswordCall registerInsertUserBindFailed
 call bindInsertDisplayNameCall sqlite.bindText
 arg bindInsertDisplayNameCall statement insertUserStatement
 arg bindInsertDisplayNameCall parameterIndex bindIndex3
-arg bindInsertDisplayNameCall value emptyDisplayName
+arg bindInsertDisplayNameCall value displayNameForInsert
 run bindInsertDisplayNameCall
 ignoreOk bindInsertDisplayNameCall Void
 bindError bindInsertDisplayNameErr SqliteStatementBindFailure bindInsertDisplayNameCall
@@ -779,7 +920,9 @@ bind newUserId CSignedInt64 lastUserRowIdCall
 call allocateRandomBufferCall c.malloc
 arg allocateRandomBufferCall size randomBufferCapacity
 run allocateRandomBufferCall
-bind sessionRandomBuffer COpaqueMemoryAddress allocateRandomBufferCall
+bindOk sessionRandomBuffer COpaqueMemoryAddress allocateRandomBufferCall
+bindError allocateRandomBufferError COpaqueMemoryAddress allocateRandomBufferCall
+branchIfError allocateRandomBufferCall registerAllocationFailed
 defer releaseRandomBufferDefer c.free sessionRandomBuffer
 
 call drawRandomBytesCall bcrypt.randomBytes
@@ -800,7 +943,9 @@ label randomBytesSucceeded
 call allocateTokenBufferCall c.malloc
 arg allocateTokenBufferCall size tokenBufferCapacity
 run allocateTokenBufferCall
-bind sessionTokenBuffer COpaqueMemoryAddress allocateTokenBufferCall
+bindOk sessionTokenBuffer COpaqueMemoryAddress allocateTokenBufferCall
+bindError allocateTokenBufferError COpaqueMemoryAddress allocateTokenBufferCall
+branchIfError allocateTokenBufferCall registerAllocationFailed
 defer releaseTokenBufferDefer c.free sessionTokenBuffer
 
 storage local mutable encodedTokenLength CSignedInt32 0
@@ -898,15 +1043,21 @@ branchIfError stepInsertSessionCall registerInsertSessionStepFailed
 call allocateCookieHeaderCall c.malloc
 arg allocateCookieHeaderCall size cookieHeaderCapacity
 run allocateCookieHeaderCall
-bind cookieHeaderBuffer COpaqueMemoryAddress allocateCookieHeaderCall
+bindOk cookieHeaderBuffer COpaqueMemoryAddress allocateCookieHeaderCall
+bindError allocateCookieHeaderError COpaqueMemoryAddress allocateCookieHeaderCall
+branchIfError allocateCookieHeaderCall registerAllocationFailed
 defer releaseCookieHeaderDefer c.free cookieHeaderBuffer
 
-storage local immutable cookieFormat CNullTerminatedByteString "session=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000"
+# Compose the cookie header from the existing module-scope constants
+# `cookieNameEquals` ("session="), the runtime token, and the shared
+# `cookieAttributeSuffix` — no duplicate literal needed in this handler.
 call formatCookieHeaderCall c.snprintf
 arg formatCookieHeaderCall buffer cookieHeaderBuffer
 arg formatCookieHeaderCall size cookieHeaderCapacity
-arg formatCookieHeaderCall format cookieFormat
-arg formatCookieHeaderCall first sessionTokenText
+arg formatCookieHeaderCall format cookieHeaderTripleFormat
+arg formatCookieHeaderCall first cookieNameEquals
+arg formatCookieHeaderCall second sessionTokenText
+arg formatCookieHeaderCall third cookieAttributeSuffix
 run formatCookieHeaderCall
 ignoreOk formatCookieHeaderCall CSignedInt32
 
@@ -919,46 +1070,75 @@ arg writeCookieHeaderCall value cookieHeaderText
 run writeCookieHeaderCall
 ignoreValue writeCookieHeaderCall CSignedInt32
 
-# Build the response JSON via json.createBuilder.
-call createResponseBuilderCall json.createBuilder
-arg createResponseBuilderCall capacity jsonResponseCapacity
-run createResponseBuilderCall
-bind responseBuilder JsonBuilder createResponseBuilderCall
-defer destroyResponseBuilderDefer json.destroyBuilder responseBuilder
-
-call openOuterObjectCall json.objectOpen
-arg openOuterObjectCall builder responseBuilder
-run openOuterObjectCall
-ignoreOk openOuterObjectCall CSignedInt32
-ignoreOk openOuterObjectCall CSignedInt32
-
-call openUserFieldCall json.objectOpen
-arg openUserFieldCall builder responseBuilder
-run openUserFieldCall
-ignoreOk openUserFieldCall CSignedInt32
-
-# Actually want the structure {"user":{"id":N,"username":"...","displayName":""}}.
-# Simpler: pre-format the body with c.snprintf instead of nesting builders.
-# Discard the builder so we can build a flat body string.
-# (The defer for builder destroy still runs.)
-
 call allocateResponseBufferCall c.malloc
 arg allocateResponseBufferCall size jsonResponseCapacity
 run allocateResponseBufferCall
-bind responseBodyBuffer COpaqueMemoryAddress allocateResponseBufferCall
+bindOk responseBodyBuffer COpaqueMemoryAddress allocateResponseBufferCall
+bindError allocateResponseBufferError COpaqueMemoryAddress allocateResponseBufferCall
+branchIfError allocateResponseBufferCall registerAllocationFailed
 defer releaseResponseBufferDefer c.free responseBodyBuffer
 
-storage local immutable userResponseFormat CNullTerminatedByteString "{\"user\":{\"id\":%lld,\"username\":\"%s\",\"displayName\":\"\"}}\n"
-call formatUserResponseCall c.snprintf
-arg formatUserResponseCall buffer responseBodyBuffer
-arg formatUserResponseCall size jsonResponseCapacity
-arg formatUserResponseCall format userResponseFormat
-arg formatUserResponseCall first newUserId
-arg formatUserResponseCall second usernameRecovered
-run formatUserResponseCall
-ignoreOk formatUserResponseCall CSignedInt32
+call createRegisterResponseDocumentCall json.createEmptyDocument
+arg createRegisterResponseDocumentCall capacityBytes jsonResponseCapacity
+arg createRegisterResponseDocumentCall rootKind jsonObjectRootKind
+run createRegisterResponseDocumentCall
+bindOk registerResponseDocument JsonDocument createRegisterResponseDocumentCall
+bindError createRegisterResponseDocumentError JsonAccessError createRegisterResponseDocumentCall
+branchIfError createRegisterResponseDocumentCall registerAllocationFailed
+defer releaseRegisterResponseDocumentDefer json.destroyDocument registerResponseDocument
 
-bind responseBodyText CNullTerminatedByteString allocateResponseBufferCall
+call registerResponseRootCall json.documentRoot
+arg registerResponseRootCall document registerResponseDocument
+run registerResponseRootCall
+bind registerResponseRoot JsonCursor registerResponseRootCall
+
+call createRegisterUserObjectCall json.setObjectFieldObject
+arg createRegisterUserObjectCall document registerResponseDocument
+arg createRegisterUserObjectCall cursor registerResponseRoot
+arg createRegisterUserObjectCall fieldName fieldUser
+run createRegisterUserObjectCall
+bindOk registerResponseUserCursor JsonCursor createRegisterUserObjectCall
+bindError createRegisterUserObjectError JsonAccessError createRegisterUserObjectCall
+branchIfError createRegisterUserObjectCall registerAllocationFailed
+
+call setRegisterUserIdCall json.setObjectFieldInt64
+arg setRegisterUserIdCall document registerResponseDocument
+arg setRegisterUserIdCall cursor registerResponseUserCursor
+arg setRegisterUserIdCall fieldName fieldId
+arg setRegisterUserIdCall value newUserId
+run setRegisterUserIdCall
+ignoreOk setRegisterUserIdCall CSignedInt32
+bindError setRegisterUserIdError JsonAccessError setRegisterUserIdCall
+branchIfError setRegisterUserIdCall registerAllocationFailed
+
+call setRegisterUsernameCall json.setObjectFieldString
+arg setRegisterUsernameCall document registerResponseDocument
+arg setRegisterUsernameCall cursor registerResponseUserCursor
+arg setRegisterUsernameCall fieldName fieldUsername
+arg setRegisterUsernameCall value usernameRecovered
+run setRegisterUsernameCall
+ignoreOk setRegisterUsernameCall CSignedInt32
+bindError setRegisterUsernameError JsonAccessError setRegisterUsernameCall
+branchIfError setRegisterUsernameCall registerAllocationFailed
+
+call setRegisterDisplayNameCall json.setObjectFieldString
+arg setRegisterDisplayNameCall document registerResponseDocument
+arg setRegisterDisplayNameCall cursor registerResponseUserCursor
+arg setRegisterDisplayNameCall fieldName fieldDisplayName
+arg setRegisterDisplayNameCall value displayNameForInsert
+run setRegisterDisplayNameCall
+ignoreOk setRegisterDisplayNameCall CSignedInt32
+bindError setRegisterDisplayNameError JsonAccessError setRegisterDisplayNameCall
+branchIfError setRegisterDisplayNameCall registerAllocationFailed
+
+call serializeRegisterResponseCall json.serializeDocument
+arg serializeRegisterResponseCall document registerResponseDocument
+arg serializeRegisterResponseCall scratch responseBodyBuffer
+arg serializeRegisterResponseCall scratchCapacity jsonResponseCapacity
+run serializeRegisterResponseCall
+bindOk responseBodyText JsonText serializeRegisterResponseCall
+bindError serializeRegisterResponseError JsonAccessError serializeRegisterResponseCall
+branchIfError serializeRegisterResponseCall registerAllocationFailed
 
 call writeRegisterResponseCall writeJsonOkResponse
 arg writeRegisterResponseCall response response
@@ -985,6 +1165,16 @@ arg writeDbErrCall messageBody dbUnavailableBody
 run writeDbErrCall
 bind writeDbErrStatus CSignedInt32 writeDbErrCall
 returnValue writeDbErrStatus
+
+label registerAllocationFailed
+storage local immutable registerAllocationFailedBody CNullTerminatedByteString "{\"error\":{\"code\":\"outOfMemory\",\"message\":\"could not allocate request buffers\"}}\n"
+call writeRegisterAllocationFailedCall writeErrorJsonResponse
+arg writeRegisterAllocationFailedCall response response
+arg writeRegisterAllocationFailedCall status httpStatusInternalServerError
+arg writeRegisterAllocationFailedCall messageBody registerAllocationFailedBody
+run writeRegisterAllocationFailedCall
+bind writeRegisterAllocationFailedStatus CSignedInt32 writeRegisterAllocationFailedCall
+returnValue writeRegisterAllocationFailedStatus
 
 label registerBadRequestBodyMissing
 storage local immutable bodyMissingBody CNullTerminatedByteString "{\"error\":{\"code\":\"bodyMissing\",\"message\":\"request body is required\"}}\n"
@@ -1103,11 +1293,13 @@ effect meHandler read database
 effect meHandler write http.response
 effect meHandler allocate heap
 effect meHandler free heap
+effect meHandler write json.document.tree
 useCapability meHandler httpRequestReader
 useCapability meHandler httpResponseWriter
 useCapability meHandler sqliteDatabaseReader
 useCapability meHandler heapAllocCapability
 useCapability meHandler heapFreeCapability
+useCapability meHandler jsonDocumentWriteCapability
 memory meHandler heap auto
 async meHandler no
 purpose meHandler "GET /api/auth/me — return the current session's user record. 401 if no valid session."
@@ -1191,21 +1383,72 @@ bind meDisplayName CNullTerminatedByteString readMeDisplayNameCall
 call allocateMeResponseBufferCall c.malloc
 arg allocateMeResponseBufferCall size jsonResponseCapacity
 run allocateMeResponseBufferCall
-bind meResponseBuffer COpaqueMemoryAddress allocateMeResponseBufferCall
+bindOk meResponseBuffer COpaqueMemoryAddress allocateMeResponseBufferCall
+bindError allocateMeResponseBufferError COpaqueMemoryAddress allocateMeResponseBufferCall
+branchIfError allocateMeResponseBufferCall meAllocationFailed
 defer releaseMeResponseBufferDefer c.free meResponseBuffer
 
-storage local immutable meResponseFormat CNullTerminatedByteString "{\"user\":{\"id\":%lld,\"username\":\"%s\",\"displayName\":\"%s\"}}\n"
-call formatMeResponseCall c.snprintf
-arg formatMeResponseCall buffer meResponseBuffer
-arg formatMeResponseCall size jsonResponseCapacity
-arg formatMeResponseCall format meResponseFormat
-arg formatMeResponseCall first meRowId
-arg formatMeResponseCall second meUsername
-arg formatMeResponseCall third meDisplayName
-run formatMeResponseCall
-ignoreOk formatMeResponseCall CSignedInt32
+call createMeResponseDocumentCall json.createEmptyDocument
+arg createMeResponseDocumentCall capacityBytes jsonResponseCapacity
+arg createMeResponseDocumentCall rootKind jsonObjectRootKind
+run createMeResponseDocumentCall
+bindOk meResponseDocument JsonDocument createMeResponseDocumentCall
+bindError createMeResponseDocumentError JsonAccessError createMeResponseDocumentCall
+branchIfError createMeResponseDocumentCall meAllocationFailed
+defer releaseMeResponseDocumentDefer json.destroyDocument meResponseDocument
 
-bind meResponseBodyText CNullTerminatedByteString allocateMeResponseBufferCall
+call meResponseRootCall json.documentRoot
+arg meResponseRootCall document meResponseDocument
+run meResponseRootCall
+bind meResponseRoot JsonCursor meResponseRootCall
+
+call createMeUserObjectCall json.setObjectFieldObject
+arg createMeUserObjectCall document meResponseDocument
+arg createMeUserObjectCall cursor meResponseRoot
+arg createMeUserObjectCall fieldName fieldUser
+run createMeUserObjectCall
+bindOk meResponseUserCursor JsonCursor createMeUserObjectCall
+bindError createMeUserObjectError JsonAccessError createMeUserObjectCall
+branchIfError createMeUserObjectCall meAllocationFailed
+
+call setMeUserIdCall json.setObjectFieldInt64
+arg setMeUserIdCall document meResponseDocument
+arg setMeUserIdCall cursor meResponseUserCursor
+arg setMeUserIdCall fieldName fieldId
+arg setMeUserIdCall value meRowId
+run setMeUserIdCall
+ignoreOk setMeUserIdCall CSignedInt32
+bindError setMeUserIdError JsonAccessError setMeUserIdCall
+branchIfError setMeUserIdCall meAllocationFailed
+
+call setMeUsernameCall json.setObjectFieldString
+arg setMeUsernameCall document meResponseDocument
+arg setMeUsernameCall cursor meResponseUserCursor
+arg setMeUsernameCall fieldName fieldUsername
+arg setMeUsernameCall value meUsername
+run setMeUsernameCall
+ignoreOk setMeUsernameCall CSignedInt32
+bindError setMeUsernameError JsonAccessError setMeUsernameCall
+branchIfError setMeUsernameCall meAllocationFailed
+
+call setMeDisplayNameCall json.setObjectFieldString
+arg setMeDisplayNameCall document meResponseDocument
+arg setMeDisplayNameCall cursor meResponseUserCursor
+arg setMeDisplayNameCall fieldName fieldDisplayName
+arg setMeDisplayNameCall value meDisplayName
+run setMeDisplayNameCall
+ignoreOk setMeDisplayNameCall CSignedInt32
+bindError setMeDisplayNameError JsonAccessError setMeDisplayNameCall
+branchIfError setMeDisplayNameCall meAllocationFailed
+
+call serializeMeResponseCall json.serializeDocument
+arg serializeMeResponseCall document meResponseDocument
+arg serializeMeResponseCall scratch meResponseBuffer
+arg serializeMeResponseCall scratchCapacity jsonResponseCapacity
+run serializeMeResponseCall
+bindOk meResponseBodyText JsonText serializeMeResponseCall
+bindError serializeMeResponseError JsonAccessError serializeMeResponseCall
+branchIfError serializeMeResponseCall meAllocationFailed
 
 call writeMeResponseCall writeJsonOkResponse
 arg writeMeResponseCall response response
@@ -1234,6 +1477,16 @@ arg writeMeDbUnavailableCall messageBody meDbUnavailableBody
 run writeMeDbUnavailableCall
 bind writeMeDbUnavailableStatus CSignedInt32 writeMeDbUnavailableCall
 returnValue writeMeDbUnavailableStatus
+
+label meAllocationFailed
+storage local immutable meAllocationFailedBody CNullTerminatedByteString "{\"error\":{\"code\":\"outOfMemory\",\"message\":\"could not allocate response buffer\"}}\n"
+call writeMeAllocationFailedCall writeErrorJsonResponse
+arg writeMeAllocationFailedCall response response
+arg writeMeAllocationFailedCall status httpStatusInternalServerError
+arg writeMeAllocationFailedCall messageBody meAllocationFailedBody
+run writeMeAllocationFailedCall
+bind writeMeAllocationFailedStatus CSignedInt32 writeMeAllocationFailedCall
+returnValue writeMeAllocationFailedStatus
 
 label meSelectUserFailed
 storage local immutable meSelectFailedBody CNullTerminatedByteString "{\"error\":{\"code\":\"selectUserFailed\",\"message\":\"could not look up session user\"}}\n"
@@ -1318,7 +1571,6 @@ arg writeLogoutClearCookieCall value cookieClearSuffix
 run writeLogoutClearCookieCall
 ignoreValue writeLogoutClearCookieCall CSignedInt32
 
-storage local immutable logoutResponseBody CNullTerminatedByteString "{\"ok\":true}\n"
 call writeLogoutOkCall writeJsonOkResponse
 arg writeLogoutOkCall response response
 arg writeLogoutOkCall status httpStatusOk
@@ -1346,6 +1598,8 @@ effect loginHandler compute bcryptHash
 effect loginHandler compute bcryptRandom
 effect loginHandler allocate heap
 effect loginHandler free heap
+effect loginHandler read json.document.tree
+effect loginHandler write json.document.tree
 useCapability loginHandler httpRequestReader
 useCapability loginHandler httpResponseWriter
 useCapability loginHandler sqliteDatabaseReadWriter
@@ -1353,6 +1607,8 @@ useCapability loginHandler bcryptHashCompute
 useCapability loginHandler bcryptRandomCompute
 useCapability loginHandler heapAllocCapability
 useCapability loginHandler heapFreeCapability
+useCapability loginHandler jsonDocumentReadCapability
+useCapability loginHandler jsonDocumentWriteCapability
 memory loginHandler heap auto
 async loginHandler no
 purpose loginHandler "POST /api/auth/login — verify credentials via bcrypt.verifyPassword + mint a new session. On any failure (unknown user, wrong password, malformed body) return the SAME 401 with a generic message so an attacker cannot distinguish 'no such user' from 'bad password' by status or response shape."
@@ -1377,45 +1633,73 @@ run loginBodyNullCheckCall
 bind loginBodyMissing Bool loginBodyNullCheckCall
 branchIf loginBodyMissing loginInvalidCredentials
 
+call parseLoginBodyCall json.createDocument
+arg parseLoginBodyCall jsonText loginBodyText
+arg parseLoginBodyCall capacityBytes jsonDocumentCapacity
+run parseLoginBodyCall
+bindOk loginDocument JsonDocument parseLoginBodyCall
+bindError parseLoginBodyError JsonAccessError parseLoginBodyCall
+branchIfError parseLoginBodyCall loginInvalidCredentials
+defer releaseLoginDocumentDefer json.destroyDocument loginDocument
+
+call loginDocumentRootCall json.documentRoot
+arg loginDocumentRootCall document loginDocument
+run loginDocumentRootCall
+bind loginDocumentRoot JsonCursor loginDocumentRootCall
+
 call allocateLoginUsernameScratchCall c.malloc
 arg allocateLoginUsernameScratchCall size usernameScratchCapacity
 run allocateLoginUsernameScratchCall
-bind loginUsernameScratch COpaqueMemoryAddress allocateLoginUsernameScratchCall
+bindOk loginUsernameScratch COpaqueMemoryAddress allocateLoginUsernameScratchCall
+bindError allocateLoginUsernameScratchError COpaqueMemoryAddress allocateLoginUsernameScratchCall
+branchIfError allocateLoginUsernameScratchCall loginInternalFailure
 defer releaseLoginUsernameScratchDefer c.free loginUsernameScratch
 
 call allocateLoginPasswordScratchCall c.malloc
 arg allocateLoginPasswordScratchCall size passwordScratchCapacity
 run allocateLoginPasswordScratchCall
-bind loginPasswordScratch COpaqueMemoryAddress allocateLoginPasswordScratchCall
+bindOk loginPasswordScratch COpaqueMemoryAddress allocateLoginPasswordScratchCall
+bindError allocateLoginPasswordScratchError COpaqueMemoryAddress allocateLoginPasswordScratchCall
+branchIfError allocateLoginPasswordScratchCall loginInternalFailure
 defer releaseLoginPasswordScratchDefer c.free loginPasswordScratch
 
-call findLoginUsernameCall json.findString
-arg findLoginUsernameCall jsonText loginBodyText
-arg findLoginUsernameCall fieldName fieldUsername
-arg findLoginUsernameCall scratch loginUsernameScratch
-arg findLoginUsernameCall scratchCapacity usernameScratchCapacity
-run findLoginUsernameCall
-bind loginUsernameText CNullTerminatedByteString findLoginUsernameCall
+call loginUsernameCursorCall json.objectFieldAt
+arg loginUsernameCursorCall document loginDocument
+arg loginUsernameCursorCall cursor loginDocumentRoot
+arg loginUsernameCursorCall fieldName fieldUsername
+run loginUsernameCursorCall
+bindOk loginUsernameCursor JsonCursor loginUsernameCursorCall
+bindError loginUsernameCursorError JsonAccessError loginUsernameCursorCall
+branchIfError loginUsernameCursorCall loginInvalidCredentials
 
-call loginUsernameNullCheckCall pointer.isNull
-arg loginUsernameNullCheckCall pointer loginUsernameText
-run loginUsernameNullCheckCall
-bind loginUsernameMissing Bool loginUsernameNullCheckCall
-branchIf loginUsernameMissing loginInvalidCredentials
+call readLoginUsernameCall json.cursorString
+arg readLoginUsernameCall document loginDocument
+arg readLoginUsernameCall cursor loginUsernameCursor
+arg readLoginUsernameCall scratch loginUsernameScratch
+arg readLoginUsernameCall scratchCapacity usernameScratchCapacity
+run readLoginUsernameCall
+bindOk loginUsernameText CNullTerminatedByteString readLoginUsernameCall
+bindError readLoginUsernameError JsonAccessError readLoginUsernameCall
+branchIfError readLoginUsernameCall loginInvalidCredentials
 
-call findLoginPasswordCall json.findString
-arg findLoginPasswordCall jsonText loginBodyText
-arg findLoginPasswordCall fieldName fieldPassword
-arg findLoginPasswordCall scratch loginPasswordScratch
-arg findLoginPasswordCall scratchCapacity passwordScratchCapacity
-run findLoginPasswordCall
-bind loginPasswordText CNullTerminatedByteString findLoginPasswordCall
+call loginPasswordCursorCall json.objectFieldAt
+arg loginPasswordCursorCall document loginDocument
+arg loginPasswordCursorCall cursor loginDocumentRoot
+arg loginPasswordCursorCall fieldName fieldPassword
+run loginPasswordCursorCall
+bindOk loginPasswordCursor JsonCursor loginPasswordCursorCall
+bindError loginPasswordCursorError JsonAccessError loginPasswordCursorCall
+branchIfError loginPasswordCursorCall loginInvalidCredentials
 
-call loginPasswordNullCheckCall pointer.isNull
-arg loginPasswordNullCheckCall pointer loginPasswordText
-run loginPasswordNullCheckCall
-bind loginPasswordMissing Bool loginPasswordNullCheckCall
-branchIf loginPasswordMissing loginInvalidCredentials
+call readLoginPasswordCall json.cursorString
+arg readLoginPasswordCall document loginDocument
+arg readLoginPasswordCall cursor loginPasswordCursor
+arg readLoginPasswordCall scratch loginPasswordScratch
+arg readLoginPasswordCall scratchCapacity passwordScratchCapacity
+run readLoginPasswordCall
+bindOk loginPasswordText CNullTerminatedByteString readLoginPasswordCall
+bindError readLoginPasswordError JsonAccessError readLoginPasswordCall
+branchIfError readLoginPasswordCall loginInvalidCredentials
 
 # SELECT the user row by username (case-insensitive — schema COLLATE NOCASE).
 call prepareSelectUserByUsernameCall sqlite.prepareStatement
@@ -1500,7 +1784,9 @@ label loginPasswordMatchedLabel
 call allocateLoginRandomCall c.malloc
 arg allocateLoginRandomCall size randomBufferCapacity
 run allocateLoginRandomCall
-bind loginRandomBuffer COpaqueMemoryAddress allocateLoginRandomCall
+bindOk loginRandomBuffer COpaqueMemoryAddress allocateLoginRandomCall
+bindError allocateLoginRandomError COpaqueMemoryAddress allocateLoginRandomCall
+branchIfError allocateLoginRandomCall loginInternalFailure
 defer releaseLoginRandomDefer c.free loginRandomBuffer
 
 call drawLoginRandomCall bcrypt.randomBytes
@@ -1521,7 +1807,9 @@ label loginRandomOkLabel
 call allocateLoginTokenCall c.malloc
 arg allocateLoginTokenCall size tokenBufferCapacity
 run allocateLoginTokenCall
-bind loginTokenBuffer COpaqueMemoryAddress allocateLoginTokenCall
+bindOk loginTokenBuffer COpaqueMemoryAddress allocateLoginTokenCall
+bindError allocateLoginTokenError COpaqueMemoryAddress allocateLoginTokenCall
+branchIfError allocateLoginTokenCall loginInternalFailure
 defer releaseLoginTokenDefer c.free loginTokenBuffer
 
 storage local mutable loginEncodedTokenLength CSignedInt32 0
@@ -1548,6 +1836,12 @@ bind loginSessionTokenText CNullTerminatedByteString allocateLoginTokenCall
 call loginNowMsCall http.nowMillis
 run loginNowMsCall
 bind loginNowMs CSignedInt64 loginNowMsCall
+
+call pruneLoginExpiredSessionsCall pruneExpiredSessionsBestEffort
+arg pruneLoginExpiredSessionsCall database loginDatabase
+arg pruneLoginExpiredSessionsCall nowMs loginNowMs
+run pruneLoginExpiredSessionsCall
+ignoreValue pruneLoginExpiredSessionsCall CSignedInt32
 
 call loginAddExpiresCall math.addI64
 arg loginAddExpiresCall left loginNowMs
@@ -1621,15 +1915,20 @@ branchIfError stepInsertLoginSessionCall loginInsertSessionFailed
 call allocateLoginCookieBufferCall c.malloc
 arg allocateLoginCookieBufferCall size cookieHeaderCapacity
 run allocateLoginCookieBufferCall
-bind loginCookieHeaderBuffer COpaqueMemoryAddress allocateLoginCookieBufferCall
+bindOk loginCookieHeaderBuffer COpaqueMemoryAddress allocateLoginCookieBufferCall
+bindError allocateLoginCookieBufferError COpaqueMemoryAddress allocateLoginCookieBufferCall
+branchIfError allocateLoginCookieBufferCall loginInternalFailure
 defer releaseLoginCookieBufferDefer c.free loginCookieHeaderBuffer
 
-storage local immutable loginCookieFormat CNullTerminatedByteString "session=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000"
+# Compose from shared module-scope cookieNameEquals / cookieAttributeSuffix
+# (see registerHandler for the matching shape). No duplicate literal here.
 call formatLoginCookieHeaderCall c.snprintf
 arg formatLoginCookieHeaderCall buffer loginCookieHeaderBuffer
 arg formatLoginCookieHeaderCall size cookieHeaderCapacity
-arg formatLoginCookieHeaderCall format loginCookieFormat
-arg formatLoginCookieHeaderCall first loginSessionTokenText
+arg formatLoginCookieHeaderCall format cookieHeaderTripleFormat
+arg formatLoginCookieHeaderCall first cookieNameEquals
+arg formatLoginCookieHeaderCall second loginSessionTokenText
+arg formatLoginCookieHeaderCall third cookieAttributeSuffix
 run formatLoginCookieHeaderCall
 ignoreOk formatLoginCookieHeaderCall CSignedInt32
 
@@ -1645,21 +1944,72 @@ ignoreValue writeLoginCookieHeaderCall CSignedInt32
 call allocateLoginResponseBufferCall c.malloc
 arg allocateLoginResponseBufferCall size jsonResponseCapacity
 run allocateLoginResponseBufferCall
-bind loginResponseBuffer COpaqueMemoryAddress allocateLoginResponseBufferCall
+bindOk loginResponseBuffer COpaqueMemoryAddress allocateLoginResponseBufferCall
+bindError allocateLoginResponseBufferError COpaqueMemoryAddress allocateLoginResponseBufferCall
+branchIfError allocateLoginResponseBufferCall loginInternalFailure
 defer releaseLoginResponseBufferDefer c.free loginResponseBuffer
 
-storage local immutable loginResponseFormat CNullTerminatedByteString "{\"user\":{\"id\":%lld,\"username\":\"%s\",\"displayName\":\"%s\"}}\n"
-call formatLoginResponseCall c.snprintf
-arg formatLoginResponseCall buffer loginResponseBuffer
-arg formatLoginResponseCall size jsonResponseCapacity
-arg formatLoginResponseCall format loginResponseFormat
-arg formatLoginResponseCall first loginExistingUserId
-arg formatLoginResponseCall second loginUsernameCanonical
-arg formatLoginResponseCall third loginDisplayName
-run formatLoginResponseCall
-ignoreOk formatLoginResponseCall CSignedInt32
+call createLoginResponseDocumentCall json.createEmptyDocument
+arg createLoginResponseDocumentCall capacityBytes jsonResponseCapacity
+arg createLoginResponseDocumentCall rootKind jsonObjectRootKind
+run createLoginResponseDocumentCall
+bindOk loginResponseDocument JsonDocument createLoginResponseDocumentCall
+bindError createLoginResponseDocumentError JsonAccessError createLoginResponseDocumentCall
+branchIfError createLoginResponseDocumentCall loginInternalFailure
+defer releaseLoginResponseDocumentDefer json.destroyDocument loginResponseDocument
 
-bind loginResponseBodyText CNullTerminatedByteString allocateLoginResponseBufferCall
+call loginResponseRootCall json.documentRoot
+arg loginResponseRootCall document loginResponseDocument
+run loginResponseRootCall
+bind loginResponseRoot JsonCursor loginResponseRootCall
+
+call createLoginUserObjectCall json.setObjectFieldObject
+arg createLoginUserObjectCall document loginResponseDocument
+arg createLoginUserObjectCall cursor loginResponseRoot
+arg createLoginUserObjectCall fieldName fieldUser
+run createLoginUserObjectCall
+bindOk loginResponseUserCursor JsonCursor createLoginUserObjectCall
+bindError createLoginUserObjectError JsonAccessError createLoginUserObjectCall
+branchIfError createLoginUserObjectCall loginInternalFailure
+
+call setLoginUserIdCall json.setObjectFieldInt64
+arg setLoginUserIdCall document loginResponseDocument
+arg setLoginUserIdCall cursor loginResponseUserCursor
+arg setLoginUserIdCall fieldName fieldId
+arg setLoginUserIdCall value loginExistingUserId
+run setLoginUserIdCall
+ignoreOk setLoginUserIdCall CSignedInt32
+bindError setLoginUserIdError JsonAccessError setLoginUserIdCall
+branchIfError setLoginUserIdCall loginInternalFailure
+
+call setLoginUsernameCall json.setObjectFieldString
+arg setLoginUsernameCall document loginResponseDocument
+arg setLoginUsernameCall cursor loginResponseUserCursor
+arg setLoginUsernameCall fieldName fieldUsername
+arg setLoginUsernameCall value loginUsernameCanonical
+run setLoginUsernameCall
+ignoreOk setLoginUsernameCall CSignedInt32
+bindError setLoginUsernameError JsonAccessError setLoginUsernameCall
+branchIfError setLoginUsernameCall loginInternalFailure
+
+call setLoginDisplayNameCall json.setObjectFieldString
+arg setLoginDisplayNameCall document loginResponseDocument
+arg setLoginDisplayNameCall cursor loginResponseUserCursor
+arg setLoginDisplayNameCall fieldName fieldDisplayName
+arg setLoginDisplayNameCall value loginDisplayName
+run setLoginDisplayNameCall
+ignoreOk setLoginDisplayNameCall CSignedInt32
+bindError setLoginDisplayNameError JsonAccessError setLoginDisplayNameCall
+branchIfError setLoginDisplayNameCall loginInternalFailure
+
+call serializeLoginResponseCall json.serializeDocument
+arg serializeLoginResponseCall document loginResponseDocument
+arg serializeLoginResponseCall scratch loginResponseBuffer
+arg serializeLoginResponseCall scratchCapacity jsonResponseCapacity
+run serializeLoginResponseCall
+bindOk loginResponseBodyText JsonText serializeLoginResponseCall
+bindError serializeLoginResponseError JsonAccessError serializeLoginResponseCall
+branchIfError serializeLoginResponseCall loginInternalFailure
 
 call writeLoginResponseCall writeJsonOkResponse
 arg writeLoginResponseCall response response
@@ -1745,11 +2095,15 @@ effect createTodoHandler readWrite database
 effect createTodoHandler write http.response
 effect createTodoHandler allocate heap
 effect createTodoHandler free heap
+effect createTodoHandler read json.document.tree
+effect createTodoHandler write json.document.tree
 useCapability createTodoHandler httpRequestReader
 useCapability createTodoHandler httpResponseWriter
 useCapability createTodoHandler sqliteDatabaseReadWriter
 useCapability createTodoHandler heapAllocCapability
 useCapability createTodoHandler heapFreeCapability
+useCapability createTodoHandler jsonDocumentReadCapability
+useCapability createTodoHandler jsonDocumentWriteCapability
 memory createTodoHandler heap auto
 async createTodoHandler no
 purpose createTodoHandler "POST /api/todos — create a todo for the session user. Body: {\"title\":\"...\",\"body\":\"...\",\"priority\":1-3}."
@@ -1787,58 +2141,99 @@ run createBodyNullCheckCall
 bind createBodyMissing Bool createBodyNullCheckCall
 branchIf createBodyMissing createBadRequestBodyMissing
 
+call parseCreateBodyCall json.createDocument
+arg parseCreateBodyCall jsonText createBodyText
+arg parseCreateBodyCall capacityBytes jsonDocumentCapacity
+run parseCreateBodyCall
+bindOk createDocument JsonDocument parseCreateBodyCall
+bindError parseCreateBodyError JsonAccessError parseCreateBodyCall
+branchIfError parseCreateBodyCall createBadRequestBodyMissing
+defer releaseCreateDocumentDefer json.destroyDocument createDocument
+
+call createDocumentRootCall json.documentRoot
+arg createDocumentRootCall document createDocument
+run createDocumentRootCall
+bind createDocumentRoot JsonCursor createDocumentRootCall
+
 call allocateCreateTitleScratchCall c.malloc
 arg allocateCreateTitleScratchCall size titleScratchCapacity
 run allocateCreateTitleScratchCall
-bind createTitleScratch COpaqueMemoryAddress allocateCreateTitleScratchCall
+bindOk createTitleScratch COpaqueMemoryAddress allocateCreateTitleScratchCall
+bindError allocateCreateTitleScratchError COpaqueMemoryAddress allocateCreateTitleScratchCall
+branchIfError allocateCreateTitleScratchCall createAllocationFailed
 defer releaseCreateTitleScratchDefer c.free createTitleScratch
 
 call allocateCreateBodyScratchCall c.malloc
 arg allocateCreateBodyScratchCall size bodyScratchCapacity
 run allocateCreateBodyScratchCall
-bind createBodyScratch COpaqueMemoryAddress allocateCreateBodyScratchCall
+bindOk createBodyScratch COpaqueMemoryAddress allocateCreateBodyScratchCall
+bindError allocateCreateBodyScratchError COpaqueMemoryAddress allocateCreateBodyScratchCall
+branchIfError allocateCreateBodyScratchCall createAllocationFailed
 defer releaseCreateBodyScratchDefer c.free createBodyScratch
 
-call findCreateTitleCall json.findString
-arg findCreateTitleCall jsonText createBodyText
-arg findCreateTitleCall fieldName fieldTitle
-arg findCreateTitleCall scratch createTitleScratch
-arg findCreateTitleCall scratchCapacity titleScratchCapacity
-run findCreateTitleCall
-bind createTitleText CNullTerminatedByteString findCreateTitleCall
-
-call createTitleNullCheckCall pointer.isNull
-arg createTitleNullCheckCall pointer createTitleText
-run createTitleNullCheckCall
-bind createTitleMissing Bool createTitleNullCheckCall
-branchIf createTitleMissing createBadRequestTitleMissing
-
-call findCreateBodyCall json.findString
-arg findCreateBodyCall jsonText createBodyText
-arg findCreateBodyCall fieldName fieldBody
-arg findCreateBodyCall scratch createBodyScratch
-arg findCreateBodyCall scratchCapacity bodyScratchCapacity
-run findCreateBodyCall
-bind createTodoBody CNullTerminatedByteString findCreateBodyCall
-
-# Body is optional — substitute empty string if missing.
 storage local immutable createEmptyBody CNullTerminatedByteString ""
-call createBodyAbsentCheckCall pointer.isNull
-arg createBodyAbsentCheckCall pointer createTodoBody
-run createBodyAbsentCheckCall
-bind createBodyAbsent Bool createBodyAbsentCheckCall
-branchIf createBodyAbsent useEmptyBody
-branch bodyReady
-label useEmptyBody
+storage local mutable createTodoBody CNullTerminatedByteString createEmptyBody
+storage local mutable createPriority CSignedInt64 defaultPriority
+
+call createTitleCursorCall json.objectFieldAt
+arg createTitleCursorCall document createDocument
+arg createTitleCursorCall cursor createDocumentRoot
+arg createTitleCursorCall fieldName fieldTitle
+run createTitleCursorCall
+bindOk createTitleCursor JsonCursor createTitleCursorCall
+bindError createTitleCursorError JsonAccessError createTitleCursorCall
+branchIfError createTitleCursorCall createBadRequestTitleMissing
+
+call readCreateTitleCall json.cursorString
+arg readCreateTitleCall document createDocument
+arg readCreateTitleCall cursor createTitleCursor
+arg readCreateTitleCall scratch createTitleScratch
+arg readCreateTitleCall scratchCapacity titleScratchCapacity
+run readCreateTitleCall
+bindOk createTitleText CNullTerminatedByteString readCreateTitleCall
+bindError readCreateTitleError JsonAccessError readCreateTitleCall
+branchIfError readCreateTitleCall createBadRequestTitleMissing
+
+call createBodyCursorCall json.objectFieldAt
+arg createBodyCursorCall document createDocument
+arg createBodyCursorCall cursor createDocumentRoot
+arg createBodyCursorCall fieldName fieldBody
+run createBodyCursorCall
+bindOk createBodyCursor JsonCursor createBodyCursorCall
+bindError createBodyCursorError JsonAccessError createBodyCursorCall
+branchIfError createBodyCursorCall bodyReady
+
+call readCreateBodyCall json.cursorString
+arg readCreateBodyCall document createDocument
+arg readCreateBodyCall cursor createBodyCursor
+arg readCreateBodyCall scratch createBodyScratch
+arg readCreateBodyCall scratchCapacity bodyScratchCapacity
+run readCreateBodyCall
+bindOk createBodyRecovered CNullTerminatedByteString readCreateBodyCall
+bindError readCreateBodyError JsonAccessError readCreateBodyCall
+branchIfError readCreateBodyCall bodyReady
+set local createTodoBody createBodyRecovered
+
 label bodyReady
 
-# Priority via json.findInt64.
-call findCreatePriorityCall json.findInt64
-arg findCreatePriorityCall jsonText createBodyText
-arg findCreatePriorityCall fieldName fieldPriority
-arg findCreatePriorityCall missingDefault defaultPriority
-run findCreatePriorityCall
-bind createPriority CSignedInt64 findCreatePriorityCall
+call createPriorityCursorCall json.objectFieldAt
+arg createPriorityCursorCall document createDocument
+arg createPriorityCursorCall cursor createDocumentRoot
+arg createPriorityCursorCall fieldName fieldPriority
+run createPriorityCursorCall
+bindOk createPriorityCursor JsonCursor createPriorityCursorCall
+bindError createPriorityCursorError JsonAccessError createPriorityCursorCall
+branchIfError createPriorityCursorCall createPriorityReady
+
+call readCreatePriorityCall json.cursorInt64
+arg readCreatePriorityCall document createDocument
+arg readCreatePriorityCall cursor createPriorityCursor
+arg readCreatePriorityCall missingDefault defaultPriority
+run readCreatePriorityCall
+bind createPriorityRecovered CSignedInt64 readCreatePriorityCall
+set local createPriority createPriorityRecovered
+
+label createPriorityReady
 
 call createNowCall http.nowMillis
 run createNowCall
@@ -1876,7 +2271,7 @@ branchIfError bindCreateTitleCall createInsertBindFailed
 call bindCreateBodyCall sqlite.bindText
 arg bindCreateBodyCall statement insertTodoStatement
 arg bindCreateBodyCall parameterIndex bindIndex3
-arg bindCreateBodyCall value createEmptyBody
+arg bindCreateBodyCall value createTodoBody
 run bindCreateBodyCall
 ignoreOk bindCreateBodyCall Void
 bindError bindCreateBodyErr SqliteStatementBindFailure bindCreateBodyCall
@@ -1932,22 +2327,92 @@ bind createNewTodoId CSignedInt64 lastTodoRowIdCall
 call allocateCreateResponseBufferCall c.malloc
 arg allocateCreateResponseBufferCall size jsonResponseCapacity
 run allocateCreateResponseBufferCall
-bind createResponseBuffer COpaqueMemoryAddress allocateCreateResponseBufferCall
+bindOk createResponseBuffer COpaqueMemoryAddress allocateCreateResponseBufferCall
+bindError allocateCreateResponseBufferError COpaqueMemoryAddress allocateCreateResponseBufferCall
+branchIfError allocateCreateResponseBufferCall createAllocationFailed
 defer releaseCreateResponseBufferDefer c.free createResponseBuffer
 
-storage local immutable createResponseFormat CNullTerminatedByteString "{\"todo\":{\"id\":%lld,\"title\":\"%s\",\"done\":false,\"priority\":%lld,\"createdAtMs\":%lld}}\n"
-call formatCreateResponseCall c.snprintf
-arg formatCreateResponseCall buffer createResponseBuffer
-arg formatCreateResponseCall size jsonResponseCapacity
-arg formatCreateResponseCall format createResponseFormat
-arg formatCreateResponseCall first createNewTodoId
-arg formatCreateResponseCall second createTitleText
-arg formatCreateResponseCall third createPriority
-arg formatCreateResponseCall fourth createNowMs
-run formatCreateResponseCall
-ignoreOk formatCreateResponseCall CSignedInt32
+call createTodoResponseDocumentCall json.createEmptyDocument
+arg createTodoResponseDocumentCall capacityBytes jsonResponseCapacity
+arg createTodoResponseDocumentCall rootKind jsonObjectRootKind
+run createTodoResponseDocumentCall
+bindOk createResponseDocument JsonDocument createTodoResponseDocumentCall
+bindError createResponseDocumentError JsonAccessError createTodoResponseDocumentCall
+branchIfError createTodoResponseDocumentCall createAllocationFailed
+defer releaseCreateResponseDocumentDefer json.destroyDocument createResponseDocument
 
-bind createResponseBodyText CNullTerminatedByteString allocateCreateResponseBufferCall
+call createResponseRootCall json.documentRoot
+arg createResponseRootCall document createResponseDocument
+run createResponseRootCall
+bind createResponseRoot JsonCursor createResponseRootCall
+
+call createTodoObjectCall json.setObjectFieldObject
+arg createTodoObjectCall document createResponseDocument
+arg createTodoObjectCall cursor createResponseRoot
+arg createTodoObjectCall fieldName fieldTodo
+run createTodoObjectCall
+bindOk createResponseTodoCursor JsonCursor createTodoObjectCall
+bindError createTodoObjectError JsonAccessError createTodoObjectCall
+branchIfError createTodoObjectCall createAllocationFailed
+
+call setCreateTodoIdCall json.setObjectFieldInt64
+arg setCreateTodoIdCall document createResponseDocument
+arg setCreateTodoIdCall cursor createResponseTodoCursor
+arg setCreateTodoIdCall fieldName fieldId
+arg setCreateTodoIdCall value createNewTodoId
+run setCreateTodoIdCall
+ignoreOk setCreateTodoIdCall CSignedInt32
+bindError setCreateTodoIdError JsonAccessError setCreateTodoIdCall
+branchIfError setCreateTodoIdCall createAllocationFailed
+
+call setCreateTodoTitleCall json.setObjectFieldString
+arg setCreateTodoTitleCall document createResponseDocument
+arg setCreateTodoTitleCall cursor createResponseTodoCursor
+arg setCreateTodoTitleCall fieldName fieldTitle
+arg setCreateTodoTitleCall value createTitleText
+run setCreateTodoTitleCall
+ignoreOk setCreateTodoTitleCall CSignedInt32
+bindError setCreateTodoTitleError JsonAccessError setCreateTodoTitleCall
+branchIfError setCreateTodoTitleCall createAllocationFailed
+
+call setCreateTodoDoneCall json.setObjectFieldBool
+arg setCreateTodoDoneCall document createResponseDocument
+arg setCreateTodoDoneCall cursor createResponseTodoCursor
+arg setCreateTodoDoneCall fieldName fieldDone
+arg setCreateTodoDoneCall value falseBit
+run setCreateTodoDoneCall
+ignoreOk setCreateTodoDoneCall CSignedInt32
+bindError setCreateTodoDoneError JsonAccessError setCreateTodoDoneCall
+branchIfError setCreateTodoDoneCall createAllocationFailed
+
+call setCreateTodoPriorityCall json.setObjectFieldInt64
+arg setCreateTodoPriorityCall document createResponseDocument
+arg setCreateTodoPriorityCall cursor createResponseTodoCursor
+arg setCreateTodoPriorityCall fieldName fieldPriority
+arg setCreateTodoPriorityCall value createPriority
+run setCreateTodoPriorityCall
+ignoreOk setCreateTodoPriorityCall CSignedInt32
+bindError setCreateTodoPriorityError JsonAccessError setCreateTodoPriorityCall
+branchIfError setCreateTodoPriorityCall createAllocationFailed
+
+call setCreateTodoCreatedAtCall json.setObjectFieldInt64
+arg setCreateTodoCreatedAtCall document createResponseDocument
+arg setCreateTodoCreatedAtCall cursor createResponseTodoCursor
+arg setCreateTodoCreatedAtCall fieldName fieldCreatedAtMs
+arg setCreateTodoCreatedAtCall value createNowMs
+run setCreateTodoCreatedAtCall
+ignoreOk setCreateTodoCreatedAtCall CSignedInt32
+bindError setCreateTodoCreatedAtError JsonAccessError setCreateTodoCreatedAtCall
+branchIfError setCreateTodoCreatedAtCall createAllocationFailed
+
+call serializeCreateResponseCall json.serializeDocument
+arg serializeCreateResponseCall document createResponseDocument
+arg serializeCreateResponseCall scratch createResponseBuffer
+arg serializeCreateResponseCall scratchCapacity jsonResponseCapacity
+run serializeCreateResponseCall
+bindOk createResponseBodyText JsonText serializeCreateResponseCall
+bindError serializeCreateResponseError JsonAccessError serializeCreateResponseCall
+branchIfError serializeCreateResponseCall createAllocationFailed
 
 call writeCreateResponseCall writeJsonOkResponse
 arg writeCreateResponseCall response response
@@ -1982,6 +2447,16 @@ arg writeCreateDbUnavailableCall messageBody createDbUnavailableBody
 run writeCreateDbUnavailableCall
 bind writeCreateDbUnavailableStatus CSignedInt32 writeCreateDbUnavailableCall
 returnValue writeCreateDbUnavailableStatus
+
+label createAllocationFailed
+storage local immutable createAllocationFailedBody CNullTerminatedByteString "{\"error\":{\"code\":\"outOfMemory\",\"message\":\"could not allocate request buffers\"}}\n"
+call writeCreateAllocationFailedCall writeErrorJsonResponse
+arg writeCreateAllocationFailedCall response response
+arg writeCreateAllocationFailedCall status httpStatusInternalServerError
+arg writeCreateAllocationFailedCall messageBody createAllocationFailedBody
+run writeCreateAllocationFailedCall
+bind writeCreateAllocationFailedStatus CSignedInt32 writeCreateAllocationFailedCall
+returnValue writeCreateAllocationFailedStatus
 
 label createBadRequestBodyMissing
 storage local immutable createBodyMissingMessage CNullTerminatedByteString "{\"error\":{\"code\":\"bodyMissing\",\"message\":\"request body is required\"}}\n"
@@ -2037,11 +2512,13 @@ effect listTodosHandler read database
 effect listTodosHandler write http.response
 effect listTodosHandler allocate heap
 effect listTodosHandler free heap
+effect listTodosHandler write json.document.tree
 useCapability listTodosHandler httpRequestReader
 useCapability listTodosHandler httpResponseWriter
 useCapability listTodosHandler sqliteDatabaseReader
 useCapability listTodosHandler heapAllocCapability
 useCapability listTodosHandler heapFreeCapability
+useCapability listTodosHandler jsonDocumentWriteCapability
 memory listTodosHandler heap auto
 async listTodosHandler no
 purpose listTodosHandler "GET /api/todos — return the session user's todos. v1 returns just the row count + array of {id, title, done}; full record serialization arrives with the record-codec wiring."
@@ -2087,67 +2564,43 @@ ignoreOk bindListUserIdCall Void
 bindError bindListUserIdErr SqliteStatementBindFailure bindListUserIdCall
 branchIfError bindListUserIdCall listSelectFailed
 
-# Build response using json.createBuilder for an array of objects.
-call createListBuilderCall json.createBuilder
-arg createListBuilderCall capacity jsonResponseCapacity
-run createListBuilderCall
-bind listBuilder JsonBuilder createListBuilderCall
-defer destroyListBuilderDefer json.destroyBuilder listBuilder
-
-call openListObjectCall json.objectOpen
-arg openListObjectCall builder listBuilder
-run openListObjectCall
-ignoreOk openListObjectCall CSignedInt32
-
-# Open the todos array under field name.
-storage local immutable todosArrayMarker CNullTerminatedByteString "todos"
-# Field "todos" : [
-# We need a "field-array-open" — but the builder only has object_open/array_open
-# at the top level. Workaround: emit field by writing a placeholder, then
-# delete it... too complex. Just use snprintf for the response.
-
 call allocateListResponseBufferCall c.malloc
 arg allocateListResponseBufferCall size todosListBufferCapacity
 run allocateListResponseBufferCall
-bind listResponseBuffer COpaqueMemoryAddress allocateListResponseBufferCall
+bindOk listResponseBuffer COpaqueMemoryAddress allocateListResponseBufferCall
+bindError allocateListResponseBufferError COpaqueMemoryAddress allocateListResponseBufferCall
+branchIfError allocateListResponseBufferCall listAllocationFailed
 defer releaseListResponseBufferDefer c.free listResponseBuffer
 
-# Per-row scratch — every iteration snprintfs one row's JSON object here,
-# then c.strcat appends it to the accumulator buffer above.
-call allocateRowScratchCall c.malloc
-arg allocateRowScratchCall size todoRowScratchCapacity
-run allocateRowScratchCall
-bind listRowScratch COpaqueMemoryAddress allocateRowScratchCall
-defer releaseRowScratchDefer c.free listRowScratch
+# Build the response through the native JSON document API so titles are escaped
+# by the runtime and row separators are owned by serialization, not string math.
+call createListDocumentCall json.createEmptyDocument
+arg createListDocumentCall capacityBytes todosListBufferCapacity
+arg createListDocumentCall rootKind jsonObjectRootKind
+run createListDocumentCall
+bindOk listDocument JsonDocument createListDocumentCall
+bindError createListDocumentError JsonAccessError createListDocumentCall
+branchIfError createListDocumentCall listAllocationFailed
+defer releaseListDocumentDefer json.destroyDocument listDocument
 
-# Open the accumulator with the array prefix. Subsequent rows append via
-# strcat; the suffix `],"count":N}` is appended after the loop.
-storage local immutable listResponsePrefix CNullTerminatedByteString "{\"todos\":["
-call c_strcpy_listResponseCall c.snprintf
-arg c_strcpy_listResponseCall buffer listResponseBuffer
-arg c_strcpy_listResponseCall size todosListBufferCapacity
-arg c_strcpy_listResponseCall format listResponsePrefix
-run c_strcpy_listResponseCall
-ignoreOk c_strcpy_listResponseCall CSignedInt32
+call listDocumentRootCall json.documentRoot
+arg listDocumentRootCall document listDocument
+run listDocumentRootCall
+bind listDocumentRoot JsonCursor listDocumentRootCall
 
-# Streaming row serializer — step the statement once per loop, format one
-# row's JSON object into the per-row scratch via snprintf, then c.strcat
-# the scratch onto the accumulator. Comma separators are emitted BEFORE
-# every row after the first (tracked by `listFirstRow`) so we never end
-# with a trailing comma to strip. Note: integer arithmetic primitives
-# only lower as i64 (math.addI64 / math.equalI64) — using i32 silently
-# resolved math.addCSignedInt32 to a no-op that stored 0, so the loop
-# "ran" but the count never advanced. Stay on i64 here.
+call createTodosArrayCall json.setObjectFieldArray
+arg createTodosArrayCall document listDocument
+arg createTodosArrayCall cursor listDocumentRoot
+arg createTodosArrayCall fieldName fieldTodos
+run createTodosArrayCall
+bindOk listTodosArrayCursor JsonCursor createTodosArrayCall
+bindError createTodosArrayError JsonAccessError createTodosArrayCall
+branchIfError createTodosArrayCall listAllocationFailed
+
+# Step the statement once per loop and append each row as a JSON object.
 storage local mutable listRowsEmitted CSignedInt64 0
-storage local mutable listFirstRow CSignedInt32 1
 storage local immutable listIncrementOne CSignedInt64 1
-storage local immutable listFirstRowFalse CSignedInt32 0
 
-# Inter-row separator and row template — title is %s (no JSON escaping in
-# v1; the schema CHECK on length keeps it bounded, but a refine should
-# escape `"` and `\\` before this can accept untrusted input).
-storage local immutable listCommaSeparator CNullTerminatedByteString ","
-storage local immutable listRowFormat CNullTerminatedByteString "{\"id\":%lld,\"title\":\"%s\",\"done\":%lld,\"priority\":%lld}"
 
 label listIterationLoop
 call stepListCall sqlite.stepStatement
@@ -2191,42 +2644,53 @@ arg readListPriorityCall columnIndex columnIndex4
 run readListPriorityCall
 bind listRowPriority CSignedInt64 readListPriorityCall
 
-# Comma BEFORE this row when it isn't the first emitted row.
-call listFirstRowCheckCall math.equalCSignedInt32
-arg listFirstRowCheckCall left listFirstRow
-arg listFirstRowCheckCall right trueBit
-run listFirstRowCheckCall
-bind listIsFirstRow Bool listFirstRowCheckCall
-branchIf listIsFirstRow listAfterCommaAppend
+call appendListRowObjectCall json.appendArrayElementObject
+arg appendListRowObjectCall document listDocument
+arg appendListRowObjectCall cursor listTodosArrayCursor
+run appendListRowObjectCall
+bindOk listRowObjectCursor JsonCursor appendListRowObjectCall
+bindError appendListRowObjectError JsonAccessError appendListRowObjectCall
+branchIfError appendListRowObjectCall listAllocationFailed
 
-call appendCommaCall c.strcat
-arg appendCommaCall destination listResponseBuffer
-arg appendCommaCall source listCommaSeparator
-run appendCommaCall
-ignoreOk appendCommaCall CNullTerminatedByteString
+call setListRowIdCall json.setObjectFieldInt64
+arg setListRowIdCall document listDocument
+arg setListRowIdCall cursor listRowObjectCursor
+arg setListRowIdCall fieldName fieldId
+arg setListRowIdCall value listRowId
+run setListRowIdCall
+ignoreOk setListRowIdCall CSignedInt32
+bindError setListRowIdError JsonAccessError setListRowIdCall
+branchIfError setListRowIdCall listAllocationFailed
 
-label listAfterCommaAppend
+call setListRowTitleCall json.setObjectFieldString
+arg setListRowTitleCall document listDocument
+arg setListRowTitleCall cursor listRowObjectCursor
+arg setListRowTitleCall fieldName fieldTitle
+arg setListRowTitleCall value listRowTitle
+run setListRowTitleCall
+ignoreOk setListRowTitleCall CSignedInt32
+bindError setListRowTitleError JsonAccessError setListRowTitleCall
+branchIfError setListRowTitleCall listAllocationFailed
 
-# Build this row's JSON object in the scratch buffer.
-call formatRowCall c.snprintf
-arg formatRowCall buffer listRowScratch
-arg formatRowCall size todoRowScratchCapacity
-arg formatRowCall format listRowFormat
-arg formatRowCall first listRowId
-arg formatRowCall second listRowTitle
-arg formatRowCall third listRowDone
-arg formatRowCall fourth listRowPriority
-run formatRowCall
-ignoreOk formatRowCall CSignedInt32
+call setListRowDoneCall json.setObjectFieldBool
+arg setListRowDoneCall document listDocument
+arg setListRowDoneCall cursor listRowObjectCursor
+arg setListRowDoneCall fieldName fieldDone
+arg setListRowDoneCall value listRowDone
+run setListRowDoneCall
+ignoreOk setListRowDoneCall CSignedInt32
+bindError setListRowDoneError JsonAccessError setListRowDoneCall
+branchIfError setListRowDoneCall listAllocationFailed
 
-# Append the scratch onto the accumulator.
-call appendRowJsonCall c.strcat
-arg appendRowJsonCall destination listResponseBuffer
-arg appendRowJsonCall source listRowScratch
-run appendRowJsonCall
-ignoreOk appendRowJsonCall CNullTerminatedByteString
-
-set local listFirstRow listFirstRowFalse
+call setListRowPriorityCall json.setObjectFieldInt64
+arg setListRowPriorityCall document listDocument
+arg setListRowPriorityCall cursor listRowObjectCursor
+arg setListRowPriorityCall fieldName fieldPriority
+arg setListRowPriorityCall value listRowPriority
+run setListRowPriorityCall
+ignoreOk setListRowPriorityCall CSignedInt32
+bindError setListRowPriorityError JsonAccessError setListRowPriorityCall
+branchIfError setListRowPriorityCall listAllocationFailed
 
 call listIncrementCall math.addI64
 arg listIncrementCall left listRowsEmitted
@@ -2238,25 +2702,24 @@ branch listIterationLoop
 
 label listLoopDone
 
-# Suffix: close the array and emit the row count. snprintf into scratch,
-# then strcat onto the accumulator so the final body reads
-# `{"todos":[…rows…],"count":N}\n`.
-storage local immutable listResponseSuffixFormat CNullTerminatedByteString "],\"count\":%lld}\n"
-call formatSuffixCall c.snprintf
-arg formatSuffixCall buffer listRowScratch
-arg formatSuffixCall size todoRowScratchCapacity
-arg formatSuffixCall format listResponseSuffixFormat
-arg formatSuffixCall first listRowsEmitted
-run formatSuffixCall
-ignoreOk formatSuffixCall CSignedInt32
+call setListCountCall json.setObjectFieldInt64
+arg setListCountCall document listDocument
+arg setListCountCall cursor listDocumentRoot
+arg setListCountCall fieldName fieldCount
+arg setListCountCall value listRowsEmitted
+run setListCountCall
+ignoreOk setListCountCall CSignedInt32
+bindError setListCountError JsonAccessError setListCountCall
+branchIfError setListCountCall listAllocationFailed
 
-call appendSuffixCall c.strcat
-arg appendSuffixCall destination listResponseBuffer
-arg appendSuffixCall source listRowScratch
-run appendSuffixCall
-ignoreOk appendSuffixCall CNullTerminatedByteString
-
-bind listResponseBodyText CNullTerminatedByteString allocateListResponseBufferCall
+call serializeListResponseCall json.serializeDocument
+arg serializeListResponseCall document listDocument
+arg serializeListResponseCall scratch listResponseBuffer
+arg serializeListResponseCall scratchCapacity todosListBufferCapacity
+run serializeListResponseCall
+bindOk listResponseBodyText JsonText serializeListResponseCall
+bindError serializeListResponseError JsonAccessError serializeListResponseCall
+branchIfError serializeListResponseCall listAllocationFailed
 
 call writeListResponseCall writeJsonOkResponse
 arg writeListResponseCall response response
@@ -2285,6 +2748,16 @@ arg writeListDbUnavailableCall messageBody listDbUnavailableBody
 run writeListDbUnavailableCall
 bind writeListDbUnavailableStatus CSignedInt32 writeListDbUnavailableCall
 returnValue writeListDbUnavailableStatus
+
+label listAllocationFailed
+storage local immutable listAllocationFailedBody CNullTerminatedByteString "{\"error\":{\"code\":\"outOfMemory\",\"message\":\"could not allocate response buffer\"}}\n"
+call writeListAllocationFailedCall writeErrorJsonResponse
+arg writeListAllocationFailedCall response response
+arg writeListAllocationFailedCall status httpStatusInternalServerError
+arg writeListAllocationFailedCall messageBody listAllocationFailedBody
+run writeListAllocationFailedCall
+bind writeListAllocationFailedStatus CSignedInt32 writeListAllocationFailedCall
+returnValue writeListAllocationFailedStatus
 
 label listSelectFailed
 storage local immutable listSelectFailedBody CNullTerminatedByteString "{\"error\":{\"code\":\"selectFailed\",\"message\":\"failed to list todos\"}}\n"
@@ -2424,7 +2897,6 @@ ignoreOk stepDeleteCall SqliteStepResult
 bindError stepDeleteErr SqliteStatementStepFailure stepDeleteCall
 branchIfError stepDeleteCall deleteFailed
 
-storage local immutable deleteOkBody CNullTerminatedByteString "{\"ok\":true}\n"
 call writeDeleteOkCall writeJsonOkResponse
 arg writeDeleteOkCall response response
 arg writeDeleteOkCall status httpStatusOk
@@ -2608,7 +3080,6 @@ ignoreOk stepCompleteCall SqliteStepResult
 bindError stepCompleteErr SqliteStatementStepFailure stepCompleteCall
 branchIfError stepCompleteCall completeFailed
 
-storage local immutable completeOkBody CNullTerminatedByteString "{\"ok\":true,\"done\":true}\n"
 call writeCompleteOkCall writeJsonOkResponse
 arg writeCompleteOkCall response response
 arg writeCompleteOkCall status httpStatusOk
@@ -2783,7 +3254,6 @@ ignoreOk stepUncompleteCall SqliteStepResult
 bindError stepUncompleteErr SqliteStatementStepFailure stepUncompleteCall
 branchIfError stepUncompleteCall uncompleteFailed
 
-storage local immutable uncompleteOkBody CNullTerminatedByteString "{\"ok\":true,\"done\":false}\n"
 call writeUncompleteOkCall writeJsonOkResponse
 arg writeUncompleteOkCall response response
 arg writeUncompleteOkCall status httpStatusOk

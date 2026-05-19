@@ -199,6 +199,7 @@ authority addTaskFromInput gui.control.textLabel.text write
 memoryHeap addTaskFromInput no
 async addTaskFromInput no
 purpose addTaskFromInput "Append the current text box value to the visible task list and clear the input."
+invariant addTaskFromInput "The handler reads the current input once, appends one list item, clears the input box, and reports the append status as the event result."
 
 call readTitleCall gui.textBoxText
 arg readTitleCall session session
@@ -234,36 +235,34 @@ input markSelectedTask session GuiSession
 input markSelectedTask event GuiEvent
 output markSelectedTask CSignedInt32
 effect markSelectedTask read gui.control.listBox.selection
-effect markSelectedTask write gui.control.listBox.items
 effect markSelectedTask write gui.control.textLabel.text
 authority markSelectedTask gui.control.listBox.selection read
-authority markSelectedTask gui.control.listBox.items write
 authority markSelectedTask gui.control.textLabel.text write
 memoryHeap markSelectedTask no
 async markSelectedTask no
-purpose markSelectedTask "Confirm that the complete button click reached the GUI event handler."
+purpose markSelectedTask "Confirm that the complete button click reached the GUI event handler without appending another list item."
+invariant markSelectedTask "The handler observes the selected row and updates only the status label; it never mutates the list item collection."
 
 call selectedIndexCall gui.listBoxSelectedIndex
 arg selectedIndexCall session session
 arg selectedIndexCall listBox taskListHandle
 run selectedIndexCall
-ignoreValue selectedIndexCall CSignedInt32
+bind selectedTaskIndex CSignedInt32 selectedIndexCall
 
-call appendCompletedMarkerCall gui.listBoxAppendItem
-arg appendCompletedMarkerCall session session
-arg appendCompletedMarkerCall listBox taskListHandle
-arg appendCompletedMarkerCall text completedStatusText
-run appendCompletedMarkerCall
-bind appendCompletedMarkerStatus CSignedInt32 appendCompletedMarkerCall
+call observeSelectedTaskIndexCall math.greaterThanOrEqualCSignedInt32
+arg observeSelectedTaskIndexCall left selectedTaskIndex
+arg observeSelectedTaskIndexCall right noGuiFlag
+run observeSelectedTaskIndexCall
+ignoreValue observeSelectedTaskIndexCall Bool
 
 call setCompletedStatusCall gui.textLabelSetText
 arg setCompletedStatusCall session session
 arg setCompletedStatusCall textLabel statusLabelHandle
 arg setCompletedStatusCall text completedStatusText
 run setCompletedStatusCall
-ignoreValue setCompletedStatusCall CSignedInt32
+bind completeStatusUpdate CSignedInt32 setCompletedStatusCall
 
-returnValue appendCompletedMarkerStatus
+returnValue completeStatusUpdate
 
 operation clearTasks
 input clearTasks session GuiSession
@@ -276,6 +275,7 @@ authority clearTasks gui.control.textLabel.text write
 memoryHeap clearTasks no
 async clearTasks no
 purpose clearTasks "Clear visible tasks and update the status label."
+invariant clearTasks "The handler clears the list once, updates the status label, and reports the list clear status as the event result."
 
 call clearTaskListCall gui.listBoxClear
 arg clearTaskListCall session session

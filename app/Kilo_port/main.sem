@@ -3909,6 +3909,12 @@ arg addEmptyAtEndCall maxRows maxRows
 arg addEmptyAtEndCall rowCapacity rowCapacity
 run addEmptyAtEndCall
 bind rowsAfterAddEmpty CSignedInt64 addEmptyAtEndCall
+call addEmptyAtEndFailedCheckCall math.equalI64
+arg addEmptyAtEndFailedCheckCall left rowsAfterAddEmpty
+arg addEmptyAtEndFailedCheckCall right activeRowCount
+run addEmptyAtEndFailedCheckCall
+bind addEmptyAtEndFailed Bool addEmptyAtEndFailedCheckCall
+branchIf addEmptyAtEndFailed resetQuitAndLoop
 set local activeRowCount rowsAfterAddEmpty
 branch afterRowMutationMoveDown
 label splitExistingRow
@@ -3927,6 +3933,12 @@ arg splitCall maxRows maxRows
 arg splitCall rowCapacity rowCapacity
 run splitCall
 bind rowsAfterSplit CSignedInt64 splitCall
+call splitFailedCheckCall math.equalI64
+arg splitFailedCheckCall left rowsAfterSplit
+arg splitFailedCheckCall right activeRowCount
+run splitFailedCheckCall
+bind splitFailed Bool splitFailedCheckCall
+branchIf splitFailed resetQuitAndLoop
 set local activeRowCount rowsAfterSplit
 branch afterRowMutationMoveDown
 label afterRowMutationMoveDown
@@ -4125,6 +4137,12 @@ arg insertRowForCharCall maxRows maxRows
 arg insertRowForCharCall rowCapacity rowCapacity
 run insertRowForCharCall
 bind rowsAfterCharRowInsert CSignedInt64 insertRowForCharCall
+call charRowInsertFailedCheckCall math.equalI64
+arg charRowInsertFailedCheckCall left rowsAfterCharRowInsert
+arg charRowInsertFailedCheckCall right activeRowCount
+run charRowInsertFailedCheckCall
+bind charRowInsertFailed Bool charRowInsertFailedCheckCall
+branchIf charRowInsertFailed resetQuitAndLoop
 set local activeRowCount rowsAfterCharRowInsert
 label insertIntoExistingRow
 call fileColInsertCall math.addI64

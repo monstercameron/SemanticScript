@@ -8,6 +8,11 @@ purpose todoWebServer "Serve the Todo Web HTTP interface on localhost with a sin
 serverHost todoWebServer "127.0.0.1"
 serverPort todoWebServer 18080
 route todoWebServer GET "/" helloTodoWebHandler
+routeTimeoutOptOut todoWebServer "/" "single fixed response; no per-route timeout budget needed"
+routeMiddlewareOptOut todoWebServer "/" "single fixed response; no middleware needed"
+
+capability httpResponseWriter http.response write
+purpose httpResponseWriter "Authority to write the root HTTP response"
 
 operation helloTodoWebHandler
 input helloTodoWebHandler request HttpRequest
@@ -16,6 +21,7 @@ output helloTodoWebHandler CSignedInt32
 effect helloTodoWebHandler write http.response
 memory helloTodoWebHandler arena request
 async helloTodoWebHandler no
+useCapability helloTodoWebHandler httpResponseWriter
 purpose helloTodoWebHandler "Return a plain hello response for the Todo Web root route"
 invariant helloTodoWebHandler "Every successful request writes exactly one text response"
 

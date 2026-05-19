@@ -79,8 +79,12 @@ def link_to_exe(ir_text: str, exe_path: Path) -> tuple[bool, str]:
     """Write IR to a temp file, link via clang. Returns (success, stderr)."""
     ir_path = exe_path.with_suffix(".ll")
     ir_path.write_text(ir_text, encoding="utf-8")
+    command = [CLANG, str(ir_path), "-o", str(exe_path)]
+    if "ss_json_" in ir_text:
+        runtime_dir = ROOT / "runtime" / "native_json"
+        command.extend([str(runtime_dir / "sem_json_runtime.c"), f"-I{runtime_dir}"])
     proc = subprocess.run(
-        [CLANG, str(ir_path), "-o", str(exe_path)],
+        command,
         capture_output=True, text=True, timeout=30, cwd=str(ROOT),
     )
     return (proc.returncode == 0 and exe_path.exists(), proc.stderr)
