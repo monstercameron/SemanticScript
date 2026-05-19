@@ -181,23 +181,6 @@ const char *ss_http_form_find_field(
     size_t scratch_capacity
 );
 
-/*
- * Structured-log API. The runtime auto-writes an access log line per
- * served request; apps can call ss_app_log_write_line directly to emit
- * additional structured business events. Default log file path is
- * `logs/log.log` relative to the process cwd; ss_app_log_set_path can
- * override the path before the first write lands.
- *
- * `line` must be a pre-formatted, JSON-valid string. The runtime
- * appends a trailing '\n' and fflushes immediately so a crash loses at
- * most the one in-flight write.
- *
- * Both functions return SS_HTTP_OK on success or SS_HTTP_ERR_CONFIG /
- * SS_HTTP_ERR_ENGINE on argument or I/O failure.
- */
-int ss_app_log_set_path(const char *new_path);
-int ss_app_log_write_line(const char *line);
-
 const char *ss_http_multipart_part_text(SSHttpRequest *request, const char *name);
 const void *ss_http_multipart_part_bytes(SSHttpRequest *request, const char *name);
 size_t ss_http_multipart_part_length(SSHttpRequest *request, const char *name);
