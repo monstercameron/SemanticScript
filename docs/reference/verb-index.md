@@ -195,12 +195,12 @@ can only hydrate text-content positions where raw markup is intentional.
 ## Native Windows GUI
 
 `target windowsGui` and `targetRuntime PROJECT windowsGui` are the
-compiler/build bridge. The larger GUI vocabulary belongs to `standard.gui` as
-metadata, contracts, capabilities, and validation rules. The compiler should
-consume only the small normalized descriptor needed to link and start the
-native GUI runtime. There is no `entry windowsGui` row; the application starts
-from one `standard.gui` application descriptor and its
-`guiApplicationMainWindow` edge. The preferred standard-library import is:
+compiler/build bridge. GUI source uses normal `entry console OPERATION`,
+`operation`, `call`, `arg`, and `run` rows. The larger GUI vocabulary belongs
+to `standard.gui` as function targets, contracts, capabilities, and validation
+rules. The compiler should only lower explicit `gui.*` calls and link/start the
+native GUI runtime. There is no `entry windowsGui` row. The preferred
+standard-library import is:
 
 ```text
 importModule gui standard.gui
@@ -208,22 +208,16 @@ importModule gui standard.gui
 
 | Verb | Schema | Status |
 |---|---|---|
-| `guiApplication` | `guiApplication APP` | metadata |
-| `guiApplicationTitle` | `guiApplicationTitle APP "text"` | metadata |
-| `guiApplicationIcon` | `guiApplicationIcon APP ICON_GROUP` | metadata |
-| `guiApplicationMainWindow` | `guiApplicationMainWindow APP WINDOW` | metadata |
-| `guiApplicationOnExit` | `guiApplicationOnExit APP OPERATION` | metadata |
-| `guiWindow` | `guiWindow WINDOW` | metadata |
-| `guiWindowApplication` | `guiWindowApplication WINDOW APP` | metadata |
-| `guiWindowTitle` | `guiWindowTitle WINDOW "text"` | metadata |
-| `guiWindowWidth` / `guiWindowHeight` | `guiWindowWidth WINDOW PIXELS` / `guiWindowHeight WINDOW PIXELS` | metadata |
-| `guiWindowMinimumWidth` / `guiWindowMinimumHeight` | `guiWindowMinimumWidth WINDOW PIXELS` / `guiWindowMinimumHeight WINDOW PIXELS` | metadata |
-| `guiWindowLayout` | `guiWindowLayout WINDOW verticalStack|horizontalStack|grid|absolute` | metadata |
-| `guiWindowResizable` | `guiWindowResizable WINDOW yes|no` | metadata |
-| `guiWindowEvent` | `guiWindowEvent WINDOW EVENT OPERATION` | metadata |
-| Control declarators | `guiButton CONTROL`, `guiTextBox CONTROL`, `guiListBox CONTROL`, `guiCheckBox CONTROL`, `guiMenuItem CONTROL`, `guiStatusBar CONTROL`, `guiTextLabel CONTROL` | metadata |
-| Common control rows | `guiControlWindow`, `guiControlEnabled`, `guiControlVisible`, `guiControlTabIndex`, `guiControlAccessibleName`, `guiControlEvent` | metadata |
-| Kind-specific control rows | `guiButtonText`, `guiButtonIsDefault`, `guiTextBoxPlaceholder`, `guiTextBoxMaxLength`, `guiListBoxSelectionMode`, `guiCheckBoxChecked`, `guiTextLabelText` | metadata |
+| `gui.applicationCreate` | `call NAME gui.applicationCreate` with `title` | lowered |
+| `gui.windowCreate` | `call NAME gui.windowCreate` with `title`, `width`, `height`, `layout`, `resizable` | lowered |
+| `gui.textLabelCreate` | `call NAME gui.textLabelCreate` with `text` | lowered |
+| `gui.textBoxCreate` | `call NAME gui.textBoxCreate` with `placeholder`, `maxLength` | lowered |
+| `gui.buttonCreate` | `call NAME gui.buttonCreate` with `text`, `isDefault` | lowered |
+| `gui.listBoxCreate` | `call NAME gui.listBoxCreate` with `selectionMode` | lowered |
+| `gui.windowAddControl` | `call NAME gui.windowAddControl` with `window`, `control` | lowered |
+| `gui.controlOnEvent` | `call NAME gui.controlOnEvent` with `control`, `eventKind`, `handler` | lowered |
+| `gui.applicationSetMainWindow` | `call NAME gui.applicationSetMainWindow` with `application`, `window` | lowered |
+| `gui.applicationRun` | `call NAME gui.applicationRun` with `application` | lowered |
 
 GUI handler operations use:
 
@@ -233,19 +227,31 @@ input HANDLER event GuiEvent
 output HANDLER CSignedInt32
 ```
 
-Reserved GUI opaque types are `GuiSession`, `GuiEvent`, `GuiWindow`,
-`GuiControl`, `GuiButton`, `GuiTextBox`, `GuiListBox`, `GuiCheckBox`,
-`GuiMenuItem`, `GuiStatusBar`, and `GuiTextLabel`. Reserved enum/closed-token
-types are `GuiWindowLayout`, `GuiListBoxSelectionMode`, and `GuiEventKind`.
+Reserved GUI opaque types are `GuiApplication`, `GuiSession`, `GuiEvent`,
+`GuiWindow`, `GuiControl`, `GuiButton`, `GuiTextBox`, `GuiListBox`,
+`GuiCheckBox`, `GuiMenuItem`, `GuiStatusBar`, and `GuiTextLabel`. Reserved
+enum/closed-token types are `GuiWindowLayout`, `GuiListBoxSelectionMode`, and
+`GuiEventKind`.
 
 Reserved `gui.*` runtime call targets:
 
 ```text
+gui.applicationCreate
+gui.windowCreate
+gui.textLabelCreate
+gui.textBoxCreate
+gui.buttonCreate
+gui.listBoxCreate
+gui.windowAddControl
+gui.controlOnEvent
+gui.applicationSetMainWindow
+gui.applicationRun
 gui.textBoxText
 gui.textBoxSetText
 gui.listBoxSelectedIndex
 gui.listBoxAppendItem
 gui.listBoxClear
+gui.textLabelSetText
 gui.windowClose
 gui.eventKeyCode
 gui.eventSelectedIndex
@@ -255,9 +261,8 @@ gui.eventWindowHeight
 
 No `gui.eventCancelClose` target is committed yet; cancellable close events are
 deferred. Runtime calls that touch live GUI state take `session GuiSession` and
-a kind-specific declarative handle such as `textBox GuiTextBox`,
-`listBox GuiListBox`, or `window GuiWindow`. Event payload readers take
-`event GuiEvent`.
+a kind-specific handle such as `textBox GuiTextBox`, `listBox GuiListBox`, or
+`window GuiWindow`. Event payload readers take `event GuiEvent`.
 
 ## Cleanup, Concurrency, Time
 

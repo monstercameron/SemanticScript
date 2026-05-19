@@ -290,6 +290,7 @@ cpuTune helloGui generic
 cpuFeatureCheck helloGui auto
 nativeOutput helloGui "hello_gui.exe"
 
+entry console main
 importModule app.hello_gui
 ```
 
@@ -299,25 +300,48 @@ importModule app.hello_gui
 module app.hello_gui
 importModule gui standard.gui
 
-guiApplication helloGuiApp
-guiApplicationTitle helloGuiApp "Hello GUI"
-guiApplicationMainWindow helloGuiApp mainWindow
+storage module immutable title GuiText "Hello GUI"
+storage module immutable width GuiPixels 800
+storage module immutable height GuiPixels 480
+storage module immutable resizable CSignedInt32 1
 
-guiWindow mainWindow
-guiWindowApplication mainWindow helloGuiApp
-guiWindowTitle mainWindow "Hello GUI"
-guiWindowWidth mainWindow 800
-guiWindowHeight mainWindow 480
-guiWindowLayout mainWindow verticalStack
-guiWindowResizable mainWindow yes
+operation main
+output main ExitCode
+effect main allocate gui.application
+effect main allocate gui.window
+effect main write gui.window
+authority main gui.application allocate
+authority main gui.window allocate
+authority main gui.window write
+call createApp gui.applicationCreate
+arg createApp title title
+run createApp
+bind app GuiApplication createApp
+call createWindow gui.windowCreate
+arg createWindow title title
+arg createWindow width width
+arg createWindow height height
+arg createWindow layout verticalStackGuiWindowLayout
+arg createWindow resizable resizable
+run createWindow
+bind window GuiWindow createWindow
+call setMainWindow gui.applicationSetMainWindow
+arg setMainWindow application app
+arg setMainWindow window window
+run setMainWindow
+ignoreValue setMainWindow CSignedInt32
+call runApp gui.applicationRun
+arg runApp application app
+run runApp
+bind status ExitCode runApp
+returnValue status
 ```
 
 Rules:
 
-- Do not declare `entry console` or `entry windowsGui` in a `windowsGui` build
-  tape.
-- The compiler bridge should consume only the normalized application/main-window
-  descriptor needed to start the runtime.
+- Do not declare `entry windowsGui` in a `windowsGui` build tape.
+- Use `entry console main` and keep GUI construction as explicit `gui.*` calls.
+- The compiler bridge should only lower `gui.*` calls and link the runtime.
 - Shape checks such as duplicate controls, allowed events, accessibility names,
   and GUI capability coverage belong in `standard.gui` and lint/tooling where
   possible.

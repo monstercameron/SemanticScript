@@ -113,32 +113,23 @@ Compiler-owned GUI surface should stay minimal:
   targetRuntime PROJECT windowsGui
   native GUI runtime link/codegen bridge
   preserve GuiSession and GuiEvent handler ABI inputs
-  consume a normalized app/main-window descriptor
+  lower explicit standard.gui gui.* calls
 
 Do not add `entry windowsGui OPERATION`. Do not move control/event validation
-into a giant compiler grammar. `standard.gui` owns GUI declarations,
+into a giant compiler grammar. `standard.gui` owns GUI functions,
 contracts, capabilities, and most validation. Preferred import:
   importModule gui standard.gui
 
-Standard GUI metadata shape:
-  guiApplication helloGuiApp
-  guiApplicationTitle helloGuiApp "Hello GUI"
-  guiApplicationMainWindow helloGuiApp mainWindow
-  guiWindow mainWindow
-  guiWindowApplication mainWindow helloGuiApp
-  guiWindowTitle mainWindow "Hello GUI"
-  guiWindowWidth mainWindow 800
-  guiWindowHeight mainWindow 480
-  guiWindowLayout mainWindow verticalStack
-  guiWindowResizable mainWindow yes
-
-Use per-kind controls, not `guiControl CONTROL KIND`:
-  guiButton saveButton
-  guiTextBox titleTextBox
-  guiTextLabel titleLabel
-  guiControlWindow saveButton mainWindow
-  guiControlAccessibleName saveButton "Save"
-  guiControlEvent saveButton click saveClicked
+Standard GUI source shape:
+  entry console main
+  operation main
+  call createApp gui.applicationCreate
+  arg createApp title titleText
+  run createApp
+  bind app GuiApplication createApp
+  call createWindow gui.windowCreate
+  ...
+  call runApp gui.applicationRun
 
 GUI handler ABI:
   input saveClicked session GuiSession
@@ -146,6 +137,8 @@ GUI handler ABI:
   output saveClicked CSignedInt32
 
 Reserved gui.* targets live under standard.gui contracts:
+  gui.applicationCreate gui.windowCreate gui.buttonCreate
+  gui.windowAddControl gui.applicationSetMainWindow gui.applicationRun
   gui.textBoxText gui.textBoxSetText
   gui.listBoxSelectedIndex gui.listBoxAppendItem gui.listBoxClear
   gui.windowClose

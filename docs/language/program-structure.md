@@ -107,39 +107,62 @@ Routed `target webServer` programs are the exception. When `webServer` and
 exact method/path dispatcher. Route handlers must use the native HTTP ABI:
 `HttpRequest`, `HttpResponse`, and `CSignedInt32`.
 
-`target windowsGui` follows the same "no entry line" shape, but the compiler
-role should stay narrow: select the Windows GUI bridge, link the native GUI
-runtime, preserve the handler ABI, and consume only the normalized
-application/main-window descriptor needed to start the message loop. The
-`gui*` rows are `standard.gui` metadata and contract vocabulary; validation of
-application shape, controls, events, accessibility, effects, and capabilities
-belongs in `standard.gui` and lint/tooling where possible.
+`target windowsGui` uses the normal entry shape: `entry console OPERATION`.
+The compiler role should stay narrow: select the Windows GUI bridge, link the
+native GUI runtime, and lower explicit `gui.*` calls from `standard.gui`.
+Application shape, controls, events, accessibility, effects, and capabilities
+belong in `standard.gui`, the GUI runtime, and lint/tooling where possible.
 
-A renderable Windows GUI source imports `standard.gui`, declares one GUI
-application descriptor, and connects it to a main window with
-`guiApplicationMainWindow`. The first runtime behavior is: create the main
-`guiWindow`, enter the native Windows message loop, and exit that loop when the
-main window closes.
+A renderable Windows GUI source imports `standard.gui`, creates an application,
+creates a window and controls, attaches controls to the window, marks the main
+window, and then calls `gui.applicationRun`. The first runtime behavior is:
+enter the native Windows message loop and exit that loop when the main window
+closes.
 
 ```semanticscript
 project HelloGui
 target windowsGui
 runtime native 1
+entry console main
 module examples.helloGui
 
 importModule gui standard.gui
 
-guiApplication helloGuiApp
-guiApplicationTitle helloGuiApp "Hello GUI"
-guiApplicationMainWindow helloGuiApp mainWindow
+storage module immutable title GuiText "Hello GUI"
+storage module immutable width GuiPixels 800
+storage module immutable height GuiPixels 480
+storage module immutable resizable CSignedInt32 1
 
-guiWindow mainWindow
-guiWindowApplication mainWindow helloGuiApp
-guiWindowTitle mainWindow "Hello GUI"
-guiWindowWidth mainWindow 800
-guiWindowHeight mainWindow 480
-guiWindowLayout mainWindow verticalStack
-guiWindowResizable mainWindow yes
+operation main
+output main ExitCode
+effect main allocate gui.application
+effect main allocate gui.window
+effect main write gui.window
+authority main gui.application allocate
+authority main gui.window allocate
+authority main gui.window write
+call createApp gui.applicationCreate
+arg createApp title title
+run createApp
+bind app GuiApplication createApp
+call createWindow gui.windowCreate
+arg createWindow title title
+arg createWindow width width
+arg createWindow height height
+arg createWindow layout verticalStackGuiWindowLayout
+arg createWindow resizable resizable
+run createWindow
+bind window GuiWindow createWindow
+call setMainWindow gui.applicationSetMainWindow
+arg setMainWindow application app
+arg setMainWindow window window
+run setMainWindow
+ignoreValue setMainWindow CSignedInt32
+call runApp gui.applicationRun
+arg runApp application app
+run runApp
+bind status ExitCode runApp
+returnValue status
 ```
 
 Do not write `entry windowsGui OPERATION`; that form is intentionally outside

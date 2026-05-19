@@ -138,9 +138,13 @@ Boundary decision after implementation review: keep `semsc.py` as a thin
 bridge. `standard.gui` owns public GUI vocabulary, aliases, capabilities,
 closed token sets, and semantic contracts; semlint owns rich misuse
 diagnostics; the native GUI runtime owns platform behavior. The compiler may
-accept `targetRuntime windowsGui`, discover the minimal metadata needed to
-start a GUI executable, lower a small set of `gui.*` bridge calls, and link the
-native adapter.
+accept `targetRuntime windowsGui`, lower explicit `gui.*` calls from ordinary
+operation bodies, and link the native adapter. It must not build GUI
+application graphs from custom top-level GUI keywords.
+
+Design pivot: the row-centric `guiApplication` / `guiWindow` / `guiButton`
+checklists below are retained as historical design notes only. The committed
+surface is now `entry console main` plus `standard.gui` function calls.
 
 ### Completed MVP
 
@@ -149,7 +153,8 @@ native adapter.
 - [x] Added `targetRuntime PROJECT windowsGui` to semlint build-tape
       validation.
 - [x] Kept `entry windowsGui` out of the first committed executable surface.
-- [x] Kept `entry console` out of the `app/hello-gui` `windowsGui` build tape.
+- [x] Converted `app/hello-gui` to `entry console main` plus standard
+      `operation` / `call` / `arg` / `run` syntax.
 - [x] Added `standard.gui` as the canonical contract module.
 - [x] Added GUI type aliases, enums, capabilities, token constants, and runtime
       target constants to `std/gui/main.sem`.
@@ -168,15 +173,13 @@ native adapter.
 - [x] Add `targetRuntime PROJECT windowsGui` to the build-tape enum.
 - [x] Keep `entry windowsGui OPERATION` out of the committed surface for the
       first version.
-- [x] Document that `target windowsGui` selects codegen from a unique
-      `guiApplication` declaration, parallel to routed `target webServer`
-      discovery.
-- [x] Reject `target windowsGui` programs with zero `guiApplication` rows.
-- [x] Reject `target windowsGui` programs with more than one
-      `guiApplication` row until multi-app binaries are deliberately designed.
+- [x] Document that `target windowsGui` selects the GUI link/runtime bridge
+      while source still declares a normal entry operation.
+- [x] Reject no-entry `target windowsGui` codegen with guidance to use
+      `entry console main` and `gui.*` calls.
 - [ ] Reject `entry windowsGui ...` with a diagnostic that points users to
-      `guiApplicationMainWindow`.
-- [x] Reject `targetRuntime windowsGui` build tapes that still declare
+      `entry console main` and `gui.applicationRun`.
+- [x] Allow `targetRuntime windowsGui` build tapes that declare
       `entry console`.
 - [ ] Decide whether `target windowsGui` may coexist with `target console` in
       one source, or reject mixed executable targets.
@@ -189,6 +192,24 @@ native adapter.
 - [ ] Define exit status behavior when a GUI event handler returns non-zero.
 - [x] Add `windowsGui` support to compiler build-tape validation.
 - [x] Add `windowsGui` support to standalone linter build-tape validation.
+
+### Committed Function Surface Follow-ups
+
+- [x] Move executable GUI construction to `standard.gui` function targets.
+- [x] Lower `gui.applicationCreate`, `gui.windowCreate`,
+      `gui.textLabelCreate`, `gui.textBoxCreate`, `gui.buttonCreate`,
+      `gui.listBoxCreate`, `gui.windowAddControl`,
+      `gui.applicationSetMainWindow`, and `gui.applicationRun`.
+- [x] Keep GUI source on normal `operation` / `call` / `arg` / `run` syntax.
+- [x] Remove compiler code that discovers and lowers `guiApplication` /
+      `guiWindow` metadata graphs.
+- [x] Treat GUI keyword rows as non-standard in semlint.
+- [ ] Add standard-library wrappers for platform-neutral layout policies before
+      adding Linux/macOS backends.
+- [ ] Add event registration functions in `standard.gui` before adding handler
+      dispatch.
+- [ ] Add accessibility and sizing helper functions in `standard.gui` instead
+      of adding new parser verbs.
 
 ### Syntax Naming And Shape
 
