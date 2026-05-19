@@ -82,6 +82,21 @@ const char *ss_http_request_body_text(const SSHttpRequest *request);
 const void *ss_http_request_body_bytes(const SSHttpRequest *request);
 size_t ss_http_request_body_length(const SSHttpRequest *request);
 
+/*
+ * Returns the captured value for a path-pattern parameter (the route
+ * declared `:name` segment), or NULL when the route has no such param.
+ * The returned pointer is valid for the duration of the handler call and
+ * points into a per-request scratch buffer — the full request path
+ * remains intact and is still readable via ss_http_request_path().
+ *
+ * Routes are matched in registration order. When a literal route and a
+ * parametric route could both apply to a request (e.g. `/api/todos` and
+ * `/api/todos/:id` both reachable from `/api/todos/42`), the FIRST
+ * declared route wins. Declare more-specific routes before parametric
+ * ones to avoid surprises.
+ */
+const char *ss_http_request_path_param(const SSHttpRequest *request, const char *name);
+
 const char *ss_http_multipart_part_text(SSHttpRequest *request, const char *name);
 const void *ss_http_multipart_part_bytes(SSHttpRequest *request, const char *name);
 size_t ss_http_multipart_part_length(SSHttpRequest *request, const char *name);

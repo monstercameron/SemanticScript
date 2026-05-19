@@ -1,0 +1,70 @@
+# Smoke fixture: prove ss_http_request_path_param round-trips a `:slug`
+# segment from the route pattern out to a response body. Compiled and
+# executed by SemanticScript/tests/test_compiler.py via the new
+# test_path_param_smoke regression. The matched value gets echoed back
+# so the harness can diff against the URL it sent.
+project PathParamSmoke
+target webServer
+runtime native 1
+module fixture.path_param_smoke
+
+webServer pathParamSmokeServer
+purpose pathParamSmokeServer "Smallest possible webServer that exercises a :name path segment so the compiled-route matcher is covered end-to-end"
+serverHost pathParamSmokeServer "127.0.0.1"
+serverPort pathParamSmokeServer 18099
+route pathParamSmokeServer GET "/echo/:slug" echoSlugHandler
+
+capability httpRequestReader http.request read
+purpose httpRequestReader "Authority to read the matched :slug capture"
+capability httpResponseWriter http.response write
+purpose httpResponseWriter "Authority to write the echo response"
+
+storage module immutable okStatus CSignedInt32 200
+storage module immutable badRequestStatus CSignedInt32 400
+
+operation echoSlugHandler
+input echoSlugHandler request HttpRequest
+input echoSlugHandler response HttpResponse
+output echoSlugHandler CSignedInt32
+effect echoSlugHandler read http.request.path
+effect echoSlugHandler write http.response
+memory echoSlugHandler arena request
+async echoSlugHandler no
+useCapability echoSlugHandler httpRequestReader
+useCapability echoSlugHandler httpResponseWriter
+purpose echoSlugHandler "Read the :slug path parameter and write it back as the response body; covers the happy path of the path-param matcher and the SS3603 null guard for the absent-param branch"
+invariant echoSlugHandler "The dispatcher only routes /echo/<value> to this handler, so a non-null :slug capture is the success path; the null guard exists to satisfy SS3603 and to surface a runtime-routing regression rather than 500-ing under a no-op match"
+
+label startEchoSlugHandler
+
+storage local immutable slugParamName CNullTerminatedByteString "slug"
+storage local immutable slugMissingBody CNullTerminatedByteString "missing path param: slug\n"
+
+call slugReadCall http.requestPathParam
+arg slugReadCall request request
+arg slugReadCall name slugParamName
+run slugReadCall
+bind slugValue CNullTerminatedByteString slugReadCall
+
+call slugMissingCheckCall pointer.isNull
+arg slugMissingCheckCall pointer slugValue
+run slugMissingCheckCall
+bind slugMissing Bool slugMissingCheckCall
+branchIf slugMissing slugMissingPath
+
+call slugResponseCall http.responseText
+arg slugResponseCall response response
+arg slugResponseCall status okStatus
+arg slugResponseCall body slugValue
+run slugResponseCall
+bind slugResponseStatus CSignedInt32 slugResponseCall
+returnValue slugResponseStatus
+
+label slugMissingPath
+call slugMissingResponseCall http.responseText
+arg slugMissingResponseCall response response
+arg slugMissingResponseCall status badRequestStatus
+arg slugMissingResponseCall body slugMissingBody
+run slugMissingResponseCall
+bind slugMissingResponseStatus CSignedInt32 slugMissingResponseCall
+returnValue slugMissingResponseStatus

@@ -11,6 +11,16 @@
 #define SS_HTTP_MAX_MULTIPART_PARTS 16
 #define SS_HTTP_MULTIPART_BOUNDARY_MAX 128
 
+/* Pattern-route knobs. SS_HTTP_MAX_PATH_PARAMS bounds the number of
+ * :name segments per request — 8 is more than any realistic REST path.
+ * The scratch buffer holds null-terminated copies of every captured
+ * segment so the caller can pass them around without lifetime concerns
+ * and the original request->path stays intact (so http.requestPath
+ * still returns the full URL path including the captured ids). */
+#define SS_HTTP_MAX_PATH_PARAMS 8
+#define SS_HTTP_PATH_PARAMS_BUFFER_SIZE 512
+#define SS_HTTP_MAX_ROUTE_SEGMENTS 16
+
 typedef struct SSHttpNameValue {
     const char *name;
     const char *value;
@@ -23,6 +33,11 @@ typedef struct SSHttpMultipartPart {
     const char *body;
     size_t body_length;
 } SSHttpMultipartPart;
+
+typedef struct SSHttpPathParam {
+    const char *name;   /* points into a compiled-route segment (stable across the server's lifetime) */
+    const char *value;  /* points into the request's path_params_buffer */
+} SSHttpPathParam;
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -60,6 +75,14 @@ struct SSHttpRequest {
     SSHttpMultipartPart multipart_parts[SS_HTTP_MAX_MULTIPART_PARTS];
     size_t multipart_part_count;
     int multipart_parsed;
+    SSHttpPathParam path_params[SS_HTTP_MAX_PATH_PARAMS];
+    size_t path_param_count;
+    /* Per-request scratch arena for null-terminated copies of captured
+     * path-parameter values. path_params[i].value points into this
+     * buffer so callers can treat values as ordinary C strings without
+     * worrying about which bytes of the request line they came from. */
+    char path_params_buffer[SS_HTTP_PATH_PARAMS_BUFFER_SIZE];
+    size_t path_params_buffer_used;
     void *backend_request;
 };
 
@@ -322,6 +345,20 @@ const char *ss_http_request_header(const SSHttpRequest *request, const char *nam
         }
     }
 
+    return NULL;
+}
+
+const char *ss_http_request_path_param(const SSHttpRequest *request, const char *name) {
+    size_t index;
+    if (request == NULL || name == NULL) {
+        return NULL;
+    }
+    for (index = 0; index < request->path_param_count; ++index) {
+        if (request->path_params[index].name != NULL
+            && strcmp(request->path_params[index].name, name) == 0) {
+            return request->path_params[index].value;
+        }
+    }
     return NULL;
 }
 
@@ -1008,11 +1045,242 @@ static int send_response(
     return SS_HTTP_OK;
 }
 
+/* -------------------------------------------------------------------
+ * Pattern-route compilation.
+ *
+ * The route table is compiled into segments once at server startup so
+ * each incoming request only does a cheap segment-walk + literal/param
+ * comparison. Each ":name" segment in the route's path string becomes
+ * a parametric slot whose name lives in a heap-allocated null-terminated
+ * string; literal segments point into the original route->path text.
+ *
+ * Matching is order-preserving: routes are scanned in declaration order
+ * and the first match wins. Callers who declare both `/api/todos` and
+ * `/api/todos/:id` should put the literal one first if they want
+ * `/api/todos` to short-circuit before `:id` captures the empty trailing
+ * segment. The ABI header documents this contract on
+ * ss_http_request_path_param.
+ * ------------------------------------------------------------------- */
+
+typedef struct SSCompiledRouteSegment {
+    int is_param;            /* 0 = literal, 1 = :name capture */
+    const char *literal;     /* literal segment text (points into route->path); not null-terminated */
+    size_t literal_length;
+    char *param_name;        /* heap-allocated null-terminated name (only when is_param=1) */
+} SSCompiledRouteSegment;
+
+typedef struct SSCompiledRoute {
+    const SSHttpRoute *route;
+    SSCompiledRouteSegment segments[SS_HTTP_MAX_ROUTE_SEGMENTS];
+    size_t segment_count;
+} SSCompiledRoute;
+
+/* Module-static so the dispatcher loop in handle_client can reach it
+ * without threading another argument through every helper. The server
+ * is single-threaded today; if multi-listener support lands later this
+ * should be moved into a per-server context struct. */
+static SSCompiledRoute *g_compiled_routes = NULL;
+static size_t g_compiled_route_count = 0;
+
+static void free_compiled_routes(void) {
+    if (g_compiled_routes == NULL) {
+        return;
+    }
+    for (size_t route_index = 0; route_index < g_compiled_route_count; ++route_index) {
+        SSCompiledRoute *compiled = &g_compiled_routes[route_index];
+        for (size_t segment_index = 0; segment_index < compiled->segment_count; ++segment_index) {
+            SSCompiledRouteSegment *segment = &compiled->segments[segment_index];
+            if (segment->is_param && segment->param_name != NULL) {
+                free(segment->param_name);
+                segment->param_name = NULL;
+            }
+        }
+    }
+    free(g_compiled_routes);
+    g_compiled_routes = NULL;
+    g_compiled_route_count = 0;
+}
+
+static int compile_routes(const SSHttpServerConfig *config) {
+    free_compiled_routes();
+    if (config->route_count == 0) {
+        return SS_HTTP_OK;
+    }
+
+    g_compiled_routes = (SSCompiledRoute *)calloc(
+        config->route_count, sizeof(SSCompiledRoute));
+    if (g_compiled_routes == NULL) {
+        return SS_HTTP_ERR_ENGINE;
+    }
+    g_compiled_route_count = config->route_count;
+
+    for (size_t route_index = 0; route_index < config->route_count; ++route_index) {
+        const SSHttpRoute *route = &config->routes[route_index];
+        SSCompiledRoute *compiled = &g_compiled_routes[route_index];
+        compiled->route = route;
+        compiled->segment_count = 0;
+
+        if (route->path == NULL || route->path[0] != '/') {
+            free_compiled_routes();
+            return SS_HTTP_ERR_CONFIG;
+        }
+
+        const char *scan = route->path + 1;
+        /* Empty body after the leading slash means root "/" — zero segments. */
+        if (*scan == '\0') {
+            continue;
+        }
+
+        while (*scan != '\0') {
+            if (compiled->segment_count >= SS_HTTP_MAX_ROUTE_SEGMENTS) {
+                free_compiled_routes();
+                return SS_HTTP_ERR_CONFIG;
+            }
+            const char *segment_start = scan;
+            while (*scan != '/' && *scan != '\0') {
+                ++scan;
+            }
+            size_t segment_length = (size_t)(scan - segment_start);
+            if (segment_length == 0) {
+                /* Empty segment ("//" inside the path or trailing "/") is a
+                 * router-config error — reject early rather than letting
+                 * undefined behavior leak into matching. */
+                free_compiled_routes();
+                return SS_HTTP_ERR_CONFIG;
+            }
+            SSCompiledRouteSegment *segment = &compiled->segments[compiled->segment_count++];
+            if (*segment_start == ':') {
+                if (segment_length < 2) {
+                    /* Bare ":" with no name. */
+                    free_compiled_routes();
+                    return SS_HTTP_ERR_CONFIG;
+                }
+                segment->is_param = 1;
+                segment->literal = NULL;
+                segment->literal_length = 0;
+                segment->param_name = (char *)malloc(segment_length);
+                if (segment->param_name == NULL) {
+                    free_compiled_routes();
+                    return SS_HTTP_ERR_ENGINE;
+                }
+                memcpy(segment->param_name, segment_start + 1, segment_length - 1);
+                segment->param_name[segment_length - 1] = '\0';
+            } else {
+                segment->is_param = 0;
+                segment->literal = segment_start;
+                segment->literal_length = segment_length;
+                segment->param_name = NULL;
+            }
+            if (*scan == '/') {
+                ++scan;
+            }
+        }
+    }
+    return SS_HTTP_OK;
+}
+
+/* Try to match one compiled route against the incoming path. On success
+ * populates request->path_params (names borrowed from the compiled-route
+ * segment, values copied into request->path_params_buffer so the caller
+ * can treat them as ordinary C strings). On no-match the request's
+ * path-param state is reset to empty. */
+static int try_match_compiled_route(
+    const SSCompiledRoute *compiled,
+    const char *actual_path,
+    SSHttpRequest *request
+) {
+    request->path_param_count = 0;
+    request->path_params_buffer_used = 0;
+
+    if (actual_path == NULL || actual_path[0] != '/') {
+        return 0;
+    }
+
+    const char *scan = actual_path + 1;
+
+    /* Root "/" — both expected and actual must have zero segments. */
+    if (compiled->segment_count == 0) {
+        return (*scan == '\0') ? 1 : 0;
+    }
+
+    for (size_t segment_index = 0; segment_index < compiled->segment_count; ++segment_index) {
+        if (*scan == '\0') {
+            /* Actual path ran out before route did. */
+            request->path_param_count = 0;
+            request->path_params_buffer_used = 0;
+            return 0;
+        }
+        const SSCompiledRouteSegment *segment = &compiled->segments[segment_index];
+        const char *segment_start = scan;
+        while (*scan != '/' && *scan != '\0') {
+            ++scan;
+        }
+        size_t segment_length = (size_t)(scan - segment_start);
+        if (segment_length == 0) {
+            request->path_param_count = 0;
+            request->path_params_buffer_used = 0;
+            return 0;
+        }
+        if (segment->is_param) {
+            size_t value_storage_needed = segment_length + 1;
+            if (request->path_params_buffer_used + value_storage_needed
+                > SS_HTTP_PATH_PARAMS_BUFFER_SIZE) {
+                /* Captured value is too long to fit in the per-request
+                 * scratch arena — refuse the match rather than truncate. */
+                request->path_param_count = 0;
+                request->path_params_buffer_used = 0;
+                return 0;
+            }
+            if (request->path_param_count >= SS_HTTP_MAX_PATH_PARAMS) {
+                request->path_param_count = 0;
+                request->path_params_buffer_used = 0;
+                return 0;
+            }
+            char *value_destination =
+                request->path_params_buffer + request->path_params_buffer_used;
+            memcpy(value_destination, segment_start, segment_length);
+            value_destination[segment_length] = '\0';
+            request->path_params_buffer_used += value_storage_needed;
+
+            request->path_params[request->path_param_count].name = segment->param_name;
+            request->path_params[request->path_param_count].value = value_destination;
+            ++request->path_param_count;
+        } else {
+            if (segment_length != segment->literal_length
+                || memcmp(segment_start, segment->literal, segment_length) != 0) {
+                request->path_param_count = 0;
+                request->path_params_buffer_used = 0;
+                return 0;
+            }
+        }
+        if (*scan == '/') {
+            ++scan;
+            if (segment_index == compiled->segment_count - 1 && *scan != '\0') {
+                /* Trailing characters after the last route segment ⇒ no match. */
+                request->path_param_count = 0;
+                request->path_params_buffer_used = 0;
+                return 0;
+            }
+        }
+    }
+    if (*scan != '\0') {
+        request->path_param_count = 0;
+        request->path_params_buffer_used = 0;
+        return 0;
+    }
+    return 1;
+}
+
 static const SSHttpRoute *find_route(
     const SSHttpServerConfig *config,
     const char *method,
     const char *path
 ) {
+    /* Kept for any caller that doesn't need path-param capture (none in
+     * this translation unit today, but the signature is part of the
+     * file's internal contract). Falls through to a degenerate path-only
+     * compare without populating path_params — handle_client always uses
+     * the param-aware path through find_compiled_route below. */
     size_t index;
 
     for (index = 0; index < config->route_count; ++index) {
@@ -1022,6 +1290,27 @@ static const SSHttpRoute *find_route(
         }
     }
 
+    return NULL;
+}
+
+static const SSHttpRoute *find_compiled_route(
+    const char *method,
+    const char *path,
+    SSHttpRequest *request
+) {
+    for (size_t route_index = 0; route_index < g_compiled_route_count; ++route_index) {
+        const SSCompiledRoute *compiled = &g_compiled_routes[route_index];
+        if (!ascii_case_equal(compiled->route->method, method)) {
+            continue;
+        }
+        if (try_match_compiled_route(compiled, path, request)) {
+            return compiled->route;
+        }
+    }
+    /* No match — ensure the request's path-param state is empty so a
+     * stale capture from a previous attempt doesn't bleed through. */
+    request->path_param_count = 0;
+    request->path_params_buffer_used = 0;
     return NULL;
 }
 
@@ -1172,7 +1461,20 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
         );
     }
 
-    route = find_route(config, method, path);
+    /* Initialize the request struct BEFORE route matching so the
+     * pattern-route matcher can populate path_params on a successful
+     * match. handle_client previously deferred memset until after
+     * find_route returned a hit; the path-param path needs the empty
+     * request buffer available up front. */
+    memset(&request, 0, sizeof(request));
+    request.method = method;
+    request.path = path;
+    request.query = query;
+    request.body = body_start;
+    request.body_length = (size_t)content_length;
+    request.backend_request = NULL;
+
+    route = find_compiled_route(method, path, &request);
     if (route == NULL) {
         response_status = send_response(
             client_socket,
@@ -1185,13 +1487,6 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
         return response_status;
     }
 
-    memset(&request, 0, sizeof(request));
-    request.method = method;
-    request.path = path;
-    request.query = query;
-    request.body = body_start;
-    request.body_length = (size_t)content_length;
-    request.backend_request = NULL;
     parse_headers(header_start, body_start, &request);
     parse_query_params(query, &request);
 
@@ -1304,10 +1599,21 @@ int ss_http_server_run(const SSHttpServerConfig *config) {
         return SS_HTTP_ERR_CONFIG;
     }
 
+    /* Pre-parse every route path into segment tables exactly once. A
+     * compile failure (bad pattern, malloc OOM) aborts startup with the
+     * matching error code before we even bind the socket. */
+    {
+        int compile_status = compile_routes(config);
+        if (compile_status != SS_HTTP_OK) {
+            return compile_status;
+        }
+    }
+
 #ifdef _WIN32
     {
         WSADATA wsa_data;
         if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
+            free_compiled_routes();
             return SS_HTTP_ERR_ENGINE;
         }
     }
