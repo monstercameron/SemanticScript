@@ -1603,11 +1603,11 @@ would fail under a no-op lowering.
 
 #### Feature Tests
 
-- [ ] Add `SemanticScript/tests/feature/<NNN>_json_document_round_trip.sscript`
+- [x] Add `SemanticScript/tests/feature/<NNN>_json_document_round_trip.sscript`
       exercising `createDocument` → cursor walk → mutator →
       `serializeDocument`; assert the recovered text equals an expected
       literal, deep-audit pattern from `json_runtime_smoke.sscript`.
-- [ ] Add a feature test for `createEmptyDocument` that builds a tree
+- [x] Add a feature test for `createEmptyDocument` that builds a tree
       from scratch and serializes it; assert byte-for-byte equality with
       a known literal.
 - [ ] Add one feature test per navigator covering both success and the
@@ -1637,25 +1637,25 @@ would fail under a no-op lowering.
 - [ ] Add `json.stringify` / `json.parse` round-trip tests, one per
       primitive and one per record codec; each deep-audit asserts the
       lowered behavior cannot be a no-op.
-- [ ] Confirm zero XFAIL change in
+- [x] Confirm zero XFAIL change in
       `python SemanticScript/tests/feature_coverage.py` after each batch.
 
 #### Documentation
 
-- [ ] Update `docs/reference/verb-index.md` with every new `json.*` verb.
+- [x] Update `docs/reference/verb-index.md` with every new `json.*` verb.
 - [ ] Update `docs/language/operations-dataflow.md` with the end-to-end
       CRUD example matching the design's `renameFirstTodoHandler` flow.
-- [ ] Add `docs/language/json-crud.md` describing the document lifecycle,
+- [x] Add `docs/language/json-crud.md` describing the document lifecycle,
       cursor invalidation contract, path grammar, and stringify/parse
       typed entry points; link from `docs/language/README.md`.
-- [ ] Update `CHANGELOG.md` with one entry per landed batch
+- [x] Update `CHANGELOG.md` with one entry per landed batch
       (types, runtime, lowering, jsonBody, stringify/parse, semlint).
-- [ ] Update `SemanticScript/std/README.md` JSON section to reference the
+- [x] Update `SemanticScript/std/README.md` JSON section to reference the
       new types/errors/enum and the high-level entry points.
 
 #### App Migration (todo-web-pro)
 
-- [ ] Replace the static success bodies in `app/todo-web-pro/main.sem`
+- [x] Replace the static success bodies in `app/todo-web-pro/main.sem`
       (`healthBodyJson`, `versionBodyJson`, `logoutResponseBody`,
       `deleteOkBody`, `completeOkBody`, `uncompleteOkBody`) with
       `storage local immutable NAME JsonText` rows backed by
@@ -1663,7 +1663,7 @@ would fail under a no-op lowering.
 - [ ] Replace `userResponseFormat`, `meResponseFormat`,
       `loginResponseFormat`, `createResponseFormat`, and `listRowFormat`
       with record-typed codecs invoked via `json.stringify.<TypeName>`.
-- [ ] Replace the streaming list serializer at
+- [x] Replace the streaming list serializer at
       `app/todo-web-pro/main.sem:2200-2380` with a single
       `json.createEmptyDocument` + `appendArrayElementObject` loop +
       `json.serializeDocument` pipeline so the unescaped `%s` title bug
@@ -1672,7 +1672,7 @@ would fail under a no-op lowering.
       `passwordMissing` error responses with one `JsonDecodeError` switch
       in front of `json.parse.LoginRequest` and
       `json.parse.RegisterRequest`.
-- [ ] Run `python app/todo-web-pro/scripts/test_todo_web_pro.py` after
+- [x] Run `python app/todo-web-pro/scripts/test_todo_web_pro.py` after
       each migration step to confirm response shapes remain byte-stable.
 
 #### Removal Of Pre-CRUD JSON Surfaces
@@ -1695,7 +1695,7 @@ behavior regressions.
         `json.fieldString`, `json.fieldNull`.
   - [ ] `json.elementInt64`, `json.elementDouble`, `json.elementBool`,
         `json.elementString`, `json.elementNull`.
-  - [ ] Add `SS3624 deprecatedJsonBuilderCall` in
+  - [x] Add `SS3624 deprecatedJsonBuilderCall` in
         `SemanticScript/linter/semlint.py` so any lingering source emits a
         block-compile diagnostic with a fix-it pointing at
         `json.stringify.<TypeName>` or `json.createEmptyDocument` +
@@ -1706,7 +1706,7 @@ behavior regressions.
 - [ ] Remove the user-facing finder calls from the `json.*` dispatch table.
   - [ ] `json.findString`, `json.findInt64`, `json.findDouble`,
         `json.findBool`, `json.hasField`.
-  - [ ] Add `SS3625 deprecatedJsonFinderCall` recommending
+  - [x] Add `SS3625 deprecatedJsonFinderCall` recommending
         `json.createDocument` + `json.cursorAtPath` + `json.cursor*` as
         the replacement.
 - [ ] Remove the user-facing primitive encode/decode shortcuts from the
@@ -1996,26 +1996,26 @@ when `python SemanticScript/tests/feature_coverage.py` is green.
         serialize unchanged on both platforms.
   - [ ] File I/O round-trip (write serialized output to disk, read
         back, re-parse, structural equality) on both platforms.
-- [ ] Add semlint rule edge case tests in
+- [x] Add semlint rule edge case tests in
       `SemanticScript/linter/test_semlint.py`.
-  - [ ] `SS3620 unguardedJsonAccess` fires when a cursor is used
+  - [x] `SS3620 unguardedJsonAccess` fires when a cursor is used
         before `branchIfError`.
-  - [ ] `SS3620` is silent when the cursor comes from
+  - [x] `SS3620` is silent when the cursor comes from
         `json.documentRoot` (exempt path).
-  - [ ] `SS3621 staleJsonCursor` fires once per structural mutator
+  - [x] `SS3621 staleJsonCursor` fires once per structural mutator
         when the cursor is used after.
-  - [ ] `SS3621` is silent when a fresh cursor is rebound after the
+  - [x] `SS3621` is silent when a fresh cursor is rebound after the
         mutator.
-  - [ ] `SS3622 malformedJsonPath` fires for the malformed-path corpus
+  - [x] `SS3622 malformedJsonPath` fires for the malformed-path corpus
         used above.
-  - [ ] `SS3622` is silent for a syntactically valid path even when the
+  - [x] `SS3622` is silent for a syntactically valid path even when the
         path would resolve to a missing field at runtime (lint is
         syntactic, not semantic).
-  - [ ] `SS3623 unescapedJsonStringInterpolation` fires for the
+  - [x] `SS3623 unescapedJsonStringInterpolation` fires for the
         `listRowFormat`-style heuristic.
-  - [ ] `SS3623` is silent for an `snprintf` outside any JSON context
+  - [x] `SS3623` is silent for an `snprintf` outside any JSON context
         (false-positive guard).
-  - [ ] `SS3624 deprecatedJsonBuilderCall` and
+  - [x] `SS3624 deprecatedJsonBuilderCall` and
         `SS3625 deprecatedJsonFinderCall` fire on the legacy call
         names from the removal section and block compilation.
 - [ ] Add fuzz coverage.
