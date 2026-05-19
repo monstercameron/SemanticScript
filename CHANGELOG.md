@@ -2,6 +2,10 @@
 
 ## 2026-05-19
 
+- `6c1c4b4645f0e93e071c8a6e5c1240f87d129ef1` - `docs: mark JSON lint and syntax TODOs complete`
+  - Marks the completed primitive `json.stringify` / `json.parse` reuse, JSON semlint rules, and syntax-row checklist items in `TODO.md`.
+- `d4c057d544434ed96af3759b9435acc2ca62ca71` - `docs: update changelog for JSON verb status`
+  - Adds changelog coverage for the JSON verb-index status follow-up.
 - `ba4fa855a4984f26314130421647b4920fd6bc75` - `docs: mark JSON CRUD verbs lowered`
   - Updates the verb index so JSON document lifecycle, navigation, cursor-reader, mutator, and delete/clear call rows are listed as lowered rather than proposed.
 - `54f725d1a8038d42fb70aa6696d35d35428b8f50` - `docs: update changelog for JSON syntax status`
