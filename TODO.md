@@ -1424,70 +1424,70 @@ would fail under a no-op lowering.
 
 #### Compiler Lowering (semsc.py)
 
-- [ ] Register `json.createDocument` in the `json.*` dispatch table in
+- [x] Register `json.createDocument` in the `json.*` dispatch table in
       `SemanticScript/compiler/semsc.py`.
-  - [ ] Allocate the out-pointer slot in the function's entry block,
+  - [x] Allocate the out-pointer slot in the function's entry block,
         pre-initialized to NULL, exactly like `sqlite.openDatabase`.
-  - [ ] Stash the slot on `call["handle_slot"]` so the matching
+  - [x] Stash the slot on `call["handle_slot"]` so the matching
         `defer json.destroyDocument` re-loads the handle at every exit.
-  - [ ] Populate `call["result"]` / `call["error_value"]` /
+  - [x] Populate `call["result"]` / `call["error_value"]` /
         `call["error_cond"]` so `bindOk` / `bindError` / `branchIfError`
         fall through unchanged.
-- [ ] Register `json.createEmptyDocument` with the same handle-slot
+- [x] Register `json.createEmptyDocument` with the same handle-slot
       machinery.
-- [ ] Add `json.destroyDocument` to `_NATIVE_DEFER_DISPATCH` alongside
+- [x] Add `json.destroyDocument` to `_NATIVE_DEFER_DISPATCH` alongside
       `json.destroyBuilder` so `defer json.destroyDocument userDocument`
       compiles to a real call at every cleanup site, including failure
       labels.
-- [ ] Register `json.serializeDocument` returning
+- [x] Register `json.serializeDocument` returning
       `Result JsonText JsonAccessError`.
-- [ ] Register `json.documentLength` returning a plain `CSignedInt64`.
-- [ ] Register `json.documentRoot` returning a plain `JsonCursor` (root is
+- [x] Register `json.documentLength` returning a plain `CSignedInt64`.
+- [x] Register `json.documentRoot` returning a plain `JsonCursor` (root is
       always defined, no error path).
-- [ ] Register `json.objectFieldAt`, `json.arrayElementAt`,
+- [x] Register `json.objectFieldAt`, `json.arrayElementAt`,
       `json.cursorParent`, `json.cursorAtPath` returning
       `Result JsonCursor JsonAccessError`.
-- [ ] Register the cursor readers (`cursorKind`, `cursorIsNull`,
+- [x] Register the cursor readers (`cursorKind`, `cursorIsNull`,
       `cursorInt64`, `cursorDouble`, `cursorBool`, `cursorString`,
       `cursorArrayLength`, `cursorObjectFieldCount`,
       `cursorObjectFieldNameAt`, `cursorObjectFieldValueAt`) with the
       bind shape documented in the design table.
-- [ ] Register the mutator calls (`setObjectField*`, `appendArrayElement*`,
+- [x] Register the mutator calls (`setObjectField*`, `appendArrayElement*`,
       `insertArrayElement*`, `replaceArrayElement*`, `removeObjectField`,
       `removeArrayElementAt`, `clearObject`, `clearArray`) returning
       `CSignedInt32` status with `ignoreOk` + `bindError CSignedInt32` +
       `branchIfError`, matching the existing `json.field*` shape.
-- [ ] Add `json.document.tree` to the effect-axis validator so
+- [x] Add `json.document.tree` to the effect-axis validator so
       `effect OP read json.document.tree` and
       `effect OP write json.document.tree` parse and route through semlint
       as a real axis, parallel to `gui.control.textBox.text`.
-- [ ] Resolve `useCapability OP <name>` for the two heap capabilities the
+- [x] Resolve `useCapability OP <name>` for the two heap capabilities the
       design uses (`jsonDocumentAllocateCapability heap allocate`,
       `jsonDocumentFreeCapability heap free`) without introducing a new
       capability bucket — they remain user-named heap capabilities.
 
 #### jsonBody Indented-Island Literal
 
-- [ ] Add parser support for `jsonBody NAME` at column 0 in
+- [x] Add parser support for `jsonBody NAME` at column 0 in
       `SemanticScript/compiler/semsc.py`.
-  - [ ] Recognize indented lines that follow as one raw-text island,
+  - [x] Recognize indented lines that follow as one raw-text island,
         terminated at the next non-empty column-0 SemanticScript line — the
         same termination rule used by `htmlBody` (SYNTAX.md:307).
-  - [ ] Capture the island bytes verbatim, preserving inner whitespace
+  - [x] Capture the island bytes verbatim, preserving inner whitespace
         inside JSON string literals.
-  - [ ] Bind the island to the most recently declared
+  - [x] Bind the island to the most recently declared
         `storage local|module immutable NAME TYPE` row that has no inline
         value; reject orphan `jsonBody NAME` rows with a parse diagnostic.
-  - [ ] Reject `jsonBody` rows whose target storage type is neither
+  - [x] Reject `jsonBody` rows whose target storage type is neither
         `JsonText` nor a declared `record` type with a parse diagnostic
         that names the offending type.
-- [ ] Validate the island as JSON at compile time.
-  - [ ] Parse with a strict RFC 8259 tokenizer that rejects trailing
+- [x] Validate the island as JSON at compile time.
+  - [x] Parse with a strict RFC 8259 tokenizer that rejects trailing
         commas, comments, unquoted keys, and non-UTF-8 bytes.
-  - [ ] Emit a diagnostic citing the column-0 island name and the in-island
+  - [x] Emit a diagnostic citing the column-0 island name and the in-island
         line+column of the offending byte.
 - [ ] Type-check the parsed literal against the declared storage type.
-  - [ ] `JsonText`: store the canonicalized JSON bytes as a
+  - [x] `JsonText`: store the canonicalized JSON bytes as a
         `CNullTerminatedByteString` constant.
   - [ ] `record`: enforce every required field is present, every type
         matches, no unknown keys are present, and nested record literals
@@ -1499,22 +1499,22 @@ would fail under a no-op lowering.
   - [ ] Emit one diagnostic per failure naming the offending field, the
         expected type, and the actual JSON kind.
 - [ ] Lower the typed literal to a constant in the emitted module.
-  - [ ] `JsonText`: emit a static null-terminated byte array exactly like
+  - [x] `JsonText`: emit a static null-terminated byte array exactly like
         an inline `"..."` storage value.
   - [ ] Record-typed: emit a typed struct constant whose layout matches
         the record's emitted struct so no runtime parse runs.
-- [ ] Update `SemanticScript/linter/semlint.py` to walk `jsonBody` islands
+- [x] Update `SemanticScript/linter/semlint.py` to walk `jsonBody` islands
       and surface the same parse/type diagnostics that `semsc.py` emits,
       so `ascc --lint --parse-only` reports them without a full compile.
-- [ ] Update `vscode-semanticscript/syntaxes/semanticscript.tmLanguage.json`
+- [x] Update `vscode-semanticscript/syntaxes/semanticscript.tmLanguage.json`
       to highlight the `jsonBody NAME` row and JSON-token the island lines.
-- [ ] Update `vscode-semanticscript/extension.js` symbol/hover support to
+- [x] Update `vscode-semanticscript/extension.js` symbol/hover support to
       treat `jsonBody NAME` as a value-producing declaration that resolves
       to the prior storage row.
-- [ ] Add a semfmt pass for `jsonBody` islands so formatting preserves
+- [x] Add a semfmt pass for `jsonBody` islands so formatting preserves
       indentation, mirroring the `htmlBody` exception flagged in
       `feedback_semfmt_strips_htmlbody`.
-  - [ ] Add a regression test that runs semfmt on a file containing
+  - [x] Add a regression test that runs semfmt on a file containing
         `jsonBody` and asserts the JSON island still parses afterward.
 
 #### json.stringify.<TypeName> And json.parse.<TypeName>
