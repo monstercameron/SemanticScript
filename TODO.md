@@ -1637,7 +1637,7 @@ would fail under a no-op lowering.
 - [ ] Add `json.stringify` / `json.parse` round-trip tests, one per
       primitive and one per record codec; each deep-audit asserts the
       lowered behavior cannot be a no-op.
-- [x] Confirm zero XFAIL change in
+- [ ] Confirm zero XFAIL change in
       `python SemanticScript/tests/feature_coverage.py` after each batch.
 
 #### Documentation

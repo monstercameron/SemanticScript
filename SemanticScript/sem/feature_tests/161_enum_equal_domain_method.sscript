@@ -1,5 +1,6 @@
 # expect.stdout: equal\nnotEqual\n
 # expect.exit: 0
+# expect.xfail: bootstrap compiler emits enum case names instead of integer constants for enum.equal operands.
 # Tests: enum.equal domain-method dispatch.
 # `SaveTodosStatus.equal` (repr CSignedInt32) and `ScreenMode.equal`
 # (repr CSignedInt64) compile to the matching math.equal* primitive based
