@@ -137,7 +137,7 @@ storage module immutable fieldCompletedAtMs CNullTerminatedByteString "completed
 
 literal schemaSqlSource CNullTerminatedByteString
 literalSource schemaSqlSource "schema.sql"
-literalBytes schemaSqlSource 2423
+literalBytes schemaSqlSource 4136
 literalTrust schemaSqlSource trustedStaticAsset
 
 # ===== shared database handle (lazy-opened on first request) =====
