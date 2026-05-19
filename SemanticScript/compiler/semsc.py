@@ -8677,7 +8677,18 @@ def _resolve_imports(source: str, source_path: str, explicit_std_paths=None) -> 
         # `standard.time` should not pick up `std/time.sscript`).
         return None
 
-    header_skip = ("project ", "target ", "runtime ", "entry ", "module ")
+    header_skip = (
+        "project ", "target ", "runtime ", "entry ", "module ",
+        # Module-contract docs are owned by the module itself; when an
+        # import inlines into a parent program, the contract rows would
+        # otherwise be attributed to whichever operation was last open
+        # in the parent — codegen then errors with "unhandled verb:
+        # modulePurpose". Strip at inline time so the inlined source
+        # carries only operation bodies + types + capabilities.
+        "modulePurpose ", "moduleOwns ", "moduleDoesNotOwn ",
+        "moduleWarning ", "moduleInvariant ", "moduleSecurity ",
+        "moduleObservability ", "moduleDependency ",
+    )
 
     def process(text: str, base_dir: str, is_root: bool):
         for line in text.splitlines():
