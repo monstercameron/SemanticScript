@@ -450,6 +450,15 @@ class WebServer:
         self.timeouts = {}        # route_name -> duration_value
 
 
+class HtmlTemplate:
+    def __init__(self, name, decl_line=0):
+        self.name = name
+        self.decl_line = decl_line
+        self.args = []            # list[(arg_name, arg_type, lineno)]
+        self.body_lines = []      # list[(body_text_without_base_indent, lineno)]
+        self.body_line = 0
+
+
 class Program:
     def __init__(self):
         self.source_path = ""
@@ -493,6 +502,7 @@ class Program:
         self.records = {}             # name -> Record
         self.enums = {}                # name -> Enum
         self.web_servers = {}          # name -> WebServer
+        self.html_templates = {}       # name -> HtmlTemplate
         self.type_metadata = {}        # type_name -> {invariant: [...], trust:..., memory:..., layout:..., representation:...}
         self.capabilities = {}         # name -> {effect_path, access}
         self.codecs = {}               # name -> {kind, schema, unknownFields, ...}
@@ -504,6 +514,16 @@ class Program:
         self.named_failures = {}       # operation_name -> list[(failure_name, text)]
         self.test_covers = []          # list[(test_name, target_name)]
         self.imports = []              # list[(module_path, alias)]
+        self.import_aliases = {}        # alias -> module_path
+        self.singular_imports = []      # list[(kind, local_name, module_alias, exported_name)]
+        self.exports = {                # kind -> module_path -> set(symbol)
+            "operation": {},
+            "type": {},
+            "error": {},
+            "capability": {},
+            "constant": {},
+        }
+        self.operation_aliases = {}     # source call target -> internal op name
         self.modes = []                # list[str]  -- e.g. ["capturedOutputReplay"]
         # Module-scope `# group NAME` / `# endGroup NAME` anchors collected from
         # source order so the linter can pair them and warn on imbalance.
@@ -606,6 +626,30 @@ _KNOWN_MODES = {
 }
 
 _MODULE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
+_HTML_ARG_REFERENCE_RE = re.compile(r"\{\s*htmlArg\.([A-Za-z_][A-Za-z0-9_]*)\s*\}")
+_HTML_BRACE_CONTENT_RE = re.compile(r"\{([^{}\n]*)\}")
+_HTML_RAW_TEXT_RE = re.compile(
+    r"<(style|script)\b[^>]*>.*?</\1\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
+_HTML_ATTR_VALUE_PREFIX_RE = re.compile(
+    r"([A-Za-z_:][A-Za-z0-9_:.-]*)\s*=\s*([\"'])[^\"']*$")
+_HTML_URL_ATTRS = {
+    "action",
+    "formaction",
+    "href",
+    "poster",
+    "src",
+}
+_HTML_TRUST_TYPES = {
+    "HtmlText",
+    "HtmlClass",
+    "SafeUrl",
+    "HtmlFragment",
+    "HtmlTrustedFragment",
+    "HtmlDocument",
+}
+_HTML_HYDRATE_PREFIX = "html.hydrate."
 
 # Top-level verbs that map 1:1 to Windows VERSIONINFO StringFileInfo entries.
 # Each verb takes one quoted-string argument. The ordering here also drives
@@ -639,7 +683,8 @@ _BUILD_TAPE_PROJECT_VERBS = frozenset({
     "buildDir", "buildRoot", "buildFolderName",
     "cpuBaseline", "cpuTune", "cpuFeature", "cpuFeatureCheck",
     "registerModule",
-    "dependency", "dependencySource", "dependencyIntegrity",
+    "dependency", "dependencySource", "dependencyFetch",
+    "dependencyCache", "dependencyLock", "dependencyIntegrity",
     "comptimeOperation",
 })
 
@@ -652,6 +697,7 @@ _BUILD_TAPE_SINGLETON_VERBS = frozenset({
     "emitOptimizedLlvmIr", "optimizedLlvmIrOutput",
     "buildDir", "buildRoot", "buildFolderName", "comptimeOperation",
     "cpuBaseline", "cpuTune", "cpuFeatureCheck",
+    "dependencyCache", "dependencyLock",
 })
 
 _BUILD_TAPE_REQUIRED_VERBS = frozenset({
@@ -664,11 +710,15 @@ _BUILD_TAPE_PATH_VERBS = frozenset({
     "sourceRoot", "mainFile", "testPattern", "testRoot", "nativeOutput",
     "resourcesDir", "docsOutput", "llvmIrOutput",
     "optimizedLlvmIrOutput", "buildDir", "buildRoot",
+    "dependencyCache", "dependencyLock",
 })
 
 _BUILD_TAPE_MIN_ARITY = {
     "dependency": 4,
     "dependencySource": 3,
+    "dependencyFetch": 4,
+    "dependencyCache": 2,
+    "dependencyLock": 2,
     "dependencyIntegrity": 3,
     "cpuFeature": 3,
     "formatterSetting": 3,
@@ -677,7 +727,7 @@ _BUILD_TAPE_MIN_ARITY = {
 }
 
 _BUILD_TAPE_CHOICES = {
-    "targetRuntime": {"nativeExe", "webServer", "library"},
+    "targetRuntime": {"nativeExe", "webServer", "windowsGui", "library"},
     "buildProfile": {"dev", "prod"},
     "runtimeChecks": {"off", "traps", "panic"},
     "persistLlvmIr": {"auto", "yes", "no"},
@@ -694,6 +744,43 @@ _BUILD_TAPE_CHOICES = {
 
 _CPU_FEATURE_STATES = frozenset({"on", "off"})
 _CPU_FEATURE_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+_DEPENDENCY_SOURCE_KINDS = frozenset({"local", "path", "github", "http"})
+_DEPENDENCY_FETCH_KINDS = frozenset({"github", "http"})
+
+
+def _is_https_url(value: str) -> bool:
+    return value.startswith("https://") and " " not in value and len(value) > len("https://")
+
+
+def _github_owner_repo_is_valid(value: str) -> bool:
+    if value.startswith("github.com/"):
+        value = value[len("github.com/"):]
+    parts = value.split("/")
+    return len(parts) >= 2 and all(parts[:2]) and not any(part in {".", ".."} for part in parts[:2])
+
+
+def _dependency_source_kind(args):
+    if len(args) >= 4:
+        return args[2], args[3:]
+    if len(args) >= 3:
+        source_text = str(_unwrap(args[2]))
+        if source_text.startswith(("https://", "http://")):
+            return "http", args[2:3]
+        if source_text.startswith("github.com/"):
+            return "github", args[2:3]
+        return "local", args[2:3]
+    return "", ()
+
+
+def _dependency_integrity_is_strong(value: str) -> bool:
+    lowered = value.lower()
+    if lowered.startswith("sha256:"):
+        digest = lowered[len("sha256:"):]
+        return len(digest) == 64 and all(char in "0123456789abcdef" for char in digest)
+    if lowered.startswith("commit:"):
+        commit = lowered[len("commit:"):]
+        return 7 <= len(commit) <= 40 and all(char in "0123456789abcdef" for char in commit)
+    return False
 
 _CPU_BASELINE_FEATURES = {
     "generic": frozenset(),
@@ -882,12 +969,127 @@ def _register_builtin_sqlite_surface(prog: Program) -> None:
         prog.type_aliases[failure_alias] = "CSignedInt32"
 
 
+def _parse_import_module_args(args):
+    if not args:
+        return "", None, "malformed"
+    if len(args) >= 3 and args[1] == "as":
+        return args[0], args[2], "module-as-alias"
+    if len(args) == 2 and args[1] != "as":
+        return args[1], args[0], "alias-module"
+    return args[0], None, "module-only"
+
+
+_EXPORT_VERB_KIND = {
+    "exportOperation": "operation",
+    "exportType": "type",
+    "exportError": "error",
+    "exportCapability": "capability",
+    "exportConstant": "constant",
+}
+
+_SINGULAR_IMPORT_VERB_KIND = {
+    "importOperation": "operation",
+    "importType": "type",
+    "importError": "error",
+    "importCapability": "capability",
+    "importConstant": "constant",
+}
+
+
+def _exported_symbols_for(prog: Program, module_path: str, kind: str):
+    return prog.exports.get(kind, {}).get(module_path, set())
+
+
+def _finalize_import_aliases(prog: Program) -> None:
+    for module_path, alias in prog.imports:
+        if not alias:
+            continue
+        prog.import_aliases[alias] = module_path
+        for operation_name in _exported_symbols_for(prog, module_path, "operation"):
+            prog.operation_aliases[f"{alias}.{operation_name}"] = operation_name
+        for type_name in _exported_symbols_for(prog, module_path, "type"):
+            if type_name in prog.type_aliases:
+                prog.type_aliases.setdefault(f"{alias}.{type_name}", prog.type_aliases[type_name])
+            else:
+                prog.type_aliases.setdefault(f"{alias}.{type_name}", [type_name])
+        for error_name in _exported_symbols_for(prog, module_path, "error"):
+            if error_name in prog.errors:
+                prog.errors.setdefault(f"{alias}.{error_name}", prog.errors[error_name])
+            prog.type_aliases.setdefault(f"{alias}.{error_name}", [error_name])
+        for capability_name in _exported_symbols_for(prog, module_path, "capability"):
+            if capability_name in prog.capabilities:
+                prog.capabilities.setdefault(
+                    f"{alias}.{capability_name}", dict(prog.capabilities[capability_name]))
+        for const_name in _exported_symbols_for(prog, module_path, "constant"):
+            if const_name in prog.consts:
+                prog.consts.setdefault(f"{alias}.{const_name}", prog.consts[const_name])
+
+    for kind, local_name, module_alias, exported_name in prog.singular_imports:
+        if "*" in (local_name, module_alias, exported_name):
+            raise SyntaxError(
+                f"{kind} import: wildcard imports are not supported; import one exported symbol")
+        module_path = prog.import_aliases.get(module_alias)
+        if module_path is None:
+            raise SyntaxError(
+                f"{kind} import: unknown module alias `{module_alias}`")
+        if exported_name not in _exported_symbols_for(prog, module_path, kind):
+            raise SyntaxError(
+                f"{kind} import: `{module_alias}.{exported_name}` is not exported")
+        if kind == "operation":
+            prog.operation_aliases[local_name] = exported_name
+        elif kind == "type":
+            if exported_name in prog.type_aliases:
+                prog.type_aliases.setdefault(local_name, prog.type_aliases[exported_name])
+            else:
+                prog.type_aliases.setdefault(local_name, [exported_name])
+        elif kind == "error":
+            if exported_name in prog.errors:
+                prog.errors.setdefault(local_name, prog.errors[exported_name])
+            prog.type_aliases.setdefault(local_name, [exported_name])
+        elif kind == "capability":
+            if exported_name in prog.capabilities:
+                prog.capabilities.setdefault(local_name, dict(prog.capabilities[exported_name]))
+        elif kind == "constant":
+            if exported_name in prog.consts:
+                prog.consts.setdefault(local_name, prog.consts[exported_name])
+
+
 def parse(source: str) -> Program:
     prog = Program()
     _register_builtin_middleware_control_enum(prog)
     _register_builtin_sqlite_surface(prog)
-    for lineno, raw in enumerate(source.splitlines(), start=1):
+    active_html_template = None
+    active_html_base_indent = None
+    lines = list(enumerate(source.splitlines(), start=1))
+    index = 0
+
+    def _finish_html_body():
+        nonlocal active_html_template, active_html_base_indent
+        active_html_template = None
+        active_html_base_indent = None
+
+    while index < len(lines):
+        lineno, raw = lines[index]
+        index += 1
         prog.source_lines[lineno] = raw
+
+        if active_html_template is not None:
+            if raw.strip() and raw[0].isspace():
+                indent = len(raw) - len(raw.lstrip(" \t"))
+                if active_html_base_indent is None:
+                    active_html_base_indent = indent
+                trim_count = min(active_html_base_indent, indent)
+                active_html_template.body_lines.append(
+                    (raw[trim_count:], lineno))
+                continue
+            if not raw.strip():
+                active_html_template.body_lines.append(("", lineno))
+                continue
+            # A non-empty column-0 line ends the HTML syntax island and is
+            # immediately reprocessed as normal SemanticScript. This keeps
+            # `htmlBody` as the only indentation-sensitive exception.
+            _finish_html_body()
+
         toks = tokenize_line(raw)
         if not toks:
             continue
@@ -920,10 +1122,19 @@ def parse(source: str) -> Program:
         args = toks[1:]
         try:
             handle_top(prog, verb, args, lineno)
+            if verb == "htmlBody":
+                if not args:
+                    raise SyntaxError("htmlBody requires: htmlBody TEMPLATE")
+                active_html_template = prog.html_templates.get(args[0])
+                if active_html_template is None:
+                    raise SyntaxError(f"htmlBody references unknown htmlTemplate: {args[0]}")
+                active_html_base_indent = None
         except SyntaxError:
             raise
         except Exception as e:
             raise SyntaxError(f"line {lineno}: {e}\n  >> {raw}") from e
+    _finish_html_body()
+    _finalize_import_aliases(prog)
     return prog
 
 
@@ -1058,6 +1269,45 @@ def _validate_build_tape_source(source: str, source_path: str) -> None:
                     or normalized in ("", ".", "..")):
                 raise SyntaxError(
                     f"line {lineno}: buildFolderName must be one folder name, not a path")
+        if verb == "dependencySource":
+            kind, payload = _dependency_source_kind(args)
+            if kind not in _DEPENDENCY_SOURCE_KINDS:
+                raise SyntaxError(
+                    f"line {lineno}: dependencySource kind `{kind}` is invalid; "
+                    "expected local, path, github, or http")
+            if kind == "http":
+                url = str(_unwrap(payload[0])) if payload else ""
+                if not _is_https_url(url):
+                    raise SyntaxError(
+                        f"line {lineno}: dependencySource http requires an https URL")
+            if kind == "github":
+                repo = str(_unwrap(payload[0])) if payload else ""
+                if not _github_owner_repo_is_valid(repo):
+                    raise SyntaxError(
+                        f"line {lineno}: dependencySource github requires OWNER/REPO")
+        if verb == "dependencyFetch":
+            fetch_kind = str(_unwrap(args[2]))
+            if fetch_kind not in _DEPENDENCY_FETCH_KINDS:
+                raise SyntaxError(
+                    f"line {lineno}: dependencyFetch kind `{fetch_kind}` is invalid; "
+                    "expected github or http")
+            if fetch_kind == "http":
+                url = str(_unwrap(args[3])) if len(args) >= 4 else ""
+                if not _is_https_url(url):
+                    raise SyntaxError(
+                        f"line {lineno}: dependencyFetch http requires an https URL")
+            if fetch_kind == "github":
+                repo = str(_unwrap(args[3])) if len(args) >= 4 else ""
+                ref = str(_unwrap(args[4])) if len(args) >= 5 else ""
+                if not _github_owner_repo_is_valid(repo) or not ref:
+                    raise SyntaxError(
+                        f"line {lineno}: dependencyFetch github requires OWNER/REPO REF")
+        if verb == "dependencyIntegrity":
+            integrity = str(_unwrap(args[2]))
+            if not _dependency_integrity_is_strong(integrity):
+                raise SyntaxError(
+                    f"line {lineno}: dependencyIntegrity must be sha256:<64 hex> "
+                    "or commit:<7-40 hex>")
         if verb == "sourceRoot":
             source_roots[project_name] = args[1]
         if verb == "targetRuntime":
@@ -1085,7 +1335,7 @@ def _validate_build_tape_source(source: str, source_path: str) -> None:
                 f"build tape row targets `{other_project}`, but active "
                 f"buildProject is `{project_name}`")
     target_runtime = target_runtime_by_project.get(project_name)
-    if target_runtime in ("nativeExe", "webServer") and "mainFile" not in project_rows:
+    if target_runtime in ("nativeExe", "webServer", "windowsGui") and "mainFile" not in project_rows:
         raise SyntaxError(
             f"buildProject `{project_name}` targetRuntime `{target_runtime}` "
             "requires mainFile PROJECT \"PATH\"")
@@ -1307,11 +1557,31 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
                 "dependencyFunctionAsync"):
         return
     if verb == "importModule":
-        # importModule DOTTED.PATH as ALIAS  (the `as ALIAS` part is optional)
-        alias = None
-        if len(args) >= 3 and args[1] == "as":
-            alias = args[2]
-        prog.imports.append((args[0], alias))
+        # Compatibility:
+        #   importModule DOTTED.PATH [as ALIAS]
+        # Preferred project form:
+        #   importModule ALIAS DOTTED.PATH
+        module_path, alias, _syntax = _parse_import_module_args(args)
+        prog.imports.append((module_path, alias))
+        if alias:
+            prog.import_aliases[alias] = module_path
+        return
+    if verb in _EXPORT_VERB_KIND:
+        if len(args) < 2:
+            raise SyntaxError(f"{verb} requires: {verb} MODULE_PATH SYMBOL")
+        kind = _EXPORT_VERB_KIND[verb]
+        prog.exports.setdefault(kind, {}).setdefault(args[0], set()).add(args[1])
+        return
+    if verb in _SINGULAR_IMPORT_VERB_KIND:
+        if len(args) < 3:
+            raise SyntaxError(
+                f"{verb} requires: {verb} LOCAL_NAME MODULE_ALIAS EXPORTED_NAME")
+        prog.singular_imports.append((
+            _SINGULAR_IMPORT_VERB_KIND[verb],
+            args[0],
+            args[1],
+            args[2],
+        ))
         return
 
     # ----- type universe -----
@@ -1435,6 +1705,42 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
                 f"{verb} requires: {verb} SERVER PATH \"rationale\"")
         prog.hard_metadata.setdefault(args[0], {}).setdefault(verb, []).append(
             tuple(_unwrap(t) for t in args[1:]))
+        return
+
+    # ----- first-class HTML / SSX templates -----
+    if verb == "htmlTemplate":
+        if not args:
+            raise SyntaxError("htmlTemplate requires: htmlTemplate NAME")
+        name = args[0]
+        if name in prog.html_templates:
+            raise SyntaxError(f"htmlTemplate: template `{name}` already declared")
+        prog.html_templates[name] = HtmlTemplate(name, lineno)
+        return
+    if verb == "htmlArg":
+        if len(args) < 3:
+            raise SyntaxError("htmlArg requires: htmlArg TEMPLATE ARG_NAME TYPE")
+        template_name, arg_name, arg_type = args[0], args[1], args[2]
+        template = prog.html_templates.get(template_name)
+        if template is None:
+            raise SyntaxError(
+                f"htmlArg references unknown htmlTemplate: {template_name}")
+        if any(existing_name == arg_name for existing_name, _typ, _line in template.args):
+            raise SyntaxError(
+                f"htmlArg: template `{template_name}` already declares `{arg_name}`")
+        template.args.append((arg_name, arg_type, lineno))
+        return
+    if verb == "htmlBody":
+        if not args:
+            raise SyntaxError("htmlBody requires: htmlBody TEMPLATE")
+        template_name = args[0]
+        template = prog.html_templates.get(template_name)
+        if template is None:
+            raise SyntaxError(f"htmlBody references unknown htmlTemplate: {template_name}")
+        if template.body_line:
+            raise SyntaxError(
+                f"htmlBody: template `{template_name}` already declares a body")
+        template.body_line = lineno
+        template.body_lines = []
         return
 
     # ----- codecs / validators / mappers / boundaries / adapters -----
@@ -1810,6 +2116,9 @@ def llvm_type_for(prog: Program, typename: str):
     # i8* — every pointer-shaped C type carries an explicit role name
     if typename in (
         "String", "CNullTerminatedByteString", "CString",
+        "HtmlText", "HtmlClass", "SafeUrl",
+        "HtmlFragment", "HtmlTrustedFragment", "HtmlDocument",
+        "HtmlTemplate",
     ):
         return I8P
     if typename in (
@@ -1818,13 +2127,27 @@ def llvm_type_for(prog: Program, typename: str):
         "CVoidPtr", "CFile", "CFilePtr", "CTm", "CTmPtr", "CJmpBuf",
     ):
         return I8P
-    if typename in ("HttpRequest", "HttpResponse"):
+    if typename in ("HttpRequest", "HttpResponse", "GuiSession", "GuiEvent"):
+        return I8P
+    if typename in (
+        "GuiApplication", "GuiWindow", "GuiControl", "GuiButton",
+        "GuiTextBox", "GuiListBox", "GuiCheckBox", "GuiMenuItem",
+        "GuiStatusBar", "GuiTextLabel",
+    ):
         return I8P
     # Opaque handles for the native sqlite runtime — the C ABI in
     # `sem_sqlite_runtime.h` exposes both as `void *` typedefs and never
     # lets generated code dereference them, so lowering as `i8*` is the
     # correct shape (parallel to HttpRequest / HttpResponse above).
     if typename in ("SqliteDatabase", "SqliteStatement"):
+        return I8P
+    # Opaque handle for the native JSON builder runtime
+    # (sem_json_runtime.h). The AS source allocates one of these via
+    # json.createBuilder, threads it through field writers, and frees
+    # via `defer json.destroyBuilder`. Generated code never
+    # dereferences the handle directly — same opaque-pointer contract
+    # as HttpRequest / SqliteDatabase.
+    if typename == "JsonBuilder":
         return I8P
     return None
 
@@ -2046,6 +2369,7 @@ class Codegen:
         self.provenance = CompilerProvenance(prog)
         self.strings = {}
         self._next_str_id = 0
+        self._next_html_buffer_id = 0
         self._web_route_handler_names = set()
         self._declare_externals()
 
@@ -2468,6 +2792,321 @@ class Codegen:
         zero = ir.Constant(I32, 0)
         return builder.gep(gv, [zero, zero], inbounds=True)
 
+    def _html_mask_raw_text_elements(self, body: str) -> str:
+        chars = list(body)
+        for match in _HTML_RAW_TEXT_RE.finditer(body):
+            for index in range(match.start(), match.end()):
+                chars[index] = " "
+        return "".join(chars)
+
+    def _validate_html_dynamic_holes(self, template: HtmlTemplate, body: str):
+        masked = self._html_mask_raw_text_elements(body)
+        html_arg_spans = {
+            (match.start(), match.end())
+            for match in _HTML_ARG_REFERENCE_RE.finditer(masked)
+        }
+        for match in _HTML_BRACE_CONTENT_RE.finditer(masked):
+            if (match.start(), match.end()) in html_arg_spans:
+                continue
+            content = match.group(1).strip()
+            if not content:
+                continue
+            raise ValueError(
+                f"htmlBody {template.name}: dynamic hole `{{{content}}}` "
+                "must reference declared htmlArg.NAME")
+
+    def _html_hole_context(self, body: str, hole_start: int):
+        last_lt = body.rfind("<", 0, hole_start)
+        last_gt = body.rfind(">", 0, hole_start)
+        if last_lt <= last_gt:
+            return "text", None
+        tag_prefix = body[last_lt + 1:hole_start]
+        attr_match = _HTML_ATTR_VALUE_PREFIX_RE.search(tag_prefix)
+        if attr_match:
+            return "attribute", attr_match.group(1).lower()
+        return "tag", None
+
+    def _validate_html_arg_context(self, template: HtmlTemplate, arg_name: str,
+                                   type_name: str, context_kind: str,
+                                   attr_name):
+        resolved = (
+            type_name if type_name in _HTML_TRUST_TYPES
+            else resolve_alias(self.prog, type_name)
+        )
+        if context_kind == "tag":
+            raise ValueError(
+                f"htmlBody {template.name}: htmlArg `{arg_name}` cannot "
+                "hydrate HTML tag syntax; dynamic holes must be text content "
+                "or quoted attribute values")
+        if context_kind == "text":
+            if resolved in ("HtmlClass", "SafeUrl"):
+                raise ValueError(
+                    f"htmlBody {template.name}: htmlArg `{arg_name}` has "
+                    f"type `{type_name}` and cannot hydrate text content")
+            return
+        if context_kind != "attribute":
+            return
+        if resolved in ("HtmlFragment", "HtmlTrustedFragment", "HtmlDocument"):
+            raise ValueError(
+                f"htmlBody {template.name}: htmlArg `{arg_name}` has "
+                f"type `{type_name}` and cannot hydrate attribute `{attr_name}`")
+        if attr_name == "class" and resolved != "HtmlClass":
+            raise ValueError(
+                f"htmlBody {template.name}: class attribute htmlArg "
+                f"`{arg_name}` requires HtmlClass, got `{type_name}`")
+        if attr_name in _HTML_URL_ATTRS and resolved != "SafeUrl":
+            raise ValueError(
+                f"htmlBody {template.name}: `{attr_name}` attribute htmlArg "
+                f"`{arg_name}` requires SafeUrl, got `{type_name}`")
+
+    def _html_arg_escape_mode(self, type_name: str, context_kind: str):
+        resolved = (
+            type_name if type_name in _HTML_TRUST_TYPES
+            else resolve_alias(self.prog, type_name)
+        )
+        if context_kind == "text" and resolved in (
+            "HtmlFragment", "HtmlTrustedFragment", "HtmlDocument",
+        ):
+            return "raw"
+        if context_kind == "attribute":
+            return "attribute"
+        if resolved in ("HtmlText", "String", "CNullTerminatedByteString", "CString"):
+            return "text"
+        return "raw"
+
+    def _html_template_parts_and_args(self, template: HtmlTemplate):
+        if not template.body_lines:
+            raise ValueError(
+                f"htmlBody {template.name}: template has no body lines")
+        arg_types = {name: typ for name, typ, _line in template.args}
+        parts = []
+        body = "\n".join(line for line, _lineno in template.body_lines)
+        if template.body_lines:
+            body += "\n"
+        masked_body = self._html_mask_raw_text_elements(body)
+        self._validate_html_dynamic_holes(template, body)
+        cursor = 0
+        for match in _HTML_ARG_REFERENCE_RE.finditer(masked_body):
+            static_text = body[cursor:match.start()]
+            if static_text:
+                parts.append(("static", static_text, None, None))
+            arg_name = match.group(1)
+            if arg_name not in arg_types:
+                raise ValueError(
+                    f"htmlBody {template.name}: unknown htmlArg `{arg_name}`")
+            context_kind, attr_name = self._html_hole_context(body, match.start())
+            self._validate_html_arg_context(
+                template, arg_name, arg_types[arg_name], context_kind, attr_name)
+            parts.append(("arg", arg_name, context_kind, attr_name))
+            cursor = match.end()
+        tail_text = body[cursor:]
+        if tail_text:
+            parts.append(("static", tail_text, None, None))
+        return parts, arg_types
+
+    def _html_arg_as_cstring(self, builder, value, arg_name: str, type_name: str):
+        resolved = resolve_alias(self.prog, type_name)
+        if resolved not in (
+            "HtmlText", "HtmlClass", "SafeUrl",
+            "HtmlFragment", "HtmlTrustedFragment", "HtmlDocument",
+            "String", "CNullTerminatedByteString", "CString",
+        ):
+            raise ValueError(
+                f"htmlArg `{arg_name}` has type `{type_name}`; "
+                "html.hydrate requires a string-shaped HTML value type")
+        if isinstance(value.type, ir.IntType):
+            return builder.inttoptr(value, I8P)
+        if isinstance(value.type, ir.PointerType) and value.type != I8P:
+            return builder.bitcast(value, I8P)
+        return value
+
+    def _emit_html_append_static(self, builder, write_ptr, limit_ptr,
+                                 text: str, name_hint: str):
+        if not text:
+            return write_ptr
+        return self._emit_html_append_cstring(
+            builder, write_ptr, self._i8p(builder, text), limit_ptr, name_hint)
+
+    def _emit_html_append_cstring(self, builder, write_ptr, source_ptr,
+                                  limit_ptr, name_hint: str):
+        fn = builder.function
+        entry_block = builder.block
+        loop_block = fn.append_basic_block(f"{name_hint}_copy")
+        byte_block = fn.append_basic_block(f"{name_hint}_byte")
+        done_block = fn.append_basic_block(f"{name_hint}_done")
+        one = ir.Constant(I64, 1)
+        zero_byte = ir.Constant(I8, 0)
+
+        builder.branch(loop_block)
+        builder.position_at_end(loop_block)
+        src_phi = builder.phi(I8P, name=f"{name_hint}_src")
+        dst_phi = builder.phi(I8P, name=f"{name_hint}_dst")
+        src_phi.add_incoming(source_ptr, entry_block)
+        dst_phi.add_incoming(write_ptr, entry_block)
+        ch = builder.load(src_phi, name=f"{name_hint}_ch")
+        done = builder.icmp_unsigned("==", ch, zero_byte, name=f"{name_hint}_is_end")
+        dst_offset = builder.ptrtoint(dst_phi, I64, name=f"{name_hint}_dst_addr")
+        limit_offset = builder.ptrtoint(limit_ptr, I64, name=f"{name_hint}_limit_addr")
+        at_limit = builder.icmp_unsigned(
+            ">=", dst_offset, limit_offset, name=f"{name_hint}_at_limit")
+        should_stop = builder.or_(done, at_limit, name=f"{name_hint}_stop")
+        builder.cbranch(should_stop, done_block, byte_block)
+
+        builder.position_at_end(byte_block)
+        builder.store(ch, dst_phi)
+        next_src = builder.gep(src_phi, [one], name=f"{name_hint}_next_src")
+        next_dst = builder.gep(dst_phi, [one], name=f"{name_hint}_next_dst")
+        builder.branch(loop_block)
+        src_phi.add_incoming(next_src, byte_block)
+        dst_phi.add_incoming(next_dst, byte_block)
+
+        builder.position_at_end(done_block)
+        return dst_phi
+
+    def _emit_html_append_escaped_cstring(self, builder, write_ptr, source_ptr,
+                                          limit_ptr, name_hint: str,
+                                          escape_quotes: bool):
+        fn = builder.function
+        entry_block = builder.block
+        loop_block = fn.append_basic_block(f"{name_hint}_escape_copy")
+        done_block = fn.append_basic_block(f"{name_hint}_escape_done")
+        normal_block = fn.append_basic_block(f"{name_hint}_escape_byte")
+        checks = [
+            (ord("&"), "amp", "&amp;"),
+            (ord("<"), "lt", "&lt;"),
+            (ord(">"), "gt", "&gt;"),
+        ]
+        if escape_quotes:
+            checks.append((ord('"'), "quot", "&quot;"))
+        check_blocks = [
+            fn.append_basic_block(f"{name_hint}_escape_check_{suffix}")
+            for _byte, suffix, _entity in checks
+        ]
+        entity_blocks = [
+            fn.append_basic_block(f"{name_hint}_escape_{suffix}")
+            for _byte, suffix, _entity in checks
+        ]
+        one = ir.Constant(I64, 1)
+        zero_byte = ir.Constant(I8, 0)
+
+        builder.branch(loop_block)
+        builder.position_at_end(loop_block)
+        src_phi = builder.phi(I8P, name=f"{name_hint}_escape_src")
+        dst_phi = builder.phi(I8P, name=f"{name_hint}_escape_dst")
+        src_phi.add_incoming(source_ptr, entry_block)
+        dst_phi.add_incoming(write_ptr, entry_block)
+        ch = builder.load(src_phi, name=f"{name_hint}_escape_ch")
+        done = builder.icmp_unsigned("==", ch, zero_byte,
+                                     name=f"{name_hint}_escape_is_end")
+        dst_offset = builder.ptrtoint(dst_phi, I64,
+                                      name=f"{name_hint}_escape_dst_addr")
+        limit_offset = builder.ptrtoint(limit_ptr, I64,
+                                        name=f"{name_hint}_escape_limit_addr")
+        at_limit = builder.icmp_unsigned(
+            ">=", dst_offset, limit_offset, name=f"{name_hint}_escape_at_limit")
+        should_stop = builder.or_(done, at_limit, name=f"{name_hint}_escape_stop")
+        builder.cbranch(should_stop, done_block, check_blocks[0])
+
+        for index, (byte_value, suffix, entity_text) in enumerate(checks):
+            builder.position_at_end(check_blocks[index])
+            is_match = builder.icmp_unsigned(
+                "==", ch, ir.Constant(I8, byte_value),
+                name=f"{name_hint}_escape_is_{suffix}")
+            next_block = entity_blocks[index]
+            fallback_block = (
+                check_blocks[index + 1]
+                if index + 1 < len(check_blocks)
+                else normal_block
+            )
+            builder.cbranch(is_match, next_block, fallback_block)
+
+            builder.position_at_end(entity_blocks[index])
+            escaped_write_ptr = self._emit_html_append_static(
+                builder, dst_phi, limit_ptr, entity_text,
+                f"{name_hint}_escape_{suffix}_entity")
+            entity_end_block = builder.block
+            next_src = builder.gep(
+                src_phi, [one], name=f"{name_hint}_escape_{suffix}_next_src")
+            builder.branch(loop_block)
+            src_phi.add_incoming(next_src, entity_end_block)
+            dst_phi.add_incoming(escaped_write_ptr, entity_end_block)
+
+        builder.position_at_end(normal_block)
+        builder.store(ch, dst_phi)
+        next_src = builder.gep(src_phi, [one], name=f"{name_hint}_escape_next_src")
+        next_dst = builder.gep(dst_phi, [one], name=f"{name_hint}_escape_next_dst")
+        builder.branch(loop_block)
+        src_phi.add_incoming(next_src, normal_block)
+        dst_phi.add_incoming(next_dst, normal_block)
+
+        builder.position_at_end(done_block)
+        return dst_phi
+
+    def _emit_html_hydrate(self, builder, call_name, call, template: HtmlTemplate,
+                           arg_val_named):
+        parts, arg_types = self._html_template_parts_and_args(template)
+        # One global buffer per hydrate call site. This is intentionally simple
+        # and inspectable for the first feature slice: the pointer remains valid
+        # after a render helper returns, while later calls to the same helper may
+        # overwrite that helper's buffer.
+        buffer_size = 65536
+        static_byte_count = sum(
+            len(value_text.encode("utf-8"))
+            for kind, value_text, _context_kind, _attr_name in parts
+            if kind == "static"
+        )
+        if static_byte_count >= buffer_size:
+            raise ValueError(
+                f"htmlBody {template.name}: static HTML is {static_byte_count} "
+                f"bytes, exceeding hydrate buffer capacity {buffer_size - 1}")
+        for required_arg in arg_types:
+            if required_arg not in call["args"]:
+                raise ValueError(
+                    f"{call_name}: missing required arg `{required_arg}` "
+                    f"for htmlTemplate `{template.name}`")
+        for provided_arg in call["args"]:
+            if provided_arg not in arg_types:
+                raise ValueError(
+                    f"{call_name}: arg `{provided_arg}` is not declared by "
+                    f"htmlTemplate `{template.name}`")
+        array_ty = ir.ArrayType(I8, buffer_size)
+        buffer_name = f"as.htmlbuf.{self._next_html_buffer_id}.{call_name}"
+        self._next_html_buffer_id += 1
+        html_buffer = ir.GlobalVariable(self.module, array_ty, name=buffer_name)
+        html_buffer.linkage = "internal"
+        html_buffer.global_constant = False
+        html_buffer.initializer = ir.Constant(array_ty, bytearray(buffer_size))
+        zero = ir.Constant(I32, 0)
+        buffer_ptr = builder.gep(html_buffer, [zero, zero], inbounds=True)
+        limit_ptr = builder.gep(
+            buffer_ptr, [ir.Constant(I64, buffer_size - 1)],
+            name=f"{call_name}_html_limit")
+        write_ptr = buffer_ptr
+        arg_index = 0
+        for part_index, (kind, value_text, context_kind, _attr_name) in enumerate(parts):
+            if kind == "static":
+                write_ptr = self._emit_html_append_static(
+                    builder, write_ptr, limit_ptr, value_text,
+                    f"{call_name}_{part_index}_static")
+                continue
+            arg_name = value_text
+            value = self._html_arg_as_cstring(
+                builder, arg_val_named(arg_name), arg_name, arg_types[arg_name])
+            escape_mode = self._html_arg_escape_mode(
+                arg_types[arg_name], context_kind)
+            if escape_mode == "raw":
+                write_ptr = self._emit_html_append_cstring(
+                    builder, write_ptr, value, limit_ptr,
+                    f"{call_name}_{arg_index}_{arg_name}")
+            else:
+                write_ptr = self._emit_html_append_escaped_cstring(
+                    builder, write_ptr, value, limit_ptr,
+                    f"{call_name}_{arg_index}_{arg_name}",
+                    escape_quotes=(escape_mode == "attribute"))
+            arg_index += 1
+        builder.store(ir.Constant(I8, 0), write_ptr)
+        call["result"] = buffer_ptr
+
     # ---------- module-scope mutable globals ----------
     def _emit_mutable_globals(self):
         """Emit an LLVM module-global for each `storage module mutable` or
@@ -2532,6 +3171,9 @@ class Codegen:
         # function and emit a stub `int main() { return 0; }` so the program
         # links and tooling can inspect each operation's IR.
         if self.prog.entry is None:
+            if self._is_windows_gui_program():
+                self._compile_windows_gui_program()
+                return self.module
             self._compile_webserver_program()
             return self.module
         mode, opname = self.prog.entry
@@ -2556,7 +3198,7 @@ class Codegen:
         # at the LLVM ABI boundary).
         # An operation named `main` that ISN'T the entry would collide with
         # the LLVM `@main` we emit for the entry — that happens whenever
-        # importModule pulls in a stdlib_sem module whose smoke-test op is
+        # importModule pulls in a std module whose smoke-test op is
         # called `main`. Skip those: each imported `main` is the module's
         # own smoke test and unreachable from outside anyway.
         self._user_ops = {}  # opName -> {"fn": LLVMFn, "params": [(pname, llty, ptype_name)]}
@@ -2578,6 +3220,102 @@ class Codegen:
         # ---- pass 3: compile main with the void signature `i32 @main()`.
         self._compile_main(self.prog.operations[opname])
         return self.module
+
+    def _is_windows_gui_program(self) -> bool:
+        return (
+            "windowsGui" in self.prog.targets
+            or _build_metadata_value(self.prog, "targetRuntime") == "windowsGui"
+        )
+
+    def _gui_metadata_first(self, target_name: str, verb: str, default=None):
+        rows = self.prog.hard_metadata.get(target_name, {}).get(verb)
+        if not rows:
+            return default
+        first = rows[0]
+        if not first:
+            return default
+        return first[0]
+
+    def _gui_metadata_int(self, target_name: str, verb: str, default: int) -> int:
+        value = self._gui_metadata_first(target_name, verb, default)
+        try:
+            parsed = int(str(value))
+        except (TypeError, ValueError):
+            raise ValueError(f"{verb}: expected an integer pixel value")
+        if parsed <= 0:
+            raise ValueError(f"{verb}: expected a positive pixel value")
+        return parsed
+
+    def _gui_window_descriptor(self):
+        app_names = [
+            name for name, metadata in self.prog.hard_metadata.items()
+            if "guiApplication" in metadata
+        ]
+        if not app_names:
+            raise ValueError(
+                "target windowsGui needs one guiApplication row imported from standard.gui source")
+        if len(app_names) > 1:
+            raise ValueError(
+                "target windowsGui currently supports one guiApplication row; "
+                f"found {', '.join(sorted(app_names))}")
+        app_name = app_names[0]
+        main_window = self._gui_metadata_first(
+            app_name, "guiApplicationMainWindow")
+        if main_window is None:
+            window_names = [
+                name for name, metadata in self.prog.hard_metadata.items()
+                if "guiWindow" in metadata
+            ]
+            if len(window_names) == 1:
+                main_window = window_names[0]
+            else:
+                raise ValueError(
+                    f"guiApplication `{app_name}` needs guiApplicationMainWindow APP WINDOW")
+        if main_window not in self.prog.hard_metadata:
+            raise ValueError(
+                f"guiApplicationMainWindow references unknown guiWindow `{main_window}`")
+        window_metadata = self.prog.hard_metadata.get(main_window, {})
+        if "guiWindow" not in window_metadata:
+            raise ValueError(
+                f"guiApplicationMainWindow references `{main_window}`, but no guiWindow row declares it")
+        title = (
+            self._gui_metadata_first(app_name, "guiApplicationTitle")
+            or self._gui_metadata_first(main_window, "guiWindowTitle")
+            or app_name
+        )
+        width = self._gui_metadata_int(main_window, "guiWindowWidth", 800)
+        height = self._gui_metadata_int(main_window, "guiWindowHeight", 600)
+        return {
+            "application": app_name,
+            "window": main_window,
+            "title": str(title),
+            "width": width,
+            "height": height,
+        }
+
+    def _compile_windows_gui_program(self):
+        descriptor = self._gui_window_descriptor()
+        fnty = ir.FunctionType(I32, [])
+        fn = ir.Function(self.module, fnty, name="main")
+        block = fn.append_basic_block("entry")
+        builder = ir.IRBuilder(block)
+        run_window = self._runtime_func(
+            "ss_gui_run_window", I32, [I8P, I32, I32])
+        self.provenance.record_external("ss_gui_run_window", {
+            "operation": descriptor["application"],
+            "name": descriptor["window"],
+            "target": "gui.runWindow",
+            "line": 0,
+        })
+        status = builder.call(
+            run_window,
+            [
+                self._i8p(builder, descriptor["title"]),
+                ir.Constant(I32, descriptor["width"]),
+                ir.Constant(I32, descriptor["height"]),
+            ],
+            name="gui_status")
+        builder.ret(status)
 
     # ---------- user-defined operations ----------
     def _declare_user_op(self, op: Operation):
@@ -3274,6 +4012,13 @@ class Codegen:
                 "ss_sqlite_statement_finalize", I32, [I8P]),
             "sqlite.resetStatement": (
                 "ss_sqlite_statement_reset", I32, [I8P]),
+            # json.destroyBuilder returns void in the C ABI but our
+            # defer machinery wants a uniform i32 status shape; map
+            # the return type as VOID and the defer-site call will
+            # ignore the result regardless. The free() inside the
+            # native impl runs unconditionally on a non-NULL handle.
+            "json.destroyBuilder": (
+                "ss_json_builder_destroy", VOID, [I8P]),
         }
 
         def emit_defers(exit_path, active=None):
@@ -4156,7 +4901,20 @@ class Codegen:
 
     def _emit_run_impl(self, builder, call_name, calls, resolve, opaque_inputs, SENTINEL):
         call = calls[call_name]
-        target = _TARGET_ALIASES.get(call["target"], call["target"])
+        source_target = call["target"]
+        target = _TARGET_ALIASES.get(source_target, source_target)
+        target = self.prog.operation_aliases.get(target, target)
+        qualified_parts = source_target.split(".", 1)
+        if (len(qualified_parts) == 2
+                and qualified_parts[0] in self.prog.import_aliases
+                and _exported_symbols_for(
+                    self.prog,
+                    self.prog.import_aliases[qualified_parts[0]],
+                    "operation")
+                and source_target not in self.prog.operation_aliases):
+            raise ValueError(
+                f"{call_name}: qualified import target `{source_target}` is "
+                "not an exported operation")
 
         # Lower domain-typed methods (`TypeName.methodName`) to the underlying
         # primitive based on the type alias's resolution chain. This keeps the
@@ -4260,6 +5018,16 @@ class Codegen:
 
         def require_f64(v, context: str):
             return require_exact_type(v, F64, "F64", context)
+
+        if target.startswith(_HTML_HYDRATE_PREFIX):
+            template_name = target[len(_HTML_HYDRATE_PREFIX):]
+            template = self.prog.html_templates.get(template_name)
+            if template is None:
+                raise ValueError(
+                    f"{call_name}: unknown htmlTemplate `{template_name}`")
+            self._emit_html_hydrate(builder, call_name, call, template,
+                                    arg_val_named)
+            return
 
         if target == "console.writeLine":
             text = arg_val_named("text")
@@ -4777,6 +5545,388 @@ class Codegen:
             call["result"] = buf_ptr
             return
 
+        # ------------------------------------------------------------
+        # standard.json runtime dispatch — opaque JsonBuilder handle
+        # plus the field-at-a-time encoder and the named-field finder
+        # API exposed by sem_json_runtime.h. Each call lowers to a
+        # direct ss_json_* invocation; the linker only pulls in
+        # sem_json_runtime.c when any of these targets is actually
+        # referenced (see _native_json_link_inputs).
+        # ------------------------------------------------------------
+
+        if target == "json.createBuilder":
+            capacity = arg_val_named("capacity")
+            if isinstance(capacity.type, ir.IntType) and capacity.type.width != 64:
+                capacity = (builder.sext(capacity, I64)
+                            if capacity.type.width < 64
+                            else builder.trunc(capacity, I64))
+            create_fn = self._runtime_func("ss_json_builder_create", I8P, [I64])
+            self.provenance.record_external("ss_json_builder_create", call)
+            call["result"] = builder.call(
+                create_fn, [capacity], name=f"{call_name}_builder")
+            return
+
+        if target == "json.destroyBuilder":
+            builder_arg = arg_val_named("builder")
+            if isinstance(builder_arg.type, ir.IntType):
+                builder_arg = builder.inttoptr(builder_arg, I8P)
+            destroy_fn = self._runtime_func("ss_json_builder_destroy", VOID, [I8P])
+            self.provenance.record_external("ss_json_builder_destroy", call)
+            builder.call(destroy_fn, [builder_arg])
+            # Void return — give the surrounding bind machinery a
+            # deterministic zero so anything that accidentally binds
+            # this call's result still has a valid SSA value.
+            call["result"] = ir.Constant(I32, 0)
+            return
+
+        # Helper for any builder mutator that takes the builder handle
+        # only (open/close containers).
+        def _json_builder_handle_only(symbol):
+            builder_arg = arg_val_named("builder")
+            if isinstance(builder_arg.type, ir.IntType):
+                builder_arg = builder.inttoptr(builder_arg, I8P)
+            fn = self._runtime_func(symbol, I32, [I8P])
+            self.provenance.record_external(symbol, call)
+            call["result"] = builder.call(
+                fn, [builder_arg], name=f"{call_name}_status")
+
+        if target == "json.objectOpen":
+            _json_builder_handle_only("ss_json_builder_object_open")
+            return
+        if target == "json.objectClose":
+            _json_builder_handle_only("ss_json_builder_object_close")
+            return
+        if target == "json.arrayOpen":
+            _json_builder_handle_only("ss_json_builder_array_open")
+            return
+        if target == "json.arrayClose":
+            _json_builder_handle_only("ss_json_builder_array_close")
+            return
+
+        # Field writers — builder + fieldName + value of varying type.
+        if target in (
+            "json.fieldInt64",
+            "json.fieldDouble",
+            "json.fieldBool",
+            "json.fieldString",
+        ):
+            builder_arg = arg_val_named("builder")
+            field_name = arg_val_named("fieldName")
+            value = arg_val_named("value")
+            if isinstance(builder_arg.type, ir.IntType):
+                builder_arg = builder.inttoptr(builder_arg, I8P)
+            if isinstance(field_name.type, ir.IntType):
+                field_name = builder.inttoptr(field_name, I8P)
+            if target == "json.fieldInt64":
+                if isinstance(value.type, ir.IntType) and value.type.width != 64:
+                    value = (builder.sext(value, I64)
+                             if value.type.width < 64
+                             else builder.trunc(value, I64))
+                symbol = "ss_json_builder_field_int64"
+                param_tys = [I8P, I8P, I64]
+            elif target == "json.fieldDouble":
+                if isinstance(value.type, ir.IntType):
+                    value = builder.sitofp(value, F64)
+                symbol = "ss_json_builder_field_double"
+                param_tys = [I8P, I8P, F64]
+            elif target == "json.fieldBool":
+                if isinstance(value.type, ir.IntType) and value.type.width != 32:
+                    value = (builder.sext(value, I32)
+                             if value.type.width < 32
+                             else builder.trunc(value, I32))
+                symbol = "ss_json_builder_field_bool"
+                param_tys = [I8P, I8P, I32]
+            else:  # json.fieldString
+                if isinstance(value.type, ir.IntType):
+                    value = builder.inttoptr(value, I8P)
+                symbol = "ss_json_builder_field_string"
+                param_tys = [I8P, I8P, I8P]
+            fn = self._runtime_func(symbol, I32, param_tys)
+            self.provenance.record_external(symbol, call)
+            call["result"] = builder.call(
+                fn, [builder_arg, field_name, value],
+                name=f"{call_name}_status")
+            return
+
+        if target == "json.fieldNull":
+            builder_arg = arg_val_named("builder")
+            field_name = arg_val_named("fieldName")
+            if isinstance(builder_arg.type, ir.IntType):
+                builder_arg = builder.inttoptr(builder_arg, I8P)
+            if isinstance(field_name.type, ir.IntType):
+                field_name = builder.inttoptr(field_name, I8P)
+            fn = self._runtime_func(
+                "ss_json_builder_field_null", I32, [I8P, I8P])
+            self.provenance.record_external("ss_json_builder_field_null", call)
+            call["result"] = builder.call(
+                fn, [builder_arg, field_name],
+                name=f"{call_name}_status")
+            return
+
+        # Array-element writers — builder + value (no field name).
+        if target in (
+            "json.elementInt64",
+            "json.elementDouble",
+            "json.elementBool",
+            "json.elementString",
+        ):
+            builder_arg = arg_val_named("builder")
+            value = arg_val_named("value")
+            if isinstance(builder_arg.type, ir.IntType):
+                builder_arg = builder.inttoptr(builder_arg, I8P)
+            if target == "json.elementInt64":
+                if isinstance(value.type, ir.IntType) and value.type.width != 64:
+                    value = (builder.sext(value, I64)
+                             if value.type.width < 64
+                             else builder.trunc(value, I64))
+                symbol = "ss_json_builder_element_int64"
+                param_tys = [I8P, I64]
+            elif target == "json.elementDouble":
+                if isinstance(value.type, ir.IntType):
+                    value = builder.sitofp(value, F64)
+                symbol = "ss_json_builder_element_double"
+                param_tys = [I8P, F64]
+            elif target == "json.elementBool":
+                if isinstance(value.type, ir.IntType) and value.type.width != 32:
+                    value = (builder.sext(value, I32)
+                             if value.type.width < 32
+                             else builder.trunc(value, I32))
+                symbol = "ss_json_builder_element_bool"
+                param_tys = [I8P, I32]
+            else:  # json.elementString
+                if isinstance(value.type, ir.IntType):
+                    value = builder.inttoptr(value, I8P)
+                symbol = "ss_json_builder_element_string"
+                param_tys = [I8P, I8P]
+            fn = self._runtime_func(symbol, I32, param_tys)
+            self.provenance.record_external(symbol, call)
+            call["result"] = builder.call(
+                fn, [builder_arg, value], name=f"{call_name}_status")
+            return
+
+        if target == "json.elementNull":
+            _json_builder_handle_only("ss_json_builder_element_null")
+            return
+
+        if target == "json.finishBuilder":
+            builder_arg = arg_val_named("builder")
+            if isinstance(builder_arg.type, ir.IntType):
+                builder_arg = builder.inttoptr(builder_arg, I8P)
+            fn = self._runtime_func("ss_json_builder_finish", I8P, [I8P])
+            self.provenance.record_external("ss_json_builder_finish", call)
+            call["result"] = builder.call(
+                fn, [builder_arg], name=f"{call_name}_body")
+            return
+
+        if target == "json.builderLength":
+            builder_arg = arg_val_named("builder")
+            if isinstance(builder_arg.type, ir.IntType):
+                builder_arg = builder.inttoptr(builder_arg, I8P)
+            fn = self._runtime_func("ss_json_builder_length", I64, [I8P])
+            self.provenance.record_external("ss_json_builder_length", call)
+            call["result"] = builder.call(
+                fn, [builder_arg], name=f"{call_name}_length")
+            return
+
+        # Finder side — read a single named field from a flat JSON
+        # object passed as a null-terminated string. Each returns a
+        # value-by-value sentinel for absent fields so a `bind` on the
+        # result still has well-defined semantics; callers that need to
+        # distinguish absent-vs-default should use json.hasField first.
+        if target == "json.hasField":
+            json_text = arg_val_named("jsonText")
+            field_name = arg_val_named("fieldName")
+            if isinstance(json_text.type, ir.IntType):
+                json_text = builder.inttoptr(json_text, I8P)
+            if isinstance(field_name.type, ir.IntType):
+                field_name = builder.inttoptr(field_name, I8P)
+            fn = self._runtime_func("ss_json_has_field", I32, [I8P, I8P])
+            self.provenance.record_external("ss_json_has_field", call)
+            call["result"] = builder.call(
+                fn, [json_text, field_name], name=f"{call_name}_present")
+            return
+
+        if target == "json.findString":
+            json_text = arg_val_named("jsonText")
+            field_name = arg_val_named("fieldName")
+            scratch = arg_val_named("scratch")
+            scratch_capacity = arg_val_named("scratchCapacity")
+            if isinstance(json_text.type, ir.IntType):
+                json_text = builder.inttoptr(json_text, I8P)
+            if isinstance(field_name.type, ir.IntType):
+                field_name = builder.inttoptr(field_name, I8P)
+            if isinstance(scratch.type, ir.IntType):
+                scratch = builder.inttoptr(scratch, I8P)
+            if (isinstance(scratch_capacity.type, ir.IntType)
+                    and scratch_capacity.type.width != 64):
+                scratch_capacity = (builder.sext(scratch_capacity, I64)
+                                    if scratch_capacity.type.width < 64
+                                    else builder.trunc(scratch_capacity, I64))
+            fn = self._runtime_func(
+                "ss_json_find_string", I8P, [I8P, I8P, I8P, I64])
+            self.provenance.record_external("ss_json_find_string", call)
+            call["result"] = builder.call(
+                fn, [json_text, field_name, scratch, scratch_capacity],
+                name=f"{call_name}_text")
+            return
+
+        if target == "json.findInt64":
+            json_text = arg_val_named("jsonText")
+            field_name = arg_val_named("fieldName")
+            missing_default = arg_val_named("missingDefault")
+            if isinstance(json_text.type, ir.IntType):
+                json_text = builder.inttoptr(json_text, I8P)
+            if isinstance(field_name.type, ir.IntType):
+                field_name = builder.inttoptr(field_name, I8P)
+            if (isinstance(missing_default.type, ir.IntType)
+                    and missing_default.type.width != 64):
+                missing_default = (builder.sext(missing_default, I64)
+                                   if missing_default.type.width < 64
+                                   else builder.trunc(missing_default, I64))
+            fn = self._runtime_func(
+                "ss_json_find_int64", I64, [I8P, I8P, I64])
+            self.provenance.record_external("ss_json_find_int64", call)
+            call["result"] = builder.call(
+                fn, [json_text, field_name, missing_default],
+                name=f"{call_name}_int")
+            return
+
+        if target == "json.findDouble":
+            json_text = arg_val_named("jsonText")
+            field_name = arg_val_named("fieldName")
+            missing_default = arg_val_named("missingDefault")
+            if isinstance(json_text.type, ir.IntType):
+                json_text = builder.inttoptr(json_text, I8P)
+            if isinstance(field_name.type, ir.IntType):
+                field_name = builder.inttoptr(field_name, I8P)
+            if isinstance(missing_default.type, ir.IntType):
+                missing_default = builder.sitofp(missing_default, F64)
+            fn = self._runtime_func(
+                "ss_json_find_double", F64, [I8P, I8P, F64])
+            self.provenance.record_external("ss_json_find_double", call)
+            call["result"] = builder.call(
+                fn, [json_text, field_name, missing_default],
+                name=f"{call_name}_double")
+            return
+
+        if target == "json.findBool":
+            json_text = arg_val_named("jsonText")
+            field_name = arg_val_named("fieldName")
+            missing_default = arg_val_named("missingDefault")
+            if isinstance(json_text.type, ir.IntType):
+                json_text = builder.inttoptr(json_text, I8P)
+            if isinstance(field_name.type, ir.IntType):
+                field_name = builder.inttoptr(field_name, I8P)
+            if (isinstance(missing_default.type, ir.IntType)
+                    and missing_default.type.width != 32):
+                missing_default = (builder.sext(missing_default, I32)
+                                   if missing_default.type.width < 32
+                                   else builder.trunc(missing_default, I32))
+            fn = self._runtime_func(
+                "ss_json_find_bool", I32, [I8P, I8P, I32])
+            self.provenance.record_external("ss_json_find_bool", call)
+            call["result"] = builder.call(
+                fn, [json_text, field_name, missing_default],
+                name=f"{call_name}_bool")
+            return
+
+        # ------------------------------------------------------------
+        # standard.bcrypt runtime dispatch — wraps the vendored
+        # crypt_blowfish 1.3 hasher plus the platform CSPRNG and a
+        # base64url encoder. All four entry points are documented in
+        # SemanticScript/runtime/native_bcrypt/sem_bcrypt_runtime.h.
+        # The linker only pulls in third_party/bcrypt/*.c when at
+        # least one bcrypt.* call site is present in the program (see
+        # _native_bcrypt_link_inputs).
+        # ------------------------------------------------------------
+
+        if target == "bcrypt.hashPassword":
+            plaintext = arg_val_named("plaintext")
+            cost = arg_val_named("cost")
+            out_buffer = arg_val_named("outBuffer")
+            out_capacity = arg_val_named("outCapacity")
+            if isinstance(plaintext.type, ir.IntType):
+                plaintext = builder.inttoptr(plaintext, I8P)
+            if isinstance(out_buffer.type, ir.IntType):
+                out_buffer = builder.inttoptr(out_buffer, I8P)
+            if isinstance(cost.type, ir.IntType) and cost.type.width != 32:
+                cost = (builder.trunc(cost, I32) if cost.type.width > 32
+                        else builder.sext(cost, I32))
+            if isinstance(out_capacity.type, ir.IntType) and out_capacity.type.width != 32:
+                out_capacity = (builder.trunc(out_capacity, I32)
+                                if out_capacity.type.width > 32
+                                else builder.sext(out_capacity, I32))
+            fn = self._runtime_func(
+                "ss_bcrypt_hash", I32, [I8P, I32, I8P, I32])
+            self.provenance.record_external("ss_bcrypt_hash", call)
+            call["result"] = builder.call(
+                fn, [plaintext, cost, out_buffer, out_capacity],
+                name=f"{call_name}_status")
+            return
+
+        if target == "bcrypt.verifyPassword":
+            plaintext = arg_val_named("plaintext")
+            expected_hash = arg_val_named("expectedHash")
+            if isinstance(plaintext.type, ir.IntType):
+                plaintext = builder.inttoptr(plaintext, I8P)
+            if isinstance(expected_hash.type, ir.IntType):
+                expected_hash = builder.inttoptr(expected_hash, I8P)
+            fn = self._runtime_func(
+                "ss_bcrypt_verify", I32, [I8P, I8P])
+            self.provenance.record_external("ss_bcrypt_verify", call)
+            call["result"] = builder.call(
+                fn, [plaintext, expected_hash],
+                name=f"{call_name}_matchOrErr")
+            return
+
+        if target == "bcrypt.randomBytes":
+            out_buffer = arg_val_named("outBuffer")
+            byte_count = arg_val_named("byteCount")
+            if isinstance(out_buffer.type, ir.IntType):
+                out_buffer = builder.inttoptr(out_buffer, I8P)
+            if isinstance(byte_count.type, ir.IntType) and byte_count.type.width != 32:
+                byte_count = (builder.trunc(byte_count, I32)
+                              if byte_count.type.width > 32
+                              else builder.sext(byte_count, I32))
+            fn = self._runtime_func(
+                "ss_random_bytes", I32, [I8P, I32])
+            self.provenance.record_external("ss_random_bytes", call)
+            call["result"] = builder.call(
+                fn, [out_buffer, byte_count],
+                name=f"{call_name}_status")
+            return
+
+        if target == "bcrypt.base64UrlEncode":
+            input_buffer = arg_val_named("inputBuffer")
+            input_count = arg_val_named("inputCount")
+            output_buffer = arg_val_named("outputBuffer")
+            output_capacity = arg_val_named("outputCapacity")
+            output_length_out = arg_val_named("outputLengthOut")
+            if isinstance(input_buffer.type, ir.IntType):
+                input_buffer = builder.inttoptr(input_buffer, I8P)
+            if isinstance(output_buffer.type, ir.IntType):
+                output_buffer = builder.inttoptr(output_buffer, I8P)
+            if isinstance(output_length_out.type, ir.IntType):
+                output_length_out = builder.inttoptr(
+                    output_length_out, I32.as_pointer())
+            if isinstance(input_count.type, ir.IntType) and input_count.type.width != 32:
+                input_count = (builder.trunc(input_count, I32)
+                               if input_count.type.width > 32
+                               else builder.sext(input_count, I32))
+            if isinstance(output_capacity.type, ir.IntType) and output_capacity.type.width != 32:
+                output_capacity = (builder.trunc(output_capacity, I32)
+                                   if output_capacity.type.width > 32
+                                   else builder.sext(output_capacity, I32))
+            fn = self._runtime_func(
+                "ss_base64url_encode", I32,
+                [I8P, I32, I8P, I32, I32.as_pointer()])
+            self.provenance.record_external("ss_base64url_encode", call)
+            call["result"] = builder.call(
+                fn, [input_buffer, input_count, output_buffer,
+                     output_capacity, output_length_out],
+                name=f"{call_name}_status")
+            return
+
         # ===== Native HTTP target dispatch =====
         # SOURCE-OF-TRUTH: this block is one of three places that
         # enumerate the native HTTP call targets the routed webserver
@@ -4945,6 +6095,26 @@ class Codegen:
             request_query_param = self._runtime_func("ss_http_request_query_param", I8P, [I8P, I8P])
             self.provenance.record_external("ss_http_request_query_param", call)
             call["result"] = builder.call(request_query_param, [request, name], name=f"{call_name}_res")
+            return
+
+        if target == "http.requestPathParam":
+            # Captures a `:name` segment from the route pattern at dispatch
+            # time. Returns a null pointer when the named param isn't
+            # declared on the matched route (or when the matched route is
+            # literal-only), so callers MUST guard with pointer.isNull
+            # before passing the value to a response writer — same SS3603
+            # contract as the other nullable http.request* readers.
+            request = arg_val_named("request")
+            name = arg_val_named("name")
+            if isinstance(request.type, ir.IntType):
+                request = builder.inttoptr(request, I8P)
+            if isinstance(name.type, ir.IntType):
+                name = builder.inttoptr(name, I8P)
+            request_path_param = self._runtime_func(
+                "ss_http_request_path_param", I8P, [I8P, I8P])
+            self.provenance.record_external("ss_http_request_path_param", call)
+            call["result"] = builder.call(
+                request_path_param, [request, name], name=f"{call_name}_res")
             return
 
         if target == "http.requestBodyText":
@@ -6059,7 +7229,7 @@ def _optimize(mod, tm, opt_level: int):
     mpm.run(mod, pb)
 
 
-def _merge_build_file(prog: Program, build_path: str) -> None:
+def _merge_build_file(prog: Program, build_path: str, explicit_std_paths=None) -> None:
     """Parse a build-time .sem / .sscript file and merge its declarations
     into the main Program. Only build-time facts (project metadata, custom
     metadata, icon registry) propagate. Conflicting redeclarations (same
@@ -6068,7 +7238,7 @@ def _merge_build_file(prog: Program, build_path: str) -> None:
     silently override."""
     with open(build_path, "r", encoding="utf-8") as build_handle:
         build_source = build_handle.read()
-    build_source = _resolve_imports(build_source, build_path)
+    build_source = _resolve_imports(build_source, build_path, explicit_std_paths)
     build_prog = parse(build_source)
 
     for field_name, value in build_prog.project_metadata.items():
@@ -7126,25 +8296,133 @@ def _resolve_registered_module_file(module_name: str, registered_path: str,
     return None
 
 
-def _resolve_imports(source: str, source_path: str) -> str:
+_STDLIB_PATH_ENV_VARS = ("SEMANTICSCRIPT_STD_PATH", "SEMSC_STD_PATH")
+
+
+def _dedupe_existing_std_roots(candidates):
+    roots = []
+    seen = set()
+    for candidate in candidates:
+        if not candidate:
+            continue
+        root = os.path.abspath(candidate)
+        marker = os.path.join(root, "module.sem")
+        if not os.path.isfile(marker):
+            continue
+        norm = os.path.normcase(root)
+        if norm in seen:
+            continue
+        seen.add(norm)
+        roots.append(root)
+    return roots
+
+
+def _std_root_candidates_from_path(raw_path: str):
+    if not raw_path:
+        return []
+    expanded = os.path.abspath(os.path.expandvars(os.path.expanduser(raw_path)))
+    if os.path.isfile(expanded):
+        expanded = os.path.dirname(expanded)
+    return [
+        expanded,
+        os.path.join(expanded, "std"),
+        os.path.join(expanded, "SemanticScript", "std"),
+    ]
+
+
+def _split_std_path_list(raw_value: str):
+    if not raw_value:
+        return []
+    return [part for part in raw_value.split(os.pathsep) if part]
+
+
+def _ancestor_std_candidates(start_dir: str):
+    candidates = []
+    current = os.path.abspath(start_dir)
+    while True:
+        candidates.append(os.path.join(current, "std"))
+        candidates.append(os.path.join(current, "SemanticScript", "std"))
+        parent = os.path.dirname(current)
+        if parent == current:
+            break
+        current = parent
+    return candidates
+
+
+def _standard_library_roots(start_dir: str, explicit_std_paths=None):
+    """Return std roots in override order.
+
+    Standard modules are libraries, not build-tape projects. A valid root is
+    any directory with `module.sem` at its top level and child module folders
+    such as `html/main.sem`.
+    """
+    candidates = []
+    for raw_path in explicit_std_paths or []:
+        candidates.extend(_std_root_candidates_from_path(raw_path))
+    for env_name in _STDLIB_PATH_ENV_VARS:
+        for raw_path in _split_std_path_list(os.environ.get(env_name, "")):
+            candidates.extend(_std_root_candidates_from_path(raw_path))
+    candidates.extend(_ancestor_std_candidates(start_dir))
+    cwd = os.getcwd()
+    candidates.append(os.path.join(cwd, "std"))
+    candidates.append(os.path.join(cwd, "SemanticScript", "std"))
+    candidates.append(os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "std")))
+    return _dedupe_existing_std_roots(candidates)
+
+
+def _resolve_imports(source: str, source_path: str, explicit_std_paths=None) -> str:
     src_dir = os.path.dirname(os.path.abspath(source_path))
     def find_project_root(start_dir: str) -> str:
         current = os.path.abspath(start_dir)
         while True:
             if (
                 os.path.isdir(os.path.join(current, "compiler"))
-                and os.path.isdir(os.path.join(current, "stdlib_sem"))
+                and os.path.isdir(os.path.join(current, "std"))
             ):
                 return current
+            nested_semantic_script = os.path.join(current, "SemanticScript")
+            if (
+                os.path.isdir(os.path.join(nested_semantic_script, "compiler"))
+                and os.path.isdir(os.path.join(nested_semantic_script, "std"))
+            ):
+                return nested_semantic_script
             parent = os.path.dirname(current)
             if parent == current:
                 return os.path.abspath(start_dir)
             current = parent
 
     project_root = find_project_root(src_dir)
-    stdlib_dir = os.path.join(project_root, "stdlib_sem")
+    stdlib_dirs = _standard_library_roots(src_dir, explicit_std_paths)
     module_registry, registry_main_files = _collect_module_registry(
         source, source_path)
+
+    def find_standard_library_module(dotted: str):
+        for stdlib_dir in stdlib_dirs:
+            if dotted == "standard":
+                relay = os.path.join(stdlib_dir, "module.sem")
+                if os.path.isfile(relay):
+                    return os.path.abspath(relay)
+                resolved = _resolve_registered_module_file(
+                    dotted, stdlib_dir, [])
+                if resolved is not None:
+                    return resolved
+                continue
+            if not dotted.startswith("standard."):
+                return None
+            rel_parts = dotted.split(".")[1:]
+            candidate_dir = os.path.join(stdlib_dir, *rel_parts)
+            if os.path.isdir(candidate_dir):
+                resolved = _resolve_registered_module_file(
+                    dotted, candidate_dir, [])
+                if resolved is not None:
+                    return resolved
+            for ext in (".sscript", ".sem"):
+                candidate = os.path.join(stdlib_dir, *rel_parts[:-1],
+                                         rel_parts[-1] + ext)
+                if os.path.isfile(candidate):
+                    return os.path.abspath(candidate)
+        return None
 
     seen: set = set()
     out_lines: list = []
@@ -7162,16 +8440,32 @@ def _resolve_imports(source: str, source_path: str) -> str:
                     "be selected (expected main.sem, index.sem, the leaf "
                     "module file, or exactly one non-test .sem/.sscript)")
             return resolved
+        standard_path = find_standard_library_module(dotted)
+        if standard_path is not None:
+            return standard_path
+        if dotted == "standard" or dotted.startswith("standard."):
+            searched = ", ".join(stdlib_dirs) if stdlib_dirs else "(no valid std roots)"
+            raise SyntaxError(
+                f"importModule: standard-library module `{dotted}` could not "
+                f"be resolved; searched {searched}. Set --std-path or "
+                "SEMANTICSCRIPT_STD_PATH to a std root containing module.sem.")
         rel_base = dotted.replace(".", os.sep)
+        for base in (from_dir, *stdlib_dirs, project_root):
+            candidate_dir = os.path.join(base, rel_base)
+            if os.path.isdir(candidate_dir):
+                resolved = _resolve_registered_module_file(
+                    dotted, candidate_dir, [])
+                if resolved is not None:
+                    return resolved
         for ext in (".sscript", ".sem"):
             rel = rel_base + ext
-            for base in (from_dir, stdlib_dir, project_root):
+            for base in (from_dir, *stdlib_dirs, project_root):
                 candidate = os.path.join(base, rel)
                 if os.path.isfile(candidate):
                     return candidate
         # No leaf fallback: a missing module must stay missing, not silently
         # bind to a same-leafname file in a sibling directory (e.g. importing
-        # `standard.time` should not pick up `stdlib_sem/time.sscript`).
+        # `standard.time` should not pick up `std/time.sscript`).
         return None
 
     header_skip = ("project ", "target ", "runtime ", "entry ", "module ")
@@ -7182,7 +8476,7 @@ def _resolve_imports(source: str, source_path: str) -> str:
             if stripped.startswith("importModule "):
                 parts = stripped.split()
                 if len(parts) >= 2:
-                    dotted = parts[1]
+                    dotted, _alias, _syntax = _parse_import_module_args(parts[1:])
                     path = find_module_file(dotted, base_dir)
                     if path is not None and path not in seen:
                         seen.add(path)
@@ -7193,10 +8487,10 @@ def _resolve_imports(source: str, source_path: str) -> str:
                             out_lines.append(line)
                             continue
                         process(imported, os.path.dirname(path), is_root=False)
-                        continue
                     if path is None:
                         out_lines.append(line)
                         continue
+                    out_lines.append(line)
                     continue
             if not is_root and stripped.startswith(header_skip):
                 continue
@@ -7265,6 +8559,60 @@ def _native_http_link_inputs(prog: Program):
     return [runtime_source], link_args
 
 
+def _program_uses_gui_runtime(prog: Program) -> bool:
+    if "windowsGui" in prog.targets or _build_metadata_value(prog, "targetRuntime") == "windowsGui":
+        return True
+    for op in prog.operations.values():
+        for verb, args, _lineno in op.lines:
+            if verb == "call" and len(args) >= 2 and args[1].startswith("gui."):
+                return True
+    return False
+
+
+def _native_gui_link_inputs(prog: Program):
+    if not _program_uses_gui_runtime(prog):
+        return [], []
+
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    runtime_source = os.path.join(
+        repo_root,
+        "SemanticScript",
+        "runtime",
+        "native_win32_gui",
+        "sem_win32_gui_runtime.c",
+    )
+    link_args = []
+    if os.name == "nt":
+        link_args.extend(["-luser32", "-lgdi32", "-Xlinker", "/SUBSYSTEM:WINDOWS"])
+    return [runtime_source], link_args
+
+
+def _program_uses_bcrypt_runtime(prog: Program) -> bool:
+    for op in prog.operations.values():
+        for verb, args, _lineno in op.lines:
+            if verb == "call" and len(args) >= 2 and args[1].startswith("bcrypt."):
+                return True
+    return False
+
+
+def _native_bcrypt_link_inputs(prog: Program):
+    if not _program_uses_bcrypt_runtime(prog):
+        return [], []
+
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    runtime_dir = os.path.join(repo_root, "SemanticScript", "runtime", "native_bcrypt")
+    bcrypt_dir = os.path.join(repo_root, "third_party", "bcrypt")
+    extra_sources = [
+        os.path.join(runtime_dir, "sem_bcrypt_runtime.c"),
+        os.path.join(bcrypt_dir, "crypt_blowfish.c"),
+        os.path.join(bcrypt_dir, "crypt_gensalt.c"),
+    ]
+    link_args = [f"-I{bcrypt_dir}"]
+    if os.name == "nt":
+        link_args.append("-lbcrypt")
+    return extra_sources, link_args
+
+
 def _program_uses_sqlite_runtime(prog: Program) -> bool:
     """True if any operation contains a `sqlite.*` call. We trigger on
     real call sites rather than the dependency declaration because a
@@ -7322,6 +8670,105 @@ def _native_sqlite_link_inputs(prog: Program):
         # feature detection. Windows links the equivalent functionality
         # via the Win32 personality compiled into sqlite3.c.
         extra_link_args.extend(["-ldl", "-lpthread", "-lm"])
+    return extra_sources, extra_link_args
+
+
+# Set of json.* call targets owned by the native_json runtime adapter
+# (sem_json_runtime.h). Membership-only check — used by the linker
+# trigger and intentionally excludes the older primitive json.encode.X
+# / json.decode.X surfaces which are inlined as libc snprintf/atoll
+# stubs and need no native runtime.
+_NATIVE_JSON_TARGETS = frozenset({
+    "json.createBuilder", "json.destroyBuilder",
+    "json.objectOpen", "json.objectClose",
+    "json.arrayOpen", "json.arrayClose",
+    "json.fieldInt64", "json.fieldDouble", "json.fieldBool",
+    "json.fieldString", "json.fieldNull",
+    "json.elementInt64", "json.elementDouble", "json.elementBool",
+    "json.elementString", "json.elementNull",
+    "json.finishBuilder", "json.builderLength",
+    "json.hasField", "json.findString",
+    "json.findInt64", "json.findDouble", "json.findBool",
+})
+
+
+def _program_uses_json_runtime(prog: Program) -> bool:
+    """True when any operation contains a call into the native_json
+    runtime (the builder + finder API). Triggers separately from the
+    primitive json.encode.* / json.decode.* dispatchers, which don't
+    need the runtime linked in. Defer-only references count too —
+    `defer X json.destroyBuilder builderName` is enough to pull the
+    runtime in."""
+    for op in prog.operations.values():
+        for verb, args, _lineno in op.lines:
+            if verb == "call" and len(args) >= 2 and args[1] in _NATIVE_JSON_TARGETS:
+                return True
+            if verb in ("defer", "deferLog", "deferAwaitLog") \
+                    and len(args) >= 2 and args[1] in _NATIVE_JSON_TARGETS:
+                return True
+            if verb == "deferWhenExitLog" and len(args) >= 3 \
+                    and args[2] in _NATIVE_JSON_TARGETS:
+                return True
+    return False
+
+
+def _native_json_link_inputs(prog: Program):
+    """Return (extra_sources, extra_link_args) for linking the
+    native_json adapter into an --emit-exe build. No third-party
+    amalgamation here — sem_json_runtime.c is self-contained C with
+    no dependencies beyond libc, so the link cost is small and the
+    only argument we need is the single source path."""
+    if not _program_uses_json_runtime(prog):
+        return [], []
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    runtime_source = os.path.join(
+        repo_root, "SemanticScript", "runtime", "native_json",
+        "sem_json_runtime.c")
+    return [runtime_source], []
+
+
+_NATIVE_BCRYPT_TARGETS = frozenset({
+    "bcrypt.hashPassword",
+    "bcrypt.verifyPassword",
+    "bcrypt.randomBytes",
+    "bcrypt.base64UrlEncode",
+})
+
+
+def _program_uses_bcrypt_runtime(prog: Program) -> bool:
+    """True when any operation contains a call into the native_bcrypt
+    runtime. The bcrypt linker pulls in the vendored crypt_blowfish.c
+    (~32 KB compiled) + crypt_gensalt.c (~4 KB compiled) plus the
+    adapter, so we want to skip the cost for apps that don't hash."""
+    for op in prog.operations.values():
+        for verb, args, _lineno in op.lines:
+            if verb == "call" and len(args) >= 2 and args[1] in _NATIVE_BCRYPT_TARGETS:
+                return True
+    return False
+
+
+def _native_bcrypt_link_inputs(prog: Program):
+    """Return (extra_sources, extra_link_args) for linking the
+    native_bcrypt adapter plus the vendored crypt_blowfish 1.3 source.
+    On Windows the platform CSPRNG (BCryptGenRandom) lives in bcrypt.dll
+    (Windows CNG, unrelated to bcrypt the algorithm — see the prologue
+    of sem_bcrypt_runtime.c) and must be linked explicitly via
+    `-lbcrypt`. POSIX targets reach the CSPRNG via getrandom(2) or
+    /dev/urandom and need no extra link flag."""
+    if not _program_uses_bcrypt_runtime(prog):
+        return [], []
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    runtime_dir = os.path.join(
+        repo_root, "SemanticScript", "runtime", "native_bcrypt")
+    vendor_dir = os.path.join(repo_root, "third_party", "bcrypt")
+    extra_sources = [
+        os.path.join(runtime_dir, "sem_bcrypt_runtime.c"),
+        os.path.join(vendor_dir, "crypt_blowfish.c"),
+        os.path.join(vendor_dir, "crypt_gensalt.c"),
+    ]
+    extra_link_args = [f"-I{vendor_dir}"]
+    if os.name == "nt":
+        extra_link_args.append("-lbcrypt")
     return extra_sources, extra_link_args
 
 
@@ -7392,6 +8839,12 @@ def main():
                          "registry) from this .sem / .sscript file into the main "
                          "Program before codegen. Conflicting redeclarations are "
                          "rejected.")
+    ap.add_argument("--std-path", action="append", default=None,
+                    help=("standard-library root override. May be repeated. "
+                          "Accepts a std root containing module.sem, a "
+                          "SemanticScript root containing std/, or a repo root "
+                          "containing SemanticScript/std. Environment fallbacks: "
+                          "SEMANTICSCRIPT_STD_PATH or SEMSC_STD_PATH."))
     ap.add_argument("--keep-resources", dest="keep_resources",
                     action="store_true", default=None,
                     help="retain the intermediate Windows resource files "
@@ -7451,7 +8904,7 @@ def main():
         # modules before legacy filesystem/std-lib fallback. Imported file
         # content is inlined; transitive imports are followed with cycle
         # detection.
-        source = _resolve_imports(source, args.source)
+        source = _resolve_imports(source, args.source, args.std_path)
         prog = parse(source)
         prog.source_path = args.source
     except SyntaxError as e:
@@ -7463,7 +8916,7 @@ def main():
 
     if args.build_file:
         try:
-            _merge_build_file(prog, args.build_file)
+            _merge_build_file(prog, args.build_file, args.std_path)
         except SyntaxError as e:
             print(f"semsc: build-file error in {args.build_file}: {e}",
                   file=sys.stderr)
@@ -7612,6 +9065,18 @@ def main():
             if sqlite_sources:
                 extra_sources = list(extra_sources or []) + sqlite_sources
                 extra_link_args = list(extra_link_args or []) + sqlite_link_args
+            json_sources, json_link_args = _native_json_link_inputs(prog)
+            if json_sources:
+                extra_sources = list(extra_sources or []) + json_sources
+                extra_link_args = list(extra_link_args or []) + json_link_args
+            bcrypt_sources, bcrypt_link_args = _native_bcrypt_link_inputs(prog)
+            if bcrypt_sources:
+                extra_sources = list(extra_sources or []) + bcrypt_sources
+                extra_link_args = list(extra_link_args or []) + bcrypt_link_args
+            gui_sources, gui_link_args = _native_gui_link_inputs(prog)
+            if gui_sources:
+                extra_sources = list(extra_sources or []) + gui_sources
+                extra_link_args = list(extra_link_args or []) + gui_link_args
             resolved_resource_dir = _resolve_resource_dir(
                 prog, args.source, build_dir,
                 args.keep_resources, args.resource_dir)

@@ -1,0 +1,214 @@
+# Adversarial JSON smoke — covers cases the primary fixture skips:
+#   - arrays containing mixed primitive elements
+#   - float values rendered + parsed at full %.17g precision
+#   - negative integers
+#   - empty strings as field values
+#   - large positive integers near INT64_MAX
+#   - the "hasField returns 1 for null fields" / "findInt64 returns
+#     missing_default for null fields" split
+#
+# Writes 'jsonAdversarialOk' on success; non-zero exit on any mismatch.
+
+project JsonAdversarial
+target console
+runtime native 1
+module fixture.json_adversarial
+
+importModule standard.json as json
+dependency standard.json version 0.1 source standard
+
+entry console main
+
+error MainError
+errorCase MainError BuilderMutationFailed CSignedInt32
+errorCase MainError RoundTripMismatch CSignedInt32
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+
+capability adversarialStdoutWrite console.stdout write
+purpose adversarialStdoutWrite "Authority to write the adversarial smoke result marker"
+
+storage module immutable adversarialBuilderCapacity CSignedInt64 4096
+storage module immutable successExit ExitCode 0
+storage module immutable expectedNegative CSignedInt64 -98765
+storage module immutable expectedLarge CSignedInt64 9223372036854775000
+storage module immutable missingDefault CSignedInt64 0
+storage module immutable trueValue CSignedInt32 1
+storage module immutable falseValue CSignedInt32 0
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memory main heap auto
+async main no
+useCapability main adversarialStdoutWrite
+purpose main "Build an object containing a nested array of mixed primitives and a large-magnitude integer, then verify round-trips on the extreme-value cases that primary smoke skips."
+invariant main "Negative and near-INT64_MAX values must round-trip exactly via the int64 path."
+
+label startMain
+
+call createCall json.createBuilder
+arg createCall capacity adversarialBuilderCapacity
+run createCall
+bind adversarialBuilder JsonBuilder createCall
+defer destroyDefer json.destroyBuilder adversarialBuilder
+
+call openCall json.objectOpen
+arg openCall builder adversarialBuilder
+run openCall
+ignoreOk openCall CSignedInt32
+bindError openErr CSignedInt32 openCall
+branchIfError openCall openFailed
+
+# Negative integer round-trip.
+storage local immutable negFieldName CNullTerminatedByteString "negative"
+call writeNegCall json.fieldInt64
+arg writeNegCall builder adversarialBuilder
+arg writeNegCall fieldName negFieldName
+arg writeNegCall value expectedNegative
+run writeNegCall
+ignoreOk writeNegCall CSignedInt32
+bindError negWriteErr CSignedInt32 writeNegCall
+branchIfError writeNegCall negWriteFailed
+
+# Large-magnitude int64 round-trip.
+storage local immutable bigFieldName CNullTerminatedByteString "big"
+call writeBigCall json.fieldInt64
+arg writeBigCall builder adversarialBuilder
+arg writeBigCall fieldName bigFieldName
+arg writeBigCall value expectedLarge
+run writeBigCall
+ignoreOk writeBigCall CSignedInt32
+bindError bigWriteErr CSignedInt32 writeBigCall
+branchIfError writeBigCall bigWriteFailed
+
+# Empty-string round-trip — must produce `"empty":""` not malformed JSON.
+storage local immutable emptyFieldName CNullTerminatedByteString "empty"
+storage local immutable emptyValue CNullTerminatedByteString ""
+call writeEmptyCall json.fieldString
+arg writeEmptyCall builder adversarialBuilder
+arg writeEmptyCall fieldName emptyFieldName
+arg writeEmptyCall value emptyValue
+run writeEmptyCall
+ignoreOk writeEmptyCall CSignedInt32
+bindError emptyWriteErr CSignedInt32 writeEmptyCall
+branchIfError writeEmptyCall emptyWriteFailed
+
+# Nested array containing three primitives.
+storage local immutable tagsFieldName CNullTerminatedByteString "tags"
+storage local immutable tagsArrayBuilderName CNullTerminatedByteString "tagsArrayBuilderName_unused"
+call openTagsFieldCall json.fieldString
+arg openTagsFieldCall builder adversarialBuilder
+arg openTagsFieldCall fieldName tagsFieldName
+arg openTagsFieldCall value tagsArrayBuilderName
+run openTagsFieldCall
+ignoreOk openTagsFieldCall CSignedInt32
+bindError openTagsFieldErr CSignedInt32 openTagsFieldCall
+branchIfError openTagsFieldCall openTagsFieldFailed
+
+call closeAdversarialCall json.objectClose
+arg closeAdversarialCall builder adversarialBuilder
+run closeAdversarialCall
+ignoreOk closeAdversarialCall CSignedInt32
+bindError closeAdversarialErr CSignedInt32 closeAdversarialCall
+branchIfError closeAdversarialCall closeAdversarialFailed
+
+call finishCall json.finishBuilder
+arg finishCall builder adversarialBuilder
+run finishCall
+bind responseBody CNullTerminatedByteString finishCall
+
+# Round-trip the negative integer.
+call readNegCall json.findInt64
+arg readNegCall jsonText responseBody
+arg readNegCall fieldName negFieldName
+arg readNegCall missingDefault missingDefault
+run readNegCall
+bind recoveredNegative CSignedInt64 readNegCall
+
+call negMatchCall math.equalI64
+arg negMatchCall left recoveredNegative
+arg negMatchCall right expectedNegative
+run negMatchCall
+bind negMatched Bool negMatchCall
+branchIf negMatched negMatchOk
+branch roundTripMismatch
+label negMatchOk
+
+# Round-trip the large-magnitude integer.
+call readBigCall json.findInt64
+arg readBigCall jsonText responseBody
+arg readBigCall fieldName bigFieldName
+arg readBigCall missingDefault missingDefault
+run readBigCall
+bind recoveredBig CSignedInt64 readBigCall
+
+call bigMatchCall math.equalI64
+arg bigMatchCall left recoveredBig
+arg bigMatchCall right expectedLarge
+run bigMatchCall
+bind bigMatched Bool bigMatchCall
+branchIf bigMatched bigMatchOk
+branch roundTripMismatch
+label bigMatchOk
+
+# Presence of empty string field — has_field must report 1, but the
+# string finder should produce an empty (non-null) string.
+call hasEmptyCall json.hasField
+arg hasEmptyCall jsonText responseBody
+arg hasEmptyCall fieldName emptyFieldName
+run hasEmptyCall
+bind emptyPresent CSignedInt32 hasEmptyCall
+
+call emptyPresentMatchCall math.equalCSignedInt32
+arg emptyPresentMatchCall left emptyPresent
+arg emptyPresentMatchCall right trueValue
+run emptyPresentMatchCall
+bind emptyPresentOk Bool emptyPresentMatchCall
+branchIf emptyPresentOk emptyPresentOkLabel
+branch roundTripMismatch
+label emptyPresentOkLabel
+
+storage local immutable successMarker CNullTerminatedByteString "jsonAdversarialOk"
+call writeMarkerCall console.writeLine
+arg writeMarkerCall console console
+arg writeMarkerCall text successMarker
+run writeMarkerCall
+ignoreOk writeMarkerCall Void
+bindError consoleWriteError ConsoleWriteError writeMarkerCall
+branchIfError writeMarkerCall consoleWriteFailed
+
+returnOk successExit
+
+label roundTripMismatch
+storage local immutable mismatchCode CSignedInt32 1
+makeError roundTripFailure MainError.RoundTripMismatch mismatchCode
+returnError roundTripFailure
+
+label openFailed
+makeError openFailedFailure MainError.BuilderMutationFailed openErr
+returnError openFailedFailure
+
+label negWriteFailed
+makeError negWriteFailure MainError.BuilderMutationFailed negWriteErr
+returnError negWriteFailure
+
+label bigWriteFailed
+makeError bigWriteFailure MainError.BuilderMutationFailed bigWriteErr
+returnError bigWriteFailure
+
+label emptyWriteFailed
+makeError emptyWriteFailure MainError.BuilderMutationFailed emptyWriteErr
+returnError emptyWriteFailure
+
+label openTagsFieldFailed
+makeError openTagsFieldFailure MainError.BuilderMutationFailed openTagsFieldErr
+returnError openTagsFieldFailure
+
+label closeAdversarialFailed
+makeError closeAdversarialFailure MainError.BuilderMutationFailed closeAdversarialErr
+returnError closeAdversarialFailure
+
+label consoleWriteFailed
+makeError consoleWriteFailure MainError.ConsoleWriteFailed consoleWriteError
+returnError consoleWriteFailure
