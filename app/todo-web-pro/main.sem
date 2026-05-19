@@ -30,6 +30,7 @@ serverHost todoWebProServer "127.0.0.1"
 serverPort todoWebProServer 18090
 
 route todoWebProServer GET    "/"                  homePageHandler
+route todoWebProServer GET    "/assets/:filename"  staticAssetHandler
 route todoWebProServer GET    "/health"            healthHandler
 route todoWebProServer GET    "/api/version"       versionHandler
 route todoWebProServer POST   "/api/auth/register" registerHandler
@@ -61,10 +62,19 @@ purpose heapFreeCapability "Authority to free the same buffers via defer c.free 
 capability filesystemCreateCapability filesystem create
 purpose filesystemCreateCapability "Authority to create the build/images/ directory at startup."
 
+capability filesystemReadCapability filesystem read
+purpose filesystemReadCapability "Authority to read files from the app assets directory for static response serving."
+
 # ===== module-scope constants =====
 
 storage module immutable databasePath CNullTerminatedByteString "todo_web_pro.db"
 storage module immutable imagesDirectoryPath CNullTerminatedByteString "images"
+# Root directory for static assets — resolved relative to the exe's
+# working directory at run time, so assets/ must live alongside the
+# exe (the post-build step in scripts/test_todo_web_pro.py copies the
+# source tree's app/todo-web-pro/assets/ into build/assets/).
+storage module immutable assetsDirectoryPath CNullTerminatedByteString "assets"
+storage module immutable assetFilenameParam CNullTerminatedByteString "filename"
 
 storage module immutable httpStatusOk CSignedInt32 200
 storage module immutable httpStatusCreated CSignedInt32 201
@@ -1809,6 +1819,87 @@ arg writeCompleteStubCall messageBody completeStubBody
 run writeCompleteStubCall
 bind writeCompleteStubStatus CSignedInt32 writeCompleteStubCall
 returnValue writeCompleteStubStatus
+
+# ----- staticAssetHandler -----
+#
+# Serves files from the assets/ directory beside the exe. Wired to
+# `GET /assets/:filename` in the route table at the top of this file.
+# Uses http.responseFile which:
+#   - sniffs the content-type from the extension (.js -> text/javascript,
+#     .css -> text/css, .png -> image/png, etc.)
+#   - refuses any path that contains `..` or starts with `/` / `\`
+#   - refuses files larger than 16 MiB
+#   - returns SS_HTTP_ERR_CONFIG / SS_HTTP_ERR_ENGINE on failure,
+#     which the dispatcher 500s — we map to a 404 by branching on
+#     the failure path.
+#
+# The runtime's :filename matcher is what gives us the value via
+# http.requestPathParam; pointer.isNull guards against the (unreachable
+# with our route shape) "param not present" path so SS3603 stays happy.
+
+operation staticAssetHandler
+input staticAssetHandler request HttpRequest
+input staticAssetHandler response HttpResponse
+output staticAssetHandler CSignedInt32
+effect staticAssetHandler read http.request.header
+effect staticAssetHandler read filesystem
+effect staticAssetHandler write http.response
+useCapability staticAssetHandler httpRequestReader
+useCapability staticAssetHandler httpResponseWriter
+useCapability staticAssetHandler filesystemReadCapability
+memory staticAssetHandler arena request
+async staticAssetHandler no
+purpose staticAssetHandler "GET /assets/:filename — serve a single file from the assets/ directory beside the exe, with content-type sniffed by extension. Refuses path traversal at the runtime layer."
+invariant staticAssetHandler "The runtime's path-traversal refusal + content-type sniffing are the load-bearing security checks. The :filename capture is a single segment (cannot contain `/`), so multi-component asset paths are not addressable — that's intentional v1 scope; nested asset dirs are a v1.1 follow-up."
+
+label startStaticAssetHandler
+
+storage local immutable staticAssetMissingBody HttpTextBody "{\"error\":{\"code\":\"assetNotFound\",\"message\":\"asset not found\"}}\n"
+
+call readAssetFilenameCall http.requestPathParam
+arg readAssetFilenameCall request request
+arg readAssetFilenameCall name assetFilenameParam
+run readAssetFilenameCall
+bind assetFilename CNullTerminatedByteString readAssetFilenameCall
+
+call assetFilenameNullCheckCall pointer.isNull
+arg assetFilenameNullCheckCall pointer assetFilename
+run assetFilenameNullCheckCall
+bind assetFilenameMissing Bool assetFilenameNullCheckCall
+branchIf assetFilenameMissing staticAssetMissingHandler
+
+call writeAssetFileCall http.responseFile
+arg writeAssetFileCall response response
+arg writeAssetFileCall status httpStatusOk
+arg writeAssetFileCall rootDirectory assetsDirectoryPath
+arg writeAssetFileCall requestedPath assetFilename
+run writeAssetFileCall
+bind writeAssetFileStatus CSignedInt32 writeAssetFileCall
+
+# http.responseFile returns SS_HTTP_OK (0) on success, non-zero on
+# refusal / file-not-found / oversize. Treat anything non-zero as 404
+# rather than the dispatcher's default 500 — a missing asset is a
+# routine condition, not an application crash.
+storage local immutable assetWriteOkSentinel CSignedInt32 0
+call assetWriteOkCheckCall math.equalCSignedInt32
+arg assetWriteOkCheckCall left writeAssetFileStatus
+arg assetWriteOkCheckCall right assetWriteOkSentinel
+run assetWriteOkCheckCall
+bind assetWriteOk Bool assetWriteOkCheckCall
+branchIf assetWriteOk staticAssetServed
+branch staticAssetMissingHandler
+
+label staticAssetServed
+returnValue writeAssetFileStatus
+
+label staticAssetMissingHandler
+call writeAssetMissingCall writeErrorJsonResponse
+arg writeAssetMissingCall response response
+arg writeAssetMissingCall status httpStatusNotFound
+arg writeAssetMissingCall messageBody staticAssetMissingBody
+run writeAssetMissingCall
+bind writeAssetMissingStatus CSignedInt32 writeAssetMissingCall
+returnValue writeAssetMissingStatus
 
 # Pull in the pages module last — after every local operation closes
 # — so the imported htmlTemplate + handler don't leave dangling

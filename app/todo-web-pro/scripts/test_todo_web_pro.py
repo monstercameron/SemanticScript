@@ -5,6 +5,8 @@ route shipped in this iteration, then tears the server down. Exit code
 is 0 on success, non-zero on first failed assertion.
 
 Current coverage (v1.0):
+  - GET  /                            - 200 + HTML shell
+  - GET  /assets/home.js              - 200 + JavaScript asset
   - GET  /health                       — 200 + JSON
   - GET  /api/version                  — 200 + JSON with bcrypt cost
   - POST /api/auth/register            — full flow: user inserted,
@@ -26,6 +28,7 @@ from __future__ import annotations
 
 import http.client
 import os
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -37,6 +40,8 @@ BUILD_TAPE = REPO_ROOT / "app" / "todo-web-pro" / "build.sem"
 BUILD_DIR = REPO_ROOT / "app" / "todo-web-pro" / "build"
 EXE_PATH = BUILD_DIR / "todo_web_pro.exe"
 DB_PATH = BUILD_DIR / "todo_web_pro.db"
+ASSET_SOURCE_DIR = REPO_ROOT / "app" / "todo-web-pro" / "assets"
+BUILD_ASSET_DIR = BUILD_DIR / "assets"
 SERVER_HOST = "127.0.0.1"
 SERVER_PORT = 18090
 READY_DEADLINE_SECONDS = 12.0
@@ -131,6 +136,11 @@ def main():
         raise TestFailure(f"build did not produce {EXE_PATH}")
     print(f"[OK]  build produced {EXE_PATH.name}")
 
+    if BUILD_ASSET_DIR.exists():
+        shutil.rmtree(BUILD_ASSET_DIR)
+    shutil.copytree(ASSET_SOURCE_DIR, BUILD_ASSET_DIR)
+    print("[OK]  copied static assets")
+
     server_process = subprocess.Popen(
         [str(EXE_PATH)],
         cwd=str(BUILD_DIR),
@@ -141,6 +151,21 @@ def main():
     try:
         wait_for_ready()
         print("[OK]  server reachable")
+
+        # ---- / ----
+        status, body, headers = http_request("GET", "/")
+        assert_equal(status, 200, "/ status")
+        assert_in("Todo Web Pro", body, "/ page title")
+        assert_in("/assets/home.js", body, "/ script asset")
+        assert_in("text/html", headers.get("content-type", ""), "/ content-type")
+        print("[OK]  GET / -> 200 HTML shell")
+
+        # ---- /assets/home.js ----
+        status, body, headers = http_request("GET", "/assets/home.js")
+        assert_equal(status, 200, "/assets/home.js status")
+        assert_in("registerForm", body, "/assets/home.js body")
+        assert_in("text/javascript", headers.get("content-type", ""), "/assets/home.js content-type")
+        print("[OK]  GET /assets/home.js -> 200 script")
 
         # ---- /health ----
         status, body, headers = http_request("GET", "/health")

@@ -115,39 +115,7 @@ htmlBody HomePageTemplate
         </footer>
       </main>
 
-      <script>
-        document.getElementById("registerForm").addEventListener("submit", async (event) => {
-          event.preventDefault();
-          const resultElement = document.getElementById("registerResult");
-          const formData = new FormData(event.target);
-          resultElement.className = "mt-3 text-sm text-slate-500";
-          resultElement.textContent = "Creating account...";
-          try {
-            const response = await fetch("/api/auth/register", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                username: formData.get("username"),
-                password: formData.get("password"),
-              }),
-            });
-            const payload = await response.json();
-            if (response.status === 201) {
-              resultElement.className = "mt-3 text-sm text-emerald-700";
-              resultElement.textContent = "Welcome, " + payload.user.username + "! Session cookie set.";
-            } else if (response.status === 409) {
-              resultElement.className = "mt-3 text-sm text-amber-700";
-              resultElement.textContent = "That username is already taken.";
-            } else {
-              resultElement.className = "mt-3 text-sm text-rose-700";
-              resultElement.textContent = payload.error ? payload.error.message : ("Error " + response.status);
-            }
-          } catch (err) {
-            resultElement.className = "mt-3 text-sm text-rose-700";
-            resultElement.textContent = "Network error: " + err.message;
-          }
-        });
-      </script>
+      <script src="/assets/home.js" defer></script>
     </body>
   </html>
 
