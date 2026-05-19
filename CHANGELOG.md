@@ -2,6 +2,10 @@
 
 ## 2026-05-19
 
+- `c4716f34f976f5b4f6a1130bf21ffdfef0a708e9` - `tests: document bootstrap JSON and enum feature gaps`
+  - Adds the JSON document parse round-trip feature fixture and marks it plus the enum domain-method fixture as expected bootstrap gaps instead of red non-xfail failures.
+- `ab31fd479c0ed80a5df68b787e323a6082b975d8` - `docs: update changelog for JSON migration TODOs`
+  - Adds changelog coverage for the JSON migration and feature TODO follow-up.
 - `d5433a347d34daf0fd187637c901495bc120e8ad` - `docs: mark JSON feature and migration TODOs complete`
   - Marks the completed JSON feature-test, documentation, Todo Web migration, deprecation-lint, and semlint edge-case checklist items in `TODO.md`.
 - `c7ae8b4355e12a38bc9a10e0937a69745fdc2490` - `docs: update changelog for JSON TODO status`
