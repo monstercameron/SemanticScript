@@ -1,215 +1,540 @@
 # SemanticScript
 
-SemanticScript is an agent-first application language and toolchain. It is built
-around a flat, line-oriented, high-context semantic tape where every executable
-line is an atomic semantic record with a strict schema.
+SemanticScript is an agent-first application language and toolchain.
 
-The design goal is not short source. The design goal is source that remains
-locally understandable inside an agent attention window. SemanticScript spends
-tokens on names, effects, types, failure paths, timing, cleanup, and comments so
-an agent can edit code without guessing through hidden runtime behavior.
+It is built around a flat, line-oriented semantic tape where every executable
+line is an atomic, named, checkable record. The language does not try to make
+source code short. It tries to make source code easy to recover, audit, edit,
+and verify inside an agent attention window.
 
-The current implementation is already a real compiler: it emits LLVM IR through
-`llvmlite`, can JIT-run programs, and can link native executables through
-`clang`. The long-term target is application development in the same problem
-space as Node, Python, Bun, Deno, Express, FastAPI, and Go services, but with a
-source format optimized for agentic maintenance rather than human terseness.
-
-The repository also contains refined syntax examples under `SemanticScript/sem/`.
-Those files explore the next SemanticScript surface: fixed schemas, explicit
-dataflow, typed failure edges, guarded mutation, structured async,
-trust-boundary metadata, and syntax that is easier for transformer attention to
-recover and edit.
-
-## Quick Preview
-
-![Todo TUI demo preview](docs/assets/todo-tui-preview.png)
-
-The current runnable app lives in `app/todo` and renders a keyboard-driven
-console todo list backed by `todos.json`.
-
-## Technical Pitch
-
-SemanticScript makes source code a checkable contract tape:
-
-- Every line does one semantic thing.
-- Every meaningful element is name-addressable.
-- Failure is explicit dataflow, not an implicit exception path.
-- Effects are declared next to the operation that performs them.
-- Types carry intent, trust, memory, and layout information.
-- Cleanup, async, time, and shared-state access are visible in source.
-- Comments are semantic context for tools, not just prose.
-- Abstractions are valid only when they add contract, checks, or traceability.
-
-The spec's deepest rule is simple:
+The core idea is simple:
 
 ```text
-SemanticScript does not minimize code.
-SemanticScript maximizes recoverable context.
+Do not minimize source.
+Maximize recoverable context.
 ```
 
-That means SemanticScript deliberately repeats operation names, argument names,
-types, call names, branch labels, and failure values. The compiler can remove
-redundancy from generated code; the source preserves redundancy where agents,
-linters, review tools, and humans need it.
+That is context maxxing: spending source text on names, effects, types,
+capabilities, memory behavior, failure paths, cleanup, trust boundaries, route
+contracts, and comments so the next maintainer does not have to infer them from
+framework magic or runtime convention.
 
-This is the core bet: as software becomes more agent-authored, the winning
-source format is not the shortest one. It is the one where the next correct edit
-is easiest to infer, verify, and review.
+SemanticScript already has a working Python reference compiler. It parses
+SemanticScript, resolves modules, emits LLVM IR through `llvmlite`, can JIT-run
+programs, and can link native executables through `clang`. The long-term target
+is real application development in the same problem space as Node, Python, Bun,
+Deno, Express, FastAPI, and Go services, but with source shaped for agentic
+maintenance instead of human terseness.
 
-## Current vs Proposed Syntax
+## Why This Exists
 
-There are two important surfaces in this repo:
+Modern codebases are increasingly read, patched, reviewed, and migrated by
+agents. Conventional languages were optimized for humans writing compact source:
+expressions, inference, exceptions, implicit runtime behavior, object shapes,
+framework conventions, and dynamic dispatch.
 
-- Current executable SemanticScript lives under `SemanticScript/` and is documented by
-  `SemanticScript/AST.md`. This is what `compiler/semsc.py`, `linter/semlint.py`,
-  tests, and bootstrap programs use today.
-- Refined future syntax examples live under `SemanticScript/sem/`, including
-  `SemanticScript/sem/refined_syntax_demo.sscript`,
-  `SemanticScript/sem/syntax_sample_web_server.sscript`, and the
-  `*_refined.sscript` examples. These are syntax showcases and design targets,
-  not a blanket guarantee that every refined form is executable.
+That compactness is expensive for agents. The agent has to reconstruct hidden
+context before it can make a safe edit.
 
-The VS Code extension understands both surfaces for highlighting, hovers, and
-semantic roles. The compiler should not be assumed to accept refined future
-syntax until that work is explicitly implemented.
+SemanticScript moves that context into the source.
+
+- A call has a name.
+- Every argument edge has a name.
+- Every operation declares effects.
+- Failure is dataflow, not ambient exception control.
+- Mutable state says where it lives and how it changes.
+- Runtime authority is explicit through capabilities.
+- HTML, JSON, SQL, HTTP, and native runtime edges have typed surfaces.
+- Comments are contract context for tools, not decoration.
+
+The result is source that is longer, but more inspectable. The compiler can
+erase redundancy from generated code. The source keeps redundancy where review
+tools, linters, indexers, and agents need it.
+
+## The Sell
+
+SemanticScript is for code that should be maintained by humans and agents
+without guessing.
+
+It is a bet that the best source format for agent-authored software is not the
+smallest one. It is the one where the next correct edit is easiest to infer,
+verify, and review.
+
+What you get:
+
+- Local reasoning: an operation carries its own purpose, effects, memory model,
+  async model, and invariants.
+- Safer edits: call sites are named records, so tools can patch one argument or
+  one branch without rewriting a nested expression tree.
+- Better reviews: diffs show changed effects, changed failure paths, changed
+  routes, changed storage, and changed capabilities as first-class rows.
+- Stronger linting: vague names, missing capabilities, hidden effects,
+  unresolved values, type drift, route drift, and trust-boundary gaps can be
+  diagnosed from source-level facts.
+- Runtime clarity: native adapters are explicit. App behavior stays in
+  SemanticScript source or runtime libraries, not hidden inside compiler magic.
+- Agent ergonomics: source is easy to slice. An agent can retrieve one
+  operation, one failure path, one route, or one storage flow and still have the
+  context needed to edit it.
+
+In short:
+
+```text
+JavaScript/Python: compress intent into syntax, scope, libraries, and runtime behavior.
+SemanticScript: preserve intent as explicit, line-addressable facts.
+```
+
+## Context Maxxing
+
+Context maxxing is the design discipline behind SemanticScript.
+
+It means every line should carry useful local context, and every important edge
+should be named:
+
+```semanticscript
+operation createTodoHandler
+input createTodoHandler request HttpRequest
+input createTodoHandler response HttpResponse
+output createTodoHandler CSignedInt32
+effect createTodoHandler read http.request.body
+effect createTodoHandler readWrite database
+effect createTodoHandler write http.response
+memory createTodoHandler heap auto
+async createTodoHandler no
+purpose createTodoHandler "Create one todo owned by the authenticated session user."
+invariant createTodoHandler "The user id comes from the session, never from request JSON."
+useCapability createTodoHandler httpRequestReader
+useCapability createTodoHandler httpResponseWriter
+useCapability createTodoHandler sqliteDatabaseReadWriter
+```
+
+That header is not boilerplate. It is a compact review packet:
+
+- What resource is read?
+- What resource is written?
+- Does the operation allocate?
+- Can it suspend?
+- Which capability authorizes each effect?
+- What security invariant must survive refactors?
+
+Traditional code often hides those answers in implementation details. In
+SemanticScript, those answers are part of the operation's shape.
+
+## Current Apps
+
+This repo now contains real executable apps, not only toy syntax fixtures.
+
+### Todo Web Pro
+
+`app/todo-web-pro/` is a multi-user web app backed by native HTTP, SQLite, JSON,
+and bcrypt runtime adapters.
+
+It currently covers:
+
+- HTML landing and dashboard pages through `standard.html`.
+- Static assets served by the HTTP runtime.
+- Register and login with bcrypt cost-12 password hashing.
+- Session cookies with HttpOnly and SameSite settings.
+- SQLite schema bootstrap with seeded demo data.
+- Authenticated todo create, list, complete, uncomplete, and delete flows.
+- Cross-user isolation checks in the end-to-end test harness.
+
+Run the verification harness:
+
+```powershell
+python app\todo-web-pro\scripts\test_todo_web_pro.py
+```
+
+### Kilo Port
+
+`app/Kilo_port/` is a native executable SemanticScript port of antirez/kilo.
+
+It demonstrates:
+
+- Native Windows terminal handling through a generic runtime adapter.
+- File load/save.
+- Row storage and long-line handling.
+- Cursor movement, scrolling, Page Up/Down, Home/End.
+- Tab insertion and Kilo-style tab rendering.
+- Search with live match traversal.
+- JavaScript-oriented syntax highlighting.
+- Dirty quit behavior matching Kilo's warning flow.
+
+Run the port smoke tests:
+
+```powershell
+python SemanticScript\compiler\semsc.py app\Kilo_port\build.sem --emit-exe --quiet
+python app\Kilo_port\scripts\test_kilo_port.py
+```
+
+## Syntax Tour
+
+SemanticScript source is a tape of records. There is no expression soup hidden
+inside a line. Each row has one job.
+
+### Project Tape
+
+`build.sem` declares the project, registered modules, runtime target, artifacts,
+and build-wide constants.
+
+```semanticscript
+buildProject todoWebPro
+project TodoWebPro
+modulePath todoWebPro github.com/monstercameron/SemanticScript/app/todo-web-pro
+languageVersion todoWebPro "1.0"
+projectVersion todoWebPro "1.0.0"
+projectLicense todoWebPro MIT
+
+sourceRoot todoWebPro "."
+registerModule todoWebPro app.todo_web_pro "."
+registerModule todoWebPro app.todo_web_pro.components "components"
+registerModule todoWebPro app.todo_web_pro.pages "pages"
+
+buildConstant todoWebPro serverHostText CNullTerminatedByteString "127.0.0.1"
+buildConstant todoWebPro serverPortNumber CSignedInt32 18090
+buildConstant todoWebPro databasePath CNullTerminatedByteString "todo_web_pro.db"
+
+mainFile todoWebPro "main.sem"
+mainOperation todoWebPro main
+targetRuntime todoWebPro nativeExe
+nativeOutput todoWebPro "todo_web_pro.exe"
+
+importModule app.todo_web_pro
+```
+
+The build tape is intentionally explicit. It gives compilers, editors, CI,
+release tooling, and agents the same project facts.
+
+### Module Context
+
+Modules carry ownership and non-ownership context. This is useful for agents:
+they know where behavior belongs before editing.
+
+```semanticscript
+module app.kiloport
+modulePurpose app.kiloport "Kilo-style terminal editor ported to executable SemanticScript."
+moduleOwns app.kiloport "Editor row storage, file load/save, ANSI rendering, keyboard handling, search, and mutation flow."
+moduleDoesNotOwn app.kiloport "SemanticScript compiler/runtime terminal primitives or the upstream Kilo C source."
+moduleInvariant app.kiloport "The edited file path comes from argv[1] when present, then KILO_FILE, otherwise kilo.txt."
+```
+
+### Storage, Not Var Or Const
+
+Current SemanticScript uses `storage`, with scope and mutability on the row.
+
+```semanticscript
+storage module immutable maxRows CSignedInt64 2048
+storage module immutable rowCapacity CSignedInt64 4096
+storage module immutable successExitCode ExitCode 0
+
+operation moveCursorRight
+input moveCursorRight currentColumn CSignedInt64
+output moveCursorRight CSignedInt64
+memory moveCursorRight noHeapAllocation
+async moveCursorRight no
+purpose moveCursorRight "Return the next cursor column."
+
+storage local immutable oneColumn CSignedInt64 1
+call nextColumnCall math.addI64
+arg nextColumnCall left currentColumn
+arg nextColumnCall right oneColumn
+run nextColumnCall
+bind nextColumn CSignedInt64 nextColumnCall
+returnValue nextColumn
+```
+
+Mutable storage is equally explicit:
+
+```semanticscript
+storage local mutable cursorColumn CSignedInt64 zeroI64
+storage local immutable cursorColumnAfterInsert CSignedInt64 nextCursorColumn
+set local cursorColumn cursorColumnAfterInsert
+```
+
+The names are deliberately contextual. `cursorColumn` carries more maintenance
+value than `x`, `cx`, or `i`.
+
+### Calls Are Dataflow Records
+
+SemanticScript does not hide a call inside an expression. It gives the call a
+stable identity, names each argument edge, runs it, and binds the result.
+
+```semanticscript
+call renderedCursorColumnCall renderedColumnForFileColumn
+arg renderedCursorColumnCall rowPointer cursorRowPointer
+arg renderedCursorColumnCall rowLength cursorRowLength
+arg renderedCursorColumnCall leftVisibleColumn leftVisibleColumn
+arg renderedCursorColumnCall fileColumn cursorFileColumn
+run renderedCursorColumnCall
+bind cursorRenderedColumn CSignedInt64 renderedCursorColumnCall
+```
+
+That shape is verbose, but it gives tools a precise patch target. A formatter,
+linter, editor action, or agent can change one argument without reconstructing a
+whole expression.
+
+### Failure Is Named Dataflow
+
+Fallible calls expose both the success and error edge.
+
+```semanticscript
+call openDatabaseCall sqlite.openDatabase
+arg openDatabaseCall path databasePath
+arg openDatabaseCall mode readWriteCreateSqliteOpenMode
+run openDatabaseCall
+bindOk openedDatabase SqliteDatabase openDatabaseCall
+bindError openDatabaseError SqliteOpenFailure openDatabaseCall
+branchIfError openDatabaseCall openDatabaseFailed
+
+defer closeDatabaseDefer sqlite.closeDatabase openedDatabase
+```
+
+The cleanup is beside the acquisition. The failure label is named. The error
+value is a value. Review tools can see the whole shape.
+
+### HTTP Routes Are Source Facts
+
+Routes are not hidden inside a framework registration callback.
+
+```semanticscript
+webServer todoWebProServer
+purpose todoWebProServer "Host the Todo Web Pro JSON REST API on localhost:18090."
+serverHost todoWebProServer "127.0.0.1"
+serverPort todoWebProServer 18090
+
+route todoWebProServer GET "/" homePageHandler
+route todoWebProServer GET "/dashboard" dashboardPageHandler
+route todoWebProServer POST "/api/auth/login" loginHandler
+route todoWebProServer GET "/api/todos" listTodosHandler
+route todoWebProServer POST "/api/todos" createTodoHandler
+route todoWebProServer POST "/api/todos/:id/complete" completeTodoHandler
+route todoWebProServer POST "/api/todos/:id/uncomplete" uncompleteTodoHandler
+route todoWebProServer GET "*" notFoundPageHandler
+```
+
+That route table is easy to index, diff, lint, and summarize.
+
+### HTML Has Typed Holes
+
+`standard.html` templates declare their holes and the allowed trust context.
+
+```semanticscript
+htmlTemplate StatusCardComponent
+htmlArg StatusCardComponent apiBaseUrlText HtmlText
+htmlArg StatusCardComponent statusBadgeClass HtmlClass
+htmlBody StatusCardComponent
+  <section class="rounded-xl border border-ink-200 bg-white p-4">
+  <div class="{htmlArg.statusBadgeClass}">Server online</div>
+  <p>API base: {htmlArg.apiBaseUrlText}</p>
+  </section>
+
+operation renderStatusCard
+input renderStatusCard apiBaseUrlText HtmlText
+input renderStatusCard statusBadgeClass HtmlClass
+output renderStatusCard HtmlFragment
+memory renderStatusCard arena request
+async renderStatusCard no
+purpose renderStatusCard "Render the status card with typed HTML holes."
+
+call hydrateStatusCardCall html.hydrate.StatusCardComponent
+arg hydrateStatusCardCall apiBaseUrlText apiBaseUrlText
+arg hydrateStatusCardCall statusBadgeClass statusBadgeClass
+run hydrateStatusCardCall
+bind statusCardFragment HtmlFragment hydrateStatusCardCall
+returnValue statusCardFragment
+```
+
+Text, class, URL, fragment, and document values are different roles. That is the
+point: the trust boundary is in the source, not just in a helper function name.
+
+### Native Runtime Boundaries Stay Small
+
+App behavior belongs in SemanticScript or runtime libraries. The compiler only
+links generic runtime surfaces.
+
+```semanticscript
+call rawModeCall c.terminalEnableRaw
+run rawModeCall
+bind rawModeStatus CSignedInt32 rawModeCall
+
+call keyCall c.terminalReadKey
+run keyCall
+bind keyCode KiloKeyCode keyCall
+```
+
+The Kilo editor behavior is not embedded in the compiler. The compiler sees
+generic terminal calls; the editor logic lives in `app/Kilo_port/main.sem`.
+
+## Benefits By Role
+
+### For Agents
+
+- Less hidden context to infer before editing.
+- More stable names to target in patches.
+- Operation slices carry purpose, effects, memory, async, and failure shape.
+- Route, SQL, HTML, JSON, and runtime edges are easy to index.
+- Linter diagnostics can cite the exact row and the missing contract.
+
+### For Reviewers
+
+- Diffs show semantic changes directly.
+- Capability changes are visible.
+- Failure-path changes are visible.
+- Route and dependency changes are visible.
+- Vague naming is easier to reject early.
+
+### For Tooling
+
+- The source is already a fact table.
+- Editors can provide line-schema hovers and semantic token roles.
+- CI can lint unresolved capabilities, effect drift, missing cleanup, and
+  trust-boundary violations.
+- Future indexing tools can build call graphs, route maps, failure graphs, and
+  memory graphs without framework-specific guessing.
+
+### For Runtime Work
+
+- Native adapters stay explicit.
+- Apps call `standard.http`, `standard.sqlite`, `standard.json`,
+  `standard.bcrypt`, `standard.html`, and terminal primitives through named
+  surfaces.
+- The compiler links runtime sources only when the program uses those targets.
+- App logic does not get smuggled into compiler lowering.
+
+## Current Implementation
+
+The current repository contains:
+
+- `SemanticScript/compiler/semsc.py`: Python reference compiler.
+- `SemanticScript/linter/semlint.py`: structured diagnostics linter.
+- `SemanticScript/std/`: standard-library modules.
+- `SemanticScript/runtime/`: native runtime adapters.
+- `app/todo-web-pro/`: native web application.
+- `app/Kilo_port/`: native terminal editor port.
+- `vscode-semanticscript/`: local VS Code language extension.
+- `SYNTAX.md`: implementation-status table for the syntax surface.
+
+The compiler supports project tapes, module imports, operation contracts,
+storage, calls, branches, typed returns, native executables, native HTTP,
+SQLite, JSON, bcrypt, HTML hydration, GUI and terminal runtime adapters, and
+many refined metadata rows. `SYNTAX.md` is the source of truth for which rows
+are implemented, partial, or design-target syntax.
+
+## Quick Start
+
+Install Python dependencies:
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+Run a small compiler smoke:
+
+```powershell
+python SemanticScript\compiler\semsc.py SemanticScript\tests\tiny.sem --parse-only
+python SemanticScript\linter\semlint.py SemanticScript\tests\tiny.sem --summary
+```
+
+Build and test Kilo:
+
+```powershell
+python SemanticScript\compiler\semsc.py app\Kilo_port\build.sem --parse-only --lint --quiet
+python SemanticScript\compiler\semsc.py app\Kilo_port\build.sem --emit-exe --quiet
+python app\Kilo_port\scripts\test_kilo_port.py
+```
+
+Build and test Todo Web Pro:
+
+```powershell
+python app\todo-web-pro\scripts\test_todo_web_pro.py
+```
+
+Run broader validation:
+
+```powershell
+python -m compileall -q SemanticScript python samples
+python -m unittest SemanticScript/linter/test_semlint.py -v
+python SemanticScript/tests/test_compiler.py
+python SemanticScript/tests/test_stdlib.py
+python SemanticScript/tests/feature_coverage.py
+python SemanticScript/bootstrap/run_bootstrap_chain.py
+npm --prefix vscode-semanticscript run check
+```
 
 ## Repository Layout
 
 ```text
 SemanticScript.md                  Root language/specification document
-CHANGELOG.md                    Repository-level changelog
-docs/                           Maintainable developer documentation
+SYNTAX.md                          Syntax inventory and implementation status
+CHANGELOG.md                       Repository changelog
+docs/                              Maintained developer documentation
 
 SemanticScript/
-  README.md                     Current implementation guide
-  AST.md                        Implemented compiler syntax and codegen surface
-  compiler/semsc.py              Python reference compiler
-  compiler/libc_registry.py     C standard-library signature registry
-  linter/semlint.py              Standalone linter
-  sem/                           Executable SemanticScript examples and smoke files
-  sem/feature_tests/             Focused compiler feature programs
-  std/                           SemanticScript standard library
-  bootstrap/                    SemanticScript-written compiler bootstrap stages
-  tests/                        Compiler, parity, bootstrap, and stdlib tests
+  compiler/semsc.py                Python reference compiler
+  linter/semlint.py                Structured diagnostics linter
+  runtime/                         Native runtime adapters
+  std/                             SemanticScript standard library
+  bootstrap/                       SemanticScript-written compiler stages
+  tests/                           Compiler, parity, bootstrap, and stdlib tests
 
-samples/javascript/             JavaScript comparison and oracle programs
-samples/python/                 Canonical Python comparison programs
-python/                         1.0 compatibility mirror of samples/python/
+app/
+  Kilo_port/                       SemanticScript port of antirez/kilo
+  todo-web-pro/                    Native web app with HTTP, SQLite, JSON, bcrypt
+  todo/                            Console todo sample
+
+samples/javascript/                JavaScript comparison programs
+samples/python/                    Python comparison programs
 vscode-semanticscript/             Local VS Code extension
+third_party/                       Vendored native dependencies and submodules
 ```
 
-## Standard Library Imports
+## Documentation Map
 
-The standard library is a library tree, not a build project. It has no
-`build.sem`. The top-level relay is:
+- `docs/README.md`: documentation entry point.
+- `docs/language/README.md`: language model and executable vs refined surfaces.
+- `docs/language/lexical-model.md`: identifiers, comments, strings, and
+  rejected syntax.
+- `docs/language/memory-state.md`: storage, mutation, shared state, and memory
+  behavior.
+- `docs/language/errors-effects-capabilities.md`: effects, capabilities, and
+  typed failure paths.
+- `docs/toolchain/compiler.md`: compiler CLI and backend behavior.
+- `docs/toolchain/linter.md`: linter CLI and diagnostic formats.
+- `SYNTAX.md`: complete syntax inventory and implementation status table.
+- `SemanticScript.md`: language specification and design intent.
+- `CHANGELOG.md`: dated repository history.
+- `app/Kilo_port/README.md`: Kilo port notes and parity commands.
+- `app/todo-web-pro/README.md`: Todo Web Pro architecture and test commands.
 
-```text
-SemanticScript/std/module.sem
-```
+## VS Code Extension
 
-Each standard module is imported through the `standard.*` namespace and resolves
-to a module entry file:
+The local extension is in `vscode-semanticscript/`. It provides:
 
-```text
-standard.html   -> SemanticScript/std/html/main.sem
-standard.json   -> SemanticScript/std/json/main.sem
-standard.sqlite -> SemanticScript/std/sqlite/main.sem
-```
+- language registration for `.sscript` and `.sem`;
+- TextMate and semantic highlighting for current and refined syntax;
+- context-aware hovers for line schemas, symbols, operation metadata, call
+  objects, primitive targets, generated targets, schema values, and role
+  suffixes;
+- whole-line segment coloring for declaration, context, action, control, and
+  comment rows;
+- optional `semlint.py` diagnostics.
 
-Apps can live anywhere on the filesystem as long as they are compiled with this
-toolchain or given an explicit std path. Resolution order is:
-
-1. `--std-path PATH`
-2. `SEMANTICSCRIPT_STD_PATH` or `SEMSC_STD_PATH`
-3. vendored `std/` folders found by walking up from the app source
-4. `std/` under the current working directory
-5. the compiler-bundled `SemanticScript/compiler/../std`
-
-Example:
+Check or package it with:
 
 ```powershell
-python C:\path\to\SemanticScript\compiler\semsc.py C:\anywhere\app\main.sem --run
-python C:\path\to\SemanticScript\compiler\semsc.py C:\anywhere\app\main.sem --std-path C:\path\to\std
+cd vscode-semanticscript
+npm run check
+npx --yes @vscode/vsce package
 ```
 
-## Current Implementation
+Generated `.vsix` files are ignored and should be attached outside the repo.
 
-The Python reference compiler currently supports the implemented surface in
-`SemanticScript/AST.md`, including:
+## Design Rules
 
-- top-level project/runtime/entry metadata;
-- operation contracts with `input`, `output`, `effect`, `memory`, `async`, and
-  hard-context metadata;
-- constants, variables, mutation, labels, branches, and returns;
-- named call objects with `call`, `arg`, `run`, `bind`, `bindOk`, `bindError`,
-  `ignoreOk`, and `branchIfError`;
-- same-file user operation calls with typed returns;
-- integer and floating-point math primitives;
-- stdout helpers;
-- direct `c.*` calls through the libc registry;
-- pointer primitives and C-compatible types.
+These are the rules that shape the language:
 
-Use `SemanticScript/README.md` for the exact current status, command matrix, and
-bootstrap notes.
-
-## Conceptual Model
-
-SemanticScript is deliberately less compact than JavaScript. JavaScript optimizes
-for human authoring speed by compressing meaning into expressions, lexical
-scope, exceptions, library conventions, object shape, and event-loop behavior.
-SemanticScript expands the same behavior into named records so tools and agents can
-inspect it without reconstructing hidden context.
-
-The tradeoff is intentional:
-
-- JavaScript says "do this" with a compact expression or function body.
-- SemanticScript says "declare the operation, its effects, every call object,
-  every argument edge, every result binding, and every failure branch."
-- JavaScript often discovers failure at runtime through exceptions or returned
-  values.
-- SemanticScript makes failure a named dataflow edge with `bindError`,
-  `branchIfError`, and a labeled handler.
-- JavaScript depends on convention for side effects.
-- SemanticScript declares effects and capabilities in source.
-
-The spec frames this as a source-level data problem: context is not decoration.
-Declared effects, failures, async behavior, memory behavior, and cleanup
-behavior should be checked when possible. A program is not just instructions for
-the CPU; it is also a graph of claims for compilers, linters, indexers, review
-summaries, and future agents.
-
-That gives SemanticScript a different optimization target:
-
-```text
-JavaScript:   compress meaning into syntax and runtime conventions.
-SemanticScript: preserve meaning as explicit, line-addressable facts.
-```
-
-This is why a SemanticScript call is not `target(arg)`. It is a small dataflow
-record cluster:
-
-```semanticscript
-call scoreCall calculateWeightedScore
-arg scoreCall baseCount baseCount
-arg scoreCall multiplier multiplier
-arg scoreCall bonusPoints bonusPoints
-run scoreCall
-bind computedScore I64 scoreCall
-```
-
-Each line can be retrieved, indexed, linted, patched, or cited independently.
-That is the top-level value proposition: SemanticScript turns source into a
-machine-checkable review surface without giving up native compilation.
-
-## Spec Notes
-
-The root spec is opinionated because agent-authored software needs guardrails.
-These are the high-level rules that most directly shape the language:
-
-```text
 1. Abstraction must increase context.
-2. Every line does one semantic thing.
+2. Every executable line does one semantic thing.
 3. Hidden behavior is illegal by default.
 4. Failure is explicit dataflow.
 5. Cleanup lives next to acquisition.
@@ -220,310 +545,9 @@ These are the high-level rules that most directly shape the language:
 10. Dependencies expose contracts.
 11. Trust boundaries are explicit.
 12. Observability is semantic.
-```
 
-Those rules are technical, not aesthetic. They make specific tooling possible:
-
-- `agentIndex` can build effect, failure, memory, call, and dependency graphs
-  from source lines.
-- `agentSlice` can retrieve one operation or one failure path without needing a
-  whole project in context.
-- `agentLintNames` can reject vague symbols before they become ambiguous edit
-  targets.
-- `agentCheckLaws` can flag undeclared effects, hidden failure paths, missing
-  cleanup, unbounded async, or trust-boundary drift.
-- `agentReviewSummary` can summarize effects changed, routes changed, memory
-  changed, async changed, dependencies changed, and risk changed.
-
-In a conventional language, many of those facts are inferred after parsing a
-nested tree and applying framework knowledge. In SemanticScript, they are intended
-to be source-level records from the start.
-
-## Example: Hello World
-
-JavaScript keeps the program small:
-
-```javascript
-console.log("hello world");
-process.exit(0);
-```
-
-SemanticScript expands the same behavior into effect, capability, call, result,
-and failure records:
-
-```semanticscript
-project HelloWorldExplicit
-target console
-runtime native 1
-module examples.helloWorldExplicit
-entry console main
-
-error ConsoleWriteError
-errorCase ConsoleWriteError ConsoleWriteFailed CSignedInt32
-capability stdoutWriter console.stdout write
-
-operation main
-output main ExitCode
-effect main write console.stdout
-memory main noHeapAllocation
-async main no
-purpose main "Print hello world and return a clear status code"
-invariant main "The console write is checked before success is returned"
-useCapability main stdoutWriter
-
-const helloWorldMessage CNullTerminatedByteString "hello world"
-call writeHelloWorldCall console.writeLine
-arg writeHelloWorldCall text helloWorldMessage
-run writeHelloWorldCall
-ignoreOk writeHelloWorldCall Void
-bindError writeHelloWorldError ConsoleWriteError writeHelloWorldCall
-branchIfError writeHelloWorldCall writeHelloWorldFailed
-
-const successExitCode ExitCode 0
-returnValue successExitCode
-
-label writeHelloWorldFailed
-makeError writeHelloWorldFailure ConsoleWriteError.ConsoleWriteFailed writeHelloWorldError
-const writeFailedExitCode ExitCode 1
-returnValue writeFailedExitCode
-```
-
-The extra lines are not ceremony for their own sake. They answer questions that
-are implicit in the JavaScript version: what external resource is written, which
-capability permits it, what call can fail, where failure goes, and what exit
-status is returned.
-
-## Example: Helper Operation and Branching
-
-JavaScript can compress arithmetic, branching, and output into one function:
-
-```javascript
-function calculateWeightedScore(baseCount, multiplier, bonusPoints) {
-  return baseCount * multiplier + bonusPoints;
-}
-
-const computedScore = calculateWeightedScore(7, 6, 5);
-if (computedScore >= 40) {
-  console.log("score meets threshold");
-} else {
-  console.log("score below threshold");
-}
-console.log(computedScore);
-process.exit(0);
-```
-
-SemanticScript names the helper operation, every intermediate value, the threshold
-branch, and each fallible console write:
-
-```semanticscript
-project ScoreThreshold
-target console
-runtime native 1
-module examples.scoreThreshold
-entry console main
-
-error ConsoleWriteError
-errorCase ConsoleWriteError ConsoleWriteFailed CSignedInt32
-capability stdoutWriter console.stdout write
-
-operation calculateWeightedScore
-input calculateWeightedScore baseCount I64
-input calculateWeightedScore multiplier I64
-input calculateWeightedScore bonusPoints I64
-output calculateWeightedScore I64
-memory calculateWeightedScore noHeapAllocation
-async calculateWeightedScore no
-purpose calculateWeightedScore "Calculate baseCount times multiplier plus bonusPoints"
-invariant calculateWeightedScore "This helper performs deterministic integer arithmetic only"
-
-call weightedScoreCall math.multiplyI64
-arg weightedScoreCall left baseCount
-arg weightedScoreCall right multiplier
-run weightedScoreCall
-bind weightedScore I64 weightedScoreCall
-
-call totalScoreCall math.addI64
-arg totalScoreCall left weightedScore
-arg totalScoreCall right bonusPoints
-run totalScoreCall
-bind totalScore I64 totalScoreCall
-returnValue totalScore
-
-operation main
-output main ExitCode
-effect main write console.stdout
-memory main noHeapAllocation
-async main no
-purpose main "Compute a score and print whether it meets the threshold"
-invariant main "Every console write is checked before success is returned"
-useCapability main stdoutWriter
-
-const baseCount I64 7
-const multiplier I64 6
-const bonusPoints I64 5
-call scoreCall calculateWeightedScore
-arg scoreCall baseCount baseCount
-arg scoreCall multiplier multiplier
-arg scoreCall bonusPoints bonusPoints
-run scoreCall
-bind computedScore I64 scoreCall
-
-const passingScore I64 40
-call scorePassedCall math.greaterThanOrEqualI64
-arg scorePassedCall left computedScore
-arg scorePassedCall right passingScore
-run scorePassedCall
-bind scorePassed Bool scorePassedCall
-branchIf scorePassed printPassed
-
-const failedText CNullTerminatedByteString "score below threshold"
-call failedWriteCall console.writeLine
-arg failedWriteCall text failedText
-run failedWriteCall
-ignoreOk failedWriteCall Void
-bindError failedWriteError ConsoleWriteError failedWriteCall
-branchIfError failedWriteCall failedTextWriteFailed
-branch printScore
-
-label printPassed
-const passedText CNullTerminatedByteString "score meets threshold"
-call passedWriteCall console.writeLine
-arg passedWriteCall text passedText
-run passedWriteCall
-ignoreOk passedWriteCall Void
-bindError passedWriteError ConsoleWriteError passedWriteCall
-branchIfError passedWriteCall passedTextWriteFailed
-
-label printScore
-call scoreWriteCall console.writeIntegerLine
-arg scoreWriteCall value computedScore
-run scoreWriteCall
-ignoreOk scoreWriteCall Void
-bindError scoreWriteError ConsoleWriteError scoreWriteCall
-branchIfError scoreWriteCall scoreWriteFailed
-
-const successExitCode ExitCode 0
-returnValue successExitCode
-
-label failedTextWriteFailed
-makeError failedTextWriteFailure ConsoleWriteError.ConsoleWriteFailed failedWriteError
-const failedTextWriteExitCode ExitCode 1
-returnValue failedTextWriteExitCode
-
-label passedTextWriteFailed
-makeError passedTextWriteFailure ConsoleWriteError.ConsoleWriteFailed passedWriteError
-const passedTextWriteExitCode ExitCode 1
-returnValue passedTextWriteExitCode
-
-label scoreWriteFailed
-makeError scoreWriteFailure ConsoleWriteError.ConsoleWriteFailed scoreWriteError
-const scoreWriteFailedExitCode ExitCode 1
-returnValue scoreWriteFailedExitCode
-```
-
-The SemanticScript version is longer, but it gives the compiler, linter, editor,
-and review tools stable hooks: `calculateWeightedScore` has no fake effect,
-`main` declares stdout access, each call has a name, each branch has a label,
-and every console failure has a distinct handler.
-
-## Refined Syntax Direction
-
-The refined syntax work is aimed at making SemanticScript easier for agents and
-humans to inspect, patch, and verify. The current design direction favors:
-
-- One semantic action per line.
-- Fixed verb schemas instead of overloaded English.
-- Explicit storage forms such as `storage local immutable`,
-  `storage local mutable`, `storage module mutable`, and guarded
-  `sharedState`.
-- Operation body contracts such as `operationBody sourceTape`,
-  `operationBody runtimeBinding`, `operationBody intrinsic`, and
-  `operationBody externalDependency`.
-- Runtime binding contracts with `runtimeBindingPrecondition` and
-  `runtimeBindingFailure`.
-- Trust-boundary metadata for raw-to-validated transitions.
-- Records and typed collections instead of dynamic objects and arrays.
-- Builders such as `recordBuilder`, `recordSet`, and `recordBuild` instead of
-  object literals.
-- Collection operation contracts such as `collectionOperationOutput`,
-  `collectionOperationFailure`, `collectionOperationEffect`, and
-  `collectionOperationMutation`.
-- JSON codecs through schema metadata and generated targets like
-  `json.decode.Task` and `json.encode.AccountBalanceResponse`.
-- Explicit guard-token and defer lifecycle lines for shared-state mutation.
-
-The design rule is simple: syntax should preserve atomic lines, explicit
-dataflow, recoverable context, and checkable edges.
-
-## Quick Start
-
-Run current compiler commands from `SemanticScript/`:
-
-```powershell
-cd SemanticScript
-python compiler/semsc.py --version
-python compiler/semsc.py sem/fizzbuzz.sscript --run
-python compiler/semsc.py sem/fizzbuzz.sscript --emit-ir
-python compiler/semsc.py sem/fizzbuzz.sscript --emit-exe
-python compiler/semsc.py sem/fizzbuzz.sscript --emit-exe --persist-llvm-ir yes
-python compiler/semsc.py sem/fizzbuzz.sscript --emit-exe fizzbuzz-prod.exe --build-profile prod
-python linter/semlint.py sem/fizzbuzz.sscript --summary
-```
-
-Run the focused CI checks:
-
-```powershell
-python -m pip install -r requirements.txt
-python -m compileall -q SemanticScript python samples
-python -m unittest SemanticScript/linter/test_semlint.py -v
-python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sscript --parse-only
-python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sem --parse-only
-python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sscript --summary
-python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sem --summary
-npm --prefix vscode-semanticscript run check
-```
-
-Run the full release validation groups:
-
-```powershell
-cd SemanticScript
-python tests/compare.py
-python tests/sem_compiler_parity.py
-python tests/test_compiler.py
-python tests/test_stdlib.py
-python tests/sem_alias_parity.py
-python tests/feature_coverage.py
-python bootstrap/run_bootstrap_chain.py
-```
-
-## VS Code Extension
-
-The local extension is in `vscode-semanticscript/`. It provides:
-
-- language registration for `.sscript` and `.sem`;
-- TextMate and semantic highlighting for current and refined syntax;
-- context-aware hovers for concrete line schemas, same-file symbols,
-  operation metadata, primitive targets, generated targets, schema values,
-  primitive types, opaque inputs, call objects, and role suffixes;
-- whole-line segment coloring for declaration/context/action/control/comment
-  lines and unknown verbs;
-- optional `semlint.py` diagnostics.
-
-`semanticScript.linter.skipFutureSyntax` defaults to `false`. If enabled, it
-skips linter diagnostics on refinement-only files that are not executable by
-the current compiler yet.
-
-Package the extension with:
-
-```powershell
-cd vscode-semanticscript
-npm run check
-npx --yes @vscode/vsce package
-```
-
-The current local VSIX package name is
-`vscode-semanticscript/semanticscript-vscode-1.0.1.vsix`. Generated `.vsix`
-files stay ignored and should be attached outside the repository.
+That is the practical meaning of context maxxing: source code should be dense
+with the facts needed to maintain it safely.
 
 ## Release Hygiene
 
@@ -531,32 +555,8 @@ Release policy lives in `docs/reference/release-hygiene.md`.
 
 - First-party SemanticScript source, docs, samples, and tooling are distributed
   under the MIT License in the root `LICENSE`.
-- `samples/python/` is canonical; top-level `python/` is a 1.0 compatibility
-  mirror.
+- `samples/python/` is canonical; top-level `python/` is a compatibility mirror.
 - `.sem` files directly under `SemanticScript/sem/` are tracked alias fixtures
   and should stay aligned with their `.sscript` counterparts.
 - `vscode-semanticscript/package.json` uses `semanticscript-local` for local
   VSIX builds; choose a real Marketplace publisher before public publishing.
-
-## Documentation Map
-
-- `docs/README.md` - maintainable developer documentation entry point.
-- `SYNTAX.md` - complete syntax inventory and implementation status table.
-- `SemanticScript.md` - language specification and design intent.
-- `SemanticScript/AST.md` - implemented compiler syntax and lowering behavior.
-- `SemanticScript/README.md` - reference implementation guide.
-- `CHANGELOG.md` - repository-level changelog and release notes.
-- `STDLIB.md` - standard-library module and operation inventory.
-- `SemanticScript/sem/refined_syntax_demo.sscript` - refined syntax showcase.
-- `SemanticScript/sem/syntax_sample_web_server.sscript` - web-server-shaped refined sample.
-- `SemanticScript/sem/*_refined.sscript` - paired refined variants of executable examples.
-- `vscode-semanticscript/README.md` - extension-specific usage notes.
-
-## Development Notes
-
-- Treat `SemanticScript/` as the executable implementation track.
-- Treat refined examples in `SemanticScript/sem/` as the syntax research track
-  unless their behavior is explicitly covered by compiler tests.
-- Do not confuse plugin syntax recognition with compiler support.
-- Keep refined syntax lines atomic: one verb, one schema, one edge.
-- Prefer explicit names and typed failure paths over compact expression syntax.
