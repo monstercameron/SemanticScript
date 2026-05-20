@@ -1,0 +1,347 @@
+# =============================================================================
+# syntax-refinement.sem  —  hello-world webserver, controlled-English revision
+# =============================================================================
+#
+# Experimental dialect of SemanticScript. Not valid input to current ascc/semsc.
+# Demonstrates the refined syntax in pure controlled English: no `=`, no `/`,
+# no `@`, no `$`, no `%`, no `#`. The grammar carries kind; the lexeme carries
+# name; the verb's slot tells you what each token is.
+#
+# Fifteen refinements, all anchored to one law:
+#   "Every executable line is one English fact, anchored by subject,
+#    and the verb names the role of every slot."
+#
+#   R1  One verb per slot                  (scopeOf / typeOf / mutabilityOf ...)
+#   R2  Explicit bodyOf / endOperation     (no parser mode sniffing)
+#   R3  English-named type constructors    (resultReturning ... failingWith)
+#   R4  Parser-enforced call lifecycle     (call -> forParam* -> run -> bind)
+#   R5  Atomic literals in value slots     (true, false, 8080, 5 seconds)
+#   R6  Closed verb core, attribute lines  (each policy is a subject line)
+#   R7  Policy lines anchored to the call  (timeoutOf / cancelOn / retryPolicyOf)
+#   R8  Verb-grammar names the slot kind   (no sigils; rename walks the grammar)
+#   R9  with ... endWith subject block     (subject re-emitted on retrieval)
+#   R10 First-class atomic literals        (Bool, integer, duration, enum path)
+#   R11 branchOn ... whenValue ... thenGoto (named decision primitive)
+#   R12 Type echoed on every binding/param (every line is type-complete)
+#   R13 Content-class literal prefixes     (plainText / urlPath / htmlBody / sqlBody)
+#   R14 Line-leading provenance verbs      (frozen / proposed / generated)
+#   R15 Lifecycle-aware ignore             (ignoreOkOf / ignoreErrorOf because ...)
+#
+# Identifier kinds (no sigils — the grammar and the lexeme convention carry it):
+#   Types         PascalCase                       HttpRequest, HttpRoutePath
+#   Dependencies  lowercase dot.path               http.requestMethodEquals
+#   Operations    camelCase, action-style          handleRequest, main
+#   Calls         camelCase, verb-phrase noun      methodCheck, buildOk
+#   Values        camelCase, state-style noun      isGet, okResponse
+#   Storage slots camelCase noun                   greetingBody, listenPort
+#   Labels        camelCase with `at` prefix       atServeGreeting, atNotFound
+#
+# The kind of a slot is always the kind the verb requires there. A rename
+# pass walks the grammar; it never grep-collides across kinds. A linter
+# enforces the naming convention so a human skimming sees the kind too.
+# =============================================================================
+
+
+# R14: line-leading provenance verbs.
+#   frozen     this line is review-frozen; agents need explicit unfreeze.
+#   proposed   this line is an agent suggestion awaiting review.
+#   generated  this line was produced by tooling; regenerate, do not edit.
+
+frozen module app.hello_server
+frozen purposeOf app.hello_server "Single-route HTTP hello-world demonstrating refined syntax."
+frozen invariantOf app.hello_server "GET / and GET /healthz return 200 with a stable plaintext greeting; all other requests return 404."
+
+
+# -----------------------------------------------------------------------------
+# Module storage (R1, R5, R10, R13)
+# -----------------------------------------------------------------------------
+# Each storage slot is one subject. Every axis is one verb anchored by that
+# subject. Reordering the verbs is a no-op; slot-swap is ungrammatical because
+# each axis has a verb whose argument kind it alone accepts.
+
+storage greetingBody
+scopeOf greetingBody module
+mutabilityOf greetingBody immutable
+typeOf greetingBody PlainTextBody
+initialValueOf greetingBody plainText "Hello, world!\n"
+
+storage notFoundBody
+scopeOf notFoundBody module
+mutabilityOf notFoundBody immutable
+typeOf notFoundBody PlainTextBody
+initialValueOf notFoundBody plainText "Not found\n"
+
+storage listenPort
+scopeOf listenPort module
+mutabilityOf listenPort immutable
+typeOf listenPort TcpPort
+initialValueOf listenPort 8080
+
+storage rootPath
+scopeOf rootPath module
+mutabilityOf rootPath immutable
+typeOf rootPath HttpRoutePath
+initialValueOf rootPath urlPath "/"
+
+storage healthPath
+scopeOf healthPath module
+mutabilityOf healthPath immutable
+typeOf healthPath HttpRoutePath
+initialValueOf healthPath urlPath "/healthz"
+
+storage bootTimeout
+scopeOf bootTimeout module
+mutabilityOf bootTimeout immutable
+typeOf bootTimeout Duration
+initialValueOf bootTimeout 5 seconds
+
+storage stopTimeout
+scopeOf stopTimeout module
+mutabilityOf stopTimeout immutable
+typeOf stopTimeout Duration
+initialValueOf stopTimeout 10 seconds
+
+
+# -----------------------------------------------------------------------------
+# Type aliases (R3)
+# -----------------------------------------------------------------------------
+# Generic type constructors get English names that bake arity into the verb.
+# `resultReturning X failingWith Y` is binary by grammar. `mapOf K toType V`
+# is binary by grammar. The reader never needs to know constructor arity.
+
+typeAlias RequestHandleResult resultReturning HttpResponse failingWith HandlerError
+typeAlias StartServerResult   resultReturning ServerHandle failingWith StartError
+typeAlias StopServerResult    resultReturning StopStatus   failingWith StopError
+
+
+# -----------------------------------------------------------------------------
+# Dependencies
+# -----------------------------------------------------------------------------
+
+importDependency standard.http     aliasedTo http
+importDependency standard.log      aliasedTo log
+importDependency standard.runtime  aliasedTo runtime
+
+
+# =============================================================================
+# operation handleRequest
+# =============================================================================
+# R2: `operation NAME` opens the contract zone; `bodyOf NAME` opens the body
+# zone; `endOperation NAME` closes it. No mode sniffing. Every contract line
+# names the operation as its subject.
+# =============================================================================
+
+operation handleRequest
+inputOf handleRequest httpRequest asType HttpRequest
+inputOf handleRequest httpSession asType HttpSession
+outputOf handleRequest asType RequestHandleResult
+readsResource handleRequest http.request
+writesResource handleRequest http.response
+authorityOf handleRequest overResource http.response permittingAction write
+memoryPolicyOf handleRequest usingArena scopedTo request budgetedAt 8 kibibytes
+asyncOf handleRequest no
+mayFailWith handleRequest HandlerError
+purposeOf handleRequest "Route one inbound HTTP request: GET / and GET /healthz return the greeting; all other requests return 404."
+invariantOf handleRequest "No request data is logged or persisted; bodies are constant module storage."
+
+bodyOf handleRequest
+
+  # R4: parser-enforced lifecycle. For each call name, the grammar requires
+  #     call -> (policy lines)* -> forParam* -> run -> bind*
+  # Out-of-order lines are a parse error. The verb at the start of every
+  # line names the lifecycle position; the call name names the subject.
+  #
+  # R12: every forParam carries the parameter's declared type, so a line
+  # retrieved in isolation is type-complete without consulting the callee.
+
+  call methodCheck targeting http.requestMethodEquals
+  forParam methodCheck request asType HttpRequest passing httpRequest
+  forParam methodCheck method  asType HttpMethod  passing HttpMethod.Get
+  run methodCheck
+  bindResultOf methodCheck named isGet asType Bool
+
+  call pathCheckRoot targeting http.requestPathEquals
+  forParam pathCheckRoot request asType HttpRequest   passing httpRequest
+  forParam pathCheckRoot path    asType HttpRoutePath passing rootPath
+  run pathCheckRoot
+  bindResultOf pathCheckRoot named isRoot asType Bool
+
+  call pathCheckHealth targeting http.requestPathEquals
+  forParam pathCheckHealth request asType HttpRequest   passing httpRequest
+  forParam pathCheckHealth path    asType HttpRoutePath passing healthPath
+  run pathCheckHealth
+  bindResultOf pathCheckHealth named isHealth asType Bool
+
+  call anyKnownPath targeting logic.or
+  forParam anyKnownPath left  asType Bool passing isRoot
+  forParam anyKnownPath right asType Bool passing isHealth
+  run anyKnownPath
+  bindResultOf anyKnownPath named isKnownPath asType Bool
+
+  # R11: structured-flow primitive. `branchOn` opens one named decision;
+  # each `whenValue` is one outcome record; `endBranch` closes it. A
+  # retrieved `whenValue` line still names the discriminant and the
+  # destination (tooling re-emits the `branchOn` subject on retrieval).
+  branchOn isGet asType Bool
+    whenValue true  thenGoto atCheckPath
+    whenValue false thenGoto atNotFound
+  endBranch
+
+  label atCheckPath
+  branchOn isKnownPath asType Bool
+    whenValue true  thenGoto atServeGreeting
+    whenValue false thenGoto atNotFound
+  endBranch
+
+  label atServeGreeting
+  call buildOk targeting http.responsePlainText
+  forParam buildOk status asType HttpStatus    passing HttpStatus.Ok
+  forParam buildOk body   asType PlainTextBody passing greetingBody
+  run buildOk
+  bindResultOf buildOk named okResponse asType HttpResponse
+  returnOkOf handleRequest withValue okResponse asType HttpResponse
+
+  label atNotFound
+  call build404 targeting http.responsePlainText
+  forParam build404 status asType HttpStatus    passing HttpStatus.NotFound
+  forParam build404 body   asType PlainTextBody passing notFoundBody
+  run build404
+  bindResultOf build404 named notFoundResponse asType HttpResponse
+  returnOkOf handleRequest withValue notFoundResponse asType HttpResponse
+
+endOperation handleRequest
+
+
+# =============================================================================
+# operation main
+# =============================================================================
+
+operation main
+outputOf main asType ExitCode
+allocatesResource main net.tcpListener
+bindsResource main net.tcpPort
+spawnsResource main runtime.taskGroup
+readsResource main os.signal
+authorityOf main overResource net.tcpListener permittingAction allocate
+authorityOf main overResource net.tcpPort     permittingAction bind
+authorityOf main overResource os.signal       permittingAction read
+memoryPolicyOf main usingHeap budgetedAt 64 kibibytes
+asyncOf main no
+purposeOf main "Bind one HTTP listener on the configured port and dispatch requests to handleRequest until an OS shutdown signal arrives."
+invariantOf main "Listener lifetime is bounded by the enclosing task group; shutdown is structured and produces a typed StopStatus."
+
+bodyOf main
+
+  # R7: policy lines are anchored to the call name, between `call` and the
+  # first `forParam`. Each policy is one fact on one line — `timeoutOf`,
+  # `cancelOn`, `retryPolicyOf` — and each names its subject.
+  call bootServer targeting http.serverStart
+  timeoutOf bootServer passing bootTimeout
+  cancelOn bootServer passing processShutdownToken
+  retryPolicyOf bootServer none
+  forParam bootServer port    asType TcpPort          passing listenPort
+  forParam bootServer handler asType HttpHandler      passing handleRequest
+  forParam bootServer logger  asType StructuredLogger passing log.default
+  run bootServer
+  bindOkOf    bootServer named serverHandle asType ServerHandle
+  bindErrorOf bootServer named startError   asType StartError
+  branchOnErrorOf bootServer thenGoto atStartFailed
+
+  # R9: `with SUBJECT ... endWith` block. The subject is named once at
+  # block open. Inside the block, `forParam` / `run` / `bindResultOf`
+  # drop the subject slot; tooling re-emits it when surfacing any single
+  # contained line to an agent. The block is delimited by the explicit
+  # `endWith` token, so indentation is cosmetic.
+  with awaitShutdown targeting runtime.awaitAnySignal
+    forParam signal asType OsSignal passing OsSignal.Interrupt
+    forParam signal asType OsSignal passing OsSignal.Terminate
+    run
+    bindResultOf named shutdownReason asType ShutdownReason
+  endWith
+
+  call stopServer targeting http.serverStop
+  timeoutOf stopServer passing stopTimeout
+  forParam stopServer server asType ServerHandle   passing serverHandle
+  forParam stopServer reason asType ShutdownReason passing shutdownReason
+  run stopServer
+  bindOkOf    stopServer named stopStatus asType StopStatus
+  bindErrorOf stopServer named stopError  asType StopError
+  # R15: lifecycle-aware ignore with mandatory rationale. The verb names
+  # which arm is discarded; `because "..."` is required. A bare ignore on
+  # a Result whose error arm has not been handled is a linter error.
+  ignoreErrorOf stopServer because "Process is exiting; a failed graceful stop is logged elsewhere and does not change the exit code."
+
+  call logStop targeting log.info
+  forParam logStop event  asType LogEventKind passing LogEventKind.ServerStopped
+  forParam logStop status asType StopStatus   passing stopStatus
+  run logStop
+  ignoreOkOf logStop because "Logging is best-effort and never fails the request path."
+
+  returnValueOf main withValue ExitCode.Ok asType ExitCode
+
+  label atStartFailed
+  call logFailure targeting log.error
+  forParam logFailure event  asType LogEventKind passing LogEventKind.StartupFailed
+  forParam logFailure detail asType StartError   passing startError
+  run logFailure
+  ignoreOkOf logFailure because "Logging is best-effort and never fails startup-failure reporting."
+  returnValueOf main withValue ExitCode.StartupFailed asType ExitCode
+
+endOperation main
+
+
+# =============================================================================
+# Generated route registry — regenerate, do not hand-edit. (R14)
+# =============================================================================
+
+generated route forMethod HttpMethod.Get atPath rootPath   dispatchedTo handleRequest
+generated route forMethod HttpMethod.Get atPath healthPath dispatchedTo handleRequest
+
+
+# =============================================================================
+# Notes on what changed and why
+# =============================================================================
+#
+# Why no sigils (R8 revised):
+#   Sigils (@call, $value, %slot, #label) were imported from shell and config
+#   languages. They are foreign punctuation, exactly the kind the language
+#   forbids elsewhere. The job sigils were doing — telling a reader which
+#   namespace a token lives in — is done better by two things working
+#   together:
+#     1. The verb that uses the token. `call NAME targeting TARGET` declares
+#        NAME as a call. `bindResultOf CALL named VALUE asType T` references
+#        CALL and declares VALUE. The verb's grammar locks each slot's kind.
+#     2. A naming convention enforced by the linter. Calls are verb-phrase
+#        nouns. Values are state nouns. Labels carry an `at` prefix in the
+#        lexeme itself, so `atStartFailed` reads as a label without a sigil.
+#   A rename pass walks the grammar, not the lexeme — so renames are
+#   kind-aware automatically and homonyms across kinds do not collide.
+#
+# Why per-slot verbs (R1) instead of `key=value`:
+#   `=` is config-file punctuation, not English. `scopeOf X module` reads
+#   as a fact; `scope=module` reads as a config entry. The parser cost is
+#   identical; the agent-prior cost is not.
+#
+# Why English-named type constructors (R3) instead of `Result/2`:
+#   `/` is foreign punctuation; arity numerals are a parser hint, not a
+#   semantic carrier. `resultReturning X failingWith Y` carries the same
+#   arity *and* names what each slot is for.
+#
+# Why subject-anchored attribute lines (R6, R7) instead of one fused line:
+#   Fusing `timeout`/`cancelOn`/`retry` onto the `call` line traded line
+#   count for slot density and reintroduced positional ambiguity. Each
+#   policy on its own line, anchored by call name, keeps every line a
+#   single retrievable fact.
+#
+# Why line-leading provenance verbs (R14) instead of `*` / `~` / `+`:
+#   Punctuation prefixes don't carry meaning in their shape and are easy
+#   to drop on partial retrieval. `frozen module app.hello_server` reads
+#   as a fact and participates in lint as a normal token.
+#
+# What is intentionally unchanged from the current dialect:
+#   - Verb-first lines, controlled English vocabulary.
+#   - camelCase identifiers, PascalCase types, dot.path dependency paths.
+#   - Named call objects, named labels, declared effects / authorities /
+#     memory / async / failure / purpose / invariant.
+#   - Typed comments (rationale, invariant, warning, agent, memory, ...).
+#   - "Every line is one semantic fact" and "repetition preserves context."

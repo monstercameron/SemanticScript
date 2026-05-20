@@ -1,0 +1,174 @@
+# =============================================================================
+# syntax-baseline.sem  —  hello-world webserver, standard SemanticScript
+# =============================================================================
+# This is the same program as syntax-refinement.sem, written in the current
+# (production) SemanticScript dialect with no refinements. It exists as a
+# control case so the refinement experiment can be compared line for line.
+#
+# Behavior:
+#   GET /        -> 200 plaintext "Hello, world!\n"
+#   GET /healthz -> 200 plaintext "Hello, world!\n"
+#   anything else -> 404 plaintext "Not found\n"
+#   main binds one TCP listener, awaits an OS signal, then shuts down.
+# =============================================================================
+
+module app.hello_server
+modulePurpose app.hello_server "Single-route HTTP hello-world (baseline dialect)."
+moduleInvariant app.hello_server "GET / and GET /healthz return 200 with a stable plaintext greeting; all other requests return 404."
+
+# --- Type aliases ------------------------------------------------------------
+
+type RequestHandleResult Result HttpResponse HandlerError
+type StartServerResult Result ServerHandle StartError
+type StopServerResult Result StopStatus StopError
+
+# --- Imports -----------------------------------------------------------------
+
+importModule http standard.http
+importModule log standard.log
+importModule runtime standard.runtime
+
+# --- Module storage ----------------------------------------------------------
+
+storage module immutable greetingBody PlainTextBody "Hello, world!\n"
+storage module immutable notFoundBody PlainTextBody "Not found\n"
+storage module immutable listenPort TcpPort 8080
+storage module immutable rootPath HttpRoutePath "/"
+storage module immutable healthPath HttpRoutePath "/healthz"
+storage module immutable bootTimeoutSeconds CSignedInt32 5
+storage module immutable stopTimeoutSeconds CSignedInt32 10
+
+# =============================================================================
+# operation handleRequest
+# =============================================================================
+
+operation handleRequest
+input handleRequest httpRequest HttpRequest
+input handleRequest httpSession HttpSession
+output handleRequest RequestHandleResult
+effect handleRequest read http.request
+effect handleRequest write http.response
+authority handleRequest http.response write
+memoryHeap handleRequest no
+async handleRequest no
+purpose handleRequest "Route one inbound HTTP request: GET / and GET /healthz return the greeting; all other requests return 404."
+invariant handleRequest "No request data is logged or persisted; bodies are constant module storage."
+
+call methodCheckCall http.requestMethodEquals
+arg methodCheckCall request httpRequest
+arg methodCheckCall method HttpMethod.Get
+run methodCheckCall
+bind isGet Bool methodCheckCall
+
+call pathCheckRootCall http.requestPathEquals
+arg pathCheckRootCall request httpRequest
+arg pathCheckRootCall path rootPath
+run pathCheckRootCall
+bind isRoot Bool pathCheckRootCall
+
+call pathCheckHealthCall http.requestPathEquals
+arg pathCheckHealthCall request httpRequest
+arg pathCheckHealthCall path healthPath
+run pathCheckHealthCall
+bind isHealth Bool pathCheckHealthCall
+
+call anyKnownPathCall logic.or
+arg anyKnownPathCall left isRoot
+arg anyKnownPathCall right isHealth
+run anyKnownPathCall
+bind isKnownPath Bool anyKnownPathCall
+
+branchIf isGet checkPath
+branch notFound
+
+label checkPath
+branchIf isKnownPath serveGreeting
+branch notFound
+
+label serveGreeting
+call buildOkCall http.responsePlainText
+arg buildOkCall status HttpStatus.Ok
+arg buildOkCall body greetingBody
+run buildOkCall
+bind okResponse HttpResponse buildOkCall
+returnOk okResponse
+
+label notFound
+call build404Call http.responsePlainText
+arg build404Call status HttpStatus.NotFound
+arg build404Call body notFoundBody
+run build404Call
+bind notFoundResponse HttpResponse build404Call
+returnOk notFoundResponse
+
+# =============================================================================
+# operation main
+# =============================================================================
+
+operation main
+output main ExitCode
+effect main allocate net.tcpListener
+effect main bind net.tcpPort
+effect main spawn runtime.taskGroup
+effect main read os.signal
+authority main net.tcpListener allocate
+authority main net.tcpPort bind
+authority main os.signal read
+memoryHeap main yes
+async main no
+purpose main "Bind one HTTP listener on the configured port and dispatch requests to handleRequest until an OS shutdown signal arrives."
+invariant main "Listener lifetime is bounded by the enclosing task group; shutdown is structured and produces a typed StopStatus."
+
+call bootServerCall http.serverStart
+timeout bootServerCall bootTimeoutSeconds
+cancelOn bootServerCall processShutdownToken
+arg bootServerCall port listenPort
+arg bootServerCall handler handleRequest
+arg bootServerCall logger log.default
+run bootServerCall
+bindOk serverHandle ServerHandle bootServerCall
+bindError startError StartError bootServerCall
+branchIfError bootServerCall startFailed
+
+call awaitShutdownCall runtime.awaitAnySignal
+arg awaitShutdownCall signal OsSignal.Interrupt
+arg awaitShutdownCall signal OsSignal.Terminate
+run awaitShutdownCall
+bind shutdownReason ShutdownReason awaitShutdownCall
+
+call stopServerCall http.serverStop
+timeout stopServerCall stopTimeoutSeconds
+arg stopServerCall server serverHandle
+arg stopServerCall reason shutdownReason
+run stopServerCall
+bindOk stopStatus StopStatus stopServerCall
+bindError stopError StopError stopServerCall
+ignoreError stopServerCall
+
+call logStopCall log.info
+arg logStopCall event LogEventKind.ServerStopped
+arg logStopCall status stopStatus
+run logStopCall
+ignoreValue logStopCall CSignedInt32
+
+returnValue ExitCode.Ok
+
+label startFailed
+call logFailureCall log.error
+arg logFailureCall event LogEventKind.StartupFailed
+arg logFailureCall detail startError
+run logFailureCall
+ignoreValue logFailureCall CSignedInt32
+returnValue ExitCode.StartupFailed
+
+# =============================================================================
+# Notes
+# =============================================================================
+# - `branchIf isGet checkPath` followed by `branch notFound` is the standard
+#   pattern for two-way branching: true falls to the named label, false falls
+#   through to the next line.
+# - `ignoreError stopServerCall` swallows the error arm of the shutdown call
+#   because the process is exiting and the failure is logged elsewhere.
+# - The handler is referenced by bare name `handleRequest` as the
+#   `handler` argument to `http.serverStart`; the standard dialect does not
+#   sigil-mark operation references.

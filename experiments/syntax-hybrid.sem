@@ -1,0 +1,652 @@
+# =============================================================================
+# syntax-hybrid.sem  —  hello-world webserver
+#                       with arrays, records, and library iteration
+# =============================================================================
+# Hello-world HTTP server in the refined dialect. Iteration is a library
+# call (array.reduce, array.forEachWithContext) invoked through the normal
+# call lifecycle; the previous draft's forEach/endForEach primitive was
+# dropped because it both nested SemanticScript inside SemanticScript and
+# required cosmetic indentation that the spec says is non-semantic.
+#
+#   GET /         200 HTML  -> handleGreetingRequest
+#   GET /healthz  200 JSON  -> handleHealthRequest
+#   anything else 404 text  -> handleNotFoundRequest  (router default)
+#
+# Read alongside:
+#   syntax-baseline.sem    the production dialect, as a control
+#   syntax-refinement.sem  the maximalist proposal, as the starting point
+#
+# =============================================================================
+# Constructs in use
+# =============================================================================
+#
+# RECORD TYPES
+#   record <RecordType>
+#   field  <RecordType> <fieldName> <FieldType>
+#   purpose / invariant lines attach to the record type the same way they
+#   attach to operations and modules.
+#
+# RECORD VALUES  (constructed via the storage form with a record-typed axis)
+#   storage <name>
+#   scope / mutability / type as usual
+#   fieldValue <name> <fieldName> <FieldType> <Value>     one per field
+#
+# ARRAY TYPES
+#   type <Alias> arrayContaining <ElementType>      English unary constructor
+#
+# ARRAY VALUES  (constructed via the storage form with an array-typed axis)
+#   storage <name>
+#   scope / mutability / type as usual
+#   initialElement <name> <Value>                          one per element,
+#                                                          in declaration order
+#
+# FIELD AND ELEMENT ACCESS  (irreducible primitives — language-level shortcuts
+# for record.field and array.element library calls)
+#   fieldOf   <newBinding> <Type> <recordRef> <fieldName>
+#   elementOf <newBinding> <Type> <arrayRef>  <indexValue>
+#
+# BRANCH AND BIND (baseline verbs kept; the structured branchOn / when
+# experiment was rolled back because the baseline shape carries enough
+# context and adds no fork burden)
+#
+#   label <name>                                    declare a destination
+#   branch <target>                                 unconditional jump
+#   branchIf <cond> <target>                        conditional jump on true;
+#                                                   fall-through on false
+#   branchIfError <call> <target>                   error-arm jump on a Result
+#
+#   bind <name> <Type> <call>                       bind a call's result
+#   bindOk <name> <Type> <call>                     bind the ok arm of a Result
+#   bindError <name> <Type> <call>                  bind the error arm
+#
+# Binary branching uses the baseline two-line pattern:
+#
+#   branchIf isGet returnIncremented                # jump on true
+#   branch returnUnchanged                          # fall-through label
+#
+# Two lines, no closing sentinel, no per-line discriminant echo. The
+# pattern is positional but every slot kind is distinct (cond is a
+# camelCase value; target is a label name; `branch` always names its
+# unconditional target). The earlier branchOn / when / endBranch
+# experiment added context-loss on retrieved `when` lines (the
+# discriminant lived offscreen on the opening branchOn) and forked
+# the baseline grammar for no clear win — both reverted.
+#
+# ITERATION  (library calls, no primitive)
+#   array.forEach(collection, step)                      side-effecting,
+#                                                        no context
+#   array.forEachWithContext(collection, step, context)  side-effecting,
+#                                                        threads context
+#                                                        to each step
+#   array.reduce(collection, initialValue, step)         fold; accumulator
+#                                                        threaded through
+#   array.map(collection, step)                          new array, same
+#                                                        length
+#   array.filter(collection, predicate)                  new array, kept
+#                                                        elements only
+#   array.length(collection)                             element count
+#   array.get(collection, index)                         element at index
+#   array.new(elementType)                               empty mutable array
+#   array.append(array, element)                         grow in place
+#
+# Each is a normal library function invoked through call -> argument* ->
+# run -> bind. The step / predicate / handler is a typed Operation
+# reference; the library threads the iteration state through it.
+#
+# LOCAL MUTABLE STATE  (full per-axis form)
+#   storage <name>
+#   scope <name> local
+#   mutability <name> mutable
+#   type <name> <Type>
+#   initialValue <name> <Value>
+#
+#   set <slotName> <newValue>
+#
+# Why iteration is library, not primitive:
+#   The previous draft used `forEach <iter> <Type> in <coll>` with a body
+#   that nested SemanticScript inside SemanticScript. That body required
+#   cosmetic indentation to scan — and the spec says indentation carries
+#   no semantic weight. Either the indentation is misleading (looks like
+#   it nests but doesn't) or the language has reintroduced indentation
+#   semantics it explicitly rejects. Both are bad. Moving iteration to
+#   library calls eliminates the inner SS-in-SS scope entirely. The step
+#   is a normal named operation with its own contract; the iteration site
+#   is one ordinary call. The verb table shrinks (no forEach / endForEach)
+#   and every iteration variant (forEach / reduce / map / filter / take)
+#   shares the same call-lifecycle shape.
+#
+# Why content blocks (htmlContent / jsonContent) still survive, without
+# closing sentinels:
+#   They are typed literal blocks of foreign content (the agent's prior
+#   on HTML/JSON is massive). The block opens on `htmlContent <name>`
+#   or `jsonContent <name>` at column 0 and ends when a non-blank line
+#   returns to column 0. Content lines are indented; that indentation
+#   belongs to the embedded language and is preserved verbatim. The
+#   SemanticScript surface itself has no indentation — every SS line
+#   is at column 0 — so the column-0-returns rule cleanly separates
+#   "still inside the foreign block" from "back to SemanticScript".
+#   No endHtmlContent / endJsonContent sentinel is needed; the dedent
+#   does the work.
+#
+# Why arrays and records use the storage form, not parallel declarations:
+#   Storage is already the declaration verb with slot-axis verbs
+#   (scope / mutability / type / initialValue). Records and arrays
+#   extend the axis surface (fieldValue, initialElement) rather than
+#   introducing parallel `record alice ofType User` / `array xs of T`
+#   declaration verbs. One declaration mechanism for every named, typed
+#   value in the module — primitive scalar, record, or array.
+#
+# Why fieldOf and elementOf are primitives instead of library calls:
+#   Field access and indexed element access are frequent enough that
+#   expressing them as 4-6 line call lifecycles is a real cost. The
+#   library forms (record.field, array.element) still exist; `fieldOf`
+#   and `elementOf` are language-level shortcuts. Same justification as
+#   `bind` itself: too common to spell out.
+#
+# Why `because` stays mandatory on ignoreError of Result types:
+#   Dropping the error arm of a Result is the easiest correctness bug
+#   for an agent to introduce by accident — preserving the call's shape
+#   while quietly discarding the failure path. A bare ignoreError on a
+#   Result is a linter error; the mandatory because "..." clause is the
+#   cheapest correct-by-construction guard the language can buy.
+# =============================================================================
+
+
+# R14: line-leading provenance verb.
+frozen module app.hello_server
+frozen purpose app.hello_server "Hello-world HTTP server using library iteration over a route table built from records and arrays."
+frozen invariant app.hello_server "GET / serves greetingDocument; GET /healthz serves healthResponseJson; everything else routes to handleNotFoundRequest."
+
+
+# -----------------------------------------------------------------------------
+# Type aliases
+# -----------------------------------------------------------------------------
+
+type RequestHandleResult resultReturning HttpResponse failingWith HandlerError
+type StartServerResult resultReturning ServerHandle failingWith StartError
+type StopServerResult resultReturning StopStatus failingWith StopError
+
+type HttpRouteList arrayContaining HttpRouteEntry
+
+
+# -----------------------------------------------------------------------------
+# Record types
+# -----------------------------------------------------------------------------
+
+record HttpRouteEntry
+field HttpRouteEntry method HttpMethod
+field HttpRouteEntry path HttpRoutePath
+field HttpRouteEntry handler HttpHandler
+purpose HttpRouteEntry "One row in the application's route table."
+invariant HttpRouteEntry "path must begin with `/` and contain no query string."
+invariant HttpRouteEntry "handler must be an operation accepting (HttpRequest, HttpSession) and returning RequestHandleResult."
+
+
+# -----------------------------------------------------------------------------
+# Imports
+# -----------------------------------------------------------------------------
+
+importDependency http standard.http
+importDependency log standard.log
+importDependency runtime standard.runtime
+importDependency math standard.math
+importDependency enum standard.enum
+importDependency array standard.array
+
+
+# -----------------------------------------------------------------------------
+# Module storage
+# -----------------------------------------------------------------------------
+
+storage notFoundBody
+scope notFoundBody module
+mutability notFoundBody immutable
+type notFoundBody PlainTextBody
+initialValue notFoundBody plainText "Not found\n"
+
+storage listenPort
+scope listenPort module
+mutability listenPort immutable
+type listenPort TcpPort
+initialValue listenPort 8080
+
+storage rootPath
+scope rootPath module
+mutability rootPath immutable
+type rootPath HttpRoutePath
+initialValue rootPath urlPath "/"
+
+storage healthPath
+scope healthPath module
+mutability healthPath immutable
+type healthPath HttpRoutePath
+initialValue healthPath urlPath "/healthz"
+
+storage bootTimeoutSeconds
+scope bootTimeoutSeconds module
+mutability bootTimeoutSeconds immutable
+type bootTimeoutSeconds CSignedInt32
+initialValue bootTimeoutSeconds 5
+
+storage stopTimeoutSeconds
+scope stopTimeoutSeconds module
+mutability stopTimeoutSeconds immutable
+type stopTimeoutSeconds CSignedInt32
+initialValue stopTimeoutSeconds 10
+
+
+# -----------------------------------------------------------------------------
+# Record values
+# -----------------------------------------------------------------------------
+
+storage greetingRoute
+scope greetingRoute module
+mutability greetingRoute immutable
+type greetingRoute HttpRouteEntry
+fieldValue greetingRoute method HttpMethod HttpMethod.Get
+fieldValue greetingRoute path HttpRoutePath rootPath
+fieldValue greetingRoute handler HttpHandler handleGreetingRequest
+
+storage healthRoute
+scope healthRoute module
+mutability healthRoute immutable
+type healthRoute HttpRouteEntry
+fieldValue healthRoute method HttpMethod HttpMethod.Get
+fieldValue healthRoute path HttpRoutePath healthPath
+fieldValue healthRoute handler HttpHandler handleHealthRequest
+
+
+# -----------------------------------------------------------------------------
+# Array value
+# -----------------------------------------------------------------------------
+
+storage appRoutes
+scope appRoutes module
+mutability appRoutes immutable
+type appRoutes HttpRouteList
+initialElement appRoutes greetingRoute
+initialElement appRoutes healthRoute
+
+
+# =============================================================================
+# greetingDocument  —  the HTML page served at GET /
+# =============================================================================
+# Content is indented; the block opens on `htmlContent <name>` and ends
+# when a non-blank line returns to column 0. The content's own
+# indentation is preserved verbatim and is for the embedded language,
+# not for SemanticScript.
+
+htmlContent greetingDocument
+  <!DOCTYPE html>
+  <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>Hello — SemanticScript</title>
+      <style>
+        body.page { font-family: system-ui, sans-serif; max-width: 36rem; margin: 2rem auto; padding: 0 1rem; color: #222; }
+        h1 { margin-bottom: 0.25rem; }
+        p  { color: #555; }
+        a  { color: #0a58ca; }
+      </style>
+    </head>
+    <body class="page">
+      <h1>Hello, world!</h1>
+      <p>Served by SemanticScript on TCP 8080.</p>
+      <p><a href="/healthz">view health JSON</a></p>
+    </body>
+  </html>
+
+
+# =============================================================================
+# healthResponseJson  —  the JSON body served at GET /healthz
+# =============================================================================
+# Same termination rule: block ends when a non-blank line returns to
+# column 0. JSON's own indentation is preserved.
+
+jsonContent healthResponseJson
+  {
+    "status": "ok",
+    "service": "hello_server",
+    "listenPort": 8080,
+    "checks": {
+      "listener": "bound",
+      "handler": "ready",
+      "degraded": false
+    },
+    "tags": ["alive", "responsive"]
+  }
+
+
+# =============================================================================
+# operation handleGreetingRequest
+# =============================================================================
+
+operation handleGreetingRequest
+input handleGreetingRequest httpRequest HttpRequest
+input handleGreetingRequest httpSession HttpSession
+output handleGreetingRequest RequestHandleResult
+effect handleGreetingRequest read http.request
+effect handleGreetingRequest write http.response
+authority handleGreetingRequest http.response write
+memoryHeap handleGreetingRequest no
+async handleGreetingRequest no
+purpose handleGreetingRequest "Render greetingDocument as a 200 HTML response."
+invariant handleGreetingRequest "Response body derives from immutable module-scope HTML."
+
+call buildHtmlOkCall http.responseHtml
+argument buildHtmlOkCall status HttpStatus HttpStatus.Ok
+argument buildHtmlOkCall document HtmlDocument greetingDocument
+run buildHtmlOkCall
+bind htmlResponse HttpResponse buildHtmlOkCall
+returnOk htmlResponse
+
+
+# =============================================================================
+# operation handleHealthRequest
+# =============================================================================
+
+operation handleHealthRequest
+input handleHealthRequest httpRequest HttpRequest
+input handleHealthRequest httpSession HttpSession
+output handleHealthRequest RequestHandleResult
+effect handleHealthRequest read http.request
+effect handleHealthRequest write http.response
+authority handleHealthRequest http.response write
+memoryHeap handleHealthRequest no
+async handleHealthRequest no
+purpose handleHealthRequest "Render healthResponseJson as a 200 JSON response."
+invariant handleHealthRequest "Response body derives from immutable module-scope JSON."
+
+call buildJsonOkCall http.responseJson
+argument buildJsonOkCall status HttpStatus HttpStatus.Ok
+argument buildJsonOkCall body JsonValue healthResponseJson
+run buildJsonOkCall
+bind jsonResponse HttpResponse buildJsonOkCall
+returnOk jsonResponse
+
+
+# =============================================================================
+# operation handleNotFoundRequest
+# =============================================================================
+
+operation handleNotFoundRequest
+input handleNotFoundRequest httpRequest HttpRequest
+input handleNotFoundRequest httpSession HttpSession
+output handleNotFoundRequest RequestHandleResult
+effect handleNotFoundRequest read http.request
+effect handleNotFoundRequest write http.response
+authority handleNotFoundRequest http.response write
+memoryHeap handleNotFoundRequest no
+async handleNotFoundRequest no
+purpose handleNotFoundRequest "Return notFoundBody as a 404 plaintext response."
+invariant handleNotFoundRequest "Response body is constant module storage; request data is not echoed."
+
+call build404Call http.responsePlainText
+argument build404Call status HttpStatus HttpStatus.NotFound
+argument build404Call body PlainTextBody notFoundBody
+run build404Call
+bind notFoundResponse HttpResponse build404Call
+returnOk notFoundResponse
+
+
+# =============================================================================
+# operation incrementIfGet  —  leaf step of countGetRoutes
+# =============================================================================
+# Per-element step for array.reduce. Branching uses baseline
+# branchIf <cond> <onTrueLabel> / branch <onFalseLabel> — jump on true,
+# fall through on false. Two lines, every slot kind distinct, no
+# closing sentinel.
+
+operation incrementIfGet
+input incrementIfGet currentCount CSignedInt32
+input incrementIfGet route HttpRouteEntry
+output incrementIfGet CSignedInt32
+effect incrementIfGet read memory.none
+memoryHeap incrementIfGet no
+async incrementIfGet no
+purpose incrementIfGet "Return currentCount + 1 if route's method is GET, else currentCount unchanged."
+invariant incrementIfGet "Result is currentCount or currentCount + 1; no other transformations."
+
+fieldOf routeMethod HttpMethod route method
+
+call methodEqCall enum.equalHttpMethod
+argument methodEqCall left HttpMethod routeMethod
+argument methodEqCall right HttpMethod HttpMethod.Get
+run methodEqCall
+bind isGet Bool methodEqCall
+
+branchIf isGet returnIncremented
+branch returnUnchanged
+
+label returnIncremented
+call addCall math.addCSignedInt32
+argument addCall left CSignedInt32 currentCount
+argument addCall right CSignedInt32 1
+run addCall
+bind nextCount CSignedInt32 addCall
+returnValue nextCount
+
+label returnUnchanged
+returnValue currentCount
+
+
+# =============================================================================
+# operation countGetRoutes  —  nested algorithm over the route array
+# =============================================================================
+# Fold over routes via array.reduce. The accumulator (count) and the step
+# (incrementIfGet) are typed; the reduce library threads them together.
+# No local mutable state, no forEach body, no set — the fold IS the
+# nested algorithm, expressed in one library call.
+
+operation countGetRoutes
+input countGetRoutes routes HttpRouteList
+output countGetRoutes CSignedInt32
+effect countGetRoutes read memory.none
+memoryHeap countGetRoutes no
+async countGetRoutes no
+purpose countGetRoutes "Return the number of GET routes in the input list."
+invariant countGetRoutes "Result is non-negative and at most the input list's length."
+
+call reduceCall array.reduce
+argument reduceCall collection HttpRouteList routes
+argument reduceCall initialValue CSignedInt32 0
+argument reduceCall step Operation incrementIfGet
+run reduceCall
+bind totalCount CSignedInt32 reduceCall
+
+returnValue totalCount
+
+
+# =============================================================================
+# operation registerRouteEntry  —  leaf step of route registration
+# =============================================================================
+# Per-element handler for array.forEachWithContext. Receives one
+# HttpRouteEntry plus the target HttpRouter as a threaded context, and
+# adds the entry to the router.
+
+operation registerRouteEntry
+input registerRouteEntry route HttpRouteEntry
+input registerRouteEntry targetRouter HttpRouter
+output registerRouteEntry CSignedInt32
+effect registerRouteEntry write http.router
+authority registerRouteEntry http.router write
+memoryHeap registerRouteEntry no
+async registerRouteEntry no
+purpose registerRouteEntry "Add one HttpRouteEntry to the given router; per-element handler for array.forEachWithContext over a route table."
+invariant registerRouteEntry "Returns the router-add status; does not mutate the route entry."
+
+call addCall http.routerAddEntry
+argument addCall router HttpRouter targetRouter
+argument addCall entry HttpRouteEntry route
+run addCall
+bind addStatus CSignedInt32 addCall
+returnValue addStatus
+
+
+# =============================================================================
+# operation main
+# =============================================================================
+
+operation main
+output main ExitCode
+effect main allocate net.tcpListener
+effect main bind net.tcpPort
+effect main allocate http.router
+effect main spawn runtime.taskGroup
+effect main read os.signal
+effect main read module.appRoutes
+authority main net.tcpListener allocate
+authority main net.tcpPort bind
+authority main http.router allocate
+authority main os.signal read
+memoryHeap main yes
+async main no
+purpose main "Build a router from the appRoutes table via array.forEachWithContext, log the GET-route count, bind one HTTP listener, and dispatch requests until an OS shutdown signal arrives."
+invariant main "Router lifetime is bounded by the listener; the listener lifetime is bounded by the enclosing task group."
+
+call createRouterCall http.routerNew
+run createRouterCall
+bind appRouter HttpRouter createRouterCall
+
+call registerAllRoutesCall array.forEachWithContext
+argument registerAllRoutesCall collection HttpRouteList appRoutes
+argument registerAllRoutesCall step Operation registerRouteEntry
+argument registerAllRoutesCall context HttpRouter appRouter
+run registerAllRoutesCall
+ignoreValue registerAllRoutesCall CSignedInt32
+
+call setDefaultHandlerCall http.routerSetDefault
+argument setDefaultHandlerCall router HttpRouter appRouter
+argument setDefaultHandlerCall handler HttpHandler handleNotFoundRequest
+run setDefaultHandlerCall
+ignoreValue setDefaultHandlerCall CSignedInt32
+
+call countCall countGetRoutes
+argument countCall routes HttpRouteList appRoutes
+run countCall
+bind getRouteCount CSignedInt32 countCall
+
+call logCountCall log.info
+argument logCountCall event LogEventKind LogEventKind.RoutesRegistered
+argument logCountCall count CSignedInt32 getRouteCount
+run logCountCall
+ignoreValue logCountCall CSignedInt32
+
+call bootServerCall http.serverStart
+timeout bootServerCall bootTimeoutSeconds
+cancelOn bootServerCall processShutdownToken
+argument bootServerCall port TcpPort listenPort
+argument bootServerCall router HttpRouter appRouter
+argument bootServerCall logger StructuredLogger log.default
+run bootServerCall
+bindOk serverHandle ServerHandle bootServerCall
+bindError startError StartError bootServerCall
+branchIfError bootServerCall startFailed
+
+call awaitShutdownCall runtime.awaitAnySignal
+argument awaitShutdownCall signal OsSignal OsSignal.Interrupt
+argument awaitShutdownCall signal OsSignal OsSignal.Terminate
+run awaitShutdownCall
+bind shutdownReason ShutdownReason awaitShutdownCall
+
+call stopServerCall http.serverStop
+timeout stopServerCall stopTimeoutSeconds
+argument stopServerCall server ServerHandle serverHandle
+argument stopServerCall reason ShutdownReason shutdownReason
+run stopServerCall
+bindOk stopStatus StopStatus stopServerCall
+bindError stopError StopError stopServerCall
+ignoreError stopServerCall because "Process is exiting; a failed graceful stop is logged elsewhere and does not change the exit code."
+
+call logStopCall log.info
+argument logStopCall event LogEventKind LogEventKind.ServerStopped
+argument logStopCall status StopStatus stopStatus
+run logStopCall
+ignoreValue logStopCall CSignedInt32
+
+returnValue ExitCode.Ok
+
+label startFailed
+call logFailureCall log.error
+argument logFailureCall event LogEventKind LogEventKind.StartupFailed
+argument logFailureCall detail StartError startError
+run logFailureCall
+ignoreValue logFailureCall CSignedInt32
+returnValue ExitCode.StartupFailed
+
+
+# =============================================================================
+# What changed and why
+# =============================================================================
+#
+# Iteration moved from primitive to library:
+#   The `forEach <iter> <Type> in <coll>` / `endForEach` block was dropped.
+#   It nested SemanticScript inside SemanticScript and asked for cosmetic
+#   indentation that the spec explicitly says is non-semantic. The body
+#   either looked nested (misleading) or read as a flat dump (ugly). Both
+#   were the wrong answer. Library-call iteration eliminates the inner
+#   scope entirely; the step is a normal named operation, the iteration
+#   site is one call. countGetRoutes is now a single array.reduce; route
+#   registration is one array.forEachWithContext over appRoutes with
+#   registerRouteEntry as the per-element step.
+#
+# The branch family was reverted to baseline:
+#   The structured branchOn / when / whenDefault experiment lost local
+#   meaning on retrieved `when` lines (the discriminant lived on the
+#   opening branchOn, offscreen on partial retrieval) and forked the
+#   baseline grammar with no clear net win. Reverted to baseline:
+#   `label X`, `branch X`, `branchIf cond X`, `branchIfError call X`.
+#   Binary Bool case is two lines (`branchIf cond onTrue` then
+#   `branch onFalse`); multi-way switching can be expressed as a chain
+#   of branchIf-equality checks against literals, or — better — as a
+#   library call like `enum.dispatch` taking a typed step Operation per
+#   case (same library-call pattern as iteration).
+#
+# HTML and JSON content blocks keep their native indentation, drop the
+# sentinel:
+#   The block opens on `htmlContent <name>` / `jsonContent <name>` at
+#   column 0; the content is indented; the block ends when a non-blank
+#   line returns to column 0. No endHtmlContent / endJsonContent line.
+#   Indentation inside the block is the embedded language's own (HTML's
+#   own visual structure, JSON's pretty-print), preserved verbatim by
+#   the parser and ignored by SemanticScript itself. Because every SS
+#   line is at column 0, the column-0-returns rule cleanly partitions
+#   "foreign content" from "back to SS" with no ambiguity.
+#
+# Nested-algorithm pattern survives, expressed differently:
+#   The "leaf operation per element + composition at the call site"
+#   shape stayed. What changed is that the composition site is now
+#   array.reduce / array.forEachWithContext instead of an inline
+#   forEach body. The leaf operations (incrementIfGet,
+#   registerRouteEntry) are unchanged in spirit — they take one
+#   element plus whatever threaded state the library passes, and
+#   return a typed result. The pattern reads as a one-line fold or
+#   forEach at the call site, with the per-step logic factored into
+#   a named operation that an agent can review independently.
+#
+# What this draft does NOT introduce:
+#   - A `var X T V` shortcut for local mutables. Per-axis storage
+#     form everywhere, even for any future loop-local accumulators.
+#   - Inline record or array literals. All values are named storage.
+#   - A break / continue surface for iteration. Library reduce /
+#     forEach run to completion; early termination factors into the
+#     step returning a typed IterationControl variant that the
+#     library honors, or a recursive operation. Out of scope here.
+#   - Any cosmetic indentation inside SemanticScript source. Every
+#     SS line is at column 0; the grammar is flat, the source looks
+#     flat. Content blocks contain foreign content which carries
+#     its own whitespace rules; those blocks are also flat-left in
+#     this draft because their indentation was non-semantic too.
+#
+# What remains an open question:
+#   - Indexed iteration. `array.forEach` and `array.reduce` pass only
+#     the element (and accumulator, for reduce). An indexed variant
+#     (`array.forEachIndexed`) would pass (index, element) — same
+#     library shape, different signature on the step. Add when needed.
+#   - Multi-collection iteration (zip). `array.zipReduce` /
+#     `array.zipForEach` library calls take two collections and a step
+#     of the right arity. Same shape, different argument list.
+#   - Map / filter convenience. Pure-functional collection ops are
+#     library functions taking a typed step or predicate. Same shape
+#     as reduce; no new grammar.
