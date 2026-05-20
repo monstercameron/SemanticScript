@@ -3432,6 +3432,74 @@ returnVoid
         self.assertTrue(matching.blocksCompile)
         self.assertEqual(matching.subjectName, "findTitleCall")
 
+    def test_json_body_invalid_json_blocks_compile(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable payload JsonText
+jsonBody payload
+  {"title":}
+""")
+        self.assertIn("SS3626", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3626")[0]
+        self.assertTrue(matching.blocksCompile)
+        self.assertEqual(matching.kind, "json.invalidJsonBody")
+
+    def test_json_body_valid_json_text_is_silent(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable payload JsonText
+jsonBody payload
+  {"title":"ok","count":1}
+operation main
+output main Void
+purpose main "smoke"
+returnVoid
+""")
+        self.assertNotIn("SS3626", _codes(diagnostics))
+
+    def test_json_body_missing_storage_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+jsonBody payload
+  {"ok":true}
+""")
+        self.assertIn("SS3626", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3626")[0]
+        self.assertEqual(matching.kind, "json.orphanJsonBody")
+
+    def test_json_body_record_target_is_type_checked(self) -> None:
+        diagnostics = _lint_source("""project Test
+record Payload
+field Payload title JsonText
+storage module immutable payload Payload
+jsonBody payload
+  {"title":"ok"}
+""")
+        self.assertNotIn("SS3626", _codes(diagnostics))
+
+    def test_json_body_record_missing_required_field_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+record Payload
+field Payload title JsonText
+field Payload count I64
+storage module immutable payload Payload
+jsonBody payload
+  {"title":"ok"}
+""")
+        self.assertIn("SS3626", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3626")[0]
+        self.assertEqual(matching.kind, "json.jsonBodyMissingRequired")
+
+    def test_json_body_record_json_name_and_omit_policy_are_honored(self) -> None:
+        diagnostics = _lint_source("""project Test
+record Payload
+field Payload title JsonText
+field Payload count I64
+recordFieldJsonName Payload title "display_title"
+recordFieldJsonOmitWhen Payload count zero
+storage module immutable payload Payload
+jsonBody payload
+  {"display_title":"ok"}
+""")
+        self.assertNotIn("SS3626", _codes(diagnostics))
+
 
 class TestArgumentArity(unittest.TestCase):
     def test_operation_without_name_is_flagged(self) -> None:

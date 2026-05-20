@@ -170,6 +170,13 @@ class SingularImportFact:
 
 
 @dataclass
+class JsonBodyFact:
+    name: str
+    line: SourceLine
+    body_lines: List[Tuple[str, int]] = field(default_factory=list)
+
+
+@dataclass
 class ProgramFacts:
     path: Path
     lines: List[SourceLine] = field(default_factory=list)
@@ -186,6 +193,10 @@ class ProgramFacts:
     imports: Set[str] = field(default_factory=set)
     module_imports: List[ImportModuleFact] = field(default_factory=list)
     singular_imports: List[SingularImportFact] = field(default_factory=list)
+    json_bodies: List[JsonBodyFact] = field(default_factory=list)
+    records: Dict[str, List[Tuple[str, str]]] = field(default_factory=dict)
+    record_json_names: Dict[Tuple[str, str], str] = field(default_factory=dict)
+    record_json_omit_when: Dict[Tuple[str, str], str] = field(default_factory=dict)
 
 
 BUILTIN_VALUE_TYPES: Dict[str, str] = {
@@ -623,10 +634,19 @@ def parse_file(path: Path) -> ProgramFacts:
     _register_builtin_surface(program)
     current_op: Optional[OperationFact] = None
     active_html_body = False
+    active_json_body: Optional[JsonBodyFact] = None
 
     with path.open("r", encoding="utf-8") as source_file:
         for line_number, raw_line in enumerate(source_file, start=1):
             raw = raw_line.rstrip("\n")
+            if active_json_body is not None:
+                if raw.strip() and raw[0].isspace():
+                    active_json_body.body_lines.append((raw, line_number))
+                    continue
+                if not raw.strip():
+                    active_json_body.body_lines.append(("", line_number))
+                    continue
+                active_json_body = None
             if active_html_body:
                 if raw.strip() and raw[0].isspace():
                     continue
@@ -683,6 +703,16 @@ def parse_file(path: Path) -> ProgramFacts:
                     args[0], args[1], args[2], line)
             elif verb == "type" and len(args) >= 2:
                 program.type_aliases[args[0]] = args[1]
+            elif verb == "record" and args:
+                program.records.setdefault(args[0], [])
+                program.abstractions.setdefault(
+                    args[0], AbstractionFact(verb, args[0], line))
+            elif verb == "field" and len(args) >= 3:
+                program.records.setdefault(args[0], []).append((args[1], args[2]))
+            elif verb == "recordFieldJsonName" and len(args) >= 3:
+                program.record_json_names[(args[0], args[1])] = args[2]
+            elif verb == "recordFieldJsonOmitWhen" and len(args) >= 3:
+                program.record_json_omit_when[(args[0], args[1])] = args[2]
             elif verb.startswith("type") and len(args) >= 1 and verb != "type":
                 program.type_metadata.setdefault(args[0], set()).add(verb)
             elif verb == "capability" and len(args) >= 3:
@@ -696,6 +726,10 @@ def parse_file(path: Path) -> ProgramFacts:
                     args[0], AbstractionFact(verb, args[0], line))
             elif verb == "htmlBody" and args:
                 active_html_body = True
+            elif verb == "jsonBody":
+                json_body = JsonBodyFact(args[0] if args else "", line)
+                program.json_bodies.append(json_body)
+                active_json_body = json_body
             elif verb in _PARSER_CONTRACT_HEAVY_KINDS and args:
                 program.abstractions.setdefault(
                     args[0], AbstractionFact(verb, args[0], line))
@@ -1276,10 +1310,12 @@ VERB_MINIMUM_ARITY: Dict[str, int] = {
     "typeMemory": 2, "typeLayout": 2, "typeLiteralEncoding": 2,
     "typeLiteralTerminator": 2,
     "record": 1, "field": 3, "recordLayout": 2, "recordAlign": 2,
+    "recordFieldJsonName": 3, "recordFieldJsonOmitWhen": 3,
     "new": 2, "fieldSet": 3, "fieldGet": 4,
     "error": 1, "errorCase": 2, "enum": 1, "enumCase": 2,
-    # HTML / SSX
+    # HTML / SSX / JSON islands
     "htmlTemplate": 1, "htmlArg": 3, "htmlBody": 1,
+    "jsonBody": 1,
     # Operations + narrative
     "operation": 1, "operationBody": 2,
     "input": 2, "output": 2, "effect": 3,
@@ -1425,7 +1461,8 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "type", "typeInvariant", "typeRepresentation", "typeTrust", "typeMemory",
     "typeLayout", "typeParameter", "typeLiteralEncoding", "typeLiteralTerminator",
     # Records
-    "record", "field", "recordLayout", "recordAlign", "recordConstructor",
+    "record", "field", "recordLayout", "recordAlign",
+    "recordFieldJsonName", "recordFieldJsonOmitWhen", "recordConstructor",
     "recordConstructorFailure", "recordBuilder", "recordSet", "recordBuild",
     "recordBuildFailure", "new", "fieldSet", "fieldGet",
     # Errors / enums
@@ -1479,7 +1516,7 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     # Web
     "webServer", "serverHost", "serverPort", "route",
     "routeTimeout", "routeMiddleware",
-    "htmlTemplate", "htmlArg", "htmlBody",
+    "htmlTemplate", "htmlArg", "htmlBody", "jsonBody",
     # SS3604 coverage opt-outs — declare a route's intentional omission
     # of the cross-cutting timeout / middleware contract.
     "routeTimeoutOptOut", "routeMiddlewareOptOut",
@@ -8390,6 +8427,356 @@ def check_deprecated_json_finder_calls(facts: ExtendedFacts) -> List[Diagnostic]
     return diagnostics
 
 
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"non-standard JSON constant `{value}`")
+
+
+def _resolve_type_alias_for_json_body(facts: ExtendedFacts, type_name: str) -> str:
+    name = type_name
+    seen: Set[str] = set()
+    aliases: Dict[str, str] = dict(BUILTIN_TYPE_ALIASES)
+    aliases.update(facts.base.type_aliases)
+    while name in aliases and name not in seen:
+        seen.add(name)
+        name = aliases[name]
+    return name
+
+
+def _is_json_text_type_for_json_body(facts: ExtendedFacts, type_name: str) -> bool:
+    name = type_name
+    seen: Set[str] = set()
+    aliases: Dict[str, str] = dict(BUILTIN_TYPE_ALIASES)
+    aliases.update(facts.base.type_aliases)
+    while True:
+        if name == "JsonText":
+            return True
+        if name in seen or name not in aliases:
+            return False
+        seen.add(name)
+        name = aliases[name]
+
+
+def _record_type_for_json_body_lint(facts: ExtendedFacts, type_name: str) -> Optional[str]:
+    name = type_name
+    seen: Set[str] = set()
+    aliases: Dict[str, str] = dict(BUILTIN_TYPE_ALIASES)
+    aliases.update(facts.base.type_aliases)
+    while True:
+        if name in facts.base.records:
+            return name
+        if name in seen or name not in aliases:
+            return None
+        seen.add(name)
+        name = aliases[name]
+
+
+def _json_body_lint_key(facts: ExtendedFacts, record_name: str, field_name: str) -> str:
+    return facts.base.record_json_names.get((record_name, field_name), field_name)
+
+
+def _json_body_lint_kind(value) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float):
+        return "double"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, dict):
+        return "object"
+    return type(value).__name__
+
+
+def _json_body_lint_default(
+    facts: ExtendedFacts,
+    field_type: str,
+    policy: Optional[str],
+) -> bool:
+    if not policy:
+        return False
+    resolved = _resolve_type_alias_for_json_body(facts, field_type)
+    if policy == "empty":
+        return resolved in {"String", "CNullTerminatedByteString", "CString", "JsonText"}
+    if policy == "null":
+        return resolved in {"String", "CNullTerminatedByteString", "CString", "JsonText"}
+    if policy == "false":
+        return resolved == "Bool"
+    if policy == "zero":
+        return resolved not in {
+            "String", "CNullTerminatedByteString", "CString", "JsonText",
+            "Bool",
+        }
+    return False
+
+
+def _validate_json_body_record_lint(
+    facts: ExtendedFacts,
+    json_body: JsonBodyFact,
+    record_name: str,
+    value,
+    path: str = "",
+) -> Optional[Tuple[str, str]]:
+    if not isinstance(value, dict):
+        return (
+            "jsonBodyWrongType",
+            f"`{path or record_name}` expected object for record `{record_name}`, "
+            f"got {_json_body_lint_kind(value)}",
+        )
+    fields = facts.base.records.get(record_name, [])
+    expected_keys = {
+        _json_body_lint_key(facts, record_name, field_name): (field_name, field_type)
+        for field_name, field_type in fields
+    }
+    unknown = sorted(set(value.keys()) - set(expected_keys.keys()))
+    if unknown:
+        return (
+            "jsonBodyUnknownField",
+            f"`{path or record_name}` contains unknown JSON key `{unknown[0]}`",
+        )
+    for field_name, field_type in fields:
+        json_key = _json_body_lint_key(facts, record_name, field_name)
+        field_path = f"{path}.{field_name}" if path else field_name
+        policy = facts.base.record_json_omit_when.get((record_name, field_name))
+        if json_key not in value:
+            if _json_body_lint_default(facts, field_type, policy):
+                continue
+            return (
+                "jsonBodyMissingRequired",
+                f"`{field_path}` is required for record `{record_name}`",
+            )
+        field_value = value[json_key]
+        nested_record = _record_type_for_json_body_lint(facts, field_type)
+        if nested_record is not None:
+            nested = _validate_json_body_record_lint(
+                facts, json_body, nested_record, field_value, field_path)
+            if nested is not None:
+                return nested
+            continue
+        resolved = _resolve_type_alias_for_json_body(facts, field_type)
+        if field_value is None and policy == "null":
+            continue
+        if resolved in {"String", "CNullTerminatedByteString", "CString", "JsonText"}:
+            if not isinstance(field_value, str):
+                return (
+                    "jsonBodyWrongType",
+                    f"`{field_path}` expected string, got {_json_body_lint_kind(field_value)}",
+                )
+            continue
+        if resolved == "Bool":
+            if not isinstance(field_value, bool):
+                return (
+                    "jsonBodyWrongType",
+                    f"`{field_path}` expected boolean, got {_json_body_lint_kind(field_value)}",
+                )
+            continue
+        if resolved in {"F64", "CFloat64", "CDouble", "F32", "CFloat32", "CFloat"}:
+            if isinstance(field_value, bool) or not isinstance(field_value, (int, float)):
+                return (
+                    "jsonBodyWrongType",
+                    f"`{field_path}` expected number, got {_json_body_lint_kind(field_value)}",
+                )
+            continue
+        if isinstance(field_value, bool) or not isinstance(field_value, int):
+            return (
+                "jsonBodyWrongType",
+                f"`{field_path}` expected integer, got {_json_body_lint_kind(field_value)}",
+            )
+    return None
+
+
+def _find_json_body_storage_line(
+    facts: ExtendedFacts,
+    json_body: JsonBodyFact,
+) -> Optional[SourceLine]:
+    for sourceLine in reversed(facts.base.lines):
+        if sourceLine.number >= json_body.line.number:
+            continue
+        if sourceLine.verb != "storage" or len(sourceLine.args) < 4:
+            continue
+        if sourceLine.args[2] == json_body.name:
+            return sourceLine
+    return None
+
+
+def _json_body_diagnostic(
+    json_body: JsonBodyFact,
+    kind: str,
+    slogan: str,
+    rule: str,
+    related: Optional[List[Span]] = None,
+) -> Diagnostic:
+    return Diagnostic(
+        tier=Tier.T0_PARSE,
+        code="SS3626",
+        kind=f"json.{kind}",
+        severity=Severity.ERROR,
+        subjectName=json_body.name,
+        subjectKind="jsonBody",
+        gapEdge=kind,
+        intentSlogan=slogan,
+        primary=span_of_line(json_body.line, "jsonBodyDeclaration"),
+        related=related or [],
+        invariantRule=rule,
+        specAnchor="SYNTAX.md#jsonBody",
+        fixCandidates=[
+            FixCandidate(
+                name="repairJsonBodyLiteral",
+                shape=(
+                    f"storage module immutable {json_body.name or '<name>'} "
+                    "JsonText\n"
+                    f"jsonBody {json_body.name or '<name>'}\n"
+                    "  {\"ok\":true}"
+                ),
+            ),
+        ],
+        confidence=Confidence.HIGH,
+        blocksCompile=True,
+        effort=Effort.LOCAL,
+        passProvenance="check_json_body_literals",
+        agentHint=(
+            "jsonBody is indentation-sensitive; keep the JSON island indented "
+            "and bind it to a preceding immutable JsonText storage row"
+        ),
+    )
+
+
+def check_json_body_literals(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3626: statically validate jsonBody islands the same way semsc does."""
+    diagnostics: List[Diagnostic] = []
+    seen_targets: Dict[str, JsonBodyFact] = {}
+
+    for json_body in facts.base.json_bodies:
+        if not json_body.name:
+            diagnostics.append(_json_body_diagnostic(
+                json_body,
+                "jsonBodyMissingName",
+                "jsonBody missing name",
+                "`jsonBody` requires exactly one storage target name",
+            ))
+            continue
+
+        prior = seen_targets.get(json_body.name)
+        if prior is not None:
+            diagnostics.append(_json_body_diagnostic(
+                json_body,
+                "duplicateJsonBody",
+                "duplicate jsonBody",
+                "a storage declaration may be bound by at most one jsonBody island",
+                [span_of_line(prior.line, "previousJsonBody")],
+            ))
+            continue
+        seen_targets[json_body.name] = json_body
+
+        storage_line = _find_json_body_storage_line(facts, json_body)
+        if storage_line is None:
+            diagnostics.append(_json_body_diagnostic(
+                json_body,
+                "orphanJsonBody",
+                "jsonBody missing storage",
+                "`jsonBody NAME` requires a preceding `storage local|module immutable NAME TYPE` row",
+            ))
+            continue
+
+        storage_args = storage_line.args
+        scope, mutability = storage_args[0], storage_args[1]
+        storage_type = storage_args[3]
+        related = [span_of_line(storage_line, "jsonBodyStorageTarget")]
+        if scope not in {"local", "module"}:
+            diagnostics.append(_json_body_diagnostic(
+                json_body,
+                "jsonBodyUnsupportedScope",
+                "unsupported jsonBody scope",
+                "jsonBody can only bind local or module storage",
+                related,
+            ))
+            continue
+        if mutability != "immutable":
+            diagnostics.append(_json_body_diagnostic(
+                json_body,
+                "jsonBodyMutableTarget",
+                "jsonBody target mutable",
+                "jsonBody can only bind immutable storage",
+                related,
+            ))
+            continue
+        if len(storage_args) > 4:
+            diagnostics.append(_json_body_diagnostic(
+                json_body,
+                "jsonBodyTargetAlreadyValued",
+                "jsonBody target valued",
+                "jsonBody target storage must not already have an inline value",
+                related,
+            ))
+            continue
+
+        if not json_body.body_lines or not any(text.strip() for text, _ in json_body.body_lines):
+            diagnostics.append(_json_body_diagnostic(
+                json_body,
+                "emptyJsonBody",
+                "empty jsonBody",
+                "jsonBody requires at least one indented JSON line",
+                related,
+            ))
+            continue
+
+        body_text = "\n".join(text for text, _ in json_body.body_lines)
+        parsed_json = None
+        try:
+            parsed_json = json.loads(body_text, parse_constant=_reject_json_constant)
+        except json.JSONDecodeError as exc:
+            diagnostics.append(_json_body_diagnostic(
+                json_body,
+                "invalidJsonBody",
+                "invalid JSON body",
+                (
+                    "jsonBody islands must be strict RFC 8259 JSON; "
+                    f"invalid token at island line {exc.lineno} column {exc.colno}: {exc.msg}"
+                ),
+                related,
+            ))
+        except ValueError as exc:
+            diagnostics.append(_json_body_diagnostic(
+                json_body,
+                "invalidJsonBody",
+                "invalid JSON body",
+                f"jsonBody islands must be strict RFC 8259 JSON: {exc}",
+                related,
+            ))
+            continue
+
+        if _is_json_text_type_for_json_body(facts, storage_type):
+            continue
+
+        record_type = _record_type_for_json_body_lint(facts, storage_type)
+        if record_type is None:
+            diagnostics.append(_json_body_diagnostic(
+                json_body,
+                "jsonBodyUnsupportedType",
+                "unsupported jsonBody type",
+                "jsonBody storage must be JsonText or a declared record type",
+                related,
+            ))
+            continue
+        record_problem = _validate_json_body_record_lint(
+            facts, json_body, record_type, parsed_json)
+        if record_problem is not None:
+            kind, rule = record_problem
+            diagnostics.append(_json_body_diagnostic(
+                json_body,
+                kind,
+                "record jsonBody mismatch",
+                rule,
+                related,
+            ))
+
+    return diagnostics
+
+
 # ==========================================================================
 # SS36xx — webserver discipline
 # ==========================================================================
@@ -12490,6 +12877,7 @@ CHECKERS = [
     check_unescaped_json_string_interpolation,
     check_deprecated_json_builder_calls,
     check_deprecated_json_finder_calls,
+    check_json_body_literals,
     check_invalid_route_method,
     check_middleware_missing_response_effect,
     check_unguarded_http_input,
