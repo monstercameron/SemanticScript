@@ -91,6 +91,9 @@ purpose filesystemCreateCapability "Authority to create the build/images/ direct
 capability filesystemReadCapability filesystem read
 purpose filesystemReadCapability "Authority to read files from the app assets directory for static response serving."
 
+capability memoryBufferReadWriteCapability memory.buffer readWrite
+purpose memoryBufferReadWriteCapability "Authority to read and write the in-op scratch buffers — register/login zero the password scratch via c.memset before c.free; the JSON document and snprintf paths also touch buffer memory."
+
 # ===== module-scope constants =====
 
 # ===== shared module-scope env (project-wide source of truth) =====
@@ -191,8 +194,12 @@ storage module immutable todosListBufferCapacity CSignedInt64 32768
 
 storage module immutable sessionLifetimeMs CSignedInt64 2592000000
 storage module immutable jsonOk CSignedInt32 0
-storage module immutable falseBit CSignedInt32 0
-storage module immutable trueBit CSignedInt32 1
+# Idiomatic Bool literals. The earlier `trueBit/falseBit` i32 pair was a
+# C-ism left over from when this module used i32 0/1 to model booleans.
+# Use these where a Bool-typed value is required (json.setObjectFieldBool,
+# branchIf operands, etc).
+storage module immutable boolFalse Bool false
+storage module immutable boolTrue Bool true
 
 storage module immutable cookieNameSession CNullTerminatedByteString "session"
 storage module immutable setCookieHeaderName CNullTerminatedByteString "Set-Cookie"
@@ -200,6 +207,28 @@ storage module immutable setCookieHeaderName CNullTerminatedByteString "Set-Cook
 # Cookie attribute suffix appended after the token in Set-Cookie.
 storage module immutable cookieAttributeSuffix CNullTerminatedByteString "; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000"
 storage module immutable cookieClearSuffix CNullTerminatedByteString "session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
+
+# Timing-equalization dummy hash used by loginHandler when the requested
+# username does not exist. Running bcrypt.verifyPassword against this
+# bogus 60-char $2b$12$ hash forces the same ~250 ms work the real-user
+# path performs, so an attacker cannot distinguish "no such user" from
+# "user exists, wrong password" via response latency. The value below
+# is a real bcrypt hash of a long random string the server does not
+# know — it cannot collide with any real password by construction.
+storage module immutable loginTimingEqualizationDummyHash CNullTerminatedByteString "$2b$12$ZzZzZzZzZzZzZzZzZzZzZuQpkkqYZL.YxR5gG3yq2cTQyL3KkLjmS"
+
+# Length of a base64url-encoded 32-byte session token. The schema's
+# `sessions.token CHECK(length = 43)` enforces this at INSERT time;
+# requireSessionUserId also enforces it on cookie read so an attacker
+# cannot ship an unbounded cookie value into a SQL bind.
+storage module immutable sessionTokenExactLength CSignedInt64 43
+
+# Password length bounds. bcrypt silently truncates input at 72 bytes,
+# so we reject anything beyond that to make the user's full password
+# meaningful for hashing. The lower bound is a soft password-policy
+# floor; the schema does not enforce it, so we check it at the handler.
+storage module immutable passwordMinimumLength CSignedInt64 8
+storage module immutable passwordMaximumLength CSignedInt64 72
 storage module immutable cookieNameEquals CNullTerminatedByteString "session="
 
 # Single format string for the Set-Cookie header. The three %s slots fold in
@@ -263,8 +292,28 @@ jsonBody uncompleteOkBody
 
 literal schemaSqlSource CNullTerminatedByteString
 literalSource schemaSqlSource "sql/schema.sql"
-literalBytes schemaSqlSource 4136
+literalBytes schemaSqlSource 2837
 literalTrust schemaSqlSource trustedStaticAsset
+
+# Dev-only seed data (demo user + sample todos). Loaded into the schema
+# load path BUT only executed when the build constant `applyDevSeed`
+# is "yes". Production deployments set applyDevSeed to "no" via
+# build.sem so the publicly-known demo credentials are never installed.
+literal devSeedSqlSource CNullTerminatedByteString
+literalSource devSeedSqlSource "sql/dev_seed.sql"
+literalBytes devSeedSqlSource 1888
+literalTrust devSeedSqlSource trustedStaticAsset
+
+# Sentinel string the build constant `applyDevSeed` is compared against
+# at runtime. Dev builds set the constant to "yes"; production builds
+# set it to "no".
+storage module immutable applyDevSeedEnabledSentinel CNullTerminatedByteString "yes"
+
+# Fallback declaration of `applyDevSeed` for the case where main.sem is
+# parsed standalone (without a build.sem providing the project-wide
+# buildConstant). The build.sem row overrides this at project build
+# time. Default is "no" — fail-safe for direct invocation.
+storage module immutable applyDevSeed CNullTerminatedByteString "no"
 
 # ===== shared database handle (lazy-opened on first request) =====
 
@@ -283,7 +332,9 @@ storage module immutable sqlDeleteExpiredSessions CNullTerminatedByteString "DEL
 storage module immutable sqlUpdateLastLogin CNullTerminatedByteString "UPDATE users SET last_login_ms = ? WHERE id = ?"
 storage module immutable sqlInsertTodo CNullTerminatedByteString "INSERT INTO todos (user_id, title, body, done, priority, created_at_ms, updated_at_ms) VALUES (?, ?, ?, 0, ?, ?, ?)"
 storage module immutable sqlSelectTodosByUser CNullTerminatedByteString "SELECT id, title, body, done, priority, created_at_ms, updated_at_ms, completed_at_ms FROM todos WHERE user_id = ? ORDER BY created_at_ms DESC LIMIT 100"
-storage module immutable sqlSelectTodoByIdAndUser CNullTerminatedByteString "SELECT id, title, body, done, priority, created_at_ms, updated_at_ms, completed_at_ms FROM todos WHERE id = ? AND user_id = ? LIMIT 1"
+# sqlSelectTodoByIdAndUser was previously declared here for the
+# showTodoHandler stub that returns 501; SS3415 flagged it as dead
+# code. Re-add when showTodoHandler is implemented.
 storage module immutable sqlDeleteTodoByIdAndUser CNullTerminatedByteString "DELETE FROM todos WHERE id = ? AND user_id = ?"
 storage module immutable sqlCompleteTodoByIdAndUser CNullTerminatedByteString "UPDATE todos SET done = 1, completed_at_ms = ?, updated_at_ms = ? WHERE id = ? AND user_id = ?"
 # Inverse of sqlCompleteTodoByIdAndUser: marks a todo open again. We
@@ -291,6 +342,16 @@ storage module immutable sqlCompleteTodoByIdAndUser CNullTerminatedByteString "U
 # bind order matches completeTodoHandler (?1 = updated_at_ms, ?2 = id,
 # ?3 = user_id) so callers can reuse the bindIndex1/2/3 constants.
 storage module immutable sqlUncompleteTodoByIdAndUser CNullTerminatedByteString "UPDATE todos SET done = 0, completed_at_ms = NULL, updated_at_ms = ? WHERE id = ? AND user_id = ?"
+
+# Transaction control statements used by registerHandler so the user
+# INSERT and session INSERT either both commit or both roll back; the
+# old `invariant` admitted "user row may persist if session insert
+# fails — acceptable for v1", which is the race this closes.
+# `BEGIN IMMEDIATE` acquires the write lock upfront so a second writer
+# in the same process cannot race the pair under WAL mode.
+storage module immutable sqlBeginTransaction CNullTerminatedByteString "BEGIN IMMEDIATE"
+storage module immutable sqlCommitTransaction CNullTerminatedByteString "COMMIT"
+storage module immutable sqlRollbackTransaction CNullTerminatedByteString "ROLLBACK"
 
 # Bind parameter indices.
 storage module immutable bindIndex1 CSignedInt32 1
@@ -378,6 +439,35 @@ run applySchemaCall
 ignoreOk applySchemaCall Void
 bindError schemaApplyError SqliteDatabaseExecFailure applySchemaCall
 branchIfError applySchemaCall schemaApplyFailed
+
+# Dev seed: only apply when the build constant `applyDevSeed` equals
+# "yes". Production builds (set via build.sem) skip the demo user +
+# sample todos entirely. c.strcmp returns 0 on equal strings.
+call applyDevSeedCompareCall c.strcmp
+arg applyDevSeedCompareCall left applyDevSeed
+arg applyDevSeedCompareCall right applyDevSeedEnabledSentinel
+run applyDevSeedCompareCall
+bind applyDevSeedCompareResult CSignedInt32 applyDevSeedCompareCall
+
+storage local immutable applyDevSeedEqualSentinel CSignedInt32 0
+call applyDevSeedShouldRunCheckCall math.equalCSignedInt32
+arg applyDevSeedShouldRunCheckCall left applyDevSeedCompareResult
+arg applyDevSeedShouldRunCheckCall right applyDevSeedEqualSentinel
+run applyDevSeedShouldRunCheckCall
+bind applyDevSeedShouldRun Bool applyDevSeedShouldRunCheckCall
+branchIf applyDevSeedShouldRun applyDevSeedRunStep
+branch devSeedSkippedLabel
+
+label applyDevSeedRunStep
+call applyDevSeedCall sqlite.exec
+arg applyDevSeedCall database freshDatabase
+arg applyDevSeedCall sql devSeedSqlSource
+run applyDevSeedCall
+ignoreOk applyDevSeedCall Void
+bindError applyDevSeedError SqliteDatabaseExecFailure applyDevSeedCall
+branchIfError applyDevSeedCall schemaApplyFailed
+
+label devSeedSkippedLabel
 
 set module sharedDatabaseHandle freshDatabase
 storage local immutable readyMarker CSignedInt32 1
@@ -481,6 +571,26 @@ arg tokenNullCheckCall pointer sessionTokenFromCookie
 run tokenNullCheckCall
 bind sessionTokenMissing Bool tokenNullCheckCall
 branchIf sessionTokenMissing requireSessionAttachedNoCookie
+
+# Length-cap the cookie value BEFORE handing it to sqlite.bindText so an
+# attacker cannot ship a multi-megabyte cookie and force a giant SQL
+# bind. Real session tokens are exactly 43 chars (base64url of 32 bytes)
+# — anything else is malformed and treated as "no session". This is
+# defense-in-depth alongside the schema's `token CHECK(length = 43)`.
+call sessionTokenLengthCall c.strlen
+arg sessionTokenLengthCall s sessionTokenFromCookie
+run sessionTokenLengthCall
+bind sessionTokenLength CSignedInt64 sessionTokenLengthCall
+
+call sessionTokenLengthOkCheckCall math.equalI64
+arg sessionTokenLengthOkCheckCall left sessionTokenLength
+arg sessionTokenLengthOkCheckCall right sessionTokenExactLength
+run sessionTokenLengthOkCheckCall
+bind sessionTokenLengthOk Bool sessionTokenLengthOkCheckCall
+branchIf sessionTokenLengthOk sessionTokenLengthAcceptedLabel
+branch requireSessionAttachedNoCookie
+
+label sessionTokenLengthAcceptedLabel
 
 call openDatabaseForSessionCall openOrReuseDatabase
 run openDatabaseForSessionCall
@@ -669,6 +779,7 @@ effect registerHandler allocate heap
 effect registerHandler free heap
 effect registerHandler read json.document.tree
 effect registerHandler write json.document.tree
+effect registerHandler write memory.buffer
 useCapability registerHandler httpRequestReader
 useCapability registerHandler httpResponseWriter
 useCapability registerHandler sqliteDatabaseReadWriter
@@ -676,6 +787,7 @@ useCapability registerHandler bcryptHashCompute
 useCapability registerHandler bcryptRandomCompute
 useCapability registerHandler heapAllocCapability
 useCapability registerHandler heapFreeCapability
+useCapability registerHandler memoryBufferReadWriteCapability
 useCapability registerHandler jsonDocumentReadCapability
 useCapability registerHandler jsonDocumentWriteCapability
 memory registerHandler heap auto
@@ -781,6 +893,30 @@ bindOk passwordRecovered CNullTerminatedByteString readRegisterPasswordCall
 bindError readRegisterPasswordError JsonAccessError readRegisterPasswordCall
 branchIfError readRegisterPasswordCall registerBadRequestPasswordMissed
 
+# Bound the password length to the bcrypt-meaningful range. Beyond 72
+# bytes, bcrypt silently truncates input — a user supplying a 200-byte
+# "password" is actually authenticated against bytes 0..71 only, which
+# is a security footgun if they expect the entire string to matter.
+# The minimum is a soft floor; the schema does not enforce it.
+call registerPasswordLengthCall c.strlen
+arg registerPasswordLengthCall s passwordRecovered
+run registerPasswordLengthCall
+bind registerPasswordLength CSignedInt64 registerPasswordLengthCall
+
+call registerPasswordTooShortCheckCall math.lessThanI64
+arg registerPasswordTooShortCheckCall left registerPasswordLength
+arg registerPasswordTooShortCheckCall right passwordMinimumLength
+run registerPasswordTooShortCheckCall
+bind registerPasswordTooShort Bool registerPasswordTooShortCheckCall
+branchIf registerPasswordTooShort registerBadRequestPasswordOutOfBoundsHandled
+
+call registerPasswordTooLongCheckCall math.lessThanI64
+arg registerPasswordTooLongCheckCall left passwordMaximumLength
+arg registerPasswordTooLongCheckCall right registerPasswordLength
+run registerPasswordTooLongCheckCall
+bind registerPasswordTooLong Bool registerPasswordTooLongCheckCall
+branchIf registerPasswordTooLong registerBadRequestPasswordOutOfBoundsHandled
+
 storage local immutable emptyDisplayName CNullTerminatedByteString ""
 storage local mutable displayNameForInsert CNullTerminatedByteString emptyDisplayName
 
@@ -817,6 +953,18 @@ bindError allocateHashBufferError COpaqueMemoryAddress allocateHashBufferCall
 branchIfError allocateHashBufferCall registerAllocationFailed
 defer releaseHashBufferDefer c.free hashBuffer
 
+# Zero the hash buffer so byte 60 is always a NUL terminator, even if
+# bcrypt's contract changes or a partial-write happens. Downstream code
+# reads `hashBuffer` as `CNullTerminatedByteString` for sqlite.bindText
+# and must not run past the 60-byte bcrypt hash into adjacent memory.
+storage local immutable hashBufferZeroFillByte CSignedInt32 0
+call hashBufferPreZeroCall c.memset
+arg hashBufferPreZeroCall ptr hashBuffer
+arg hashBufferPreZeroCall value hashBufferZeroFillByte
+arg hashBufferPreZeroCall byteCount hashBufferCapacity
+run hashBufferPreZeroCall
+ignoreValue hashBufferPreZeroCall COpaqueMemoryAddress
+
 call hashPasswordCall bcrypt.hashPassword
 arg hashPasswordCall plaintext passwordRecovered
 arg hashPasswordCall cost bcryptRecommendedCost
@@ -834,6 +982,20 @@ branchIf hashOk hashSucceeded
 branch registerHashFailedHandler
 label hashSucceeded
 
+# Zero the plaintext password scratch buffer the moment bcrypt is done
+# with it. c.free does not zero memory, so without this the plaintext
+# would survive in freed-but-not-yet-reused heap pages where a separate
+# memory-disclosure bug elsewhere in the server could read it. We
+# explicitly memset before any further work; the `defer c.free`
+# declared earlier still releases the buffer at op exit.
+storage local immutable passwordScratchZeroFillByte CSignedInt32 0
+call registerWipePasswordScratchCall c.memset
+arg registerWipePasswordScratchCall ptr passwordScratch
+arg registerWipePasswordScratchCall value passwordScratchZeroFillByte
+arg registerWipePasswordScratchCall byteCount passwordScratchCapacity
+run registerWipePasswordScratchCall
+ignoreValue registerWipePasswordScratchCall COpaqueMemoryAddress
+
 # Now bound 'hashBuffer' actually holds the 60-char hash as a C string.
 # Cast to CNullTerminatedByteString conceptually — sqlite.bindText takes
 # a const char*, which is what hashBuffer points to.
@@ -849,6 +1011,25 @@ arg pruneRegisterExpiredSessionsCall database registerDatabase
 arg pruneRegisterExpiredSessionsCall nowMs registerNowMs
 run pruneRegisterExpiredSessionsCall
 ignoreValue pruneRegisterExpiredSessionsCall CSignedInt32
+
+# Open a write transaction so the user INSERT and session INSERT below
+# either both commit or both roll back. Without this, a session-insert
+# failure leaves a usable user row that can never log in (UNIQUE on
+# username blocks re-register) — the old `invariant` admitted that
+# race. ROLLBACK runs via defer on every exit path; the explicit
+# COMMIT below makes the rollback a no-op after success.
+call beginRegisterTxCall sqlite.exec
+arg beginRegisterTxCall database registerDatabase
+arg beginRegisterTxCall sql sqlBeginTransaction
+run beginRegisterTxCall
+ignoreOk beginRegisterTxCall Void
+bindError beginRegisterTxError SqliteDatabaseExecFailure beginRegisterTxCall
+branchIfError beginRegisterTxCall registerTransactionStartFailed
+
+# Rollback defer fires after a successful COMMIT too; SQLite returns
+# "no transaction is active" which we deliberately swallow. On any
+# failure exit between BEGIN and COMMIT, this is the safety net.
+defer rollbackRegisterTxDefer sqlite.exec registerDatabase sqlRollbackTransaction
 
 # INSERT INTO users.
 call prepareInsertUserCall sqlite.prepareStatement
@@ -1074,6 +1255,19 @@ arg writeCookieHeaderCall value cookieHeaderText
 run writeCookieHeaderCall
 ignoreValue writeCookieHeaderCall CSignedInt32
 
+# COMMIT the user+session transaction now that the Set-Cookie header
+# is on the response. If the response body build below fails, the
+# user still has a working account they can log into next time. The
+# rollback defer still fires at op exit but COMMIT has already
+# closed the transaction, so the swallowed rollback is a no-op.
+call commitRegisterTxCall sqlite.exec
+arg commitRegisterTxCall database registerDatabase
+arg commitRegisterTxCall sql sqlCommitTransaction
+run commitRegisterTxCall
+ignoreOk commitRegisterTxCall Void
+bindError commitRegisterTxError SqliteDatabaseExecFailure commitRegisterTxCall
+branchIfError commitRegisterTxCall registerInsertSessionStepFailed
+
 call allocateResponseBufferCall c.malloc
 arg allocateResponseBufferCall size jsonResponseCapacity
 run allocateResponseBufferCall
@@ -1210,6 +1404,16 @@ run writePasswordMissingCall
 bind writePasswordMissingStatus CSignedInt32 writePasswordMissingCall
 returnValue writePasswordMissingStatus
 
+label registerBadRequestPasswordOutOfBoundsHandled
+storage local immutable passwordOutOfBoundsBody CNullTerminatedByteString "{\"error\":{\"code\":\"passwordOutOfBounds\",\"message\":\"password length must be between 8 and 72 bytes (bcrypt truncates at 72)\"}}\n"
+call writePasswordOutOfBoundsCall writeErrorJsonResponse
+arg writePasswordOutOfBoundsCall response response
+arg writePasswordOutOfBoundsCall status httpStatusBadRequest
+arg writePasswordOutOfBoundsCall messageBody passwordOutOfBoundsBody
+run writePasswordOutOfBoundsCall
+bind writePasswordOutOfBoundsStatus CSignedInt32 writePasswordOutOfBoundsCall
+returnValue writePasswordOutOfBoundsStatus
+
 label registerHashFailedHandler
 storage local immutable hashFailedBody CNullTerminatedByteString "{\"error\":{\"code\":\"hashFailed\",\"message\":\"password hash failed\"}}\n"
 call writeHashFailedCall writeErrorJsonResponse
@@ -1219,6 +1423,16 @@ arg writeHashFailedCall messageBody hashFailedBody
 run writeHashFailedCall
 bind writeHashFailedStatus CSignedInt32 writeHashFailedCall
 returnValue writeHashFailedStatus
+
+label registerTransactionStartFailed
+storage local immutable transactionStartFailedBody CNullTerminatedByteString "{\"error\":{\"code\":\"transactionStartFailed\",\"message\":\"could not open write transaction\"}}\n"
+call writeTransactionStartFailedCall writeErrorJsonResponse
+arg writeTransactionStartFailedCall response response
+arg writeTransactionStartFailedCall status httpStatusInternalServerError
+arg writeTransactionStartFailedCall messageBody transactionStartFailedBody
+run writeTransactionStartFailedCall
+bind writeTransactionStartFailedStatus CSignedInt32 writeTransactionStartFailedCall
+returnValue writeTransactionStartFailedStatus
 
 label registerInsertUserPrepareFailed
 # registerHandler's declared output is CSignedInt32 (HTTP status code), not
@@ -1622,6 +1836,7 @@ effect loginHandler allocate heap
 effect loginHandler free heap
 effect loginHandler read json.document.tree
 effect loginHandler write json.document.tree
+effect loginHandler write memory.buffer
 useCapability loginHandler httpRequestReader
 useCapability loginHandler httpResponseWriter
 useCapability loginHandler sqliteDatabaseReadWriter
@@ -1629,6 +1844,7 @@ useCapability loginHandler bcryptHashCompute
 useCapability loginHandler bcryptRandomCompute
 useCapability loginHandler heapAllocCapability
 useCapability loginHandler heapFreeCapability
+useCapability loginHandler memoryBufferReadWriteCapability
 useCapability loginHandler jsonDocumentReadCapability
 useCapability loginHandler jsonDocumentWriteCapability
 memory loginHandler heap auto
@@ -1756,7 +1972,31 @@ arg loginUserRowFoundCheckCall right rowSqliteStepResult
 run loginUserRowFoundCheckCall
 bind loginUserRowFound Bool loginUserRowFoundCheckCall
 branchIf loginUserRowFound loginUserRowFoundLabel
+
+# User does not exist. Equalize response timing with the real-user path
+# so an attacker cannot enumerate accounts via latency measurement:
+# bcrypt.verifyPassword against the module-scope dummy hash forces the
+# same ~250 ms cost-12 key schedule the matching path would have run.
+# The return value is intentionally discarded; the result is "rejected"
+# either way.
+call loginTimingEqualizeCall bcrypt.verifyPassword
+arg loginTimingEqualizeCall plaintext loginPasswordText
+arg loginTimingEqualizeCall expectedHash loginTimingEqualizationDummyHash
+run loginTimingEqualizeCall
+ignoreValue loginTimingEqualizeCall CSignedInt32
+
+# Zero the plaintext password scratch buffer now that bcrypt is done
+# with it; mirrors the registerHandler wipe. See SS3320 advisory.
+storage local immutable loginNotFoundWipeByte CSignedInt32 0
+call loginWipePasswordOnNotFoundCall c.memset
+arg loginWipePasswordOnNotFoundCall ptr loginPasswordScratch
+arg loginWipePasswordOnNotFoundCall value loginNotFoundWipeByte
+arg loginWipePasswordOnNotFoundCall byteCount passwordScratchCapacity
+run loginWipePasswordOnNotFoundCall
+ignoreValue loginWipePasswordOnNotFoundCall COpaqueMemoryAddress
+
 branch loginInvalidCredentialsRejected
+
 label loginUserRowFoundLabel
 
 # Read the user_id + password_hash from the row.
@@ -1792,6 +2032,17 @@ arg verifyLoginPasswordCall expectedHash loginStoredHash
 run verifyLoginPasswordCall
 bind loginVerifyResult CSignedInt32 verifyLoginPasswordCall
 
+# Plaintext password no longer needed. Zero the scratch so the freed
+# heap page does not carry the user's credential through to the next
+# request that reuses it.
+storage local immutable loginVerifyWipeByte CSignedInt32 0
+call loginWipePasswordAfterVerifyCall c.memset
+arg loginWipePasswordAfterVerifyCall ptr loginPasswordScratch
+arg loginWipePasswordAfterVerifyCall value loginVerifyWipeByte
+arg loginWipePasswordAfterVerifyCall byteCount passwordScratchCapacity
+run loginWipePasswordAfterVerifyCall
+ignoreValue loginWipePasswordAfterVerifyCall COpaqueMemoryAddress
+
 storage local immutable loginMatchSentinel CSignedInt32 1
 call loginPasswordMatchCheckCall math.equalCSignedInt32
 arg loginPasswordMatchCheckCall left loginVerifyResult
@@ -1801,6 +2052,65 @@ bind loginPasswordMatched Bool loginPasswordMatchCheckCall
 branchIf loginPasswordMatched loginPasswordMatchedLabel
 branch loginInvalidCredentialsRejected
 label loginPasswordMatchedLabel
+
+# Open a write transaction so the last_login update + session insert
+# below either both commit or both roll back. ROLLBACK runs via defer
+# on every exit path; the explicit COMMIT after stepInsertLoginSession
+# makes that rollback a no-op on the success path.
+call beginLoginTxCall sqlite.exec
+arg beginLoginTxCall database loginDatabase
+arg beginLoginTxCall sql sqlBeginTransaction
+run beginLoginTxCall
+ignoreOk beginLoginTxCall Void
+bindError beginLoginTxError SqliteDatabaseExecFailure beginLoginTxCall
+branchIfError beginLoginTxCall loginInternalFailed
+
+defer rollbackLoginTxDefer sqlite.exec loginDatabase sqlRollbackTransaction
+
+# Stamp last_login_ms on the user row BEFORE we mint a session. This
+# is the actual sign-in event; the value `sqlUpdateLastLogin` was
+# declared for. Now wrapped in the same transaction as the session
+# insert so audit timestamp and session row stay consistent.
+call loginStampNowMsCall http.nowMillis
+run loginStampNowMsCall
+bind loginLastLoginNowMs CSignedInt64 loginStampNowMsCall
+
+call prepareUpdateLastLoginCall sqlite.prepareStatement
+arg prepareUpdateLastLoginCall database loginDatabase
+arg prepareUpdateLastLoginCall sql sqlUpdateLastLogin
+run prepareUpdateLastLoginCall
+bindOk updateLastLoginStatement SqliteStatement prepareUpdateLastLoginCall
+bindError updateLastLoginPrepareError SqliteStatementPrepareFailure prepareUpdateLastLoginCall
+branchIfError prepareUpdateLastLoginCall loginLastLoginUpdated
+
+defer finalizeUpdateLastLoginDefer sqlite.finalizeStatement updateLastLoginStatement
+
+call bindUpdateLastLoginValueCall sqlite.bindInt64
+arg bindUpdateLastLoginValueCall statement updateLastLoginStatement
+arg bindUpdateLastLoginValueCall parameterIndex bindIndex1
+arg bindUpdateLastLoginValueCall value loginLastLoginNowMs
+run bindUpdateLastLoginValueCall
+ignoreOk bindUpdateLastLoginValueCall Void
+bindError bindUpdateLastLoginValueError SqliteStatementBindFailure bindUpdateLastLoginValueCall
+branchIfError bindUpdateLastLoginValueCall loginLastLoginUpdated
+
+call bindUpdateLastLoginUserIdCall sqlite.bindInt64
+arg bindUpdateLastLoginUserIdCall statement updateLastLoginStatement
+arg bindUpdateLastLoginUserIdCall parameterIndex bindIndex2
+arg bindUpdateLastLoginUserIdCall value loginExistingUserId
+run bindUpdateLastLoginUserIdCall
+ignoreOk bindUpdateLastLoginUserIdCall Void
+bindError bindUpdateLastLoginUserIdError SqliteStatementBindFailure bindUpdateLastLoginUserIdCall
+branchIfError bindUpdateLastLoginUserIdCall loginLastLoginUpdated
+
+call stepUpdateLastLoginCall sqlite.stepStatement
+arg stepUpdateLastLoginCall statement updateLastLoginStatement
+run stepUpdateLastLoginCall
+ignoreOk stepUpdateLastLoginCall SqliteStepResult
+bindError stepUpdateLastLoginError SqliteStatementStepFailure stepUpdateLastLoginCall
+branchIfError stepUpdateLastLoginCall loginLastLoginUpdated
+
+label loginLastLoginUpdated
 
 # Password matched — mint a fresh session. Same flow as registerHandler.
 call allocateLoginRandomCall c.malloc
@@ -1932,6 +2242,17 @@ run stepInsertLoginSessionCall
 ignoreOk stepInsertLoginSessionCall SqliteStepResult
 bindError stepInsertLoginSessionError SqliteStatementStepFailure stepInsertLoginSessionCall
 branchIfError stepInsertLoginSessionCall loginInsertSessionFailed
+
+# Both writes succeeded — commit. The rollback defer still fires at
+# op exit but the transaction is already closed, so SQLite returns
+# "no transaction is active" and the ignoreOk swallows it.
+call commitLoginTxCall sqlite.exec
+arg commitLoginTxCall database loginDatabase
+arg commitLoginTxCall sql sqlCommitTransaction
+run commitLoginTxCall
+ignoreOk commitLoginTxCall Void
+bindError commitLoginTxError SqliteDatabaseExecFailure commitLoginTxCall
+branchIfError commitLoginTxCall loginInsertSessionFailed
 
 # Build the Set-Cookie header.
 call allocateLoginCookieBufferCall c.malloc
@@ -2401,7 +2722,7 @@ call setCreateTodoDoneCall json.setObjectFieldBool
 arg setCreateTodoDoneCall document createResponseDocument
 arg setCreateTodoDoneCall cursor createResponseTodoCursor
 arg setCreateTodoDoneCall fieldName fieldDone
-arg setCreateTodoDoneCall value falseBit
+arg setCreateTodoDoneCall value boolFalse
 run setCreateTodoDoneCall
 ignoreOk setCreateTodoDoneCall CSignedInt32
 bindError setCreateTodoDoneError JsonAccessError setCreateTodoDoneCall

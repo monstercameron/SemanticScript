@@ -4111,6 +4111,12 @@ class Codegen:
             self._compile_webserver_program()
             return self.module
         mode, opname = self.prog.entry
+        if mode == "windowsGui":
+            raise NotImplementedError(
+                "entry windowsGui is outside the committed executable surface. "
+                "Use `target windowsGui`, declare `entry console main`, build "
+                "the application with `gui.*` calls from standard.gui, and run "
+                "it with `gui.applicationRun`.")
         if mode != "console":
             raise NotImplementedError(
                 f"entry mode `{mode}` is spec-defined (see spec §17 for "
@@ -6184,6 +6190,31 @@ class Codegen:
                 return builder.sitofp(value, F64)
             raise ValueError(f"{call_name}: {target} expected numeric value")
 
+        def high_json_coerce_to(value, target_type):
+            if value.type == target_type:
+                return value
+            if isinstance(value.type, ir.IntType) and isinstance(target_type, ir.IntType):
+                if value.type.width < target_type.width:
+                    return (builder.zext if value.type.width == 1 else builder.sext)(
+                        value, target_type)
+                if value.type.width > target_type.width:
+                    return builder.trunc(value, target_type)
+            if isinstance(value.type, ir.IntType) and isinstance(target_type, ir.PointerType):
+                return builder.inttoptr(value, target_type)
+            if isinstance(value.type, ir.PointerType) and isinstance(target_type, ir.IntType):
+                return builder.ptrtoint(value, target_type)
+            if isinstance(value.type, ir.PointerType) and isinstance(target_type, ir.PointerType):
+                return builder.bitcast(value, target_type)
+            if isinstance(value.type, ir.IntType) and isinstance(target_type, (ir.FloatType, ir.DoubleType)):
+                return builder.sitofp(value, target_type)
+            if isinstance(value.type, ir.FloatType) and isinstance(target_type, ir.DoubleType):
+                return builder.fpext(value, target_type)
+            if isinstance(value.type, ir.DoubleType) and isinstance(target_type, ir.FloatType):
+                return builder.fptrunc(value, target_type)
+            if isinstance(value.type, (ir.FloatType, ir.DoubleType)) and isinstance(target_type, ir.IntType):
+                return builder.fptosi(value, target_type)
+            return value
+
         def high_json_const_value(field_type, raw):
             llty = llvm_type_for(self.prog, field_type)
             resolved = resolve_alias(self.prog, field_type)
@@ -6249,6 +6280,28 @@ class Codegen:
                 else:
                     yield path, field_type
 
+        def high_json_record_leaf_policy(record_type, field_path):
+            current_type = record_type
+            parts = field_path.split(".")
+            for index, part in enumerate(parts):
+                record = self.prog.records.get(current_type)
+                if record is None:
+                    return None
+                match = None
+                for field_name, field_type in record.fields:
+                    if field_name == part:
+                        match = (field_name, field_type)
+                        break
+                if match is None:
+                    return None
+                field_name, field_type = match
+                if index == len(parts) - 1:
+                    return record.field_json_omit_when.get(field_name)
+                nested = _record_type_for_json_body(self.prog, field_type)
+                if nested is None:
+                    return None
+                current_type = nested
+
         def high_json_global_buffer(byte_count, stem):
             array_ty = ir.ArrayType(I8, byte_count)
             safe_stem = re.sub(r"[^A-Za-z0-9_]", "_", stem)
@@ -6273,11 +6326,7 @@ class Codegen:
                     slot = builder.alloca(
                         llty,
                         name=f"{call_name}_{value_name}_{field_path.replace('.', '_')}")
-                policy = None
-                top_field = field_path.split(".", 1)[0]
-                record = self.prog.records.get(record_type)
-                if record is not None:
-                    policy = record.field_json_omit_when.get(top_field)
+                policy = high_json_record_leaf_policy(record_type, field_path)
                 raw_default = _json_record_default_for_policy(
                     self.prog, field_type, policy) if policy else None
                 builder.store(high_json_const_value(field_type, raw_default), slot)
@@ -6291,6 +6340,17 @@ class Codegen:
                 builder.store(ir.Constant(I32, 0), slot)
             return slot
 
+        def high_json_out_slot(slot_type, name_suffix):
+            with builder.goto_entry_block():
+                slot = builder.alloca(slot_type, name=f"{call_name}_{name_suffix}")
+                if isinstance(slot_type, ir.PointerType):
+                    builder.store(ir.Constant(slot_type, None), slot)
+                elif isinstance(slot_type, (ir.FloatType, ir.DoubleType)):
+                    builder.store(ir.Constant(slot_type, 0.0), slot)
+                else:
+                    builder.store(ir.Constant(slot_type, 0), slot)
+            return slot
+
         def high_json_merge_status(status_slot, new_status):
             if new_status.type != I32:
                 new_status = high_json_i32(new_status)
@@ -6302,6 +6362,130 @@ class Codegen:
                                     name=f"{call_name}_statusMerged")
             builder.store(merged, status_slot)
 
+        def high_json_encode_error_status(native_status):
+            status = high_json_i32(native_status)
+            is_ok = builder.icmp_signed(
+                "==", status, ir.Constant(I32, 0),
+                name=f"{call_name}_encodeStatusOk")
+            is_wrong_type = builder.icmp_signed(
+                "==", status, ir.Constant(I32, 2),
+                name=f"{call_name}_encodeStatusWrongType")
+            is_output_too_small = builder.icmp_signed(
+                "==", status, ir.Constant(I32, 8),
+                name=f"{call_name}_encodeStatusOutputSmall")
+            mapped_nonzero = builder.select(
+                is_wrong_type, ir.Constant(I32, 2), ir.Constant(I32, 1),
+                name=f"{call_name}_encodeStatusWrongMapped")
+            mapped_nonzero = builder.select(
+                is_output_too_small, ir.Constant(I32, 3), mapped_nonzero,
+                name=f"{call_name}_encodeStatusSmallMapped")
+            return builder.select(
+                is_ok, ir.Constant(I32, 0), mapped_nonzero,
+                name=f"{call_name}_encodeStatusMapped")
+
+        def high_json_decode_error_status(native_status):
+            status = high_json_i32(native_status)
+            is_ok = builder.icmp_signed(
+                "==", status, ir.Constant(I32, 0),
+                name=f"{call_name}_decodeStatusOk")
+            is_missing = builder.icmp_signed(
+                "==", status, ir.Constant(I32, 1),
+                name=f"{call_name}_decodeStatusMissing")
+            is_wrong_type = builder.icmp_signed(
+                "==", status, ir.Constant(I32, 2),
+                name=f"{call_name}_decodeStatusWrongType")
+            is_oversize = builder.icmp_signed(
+                "==", status, ir.Constant(I32, 6),
+                name=f"{call_name}_decodeStatusOversize")
+            is_truncated = builder.icmp_signed(
+                "==", status, ir.Constant(I32, 8),
+                name=f"{call_name}_decodeStatusTruncated")
+            mapped_nonzero = builder.select(
+                is_missing, ir.Constant(I32, 2), ir.Constant(I32, 1),
+                name=f"{call_name}_decodeStatusMissingMapped")
+            mapped_nonzero = builder.select(
+                is_wrong_type, ir.Constant(I32, 3), mapped_nonzero,
+                name=f"{call_name}_decodeStatusWrongMapped")
+            mapped_nonzero = builder.select(
+                is_oversize, ir.Constant(I32, 4), mapped_nonzero,
+                name=f"{call_name}_decodeStatusOversizeMapped")
+            mapped_nonzero = builder.select(
+                is_truncated, ir.Constant(I32, 5), mapped_nonzero,
+                name=f"{call_name}_decodeStatusTruncatedMapped")
+            return builder.select(
+                is_ok, ir.Constant(I32, 0), mapped_nonzero,
+                name=f"{call_name}_decodeStatusMapped")
+
+        def high_json_emit_json_text_passthrough(is_stringify):
+            source_arg = "value" if is_stringify else "jsonText"
+            if source_arg not in call["args"]:
+                for fallback_arg in ("jsonText", "text", "value"):
+                    if fallback_arg in call["args"]:
+                        source_arg = fallback_arg
+                        break
+            json_text = high_json_as_i8p(arg_val_named(source_arg))
+            if is_stringify:
+                status_slot = high_json_status_slot()
+                out_slot = high_json_out_slot(I8P, "jsonTextSlot")
+                scratch_capacity = 65536
+                scratch = high_json_global_buffer(
+                    scratch_capacity, f"{call_name}_jsonText")
+                strlen_fn = self._libc_func("strlen")
+                memcpy_fn = self._libc_func("memcpy")
+                text_len = builder.call(
+                    strlen_fn, [json_text], name=f"{call_name}_jsonTextLength")
+                too_large = builder.icmp_unsigned(
+                    ">=", text_len, ir.Constant(I64, scratch_capacity),
+                    name=f"{call_name}_jsonTextTooLarge")
+                status = builder.select(
+                    too_large, ir.Constant(I32, 3), ir.Constant(I32, 0),
+                    name=f"{call_name}_jsonTextStatus")
+                builder.store(status, status_slot)
+                copy_block = builder.function.append_basic_block(
+                    f"{call_name}_jsonText_copy")
+                after_block = builder.function.append_basic_block(
+                    f"{call_name}_jsonText_after")
+                builder.cbranch(too_large, after_block, copy_block)
+                builder.position_at_end(copy_block)
+                byte_count = builder.add(
+                    text_len, ir.Constant(I64, 1),
+                    name=f"{call_name}_jsonTextBytesWithNul")
+                builder.call(memcpy_fn, [scratch, json_text, byte_count])
+                builder.store(scratch, out_slot)
+                builder.branch(after_block)
+                builder.position_at_end(after_block)
+                call["result"] = builder.load(
+                    out_slot, name=f"{call_name}_jsonText")
+                call["error_value"] = builder.load(
+                    status_slot, name=f"{call_name}_finalStatus")
+                call["error_cond"] = builder.icmp_signed(
+                    "!=", call["error_value"], ir.Constant(I32, 0),
+                    name=f"{call_name}_isError")
+                return
+
+            doc_slot = high_json_out_slot(I8P, "documentSlot")
+            create_fn = self._runtime_func(
+                "ss_json_document_create_from_text",
+                I32, [I8P, I64, I8P.as_pointer()])
+            self.provenance.record_external(
+                "ss_json_document_create_from_text", call)
+            create_status = builder.call(
+                create_fn,
+                [json_text, ir.Constant(I64, 65536), doc_slot],
+                name=f"{call_name}_createStatus")
+            document = builder.load(doc_slot, name=f"{call_name}_document")
+            destroy_fn = self._runtime_func("ss_json_document_destroy", VOID, [I8P])
+            self.provenance.record_external("ss_json_document_destroy", call)
+            builder.call(destroy_fn, [document])
+            failed = builder.icmp_signed(
+                "!=", create_status, ir.Constant(I32, 0),
+                name=f"{call_name}_parseFailed")
+            call["result"] = json_text
+            call["error_value"] = builder.select(
+                failed, ir.Constant(I32, 1), ir.Constant(I32, 0),
+                name=f"{call_name}_decodeStatus")
+            call["error_cond"] = failed
+
         def high_json_emit_record_stringify(record_type):
             record_symbol = call["args"].get("value") or call["args"].get("record")
             if record_symbol is None:
@@ -6312,7 +6496,7 @@ class Codegen:
                     f"{call_name}: `{record_symbol}` is not a materialized "
                     f"record value of type `{record_type}`")
             status_slot = high_json_status_slot()
-            doc_slot = high_json_status_slot("documentSlot").bitcast(I8P.as_pointer())
+            doc_slot = high_json_out_slot(I8P, "documentSlot")
             with builder.goto_entry_block():
                 out_slot = builder.alloca(I8P, name=f"{call_name}_jsonTextSlot")
                 builder.store(ir.Constant(I8P, None), out_slot)
@@ -6324,7 +6508,8 @@ class Codegen:
                 create_fn,
                 [ir.Constant(I64, 65536), ir.Constant(I32, 0), doc_slot],
                 name=f"{call_name}_createStatus")
-            high_json_merge_status(status_slot, create_status)
+            high_json_merge_status(
+                status_slot, high_json_encode_error_status(create_status))
             document = builder.load(doc_slot, name=f"{call_name}_document")
             root_fn = self._runtime_func("ss_json_document_root", I64, [I8P])
             self.provenance.record_external("ss_json_document_root", call)
@@ -6339,7 +6524,7 @@ class Codegen:
                                      high_json_as_i8p(value)]
                 elif resolved == "JsonText":
                     symbol = "ss_json_set_object_field_json_text"
-                    cursor_slot = high_json_status_slot("jsonTextCursor").bitcast(I64.as_pointer())
+                    cursor_slot = high_json_out_slot(I64, "jsonTextCursor")
                     fn = self._runtime_func(symbol, I32, [I8P, I64, I8P, I8P, I64.as_pointer()])
                     args_for_call = [document, cursor_value, self._i8p(builder, json_key),
                                      high_json_as_i8p(value), cursor_slot]
@@ -6360,7 +6545,8 @@ class Codegen:
                                      high_json_i64(value)]
                 self.provenance.record_external(symbol, call)
                 status = builder.call(fn, args_for_call, name=f"{call_name}_{json_key}_status")
-                high_json_merge_status(status_slot, status)
+                high_json_merge_status(
+                    status_slot, high_json_encode_error_status(status))
 
             def emit_record_fields(record_type_name, source_value, cursor_value, prefix=""):
                 record = self.prog.records[record_type_name]
@@ -6369,8 +6555,7 @@ class Codegen:
                     path = f"{prefix}.{field_name}" if prefix else field_name
                     nested_type = _record_type_for_json_body(self.prog, field_type)
                     if nested_type is not None:
-                        cursor_slot = high_json_status_slot(
-                            f"{field_name}Cursor").bitcast(I64.as_pointer())
+                        cursor_slot = high_json_out_slot(I64, f"{field_name}Cursor")
                         symbol = "ss_json_set_object_field_object"
                         fn = self._runtime_func(
                             symbol, I32, [I8P, I64, I8P, I64.as_pointer()])
@@ -6379,7 +6564,8 @@ class Codegen:
                             fn,
                             [document, cursor_value, self._i8p(builder, json_key), cursor_slot],
                             name=f"{call_name}_{json_key}_objectStatus")
-                        high_json_merge_status(status_slot, status)
+                        high_json_merge_status(
+                            status_slot, high_json_encode_error_status(status))
                         child_cursor = builder.load(
                             cursor_slot, name=f"{call_name}_{json_key}_cursor")
                         emit_record_fields(nested_type, source_value, child_cursor, path)
@@ -6435,7 +6621,8 @@ class Codegen:
                 serialize_fn,
                 [document, scratch, ir.Constant(I64, 65536), out_slot],
                 name=f"{call_name}_serializeStatus")
-            high_json_merge_status(status_slot, serialize_status)
+            high_json_merge_status(
+                status_slot, high_json_encode_error_status(serialize_status))
             destroy_fn = self._runtime_func("ss_json_document_destroy", VOID, [I8P])
             self.provenance.record_external("ss_json_document_destroy", call)
             builder.call(destroy_fn, [document])
@@ -6454,7 +6641,7 @@ class Codegen:
                         break
             json_text = high_json_as_i8p(arg_val_named(source_arg))
             status_slot = high_json_status_slot()
-            doc_slot = high_json_status_slot("documentSlot").bitcast(I8P.as_pointer())
+            doc_slot = high_json_out_slot(I8P, "documentSlot")
             create_fn = self._runtime_func(
                 "ss_json_document_create_from_text",
                 I32, [I8P, I64, I8P.as_pointer()])
@@ -6463,24 +6650,91 @@ class Codegen:
                 create_fn,
                 [json_text, ir.Constant(I64, 65536), doc_slot],
                 name=f"{call_name}_createStatus")
-            high_json_merge_status(status_slot, create_status)
+            high_json_merge_status(
+                status_slot, high_json_decode_error_status(create_status))
             document = builder.load(doc_slot, name=f"{call_name}_document")
             root_fn = self._runtime_func("ss_json_document_root", I64, [I8P])
             self.provenance.record_external("ss_json_document_root", call)
             root_cursor = builder.call(root_fn, [document], name=f"{call_name}_root")
             record_result = high_json_record_slots(record_type, "parsed")
+            wrong_type_status = ir.Constant(I32, 3)
 
-            def store_if_nav_ok(nav_status, slot, value):
-                read_block = builder.function.append_basic_block(
-                    f"{call_name}_read_{len(record_result['slots'])}")
-                after_block = builder.function.append_basic_block(
-                    f"{call_name}_after_read_{len(record_result['slots'])}")
+            def store_if_status_ok(status, slot, value, block_suffix):
                 ok = builder.icmp_signed(
-                    "==", nav_status, ir.Constant(I32, 0),
-                    name=f"{call_name}_navOk")
-                builder.cbranch(ok, read_block, after_block)
-                builder.position_at_end(read_block)
+                    "==", status, ir.Constant(I32, 0),
+                    name=f"{call_name}_{block_suffix}_statusOk")
+                store_block = builder.function.append_basic_block(
+                    f"{call_name}_{block_suffix}_store")
+                after_block = builder.function.append_basic_block(
+                    f"{call_name}_{block_suffix}_afterStore")
+                builder.cbranch(ok, store_block, after_block)
+                builder.position_at_end(store_block)
                 builder.store(value, slot)
+                builder.branch(after_block)
+                builder.position_at_end(after_block)
+
+            def expected_kind_cond(kind, field_type, nested_type):
+                if nested_type is not None:
+                    return builder.icmp_signed(
+                        "==", kind, ir.Constant(I32, 0),
+                        name=f"{call_name}_kindIsObject")
+                resolved = resolve_alias(self.prog, field_type)
+                if resolved in ("String", "CNullTerminatedByteString", "CString", "JsonText"):
+                    return builder.icmp_signed(
+                        "==", kind, ir.Constant(I32, 2),
+                        name=f"{call_name}_kindIsString")
+                if resolved == "Bool":
+                    return builder.icmp_signed(
+                        "==", kind, ir.Constant(I32, 5),
+                        name=f"{call_name}_kindIsBool")
+                if resolved in ("F64", "CFloat64", "CDouble", "F32", "CFloat32", "CFloat"):
+                    is_double = builder.icmp_signed(
+                        "==", kind, ir.Constant(I32, 4),
+                        name=f"{call_name}_kindIsDouble")
+                    is_integer = builder.icmp_signed(
+                        "==", kind, ir.Constant(I32, 3),
+                        name=f"{call_name}_kindIsNumericInteger")
+                    return builder.or_(is_double, is_integer, name=f"{call_name}_kindIsNumber")
+                return builder.icmp_signed(
+                    "==", kind, ir.Constant(I32, 3),
+                    name=f"{call_name}_kindIsInteger")
+
+            def emit_present_field_read(nav_status, policy, field_type, nested_type,
+                                        read_body, block_suffix):
+                present = builder.icmp_signed(
+                    "==", nav_status, ir.Constant(I32, 0),
+                    name=f"{call_name}_{block_suffix}_present")
+                present_block = builder.function.append_basic_block(
+                    f"{call_name}_{block_suffix}_present")
+                after_block = builder.function.append_basic_block(
+                    f"{call_name}_{block_suffix}_after")
+                builder.cbranch(present, present_block, after_block)
+                builder.position_at_end(present_block)
+                kind_fn = self._runtime_func(
+                    "ss_json_cursor_kind", I32, [I8P, I64])
+                self.provenance.record_external("ss_json_cursor_kind", call)
+                kind = builder.call(
+                    kind_fn, [document, builder.load(current_field_cursor_slot[0])],
+                    name=f"{call_name}_{block_suffix}_kind")
+                if policy == "null":
+                    is_null = builder.icmp_signed(
+                        "==", kind, ir.Constant(I32, 6),
+                        name=f"{call_name}_{block_suffix}_isNull")
+                    non_null_block = builder.function.append_basic_block(
+                        f"{call_name}_{block_suffix}_nonnull")
+                    builder.cbranch(is_null, after_block, non_null_block)
+                    builder.position_at_end(non_null_block)
+                kind_ok = expected_kind_cond(kind, field_type, nested_type)
+                read_block = builder.function.append_basic_block(
+                    f"{call_name}_{block_suffix}_read")
+                wrong_block = builder.function.append_basic_block(
+                    f"{call_name}_{block_suffix}_wrongType")
+                builder.cbranch(kind_ok, read_block, wrong_block)
+                builder.position_at_end(wrong_block)
+                high_json_merge_status(status_slot, wrong_type_status)
+                builder.branch(after_block)
+                builder.position_at_end(read_block)
+                read_body()
                 builder.branch(after_block)
                 builder.position_at_end(after_block)
 
@@ -6489,8 +6743,7 @@ class Codegen:
                 for field_name, field_type in record.fields:
                     json_key = _json_record_key(record, field_name)
                     path = f"{prefix}.{field_name}" if prefix else field_name
-                    field_cursor_slot = high_json_status_slot(
-                        f"{json_key}Cursor").bitcast(I64.as_pointer())
+                    field_cursor_slot = high_json_out_slot(I64, f"{json_key}Cursor")
                     nav_fn = self._runtime_func(
                         "ss_json_navigate_object_field",
                         I32, [I8P, I64, I8P, I64.as_pointer()])
@@ -6506,62 +6759,99 @@ class Codegen:
                             "==", nav_status, ir.Constant(I32, 1),
                             name=f"{call_name}_{json_key}_missing")
                         effective_status = builder.select(
-                            is_missing, ir.Constant(I32, 0), nav_status,
+                            is_missing, ir.Constant(I32, 0),
+                            high_json_decode_error_status(nav_status),
                             name=f"{call_name}_{json_key}_effectiveStatus")
                     else:
-                        effective_status = nav_status
+                        effective_status = high_json_decode_error_status(nav_status)
                     high_json_merge_status(status_slot, effective_status)
                     field_cursor = builder.load(
                         field_cursor_slot, name=f"{call_name}_{json_key}_cursor")
                     nested_type = _record_type_for_json_body(self.prog, field_type)
                     if nested_type is not None:
-                        emit_read_field(field_cursor, nested_type, path)
+                        current_field_cursor_slot[0] = field_cursor_slot
+                        emit_present_field_read(
+                            nav_status, policy, field_type, nested_type,
+                            lambda nested_type=nested_type, field_cursor=field_cursor,
+                                   path=path: emit_read_field(field_cursor, nested_type, path),
+                            re.sub(r"[^A-Za-z0-9_]", "_", path))
                         continue
                     slot = record_result["slots"].get(path)
                     if slot is None:
                         continue
                     resolved = resolve_alias(self.prog, field_type)
                     if resolved in ("String", "CNullTerminatedByteString", "CString", "JsonText"):
-                        scratch = high_json_global_buffer(
-                            4096, f"{call_name}_{json_key}_scratch")
-                        out_slot = high_json_status_slot(
-                            f"{json_key}String").bitcast(I8P.as_pointer())
-                        read_fn = self._runtime_func(
-                            "ss_json_cursor_string",
-                            I32, [I8P, I64, I8P, I64, I8P.as_pointer()])
-                        self.provenance.record_external("ss_json_cursor_string", call)
-                        read_status = builder.call(
-                            read_fn,
-                            [document, field_cursor, scratch, ir.Constant(I64, 4096),
-                             out_slot],
-                            name=f"{call_name}_{json_key}_readStatus")
-                        high_json_merge_status(status_slot, read_status)
-                        store_if_nav_ok(nav_status, slot, builder.load(out_slot))
+                        def read_string(slot=slot, field_cursor=field_cursor,
+                                        json_key=json_key, path=path):
+                            scratch = high_json_global_buffer(
+                                4096, f"{call_name}_{json_key}_scratch")
+                            out_slot = high_json_out_slot(I8P, f"{json_key}String")
+                            read_fn = self._runtime_func(
+                                "ss_json_cursor_string",
+                                I32, [I8P, I64, I8P, I64, I8P.as_pointer()])
+                            self.provenance.record_external("ss_json_cursor_string", call)
+                            read_status = builder.call(
+                                read_fn,
+                                [document, field_cursor, scratch, ir.Constant(I64, 4096),
+                                 out_slot],
+                                name=f"{call_name}_{json_key}_readStatus")
+                            mapped_read_status = high_json_decode_error_status(read_status)
+                            high_json_merge_status(status_slot, mapped_read_status)
+                            store_if_status_ok(
+                                read_status, slot, builder.load(out_slot),
+                                re.sub(r"[^A-Za-z0-9_]", "_", path))
+                        current_field_cursor_slot[0] = field_cursor_slot
+                        emit_present_field_read(
+                            nav_status, policy, field_type, nested_type,
+                            read_string, re.sub(r"[^A-Za-z0-9_]", "_", path))
                     elif resolved == "Bool":
-                        read_fn = self._runtime_func(
-                            "ss_json_cursor_bool", I32, [I8P, I64, I32])
-                        self.provenance.record_external("ss_json_cursor_bool", call)
-                        value = builder.call(
-                            read_fn, [document, field_cursor, ir.Constant(I32, 0)],
-                            name=f"{call_name}_{json_key}_bool")
-                        store_if_nav_ok(nav_status, slot, value)
+                        def read_bool(slot=slot, field_cursor=field_cursor,
+                                      json_key=json_key):
+                            read_fn = self._runtime_func(
+                                "ss_json_cursor_bool", I32, [I8P, I64, I32])
+                            self.provenance.record_external("ss_json_cursor_bool", call)
+                            value = builder.call(
+                                read_fn, [document, field_cursor, ir.Constant(I32, 0)],
+                                name=f"{call_name}_{json_key}_bool")
+                            builder.store(high_json_coerce_to(value, slot.type.pointee), slot)
+                        current_field_cursor_slot[0] = field_cursor_slot
+                        emit_present_field_read(
+                            nav_status, policy, field_type, nested_type,
+                            read_bool, re.sub(r"[^A-Za-z0-9_]", "_", path))
                     elif resolved in ("F64", "CFloat64", "CDouble", "F32", "CFloat32", "CFloat"):
-                        read_fn = self._runtime_func(
-                            "ss_json_cursor_double", F64, [I8P, I64, F64])
-                        self.provenance.record_external("ss_json_cursor_double", call)
-                        value = builder.call(
-                            read_fn, [document, field_cursor, ir.Constant(F64, 0.0)],
-                            name=f"{call_name}_{json_key}_double")
-                        store_if_nav_ok(nav_status, slot, high_json_f64(value))
+                        def read_double(slot=slot, field_cursor=field_cursor,
+                                        json_key=json_key):
+                            read_fn = self._runtime_func(
+                                "ss_json_cursor_double", F64, [I8P, I64, F64])
+                            self.provenance.record_external("ss_json_cursor_double", call)
+                            value = builder.call(
+                                read_fn, [document, field_cursor, ir.Constant(F64, 0.0)],
+                                name=f"{call_name}_{json_key}_double")
+                            builder.store(
+                                high_json_coerce_to(high_json_f64(value), slot.type.pointee),
+                                slot)
+                        current_field_cursor_slot[0] = field_cursor_slot
+                        emit_present_field_read(
+                            nav_status, policy, field_type, nested_type,
+                            read_double, re.sub(r"[^A-Za-z0-9_]", "_", path))
                     else:
-                        read_fn = self._runtime_func(
-                            "ss_json_cursor_int64", I64, [I8P, I64, I64])
-                        self.provenance.record_external("ss_json_cursor_int64", call)
-                        value = builder.call(
-                            read_fn, [document, field_cursor, ir.Constant(I64, 0)],
-                            name=f"{call_name}_{json_key}_int64")
-                        store_if_nav_ok(nav_status, slot, high_json_i64(value))
+                        def read_int(slot=slot, field_cursor=field_cursor,
+                                     json_key=json_key):
+                            read_fn = self._runtime_func(
+                                "ss_json_cursor_int64", I64, [I8P, I64, I64])
+                            self.provenance.record_external("ss_json_cursor_int64", call)
+                            value = builder.call(
+                                read_fn, [document, field_cursor, ir.Constant(I64, 0)],
+                                name=f"{call_name}_{json_key}_int64")
+                            builder.store(
+                                high_json_coerce_to(high_json_i64(value), slot.type.pointee),
+                                slot)
+                        current_field_cursor_slot[0] = field_cursor_slot
+                        emit_present_field_read(
+                            nav_status, policy, field_type, nested_type,
+                            read_int, re.sub(r"[^A-Za-z0-9_]", "_", path))
 
+            current_field_cursor_slot = [None]
             emit_read_field(root_cursor, record_type)
             destroy_fn = self._runtime_func("ss_json_document_destroy", VOID, [I8P])
             self.provenance.record_external("ss_json_document_destroy", call)
@@ -6588,23 +6878,7 @@ class Codegen:
                 or primitive_targets.get(resolved_type)
             )
             if target_type_is_json_text(type_name):
-                source_arg = "value" if is_stringify else "jsonText"
-                if source_arg not in call["args"]:
-                    for fallback_arg in ("jsonText", "text", "value"):
-                        if fallback_arg in call["args"]:
-                            source_arg = fallback_arg
-                            break
-                value = arg_val_named(source_arg)
-                if value.type == I8P:
-                    call["result"] = value
-                elif isinstance(value.type, ir.PointerType):
-                    call["result"] = builder.bitcast(value, I8P)
-                elif isinstance(value.type, ir.IntType):
-                    call["result"] = builder.inttoptr(value, I8P)
-                else:
-                    raise ValueError(
-                        f"{call_name}: {target} input must be pointer-shaped")
-                mark_high_level_json_success()
+                high_json_emit_json_text_passthrough(is_stringify)
                 return
             if primitive_target is None:
                 record_type = type_name if type_name in self.prog.records else resolved_type
@@ -10273,6 +10547,148 @@ def _strict_validate_use_after_free(prog: Program, op: Operation,
                 freed.add(value_name)
 
 
+_STRICT_SECRET_NAME_RE = re.compile(
+    # Heap-owned bindings that hold cryptographic / authentication material.
+    # Anything matching this pattern must be wiped via `c.memset` before
+    # the matching `c.free` so a freed-but-not-yet-reused page does not
+    # carry the plaintext into the next allocation that reuses it.
+    # Hash buffers are included because user-supplied plaintext may
+    # briefly live in the hash buffer's input slot for some bcrypt ABIs;
+    # being conservative here is cheap.
+    r"(?i)(password|secret|plaintext|privatekey|passphrase|credential)"
+)
+
+_STRICT_MEMSET_TARGETS = frozenset({"c.memset"})
+
+
+def _strict_validate_secret_zeroing(prog: Program, op: Operation,
+                                    calls: dict) -> None:
+    """SS3320 — heap buffers whose binding names indicate they hold a
+    secret (password, plaintext, credential, etc.) must be wiped with
+    `c.memset(buffer, 0, capacity)` before the matching `c.free` (or
+    `defer c.free`) fires. Without the wipe, `c.free` leaves the
+    plaintext on a freed-but-not-yet-reused heap page where a separate
+    memory-disclosure bug can read it.
+
+    The check is per-operation rather than per-segment: it accepts any
+    `c.memset` call on the secret pointer anywhere in the op body as
+    evidence the wipe pattern is in place. Per-path precision is
+    deferred; this catches the "no wipe at all" shape today.
+    """
+    secret_owners = set()
+    for call_info in calls.values():
+        if call_info["target"] not in _STRICT_HEAP_ALLOCATION_TARGETS:
+            continue
+        for name in _strict_success_names(call_info):
+            if _STRICT_SECRET_NAME_RE.search(name):
+                secret_owners.add(name)
+    if not secret_owners:
+        return
+
+    freed_secrets = set()
+    for call_info in calls.values():
+        if call_info["target"] not in _STRICT_HEAP_CLEANUP_TARGETS:
+            continue
+        for arg_name, value_name, _line in call_info.get("args", []):
+            if value_name in secret_owners:
+                freed_secrets.add(value_name)
+    for verb, args, _lineno in op.lines:
+        if verb == "defer" and len(args) >= 3:
+            if _strict_target(prog, args[1]) in _STRICT_HEAP_CLEANUP_TARGETS:
+                for tail in args[2:]:
+                    if tail in secret_owners:
+                        freed_secrets.add(tail)
+
+    if not freed_secrets:
+        return
+
+    zeroed = set()
+    for call_info in calls.values():
+        if call_info["target"] not in _STRICT_MEMSET_TARGETS:
+            continue
+        for arg_name, value_name, _line in call_info.get("args", []):
+            if arg_name in ("ptr", "pointer", "buffer", "destination",
+                            "address"):
+                if value_name in freed_secrets:
+                    zeroed.add(value_name)
+
+    for name in sorted(freed_secrets - zeroed):
+        producer = next(
+            (call_info for call_info in calls.values()
+             if name in _strict_success_names(call_info)),
+            None,
+        )
+        producer_line = producer["line"] if producer else op.decl_line
+        _strict_raise(
+            prog,
+            "SS3320",
+            f"SS3320 secretBufferNotZeroedBeforeFree: heap buffer "
+            f"`{name}` looks like it holds a secret (password / "
+            f"plaintext / credential / etc.) and reaches `c.free` "
+            f"without a preceding `c.memset({name}, 0, capacity)` "
+            f"call. Freed-but-not-reused pages let the plaintext leak "
+            f"into the next allocation that reuses the slot",
+            op,
+            producer_line,
+            call_name=producer["name"] if producer else "",
+            call_target=producer["target"] if producer else "",
+            note=(
+                "Either add `c.memset(" + name + ", 0, <capacity>)` "
+                "before the matching `c.free` / defer, or rename the "
+                "binding if it does NOT actually carry a secret"
+            ),
+        )
+
+
+_STRICT_BCRYPT_VERIFY_TARGETS = frozenset({"bcrypt.verifyPassword"})
+
+
+def _strict_validate_bcrypt_verify_timing(prog: Program, op: Operation,
+                                          calls: dict) -> None:
+    """SS3403 — when an operation calls bcrypt.verifyPassword, it MUST
+    call it at least twice. The second call is the timing-equalization
+    dummy verify on the user-not-found path: without it, an attacker
+    measuring response latency can distinguish "no such user" (cheap)
+    from "user exists, wrong password" (~250 ms cost-12 work), giving
+    them an account-enumeration oracle.
+
+    The check counts verify calls in the operation; a single call is
+    the classic bug shape and gets flagged. Two-or-more callers may
+    still have subtle holes (e.g. both calls reached only on the
+    happy path) but at least the timing-equalize pattern is present.
+    Per-path verification is the next refinement.
+    """
+    verify_calls = [
+        call_info for call_info in calls.values()
+        if call_info["target"] in _STRICT_BCRYPT_VERIFY_TARGETS
+    ]
+    if len(verify_calls) == 0:
+        return
+    if len(verify_calls) >= 2:
+        return
+    only = verify_calls[0]
+    _strict_raise(
+        prog,
+        "SS3403",
+        f"SS3403 bcryptVerifyTimingOracle: operation `{op.name}` calls "
+        f"`bcrypt.verifyPassword` only once (`{only['name']}`). The "
+        f"user-not-found path returns without running the bcrypt key "
+        f"schedule, so an attacker can enumerate valid usernames by "
+        f"measuring response latency. Add a second bcrypt.verifyPassword "
+        f"call against a known dummy hash on the not-found branch to "
+        f"equalize timing",
+        op,
+        only["line"],
+        call_name=only["name"],
+        call_target=only["target"],
+        note=(
+            "Standard mitigation: a module-scope dummy `$2b$12$...` "
+            "hash + a bcrypt.verifyPassword call on the user-not-found "
+            "path whose result is `ignoreValue`'d"
+        ),
+    )
+
+
 def validate_strict_executable(prog: Program) -> None:
     if not _strict_executable_is_active(prog):
         return
@@ -10311,6 +10727,8 @@ def validate_strict_executable(prog: Program) -> None:
         _strict_validate_sqlite_database_cleanup(prog, op, calls, defers)
         _strict_validate_sqlite_statement_cleanup(prog, op, calls, defers)
         _strict_validate_use_after_free(prog, op, calls)
+        _strict_validate_secret_zeroing(prog, op, calls)
+        _strict_validate_bcrypt_verify_timing(prog, op, calls)
 
 
 def lint(prog: Program, strict: bool = False):
@@ -10525,6 +10943,16 @@ def lint(prog: Program, strict: bool = False):
     # the matching pattern (or coalescing into the suggested primitive).
     _check_many_small_mallocs_in_op(prog, diags)
     _check_repeated_prepare_statement_same_sql(prog, diags)
+
+    # ---- security advisories: secret-buffer wipe + bcrypt timing oracle ----
+    # These ARE correctness bugs (security ones); they advise here so
+    # `sem check` surfaces them, and `validate_strict_executable` upgrades
+    # them to compile errors when the file declares
+    # `languageMode strictExecutable`.
+    _check_lint_secret_buffer_not_zeroed(prog, diags)
+    _check_lint_bcrypt_verify_timing_oracle(prog, diags)
+    _check_multiple_writes_without_transaction(prog, diags)
+    _check_dead_sql_constant(prog, diags)
 
     for diag in sorted(diags):
         sys.stderr.write(f"warning line {diag[0]}: {diag[1]}\n")
@@ -10977,6 +11405,244 @@ def _check_repeated_prepare_statement_same_sql(prog: Program, diags):
                 f"`{sites[0][0]}` prepares SQL constant `{sql_name}` "
                 f"{len(sites)} times; hoist the prepare out of the loop "
                 f"or cache the statement"))
+
+
+_LINT_SQL_VERB_RE = re.compile(
+    r"(?is)^\s*(?:--[^\n]*\n\s*)*"
+    r"(SELECT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|REPLACE|PRAGMA|"
+    r"BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE|WITH)\b"
+)
+
+_LINT_WRITE_VERB_RE = re.compile(
+    r"(?is)^\s*(?:--[^\n]*\n\s*)*"
+    r"(INSERT|UPDATE|DELETE|REPLACE)\b"
+)
+
+_LINT_TRANSACTION_VERB_RE = re.compile(
+    r"(?is)^\s*(?:--[^\n]*\n\s*)*"
+    r"(BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)\b"
+)
+
+
+def _check_lint_secret_buffer_not_zeroed(prog: Program, diags):
+    """SS3320 advisory — heap buffers whose binding names match the
+    secret pattern (`password`/`secret`/`plaintext`/etc.) should be
+    `c.memset` wiped before the matching `c.free` / defer fires.
+    Mirrors the strict-mode `_strict_validate_secret_zeroing`; the
+    lint advisory fires unconditionally so apps without
+    `languageMode strictExecutable` still see the warning."""
+    for op_name, op in prog.operations.items():
+        calls = _strict_collect_calls(prog, op)
+        secret_owners = set()
+        producers = {}
+        for call_info in calls.values():
+            if call_info["target"] not in _STRICT_HEAP_ALLOCATION_TARGETS:
+                continue
+            for name in _strict_success_names(call_info):
+                if _STRICT_SECRET_NAME_RE.search(name):
+                    secret_owners.add(name)
+                    producers[name] = call_info
+        if not secret_owners:
+            continue
+        freed_secrets = set()
+        for call_info in calls.values():
+            if call_info["target"] not in _STRICT_HEAP_CLEANUP_TARGETS:
+                continue
+            for _arg, value_name, _line in call_info.get("args", []):
+                if value_name in secret_owners:
+                    freed_secrets.add(value_name)
+        for verb, args, _lineno in op.lines:
+            if verb == "defer" and len(args) >= 3:
+                if _strict_target(prog, args[1]) in _STRICT_HEAP_CLEANUP_TARGETS:
+                    for tail in args[2:]:
+                        if tail in secret_owners:
+                            freed_secrets.add(tail)
+        if not freed_secrets:
+            continue
+        zeroed = set()
+        for call_info in calls.values():
+            if call_info["target"] not in _STRICT_MEMSET_TARGETS:
+                continue
+            for arg_name, value_name, _line in call_info.get("args", []):
+                if arg_name in ("ptr", "pointer", "buffer", "destination",
+                                "address"):
+                    if value_name in freed_secrets:
+                        zeroed.add(value_name)
+        for name in sorted(freed_secrets - zeroed):
+            producer = producers.get(name)
+            primary_line = producer["line"] if producer else op.decl_line
+            diags.append((primary_line,
+                f"SS3320 secretBufferNotZeroedBeforeFree: in operation "
+                f"`{op_name}`, heap buffer `{name}` looks like it holds "
+                f"a secret (password / plaintext / credential / etc.) "
+                f"and reaches `c.free` without a preceding "
+                f"`c.memset({name}, 0, capacity)`. The freed page can "
+                f"leak the plaintext into a later allocation that "
+                f"reuses the slot. Either wipe via c.memset before "
+                f"the free, or rename the binding if it does not hold "
+                f"a secret"))
+
+
+def _check_lint_bcrypt_verify_timing_oracle(prog: Program, diags):
+    """SS3403 advisory — when an op calls bcrypt.verifyPassword exactly
+    once, the user-not-found path returns without running bcrypt,
+    creating a username-enumeration timing oracle. Mirrors the
+    strict-mode check."""
+    for op_name, op in prog.operations.items():
+        calls = _strict_collect_calls(prog, op)
+        verifies = [
+            call_info for call_info in calls.values()
+            if call_info["target"] in _STRICT_BCRYPT_VERIFY_TARGETS
+        ]
+        if len(verifies) != 1:
+            continue
+        only = verifies[0]
+        diags.append((only["line"],
+            f"SS3403 bcryptVerifyTimingOracle: operation `{op_name}` "
+            f"calls `bcrypt.verifyPassword` only once (`{only['name']}`). "
+            f"The user-not-found path returns without running the bcrypt "
+            f"key schedule, so response latency leaks valid usernames. "
+            f"Add a second `bcrypt.verifyPassword` call against a "
+            f"module-scope dummy `$2b$...$` hash on the not-found "
+            f"branch to equalize timing"))
+
+
+def _check_multiple_writes_without_transaction(prog: Program, diags):
+    """SS3411 advisory — if an op executes 2+ INSERT/UPDATE/DELETE
+    statements (each via prepareStatement + step), AND the op does
+    not exec a BEGIN/COMMIT pair, warn about the atomicity gap.
+    Without the transaction, a step failure on the second write
+    leaves the first write committed: classic register-with-session
+    consistency bug."""
+    for op_name, op in prog.operations.items():
+        write_step_count = 0
+        opened_transaction = False
+        call_targets = _strict_call_target_map(op)
+        for call_name, (target, _line) in call_targets.items():
+            canonical = _strict_target(prog, target)
+            if canonical == "sqlite.stepStatement":
+                # Find the matching prepareStatement's sql arg
+                prep_sql = _operation_step_call_to_sql(prog, op, call_name)
+                if prep_sql is None:
+                    continue
+                const = prog.consts.get(prep_sql)
+                if const is None:
+                    continue
+                value = const[1]
+                if not isinstance(value, str):
+                    continue
+                if _LINT_WRITE_VERB_RE.match(value):
+                    write_step_count += 1
+            elif canonical == "sqlite.exec":
+                # If any sqlite.exec arg's sql is a BEGIN/COMMIT/etc.
+                pass
+        for verb, args, _lineno in op.lines:
+            if verb != "arg" or len(args) < 3:
+                continue
+            call_name, arg_name, value_name = args[0], args[1], args[2]
+            target_info = call_targets.get(call_name)
+            if target_info is None:
+                continue
+            if _strict_target(prog, target_info[0]) != "sqlite.exec":
+                continue
+            if arg_name != "sql":
+                continue
+            const = prog.consts.get(value_name)
+            if const is None:
+                continue
+            value = const[1]
+            if isinstance(value, str) and _LINT_TRANSACTION_VERB_RE.match(value):
+                opened_transaction = True
+        if write_step_count >= 2 and not opened_transaction:
+            diags.append((op.decl_line,
+                f"SS3411 multipleWritesWithoutTransaction: operation "
+                f"`{op_name}` executes {write_step_count} write "
+                f"statements (INSERT/UPDATE/DELETE) without an "
+                f"enclosing `sqlite.exec BEGIN` / `sqlite.exec COMMIT` "
+                f"pair. A failure between the writes leaves earlier "
+                f"writes committed and later ones rolled back — "
+                f"consistency hazard. Wrap the writes in a SQLite "
+                f"transaction"))
+
+
+def _operation_step_call_to_sql(prog: Program, op: Operation,
+                                step_call_name: str) -> str:
+    """Best-effort lookup: given a `sqlite.stepStatement` call name, find
+    the SQL constant that was passed to the matching prepareStatement.
+    The matching prepare is identified by following the SqliteStatement
+    binding the step's `statement` arg references back to the
+    prepareStatement that produced it."""
+    statement_arg = None
+    for verb, args, _lineno in op.lines:
+        if verb == "arg" and len(args) >= 3 and args[0] == step_call_name:
+            if args[1] == "statement":
+                statement_arg = args[2]
+                break
+    if statement_arg is None:
+        return None
+    prepare_call_name = None
+    for verb, args, _lineno in op.lines:
+        if verb in ("bind", "bindOk") and len(args) >= 3:
+            if args[0] == statement_arg:
+                prepare_call_name = args[2]
+                break
+    if prepare_call_name is None:
+        return None
+    for verb, args, _lineno in op.lines:
+        if verb == "arg" and len(args) >= 3 and args[0] == prepare_call_name:
+            if args[1] == "sql":
+                return args[2]
+    return None
+
+
+def _check_dead_sql_constant(prog: Program, diags):
+    """SS3415 advisory — a `storage module immutable CNullTerminatedByteString`
+    row whose value begins with a SQL verb (SELECT/INSERT/UPDATE/DELETE/
+    CREATE/PRAGMA/etc.) but which is never passed as the `sql` arg of
+    `sqlite.prepareStatement` or `sqlite.exec` is dead weight. Flag it
+    so the user can either delete the constant or wire it into the
+    code path the SQL was meant for."""
+    sql_constants = {}
+    for name, (typ, value) in prog.consts.items():
+        if typ != "CNullTerminatedByteString":
+            continue
+        if name in prog.mutable_globals:
+            continue
+        if not isinstance(value, str):
+            continue
+        if not _LINT_SQL_VERB_RE.match(value):
+            continue
+        sql_constants[name] = value
+    if not sql_constants:
+        return
+    referenced = set()
+    for op in prog.operations.values():
+        call_targets = _strict_call_target_map(op)
+        for verb, args, _lineno in op.lines:
+            if verb == "arg" and len(args) >= 3:
+                call_name, arg_name, value_name = args[0], args[1], args[2]
+                if arg_name == "sql":
+                    target_info = call_targets.get(call_name)
+                    if target_info is not None:
+                        target = _strict_target(prog, target_info[0])
+                        if target in ("sqlite.prepareStatement", "sqlite.exec"):
+                            referenced.add(value_name)
+                continue
+            # defer rows that wrap sqlite.exec pass positional args: the
+            # second positional (defer NAME sqlite.exec DATABASE SQL) is
+            # the SQL constant. Without this branch, deferred rollback
+            # statements would look "dead" because the named-arg walk
+            # above never sees them.
+            if verb == "defer" and len(args) >= 4:
+                if _strict_target(prog, args[1]) == "sqlite.exec":
+                    # args = [NAME, sqlite.exec, DATABASE, SQL, ...]
+                    referenced.add(args[3])
+    for name in sorted(set(sql_constants) - referenced):
+        diags.append((0,
+            f"SS3415 deadSqlConstant: SQL constant `{name}` is declared "
+            f"but never referenced by `sqlite.prepareStatement` or "
+            f"`sqlite.exec`. Either delete the declaration or wire it "
+            f"into the handler it was meant for"))
 
 
 def _check_libc_effect_coverage(prog: Program, diags):
@@ -12756,10 +13422,31 @@ def _program_uses_json_runtime(prog: Program) -> bool:
     and json.stringify/parse primitive aliases, which don't need the
     runtime linked in. Defer-only references count too — `defer X
     json.destroyDocument documentName` is enough to pull the runtime in."""
+    def target_is_json_text(type_name: str) -> bool:
+        current = type_name
+        seen = set()
+        while True:
+            if current == "JsonText":
+                return True
+            if current in seen or current not in prog.type_aliases:
+                return False
+            seen.add(current)
+            alias_target = prog.type_aliases[current]
+            current = alias_target[0] if isinstance(alias_target, list) else alias_target
+
     for op in prog.operations.values():
         for verb, args, _lineno in op.lines:
             if verb == "call" and len(args) >= 2 and args[1] in _NATIVE_JSON_TARGETS:
                 return True
+            if verb == "call" and len(args) >= 2:
+                target = args[1]
+                if target.startswith("json.stringify.") or target.startswith("json.parse."):
+                    type_name = target.split(".", 2)[2]
+                    resolved_type = resolve_alias(prog, type_name)
+                    if target.startswith("json.parse.") and target_is_json_text(type_name):
+                        return True
+                    if type_name in prog.records or resolved_type in prog.records:
+                        return True
             if verb in ("defer", "deferLog", "deferAwaitLog") \
                     and len(args) >= 2 and args[1] in _NATIVE_JSON_TARGETS:
                 return True

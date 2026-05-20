@@ -30,6 +30,9 @@ buildConstant todoWebPro databaseInMemoryPath CNullTerminatedByteString ":memory
 buildConstant todoWebPro imagesDirectoryPath CNullTerminatedByteString "images"
 buildConstant todoWebPro assetsDirectoryPath CNullTerminatedByteString "assets"
 buildConstant todoWebPro sessionLifetimeMs CSignedInt64 2592000000
+# Flip applyDevSeed to "no" for production builds so the publicly-known
+# demo credentials in sql/dev_seed.sql are never installed.
+buildConstant todoWebPro applyDevSeed CNullTerminatedByteString "yes"
 mainFile todoWebPro "main.sem"
 testPattern todoWebPro "*.test.sem"
 testRoot todoWebPro "."
