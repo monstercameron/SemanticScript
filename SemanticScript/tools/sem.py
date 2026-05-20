@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -18,6 +20,19 @@ from pathlib import Path
 
 VERSION = "0.1.0"
 ROOT = Path(__file__).resolve().parents[1]
+CLEAN_DIRECTORY_NAMES = frozenset({"build", ".semcache", "__pycache__"})
+CLEAN_FILE_SUFFIXES = frozenset({
+    ".exe",
+    ".ll",
+    ".bc",
+    ".obj",
+    ".o",
+    ".pdb",
+    ".res",
+    ".rc",
+    ".vsix",
+})
+CLEAN_EXACT_RELATIVE_PATHS = frozenset({"app/todo/todos.json"})
 
 
 def _source_fingerprint(source: Path) -> str:
@@ -200,6 +215,573 @@ def _extract_flag(args: list[str], flag: str) -> tuple[bool, list[str]]:
             continue
         kept.append(arg)
     return found, kept
+
+
+def _repo_root() -> Path:
+    proc = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode == 0 and proc.stdout.strip():
+        return Path(proc.stdout.strip()).resolve()
+    return ROOT.parent.resolve()
+
+
+def _is_under(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _is_ignored(path: Path, repo_root: Path) -> bool:
+    proc = subprocess.run(
+        ["git", "check-ignore", "-q", "--", str(path)],
+        cwd=str(repo_root),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return proc.returncode == 0
+
+
+def _clean_roots(paths: list[str], repo_root: Path) -> list[Path]:
+    if not paths:
+        return [repo_root]
+    roots = []
+    for raw_path in paths:
+        candidate = Path(raw_path)
+        if not candidate.is_absolute():
+            candidate = Path.cwd() / candidate
+        resolved = candidate.resolve()
+        if not _is_under(resolved, repo_root):
+            raise ValueError(f"clean path escapes repository root: {raw_path}")
+        roots.append(resolved)
+    return roots
+
+
+def _format_clean_target(path: Path, repo_root: Path) -> str:
+    try:
+        display = path.relative_to(repo_root)
+    except ValueError:
+        display = path
+    text = str(display).replace(os.sep, "/")
+    if path.is_dir() and not path.is_symlink():
+        text += "/"
+    return text
+
+
+def _collect_clean_targets(paths: list[str]) -> tuple[Path, list[Path]]:
+    repo_root = _repo_root()
+    roots = _clean_roots(paths, repo_root)
+    targets = set()
+
+    for root in roots:
+        if root.is_file():
+            if root.suffix in CLEAN_FILE_SUFFIXES and _is_ignored(root, repo_root):
+                targets.add(root)
+            continue
+        if not root.exists():
+            continue
+        for current, dirs, files in os.walk(root):
+            current_path = Path(current)
+            if ".git" in dirs:
+                dirs.remove(".git")
+            if "third_party" in dirs:
+                dirs.remove("third_party")
+            for dirname in list(dirs):
+                child = current_path / dirname
+                if dirname in CLEAN_DIRECTORY_NAMES and _is_ignored(child, repo_root):
+                    targets.add(child)
+                    dirs.remove(dirname)
+            for filename in files:
+                child = current_path / filename
+                if child.suffix in CLEAN_FILE_SUFFIXES and _is_ignored(child, repo_root):
+                    targets.add(child)
+
+    for relative in CLEAN_EXACT_RELATIVE_PATHS:
+        candidate = repo_root / relative
+        if candidate.exists() and any(_is_under(candidate, root) for root in roots):
+            if _is_ignored(candidate, repo_root):
+                targets.add(candidate)
+
+    return repo_root, sorted(targets, key=lambda item: str(item).lower())
+
+
+def _remove_clean_target(path: Path, repo_root: Path) -> None:
+    resolved = path.resolve()
+    if not _is_under(resolved, repo_root):
+        raise ValueError(f"refusing to clean path outside repository: {path}")
+    if resolved.is_dir() and not resolved.is_symlink():
+        shutil.rmtree(resolved)
+    else:
+        resolved.unlink()
+
+
+def _version_command(command: list[str]) -> tuple[bool, str]:
+    try:
+        proc = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, str(exc)
+    text = (proc.stdout or proc.stderr).splitlines()
+    detail = text[0] if text else f"exit {proc.returncode}"
+    return proc.returncode == 0, detail
+
+
+def _doctor_check(name: str, ok: bool, detail: str, fix: str = "") -> dict:
+    return {
+        "name": name,
+        "ok": bool(ok),
+        "detail": detail,
+        "fix": fix,
+    }
+
+
+def _doctor_payload() -> dict:
+    python_ok = sys.version_info >= (3, 11)
+    checks = [
+        _doctor_check(
+            "python",
+            python_ok,
+            f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+            "Install Python 3.11 or newer and re-run from that interpreter.",
+        ),
+        _doctor_check(
+            "llvmlite",
+            importlib.util.find_spec("llvmlite") is not None,
+            "available" if importlib.util.find_spec("llvmlite") is not None else "missing",
+            "Run: python -m pip install -r requirements.txt",
+        ),
+    ]
+
+    clang_env = os.environ.get("SEMSC_CLANG", "")
+    clang_path = clang_env or shutil.which("clang") or ""
+    clang_ok = bool(clang_path) and (clang_env == "" or Path(clang_path).exists())
+    checks.append(_doctor_check(
+        "clang",
+        clang_ok,
+        clang_path or "missing",
+        "Install LLVM/clang or set SEMSC_CLANG to clang.exe.",
+    ))
+
+    if (ROOT.parent / "vscode-semanticscript").exists():
+        node_path = shutil.which("node")
+        node_ok = bool(node_path)
+        node_detail = node_path or "missing"
+        if node_ok:
+            ok, detail = _version_command(["node", "--version"])
+            node_ok = ok
+            node_detail = detail
+        checks.append(_doctor_check(
+            "node",
+            node_ok,
+            node_detail,
+            "Install Node.js 20 or newer for VS Code extension checks.",
+        ))
+
+    cmake_path = shutil.which("cmake")
+    cmake_ok = bool(cmake_path)
+    cmake_detail = cmake_path or "missing"
+    if cmake_ok:
+        ok, detail = _version_command(["cmake", "--version"])
+        cmake_ok = ok
+        cmake_detail = detail
+    checks.append(_doctor_check(
+        "native-http-runtime",
+        cmake_ok and clang_ok,
+        f"cmake={cmake_detail}; clang={clang_path or 'missing'}",
+        "Install CMake and LLVM/clang before building SemanticScript/runtime/native_http.",
+    ))
+
+    return {
+        "schemaVersion": "sem.doctor.v0",
+        "tool": {"name": "sem", "version": VERSION},
+        "checks": checks,
+        "ok": all(check["ok"] for check in checks),
+    }
+
+
+def _module_version_from_path(path: Path) -> str:
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("__version__"):
+                _name, _equals, value = stripped.partition("=")
+                return value.strip().strip("\"'")
+    except OSError:
+        return ""
+    return ""
+
+
+def _load_semlint_module():
+    module_name = "_sem_driver_semlint"
+    if module_name in sys.modules:
+        return sys.modules[module_name]
+    semlint_path = ROOT / "linter" / "semlint.py"
+    spec = importlib.util.spec_from_file_location(module_name, semlint_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load semlint from {semlint_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _line_payload(line) -> dict:
+    return {
+        "path": str(Path(line.path).resolve()),
+        "line": int(line.number),
+        "column": int(line.column),
+    }
+
+
+def _row_value(facts, verb: str, index: int = 0, default: str = "") -> str:
+    for source_line in facts.lines:
+        if source_line.tokens and source_line.verb == verb and len(source_line.args) > index:
+            return source_line.args[index]
+    return default
+
+
+def _row_values(facts, verb: str, index: int = 0) -> list[str]:
+    values = []
+    for source_line in facts.lines:
+        if source_line.tokens and source_line.verb == verb and len(source_line.args) > index:
+            values.append(source_line.args[index])
+    return values
+
+
+def _count_xfail_markers() -> int:
+    feature_root = ROOT / "sem" / "feature_tests"
+    if not feature_root.exists():
+        return 0
+    count = 0
+    for path in feature_root.glob("*.sscript"):
+        try:
+            count += path.read_text(encoding="utf-8").count("expect.xfail")
+        except OSError:
+            continue
+    return count
+
+
+def _syntax_status_counts() -> dict:
+    syntax_path = ROOT.parent / "SYNTAX.md"
+    counts = {"implemented": 0, "partial": 0, "notImplemented": 0}
+    try:
+        text = syntax_path.read_text(encoding="utf-8")
+    except OSError:
+        return counts
+    counts["implemented"] = text.count("| Impl'd |")
+    counts["partial"] = text.count("| Partial |")
+    counts["notImplemented"] = text.count("| Not impl'd |")
+    return counts
+
+
+def _runtime_feature_flags() -> dict:
+    runtime_root = ROOT / "runtime"
+    third_party_root = ROOT.parent / "third_party"
+    return {
+        "nativeHttpRuntime": (runtime_root / "native_http" / "sem_http_runtime.c").exists(),
+        "nativeJsonRuntime": (runtime_root / "native_json" / "sem_json_runtime.c").exists(),
+        "nativeSqliteRuntime": (runtime_root / "native_sqlite" / "sem_sqlite_runtime.c").exists(),
+        "nativeWin32GuiRuntime": (
+            runtime_root / "native_win32_gui" / "sem_win32_gui_runtime.c"
+        ).exists(),
+        "nativeBcryptRuntime": (runtime_root / "native_bcrypt" / "sem_bcrypt_runtime.c").exists(),
+        "vendoredSqlite": (third_party_root / "sqlite" / "sqlite3.c").exists(),
+        "vendoredBcrypt": (third_party_root / "bcrypt").exists(),
+    }
+
+
+def _build_context_payload(path: Path) -> dict:
+    semlint = _load_semlint_module()
+    requested = path
+    build_tape = _find_build_tape(path)
+    source_for_facts = build_tape if build_tape is not None else path
+    facts = semlint.parse_file(source_for_facts) if source_for_facts.exists() else None
+    source_files, _errors = _symbol_source_files(path)
+    syntax_counts = _syntax_status_counts()
+    project = {
+        "requestedPath": str(requested.resolve()),
+        "projectRoot": str(build_tape.parent.resolve()) if build_tape else "",
+        "buildTape": str(build_tape.resolve()) if build_tape else "",
+        "buildProject": _row_value(facts, "buildProject") if facts else "",
+        "projectName": _row_value(facts, "project") if facts else "",
+        "modulePath": _row_value(facts, "modulePath", 1) if facts else "",
+        "sourceRoots": [],
+        "mainFile": _row_value(facts, "mainFile", 1) if facts else "",
+        "mainOperation": _row_value(facts, "mainOperation", 1) if facts else "",
+        "targetRuntime": _row_value(facts, "targetRuntime", 1) if facts else "",
+        "targets": _row_values(facts, "target") if facts else [],
+        "nativeOutput": _row_value(facts, "nativeOutput", 1) if facts else "",
+    }
+    if facts:
+        project["sourceRoots"] = _row_values(facts, "sourceRoot", 1)
+    return {
+        "schemaVersion": "sem.context.v0",
+        "tool": {"name": "sem", "version": VERSION},
+        "project": project,
+        "sourceFiles": [str(source.resolve()) for source in source_files],
+        "tools": {
+            "compiler": {
+                "path": str((ROOT / "compiler" / "semsc.py").resolve()),
+                "version": _module_version_from_path(ROOT / "compiler" / "semsc.py"),
+            },
+            "linter": {
+                "path": str((ROOT / "linter" / "semlint.py").resolve()),
+                "version": _module_version_from_path(ROOT / "linter" / "semlint.py"),
+            },
+            "formatter": {
+                "path": str((ROOT / "formatter" / "semfmt.py").resolve()),
+                "version": _module_version_from_path(ROOT / "formatter" / "semfmt.py"),
+            },
+        },
+        "runtimeFeatureFlags": _runtime_feature_flags(),
+        "supportedSyntax": {
+            "inventoryPath": str((ROOT.parent / "SYNTAX.md").resolve()),
+            "statusCounts": syntax_counts,
+            "languageModes": ["strictExecutable", "refinedSyntax"],
+        },
+        "knownDeferredFeatures": {
+            "xfailFeatureTests": _count_xfail_markers(),
+            "partialSyntaxRows": syntax_counts["partial"],
+            "notImplementedSyntaxRows": syntax_counts["notImplemented"],
+        },
+    }
+
+
+def _symbol_source_files(path: Path) -> tuple[list[Path], list[str]]:
+    semlint = _load_semlint_module()
+    errors: list[str] = []
+    requested = path.resolve()
+    build_tape = _find_build_tape(path)
+    if requested.is_file() and requested.name.lower() not in {"build.sem", "build.sscript"}:
+        return [requested], errors
+    if build_tape is None:
+        return ([requested] if requested.is_file() else []), errors
+
+    source_files = [build_tape.resolve()]
+    try:
+        build_facts = semlint.parse_file(build_tape)
+        registered, main_files = semlint._collect_registered_modules(build_facts)
+        for module_name, (_line, raw_path) in sorted(registered.items()):
+            resolved = semlint._resolve_registered_module_source(
+                module_name, raw_path, build_tape, main_files)
+            if resolved is None:
+                errors.append(f"registered module {module_name} did not resolve")
+                continue
+            source_files.append(Path(resolved).resolve())
+    except (OSError, RuntimeError) as exc:
+        errors.append(str(exc))
+
+    deduped = []
+    seen = set()
+    for source in source_files:
+        if source in seen:
+            continue
+        seen.add(source)
+        deduped.append(source)
+    return deduped, errors
+
+
+def _source_ref(line) -> dict:
+    payload = _line_payload(line)
+    payload["raw"] = line.raw
+    return payload
+
+
+def _operation_rows(operation, verb: str) -> list:
+    return [
+        source_line for source_line in operation.lines
+        if source_line.tokens and source_line.verb == verb
+    ]
+
+
+def _operation_symbol(operation, semlint) -> dict:
+    calls = semlint.collect_operation_calls(operation)
+    inputs = []
+    outputs = []
+    effects = []
+    capabilities = []
+    authorities = []
+
+    for source_line in operation.lines:
+        if not source_line.tokens:
+            continue
+        args = source_line.args
+        if source_line.verb == "input" and len(args) >= 3 and args[0] == operation.name:
+            inputs.append({
+                "name": args[1],
+                "type": args[2],
+                "location": _line_payload(source_line),
+            })
+        elif source_line.verb == "output" and len(args) >= 2 and args[0] == operation.name:
+            outputs.append({
+                "type": args[1],
+                "values": args[1:],
+                "location": _line_payload(source_line),
+            })
+        elif source_line.verb == "effect" and len(args) >= 3 and args[0] == operation.name:
+            effects.append({
+                "access": args[1],
+                "path": args[2],
+                "location": _line_payload(source_line),
+            })
+        elif source_line.verb == "useCapability" and len(args) >= 2 and args[0] == operation.name:
+            capabilities.append({
+                "name": args[1],
+                "location": _line_payload(source_line),
+            })
+        elif source_line.verb == "authority" and len(args) >= 3 and args[0] == operation.name:
+            authorities.append({
+                "path": args[1],
+                "access": args[2],
+                "location": _line_payload(source_line),
+            })
+
+    call_payloads = []
+    for call in sorted(calls.values(), key=lambda item: item.line.number):
+        call_payloads.append({
+            "name": call.name,
+            "target": call.target,
+            "location": _line_payload(call.line),
+            "args": [
+                {
+                    "name": arg_line.args[1],
+                    "value": arg_line.args[2],
+                    "location": _line_payload(arg_line),
+                }
+                for arg_line in call.arg_lines
+                if len(arg_line.args) >= 3
+            ],
+            "disposition": {
+                "run": bool(call.run_lines),
+                "start": bool(call.start_lines),
+                "await": bool(call.await_lines),
+                "bind": [line.args[0] for line in call.bind_lines if line.args],
+                "bindOk": [line.args[0] for line in call.bind_ok_lines if line.args],
+                "bindError": [line.args[0] for line in call.bind_error_lines if line.args],
+                "ignoreOk": bool(call.ignore_ok_lines),
+                "ignoreValue": bool(call.ignore_value_lines),
+                "branchIfError": [
+                    line.args[1] for line in call.branch_error_lines if len(line.args) >= 2
+                ],
+            },
+        })
+
+    return {
+        "name": operation.name,
+        "location": _line_payload(operation.line),
+        "inputs": inputs,
+        "outputs": outputs,
+        "effects": effects,
+        "capabilities": capabilities,
+        "authorities": authorities,
+        "calls": call_payloads,
+    }
+
+
+def _symbol_payload_for_file(path: Path, semlint) -> tuple[dict, list[dict]]:
+    facts = semlint.parse_file(path)
+    operations = [
+        _operation_symbol(operation, semlint)
+        for operation in sorted(facts.operations.values(), key=lambda item: item.line.number)
+    ]
+    routes = [
+        {
+            "server": route.server,
+            "method": route.method,
+            "path": route.path,
+            "handler": route.handler,
+            "location": _line_payload(route.line),
+        }
+        for route in facts.routes
+    ]
+    unresolved = []
+    operation_names = set(facts.operations)
+    for operation in facts.operations.values():
+        calls = semlint.collect_operation_calls(operation)
+        for source_line in operation.lines:
+            if not source_line.tokens or not source_line.args:
+                continue
+            verb = source_line.verb
+            maybe_call = ""
+            if verb in {"arg", "run", "start", "await", "ignoreOk", "ignoreValue",
+                        "branchIfError", "startInGroup", "timeout", "cancelOn"}:
+                maybe_call = source_line.args[0]
+            elif verb in {"bind", "bindOk", "bindError"} and len(source_line.args) >= 3:
+                maybe_call = source_line.args[2]
+            if maybe_call and maybe_call not in calls:
+                unresolved.append({
+                    "kind": "callAttachment",
+                    "operation": operation.name,
+                    "name": maybe_call,
+                    "location": _line_payload(source_line),
+                })
+        for call in calls.values():
+            if "." not in call.target and call.target not in operation_names:
+                unresolved.append({
+                    "kind": "localCallTarget",
+                    "operation": operation.name,
+                    "name": call.target,
+                    "location": _line_payload(call.line),
+                })
+    file_payload = {
+        "path": str(path.resolve()),
+        "module": _row_value(facts, "module"),
+        "imports": [
+            {
+                "module": item.module_name,
+                "alias": item.alias or "",
+                "syntax": item.syntax,
+                "location": _line_payload(item.line),
+            }
+            for item in facts.module_imports
+        ],
+        "operations": operations,
+        "routes": routes,
+    }
+    return file_payload, unresolved
+
+
+def _symbol_graph_payload(path: Path) -> dict:
+    semlint = _load_semlint_module()
+    source_files, errors = _symbol_source_files(path)
+    files = []
+    unresolved = []
+    for source in source_files:
+        if not source.exists() or source.suffix.lower() not in {".sem", ".sscript"}:
+            continue
+        try:
+            file_payload, file_unresolved = _symbol_payload_for_file(source, semlint)
+            files.append(file_payload)
+            unresolved.extend(file_unresolved)
+        except OSError as exc:
+            errors.append(str(exc))
+    return {
+        "schemaVersion": "sem.symbols.v0",
+        "tool": {"name": "sem", "version": VERSION},
+        "sourceFiles": [str(source.resolve()) for source in source_files],
+        "files": files,
+        "summary": {
+            "fileCount": len(files),
+            "operationCount": sum(len(file["operations"]) for file in files),
+            "callCount": sum(
+                len(operation["calls"])
+                for file in files
+                for operation in file["operations"]
+            ),
+            "routeCount": sum(len(file["routes"]) for file in files),
+            "unresolvedReferenceCount": len(unresolved),
+        },
+        "unresolvedReferences": unresolved,
+        "errors": errors,
+    }
 
 
 def _parse_trace_events(stderr_text: str) -> tuple[list[dict], str]:
@@ -651,10 +1233,72 @@ def command_check(args: argparse.Namespace) -> int:
     return _run_compiler(source, ["--parse-only", "--lint", *_strip_separator(list(args.compiler_args))])
 
 
+def command_emit_ir(args: argparse.Namespace) -> int:
+    build_tape = _find_build_tape(Path(args.path))
+    source = build_tape if build_tape is not None else Path(args.path)
+    return _run_compiler(source, ["--emit-ir", *_strip_separator(list(args.compiler_args))])
+
+
+def command_clean(args: argparse.Namespace) -> int:
+    if args.all_ignored:
+        mode = "-Xdf" if args.force else "-Xdn"
+        pathspecs = list(args.paths) or ["."]
+        command = ["git", "clean", mode, "--", *pathspecs]
+        return subprocess.call(command)
+    try:
+        repo_root, targets = _collect_clean_targets(list(args.paths))
+        if not targets:
+            print("sem clean: no ignored SemanticScript build artifacts found")
+            return 0
+        for target in targets:
+            prefix = "Removing" if args.force else "Would remove"
+            print(f"{prefix} {_format_clean_target(target, repo_root)}")
+        if not args.force:
+            print("sem clean: dry run; pass --force to remove listed artifacts")
+            return 0
+        for target in sorted(targets, key=lambda item: len(item.parts), reverse=True):
+            _remove_clean_target(target, repo_root)
+        return 0
+    except (OSError, ValueError) as exc:
+        print(f"sem clean: {exc}", file=sys.stderr)
+        return 2
+
+
 def command_inspect_ir(args: argparse.Namespace) -> int:
     build_tape = _find_build_tape(Path(args.path))
     source = build_tape if build_tape is not None else Path(args.path)
     return _run_compiler(source, ["--inspect-ir", *_strip_separator(list(args.compiler_args))])
+
+
+def command_lint(args: argparse.Namespace) -> int:
+    if args.engine != "semlint":
+        print(f"sem lint: unsupported engine {args.engine}", file=sys.stderr)
+        return 2
+    build_tape = _find_build_tape(Path(args.path))
+    source = build_tape if build_tape is not None else Path(args.path)
+    semlint_path = ROOT / "linter" / "semlint.py"
+    command = [
+        sys.executable,
+        str(semlint_path),
+        str(source),
+        *_strip_separator(list(args.linter_args)),
+    ]
+    return subprocess.call(command)
+
+
+def command_fmt(args: argparse.Namespace) -> int:
+    semfmt_path = ROOT / "formatter" / "semfmt.py"
+    formatter_args = _strip_separator(list(args.formatter_args))
+    if args.check and "--check" not in formatter_args:
+        formatter_args.insert(0, "--check")
+    if args.diff and "--diff" not in formatter_args:
+        formatter_args.insert(0, "--diff")
+    if args.paths:
+        formatter_args.extend(args.paths)
+    elif not formatter_args:
+        formatter_args.append(".")
+    command = [sys.executable, str(semfmt_path), *formatter_args]
+    return subprocess.call(command)
 
 
 def command_compare_profiles(args: argparse.Namespace) -> int:
@@ -675,6 +1319,47 @@ def command_bench(args: argparse.Namespace) -> int:
     for name in args.benchmark:
         command.extend(["--benchmark", name])
     return subprocess.call(command)
+
+
+def command_doctor(args: argparse.Namespace) -> int:
+    payload = _doctor_payload()
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        for check in payload["checks"]:
+            status = "ok" if check["ok"] else "missing"
+            print(f"{status:7} {check['name']}: {check['detail']}")
+            if not check["ok"] and check["fix"]:
+                print(f"        fix: {check['fix']}")
+    return 0 if payload["ok"] else 1
+
+
+def command_context(args: argparse.Namespace) -> int:
+    payload = _build_context_payload(Path(args.path))
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    project = payload["project"]
+    print(f"project root: {project.get('projectRoot') or '(single file)'}")
+    print(f"build tape: {project.get('buildTape') or '(none)'}")
+    print(f"source files: {len(payload['sourceFiles'])}")
+    print("use --json for machine-readable context")
+    return 0
+
+
+def command_symbols(args: argparse.Namespace) -> int:
+    payload = _symbol_graph_payload(Path(args.path))
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if not payload["errors"] else 1
+    summary = payload["summary"]
+    print(f"files: {summary['fileCount']}")
+    print(f"operations: {summary['operationCount']}")
+    print(f"calls: {summary['callCount']}")
+    print(f"routes: {summary['routeCount']}")
+    print(f"unresolved references: {summary['unresolvedReferenceCount']}")
+    print("use --json for machine-readable symbol graph")
+    return 0 if not payload["errors"] else 1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -718,6 +1403,26 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("compiler_args", nargs=argparse.REMAINDER)
     check.set_defaults(func=command_check)
 
+    emit_ir = subparsers.add_parser(
+        "emit-ir",
+        help="discover build.sem or use a source file and emit LLVM IR",
+    )
+    emit_ir.add_argument("path", nargs="?", default=".")
+    emit_ir.add_argument("compiler_args", nargs=argparse.REMAINDER)
+    emit_ir.set_defaults(func=command_emit_ir)
+
+    clean = subparsers.add_parser(
+        "clean",
+        help="preview or remove ignored SemanticScript build artifacts",
+    )
+    clean.add_argument("--force", action="store_true",
+                       help="delete artifacts instead of printing a dry run")
+    clean.add_argument("--all-ignored", action="store_true",
+                       help="target all ignored files under the provided paths")
+    clean.add_argument("paths", nargs="*",
+                       help="optional git pathspecs; defaults to known generated artifact patterns")
+    clean.set_defaults(func=command_clean)
+
     inspect_ir = subparsers.add_parser(
         "inspect-ir",
         help="emit agent-readable JSON mapping SemanticScript source to LLVM IR",
@@ -734,6 +1439,28 @@ def build_parser() -> argparse.ArgumentParser:
     compare_profiles.add_argument("candidate")
     compare_profiles.set_defaults(func=command_compare_profiles)
 
+    lint = subparsers.add_parser(
+        "lint",
+        help="run the SemanticScript linter for a project or source file",
+    )
+    lint.add_argument("--engine", default="semlint", choices=("semlint",),
+                      help="linter engine to use")
+    lint.add_argument("path", nargs="?", default=".")
+    lint.add_argument("linter_args", nargs=argparse.REMAINDER)
+    lint.set_defaults(func=command_lint)
+
+    fmt = subparsers.add_parser(
+        "fmt",
+        help="format SemanticScript .sem and .sscript files",
+    )
+    fmt.add_argument("--check", action="store_true",
+                     help="exit non-zero when formatting drift is found")
+    fmt.add_argument("--diff", action="store_true",
+                     help="print unified diffs instead of writing files")
+    fmt.add_argument("paths", nargs="*")
+    fmt.add_argument("formatter_args", nargs=argparse.REMAINDER)
+    fmt.set_defaults(func=command_fmt)
+
     bench = subparsers.add_parser(
         "bench",
         help="run SemanticScript LLVM benchmarks",
@@ -747,6 +1474,32 @@ def build_parser() -> argparse.ArgumentParser:
     bench.add_argument("--benchmark", action="append", default=[],
                        help="benchmark name to run; may be repeated")
     bench.set_defaults(func=command_bench)
+
+    doctor = subparsers.add_parser(
+        "doctor",
+        help="check local SemanticScript toolchain prerequisites",
+    )
+    doctor.add_argument("--json", action="store_true",
+                        help="emit machine-readable prerequisite checks")
+    doctor.set_defaults(func=command_doctor)
+
+    context = subparsers.add_parser(
+        "context",
+        help="emit project context for agents and tooling",
+    )
+    context.add_argument("--json", action="store_true",
+                         help="emit machine-readable project context")
+    context.add_argument("path", nargs="?", default=".")
+    context.set_defaults(func=command_context)
+
+    symbols = subparsers.add_parser(
+        "symbols",
+        help="emit a source symbol graph for agents and tooling",
+    )
+    symbols.add_argument("--json", action="store_true",
+                         help="emit machine-readable symbol graph")
+    symbols.add_argument("path", nargs="?", default=".")
+    symbols.set_defaults(func=command_symbols)
 
     return parser
 

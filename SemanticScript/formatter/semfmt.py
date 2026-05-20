@@ -306,6 +306,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="semfmt",
         description="Format SemanticScript .sem and .sscript source files.",
+        epilog=(
+            "examples:\n"
+            "  semfmt app/todo/main.sscript\n"
+            "  semfmt --check SemanticScript/tests/tiny.sem\n"
+            "  semfmt --diff \"app/**/*.sem\"\n"
+            "  semfmt --stdin-file-name scratch.sem < scratch.sem"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("paths", nargs="*", help="Files, directories, or glob patterns to format.")
     parser.add_argument("--version", action="version", version=f"semfmt {__version__}")

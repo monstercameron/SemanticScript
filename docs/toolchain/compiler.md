@@ -23,7 +23,25 @@ python compiler/semsc.py sem/fizzbuzz.sscript --emit-optimized-ir fizzbuzz.opt.l
 python compiler/semsc.py sem/fizzbuzz.sscript --emit-exe
 python tools/sem.py build ../app/todo --parse-only --quiet
 python tools/sem.py check ../app/todo --quiet
+python tools/sem.py emit-ir ../app/todo --quiet
+python tools/sem.py clean
+python tools/sem.py lint ../app/todo -- --summary
+python tools/sem.py fmt --check ../app/todo
+python tools/sem.py doctor
+python tools/sem.py context --json ../app/todo
+python tools/sem.py symbols --json ../app/todo
 ```
+
+The `sem` driver also exposes `run`, `inspect-ir`, `compare-profiles`, and
+`bench`. `context --json` reports project roots, entrypoints, tool versions,
+runtime feature flags, syntax support counts, and known deferred feature counts.
+`symbols --json` reports source files, modules, imports, operations, calls,
+inputs, outputs, effects, routes, source locations, and unresolved references.
+`clean` previews ignored generated artifacts by default and only deletes them
+with `--force`. `lint` currently supports the canonical `--engine semlint`
+backend; `fmt` delegates to `SemanticScript/formatter/semfmt.py`; `doctor`
+checks Python, llvmlite, clang, Node.js, and native HTTP runtime build
+prerequisites.
 
 CLI flags:
 
@@ -88,6 +106,10 @@ The source-level strict row is:
 ```semanticscript
 languageMode strictExecutable
 ```
+
+Strictness is source-stream scoped, not package-version scoped. Imported modules
+should declare their own `languageMode` when they need a stable strict or refined
+parse contract; `languageVersion PROJECT "1.0"` does not imply strict mode.
 
 `runChecked`, `bindOwned`, `bindOkOwned`, and `requireNonNull` remain research
 syntax only. Do not document them as current syntax until parser/compiler tests
@@ -291,7 +313,23 @@ normalized application/main-window descriptor produced from `standard.gui`
 metadata. The GUI row vocabulary and most validation belong in `standard.gui`
 and lint/tooling, not in a large compiler-owned grammar. The form
 `entry windowsGui OPERATION` is rejected; `targetRuntime PROJECT windowsGui`
-build tapes should not declare `entry console`.
+build tapes should use `entry console main` and run the GUI through
+`gui.applicationRun`.
+
+### Windows GUI Smoke Test
+
+Run the committed GUI smoke app from a Windows shell with LLVM/clang available:
+
+```powershell
+python SemanticScript\tools\sem.py check app\hello-gui --quiet
+python SemanticScript\tools\sem.py build app\hello-gui --quiet
+app\hello-gui\build\hello_gui.exe
+```
+
+Expected behavior: a top-level window titled `Hello GUI` appears. Closing the
+window exits the process with status `0`. The source should keep using ordinary
+`operation` / `call` / `arg` / `run` rows with `importModule gui standard.gui`;
+do not add `entry windowsGui`.
 
 The stub mode supports stdlib files and refined syntax showcases that need
 parse/codegen inspection without a runtime host.

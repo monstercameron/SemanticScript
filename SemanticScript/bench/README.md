@@ -19,3 +19,14 @@ backend work, but they should not be treated as language conformance tests.
 
 Keep benchmark pairs small and focused. When changing codegen or optimization,
 run the benchmark runner only after correctness tests pass.
+
+## Baseline Storage
+
+Local benchmark captures belong outside normal source history unless a change is
+intentionally adding a reviewed baseline. Use ignored scratch paths such as
+`SemanticScript/bench/baselines.local/` or `.semcache/bench/` for investigation
+runs.
+
+Committed baselines, if added later, should live under
+`SemanticScript/bench/baselines/` with the benchmark name, compiler/toolchain
+versions, host platform, run count, and rationale in the same review.

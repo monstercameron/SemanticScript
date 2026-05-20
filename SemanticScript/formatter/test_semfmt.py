@@ -120,6 +120,35 @@ class TestFormatSource(unittest.TestCase):
         island = "\n".join(formatted.splitlines()[2:6])
         self.assertEqual(json.loads(island)["message"], "keep  spaces")
 
+    def test_formats_webserver_app_rows(self) -> None:
+        source = (
+            "target   webServer\n"
+            "webServer   todoWebServer\n"
+            "route   todoWebServer   GET   \"/todos/:id\"   showTodoHandler\n"
+            "operation   showTodoHandler\n"
+            "input   showTodoHandler   request   HttpRequest\n"
+            "input showTodoHandler response HttpResponse\n"
+            "effect   showTodoHandler   read   http.request.path\n"
+            "effect showTodoHandler write http.response\n"
+            "call   pathParamCall   http.requestPathParam\n"
+            'arg   pathParamCall   name   "id"\n'
+            "call   responseCall   http.responseText\n"
+        )
+        expected = (
+            "target webServer\n"
+            "webServer todoWebServer\n"
+            'route todoWebServer GET "/todos/:id" showTodoHandler\n'
+            "operation showTodoHandler\n"
+            "input showTodoHandler request HttpRequest\n"
+            "input showTodoHandler response HttpResponse\n"
+            "effect showTodoHandler read http.request.path\n"
+            "effect showTodoHandler write http.response\n"
+            "call pathParamCall http.requestPathParam\n"
+            'arg pathParamCall name "id"\n'
+            "call responseCall http.responseText\n"
+        )
+        self.assertEqual(semfmt.format_source(source), expected)
+
 
 class TestCollectPaths(unittest.TestCase):
     def test_collects_supported_files_from_directory_and_skips_third_party(self) -> None:

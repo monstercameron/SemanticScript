@@ -46,6 +46,9 @@ jobs:
       - name: Run formatter unit tests
         run: python -m unittest SemanticScript/formatter/test_semfmt.py -v
 
+      - name: Check formatter output
+        run: python SemanticScript/formatter/semfmt.py --check SemanticScript/tests/tiny.sem
+
       - name: Run linter unit tests
         run: python -m unittest SemanticScript/linter/test_semlint.py -v
 
