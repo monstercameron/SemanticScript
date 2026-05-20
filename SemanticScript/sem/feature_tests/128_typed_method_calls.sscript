@@ -1,8 +1,8 @@
 # expect.stdout: ok\n
 # expect.exit: 0
-# Dotted typed-method call targets (TaskList.append, TaskMap.get, json.decode.X,
-# json.encode.X) compile cleanly but are not runtime-complete. semsc.py routes
-# non-primitive generated codecs and typed collection calls through the
+# Dotted typed-method call targets (TaskList.append, TaskMap.get,
+# json.parse.X, json.stringify.X) compile cleanly but are not runtime-complete.
+# semsc.py routes non-primitive generated codecs and typed collection calls through the
 # external-module fallback in _emit_run; bootstrap_general.exe lowers them
 # through its runUnhandled dummy-SSA path. Both produce well-typed IR with
 # zero-shaped stub results. semlint flags this as an explicit runtime gap.
@@ -19,7 +19,7 @@ output main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Smoke-test that dotted typed-method calls (TaskList.append, TaskMap.get, json.decode.X, json.encode.X) compile to valid IR via the external-module fallback, not that they have real runtime behavior."
+purpose main "Smoke-test that dotted typed-method calls (TaskList.append, TaskMap.get, json.parse.X, json.stringify.X) compile to valid IR via the external-module fallback, not that they have real runtime behavior."
 invariant main "Output is 'ok\\n'."
 label startMain
 
@@ -49,12 +49,12 @@ run mapGetCall
 bindOk taskValue I64 mapGetCall
 
 const fakeJson I64 0
-call jsonDecodeCall json.decode.Task
+call jsonDecodeCall json.parse.Task
 arg jsonDecodeCall bytes fakeJson
 run jsonDecodeCall
 bindOk decodedTask I64 jsonDecodeCall
 
-call jsonEncodeCall json.encode.Task
+call jsonEncodeCall json.stringify.Task
 arg jsonEncodeCall value decodedTask
 run jsonEncodeCall
 bindOk encodedBytes I64 jsonEncodeCall

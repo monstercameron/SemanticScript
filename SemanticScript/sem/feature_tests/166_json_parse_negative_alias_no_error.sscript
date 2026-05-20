@@ -1,0 +1,68 @@
+# expect.stdout: -1\n
+# expect.exit: 0
+languageMode permissiveExecutable
+project JsonParseNegativeAliasNoError
+target console
+runtime AgentRuntime 0.1
+module jsonParseNegativeAliasNoError
+
+importModule standard.json as json
+dependency standard.json version 0.1 source standard
+
+entry console main
+
+error MainError
+errorCase MainError DecodeFailed CSignedInt32
+errorCase MainError ConsoleWriteFailed CSignedInt32
+
+capability stdoutCapability console.stdout write
+purpose stdoutCapability "Authority to print the parsed JSON value."
+
+storage module immutable successExit ExitCode 0
+storage module immutable decodeFailedCode CSignedInt32 1
+storage module immutable consoleFailedCode CSignedInt32 2
+
+operation main
+input main console Console
+output main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+async main no
+useCapability main stdoutCapability
+purpose main "Parse a negative JSON integer through the high-level json.parse alias without treating the negative value as an error."
+invariant main "A lowering that leaves branchIfError on the parsed i64 result would branch on -1 and fail before printing."
+
+label startMain
+
+const negativeValue I64 -1
+call stringifyNegativeCall json.stringify.I64
+arg stringifyNegativeCall value negativeValue
+run stringifyNegativeCall
+bindOk negativeJson JsonText stringifyNegativeCall
+bindError stringifyNegativeError JsonEncodeError stringifyNegativeCall
+branchIfError stringifyNegativeCall decodeFailed
+
+call parseNegativeCall json.parse.I64
+arg parseNegativeCall jsonText negativeJson
+run parseNegativeCall
+bindOk parsedNegative I64 parseNegativeCall
+bindError parseNegativeError JsonDecodeError parseNegativeCall
+branchIfError parseNegativeCall decodeFailed
+
+call writeParsedCall console.writeIntegerLine
+arg writeParsedCall console console
+arg writeParsedCall value parsedNegative
+run writeParsedCall
+ignoreOk writeParsedCall Void
+bindError writeParsedError ConsoleWriteError writeParsedCall
+branchIfError writeParsedCall consoleWriteFailed
+
+returnOk successExit
+
+label decodeFailed
+makeError decodeFailure MainError.DecodeFailed decodeFailedCode
+returnError decodeFailure
+
+label consoleWriteFailed
+makeError consoleFailure MainError.ConsoleWriteFailed consoleFailedCode
+returnError consoleFailure

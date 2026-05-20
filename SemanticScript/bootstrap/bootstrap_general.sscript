@@ -7991,6 +7991,8 @@ const targetJsonStringifyBool CNullTerminatedByteString "json.stringify.Bool"
 const targetJsonStringifyBoolLength CByteCount 19
 const targetJsonParseBool CNullTerminatedByteString "json.parse.Bool"
 const targetJsonParseBoolLength CByteCount 15
+const targetJsonStringifyString CNullTerminatedByteString "json.stringify.String"
+const targetJsonStringifyStringLength CByteCount 21
 const targetJsonCreateDocument CNullTerminatedByteString "json.createDocument"
 const targetJsonCreateDocumentLength CByteCount 19
 const targetJsonCreateEmptyDocument CNullTerminatedByteString "json.createEmptyDocument"
@@ -8075,6 +8077,16 @@ arg probeIsJsonParseBoolCall keywordLength targetJsonParseBoolLength
 run probeIsJsonParseBoolCall
 bindOk probeIsJsonParseBool Bool probeIsJsonParseBoolCall
 branchIf probeIsJsonParseBool emitJsonParseBoolRun
+branch probeJsonStringifyString
+
+label probeJsonStringifyString
+call probeIsJsonStringifyStringCall lineStartsWithKeyword
+arg probeIsJsonStringifyStringCall linePointer runTargetPointer
+arg probeIsJsonStringifyStringCall keyword targetJsonStringifyString
+arg probeIsJsonStringifyStringCall keywordLength targetJsonStringifyStringLength
+run probeIsJsonStringifyStringCall
+bindOk probeIsJsonStringifyString Bool probeIsJsonStringifyStringCall
+branchIf probeIsJsonStringifyString emitJsonStringifyStringRun
 branch probeJsonCreateDocument
 
 label probeJsonCreateDocument
@@ -10465,6 +10477,48 @@ arg jpI64ArgPtrCall offset pendingCallArg1ValueStartOffset
 run jpI64ArgPtrCall
 bind jpI64ArgPointer COpaqueMemoryAddress jpI64ArgPtrCall
 
+call jpI64ArgSlotCall findStringConstSlotByName
+arg jpI64ArgSlotCall bufferBase bufferBase
+arg jpI64ArgSlotCall bufferEndOffset bufferEndOffset
+arg jpI64ArgSlotCall targetNamePointer jpI64ArgPointer
+arg jpI64ArgSlotCall targetNameLength pendingCallArg1ValueLength
+run jpI64ArgSlotCall
+bindOk jpI64ArgStringSlot CSignedInt64 jpI64ArgSlotCall
+
+call jpI64ArgSizeCall findStringConstByteLengthByName
+arg jpI64ArgSizeCall bufferBase bufferBase
+arg jpI64ArgSizeCall bufferEndOffset bufferEndOffset
+arg jpI64ArgSizeCall targetNamePointer jpI64ArgPointer
+arg jpI64ArgSizeCall targetNameLength pendingCallArg1ValueLength
+run jpI64ArgSizeCall
+bindOk jpI64ArgStringSize CSignedInt64 jpI64ArgSizeCall
+
+call jpI64ArgIsStringConstCall math.greaterThanOrEqualI64
+arg jpI64ArgIsStringConstCall left jpI64ArgStringSlot
+arg jpI64ArgIsStringConstCall right zeroVerbStep
+run jpI64ArgIsStringConstCall
+bind jpI64ArgIsStringConst Bool jpI64ArgIsStringConstCall
+branchIf jpI64ArgIsStringConst emitJsonParseI64StringConst
+branch emitJsonParseI64BindOrVar
+
+label emitJsonParseI64StringConst
+const jsonParseI64ConstFmtA CNullTerminatedByteString "  %%%.*s_res = call i64 @atoll(i8* getelementptr inbounds (["
+call emitJsonParseI64ConstCallA c.printf
+arg emitJsonParseI64ConstCallA format jsonParseI64ConstFmtA
+arg emitJsonParseI64ConstCallA n pendingCallNameLength
+arg emitJsonParseI64ConstCallA p jpI64CallNamePointer
+run emitJsonParseI64ConstCallA
+const jsonParseI64ConstFmtB CNullTerminatedByteString "%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0))\n"
+call emitJsonParseI64ConstCallB c.printf
+arg emitJsonParseI64ConstCallB format jsonParseI64ConstFmtB
+arg emitJsonParseI64ConstCallB arraySize1 jpI64ArgStringSize
+arg emitJsonParseI64ConstCallB arraySize2 jpI64ArgStringSize
+arg emitJsonParseI64ConstCallB slotIdx jpI64ArgStringSlot
+run emitJsonParseI64ConstCallB
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitJsonParseI64BindOrVar
 const jsonParseI64Fmt CNullTerminatedByteString "  %%%.*s_res = call i64 @atoll(i8* %%%.*s)\n"
 call emitJsonParseI64Call c.printf
 arg emitJsonParseI64Call format jsonParseI64Fmt
@@ -10526,6 +10580,82 @@ run emitJsonStringifyBoolFalseCall
 set blockNeedsTerminator oneFlagValue
 branch emitBindRenameForCall
 
+label emitJsonStringifyStringRun
+call jsStringCallNamePtrCall pointer.offset
+arg jsStringCallNamePtrCall base bufferBase
+arg jsStringCallNamePtrCall offset pendingCallNameStartOffset
+run jsStringCallNamePtrCall
+bind jsStringCallNamePointer COpaqueMemoryAddress jsStringCallNamePtrCall
+
+call jsStringArgPtrCall pointer.offset
+arg jsStringArgPtrCall base bufferBase
+arg jsStringArgPtrCall offset pendingCallArg1ValueStartOffset
+run jsStringArgPtrCall
+bind jsStringArgPointer COpaqueMemoryAddress jsStringArgPtrCall
+
+call jsStringArgSlotCall findStringConstSlotByName
+arg jsStringArgSlotCall bufferBase bufferBase
+arg jsStringArgSlotCall bufferEndOffset bufferEndOffset
+arg jsStringArgSlotCall targetNamePointer jsStringArgPointer
+arg jsStringArgSlotCall targetNameLength pendingCallArg1ValueLength
+run jsStringArgSlotCall
+bindOk jsStringArgSlot CSignedInt64 jsStringArgSlotCall
+
+call jsStringArgSizeCall findStringConstByteLengthByName
+arg jsStringArgSizeCall bufferBase bufferBase
+arg jsStringArgSizeCall bufferEndOffset bufferEndOffset
+arg jsStringArgSizeCall targetNamePointer jsStringArgPointer
+arg jsStringArgSizeCall targetNameLength pendingCallArg1ValueLength
+run jsStringArgSizeCall
+bindOk jsStringArgSize CSignedInt64 jsStringArgSizeCall
+
+call jsStringArgIsStringConstCall math.greaterThanOrEqualI64
+arg jsStringArgIsStringConstCall left jsStringArgSlot
+arg jsStringArgIsStringConstCall right zeroVerbStep
+run jsStringArgIsStringConstCall
+bind jsStringArgIsStringConst Bool jsStringArgIsStringConstCall
+branchIf jsStringArgIsStringConst emitJsonStringifyStringConst
+branch emitJsonStringifyStringBindOrVar
+
+label emitJsonStringifyStringConst
+const jsonStringifyStringConstFmt CNullTerminatedByteString "  %%%.*s_buf = alloca [256 x i8]\n  %%%.*s_res = getelementptr inbounds [256 x i8], [256 x i8]* %%%.*s_buf, i32 0, i32 0\n  %%%.*s_status = call i32 (i8*, i64, i8*, ...) @snprintf(i8* %%%.*s_res, i64 256, i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.fmt_json_string, i32 0, i32 0), i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0))\n"
+call emitJsonStringifyStringConstCall c.printf
+arg emitJsonStringifyStringConstCall format jsonStringifyStringConstFmt
+arg emitJsonStringifyStringConstCall n1 pendingCallNameLength
+arg emitJsonStringifyStringConstCall p1 jsStringCallNamePointer
+arg emitJsonStringifyStringConstCall n2 pendingCallNameLength
+arg emitJsonStringifyStringConstCall p2 jsStringCallNamePointer
+arg emitJsonStringifyStringConstCall n3 pendingCallNameLength
+arg emitJsonStringifyStringConstCall p3 jsStringCallNamePointer
+arg emitJsonStringifyStringConstCall n4 pendingCallNameLength
+arg emitJsonStringifyStringConstCall p4 jsStringCallNamePointer
+arg emitJsonStringifyStringConstCall n5 pendingCallNameLength
+arg emitJsonStringifyStringConstCall p5 jsStringCallNamePointer
+arg emitJsonStringifyStringConstCall arraySize1 jsStringArgSize
+arg emitJsonStringifyStringConstCall arraySize2 jsStringArgSize
+arg emitJsonStringifyStringConstCall slotIdx jsStringArgSlot
+run emitJsonStringifyStringConstCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitJsonStringifyStringBindOrVar
+const jsonStringifyStringBindFmt CNullTerminatedByteString "  %%%.*s_buf = alloca [256 x i8]\n  %%%.*s_res = getelementptr inbounds [256 x i8], [256 x i8]* %%%.*s_buf, i32 0, i32 0\n  %%%.*s_status = call i32 (i8*, i64, i8*, ...) @snprintf(i8* %%%.*s_res, i64 256, i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.fmt_json_string, i32 0, i32 0), i8* %%%.*s)\n"
+call emitJsonStringifyStringBindCall c.printf
+arg emitJsonStringifyStringBindCall format jsonStringifyStringBindFmt
+arg emitJsonStringifyStringBindCall n1 pendingCallNameLength
+arg emitJsonStringifyStringBindCall p1 jsStringCallNamePointer
+arg emitJsonStringifyStringBindCall n2 pendingCallNameLength
+arg emitJsonStringifyStringBindCall p2 jsStringCallNamePointer
+arg emitJsonStringifyStringBindCall n3 pendingCallNameLength
+arg emitJsonStringifyStringBindCall p3 jsStringCallNamePointer
+arg emitJsonStringifyStringBindCall n4 pendingCallNameLength
+arg emitJsonStringifyStringBindCall p4 jsStringCallNamePointer
+arg emitJsonStringifyStringBindCall n5 pendingCallArg1ValueLength
+arg emitJsonStringifyStringBindCall p5 jsStringArgPointer
+run emitJsonStringifyStringBindCall
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
 label emitJsonParseBoolRun
 call jpBoolCallNamePtrCall pointer.offset
 arg jpBoolCallNamePtrCall base bufferBase
@@ -10539,6 +10669,52 @@ arg jpBoolArgPtrCall offset pendingCallArg1ValueStartOffset
 run jpBoolArgPtrCall
 bind jpBoolArgPointer COpaqueMemoryAddress jpBoolArgPtrCall
 
+call jpBoolArgSlotCall findStringConstSlotByName
+arg jpBoolArgSlotCall bufferBase bufferBase
+arg jpBoolArgSlotCall bufferEndOffset bufferEndOffset
+arg jpBoolArgSlotCall targetNamePointer jpBoolArgPointer
+arg jpBoolArgSlotCall targetNameLength pendingCallArg1ValueLength
+run jpBoolArgSlotCall
+bindOk jpBoolArgStringSlot CSignedInt64 jpBoolArgSlotCall
+
+call jpBoolArgSizeCall findStringConstByteLengthByName
+arg jpBoolArgSizeCall bufferBase bufferBase
+arg jpBoolArgSizeCall bufferEndOffset bufferEndOffset
+arg jpBoolArgSizeCall targetNamePointer jpBoolArgPointer
+arg jpBoolArgSizeCall targetNameLength pendingCallArg1ValueLength
+run jpBoolArgSizeCall
+bindOk jpBoolArgStringSize CSignedInt64 jpBoolArgSizeCall
+
+call jpBoolArgIsStringConstCall math.greaterThanOrEqualI64
+arg jpBoolArgIsStringConstCall left jpBoolArgStringSlot
+arg jpBoolArgIsStringConstCall right zeroVerbStep
+run jpBoolArgIsStringConstCall
+bind jpBoolArgIsStringConst Bool jpBoolArgIsStringConstCall
+branchIf jpBoolArgIsStringConst emitJsonParseBoolStringConst
+branch emitJsonParseBoolBindOrVar
+
+label emitJsonParseBoolStringConst
+const jsonParseBoolConstFmtA CNullTerminatedByteString "  %%%.*s_cmp = call i32 @strcmp(i8* getelementptr inbounds ([%lld x i8], [%lld x i8]* @.s%lld, i32 0, i32 0), i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.json_true, i32 0, i32 0))\n"
+call emitJsonParseBoolConstCallA c.printf
+arg emitJsonParseBoolConstCallA format jsonParseBoolConstFmtA
+arg emitJsonParseBoolConstCallA n pendingCallNameLength
+arg emitJsonParseBoolConstCallA p jpBoolCallNamePointer
+arg emitJsonParseBoolConstCallA arraySize1 jpBoolArgStringSize
+arg emitJsonParseBoolConstCallA arraySize2 jpBoolArgStringSize
+arg emitJsonParseBoolConstCallA slotIdx jpBoolArgStringSlot
+run emitJsonParseBoolConstCallA
+const jsonParseBoolConstFmtB CNullTerminatedByteString "  %%%.*s_res = icmp eq i32 %%%.*s_cmp, 0\n"
+call emitJsonParseBoolConstCallB c.printf
+arg emitJsonParseBoolConstCallB format jsonParseBoolConstFmtB
+arg emitJsonParseBoolConstCallB n1 pendingCallNameLength
+arg emitJsonParseBoolConstCallB p1 jpBoolCallNamePointer
+arg emitJsonParseBoolConstCallB n2 pendingCallNameLength
+arg emitJsonParseBoolConstCallB p2 jpBoolCallNamePointer
+run emitJsonParseBoolConstCallB
+set blockNeedsTerminator oneFlagValue
+branch emitBindRenameForCall
+
+label emitJsonParseBoolBindOrVar
 const jsonParseBoolFmt CNullTerminatedByteString "  %%%.*s_cmp = call i32 @strcmp(i8* %%%.*s, i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.json_true, i32 0, i32 0))\n  %%%.*s_res = icmp eq i32 %%%.*s_cmp, 0\n"
 call emitJsonParseBoolCall c.printf
 arg emitJsonParseBoolCall format jsonParseBoolFmt
@@ -20470,6 +20646,11 @@ const irFormatJsonI64 CNullTerminatedByteString "@.fmt_i64_json = private consta
 call writeIrFormatJsonI64Call c.puts
 arg writeIrFormatJsonI64Call text irFormatJsonI64
 run writeIrFormatJsonI64Call
+
+const irFormatJsonString CNullTerminatedByteString "@.fmt_json_string = private constant [5 x i8] c\"\\22%s\\22\\00\""
+call writeIrFormatJsonStringCall c.puts
+arg writeIrFormatJsonStringCall text irFormatJsonString
+run writeIrFormatJsonStringCall
 
 const irExternAtoll CNullTerminatedByteString "declare i64 @atoll(i8*)"
 call writeIrExternAtollCall c.puts

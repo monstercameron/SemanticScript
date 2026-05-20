@@ -1,40 +1,65 @@
-# expect.stdout: 1\n0\n
+# expect.stdout: parsedTrue\nparsedFalse\n
 # expect.exit: 0
-# expect.xfail: feature_coverage.py runs through bootstrap_general.sscript which does not yet implement json.decode.Bool. Direct semsc.py compilation is correct: strcmp against "true" returns 0 (match), so decoded value is 1; against "false" it's nonzero, so decoded value is 0. `python compiler/semsc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints `1` then `0`.
-project JsonDecodeBoolPrimitive
+languageMode permissiveExecutable
+project JsonParseBoolPrimitive
 target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError DecodeFailed CSignedInt32
+errorCase MainError RoundTripMismatch CSignedInt32
+errorCase MainError ConsoleWriteFailed CSignedInt32
 operation main
 input main console Console
 output main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "json.decode.Bool returns 1 when the JSON token is 'true', 0 otherwise."
-invariant main "Output is `1\\n0\\n`."
+purpose main "json.parse.Bool returns true for true input and false for false."
+invariant main "Output markers depend on parsed bool control flow."
 label startMain
 const trueJsonToken CNullTerminatedByteString "true"
 const falseJsonToken CNullTerminatedByteString "false"
-call decodeTrueCall json.decode.Bool
-arg decodeTrueCall value trueJsonToken
-run decodeTrueCall
-bind decodedTrueValue I64 decodeTrueCall
-call writeTrueDecodedCall console.writeIntegerLine
+call parseTrueCall json.parse.Bool
+arg parseTrueCall jsonText trueJsonToken
+run parseTrueCall
+bindOk decodedTrueValue Bool parseTrueCall
+bindError trueDecodeError JsonDecodeError parseTrueCall
+branchIfError parseTrueCall decodeFailed
+branchIf decodedTrueValue trueOk
+branch roundTripMismatch
+label trueOk
+const trueMarker CNullTerminatedByteString "parsedTrue"
+call writeTrueDecodedCall console.writeLine
 arg writeTrueDecodedCall console console
-arg writeTrueDecodedCall value decodedTrueValue
+arg writeTrueDecodedCall text trueMarker
 run writeTrueDecodedCall
 ignoreOk writeTrueDecodedCall Void
-call decodeFalseCall json.decode.Bool
-arg decodeFalseCall value falseJsonToken
-run decodeFalseCall
-bind decodedFalseValue I64 decodeFalseCall
-call writeFalseDecodedCall console.writeIntegerLine
+bindError writeTrueError ConsoleWriteError writeTrueDecodedCall
+branchIfError writeTrueDecodedCall consoleWriteFailed
+call parseFalseCall json.parse.Bool
+arg parseFalseCall jsonText falseJsonToken
+run parseFalseCall
+bindOk decodedFalseValue Bool parseFalseCall
+bindError falseDecodeError JsonDecodeError parseFalseCall
+branchIfError parseFalseCall decodeFailed
+branchIf decodedFalseValue roundTripMismatch
+const falseMarker CNullTerminatedByteString "parsedFalse"
+call writeFalseDecodedCall console.writeLine
 arg writeFalseDecodedCall console console
-arg writeFalseDecodedCall value decodedFalseValue
+arg writeFalseDecodedCall text falseMarker
 run writeFalseDecodedCall
 ignoreOk writeFalseDecodedCall Void
+bindError writeFalseError ConsoleWriteError writeFalseDecodedCall
+branchIfError writeFalseDecodedCall consoleWriteFailed
 const successfulExitCode ExitCode 0
 returnOk successfulExitCode
+label decodeFailed
+makeError decodeFailure MainError.DecodeFailed trueDecodeError
+returnError decodeFailure
+label roundTripMismatch
+makeError mismatchFailure MainError.RoundTripMismatch trueDecodeError
+returnError mismatchFailure
+label consoleWriteFailed
+makeError writeFailure MainError.ConsoleWriteFailed writeTrueError
+returnError writeFailure

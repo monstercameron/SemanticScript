@@ -59,6 +59,24 @@ def run_semsc_source(source, *args, suffix=".sscript"):
         )
 
 
+def compile_and_run_semsc_source(source, *, timeout=300, suffix=".sscript"):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / f"sample{suffix}"
+        exe_path = Path(tmpdir) / ("sample.exe" if os.name == "nt" else "sample")
+        src_path.write_text(source, encoding="utf-8", newline="\n")
+        compile_proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-exe", str(exe_path),
+             "--build-dir", str(Path(tmpdir) / "build"), "--quiet"],
+            capture_output=True, text=True, timeout=timeout,
+        )
+        if compile_proc.returncode != 0 or not exe_path.exists():
+            return compile_proc, None
+        run_proc = subprocess.run(
+            [str(exe_path)], capture_output=True, text=True, timeout=30)
+        return compile_proc, run_proc
+
+
 def _gui_support_pending_message(message):
     """Return true for the current pre-GUI compiler diagnostics.
 
@@ -1493,6 +1511,130 @@ def test_html_template_parser_records_body_and_rejects_bad_edges():
             raised = True
             msg = str(exc)
         check(f"html parser: rejects {label}",
+              raised and expected in msg,
+              f"raised={raised} msg={msg!r}")
+
+
+def test_json_body_parser_records_text_and_record_metadata():
+    source = "\n".join([
+        "project JsonBodyParser",
+        "record Payload",
+        "field Payload title JsonText",
+        "field Payload count I64",
+        "recordFieldJsonName Payload title \"display_title\"",
+        "recordFieldJsonOmitWhen Payload title empty",
+        "storage module immutable payload JsonText",
+        "jsonBody payload",
+        "  {\"display_title\":\"ok\",\"count\":1}",
+        "operation main",
+        "output main ExitCode",
+        "purpose main \"parser-only JSON island smoke\"",
+        "returnValue 0",
+        "",
+    ])
+    prog = semsc.parse(source)
+    check("jsonBody parser: JsonText literal recorded",
+          len(prog.json_bodies) == 1
+          and prog.json_bodies[0].canonical_text == "{\"display_title\":\"ok\",\"count\":1}",
+          f"json_bodies={[(body.name, body.canonical_text) for body in prog.json_bodies]!r}")
+    payload = prog.records.get("Payload")
+    check("jsonBody parser: recordFieldJsonName recorded",
+          payload is not None
+          and payload.field_json_names.get("title") == "display_title",
+          f"json_names={getattr(payload, 'field_json_names', None)!r}")
+    check("jsonBody parser: recordFieldJsonOmitWhen recorded",
+          payload is not None
+          and payload.field_json_omit_when.get("title") == "empty",
+          f"omit={getattr(payload, 'field_json_omit_when', None)!r}")
+
+    bad_source = "\n".join([
+        "project BadJsonBody",
+        "storage module immutable payload JsonText",
+        "jsonBody payload",
+        "  {\"title\":}",
+        "",
+    ])
+    raised = False
+    msg = ""
+    try:
+        semsc.parse(bad_source)
+    except SyntaxError as exc:
+        raised = True
+        msg = str(exc)
+    check("jsonBody parser: rejects invalid JSON",
+          raised and "invalidJsonBody" in msg,
+          f"raised={raised} msg={msg!r}")
+
+
+def test_json_body_record_literal_type_checks_and_records_constant():
+    source = "\n".join([
+        "project JsonBodyRecordParser",
+        "record Address",
+        "field Address zip I64",
+        "record Payload",
+        "field Payload title JsonText",
+        "field Payload count I64",
+        "field Payload done Bool",
+        "field Payload address Address",
+        "recordFieldJsonName Payload title \"display_title\"",
+        "recordFieldJsonOmitWhen Payload done false",
+        "storage module immutable payload Payload",
+        "jsonBody payload",
+        "  {\"display_title\":\"ok\",\"count\":1,\"address\":{\"zip\":90210}}",
+        "",
+    ])
+    prog = semsc.parse(source)
+    record_const = prog.record_json_constants.get("payload")
+    fields = record_const["fields"] if record_const else {}
+    check("jsonBody record: typed constant recorded",
+          record_const is not None
+          and record_const["recordType"] == "Payload"
+          and fields.get("title") == "ok"
+          and fields.get("count") == 1
+          and fields.get("done") is False
+          and fields.get("address", {}).get("zip") == 90210,
+          f"record_const={record_const!r}")
+
+    bad_cases = [
+        (
+            "unknown key",
+            "{\"display_title\":\"ok\",\"count\":1,\"address\":{\"zip\":1},\"extra\":1}",
+            "jsonBodyUnknownField",
+        ),
+        (
+            "missing required field",
+            "{\"display_title\":\"ok\",\"address\":{\"zip\":1}}",
+            "jsonBodyMissingRequired",
+        ),
+        (
+            "wrong field type",
+            "{\"display_title\":\"ok\",\"count\":\"1\",\"address\":{\"zip\":1}}",
+            "jsonBodyWrongType",
+        ),
+    ]
+    for label, body, expected in bad_cases:
+        bad_source = "\n".join([
+            "project BadJsonBodyRecord",
+            "record Address",
+            "field Address zip I64",
+            "record Payload",
+            "field Payload title JsonText",
+            "field Payload count I64",
+            "field Payload address Address",
+            "recordFieldJsonName Payload title \"display_title\"",
+            "storage module immutable payload Payload",
+            "jsonBody payload",
+            f"  {body}",
+            "",
+        ])
+        raised = False
+        msg = ""
+        try:
+            semsc.parse(bad_source)
+        except SyntaxError as exc:
+            raised = True
+            msg = str(exc)
+        check(f"jsonBody record: rejects {label}",
               raised and expected in msg,
               f"raised={raised} msg={msg!r}")
 
@@ -3885,19 +4027,19 @@ def test_json_codegen_emits_runtime_externs_and_calls():
     mod = cg.compile()
     ir_text = str(mod)
     expected_externs = (
-        "ss_json_builder_create",
-        "ss_json_builder_destroy",
-        "ss_json_builder_object_open",
-        "ss_json_builder_object_close",
-        "ss_json_builder_field_int64",
-        "ss_json_builder_field_string",
-        "ss_json_builder_field_bool",
-        "ss_json_builder_field_null",
-        "ss_json_builder_finish",
-        "ss_json_find_int64",
-        "ss_json_find_bool",
-        "ss_json_find_string",
-        "ss_json_has_field",
+        "ss_json_document_create_empty",
+        "ss_json_document_destroy",
+        "ss_json_document_root",
+        "ss_json_set_object_field_int64",
+        "ss_json_set_object_field_string",
+        "ss_json_set_object_field_bool",
+        "ss_json_set_object_field_null",
+        "ss_json_navigate_object_field",
+        "ss_json_cursor_int64",
+        "ss_json_cursor_bool",
+        "ss_json_cursor_is_null",
+        "ss_json_cursor_string",
+        "ss_json_document_serialize",
     )
     for symbol in expected_externs:
         check(f"json lowering: IR declares @{symbol}",
@@ -3910,7 +4052,7 @@ def test_json_codegen_emits_runtime_externs_and_calls():
 
 def test_json_runtime_smoke_runs_end_to_end():
     """End-to-end smoke for the standard.json AS-side surface. Compiles
-    the primary fixture (object + 4 primitive field types + finder
+    the primary fixture (object + 4 primitive field types + cursor
     round-trips) via --emit-exe, runs it, asserts exit 0 and the
     success marker on stdout. Failure here typically means the linker
     didn't pull in sem_json_runtime.c or one of the dispatchers got
@@ -3968,6 +4110,255 @@ def test_json_adversarial_smoke_runs_end_to_end():
         check("json adversarial: success marker on stdout",
               "jsonAdversarialOk" in run_proc.stdout,
               f"stdout={run_proc.stdout!r}")
+
+
+def test_json_body_record_literal_runs_from_constant():
+    source = "\n".join([
+        "project JsonBodyRecordConstant",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "record Payload",
+        "field Payload title CNullTerminatedByteString",
+        "field Payload count I64",
+        "recordFieldJsonName Payload title \"display_title\"",
+        "storage module immutable payload Payload",
+        "jsonBody payload",
+        "  {\"display_title\":\"ok\",\"count\":7}",
+        "operation main",
+        "output main ExitCode",
+        "effect main write console.stdout",
+        "authority main console.stdout write",
+        "memoryHeap main no",
+        "async main no",
+        "fieldGet countValue I64 payload count",
+        "call writeCount console.writeIntegerLine",
+        "arg writeCount value countValue",
+        "run writeCount",
+        "ignoreValue writeCount CSignedInt32",
+        "returnValue 0",
+        "",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(source)
+    check("jsonBody record e2e: compile-and-link succeeds",
+          compile_proc.returncode == 0,
+          f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+    if run_proc is None:
+        return
+    check("jsonBody record e2e: exe exits 0",
+          run_proc.returncode == 0,
+          f"rc={run_proc.returncode} stderr={run_proc.stderr!r}")
+    check("jsonBody record e2e: fieldGet reads typed literal",
+          run_proc.stdout.strip() == "7",
+          f"stdout={run_proc.stdout!r}")
+
+
+def test_json_record_stringify_parse_round_trip_runs_end_to_end():
+    source = "\n".join([
+        "project JsonRecordCodecRoundTrip",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "record Payload",
+        "field Payload title CNullTerminatedByteString",
+        "field Payload count I64",
+        "field Payload done Bool",
+        "field Payload ratio F64",
+        "recordFieldJsonName Payload title \"display_title\"",
+        "recordFieldJsonOmitWhen Payload done false",
+        "storage module immutable zero ExitCode 0",
+        "storage module immutable title CNullTerminatedByteString \"ok\"",
+        "operation main",
+        "output main ExitCode",
+        "effect main write console.stdout",
+        "authority main console.stdout write",
+        "memoryHeap main yes",
+        "async main no",
+        "new payload Payload",
+        "fieldSet payload title title",
+        "fieldSet payload count 7",
+        "fieldSet payload done 0",
+        "fieldSet payload ratio 2.5",
+        "call stringifyCall json.stringify.Payload",
+        "arg stringifyCall value payload",
+        "run stringifyCall",
+        "bindOk encoded JsonText stringifyCall",
+        "call writeEncoded console.writeLine",
+        "arg writeEncoded text encoded",
+        "run writeEncoded",
+        "ignoreValue writeEncoded CSignedInt32",
+        "call parseCall json.parse.Payload",
+        "arg parseCall jsonText encoded",
+        "run parseCall",
+        "bindOk parsed Payload parseCall",
+        "fieldGet parsedTitle CNullTerminatedByteString parsed title",
+        "call writeTitle console.writeLine",
+        "arg writeTitle text parsedTitle",
+        "run writeTitle",
+        "ignoreValue writeTitle CSignedInt32",
+        "fieldGet parsedCount I64 parsed count",
+        "call writeCount console.writeIntegerLine",
+        "arg writeCount value parsedCount",
+        "run writeCount",
+        "ignoreValue writeCount CSignedInt32",
+        "returnValue zero",
+        "",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(source)
+    check("json record codec e2e: compile-and-link succeeds",
+          compile_proc.returncode == 0,
+          f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+    if run_proc is None:
+        return
+    check("json record codec e2e: exe exits 0",
+          run_proc.returncode == 0,
+          f"rc={run_proc.returncode} stderr={run_proc.stderr!r}")
+    lines = run_proc.stdout.replace("\r\n", "\n").splitlines()
+    encoded = lines[0] if lines else ""
+    check("json record codec e2e: stringify honors JSON names and omit policy",
+          "\"display_title\":\"ok\"" in encoded
+          and "\"count\":7" in encoded
+          and "\"ratio\":2.5" in encoded
+          and "\"done\"" not in encoded,
+          f"stdout={run_proc.stdout!r}")
+    check("json record codec e2e: parse restores fields",
+          len(lines) >= 3 and lines[1] == "ok" and lines[2] == "7",
+          f"stdout={run_proc.stdout!r}")
+
+
+def test_json_record_parse_errors_on_wrong_field_type():
+    source = "\n".join([
+        "project JsonRecordParseWrongType",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "record Payload",
+        "field Payload title CNullTerminatedByteString",
+        "field Payload count I64",
+        "storage module immutable badJson JsonText \"{\\\"title\\\":\\\"ok\\\",\\\"count\\\":\\\"7\\\"}\"",
+        "operation main",
+        "output main ExitCode",
+        "memoryHeap main yes",
+        "async main no",
+        "call parseCall json.parse.Payload",
+        "arg parseCall jsonText badJson",
+        "run parseCall",
+        "bindError parseError JsonDecodeError parseCall",
+        "branchIfError parseCall failed",
+        "returnValue 0",
+        "label failed",
+        "returnValue parseError",
+        "",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(source)
+    check("json record parse wrong-type: compile-and-link succeeds",
+          compile_proc.returncode == 0,
+          f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+    if run_proc is None:
+        return
+    check("json record parse wrong-type: bindError is WrongType",
+          run_proc.returncode == 3,
+          f"rc={run_proc.returncode} stdout={run_proc.stdout!r} stderr={run_proc.stderr!r}")
+
+
+def test_json_record_parse_missing_required_maps_error_domain():
+    source = "\n".join([
+        "project JsonRecordParseMissingRequired",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "record Payload",
+        "field Payload title CNullTerminatedByteString",
+        "field Payload count I64",
+        "storage module immutable badJson JsonText \"{\\\"title\\\":\\\"ok\\\"}\"",
+        "operation main",
+        "output main ExitCode",
+        "memoryHeap main yes",
+        "async main no",
+        "call parseCall json.parse.Payload",
+        "arg parseCall jsonText badJson",
+        "run parseCall",
+        "bindError parseError JsonDecodeError parseCall",
+        "branchIfError parseCall failed",
+        "returnValue 0",
+        "label failed",
+        "returnValue parseError",
+        "",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(source)
+    check("json record parse missing-required: compile-and-link succeeds",
+          compile_proc.returncode == 0,
+          f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+    if run_proc is None:
+        return
+    check("json record parse missing-required: bindError is MissingRequired",
+          run_proc.returncode == 2,
+          f"rc={run_proc.returncode} stdout={run_proc.stdout!r} stderr={run_proc.stderr!r}")
+
+
+def test_json_text_parse_validates_syntax():
+    source = "\n".join([
+        "project JsonTextParseValidation",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "storage module immutable badJson JsonText \"{\\\"x\\\":}\"",
+        "operation main",
+        "output main ExitCode",
+        "memoryHeap main yes",
+        "async main no",
+        "call parseCall json.parse.JsonText",
+        "arg parseCall jsonText badJson",
+        "run parseCall",
+        "bindError parseError JsonDecodeError parseCall",
+        "branchIfError parseCall failed",
+        "returnValue 0",
+        "label failed",
+        "returnValue parseError",
+        "",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(source)
+    check("json text parse validation: compile-and-link succeeds",
+          compile_proc.returncode == 0,
+          f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+    if run_proc is None:
+        return
+    check("json text parse validation: invalid JSON is UnexpectedToken",
+          run_proc.returncode == 1,
+          f"rc={run_proc.returncode} stdout={run_proc.stdout!r} stderr={run_proc.stderr!r}")
+
+
+def test_json_text_stringify_oversize_maps_encode_error_domain():
+    oversized_json_text = "a" * 70000
+    source = "\n".join([
+        "project JsonTextStringifyOversize",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        f"storage module immutable huge JsonText \"{oversized_json_text}\"",
+        "operation main",
+        "output main ExitCode",
+        "memoryHeap main yes",
+        "async main no",
+        "call stringifyCall json.stringify.JsonText",
+        "arg stringifyCall value huge",
+        "run stringifyCall",
+        "bindError encodeError JsonEncodeError stringifyCall",
+        "branchIfError stringifyCall failed",
+        "returnValue 0",
+        "label failed",
+        "returnValue encodeError",
+        "",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(source)
+    check("json text stringify oversize: compile-and-link succeeds",
+          compile_proc.returncode == 0,
+          f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+    if run_proc is None:
+        return
+    check("json text stringify oversize: bindError is OutputBufferTooSmall",
+          run_proc.returncode == 3,
+          f"rc={run_proc.returncode} stdout={run_proc.stdout!r} stderr={run_proc.stderr!r}")
 
 
 def test_backend_diagnostic_maps_symbol_to_source_call():
@@ -4310,6 +4701,8 @@ def main():
     test_compile_explicit_i32_to_i64_conversion_lowers_to_sext()
     test_compile_pointer_load_byte_sign_extends_to_i32()
     test_html_template_parser_records_body_and_rejects_bad_edges()
+    test_json_body_parser_records_text_and_record_metadata()
+    test_json_body_record_literal_type_checks_and_records_constant()
     test_html_template_simple_jit_output()
     test_html_template_edge_output_repeated_adjacent_and_blank_lines()
     test_html_template_raw_style_and_script_do_not_hydrate_braces()
@@ -4362,6 +4755,12 @@ def main():
     test_json_codegen_emits_runtime_externs_and_calls()
     test_json_runtime_smoke_runs_end_to_end()
     test_json_adversarial_smoke_runs_end_to_end()
+    test_json_body_record_literal_runs_from_constant()
+    test_json_record_stringify_parse_round_trip_runs_end_to_end()
+    test_json_record_parse_errors_on_wrong_field_type()
+    test_json_record_parse_missing_required_maps_error_domain()
+    test_json_text_parse_validates_syntax()
+    test_json_text_stringify_oversize_maps_encode_error_domain()
     test_backend_diagnostic_maps_symbol_to_source_call()
     test_runtime_check_resolution_profiles()
     test_runtime_profiles_control_panic_context()
