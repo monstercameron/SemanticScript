@@ -1920,6 +1920,17 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
         project_name = args[0]
         prog.hard_metadata.setdefault(project_name, {}).setdefault(
             verb, []).append(list(args[1:]))
+        # buildConstant additionally registers the named value on
+        # prog.consts so it is visible to operations the same way a
+        # `storage module immutable NAME TYPE VALUE` row would be.
+        # Without this, build.sem-declared constants were silently
+        # discarded and any fallback `storage module immutable`
+        # declaration inside main.sem won by being processed later.
+        if verb == "buildConstant" and len(args) >= 4:
+            const_name = args[1]
+            const_type = args[2]
+            raw_value = _unwrap(args[3])
+            prog.consts[const_name] = (const_type, raw_value)
         return
     if verb == "languageMode":
         # Two accepted forms:
@@ -2490,14 +2501,26 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
         name, typ = args[2], args[3]
         value = _unwrap(args[4]) if len(args) > 4 else 0
         if scope == "module":
-            prog.consts[name] = (typ, value)
+            # `storage module immutable` defers to a value already
+            # registered by an earlier `buildConstant` (or a prior
+            # storage row). Without setdefault, a project's
+            # `buildConstant todoWebPro X CNullTerminatedByteString
+            # "yes"` row in build.sem would be silently clobbered by
+            # a fallback `storage module immutable X
+            # CNullTerminatedByteString "no"` in the imported main.sem
+            # — the build-tape value MUST win.
             if mutability == "mutable":
+                # Mutable storage is always re-declared (rebind to
+                # the latest declaration's value as the initial).
+                prog.consts[name] = (typ, value)
                 prog.mutable_globals[name] = (typ, value)
+            else:
+                prog.consts.setdefault(name, (typ, value))
         elif prog.current_op is not None:
             prog.current_op.consts[name] = (typ, value)
             prog.current_op.lines.append((verb, args, lineno))
         else:
-            prog.consts[name] = (typ, value)
+            prog.consts.setdefault(name, (typ, value))
         return
     if verb == "domainLiteral" and len(args) >= 3:
         # `domainLiteral NAME TYPE VALUE` is structurally a const with a
