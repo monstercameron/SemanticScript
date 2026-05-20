@@ -2,6 +2,28 @@
 
 ## 2026-05-19
 
+- `a346f208dcf5e6c9e0e9bd0ce3952965aae2e22a` - `experiments: add syntax design comparison fixtures`
+  - Adds `experiments/syntax-baseline.sem`, `experiments/syntax-refinement.sem`, and `experiments/syntax-hybrid.sem` so the production syntax, maximal controlled-English proposal, and refined agent-oriented hybrid can be reviewed side by side.
+- `dd336e28fbed10dc401964ade1e63e4df907c51d` - `vscode: refresh strict and JSON syntax support`
+  - Updates VS Code highlighting and hovers for `runChecked`, reserved ownership/non-null rows, and the public `json.parse.*` / `json.stringify.*` target spellings.
+- `93b1319b2ca87b1966ff74bffc576c57cf8994cd` - `docs: define compatibility and release policies`
+  - Adds the 1.0 compatibility contract, install/version policy, package-management and dependency-cache policy, release-manifest/version-matrix guidance, project-layout rules, JSON body/codec status updates, and third-party packaging notes.
+- `4d24afb61c58b53e91f14392790297378f044559` - `tools: expand sem driver workflows`
+  - Extends `sem.py` with `emit-ir`, `clean`, `lint`, `fmt`, `doctor`, `context`, and `symbols`; adds release-version reporting, formatter examples and coverage, a CI formatter check, generated-artifact ignore patterns, and agent workflow docs.
+- `f2f6a1872640ca2154b6eb8c5d35afeec40d44c4` - `tests: cover JSON parse and stringify flows`
+  - Migrates JSON primitive fixtures to `json.stringify.*` / `json.parse.*`, updates bootstrap lowering for string constants and string stringify, refreshes JSON runtime smokes around the document/cursor API, and adds compiler coverage for record-typed `jsonBody`, record stringify/parse, missing-field, wrong-type, syntax-validation, and oversize-error paths.
+- `07c17ab272bde77bea76ce5d511933e9a9f16016` - `lint: validate jsonBody literal islands`
+  - Teaches `semlint` to parse `jsonBody` islands, validate strict JSON syntax, require a matching immutable storage target, type-check record bodies including nested records, JSON field names, and omit policies, and report SS3626 diagnostics for malformed literal bodies.
+- `c2584c904a5d6a3b77a8f0aafdb0c615f552f098` - `compiler: register buildConstant values on prog.consts (the dedicated handler was dead code)`
+  - Fixes build-constant registration so `buildConstant` rows are available through the compiler constant table instead of being parsed by a dead handler path.
+- `4e41d40ee60359d6695765410de78f5f31d62b7c` - `security: fix policy + memory issues in todo-web-pro, add SS3320/3403/3411/3415`
+  - Hardens Todo Web Pro security and memory handling, adds new lint checks for the related bug classes, and updates policy/runtime coverage so the app no longer relies on the unsafe patterns.
+- `bf5fdb0a4b4f2d1983ee8d014863444c7152a32c` - `lint: clean app/todo-web-pro from 187 warnings to 3 advisories`
+  - Refactors Todo Web Pro, stdlib contracts, and compiler support so the app's linter output drops from broad warning noise to three remaining advisories.
+- `a90ed1fe2a1c36c3a2180e72126b26fe8f4adf4b` - `docs: mark strict fallible-call TODOs covered by SS3201`
+  - Marks the strict fallible-call disposition checklist items covered by the SS3201 rule family and records the remaining migration status in `TODO.md`.
+- `6352bd0db4abd64a5860f14ce7ed02d25e77d54e` - `docs: update changelog for bootstrap JSON parse`
+  - Adds changelog coverage for the bootstrap JSON parse follow-up.
 - `207e3e34b2c65fe1c5e44e25a75e6eb1ed9813d3` - `bootstrap: lower JSON document parse round trip`
   - Teaches the bootstrap compiler to lower `json.createDocument` through `ss_json_document_create_from_text`, aligns bootstrap string-constant slot lookup with pass1 for quoted `JsonText` / `JsonPath` aliases, removes the xfail marker from the JSON document parse round-trip feature fixture, marks the matching TODO checkpoints complete, and adds an operations/dataflow JSON CRUD example without moving app-specific behavior into the compiler.
 - `c4716f34f976f5b4f6a1130bf21ffdfef0a708e9` - `tests: document bootstrap JSON and enum feature gaps`
