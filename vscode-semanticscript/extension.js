@@ -79,8 +79,9 @@ const contextVerbs = new Set([
 ]);
 
 const actionVerbs = new Set([
-  'set', 'call', 'arg', 'run', 'start', 'await', 'bind', 'bindOk',
-  'bindError', 'ignoreOk', 'ignoreValue', 'declareFailure', 'makeError',
+  'set', 'call', 'arg', 'run', 'runChecked', 'start', 'await', 'bind', 'bindOk',
+  'bindError', 'bindOwned', 'bindOkOwned', 'ignoreOk', 'ignoreValue',
+  'declareFailure', 'makeError', 'requireNonNull',
   'new', 'fieldGet', 'fieldSet', 'recordBuilder', 'recordSet', 'recordCopy',
   'recordBuild', 'read', 'timeout', 'cancelOn',
   'defer', 'deferLog', 'deferAwaitLog', 'deferWhenExitLog', 'select', 'selectCase',
@@ -196,7 +197,7 @@ const primitiveTargets = new Map([
   ['math.geI64', 'Alias for math.greaterThanOrEqualI64.'],
 ]);
 
-const generatedTargetPattern = /^(?:json\.(?:decode|encode)\.[A-Z][A-Za-z0-9_]*|html\.hydrate\.[A-Z][A-Za-z0-9_]*)$/;
+const generatedTargetPattern = /^(?:json\.(?:parse|stringify)\.[A-Z][A-Za-z0-9_]*|html\.hydrate\.[A-Z][A-Za-z0-9_]*)$/;
 const cRuntimeTargetPattern = /^c\.[A-Za-z_][A-Za-z0-9_]*$/;
 const jsonPrimitiveTargetTypes = new Set([
   'I64', 'CSignedInt64', 'CSignedInt32', 'CUnsignedInt32',
@@ -209,21 +210,21 @@ const generatedTargetHoverText = (text) => {
   const targetType = text.split('.').pop();
 
   if (jsonPrimitiveTargetTypes.has(targetType)) {
-    if (text.startsWith('json.decode.')) {
-      return 'Reference compiler primitive JSON decode target. Numeric values use libc parsing, Bool compares against true, and malformed inputs return the libc default.';
+    if (text.startsWith('json.parse.')) {
+      return 'Reference compiler primitive JSON parse target. Numeric values use libc parsing, Bool compares against true, and malformed inputs return the libc default.';
     }
 
-    if (text.startsWith('json.encode.')) {
-      return 'Reference compiler primitive JSON encode target. Numerics and Bool use direct formatting; strings are quoted with full escaping deferred to the codec runtime.';
+    if (text.startsWith('json.stringify.')) {
+      return 'Reference compiler primitive JSON stringify target. Numerics and Bool use direct formatting; strings are quoted with full escaping deferred to the codec runtime.';
     }
   }
 
-  if (text.startsWith('json.decode.')) {
-    return 'Generated JSON decode target. It should be declared by jsonCodecDecodeTarget and backed by jsonCodec input, output, failure, strictness, and limit metadata.';
+  if (text.startsWith('json.parse.')) {
+    return 'Generated JSON parse target backed by record metadata and the native document runtime.';
   }
 
-  if (text.startsWith('json.encode.')) {
-    return 'Generated JSON encode target. It should be declared by jsonCodecEncodeTarget and backed by jsonCodec input, output, failure, strictness, and limit metadata.';
+  if (text.startsWith('json.stringify.')) {
+    return 'Generated JSON stringify target backed by record metadata and the native document runtime.';
   }
 
   if (text.startsWith('html.hydrate.')) {
@@ -560,13 +561,17 @@ const verbHoverText = new Map([
   ['timeout', 'Call lifecycle statement: timeout CALL_NAME DURATION_VALUE.'],
   ['cancelOn', 'Call lifecycle statement: cancelOn CALL_NAME CANCELLATION_TOKEN.'],
   ['run', 'Call lifecycle statement: execute call immediately.'],
+  ['runChecked', 'Strict checked-call statement: runChecked CALL ok VALUE TYPE error ERROR TYPE else LABEL. Current compiler support is limited to the committed checked-call lowering/tests.'],
   ['start', 'Call lifecycle statement: begin async work. Parsed by current compiler.'],
   ['await', 'Call lifecycle statement: wait for started async work. Parsed by current compiler.'],
   ['bind', 'Binding statement for infallible calls: bind VALUE TYPE CALL_NAME.'],
   ['bindOk', 'Binding statement for success leg: bindOk VALUE TYPE CALL_NAME.'],
   ['bindError', 'Binding statement for failure leg: bindError ERROR ERROR_TYPE CALL_NAME. Must pair with branchIfError.'],
+  ['bindOwned', 'Reserved strict ownership statement: bindOwned VALUE TYPE CALL cleanup TARGET. Do not use until parser and ownership-table support are committed.'],
+  ['bindOkOwned', 'Reserved strict ownership statement for fallible calls: bindOkOwned VALUE TYPE CALL cleanup TARGET. Do not use until parser and ownership-table support are committed.'],
   ['ignoreOk', 'Binding statement: ignoreOk CALL_NAME TYPE explicitly discards a fallible call success value.'],
   ['ignoreValue', 'Binding statement: ignoreValue CALL_NAME TYPE explicitly discards an infallible call result.'],
+  ['requireNonNull', 'Reserved strict nullable-refinement statement: requireNonNull OUT TYPE INPUT else LABEL. Do not use until nullable ABI support is committed.'],
   ['makeError', 'Error construction: makeError NAME ERROR_TYPE.VARIANT [SOURCE_VALUE].'],
   ['new', 'Reserved record I/O statement: new VALUE_NAME RECORD_NAME. Parsed, not lowered by current compiler.'],
   ['fieldGet', 'Reserved record I/O statement: fieldGet OUT_NAME TYPE RECORD_VALUE FIELD_NAME.'],

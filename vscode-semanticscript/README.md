@@ -126,8 +126,8 @@ The extension recognizes the recent syntax families from the refined example:
   `listLiteral*`, `collectionOperation*`, and typed collection methods such as
   `TaskList.length`, `TaskList.append`, `TaskList.get`, and `TaskMap.insert`.
 - Codecs:
-  `jsonCodec*`, plus generated targets such as `json.decode.Task` and
-  `json.encode.AccountBalanceResponse`.
+  `jsonCodec*`, plus generated targets such as `json.parse.Task` and
+  `json.stringify.AccountBalanceResponse`.
 - Groups, guards, and defers:
   `group*`, `guardToken*`, `deferLog`, `deferLogSink`, `deferRunOn`,
   `deferOrder`, `deferFailurePolicy`, `deferConsumes`, and async defer forms.

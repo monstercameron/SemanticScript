@@ -202,7 +202,7 @@
       "patterns": [
         {
           "name": "keyword.action.semanticscript",
-          "match": "^(\\s*)(set|call|arg|run|start|await|bind|bindOk|bindError|ignoreOk|ignoreValue|declareFailure|makeError|new|fieldGet|fieldSet|recordBuilder|recordSet|recordCopy|recordBuild|read|timeout|cancelOn|defer|deferLog|deferAwaitLog|deferWhenExitLog|select|selectCase|runSelect|taskGroup|startInGroup|awaitGroup|bindGroupError|send|receive|lock|unlock|useRetry|useCapability|startInterval|awaitIntervalTick|submitWork|awaitWork)\\b"
+          "match": "^(\\s*)(set|call|arg|run|runChecked|start|await|bind|bindOk|bindError|bindOwned|bindOkOwned|ignoreOk|ignoreValue|declareFailure|makeError|requireNonNull|new|fieldGet|fieldSet|recordBuilder|recordSet|recordCopy|recordBuild|read|timeout|cancelOn|defer|deferLog|deferAwaitLog|deferWhenExitLog|select|selectCase|runSelect|taskGroup|startInGroup|awaitGroup|bindGroupError|send|receive|lock|unlock|useRetry|useCapability|startInterval|awaitIntervalTick|submitWork|awaitWork)\\b"
         }
       ]
     },
