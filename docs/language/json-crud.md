@@ -163,12 +163,13 @@ jsonBody healthBody
   {"ok":true}
 ```
 
-Current compiler support validates JsonText islands with Python's JSON parser,
-rejects non-standard constants, canonicalizes the value as compact JSON, and
-binds it as a null-terminated constant. Record-typed targets are recognized but
-rejected until generated record literal lowering exists; the intended record
-path will type-check fields, JSON name overrides, required fields,
-unknown-field policy, and omit-default metadata.
+Compiler support validates JsonText islands with Python's JSON parser, rejects
+non-standard constants, canonicalizes the value as compact JSON, and binds it
+as a null-terminated constant. Record-typed targets are type-checked at compile
+time: required fields must be present, unknown fields are rejected, field JSON
+name overrides are honored, nested records recurse through the same checks, and
+`recordFieldJsonOmitWhen` supplies the configured omitted-field defaults. The
+current emitted representation is the compiler's flattened record-slot model.
 
 ## Stringify And Parse
 
@@ -176,8 +177,11 @@ unknown-field policy, and omit-default metadata.
 typed entry points. They are intended to wrap the native document/builder
 surface instead of requiring handlers to assemble JSON with `c.snprintf`.
 
-Current primitive stringify/parse aliases dispatch to the existing primitive
-`json.encode.<TypeName>` / `json.decode.<TypeName>` lowering. Result-shaped
-`JsonEncodeError` / `JsonDecodeError` handling is not complete yet. Record
-stringify/parse is reserved for generated record codecs that honor
-`recordFieldJsonName`, `recordFieldJsonOmitWhen`, and `jsonCodecUnknownFields`.
+Primitive stringify/parse aliases dispatch through the existing primitive
+format/parse lowering internally, but the public call surface is
+`json.stringify.<TypeName>` / `json.parse.<TypeName>`. `JsonText` stringify
+copies through bounded scratch and `JsonText` parse validates syntax through
+the native document parser. Record stringify/parse walks record metadata and
+the native document runtime field by field, honoring `recordFieldJsonName`,
+`recordFieldJsonOmitWhen`, required fields, nested records, and wrong-type
+errors while exposing `JsonEncodeError` / `JsonDecodeError` at the call site.

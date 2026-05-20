@@ -184,6 +184,33 @@ Strict checks now reject multiple `buildProject` rows, project-name drift,
 malformed project rows, invalid enum values, missing required rows, and
 `buildFolderName` values that are paths.
 
+## Entry Resolution Rules
+
+Executable project builds resolve their entry from `build.sem` first and then
+fall back to source conventions:
+
+- If `mainFile PROJECT "PATH"` is omitted for an executable target, use
+  `main.sem` in the source root.
+- If `mainOperation PROJECT OPERATION` is omitted for a `nativeExe` target, use
+  `operation main`.
+- If more than one plausible entry source or operation exists, require
+  explicit `mainFile` and `mainOperation` rows instead of guessing.
+- `targetRuntime PROJECT library` must not rely on accidental `operation main`
+  rows as public executable entry points.
+
+The root module is declared by `build.sem` through a `registerModule` row whose
+path selects the root source file or folder. `main.sem` may repeat
+`module MODULE_PATH` for local context, but it must exactly match the registered
+root module path. That repetition is documentation for humans and tools; it is
+not a second module declaration.
+
+For `targetRuntime PROJECT webServer`, `main.sem` may declare the primary
+`webServer`. If no explicit server-selection row exists, a webserver build must
+have exactly one routed server. Multiple routed servers require an explicit
+selection row before codegen. Route handler validation happens after registered
+modules and imports are resolved so handler operations can live in imported
+module sources.
+
 ## CPU Feature Checks
 
 CPU flags are a build-tape concern, not a module-source concern. The safe
@@ -440,6 +467,23 @@ Rules:
   parser has operation bodies without an `endOperation` marker, so operation
   exports are usually safest near the top of the file.
 
+## Module Path Mapping
+
+`modulePath PROJECT MODULE_PATH` defines the package root path. Folder module
+paths are derived from that root plus the normalized folder path unless
+`registerModule PROJECT MODULE_PATH "PATH"` provides an explicit override.
+
+Rules:
+
+- `..` path escapes are invalid in registered module paths.
+- `/` is the canonical separator in module-path derivation; Windows `\` input
+  paths normalize before comparison.
+- Case is preserved. Case-insensitive filesystems may find a folder, but the
+  declared module path remains byte-for-byte significant for imports, exports,
+  lock data, and docs.
+- Folder names with hyphens map to module path segments with hyphens; tools
+  must not silently rewrite them to underscores.
+
 ## Export Contract Tape
 
 The linter exposes a reusable export contract tape through
@@ -512,6 +556,10 @@ namespace before the provider path and makes call sites mechanically
 predictable. Unaliased `importModule MODULE_PATH` keeps the legacy import bridge
 alive, but new multi-module code should use an alias.
 
+External dependency imports must use aliases. The alias is the local source
+name; the dependency alias and module path remain package identity in
+`build.sem` and `sem.lock`.
+
 ## Import Contracts
 
 Qualified names are resolved from provider export rows only:
@@ -565,7 +613,13 @@ Rules:
 - Bare unqualified calls into aliased modules are rejected unless there is a
   matching singular import row. Prefer qualified calls when the provider domain
   context helps the reader.
+- Singular imports are acceptable for central domain operations that are used
+  repeatedly enough that a local facade name improves readability.
+- Facade modules may use singular imports when they deliberately present a
+  smaller public API over one or more provider modules.
 - Many singular imports from the same module produce a readability warning.
+- Similar local aliases from different provider modules need a local rationale
+  comment or ownership row so reviewers can tell the domains apart.
 
 Imported operation contracts carry their exported input, output, effect,
 capability, and failure edges into linter checks. Imported types carry
@@ -729,6 +783,112 @@ The current linter enforces the project-module boundary with `SS250x` rules:
 These diagnostics are deliberately conservative. They prevent agents and tools
 from inventing public API from nearby code and make module boundaries auditable
 from the source text alone.
+
+## Agent Handoff Surfaces
+
+The current public-ish handoff surface is intentionally small. These helpers
+live in Python modules, but agents should treat their behavior as the stable
+contract unless this page changes with the code.
+
+Build-tape parsing and validation handoff:
+
+- `SemanticScript/compiler/semsc.py`:
+  - `_is_build_tape_path(source_path)` and `_looks_like_build_tape(source)`
+    decide whether a source stream is a build tape.
+  - `_validate_build_tape_source(source, source_path)` validates strict
+    `build.sem` row shape, singleton rows, enum choices, required rows,
+    dependency fetch/source shape, and executable entry requirements.
+  - `_normalize_build_tape_path(source_path, path_text, source_root_text)`
+    resolves project paths relative to `build.sem` and `sourceRoot`.
+  - `_collect_module_registry(source, source_path)` reads
+    `registerModule` and compatibility `moduleFolder` rows.
+  - `_resolve_registered_module_file(module_name, registered_path, main_files)`
+    selects the source file for a registered module.
+  - `_merge_build_file(prog, build_path, explicit_std_paths=None)` is the
+    compiler bridge that merges a validated build tape and its registered
+    module sources before lowering.
+- `SemanticScript/linter/semlint.py`:
+  - `parse_file(path)` produces base facts with source lines.
+  - `gather_extended(parse_file(path))` builds the richer fact graph used by
+    module, import, export, dependency, and documentation checks.
+  - `check_registered_module_contract(facts)` owns current `SS250x`
+    project-module diagnostics.
+
+Module and import index handoff:
+
+- `build_export_contract_tape(gather_extended(parse_file(path)))` returns the
+  streamable export contract tape for a provider module.
+- `build_import_contract_index(facts)` resolves the contracts visible to a
+  consumer module through the nearest `build.sem`, registered modules, aliases,
+  and singular imports.
+- `ImportContractIndex.modulesByAlias` stores provider module contracts keyed by
+  local alias.
+- `ImportContractIndex.qualifiedSymbols` stores `alias.symbol` entries selected
+  from provider export rows.
+- `ImportContractIndex.singularSymbols` stores explicit local facade imports
+  such as `importOperation loadTodos persistence loadTodosFromDisk`.
+
+Agents working on export validation, dependency loading, language-server
+indexing, or docs generation should use these fact/index shapes rather than
+re-parsing module rows ad hoc.
+
+Parser-only and compatibility assumptions for 1.x:
+
+- `comptimeOperation` is reserved and parsed, but not executed.
+- `dependency`, `dependencySource`, `dependencyFetch`, `dependencyIntegrity`,
+  `dependencyCache`, and `dependencyLock` are validated as build-tape metadata;
+  the compiler does not fetch dependencies or write locks yet.
+- `formatterSetting`, `linterSetting`, and `docsOutput` are metadata rows for
+  future tool integration.
+- `moduleFolder MODULE_PATH "PATH"` remains a compatibility alias for
+  `registerModule PROJECT MODULE_PATH "PATH"`.
+- `importModule ALIAS MODULE_PATH` is preferred. Legacy
+  `importModule MODULE_PATH as ALIAS` and unaliased `importModule MODULE_PATH`
+  stay parseable during the migration window.
+- Registered folder resolution accepts `main.sem`, `main.sscript`,
+  `index.sem`, `index.sscript`, a source file named after the module leaf, or
+  exactly one non-test `.sem` / `.sscript` file. Ambiguous folders should be
+  made explicit with a direct `registerModule` file path.
+
+## Integration Handoff
+
+Changed docs and examples:
+
+- `README.md` shows minimal console, native web, and multi-module library
+  project trees.
+- `docs/language/program-structure.md` explains `build.sem`, `main.sem`,
+  module registration, colocated tests, standard-library module layout, and
+  import/export boundaries.
+- `SYNTAX.md` and `docs/reference/verb-index.md` list the build-tape,
+  module-metadata, import, and export rows.
+- `docs/reference/package-management.md` defines local/Git dependency syntax,
+  `.semcache/`, and `sem.lock` policy.
+- `docs/toolchain/agent-workflows.md` records the fast validation and graph
+  inspection commands agents should run.
+
+Compatibility warnings users should expect:
+
+- Prefer `importModule ALIAS MODULE_PATH`; legacy
+  `importModule MODULE_PATH [as ALIAS]` remains accepted during migration.
+- Prefer `registerModule PROJECT MODULE_PATH "PATH"`; `moduleFolder` is a
+  compatibility alias.
+- Export rows belong in module source files, not `build.sem`.
+- `*.test.sem` files are test sources and are excluded from production module
+  source selection.
+- Remote dependency rows are metadata/validation surface today. Fetching,
+  cache mutation, and lock writing remain future tool-driver work.
+
+Final integration checklist:
+
+- Run `python SemanticScript/tools/sem.py context --json PATH` before changing
+  project/module behavior.
+- Run `python SemanticScript/tools/sem.py symbols --json PATH` before changing
+  import/export, route, effect, or capability behavior.
+- Run `python SemanticScript/tools/sem.py lint --engine semlint PATH --format json`
+  for rule diagnostics and fix candidates.
+- Run `python SemanticScript/tools/sem.py check PATH --quiet` before handing a
+  project-mode edit back.
+- Keep generated artifacts under ignored `build/` or `.semcache/` locations.
 
 ## Current Support Boundary
 

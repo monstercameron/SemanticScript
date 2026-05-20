@@ -96,6 +96,24 @@ also select only from the provider export tape. New project modules should
 import registered module paths with aliases; the filesystem/std-lib fallback is
 kept for single-file sources and older samples.
 
+## Project Layout Rules
+
+`build.sem` owns the project-wide layout contract. It selects source roots,
+registered modules, the executable source file, the executable operation, test
+patterns, target runtime, and build artifact locations. `main.sem` is the
+default executable source by convention when the build tape selects an
+executable target.
+
+`*.test.sem` files are colocated with the module they validate. Project test
+discovery reads `testPattern PROJECT "*.test.sem"` from `build.sem` when the
+project is using build-tape mode; standard-library smoke tests use the sibling
+`main.test.sem` convention described below.
+
+Generated files stay outside source control. Native executables, LLVM IR,
+object files, packaged VSIX files, app-local data, and compiler caches belong in
+ignored output folders such as `build/` or `.semcache/`, or in explicit release
+artifact storage outside the source tree.
+
 ## Library, Web Server, and Windows GUI Mode
 
 If a source has no `entry` line, the compiler usually emits every operation as a
@@ -274,6 +292,16 @@ Rules:
 - It has its own `project` block (`StdFooTest` by convention), `entry console
   main`, and `importModule standard.foo` directive. The imported file's header
   lines are stripped by the import resolver, so the test owns the executable.
+- Test files consume sibling modules through normal imports and public exports
+  by default. Same-folder private symbols are not implicitly visible to tests;
+  export a deliberate test helper or keep the helper inside the test file.
+- Test files may also import dependency modules declared in the owning
+  `build.sem`; the same alias and export-contract rules apply.
+- A test file that repeats `module MODULE_PATH` must match the sibling folder
+  module exactly. A different module path is a test-discovery diagnostic.
+- Test files may declare local helper operations, local constants, and local
+  error domains for the test executable. Those declarations belong only to the
+  test project and are not exported into the production contract tape.
 - Move every smoke-only declaration to the test: the `error MainError`
   domain, `errorCase` variants, and the `capability` declarations the smoke
   uses (`stdoutWriteCapability`, `heapAllocationCapability`, etc.).

@@ -437,8 +437,8 @@ Record field ops are edge/runtime-specific:
   jsonCodecUnknownFields taskJsonCodec reject
   jsonCodecInput taskJsonCodec RawJson
   jsonCodecOutput taskJsonCodec Task
-  jsonCodecDecodeTarget taskJsonCodec json.decode.Task
-  jsonCodecEncodeTarget taskJsonCodec json.encode.Task
+  jsonCodecDecodeTarget taskJsonCodec json.parse.Task
+  jsonCodecEncodeTarget taskJsonCodec json.stringify.Task
   jsonCodecRequiredField taskJsonCodec title
   jsonCodecDecodeFailure taskJsonCodec TaskDecodeError.MissingTitle
   jsonCodecLimit taskJsonCodec maximumBytes 65536

@@ -26,6 +26,9 @@ Current implementation status:
   route handler. Middleware operations return the built-in `MiddlewareControl`
   enum, so they can either continue to the route handler or short-circuit after
   writing a complete response.
+- The default adapter is blocking and single-threaded today. A long-running
+  route handler, middleware operation, or future blocking outbound fetch pins
+  the server loop until it returns or the process is stopped.
 - H2O/HTTP2 dispatch is not wired into `semsc.py` yet.
 
 This file describes the API shape implemented by the current adapter plus the

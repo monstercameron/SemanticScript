@@ -57,6 +57,13 @@ branchIfError CALL LABEL
 `semlint.py` checks hidden-failure patterns for known fallible targets such as
 `console.writeLine`, heap allocation calls, and selected libc calls.
 
+Strict compiler checking is intentionally incremental. Source-level
+`languageMode strictExecutable` rejects misspelled executable rows; compiler
+`--strict` promotes the current fallible-call disposition checks to fatal
+diagnostics for known Result-shaped and explicit-disposition targets. The
+future `runChecked` row remains research syntax until parser, lowering, and
+migration tests all exist.
+
 ## Constructing Domain Failures
 
 ```semanticscript

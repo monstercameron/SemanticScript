@@ -20,7 +20,8 @@ specific adapter code in the owning source tree under
 - Purpose: native HTTP/1.x and HTTP/2 runtime candidate for SemanticScript
   `webServer` / `route` support.
 - License: MIT, with TLS dependencies carrying their own licenses.
-- Current pinned commit: see `git submodule status third_party/h2o`.
+- Current pinned commit:
+  `9e7f283e5801bd0707cc5d48d0188c4c162fe7b3`.
 
 Clone/update with nested upstream dependencies:
 
@@ -57,3 +58,22 @@ to be usable without `git submodule update`.
 
 Vendored because the source is ~40 KB of pure C with no transitive dependencies;
 a submodule would add no value and slow down fresh clones.
+
+## Release review summary
+
+Review this table before tagging a release that packages source or binaries
+including `third_party/`.
+
+| Path | Upstream project | Upstream URL | Pin | License |
+| --- | --- | --- | --- | --- |
+| `third_party/h2o` | H2O | `https://github.com/h2o/h2o.git` | Git submodule commit `9e7f283e5801bd0707cc5d48d0188c4c162fe7b3` | MIT, with bundled dependency notices under the H2O tree |
+| `third_party/sqlite` | SQLite amalgamation | `https://sqlite.org/` | SQLite `3.53.1`, `SQLITE_SOURCE_ID` `2026-05-05 10:34:17 c88b22011a54b4f6fbd149e9f8e4de77658ce58143a1af0e3785e4e6475127e9` | Public domain |
+| `third_party/bcrypt` | crypt_blowfish | `https://www.openwall.com/crypt/` | crypt_blowfish `1.3` | Public domain with fallback permissive terms |
+
+Source archives that include `third_party/` must preserve each upstream license
+or notice file already present in the vendored tree. Binary releases that link
+against vendored code must carry the same review result in the release notes or
+release manifest. Source-only releases do not need an additional root `NOTICE`
+file or machine-readable SBOM for the current dependency set; binary releases
+should reconsider those decisions if the dependency set or distribution model
+changes.

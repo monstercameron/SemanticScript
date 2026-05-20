@@ -1,8 +1,8 @@
 # Release Hygiene Policy
 
 Release hygiene covers repository state, generated artifacts, local package
-metadata, and intentionally duplicated fixtures. It records the chosen project
-license but does not choose a public marketplace identity.
+metadata, component versions, and intentionally duplicated fixtures. It records
+the chosen project license but does not choose a public marketplace identity.
 
 ## License Posture
 
@@ -13,12 +13,46 @@ Third-party code under `third_party/` keeps its upstream license terms. Preserve
 those notices when packaging or redistributing artifacts that include
 third-party code.
 
+The current dependency inventory and packaging notice policy are recorded in
+`third_party/README.md`. Source archives that include `third_party/` must keep
+the upstream license and notice files already present in those trees. Binary
+releases that link vendored code must record the third-party review result in
+release notes or `releases/<TAG>/manifest.json`. The current source-only policy
+does not add a root `NOTICE` file or machine-readable SBOM.
+
 Package metadata that declares a license must use `MIT` unless a release owner
 explicitly chooses a different license for that package.
 
+## Version Policy
+
+SemanticScript uses component-local versions for the initial public release.
+Release checks record the component matrix instead of requiring all tools to
+share one product version. A version mismatch is acceptable when it is
+documented in the matrix; a missing or unreadable version blocks release.
+
+| Component | Version | Source |
+| --- | --- | --- |
+| `semsc` | `1.0.0` | `SemanticScript/compiler/semsc.py` |
+| `semlint` | `0.3.0` | `SemanticScript/linter/semlint.py` |
+| `semfmt` | `0.1.0` | `SemanticScript/formatter/semfmt.py` |
+| `sem` | `0.1.0` | `SemanticScript/tools/sem.py` |
+| `semanticscript-vscode` | `1.0.3` | `vscode-semanticscript/package.json` |
+
+Print the matrix before tagging:
+
+```powershell
+python SemanticScript\tools\release_versions.py
+```
+
+## Release Manifests
+
+Public release manifests live at `releases/<TAG>/manifest.json`. They should be
+committed with the release notes and attached to external release artifacts when
+publishing outside the repository.
+
 ## VS Code Extension Metadata
 
-`vscode-semanticscript/package.json` uses version `1.0.1` for the current
+`vscode-semanticscript/package.json` uses version `1.0.3` for the current
 SemanticScript local VSIX build.
 
 The publisher remains `semanticscript-local`. That value is for local packaging
@@ -82,3 +116,12 @@ Only run the destructive cleanup form after reviewing the dry-run list:
 ```powershell
 git clean -Xdf
 ```
+
+## History Artifact Policy
+
+Public release history should not contain generated `.exe`, `.ll`, `.bc`,
+`.obj`, `.o`, `.pdb`, `.res`, `.rc`, `.vsix`, native build-folder output, or
+local app data such as `app/todo/todos.json`. Use the non-destructive history
+scan in `RELEASE.md` before deciding whether a history scrub is needed. If a
+scrub is required, prefer `git filter-repo` or another repeatable
+non-interactive tool and record the exact command in release notes.

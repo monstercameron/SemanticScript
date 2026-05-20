@@ -79,23 +79,23 @@ jsonCodecStrict taskJsonCodec yes
 jsonCodecUnknownFields taskJsonCodec reject
 jsonCodecInput taskJsonCodec RawJson
 jsonCodecOutput taskJsonCodec Task
-jsonCodecDecodeTarget taskJsonCodec json.decode.Task
-jsonCodecEncodeTarget taskJsonCodec json.encode.Task
+jsonCodecDecodeTarget taskJsonCodec json.parse.Task
+jsonCodecEncodeTarget taskJsonCodec json.stringify.Task
 jsonCodecRequiredField taskJsonCodec title
 jsonCodecDecodeFailure taskJsonCodec TaskDecodeError.MissingTitle
 jsonCodecLimit taskJsonCodec maximumBytes 65536
 ```
 
 JSON codec declarations are parsed and indexed. Primitive generated targets such
-as `json.encode.Bool`, `json.decode.Bool`, and selected scalar codec targets
-have direct compiler support. Record-level generated codecs are still primarily
-metadata unless a backing operation/runtime binding is present.
+as `json.stringify.Bool`, `json.parse.Bool`, and selected scalar codec targets
+have direct compiler support. Record-level generated codecs use the
+`json.stringify.<RecordType>` / `json.parse.<RecordType>` surface and the
+native JSON document runtime when the record metadata is present.
 
 `semlint.py` checks incomplete JSON codecs. It also flags record-level
-generated targets such as `json.decode.Task` or `json.encode.Task` as runtime
-gaps unless they are replaced with explicit operations or backed by a real
-runtime binding. Current codegen otherwise reaches the external fallback and
-returns a zero-shaped stub value.
+legacy targets such as `json.decode.Task` or `json.encode.Task` as deprecated
+runtime gaps. Use the high-level stringify/parse spellings for executable
+record codecs.
 
 ## Generic Codecs
 

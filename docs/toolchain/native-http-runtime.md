@@ -79,6 +79,10 @@ The current adapter should:
   `http.requestMethod`;
 - start with synchronous handlers and add async continuation support later.
 
+The current adapter is blocking and single-threaded. It accepts and dispatches
+one request path through the server loop at a time, so handlers and middleware
+must not assume parallel request execution or preemptive route timeouts.
+
 The future H2O adapter should additionally map generated route metadata into
 H2O host/path registrations, translate `h2o_req_t`, keep request-scoped
 allocations inside H2O request pools where possible, and expose response header

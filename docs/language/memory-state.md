@@ -94,6 +94,12 @@ not "the generated code validates the token".
 access without `protectedBy`, and `protectedBy` tokens that do not declare a
 matching `guardTokenProtects TOKEN RESOURCE` edge.
 
+Strict ownership rows are not committed syntax yet. Until `bindOwned` /
+`bindOkOwned` and the shared ownership table are implemented, heap, SQLite, and
+JSON handles should use the existing explicit call, bind, error branch, and
+`defer` cleanup patterns. Treat guard-token and ownership metadata as review and
+lint contracts, not runtime authority enforcement.
+
 ## Operation Memory Metadata
 
 ```semanticscript

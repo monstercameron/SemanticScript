@@ -39,6 +39,38 @@ arg addCall right rightValue
 
 There is no `add(leftValue, rightValue)` form.
 
+## Grammar Islands
+
+SemanticScript normally rejects indentation blocks, brace blocks, and generic
+angle-bracket syntax because executable source is a row tape. `htmlBody` and
+`jsonBody` are narrow exceptions: a column-0 row starts an indented literal
+island, and the island ends at the next non-empty column-0 SemanticScript row.
+
+The exception exists only for data formats whose native syntax would be damaged
+by row tokenization. HTML/SSX keeps tags, attributes, and `{htmlArg.name}` holes
+inside `htmlBody`; JSON keeps braces, brackets, strings, and commas inside
+`jsonBody`. Those islands must be attached to explicit declaration rows such as
+`htmlTemplate` / `htmlArg` or `storage ... JsonText`, so the compiler and linter
+still see typed boundaries around the non-row text.
+
+## Language Modes
+
+Language mode rows are normal top-level rows:
+
+```semanticscript
+languageMode strictExecutable
+languageMode refinedSyntax
+```
+
+`strictExecutable` closes the executable grammar from that point in the resolved
+source stream. Unknown lowercase top-level and operation-body verbs become parse
+errors. Plain comments, typed semantic comments, and `# group` / `# endGroup`
+anchors remain parseable because they are comments, not executable rows.
+
+`refinedSyntax` keeps permissive parsing for research files and metadata-heavy
+examples that intentionally use proposed lowercase rows. Do not use it to hide
+misspelled executable rows in production source.
+
 ## Comments
 
 Plain comments are ignored by codegen:
@@ -116,4 +148,3 @@ arg sumCall right taxAmount
 run sumCall
 bind invoiceTotal I64 sumCall
 ```
-

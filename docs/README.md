@@ -67,8 +67,10 @@ matrix. The release-level boundary is:
 | [language/native-http-api.md](language/native-http-api.md) | Planned native HTTP server API and route-handler ABI. |
 | [language/strict-syntax-research.md](language/strict-syntax-research.md) | Candidate stricter syntax and compile-blocking rules for recurring bug classes. |
 | [reference/call-targets.md](reference/call-targets.md) | Built-in call targets, domain methods, c.* calls. |
+| [reference/install-policy.md](reference/install-policy.md) | Initial archive install shape and future version-manager plan. |
 | [reference/verb-index.md](reference/verb-index.md) | Verb families and schema index. |
 | [reference/release-hygiene.md](reference/release-hygiene.md) | Release repository-state, package-metadata, and mirror-file policy. |
+| [reference/package-management.md](reference/package-management.md) | Package layout, dependency syntax, and registry deferral policy. |
 | [toolchain/compiler.md](toolchain/compiler.md) | semsc.py CLI, parsing, import resolution, codegen modes. |
 | [toolchain/linter.md](toolchain/linter.md) | semlint.py commands, diagnostics, tiers. |
 | [toolchain/vscode-extension.md](toolchain/vscode-extension.md) | Extension behavior, hover expectations, packaging. |

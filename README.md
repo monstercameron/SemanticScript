@@ -205,6 +205,53 @@ importModule app.todo_web_pro
 The build tape is intentionally explicit. It gives compilers, editors, CI,
 release tooling, and agents the same project facts.
 
+### Project Layout
+
+A minimal console app keeps the build tape and executable source at the project
+root:
+
+```text
+hello-console/
+  build.sem
+  main.sem
+  main.test.sem
+```
+
+A native web app usually keeps route handlers in the root module and supporting
+code in registered folders:
+
+```text
+todo-web/
+  build.sem
+  main.sem
+  routes/
+    main.sem
+    main.test.sem
+  storage/
+    main.sem
+    main.test.sem
+```
+
+A multi-module library registers each module folder in `build.sem`; colocated
+`*.test.sem` files live beside the modules they validate:
+
+```text
+todo-domain/
+  build.sem
+  domain/
+    main.sem
+    main.test.sem
+  persistence/
+    main.sem
+    main.test.sem
+  facade/
+    main.sem
+    main.test.sem
+```
+
+Generated artifacts belong in ignored build/cache folders such as `build/` and
+`.semcache/`, not beside source modules.
+
 ### Module Context
 
 Modules carry ownership and non-ownership context. This is useful for agents:
@@ -499,7 +546,9 @@ third_party/                       Vendored native dependencies and submodules
 - `docs/language/errors-effects-capabilities.md`: effects, capabilities, and
   typed failure paths.
 - `docs/toolchain/compiler.md`: compiler CLI and backend behavior.
+- `docs/toolchain/formatter.md`: formatter CLI and canonical source style.
 - `docs/toolchain/linter.md`: linter CLI and diagnostic formats.
+- `docs/reference/compatibility.md`: public 1.0 compatibility contract.
 - `SYNTAX.md`: complete syntax inventory and implementation status table.
 - `SemanticScript.md`: language specification and design intent.
 - `CHANGELOG.md`: dated repository history.
@@ -552,6 +601,8 @@ with the facts needed to maintain it safely.
 ## Release Hygiene
 
 Release policy lives in `docs/reference/release-hygiene.md`.
+The public 1.0 compatibility contract lives in
+`docs/reference/compatibility.md`.
 
 - First-party SemanticScript source, docs, samples, and tooling are distributed
   under the MIT License in the root `LICENSE`.

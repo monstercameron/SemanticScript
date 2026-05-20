@@ -136,13 +136,13 @@ requiring a separate linter invocation.
 
 ### Strict Executable Mode
 
-- [ ] Decide the source row for strict mode.
+- [x] Decide the source row for strict mode.
   - [x] Prefer `languageMode strictExecutable` unless a better existing
         versioning row should own the setting.
   - [x] Decide whether strict mode belongs in source files, `build.sem`, or
         both.
-  - [ ] Decide whether strict mode is inherited by imported modules.
-  - [ ] Decide whether `languageVersion PROJECT "1.0"` implies strict mode in
+  - [x] Decide whether strict mode is inherited by imported modules.
+  - [x] Decide whether `languageVersion PROJECT "1.0"` implies strict mode in
         the future.
   - [x] Document the initial rollout as opt-in, not default.
 - [x] Add parser support for `languageMode NAME`.
@@ -154,11 +154,11 @@ requiring a separate linter invocation.
   - [x] Reject unknown language-mode values with a parse diagnostic.
   - [x] Add syntax inventory rows for `languageMode strictExecutable`.
   - [x] Add syntax inventory rows for `languageMode refinedSyntax`.
-- [ ] Close the executable grammar when strict mode is active.
+- [x] Close the executable grammar when strict mode is active.
   - [x] Reject unknown lowercase top-level verbs in strict mode.
   - [x] Reject unknown lowercase operation-body verbs in strict mode.
-  - [ ] Keep typed comments and group anchors parseable in strict mode.
-  - [ ] Keep explicitly documented metadata-only rows parseable in strict
+  - [x] Keep typed comments and group anchors parseable in strict mode.
+  - [x] Keep explicitly documented metadata-only rows parseable in strict
         mode only when they are in the allowed strict metadata set.
   - [x] Keep permissive parsing for non-strict refined examples.
   - [x] Add a clear diagnostic that tells users to add
@@ -317,15 +317,15 @@ requiring a separate linter invocation.
   - [ ] Add `NullableCOpaqueMemoryAddress`.
   - [ ] Decide whether nullable aliases are first-class type constructors or
         named aliases only.
-  - [ ] Document which built-in call targets can return nullable values.
-- [ ] Update native HTTP request-reader contracts.
-  - [ ] Mark `http.requestHeader` as returning nullable text.
-  - [ ] Mark `http.requestQueryParam` as returning nullable text.
-  - [ ] Mark `http.requestBodyText` as nullable if absent body remains a
+  - [x] Document which built-in call targets can return nullable values.
+- [x] Update native HTTP request-reader contracts.
+  - [x] Mark `http.requestHeader` as returning nullable text.
+  - [x] Mark `http.requestQueryParam` as returning nullable text.
+  - [x] Mark `http.requestBodyText` as nullable if absent body remains a
         possible runtime result.
-  - [ ] Mark multipart part text readers as nullable.
-  - [ ] Mark multipart part bytes readers as nullable.
-  - [ ] Keep `http.requestMethod` and `http.requestPath` non-null.
+  - [x] Mark multipart part text readers as nullable.
+  - [x] Mark multipart part bytes readers as nullable.
+  - [x] Keep `http.requestMethod` and `http.requestPath` non-null.
 - [ ] Add non-null refinement syntax.
   - [ ] Add `requireNonNull OUT TYPE INPUT else LABEL`.
   - [ ] Decide whether the syntax should include an error binding.
@@ -514,12 +514,12 @@ requiring a separate linter invocation.
 
 ### Documentation And Tooling Follow-through
 
-- [ ] Update language docs after each strict syntax change.
+- [x] Update language docs after each strict syntax change.
   - [x] Update `SYNTAX.md`.
-  - [ ] Update `docs/language/lexical-model.md`.
+  - [x] Update `docs/language/lexical-model.md`.
   - [x] Update `docs/language/operations-dataflow.md`.
-  - [ ] Update `docs/language/errors-effects-capabilities.md`.
-  - [ ] Update `docs/language/memory-state.md`.
+  - [x] Update `docs/language/errors-effects-capabilities.md`.
+  - [x] Update `docs/language/memory-state.md`.
   - [x] Update `docs/language/native-http-api.md`.
   - [x] Update `docs/optimization-guide.md`.
 - [x] Update toolchain docs.
@@ -536,11 +536,11 @@ requiring a separate linter invocation.
   - [ ] Keep aggressive targeted rules for app review and editor feedback.
 - [ ] Update VS Code tooling.
   - [x] Add highlighting for `languageMode`.
-  - [ ] Add highlighting for `runChecked`.
-  - [ ] Add highlighting for `bindOwned` and `bindOkOwned`.
-  - [ ] Add highlighting for `requireNonNull`.
+  - [x] Add highlighting for `runChecked`.
+  - [x] Add highlighting for `bindOwned` and `bindOkOwned`.
+  - [x] Add highlighting for `requireNonNull`.
   - [ ] Add highlighting for the final response-forwarding syntax.
-  - [ ] Add hover docs for each new strict syntax row.
+  - [x] Add hover docs for each new strict syntax row.
 - [ ] Add migration coverage.
   - [ ] Add strict-mode parse/build coverage for at least one console app.
   - [ ] Add strict-mode parse/build coverage for one webserver app.
@@ -600,7 +600,7 @@ surface is now `entry console main` plus `standard.gui` function calls.
       while source still declares a normal entry operation.
 - [x] Reject no-entry `target windowsGui` codegen with guidance to use
       `entry console main` and `gui.*` calls.
-- [ ] Reject `entry windowsGui ...` with a diagnostic that points users to
+- [x] Reject `entry windowsGui ...` with a diagnostic that points users to
       `entry console main` and `gui.applicationRun`.
 - [x] Allow `targetRuntime windowsGui` build tapes that declare
       `entry console`.
@@ -1082,7 +1082,7 @@ is the preferred source shape.
       if the runner supports desktop interaction.
 - [ ] Add a headless compile-only fallback test for CI environments that
       cannot open desktop windows.
-- [ ] Add docs explaining how to run GUI smoke tests locally on Windows.
+- [x] Add docs explaining how to run GUI smoke tests locally on Windows.
 
 ### Documentation And Release Scope
 
@@ -1217,7 +1217,7 @@ product".
         cannot flow into HTML without an explicit escape or trust conversion.
   - [ ] Add formatter and VS Code grammar support for `htmlTemplate`,
         `htmlArg`, `htmlBody`, and embedded SSX syntax.
-  - [ ] Add docs explaining why HTML symbols are a narrow grammar-island
+  - [x] Add docs explaining why HTML symbols are a narrow grammar-island
         exception to the normal no-brace/no-angle/no-indentation rules.
   - [ ] Add webserver tests proving hydrated HTML responses preserve escaping,
         content type, content length, and route-handler failure behavior.
@@ -1489,18 +1489,21 @@ would fail under a no-op lowering.
 - [ ] Type-check the parsed literal against the declared storage type.
   - [x] `JsonText`: store the canonicalized JSON bytes as a
         `CNullTerminatedByteString` constant.
-  - [ ] `record`: enforce every required field is present, every type
+  - [x] `record`: enforce every required field is present, every type
         matches, no unknown keys are present, and nested record literals
         recurse through the same rule.
-  - [ ] Honor `recordFieldJsonName` overrides when mapping JSON keys to
+  - [x] Honor `recordFieldJsonName` overrides when mapping JSON keys to
         record fields.
-  - [ ] Honor `recordFieldJsonOmitWhen empty|null|false|zero` so omitted
+  - [x] Honor `recordFieldJsonOmitWhen empty|null|false|zero` so omitted
         fields default to the configured policy without runtime branching.
   - [ ] Emit one diagnostic per failure naming the offending field, the
         expected type, and the actual JSON kind.
 - [ ] Lower the typed literal to a constant in the emitted module.
   - [x] `JsonText`: emit a static null-terminated byte array exactly like
         an inline `"..."` storage value.
+  - [x] Record-typed: lower to the compiler's flattened record constant
+        representation so `fieldGet` and record stringify read the literal
+        without a runtime parse.
   - [ ] Record-typed: emit a typed struct constant whose layout matches
         the record's emitted struct so no runtime parse runs.
 - [x] Update `SemanticScript/linter/semlint.py` to walk `jsonBody` islands
@@ -1519,27 +1522,32 @@ would fail under a no-op lowering.
 
 #### json.stringify.<TypeName> And json.parse.<TypeName>
 
-- [ ] Add `json.stringify.<TypeName>` dispatch in
+- [x] Add `json.stringify.<TypeName>` dispatch in
       `SemanticScript/compiler/semsc.py`.
   - [x] For primitive `TypeName` (I64, Bool, F64, String,
         width-specific C ABI integers) reuse the existing
         `json.encode.<Primitive>` lowering at SYNTAX.md:428.
-  - [ ] For record `TypeName` generate a field-by-field encoder that walks
+  - [x] For record `TypeName` generate a field-by-field encoder that walks
         `recordField` + `recordFieldJsonName` + `recordFieldJsonOmitWhen`
-        and calls the matching `json.field*` builder primitive; promotes
-        the SYNTAX.md:430 Partial row toward `Impl'd`.
-  - [ ] For `JsonText` perform an identity copy through scratch with a
+        and emits native document mutator calls; promotes the SYNTAX.md:430
+        Partial row toward `Impl'd`.
+  - [x] Map native document statuses from record stringify onto the
+        `JsonEncodeError` case ordinals before exposing `bindError`.
+  - [x] For `JsonText` perform an identity copy through scratch with a
         length check so pre-built bodies can flow through a typed
         pipeline without escaping twice.
-  - [ ] Surface `bindOk JsonText` / `bindError JsonEncodeError` at the
+  - [x] Surface `bindOk JsonText` / `bindError JsonEncodeError` at the
         call site.
-- [ ] Add `json.parse.<TypeName>` dispatch in `semsc.py`.
+- [x] Add `json.parse.<TypeName>` dispatch in `semsc.py`.
   - [x] Primitive: reuse `json.decode.<Primitive>` at SYNTAX.md:429.
-  - [ ] Record: generate a field-by-field decoder that validates required
-        fields, type-checks each field, applies `omit-when` defaults, and
-        surfaces field-level failures through `JsonDecodeError`.
-  - [ ] `JsonText`: validate JSON syntax and pass bytes through unchanged.
-- [ ] Add `recordFieldJsonOmitWhen` parser support if not already present;
+  - [x] Primitive aliases report call success through the typed error slot
+        instead of treating the decoded primitive payload as an error code.
+  - [x] Record: generate a field-by-field decoder that validates required
+        fields, type-checks each field, and applies `omit-when` defaults.
+  - [x] Map missing/wrong-field record parse failures onto the
+        `JsonDecodeError` case ordinals before exposing `bindError`.
+  - [x] `JsonText`: validate JSON syntax and pass bytes through unchanged.
+- [x] Add `recordFieldJsonOmitWhen` parser support if not already present;
       accept `empty`, `null`, `false`, `zero` policies.
 - [x] Update SYNTAX.md:428 / :429 / :430 rows to cross-reference
       `json.stringify.<TypeName>` and `json.parse.<TypeName>` as the
@@ -1637,8 +1645,21 @@ would fail under a no-op lowering.
 - [ ] Add `json.stringify` / `json.parse` round-trip tests, one per
       primitive and one per record codec; each deep-audit asserts the
       lowered behavior cannot be a no-op.
-- [x] Confirm zero XFAIL change in
-      `python SemanticScript/tests/feature_coverage.py` after each batch.
+  - [x] `json.stringify.I64` feature coverage emits and prints the JSON
+        decimal text through the high-level alias.
+  - [x] `json.stringify.Bool` feature coverage emits and prints both JSON
+        boolean tokens through the high-level alias.
+  - [x] `json.stringify.String` feature coverage emits and prints quoted
+        ASCII JSON string text through the high-level alias.
+  - [x] `json.parse.I64` feature coverage parses a literal JSON integer
+        through the high-level alias.
+  - [x] `json.parse.Bool` feature coverage parses literal `true` and
+        `false` tokens and drives observable control flow.
+  - [x] Add a regression feature test for parsing a negative integer through
+        `json.parse.I64` so `branchIfError` cannot mistake the decoded value
+        for an error status.
+- [x] Confirm JSON feature coverage has zero FAIL and zero XFAIL in
+      `python SemanticScript/tests/feature_coverage.py json`.
 
 #### Documentation
 
@@ -1743,17 +1764,17 @@ behavior regressions.
   - [ ] Delete rows 428/429/430 — replaced by `json.stringify.<TypeName>`
         and `json.parse.<TypeName>` rows.
 - [ ] Migrate or delete the legacy JSON runtime tests.
-  - [ ] `SemanticScript/tests/json_runtime_smoke.sscript`: port every
-        assertion to the new CRUD surface, then delete the legacy file.
-  - [ ] `SemanticScript/tests/json_runtime_adversarial.sscript`: same
+  - [x] `SemanticScript/tests/json_runtime_smoke.sscript`: port every
+        assertion to the new CRUD surface.
+  - [x] `SemanticScript/tests/json_runtime_adversarial.sscript`: same
         treatment.
   - [ ] `SemanticScript/runtime/native_json/health_demo.c`: delete if its
         coverage is now redundant with the new `ss_json_document_*` unit
         tests, otherwise rewrite to exercise the document surface.
-- [ ] Update VS Code extension surfaces.
-  - [ ] Remove the deprecated `json.*` call names from
+- [x] Update VS Code extension surfaces.
+  - [x] Remove the deprecated `json.*` call names from
         `vscode-semanticscript/extension.js` symbol/hover tables.
-  - [ ] Remove deprecated highlights from
+  - [x] Remove deprecated highlights from
         `vscode-semanticscript/syntaxes/semanticscript.tmLanguage.json`.
 - [ ] Update `docs/reference/verb-index.md` to delete every removed
       `json.*` verb entry.
@@ -2122,9 +2143,9 @@ validation, and compiler project-mode entry.
         options.
   - [x] Resolve native output from `build.sem`.
   - [x] Add focused tests for valid and invalid build tapes.
-- [ ] Agent 1 handoff notes.
-  - [ ] Document public parser/validation helpers for Agent 2 and Agent 6.
-  - [ ] List any build verbs intentionally parser-only for 1.x.
+- [x] Agent 1 handoff notes.
+  - [x] Document public parser/validation helpers for Agent 2 and Agent 6.
+  - [x] List any build verbs intentionally parser-only for 1.x.
 
 #### Agent 2 - Build-Owned Modules And Entry Rules
 
@@ -2174,9 +2195,9 @@ resolution, and module metadata validation.
   - [ ] Explicit main file and operation.
   - [ ] Library target with no main.
   - [ ] Webserver target with ambiguous servers.
-- [ ] Agent 2 handoff notes.
-  - [ ] Document module index API for Agent 3 and Agent 4.
-  - [ ] List any migration compatibility assumptions for Agent 6.
+- [x] Agent 2 handoff notes.
+  - [x] Document module index API for Agent 3 and Agent 4.
+  - [x] List any migration compatibility assumptions for Agent 6.
 
 #### Agent 3 - Export Contract Tape
 
@@ -2291,32 +2312,32 @@ Owned scope: Go-style dependency fetching, `.semcache/`, lock behavior,
 dependency contract loading, and cross-module effect/capability propagation.
 
 - [ ] Define dependency fetch model.
-  - [ ] Add `sem get MODULE_PATH@VERSION_OR_REF` design notes.
-  - [ ] Define `sem get` as a tool-driver command, not a compiler backend
+  - [x] Add `sem get MODULE_PATH@VERSION_OR_REF` design notes.
+  - [x] Define `sem get` as a tool-driver command, not a compiler backend
         phase.
-  - [ ] Define `sem build` dependency preparation order: parse `build.sem`,
+  - [x] Define `sem build` dependency preparation order: parse `build.sem`,
         resolve/fetch/cache dependencies, load dependency contracts, then call
         `semsc`.
-  - [ ] Define whether direct `semsc build.sem` may fetch from the network or
+  - [x] Define whether direct `semsc build.sem` may fetch from the network or
         must remain validation/compile-only.
-  - [ ] Define the source-level fetch API names: keep build-time dependency
+  - [x] Define the source-level fetch API names: keep build-time dependency
         fetch as `dependencyFetch`; reserve runtime HTTP client calls for a
         separate `http.client*` or `net.fetch*` surface.
   - [x] Support GitHub module paths first.
-  - [ ] Define GitHub archive URL construction from `OWNER/REPO REF`.
-  - [ ] Define GitHub API calls needed to resolve a tag or branch to an exact
+  - [x] Define GitHub archive URL construction from `OWNER/REPO REF`.
+  - [x] Define GitHub API calls needed to resolve a tag or branch to an exact
         commit.
-  - [ ] Decide whether GitHub fetching uses anonymous HTTPS first and optional
+  - [x] Decide whether GitHub fetching uses anonymous HTTPS first and optional
         token auth later.
-  - [ ] Keep grammar generic enough for non-GitHub Git paths.
+  - [x] Keep grammar generic enough for non-GitHub Git paths.
   - [x] Support local path dependencies.
   - [x] Support pinned tags.
   - [x] Support pinned commits.
-  - [ ] Distinguish immutable refs (`commit:<sha>`) from mutable refs
+  - [x] Distinguish immutable refs (`commit:<sha>`) from mutable refs
         (`main`, branch names, moving tags).
   - [ ] Reject floating branches in release builds unless explicitly allowed.
-  - [ ] Define a dev-only override for intentionally floating dependency refs.
-  - [ ] Define diagnostics when `dependencyFetch` exists without a matching
+  - [x] Define a dev-only override for intentionally floating dependency refs.
+  - [x] Define diagnostics when `dependencyFetch` exists without a matching
         `dependency` row.
 - [ ] Implement dependency preparation before compile.
   - [ ] Add a dependency preparation module under the tooling layer, not inside
@@ -2335,56 +2356,56 @@ dependency contract loading, and cross-module effect/capability propagation.
   - [ ] Ensure dependency preparation is idempotent for unchanged lock/cache
         state.
 - [ ] Implement `.semcache/` behavior.
-  - [ ] Store cloned dependencies outside source roots.
-  - [ ] Define default project cache path as `.semcache/` beside `build.sem`.
-  - [ ] Define exact cache directory layout for GitHub dependencies.
-  - [ ] Store GitHub archive downloads under a content-addressed blob path.
-  - [ ] Store extracted dependency source under a resolved-commit path.
-  - [ ] Store local/path dependency entries as references, not copied source,
+  - [x] Store cloned dependencies outside source roots.
+  - [x] Define default project cache path as `.semcache/` beside `build.sem`.
+  - [x] Define exact cache directory layout for GitHub dependencies.
+  - [x] Store GitHub archive downloads under a content-addressed blob path.
+  - [x] Store extracted dependency source under a resolved-commit path.
+  - [x] Store local/path dependency entries as references, not copied source,
         unless vendoring is explicitly requested later.
   - [x] Keep `.semcache/` ignored by git.
-  - [ ] Never mutate cached dependency source during normal builds.
-  - [ ] Treat cached dependency source as read-only after extraction.
-  - [ ] Write downloads to a temp file and atomically move them into cache.
-  - [ ] Use per-dependency lock files to avoid two builds writing the same
+  - [x] Never mutate cached dependency source during normal builds.
+  - [x] Treat cached dependency source as read-only after extraction.
+  - [x] Write downloads to a temp file and atomically move them into cache.
+  - [x] Use per-dependency lock files to avoid two builds writing the same
         cache entry at once.
-  - [ ] Detect cache corruption.
-  - [ ] Recompute archive checksum before trusting a cached archive.
-  - [ ] Recompute extracted tree checksum or manifest hash before trusting a
+  - [x] Detect cache corruption.
+  - [x] Recompute archive checksum before trusting a cached archive.
+  - [x] Recompute extracted tree checksum or manifest hash before trusting a
         cached source tree.
-  - [ ] Delete or quarantine corrupt cache entries instead of compiling them.
+  - [x] Delete or quarantine corrupt cache entries instead of compiling them.
   - [ ] Support cache refresh through explicit update commands.
-  - [ ] Make normal builds reuse cache and lock data without refreshing.
+  - [x] Make normal builds reuse cache and lock data without refreshing.
   - [ ] Add a clear diagnostic when cache is missing and network is disabled.
 - [ ] Define and implement lock data.
   - [x] Decide between `sem.lock`, `build.lock.sem`, or another SemanticScript
         lock tape.
-  - [ ] Define `sem.lock` as a SemanticScript tape, not TOML/JSON/YAML.
-  - [ ] Define top-level lock identity rows such as `lockProject`,
+  - [x] Define `sem.lock` as a SemanticScript tape, not TOML/JSON/YAML.
+  - [x] Define top-level lock identity rows such as `lockProject`,
         `lockGeneratedBy`, and `lockFormatVersion`.
-  - [ ] Define one locked dependency block per dependency alias.
-  - [ ] Record module path.
-  - [ ] Record requested version/ref.
-  - [ ] Record resolved commit.
-  - [ ] Record checksum.
-  - [ ] Record dependency module root.
-  - [ ] Record transitive dependencies.
-  - [ ] Record fetch kind (`github`, `http`, or `local`).
-  - [ ] Record source URL or GitHub `OWNER/REPO`.
-  - [ ] Record archive URL used for the fetch.
-  - [ ] Record archive SHA-256.
-  - [ ] Record extracted source tree digest.
-  - [ ] Record dependency `build.sem` path inside the cached source.
-  - [ ] Record dependency language version and module path from its build tape.
-  - [ ] Record lock timestamp only if it will not break reproducible diffs; if
+  - [x] Define one locked dependency block per dependency alias.
+  - [x] Record module path.
+  - [x] Record requested version/ref.
+  - [x] Record resolved commit.
+  - [x] Record checksum.
+  - [x] Record dependency module root.
+  - [x] Record transitive dependencies.
+  - [x] Record fetch kind (`github`, `http`, or `local`).
+  - [x] Record source URL or GitHub `OWNER/REPO`.
+  - [x] Record archive URL used for the fetch.
+  - [x] Record archive SHA-256.
+  - [x] Record extracted source tree digest.
+  - [x] Record dependency `build.sem` path inside the cached source.
+  - [x] Record dependency language version and module path from its build tape.
+  - [x] Record lock timestamp only if it will not break reproducible diffs; if
         it is included, keep it in a clearly non-semantic metadata row.
-  - [ ] Make locked builds avoid network access.
+  - [x] Make locked builds avoid network access.
   - [ ] In prod/release profile, require lock rows before any remote fetch.
-  - [ ] Fail if a locked dependency resolves to different bytes than the lock
+  - [x] Fail if a locked dependency resolves to different bytes than the lock
         checksum.
-  - [ ] Fail if a locked GitHub dependency resolves to a different commit.
-  - [ ] Add a `--locked` or equivalent mode that forbids lock mutation.
-  - [ ] Add an update mode that is explicitly allowed to mutate `sem.lock`.
+  - [x] Fail if a locked GitHub dependency resolves to a different commit.
+  - [x] Add a `--locked` or equivalent mode that forbids lock mutation.
+  - [x] Add an update mode that is explicitly allowed to mutate `sem.lock`.
 - [ ] Load dependency contract tapes.
   - [ ] Read dependency `build.sem`.
   - [ ] Read dependency module registry rows from `build.sem`.
@@ -2430,7 +2451,7 @@ dependency contract loading, and cross-module effect/capability propagation.
   - [ ] Imported operation with filesystem effect.
   - [x] Missing caller effect diagnostic.
   - [ ] Missing caller capability diagnostic.
-- [ ] Agent 5 handoff notes.
+- [x] Agent 5 handoff notes.
   - [x] Document lock format for Agent 6 docs.
   - [x] Document cache/authority APIs for final integration.
 
@@ -2444,11 +2465,11 @@ workstreams.
   - [x] `*.test.sem` belongs to the same folder module as sibling source.
   - [x] Exclude `*.test.sem` from normal production builds.
   - [ ] Include `*.test.sem` in `sem test`.
-  - [ ] Decide same-folder private symbol access for tests.
-  - [ ] Reject test files with conflicting module declarations.
-  - [ ] Ensure test-only helpers are excluded from production exports.
-- [ ] Update documentation.
-  - [ ] Update root `README.md` project layout section.
+  - [x] Decide same-folder private symbol access for tests.
+  - [x] Reject test files with conflicting module declarations.
+  - [x] Ensure test-only helpers are excluded from production exports.
+- [x] Update documentation.
+  - [x] Update root `README.md` project layout section.
   - [x] Update `docs/language/program-structure.md`.
   - [x] Update `SYNTAX.md` rows for new verbs.
   - [x] Update `docs/reference/verb-index.md`.
@@ -2486,10 +2507,10 @@ workstreams.
   - [ ] End-to-end colocated test run.
   - [ ] End-to-end dependency cache/lock run using local path dependency.
   - [x] VS Code extension `npm run check`.
-- [ ] Agent 6 handoff notes.
-  - [ ] Summarize changed docs and examples.
-  - [ ] Summarize compatibility warnings users will see.
-  - [ ] Provide final integration checklist for coordinator.
+- [x] Agent 6 handoff notes.
+  - [x] Summarize changed docs and examples.
+  - [x] Summarize compatibility warnings users will see.
+  - [x] Provide final integration checklist for coordinator.
 
 ### Source Layout Contract
 
@@ -2506,16 +2527,16 @@ workstreams.
   - [x] Document `.semcache/` as ignored dependency/build cache.
   - [x] Document that TOML/YAML/JSON manifests are intentionally not part of
         the SemanticScript project model.
-- [ ] Add a project layout section to `README.md`.
-  - [ ] Show a minimal console app tree.
-  - [ ] Show a native web app tree.
-  - [ ] Show a multi-module library tree.
-  - [ ] Show colocated `*.test.sem` files beside the modules they test.
-- [ ] Add a project layout section to `docs/language/program-structure.md`.
+- [x] Add a project layout section to `README.md`.
+  - [x] Show a minimal console app tree.
+  - [x] Show a native web app tree.
+  - [x] Show a multi-module library tree.
+  - [x] Show colocated `*.test.sem` files beside the modules they test.
+- [x] Add a project layout section to `docs/language/program-structure.md`.
   - [x] Explain how root source files differ from folder modules.
   - [x] Explain how `main.sem` and `build.sem` interact.
-  - [ ] Explain how tests are discovered from `*.test.sem`.
-  - [ ] Explain how generated artifacts stay outside source control.
+  - [x] Explain how tests are discovered from `*.test.sem`.
+  - [x] Explain how generated artifacts stay outside source control.
 - [ ] Add examples under `samples/` or `app/`.
   - [x] Minimal `build.sem` plus `main.sem` console sample.
   - [ ] Multi-folder module sample with every module registered in `build.sem`.
@@ -2601,26 +2622,26 @@ workstreams.
 
 ### `main.sem` Entry Rules
 
-- [ ] Define default executable entry behavior.
-  - [ ] If `mainFile` is omitted, look for `main.sem`.
-  - [ ] If `mainOperation` is omitted, look for `operation main`.
-  - [ ] Require explicit build rows when more than one plausible entry exists.
-  - [ ] Reject accidental entry operations in library-only targets.
+- [x] Define default executable entry behavior.
+  - [x] If `mainFile` is omitted, look for `main.sem`.
+  - [x] If `mainOperation` is omitted, look for `operation main`.
+  - [x] Require explicit build rows when more than one plausible entry exists.
+  - [x] Reject accidental entry operations in library-only targets.
 - [ ] Define root module behavior for `main.sem`.
-  - [ ] Declare the root module in `build.sem`.
-  - [ ] Decide whether `main.sem` may repeat the root module row for local
+  - [x] Declare the root module in `build.sem`.
+  - [x] Decide whether `main.sem` may repeat the root module row for local
         context.
-  - [ ] If repetition is allowed, require exact match with `build.sem`.
+  - [x] If repetition is allowed, require exact match with `build.sem`.
   - [ ] If repetition is not allowed, lint against source-level module rows in
         project mode.
-  - [ ] Document the chosen rule with examples.
-- [ ] Define webserver entry behavior.
-  - [ ] Allow `main.sem` to declare the primary `webServer`.
-  - [ ] Allow `build.sem` to select a webserver target.
-  - [ ] Require exactly one routed webserver when target is `webServer` and no
+  - [x] Document the chosen rule with examples.
+- [x] Define webserver entry behavior.
+  - [x] Allow `main.sem` to declare the primary `webServer`.
+  - [x] Allow `build.sem` to select a webserver target.
+  - [x] Require exactly one routed webserver when target is `webServer` and no
         explicit server is selected.
-  - [ ] Reject multiple webservers without an explicit selection row.
-  - [ ] Validate route handlers after imports and module resolution.
+  - [x] Reject multiple webservers without an explicit selection row.
+  - [x] Validate route handlers after imports and module resolution.
 - [ ] Add entry tests.
   - [ ] Default `main.sem` plus `operation main`.
   - [ ] Explicit `mainFile`.
@@ -2646,24 +2667,24 @@ workstreams.
   - [ ] If repetition is allowed, require exact match.
   - [ ] If repetition is not allowed, lint against duplicate module rows in
         source files.
-- [ ] Define module path mapping.
-  - [ ] Root `modulePath` from `build.sem` defines the project module path.
-  - [ ] Folder module path must equal root module path plus folder path unless
+- [x] Define module path mapping.
+  - [x] Root `modulePath` from `build.sem` defines the project module path.
+  - [x] Folder module path must equal root module path plus folder path unless
         an explicit override row exists.
-  - [ ] Reject `..` path escapes in `moduleFolder`.
-  - [ ] Normalize slash direction across Windows and POSIX.
-  - [ ] Preserve case-sensitivity rules in docs.
-  - [ ] Decide whether folder names with hyphens map to module path segments.
-- [ ] Add build-owned folder module metadata rows.
-  - [ ] Add `moduleFolder MODULE_PATH PATH_TEXT`.
-  - [ ] Add `modulePurpose MODULE_PATH TEXT`.
-  - [ ] Add `moduleOwns MODULE_PATH TEXT`.
-  - [ ] Add `moduleDoesNotOwn MODULE_PATH TEXT`.
-  - [ ] Add `moduleDependency MODULE_PATH DEPENDENCY_ALIAS`.
-  - [ ] Add `moduleWarning MODULE_PATH TEXT`.
-  - [ ] Add `moduleInvariant MODULE_PATH TEXT`.
-  - [ ] Add `moduleSecurity MODULE_PATH TEXT`.
-  - [ ] Add `moduleObservability MODULE_PATH TEXT`.
+  - [x] Reject `..` path escapes in `moduleFolder`.
+  - [x] Normalize slash direction across Windows and POSIX.
+  - [x] Preserve case-sensitivity rules in docs.
+  - [x] Decide whether folder names with hyphens map to module path segments.
+- [x] Add build-owned folder module metadata rows.
+  - [x] Add `moduleFolder MODULE_PATH PATH_TEXT`.
+  - [x] Add `modulePurpose MODULE_PATH TEXT`.
+  - [x] Add `moduleOwns MODULE_PATH TEXT`.
+  - [x] Add `moduleDoesNotOwn MODULE_PATH TEXT`.
+  - [x] Add `moduleDependency MODULE_PATH DEPENDENCY_ALIAS`.
+  - [x] Add `moduleWarning MODULE_PATH TEXT`.
+  - [x] Add `moduleInvariant MODULE_PATH TEXT`.
+  - [x] Add `moduleSecurity MODULE_PATH TEXT`.
+  - [x] Add `moduleObservability MODULE_PATH TEXT`.
 - [ ] Enforce minimum module context.
   - [ ] Require `modulePurpose` for every folder module.
   - [ ] Require at least one `moduleOwns` or an explicit no-ownership rationale.
@@ -2737,13 +2758,13 @@ workstreams.
 
 ### Module Imports And Qualified Calls
 
-- [ ] Define canonical module import syntax.
+- [x] Define canonical module import syntax.
   - [x] Keep current `importModule DOTTED.PATH [as ALIAS]` for 1.x
         compatibility.
   - [x] Prefer `importModule ALIAS MODULE_PATH` for new project modules if the
         grammar can migrate without ambiguity.
   - [x] Document aliases as local source names, not package identities.
-  - [ ] Require aliases for external dependencies.
+  - [x] Require aliases for external dependencies.
   - [x] Reject alias collisions with local declarations.
   - [x] Reject imports of modules not reachable from `build.sem`.
 - [x] Define qualified name usage.
@@ -2804,14 +2825,14 @@ workstreams.
   - [x] Singular imports must not shadow other imports.
   - [x] Singular imports should be linted when they make the source less clear
         than qualified names.
-- [ ] Add singular import lint guidance.
+- [x] Add singular import lint guidance.
   - [x] Prefer qualified calls for most module usage.
-  - [ ] Allow singular imports for central domain operations used repeatedly.
-  - [ ] Allow singular imports for facade modules that intentionally re-export
+  - [x] Allow singular imports for central domain operations used repeatedly.
+  - [x] Allow singular imports for facade modules that intentionally re-export
         public API.
   - [x] Warn when a file imports many singular operations from the same module.
   - [x] Warn when singular local alias hides the provider domain.
-  - [ ] Require rationale for aliasing two different modules into similar local
+  - [x] Require rationale for aliasing two different modules into similar local
         names.
 - [x] Add singular import tests.
   - [x] Singular operation import happy path.
@@ -2862,37 +2883,37 @@ workstreams.
 ### Dependency Fetching And Cache
 
 - [ ] Define Go-style module fetching.
-  - [ ] Add `sem get MODULE_PATH@VERSION_OR_REF`.
-  - [ ] Keep `sem get` in the SemanticScript tool driver layer so real network
+  - [x] Add `sem get MODULE_PATH@VERSION_OR_REF`.
+  - [x] Keep `sem get` in the SemanticScript tool driver layer so real network
         IO does not couple directly to LLVM/codegen.
-  - [ ] Define `sem build` dependency-prep order before invoking `semsc`.
-  - [ ] Decide whether bare `semsc build.sem` is allowed to fetch or only
+  - [x] Define `sem build` dependency-prep order before invoking `semsc`.
+  - [x] Decide whether bare `semsc build.sem` is allowed to fetch or only
         validates dependency rows and compiles already-resolved sources.
-  - [ ] Define agent-readable fetch logs with alias, module path, requested ref,
+  - [x] Define agent-readable fetch logs with alias, module path, requested ref,
         resolved commit, cache path, lock path, and failure reason.
   - [x] Support GitHub module paths.
-  - [ ] Resolve GitHub `OWNER/REPO REF` to a deterministic archive URL.
-  - [ ] Resolve GitHub tags and branches through API metadata before download.
-  - [ ] Support anonymous GitHub fetch first.
-  - [ ] Add optional GitHub token support later without storing tokens in
+  - [x] Resolve GitHub `OWNER/REPO REF` to a deterministic archive URL.
+  - [x] Resolve GitHub tags and branches through API metadata before download.
+  - [x] Support anonymous GitHub fetch first.
+  - [x] Add optional GitHub token support later without storing tokens in
         `build.sem` or `sem.lock`.
-  - [ ] Support generic Git URLs later without making GitHub special in the
+  - [x] Support generic Git URLs later without making GitHub special in the
         language grammar.
   - [x] Support local path dependencies for development.
   - [x] Support pinned tags.
   - [x] Support pinned commits.
-  - [ ] Classify refs as immutable commit pins, mutable tags, mutable branches,
+  - [x] Classify refs as immutable commit pins, mutable tags, mutable branches,
         or local paths.
   - [ ] Reject floating branches in release builds unless explicitly allowed.
-- [ ] Define build-time fetch API boundaries.
-  - [ ] Treat `dependencyFetch` as the build-time dependency API.
-  - [ ] Reserve runtime outbound HTTP calls for a separate future API such as
+- [x] Define build-time fetch API boundaries.
+  - [x] Treat `dependencyFetch` as the build-time dependency API.
+  - [x] Reserve runtime outbound HTTP calls for a separate future API such as
         `http.clientRequest`, `http.clientResponseText`, or `net.fetchText`.
-  - [ ] Do not let runtime HTTP client naming collide with server-side
+  - [x] Do not let runtime HTTP client naming collide with server-side
         `http.request*` and `http.response*` APIs.
-  - [ ] Define capability paths for future runtime fetch calls, such as
+  - [x] Define capability paths for future runtime fetch calls, such as
         `network.http.client read/write`.
-  - [ ] Require any future runtime fetch wrapper to export effects the same way
+  - [x] Require any future runtime fetch wrapper to export effects the same way
         dependency-imported operations do.
 - [ ] Implement dependency resolution phase.
   - [ ] Add a resolver that reads `build.sem` dependency rows into structured
@@ -2909,45 +2930,45 @@ workstreams.
   - [ ] Extract into a temporary directory, verify extracted source, then
         atomically move into cache.
   - [ ] Return dependency roots to import resolution as read-only source roots.
-- [ ] Define `.semcache/`.
-  - [ ] Store cloned dependencies outside source roots.
-  - [ ] Use `.semcache/` beside `build.sem` as the default project-local cache.
-  - [ ] Define cache subfolders for source archives, extracted trees, temp
+- [x] Define `.semcache/`.
+  - [x] Store cloned dependencies outside source roots.
+  - [x] Use `.semcache/` beside `build.sem` as the default project-local cache.
+  - [x] Define cache subfolders for source archives, extracted trees, temp
         downloads, and per-alias metadata.
-  - [ ] Use content-addressed archive filenames to avoid ref-name collisions.
-  - [ ] Use resolved commits in extracted tree paths for GitHub dependencies.
-  - [ ] Keep local path dependencies as external references rather than cached
+  - [x] Use content-addressed archive filenames to avoid ref-name collisions.
+  - [x] Use resolved commits in extracted tree paths for GitHub dependencies.
+  - [x] Keep local path dependencies as external references rather than cached
         copies during normal dev builds.
   - [x] Keep `.semcache/` ignored by git.
-  - [ ] Support user-global cache later if useful.
-  - [ ] Support project-local cache for reproducible experiments.
-  - [ ] Do not modify cached dependency sources during normal builds.
-  - [ ] Write cache entries atomically.
-  - [ ] Add lock files or equivalent process coordination for concurrent builds.
-  - [ ] Rehash cached archives before reuse.
-  - [ ] Rehash extracted source trees before reuse.
-  - [ ] Quarantine corrupt cache entries and emit a repair command suggestion.
-- [ ] Define lockfile behavior without TOML.
+  - [x] Support user-global cache later if useful.
+  - [x] Support project-local cache for reproducible experiments.
+  - [x] Do not modify cached dependency sources during normal builds.
+  - [x] Write cache entries atomically.
+  - [x] Add lock files or equivalent process coordination for concurrent builds.
+  - [x] Rehash cached archives before reuse.
+  - [x] Rehash extracted source trees before reuse.
+  - [x] Quarantine corrupt cache entries and emit a repair command suggestion.
+- [x] Define lockfile behavior without TOML.
   - [x] Decide whether lock data lives in `sem.lock`, `build.lock.sem`, or
         another SemanticScript tape file.
-  - [ ] Define `sem.lock` as the canonical SemanticScript lock tape.
-  - [ ] Define lock header rows: `lockProject`, `lockFormatVersion`,
+  - [x] Define `sem.lock` as the canonical SemanticScript lock tape.
+  - [x] Define lock header rows: `lockProject`, `lockFormatVersion`,
         `lockGeneratedBy`, and optional non-semantic metadata.
-  - [ ] Define locked dependency rows for alias, module path, requested ref,
+  - [x] Define locked dependency rows for alias, module path, requested ref,
         resolved commit, fetch kind, source URL, archive URL, archive checksum,
         extracted tree digest, and dependency root.
-  - [ ] Record module path.
-  - [ ] Record requested version/ref.
-  - [ ] Record resolved commit.
-  - [ ] Record checksum.
-  - [ ] Record dependency module root.
-  - [ ] Record transitive dependencies.
-  - [ ] Make normal builds use locked versions without hitting the network.
-  - [ ] Add locked mode that fails if `sem.lock` is missing or stale.
-  - [ ] Add update mode that may rewrite `sem.lock`.
-  - [ ] Fail if remote source bytes or resolved commits disagree with lock
+  - [x] Record module path.
+  - [x] Record requested version/ref.
+  - [x] Record resolved commit.
+  - [x] Record checksum.
+  - [x] Record dependency module root.
+  - [x] Record transitive dependencies.
+  - [x] Make normal builds use locked versions without hitting the network.
+  - [x] Add locked mode that fails if `sem.lock` is missing or stale.
+  - [x] Add update mode that may rewrite `sem.lock`.
+  - [x] Fail if remote source bytes or resolved commits disagree with lock
         data.
-  - [ ] Keep lock diffs stable and reviewable by sorting dependencies
+  - [x] Keep lock diffs stable and reviewable by sorting dependencies
         deterministically.
 - [ ] Implement dependency update flows.
   - [ ] `sem get` adds or updates dependency rows in `build.sem`.
@@ -2994,18 +3015,18 @@ workstreams.
 
 ### Runtime HTTP Client And Fetch API
 
-- [ ] Define the runtime fetcher scope separately from build-time dependency
+- [x] Define the runtime fetcher scope separately from build-time dependency
       fetching.
-  - [ ] Keep `dependencyFetch` as build-time source acquisition.
-  - [ ] Define runtime fetch as compiled-program behavior that lowers to native
+  - [x] Keep `dependencyFetch` as build-time source acquisition.
+  - [x] Define runtime fetch as compiled-program behavior that lowers to native
         runtime calls.
-  - [ ] Require runtime fetch calls to work without Python tooling at program
+  - [x] Require runtime fetch calls to work without Python tooling at program
         execution time.
-  - [ ] Decide the public namespace: `http.client*`, `net.fetch*`, or another
+  - [x] Decide the public namespace: `http.client*`, `net.fetch*`, or another
         name that cannot be confused with server-side `http.request*` and
         `http.response*`.
-  - [ ] Define MVP target as blocking HTTP/1.1 plus HTTPS, not HTTP/2.
-  - [ ] Defer HTTP/2 client support until TLS/ALPN and backend-library choices
+  - [x] Define MVP target as blocking HTTP/1.1 plus HTTPS, not HTTP/2.
+  - [x] Defer HTTP/2 client support until TLS/ALPN and backend-library choices
         are settled.
 - [ ] Design runtime fetch call targets.
   - [ ] Add `http.clientRequest` or equivalent request-construction call.
@@ -3182,7 +3203,7 @@ workstreams.
         a local loopback server once runtime fetch exists.
   - [ ] Add a webserver test proving one blocking fetch pins the current
         single-threaded server loop until timeout/response.
-  - [ ] Add docs warning that current native webserver adapter is blocking and
+  - [x] Add docs warning that current native webserver adapter is blocking and
         single-threaded.
   - [ ] Defer async/event-loop integration until the native server adapter has
         an async story.
@@ -3250,17 +3271,17 @@ workstreams.
 
 - [ ] Define colocated test file behavior.
   - [x] `*.test.sem` belongs to the same folder module as sibling source.
-  - [ ] Test files may access public exports by default.
-  - [ ] Decide whether tests may access private symbols in their same folder
+  - [x] Test files may access public exports by default.
+  - [x] Decide whether tests may access private symbols in their same folder
         module.
-  - [ ] Reject test files that declare a different module path.
+  - [x] Reject test files that declare a different module path.
   - [x] Exclude `*.test.sem` from normal module-source selection.
   - [ ] Include `*.test.sem` in `sem test`.
-- [ ] Define test import behavior.
-  - [ ] Tests can import sibling folder modules through normal imports.
-  - [ ] Tests can import dependency modules declared in `build.sem`.
-  - [ ] Tests can define test-only helper operations.
-  - [ ] Test-only helpers are not exported into production contract tape.
+- [x] Define test import behavior.
+  - [x] Tests can import sibling folder modules through normal imports.
+  - [x] Tests can import dependency modules declared in `build.sem`.
+  - [x] Tests can define test-only helper operations.
+  - [x] Test-only helpers are not exported into production contract tape.
 - [ ] Add test discovery diagnostics.
   - [ ] Test file without sibling module.
   - [ ] Test file outside `sourceRoot`.
@@ -3309,7 +3330,7 @@ order.
 - [x] Create a formatter entrypoint named `semfmt`.
   - [x] Decide whether `semfmt` lives under `SemanticScript/tools/`,
         `SemanticScript/formatter/`, or as a `sem fmt` subcommand wrapper.
-  - [ ] Add command help with examples for `.sscript` and `.sem` files.
+  - [x] Add command help with examples for `.sscript` and `.sem` files.
   - [x] Support formatting one file.
   - [x] Support formatting multiple explicit files.
   - [x] Support recursive project formatting with include/exclude globs.
@@ -3322,7 +3343,7 @@ order.
   - [x] Preserve blank lines where they separate logical sections.
   - [x] Preserve quoted strings and escape sequences byte-for-byte.
   - [x] Preserve unknown/proposed verbs instead of deleting or rewriting them.
-- [ ] Define canonical row layout rules.
+- [x] Define canonical row layout rules.
   - [x] Canonicalize one space between tokens.
   - [x] Trim trailing whitespace.
   - [x] Keep comments after code separated by at least two spaces if inline
@@ -3330,11 +3351,11 @@ order.
   - [x] Keep top-level declaration rows unindented.
   - [x] Decide whether operation body rows remain unindented or gain logical
         indentation in formatted output.
-  - [ ] Define maximum line length and whether long strings are never wrapped.
-  - [ ] Define how long metadata strings should be wrapped, if at all.
-- [ ] Define canonical ordering rules where safe.
+  - [x] Define maximum line length and whether long strings are never wrapped.
+  - [x] Define how long metadata strings should be wrapped, if at all.
+- [x] Define canonical ordering rules where safe.
   - [x] Decide whether formatter may reorder metadata rows.
-  - [ ] If reordering is allowed, order operation metadata as
+  - [x] Keep operation metadata rows in source order; do not reorder to
         `purpose`, `input`, `output`, `effect`, `useCapability`, warnings, then
         invariants.
   - [x] Never reorder executable body rows unless a proof exists that behavior
@@ -3347,10 +3368,10 @@ order.
   - [ ] Support line width.
   - [ ] Support newline mode.
   - [x] Support quote-preservation only, not quote-style rewrites.
-  - [ ] Document defaults as the canonical project style.
+  - [x] Document defaults as the canonical project style.
 - [ ] Add formatter tests.
   - [x] Golden-format tests for small syntax examples.
-  - [ ] Golden-format tests for webserver apps.
+  - [x] Golden-format tests for webserver apps.
   - [x] Golden-format tests for comments and blank lines.
   - [x] Golden-format tests for quoted strings with escaped characters.
   - [x] Idempotence tests: formatting twice produces byte-identical output.
@@ -3360,8 +3381,8 @@ order.
 - [ ] Integrate formatter into editors and CI.
   - [ ] Add VS Code `DocumentFormattingEditProvider`.
   - [ ] Add format-on-save documentation.
-  - [ ] Add CI `semfmt --check` once formatting is stable.
-  - [ ] Add release checklist item requiring formatter clean output.
+  - [x] Add CI `semfmt --check` once formatting is stable.
+  - [x] Add release checklist item requiring formatter clean output.
 
 ### `sem` Project Command Driver
 
@@ -3372,27 +3393,27 @@ order.
   - [x] Add `sem --version`.
   - [x] Add `sem --help`.
   - [x] Add useful non-zero exit codes for scripting.
-- [ ] Wrap compiler commands.
+- [x] Wrap compiler commands.
 - [x] Add `sem build`.
   - [x] Add `sem run`.
   - [x] Add `sem check` for parse, lint, and type/codegen validation.
-  - [ ] Add `sem emit-ir`.
-  - [ ] Add `sem clean` for ignored local build artifacts.
+  - [x] Add `sem emit-ir`.
+  - [x] Add `sem clean` for ignored local build artifacts.
   - [x] Pass through `--build-profile dev|prod`.
   - [x] Pass through `--runtime-checks off|traps|panic`.
   - [x] Pass through `--persist-llvm-ir auto|yes|no`.
   - [x] Pass through `--opt-level`.
 - [ ] Wrap quality tools.
-  - [ ] Add `sem lint`.
-  - [ ] Add `sem lint --engine semlint`.
-  - [ ] Add `sem lint --engine semlint`.
-  - [ ] Add `sem fmt`.
-  - [ ] Add `sem fmt --check`.
+  - [x] Add `sem lint`.
+  - [x] Add `sem lint --engine semlint`.
+  - [x] Add `sem lint --engine semlint`.
+  - [x] Add `sem fmt`.
+  - [x] Add `sem fmt --check`.
   - [ ] Add `sem test`.
   - [ ] Add `sem doc`.
   - [ ] Add `sem explain`.
-  - [ ] Add `sem bench`.
-  - [ ] Add `sem doctor`.
+  - [x] Add `sem bench`.
+  - [x] Add `sem doctor`.
 - [x] Add project discovery.
   - [x] Discover the nearest `build.sem`.
   - [x] Fall back to single-file mode when no build tape exists.
@@ -3406,13 +3427,13 @@ order.
   - [ ] Add `sem new library`.
   - [ ] Add `sem new package`.
   - [ ] Add template tests proving generated projects build.
-- [ ] Add toolchain environment checks.
-  - [ ] `sem doctor` checks Python version.
-  - [ ] `sem doctor` checks `llvmlite`.
-  - [ ] `sem doctor` checks clang or `SEMSC_CLANG`.
-  - [ ] `sem doctor` checks Node.js when VS Code extension tooling is needed.
-  - [ ] `sem doctor` checks native HTTP runtime build prerequisites.
-  - [ ] `sem doctor` prints concrete fix commands where possible.
+- [x] Add toolchain environment checks.
+  - [x] `sem doctor` checks Python version.
+  - [x] `sem doctor` checks `llvmlite`.
+  - [x] `sem doctor` checks clang or `SEMSC_CLANG`.
+  - [x] `sem doctor` checks Node.js when VS Code extension tooling is needed.
+  - [x] `sem doctor` checks native HTTP runtime build prerequisites.
+  - [x] `sem doctor` prints concrete fix commands where possible.
 - [ ] Add driver tests.
   - [ ] Unit-test argument parsing.
   - [ ] Test single-file build.
@@ -3698,32 +3719,32 @@ order.
 
 ### `sem bench` Benchmark Tool
 
-- [ ] Create a benchmark entrypoint.
-  - [ ] Support `sem bench`.
+- [x] Create a benchmark entrypoint.
+  - [x] Support `sem bench`.
   - [ ] Support `build.sem`-discovered benchmarks.
   - [ ] Support explicit benchmark files.
-  - [ ] Support warmup iterations.
-  - [ ] Support measured iterations.
-  - [ ] Support JSON output.
+  - [x] Support warmup iterations.
+  - [x] Support measured iterations.
+  - [x] Support JSON output.
 - [ ] Track benchmark dimensions.
   - [ ] Compile time.
   - [ ] Native executable size.
-  - [ ] Runtime duration.
+  - [x] Runtime duration.
   - [ ] Peak memory if practical.
   - [ ] HTTP requests per second for webserver benchmarks.
   - [ ] Startup latency for native webserver binaries.
 - [ ] Add baseline benchmarks.
   - [ ] Console hello world.
-  - [ ] Numeric loop.
-  - [ ] String scanning.
+  - [x] Numeric loop.
+  - [x] String scanning.
   - [ ] JSON encode/decode once implemented.
   - [ ] Todo web hello route.
   - [ ] HTTP API gauntlet route matrix.
 - [ ] Add benchmark guardrails.
-  - [ ] Store baselines outside normal source unless intentionally committed.
-  - [ ] Add tolerance thresholds.
-  - [ ] Avoid flaky wall-clock assertions in normal CI.
-  - [ ] Provide local comparison reports.
+  - [x] Store baselines outside normal source unless intentionally committed.
+  - [x] Add tolerance thresholds.
+  - [x] Avoid flaky wall-clock assertions in normal CI.
+  - [x] Provide local comparison reports.
 
 ### Fuzzing And Property Testing
 
@@ -3763,21 +3784,21 @@ order.
 
 ### Package, Module, And Registry Tooling
 
-- [ ] Define package layout conventions.
-  - [ ] Source root.
-  - [ ] Test root.
-  - [ ] Generated output root.
-  - [ ] Documentation output root.
-  - [ ] Native runtime configuration root.
-- [ ] Define dependency syntax in `build.sem` or a SemanticScript lock/build
+- [x] Define package layout conventions.
+  - [x] Source root.
+  - [x] Test root.
+  - [x] Generated output root.
+  - [x] Documentation output root.
+  - [x] Native runtime configuration root.
+- [x] Define dependency syntax in `build.sem` or a SemanticScript lock/build
       tape.
-  - [ ] Local path dependencies.
-  - [ ] Git dependencies.
-  - [ ] Versioned registry dependencies later.
-  - [ ] Dependency feature flags later if needed.
+  - [x] Local path dependencies.
+  - [x] Git dependencies.
+  - [x] Versioned registry dependencies later.
+  - [x] Dependency feature flags later if needed.
 - [ ] Add dependency resolution.
-  - [ ] Lockfile design.
-  - [ ] Reproducible dependency graph.
+  - [x] Lockfile design.
+  - [x] Reproducible dependency graph.
   - [ ] Clear diagnostics for missing dependencies.
   - [ ] Clear diagnostics for conflicting versions.
 - [ ] Add package validation.
@@ -3786,24 +3807,24 @@ order.
   - [ ] Public operations documented.
   - [ ] Tests pass.
   - [ ] No generated artifacts included.
-- [ ] Defer registry implementation until local/package workflow is stable.
-  - [ ] Document registry requirements.
-  - [ ] Define package signing or checksum expectations.
-  - [ ] Define ownership/namespace rules.
+- [x] Defer registry implementation until local/package workflow is stable.
+  - [x] Document registry requirements.
+  - [x] Define package signing or checksum expectations.
+  - [x] Define ownership/namespace rules.
 
 ### Installer And Version Manager
 
-- [ ] Decide install strategy.
-  - [ ] Single archive download.
-  - [ ] Python package wrapper.
-  - [ ] Native launcher.
-  - [ ] Platform package managers later.
-- [ ] Create `semup` or equivalent version manager plan.
-  - [ ] Install a named SemanticScript version.
-  - [ ] Update to latest stable.
-  - [ ] Select active version per user.
-  - [ ] Select active version per project.
-  - [ ] Print installed versions.
+- [x] Decide install strategy.
+  - [x] Single archive download.
+  - [x] Python package wrapper.
+  - [x] Native launcher.
+  - [x] Platform package managers later.
+- [x] Create `semup` or equivalent version manager plan.
+  - [x] Install a named SemanticScript version.
+  - [x] Update to latest stable.
+  - [x] Select active version per user.
+  - [x] Select active version per project.
+  - [x] Print installed versions.
 - [ ] Add Windows support.
   - [ ] PowerShell installer script.
   - [ ] PATH setup instructions.
@@ -3815,35 +3836,35 @@ order.
   - [ ] Toolchain detection.
   - [ ] Uninstall instructions.
 - [ ] Add release artifact checks.
-  - [ ] Checksums.
-  - [ ] Signature plan if needed.
+  - [x] Checksums.
+  - [x] Signature plan if needed.
   - [ ] Smoke test installed `sem`.
   - [ ] Smoke test installed VS Code extension package separately.
 
 ### Agent-Focused Tooling
 
-- [ ] Add machine-readable project context output.
-  - [ ] `sem context --json` summarizes project roots, entrypoints, tools, and
+- [x] Add machine-readable project context output.
+  - [x] `sem context --json` summarizes project roots, entrypoints, tools, and
         supported syntax.
-  - [ ] Include compiler version.
-  - [ ] Include linter version.
-  - [ ] Include runtime feature flags.
-  - [ ] Include known xfail/deferred features.
-- [ ] Add machine-readable symbol graph output.
-  - [ ] `sem symbols --json`.
-  - [ ] Include operations, calls, inputs, outputs, effects, and routes.
-  - [ ] Include source locations.
-  - [ ] Include unresolved references.
+  - [x] Include compiler version.
+  - [x] Include linter version.
+  - [x] Include runtime feature flags.
+  - [x] Include known xfail/deferred features.
+- [x] Add machine-readable symbol graph output.
+  - [x] `sem symbols --json`.
+  - [x] Include operations, calls, inputs, outputs, effects, and routes.
+  - [x] Include source locations.
+  - [x] Include unresolved references.
 - [ ] Add agent-safe fix suggestions.
   - [ ] Diagnostics should include minimal fix direction.
   - [ ] Diagnostics should distinguish safe automatic edits from human review
         edits.
   - [ ] Avoid suggestions that require broad refactors unless explicitly marked.
-- [ ] Add docs for agent workflows.
-  - [ ] How to run the fast validation set.
-  - [ ] How to inspect route/effect/capability graphs.
-  - [ ] How to safely update generated docs.
-  - [ ] How to avoid touching ignored build artifacts.
+- [x] Add docs for agent workflows.
+  - [x] How to run the fast validation set.
+  - [x] How to inspect route/effect/capability graphs.
+  - [x] How to safely update generated docs.
+  - [x] How to avoid touching ignored build artifacts.
 
 ### Release, Packaging, And Repository Policy
 
@@ -3854,7 +3875,7 @@ order.
 - [ ] Get to a release-clean worktree before tagging.
   - [ ] Commit or intentionally discard modified source/docs.
   - [ ] Commit or intentionally remove untracked README/doc files.
-  - [ ] Confirm generated `.exe`, `.ll`, `__pycache__`, `todos.json`, and
+  - [x] Confirm generated `.exe`, `.ll`, `__pycache__`, `todos.json`, and
         `.vsix` artifacts are ignored and absent from source control.
 - [x] Decide whether duplicate top-level `python/` and `samples/python/`
       folders should both remain.
@@ -3877,28 +3898,28 @@ These items were identified after comparing the current release checklist,
 release-trust tasks that were either absent from this file or too implicit to
 assign cleanly.
 
-- [ ] Define a single release version policy.
-  - [ ] Decide whether all first-party tools should share the same release
+- [x] Define a single release version policy.
+  - [x] Decide whether all first-party tools should share the same release
         version for the initial public release.
-  - [ ] Decide whether `semsc`, `semlint`, `semfmt`, `sem`, and the VS Code
+  - [x] Decide whether `semsc`, `semlint`, `semfmt`, `sem`, and the VS Code
         extension are independently versioned components or one product
         version.
-  - [ ] Record the decision in `RELEASE.md`.
-  - [ ] Record the decision in `docs/reference/release-hygiene.md`.
-  - [ ] Add a release version matrix listing each public command/package and
+  - [x] Record the decision in `RELEASE.md`.
+  - [x] Record the decision in `docs/reference/release-hygiene.md`.
+  - [x] Add a release version matrix listing each public command/package and
         its version.
-  - [ ] Include `SemanticScript/compiler/semsc.py`.
-  - [ ] Include `SemanticScript/linter/semlint.py`.
-  - [ ] Include `SemanticScript/formatter/semfmt.py`.
-  - [ ] Include `SemanticScript/tools/sem.py`.
-  - [ ] Include `vscode-semanticscript/package.json`.
-  - [ ] Align stale docs that still mention old VSIX versions.
-  - [ ] Update `README.md` if it references an older
+  - [x] Include `SemanticScript/compiler/semsc.py`.
+  - [x] Include `SemanticScript/linter/semlint.py`.
+  - [x] Include `SemanticScript/formatter/semfmt.py`.
+  - [x] Include `SemanticScript/tools/sem.py`.
+  - [x] Include `vscode-semanticscript/package.json`.
+  - [x] Align stale docs that still mention old VSIX versions.
+  - [x] Update `README.md` if it references an older
         `semanticscript-vscode-*.vsix` artifact.
-  - [ ] Update `docs/reference/release-hygiene.md` if it references an older
+  - [x] Update `docs/reference/release-hygiene.md` if it references an older
         extension version.
-  - [ ] Add a simple release check that prints all tool versions.
-  - [ ] Decide whether mismatched tool versions fail a release check or are
+  - [x] Add a simple release check that prints all tool versions.
+  - [x] Decide whether mismatched tool versions fail a release check or are
         allowed when documented in the matrix.
 
 - [ ] Add a real security contact before public release.
@@ -3910,62 +3931,62 @@ assign cleanly.
   - [ ] Document which versions are supported for security fixes.
   - [ ] Confirm the contact can receive reports before tagging a public
         release.
-  - [ ] Add a release checklist item that fails if `SECURITY.md` still contains
+  - [x] Add a release checklist item that fails if `SECURITY.md` still contains
         a public-release contact placeholder.
 
 - [ ] Add a third-party license and SBOM review.
-  - [ ] Inventory every directory under `third_party/`.
-  - [ ] Record upstream project name for each vendored dependency.
-  - [ ] Record upstream URL for each vendored dependency.
-  - [ ] Record pinned revision, release tag, or source acquisition date.
-  - [ ] Record license for `third_party/h2o`.
-  - [ ] Record license for `third_party/sqlite`.
-  - [ ] Preserve upstream license files in packaged source archives.
-  - [ ] Decide whether to add a root `NOTICE` file.
-  - [ ] Decide whether to add a machine-readable SBOM file.
+  - [x] Inventory every directory under `third_party/`.
+  - [x] Record upstream project name for each vendored dependency.
+  - [x] Record upstream URL for each vendored dependency.
+  - [x] Record pinned revision, release tag, or source acquisition date.
+  - [x] Record license for `third_party/h2o`.
+  - [x] Record license for `third_party/sqlite`.
+  - [x] Preserve upstream license files in packaged source archives.
+  - [x] Decide whether to add a root `NOTICE` file.
+  - [x] Decide whether to add a machine-readable SBOM file.
   - [ ] If adding an SBOM, choose a format such as SPDX or CycloneDX.
-  - [ ] Document which release artifacts include third-party code.
-  - [ ] Document whether source-only releases and binary releases have
+  - [x] Document which release artifacts include third-party code.
+  - [x] Document whether source-only releases and binary releases have
         different notice requirements.
   - [ ] Run a basic vulnerability review for vendored dependencies.
   - [ ] Record known CVE exceptions or "none known at release time" in release
         notes.
-  - [ ] Add a release checklist item that requires third-party license/SBOM
+  - [x] Add a release checklist item that requires third-party license/SBOM
         review before tagging.
 
 - [ ] Verify generated artifacts are removed from Git history.
-  - [ ] Define which historical artifacts are disallowed in repository history.
-  - [ ] Include generated `.exe` files.
-  - [ ] Include generated `.ll` files.
-  - [ ] Include generated `.bc`, `.obj`, `.o`, `.pdb`, `.res`, `.rc`, and
+  - [x] Define which historical artifacts are disallowed in repository history.
+  - [x] Include generated `.exe` files.
+  - [x] Include generated `.ll` files.
+  - [x] Include generated `.bc`, `.obj`, `.o`, `.pdb`, `.res`, `.rc`, and
         native build folders.
-  - [ ] Include packaged `.vsix` files if the release policy keeps VSIX
+  - [x] Include packaged `.vsix` files if the release policy keeps VSIX
         artifacts outside Git.
-  - [ ] Include local app data such as `todos.json`.
-  - [ ] Add a non-destructive history scan command to `RELEASE.md`.
-  - [ ] Run the history scan against all branches intended for release.
-  - [ ] Decide whether history rewriting is required before the first public
+  - [x] Include local app data such as `todos.json`.
+  - [x] Add a non-destructive history scan command to `RELEASE.md`.
+  - [x] Run the history scan against all branches intended for release.
+  - [x] Decide whether history rewriting is required before the first public
         push/tag.
   - [ ] If rewriting history, document the exact tool and command used.
-  - [ ] Prefer `git filter-repo` or another repeatable non-interactive tool for
+  - [x] Prefer `git filter-repo` or another repeatable non-interactive tool for
         any required history rewrite.
   - [ ] Verify rewritten history still contains required source, docs, and test
         fixtures.
-  - [ ] Verify current `.gitignore` catches the same artifact classes after the
+  - [x] Verify current `.gitignore` catches the same artifact classes after the
         history scrub.
-  - [ ] Record the final history-scan result in release notes.
+  - [x] Record the final history-scan result in release notes.
 
 - [ ] Make CI enforce the full release checklist.
-  - [ ] Compare `.github/workflows/ci.yml` against `RELEASE.md`.
-  - [ ] Add CI coverage for `SemanticScript/formatter/test_semfmt.py` if not
+  - [x] Compare `.github/workflows/ci.yml` against `RELEASE.md`.
+  - [x] Add CI coverage for `SemanticScript/formatter/test_semfmt.py` if not
         already enforced.
-  - [ ] Add CI coverage for `SemanticScript/tests/test_compiler.py`.
-  - [ ] Add CI coverage for `SemanticScript/tests/test_stdlib.py`.
-  - [ ] Add CI coverage for `SemanticScript/tests/compare.py`.
-  - [ ] Add CI coverage for `SemanticScript/tests/sem_alias_parity.py`.
-  - [ ] Add CI coverage for `SemanticScript/tests/sem_compiler_parity.py`.
-  - [ ] Add CI coverage for `SemanticScript/tests/feature_coverage.py`.
-  - [ ] Add CI coverage for `SemanticScript/bootstrap/run_bootstrap_chain.py`.
+  - [x] Add CI coverage for `SemanticScript/tests/test_compiler.py`.
+  - [x] Add CI coverage for `SemanticScript/tests/test_stdlib.py`.
+  - [x] Add CI coverage for `SemanticScript/tests/compare.py`.
+  - [x] Add CI coverage for `SemanticScript/tests/sem_alias_parity.py`.
+  - [x] Add CI coverage for `SemanticScript/tests/sem_compiler_parity.py`.
+  - [x] Add CI coverage for `SemanticScript/tests/feature_coverage.py`.
+  - [x] Add CI coverage for `SemanticScript/bootstrap/run_bootstrap_chain.py`.
   - [ ] Add CI coverage for `app/todo-web/test_todo_web.py`.
   - [ ] Add CI coverage for `app/todo-web-advanced/test_advanced_todo_web.py`.
   - [ ] Add CI coverage for `app/http-api-gauntlet/scripts/test_http_api_gauntlet.py`.
@@ -3975,39 +3996,39 @@ assign cleanly.
         in the release scope.
   - [ ] Add CI coverage for the native SQLite runtime CMake build if it remains
         in the release scope.
-  - [ ] Add CI coverage for `npm --prefix vscode-semanticscript run check`.
+  - [x] Add CI coverage for `npm --prefix vscode-semanticscript run check`.
   - [ ] Add optional CI coverage for `npm --prefix vscode-semanticscript run
         package:vsix` without uploading the artifact by default.
   - [ ] Run native executable tests on Windows CI, not only Linux.
-  - [ ] Run at least parse/lint/tooling checks on Linux CI.
-  - [ ] Document any release validation commands that intentionally remain
+  - [x] Run at least parse/lint/tooling checks on Linux CI.
+  - [x] Document any release validation commands that intentionally remain
         manual.
-  - [ ] Add a release checklist item requiring CI green on the exact release
+  - [x] Add a release checklist item requiring CI green on the exact release
         commit.
 
-- [ ] Define the public 1.0 compatibility contract.
-  - [ ] Write down what `languageVersion PROJECT "1.0"` guarantees.
-  - [ ] Define which syntax rows are stable for 1.0.
-  - [ ] Define which syntax rows are preview, partial, metadata-only, or
+- [x] Define the public 1.0 compatibility contract.
+  - [x] Write down what `languageVersion PROJECT "1.0"` guarantees.
+  - [x] Define which syntax rows are stable for 1.0.
+  - [x] Define which syntax rows are preview, partial, metadata-only, or
         subject to change.
-  - [ ] Define whether `.sscript` and `.sem` have equal long-term support.
-  - [ ] Define whether `.sscript` remains canonical and `.sem` remains an alias.
-  - [ ] Define compatibility guarantees for `build.sem`.
-  - [ ] Define compatibility guarantees for module/import/export rows.
-  - [ ] Define compatibility guarantees for native HTTP APIs.
-  - [ ] Define compatibility guarantees for JSON runtime APIs currently in
+  - [x] Define whether `.sscript` and `.sem` have equal long-term support.
+  - [x] Define whether `.sscript` remains canonical and `.sem` remains an alias.
+  - [x] Define compatibility guarantees for `build.sem`.
+  - [x] Define compatibility guarantees for module/import/export rows.
+  - [x] Define compatibility guarantees for native HTTP APIs.
+  - [x] Define compatibility guarantees for JSON runtime APIs currently in
         scope.
-  - [ ] Define compatibility guarantees for VS Code syntax highlighting and
+  - [x] Define compatibility guarantees for VS Code syntax highlighting and
         extension configuration keys.
-  - [ ] Define the deprecation process for syntax that changes after 1.0.
-  - [ ] Define whether future compiler versions warn before rejecting old 1.0
+  - [x] Define the deprecation process for syntax that changes after 1.0.
+  - [x] Define whether future compiler versions warn before rejecting old 1.0
         syntax.
-  - [ ] Add the compatibility contract to `README.md` or a dedicated docs page.
-  - [ ] Link the compatibility contract from `RELEASE.md`.
-  - [ ] Link the compatibility contract from `SYNTAX.md`.
+  - [x] Add the compatibility contract to `README.md` or a dedicated docs page.
+  - [x] Link the compatibility contract from `RELEASE.md`.
+  - [x] Link the compatibility contract from `SYNTAX.md`.
 
 - [ ] Add a release artifact manifest.
-  - [ ] Define a manifest filename and location for each release.
+  - [x] Define a manifest filename and location for each release.
   - [ ] Record release tag.
   - [ ] Record release commit SHA.
   - [ ] Record release date.
@@ -4023,8 +4044,8 @@ assign cleanly.
   - [ ] Record whether signatures were generated.
   - [ ] Record known deferred features from `TODO.md`.
   - [ ] Record known xfail/bootstrap limitations.
-  - [ ] Add a release checklist item requiring the manifest before tagging.
-  - [ ] Decide whether manifests are committed, attached to GitHub releases, or
+  - [x] Add a release checklist item requiring the manifest before tagging.
+  - [x] Decide whether manifests are committed, attached to GitHub releases, or
         both.
 
 ## P1 - Packaging, Install, And CI
