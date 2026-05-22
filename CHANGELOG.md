@@ -2,6 +2,18 @@
 
 ## 2026-05-22
 
+- `318bac845317d814b94102cf113a005d8089048e` - `experiments: rename auction API version build field`
+  - Renames the Realtime Auction Arena build-plan constants field from `apiVersion` to `projectApiVersion` so the schema and JSON body avoid the generic API name collision.
+- `d98c7e76f8a4c5611d075e2006148b6596e1de03` - `experiments: implement SQLite auction flow`
+  - Adds SQLite schema initialization, runtime constants, SQL query modules, wire envelopes, and executable auction list/create/snapshot/start/bid/event-replay handlers for the Realtime Auction Arena experiment.
+  - Covers scoped idempotency, seeded demo principals, persisted events, accepted-command audit rows, role checks, docs/API updates, Python smoke coverage, and local SQLite artifact ignores.
+- `d482d06b1a9a4ac4059c153fba9aeedab27ec70a` - `linter: cover checked fallible work rows`
+  - Adds semlint coverage for `runChecked` fallible disposition, heap allocation handled through checked calls, and `submitWork` target validation.
+- `9b9d74995a437c124813b4ec1c715742c0f0d51a` - `std: generalize JWT native helpers`
+  - Replaces demo access-token helpers with generic HS256 payload signing, signature verification, bearer envelope formatting, exported JWT status constants, native payload-template validation, and a `standard.jwt` smoke test module.
+- `4c10124c1bccd672cf5f7b513269e9373cb0576d` - `compiler: add SQL body and wait-set checks`
+  - Adds `SqlText` SQL body islands across the compiler, linter, formatter, docs, and VS Code extension, including SQL body storage binding, sqlite prepare/exec validation, placeholder checks, and interpolation rejection.
+  - Expands await wait-set diagnostics/tests and aligns the TaskForge async client with stricter wait-set handler discipline.
 - `0163d96c2a6eb85f9f49b5d30277d6e30b3e4556` - `docs+vscode: refresh syntax and release references`
   - Refreshes README, release notes, syntax/reference docs, TODO status, and VS Code coverage for wait sets, `guiBackend`, async/runtime selectors, HTML/JSON/native HTTP surfaces, runtimeBinding policy boundaries, and local VSIX release posture.
 - `c364a8ef4127dc496fa2dff9be28988687add221` - `experiments: tighten auction auth contracts`
