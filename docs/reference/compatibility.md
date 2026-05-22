@@ -35,6 +35,10 @@ Native HTTP compatibility covers the documented first-party native HTTP call
 targets and route metadata. Backend replacement work, including an H2O-backed
 runtime, is outside the 1.0 guarantee until it is marked implemented.
 
+SQLite compatibility covers native `sqlite.*` lowering, `SqlText`/`sql body`
+source islands, and the resource-lifetime checks for database and statement
+handles. Query schema and migration policy remain application source.
+
 JSON compatibility covers implemented `JsonDocument` lifecycle, cursor,
 navigation, mutation, serialization, and primitive `json.stringify.<TypeName>` /
 `json.parse.<TypeName>` aliases. Record JSON codecs and record-typed `jsonBody`

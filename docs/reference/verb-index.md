@@ -196,6 +196,19 @@ the row-level implementation status before relying on them in executable code.
 | `json.stringify.<TypeName>`, `json.parse.<TypeName>` | Typed high-level JSON entry points for primitives and generated record codecs | partial |
 | `jsonBody` | `jsonBody NAME` followed by an indented JSON island bound to matching storage | partial |
 
+## SQL
+
+SQL surface:
+
+| Verb | Purpose | Status |
+|---|---|---|
+| `sql body` / `sqlBody` | `sql body NAME` followed by an indented SQL island bound to `storage module immutable NAME SqlText` | lowered |
+
+`sql body` preserves SQL as source text while keeping dynamic values out of the
+literal. Use `?` placeholders and explicit `sqlite.bind*` rows; strict checks
+reject multi-statement `sqlite.prepareStatement` inputs and placeholder-bearing
+`sqlite.exec` inputs.
+
 ## HTML Templates
 
 Standard-library modules are imported through the `standard.*` namespace. The

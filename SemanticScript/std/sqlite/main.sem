@@ -19,6 +19,7 @@ invariant module standard.sqlite "The standard module entry is this file; new mo
 type SqliteDatabase COpaqueMemoryAddress
 type SqliteStatement COpaqueMemoryAddress
 type SqliteRowId CSignedInt64
+type SqlText CNullTerminatedByteString
 type SqliteText CNullTerminatedByteString
 type SqliteBlob COpaqueMemoryAddress
 type SqliteByteCount CByteCount
@@ -43,6 +44,7 @@ enumCase SqliteColumnType nullSqliteColumnType 5
 exportType standard.sqlite SqliteDatabase
 exportType standard.sqlite SqliteStatement
 exportType standard.sqlite SqliteRowId
+exportType standard.sqlite SqlText
 exportType standard.sqlite SqliteText
 exportType standard.sqlite SqliteBlob
 exportType standard.sqlite SqliteByteCount
@@ -63,10 +65,10 @@ exportConstant standard.sqlite floatSqliteColumnType
 exportConstant standard.sqlite textSqliteColumnType
 exportConstant standard.sqlite blobSqliteColumnType
 exportConstant standard.sqlite nullSqliteColumnType
-
 typeInvariant SqliteDatabase "Opaque SQLite database handle created by sqlite.openDatabase and closed by sqlite.closeDatabase."
 typeInvariant SqliteStatement "Opaque prepared-statement handle created by sqlite.prepareStatement and finalized by sqlite.finalizeStatement."
 typeInvariant SqliteRowId "Signed 64-bit row identifier returned by sqlite.lastInsertRowId and column readers."
+typeInvariant SqlText "Null-terminated SQL source text passed to sqlite.prepareStatement or sqlite.exec; dynamic values must use ? placeholders plus sqlite.bind* rows."
 typeInvariant SqliteText "Null-terminated SQLite text value; sqlite.columnText returns SQLite-owned memory valid until the statement advances or finalizes."
 typeInvariant SqliteBlob "Opaque SQLite blob pointer paired with SqliteByteCount."
 typeInvariant SqliteByteCount "Byte count paired with SQLite blob/text buffers."

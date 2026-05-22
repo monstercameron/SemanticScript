@@ -42,7 +42,8 @@ builds after accepting the publisher metadata constraint for the target release.
   `.sem`, `build.sscript`, and `build.sem`.
 - TextMate highlighting for verbs, types, strings, numbers, comments, symbols,
   qualified paths, error variants, schema values, primitive targets, generated
-  targets, domain targets, and embedded `html body template` markup islands.
+  targets, domain targets, and embedded `html body template`, `jsonBody`, and
+  `sql body` islands.
 - Semantic token coloring for declaration, context, action, and control verbs.
 - Semantic roles for declared names, immutable values, mutable values, call
   objects, argument names, labels, effect paths, opaque inputs, generated
@@ -111,6 +112,9 @@ The extension recognizes the recent syntax families from the refined example:
   inferred bare or dotted hole hovers such as `{titleText}` and
   `{profile.title}`, and generated hydration targets such as
   `html.hydrate.TodoDashboardPageTemplate`.
+- First-class SQL text islands:
+  `sql body`, `sqlBody`, `SqlText`, placeholder highlighting, and storage-target
+  hovers for SQL passed to `sqlite.prepareStatement` or `sqlite.exec`.
 - Module/dependency build tape:
   `import ALIAS MODULE_PATH`, legacy `importModule`, singular imports such as
   `importOperation` and `importType`, plus `dependencyFetch`,

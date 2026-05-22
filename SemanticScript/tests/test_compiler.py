@@ -304,6 +304,7 @@ def test_parser_stdlib_surfaces_require_explicit_imports():
     ]))
     check("parser: explicit standard imports expose json/sqlite surfaces",
           imported.type_aliases.get("JsonText") == ["CNullTerminatedByteString"]
+          and imported.type_aliases.get("SqlText") == ["CNullTerminatedByteString"]
           and "JsonValueKind" in imported.enums
           and ("objectJsonValueKind", "0") in imported.enums["JsonValueKind"].cases
           and "SqliteOpenMode" in imported.enums
@@ -2014,6 +2015,88 @@ def test_json_body_record_literal_type_checks_and_records_constant():
         check(f"jsonBody record: rejects {label}",
               raised and expected in msg,
               f"raised={raised} msg={msg!r}")
+
+
+def test_sql_body_parser_records_metadata_and_rejects_dynamic_holes():
+    source = "\n".join([
+        "project SqlBodyParser",
+        "import sqlite standard.sqlite",
+        "storage module immutable selectTodoSql SqlText",
+        "sql body selectTodoSql",
+        "  -- lookup by owner",
+        "  SELECT id, title",
+        "  FROM todos",
+        "  WHERE user_id = ?1 AND title <> '?'",
+        "operation main",
+        "output operation main ExitCode",
+        "purpose operation main \"parser-only SQL island smoke\"",
+        "return value 0",
+    ])
+    prog = parse_semsc_source_with_imports(source)
+    sql_body = prog.sql_bodies[0] if prog.sql_bodies else None
+    check("sql body parser: SqlText literal recorded",
+          sql_body is not None
+          and sql_body.name == "selectTodoSql"
+          and sql_body.statement_kind == "SELECT"
+          and sql_body.placeholder_count == 1
+          and sql_body.statement_count == 1
+          and prog.consts.get("selectTodoSql") == (
+              "SqlText",
+              "-- lookup by owner\nSELECT id, title\nFROM todos\nWHERE user_id = ?1 AND title <> '?'",
+          ),
+          f"sql_bodies={[(body.name, body.sql_text) for body in prog.sql_bodies]!r}")
+
+    bad_source = "\n".join([
+        "project BadSqlBody",
+        "import sqlite standard.sqlite",
+        "storage module immutable selectTodoSql SqlText",
+        "sql body selectTodoSql",
+        "  SELECT id FROM todos WHERE user_id = {userId}",
+    ])
+    raised = False
+    msg = ""
+    try:
+        parse_semsc_source_with_imports(bad_source)
+    except SyntaxError as exc:
+        raised = True
+        msg = str(exc)
+    check("sql body parser: rejects dynamic holes",
+          raised and "sqlBodyDynamicHole" in msg,
+          f"raised={raised} msg={msg!r}")
+
+
+def test_sql_body_usage_checks_prepare_and_exec_shapes():
+    source = "\n".join([
+        "project SqlBodyUsage",
+        "import sqlite standard.sqlite",
+        "storage module immutable databasePath CNullTerminatedByteString \":memory:\"",
+        "storage module immutable multiStatementSql SqlText",
+        "sql body multiStatementSql",
+        "  SELECT 1; SELECT 2",
+        "storage module immutable execWithPlaceholderSql SqlText",
+        "sql body execWithPlaceholderSql",
+        "  INSERT INTO notes (body) VALUES (?)",
+        "operation main",
+        "output operation main ExitCode",
+        "purpose operation main \"exercise SQL body usage diagnostics\"",
+        "call prepareCall sqlite.prepareStatement",
+        "argument prepareCall database SqliteDatabase databaseHandle",
+        "argument prepareCall sql SqlText multiStatementSql",
+        "call execCall sqlite.exec",
+        "argument execCall database SqliteDatabase databaseHandle",
+        "argument execCall sql SqlText execWithPlaceholderSql",
+        "return value 0",
+    ])
+    prog = parse_semsc_source_with_imports(source)
+    diags = []
+    semsc._check_sqlite_sql_body_usage(prog, diags)
+    messages = [message for _line, message in diags]
+    check("sql body usage: prepare rejects multi-statement SQL",
+          any("SS3913" in message and "multiStatementSql" in message for message in messages),
+          f"diags={messages!r}")
+    check("sql body usage: exec rejects placeholders",
+          any("SS3914" in message and "execWithPlaceholderSql" in message for message in messages),
+          f"diags={messages!r}")
 
 
 def test_html_template_simple_jit_output():
@@ -5672,6 +5755,8 @@ def main():
     test_html_template_parser_records_body_and_rejects_bad_edges()
     test_json_body_parser_records_text_and_record_metadata()
     test_json_body_record_literal_type_checks_and_records_constant()
+    test_sql_body_parser_records_metadata_and_rejects_dynamic_holes()
+    test_sql_body_usage_checks_prepare_and_exec_shapes()
     test_html_template_simple_jit_output()
     test_html_template_edge_output_repeated_adjacent_and_blank_lines()
     test_html_template_raw_style_and_script_do_not_hydrate_braces()

@@ -43,16 +43,18 @@ There is no `add(leftValue, rightValue)` form.
 
 SemanticScript normally rejects indentation blocks, brace blocks, and generic
 angle-bracket syntax because executable source is a row tape. `html body
-template` and `jsonBody` are narrow exceptions: a column-0 row starts an
-indented literal island, and the island ends at the next non-empty column-0
-SemanticScript row.
+template`, `jsonBody`, and `sql body` are narrow exceptions: a column-0 row
+starts an indented literal island, and the island ends at the next non-empty
+column-0 SemanticScript row.
 
 The exception exists only for data formats whose native syntax would be damaged
 by row tokenization. HTML/SSX keeps tags, attributes, and `{name}` or
 `{record.field}` holes inside `html body template`; JSON keeps braces, brackets,
-strings, and commas inside `jsonBody`. Those islands must be attached to
-explicit declaration rows such as `html template` or `storage ... JsonText`, so
-the compiler and linter still see typed boundaries around the non-row text.
+strings, and commas inside `jsonBody`; SQL keeps comments, quoted strings,
+semicolons, and `?` placeholders inside `sql body`. Those islands must be
+attached to explicit declaration rows such as `html template`, `storage ...
+JsonText`, or `storage ... SqlText`, so the compiler and linter still see typed
+boundaries around the non-row text.
 
 ## Language Modes
 

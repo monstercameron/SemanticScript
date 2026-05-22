@@ -37,7 +37,7 @@ declaration row       project, module, type, record, operation, storage, ...
 context row           input, output, effect, memory, authority, purpose, ...
 action row            call, argument, run, bind, ignore, set, makeError, ...
 control row           label, branch, jump, return
-syntax-island row     html body template TEMPLATE or jsonBody NAME
+syntax-island row     html body template TEMPLATE, jsonBody NAME, sql body NAME
 comment row           # rationale:, # security:, # group, # endGroup, ...
 ```
 
@@ -125,6 +125,7 @@ route SERVER METHOD PATH HANDLER
 html template NAME
 html body template NAME
 jsonBody NAME
+sql body NAME
 jsonCodec NAME
 codec NAME ATTRS...
 validator NAME
@@ -320,6 +321,23 @@ String holes are escaped according to text or quoted-attribute sink context.
 `HtmlFragment`, `HtmlTrustedFragment`, and `HtmlDocument` insert raw content only
 in text-content positions.
 
+## SQL Bodies
+
+`sql body NAME` starts a column-0 SQL syntax island. Indented lines after it
+belong to the SQL body until the next non-empty column-0 SemanticScript row. The
+body binds to a preceding `storage module immutable NAME SqlText` declaration
+with no inline value.
+
+Compiler behavior:
+
+- stores the SQL text with the syntax-island base indentation removed;
+- rejects empty text, NUL bytes, unterminated SQL quoted text/comments, and
+  `{hole}` interpolation syntax;
+- records the leading SQL verb, placeholder count, and statement count;
+- binds the `SqlText` storage to the preserved null-terminated SQL text;
+- keeps dynamic values out of the source text: callers use `?` placeholders and
+  explicit `sqlite.bind*` rows.
+
 ## Records And Enums
 
 Records are parsed into `Record` objects with field order, field types, JSON
@@ -480,6 +498,7 @@ The AST and linter enforce or report:
 | `return void` | zero sentinel for current user-op ABI |
 | `jsonBody JsonText` | canonical JSON byte constant |
 | `jsonBody record` | compile-time record constant / flattened fields |
+| `sql body SqlText` | preserved SQL byte constant with placeholder/statement metadata |
 | `html body template` | escaped or raw string construction helpers |
 
 ## Linter And Diagnostics

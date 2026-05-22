@@ -229,7 +229,7 @@ def _user_operation_wait_set_source(
             lines.insert(-2, f"await {call_name}")
     lines.extend([
         "label allDone",
-        "return value successfulExitCode",
+        "jump target secondRound" if two_wait_sets_same_name else "return value successfulExitCode",
     ])
 
     if two_wait_sets_same_name:
@@ -326,7 +326,6 @@ def _fetch_wait_set_source(case_count: int = 2, *, handler_await: bool = False) 
         lines.extend([
             f"label {call_name}Ready",
             f"bind ok {call_name}Response HttpTextResponse {call_name}",
-            f"branch error source {call_name} target failed",
             "jump target waitNextFetch",
         ])
         if handler_await:
@@ -384,6 +383,24 @@ class TestAsyncWaitSetCompilerPositive(unittest.TestCase):
         self.assertEqual(ir.count('call i32 @"ss_async_future_is_ready"'), 1)
         self.assertIn('br i1 %"nextResult_onlyAddCall_all_consumed", label %"allDone"', ir)
 
+    def test_done_label_can_immediately_follow_done_row(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "done allDone\nlabel firstAddCallReady",
+            "\n".join([
+                "done allDone",
+                "label allDone",
+                "return value successfulExitCode",
+                "label firstAddCallReady",
+            ]),
+        ).replace(
+            "jump target waitNextResult\nlabel allDone\nreturn value successfulExitCode",
+            "jump target waitNextResult",
+        )
+        ir = _emit_ir(source)
+
+        self.assertIn('br i1 %"nextResult_firstAddCall_all_consumed", label %"allDone"', ir)
+        self.assertIn('allDone:', ir)
+
     def test_repeated_wait_set_names_get_independent_consumed_slots(self) -> None:
         source = _user_operation_wait_set_source(
             ["firstAddCall", "secondAddCall"],
@@ -439,9 +456,13 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
         _assert_fails_with(self, source, "was not started with async lowering")
 
     def test_case_call_must_be_started_before_wait_set(self) -> None:
-        source = _user_operation_wait_set_source(
-            ["firstAddCall"],
-            start_after_wait_set=True,
+        source = _user_operation_wait_set_source(["firstAddCall"], start_all=False).replace(
+            "label firstAddCallReady\nbind ok firstAddCallResult I64 firstAddCall",
+            "\n".join([
+                "label firstAddCallReady",
+                "start firstAddCall",
+                "bind ok firstAddCallResult I64 firstAddCall",
+            ]),
         )
         _assert_fails_with(self, source, "was not started with async lowering")
 
@@ -456,6 +477,18 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
         source = _user_operation_wait_set_source(["firstAddCall"]).replace(
             "label startMain\ncall firstAddCall",
             "label startMain\nreturn value successfulExitCode\ncall firstAddCall",
+        )
+        _assert_fails_with(self, source, "does not dominate the wait-set entry")
+
+    def test_case_start_after_dead_label_does_not_dominate_wait_set_entry(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label startMain\ncall firstAddCall",
+            "\n".join([
+                "label startMain",
+                "return value successfulExitCode",
+                "label deadStart",
+                "call firstAddCall",
+            ]),
         )
         _assert_fails_with(self, source, "does not dominate the wait-set entry")
 
@@ -480,6 +513,35 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             ]),
         )
         _assert_fails_with(self, source, "has multiple prior start rows")
+
+    def test_case_call_rejects_attached_else_bypass_of_start(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label startMain\ncall firstAddCall",
+            "\n".join([
+                "label startMain",
+                "branch if condition successfulExitCode target doStart",
+                "branch else target waitNextResult",
+                "label doStart",
+                "call firstAddCall",
+            ]),
+        )
+        _assert_fails_with(self, source, "does not dominate the wait-set entry")
+
+    def test_case_call_rejects_attached_else_reentry_to_start(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label startMain",
+            "label retryStart",
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "branch if condition successfulExitCode target earlyExit",
+                "branch else target retryStart",
+                "label earlyExit",
+                "return value successfulExitCode",
+            ]),
+        )
+        _assert_fails_with(self, source, "can be re-entered")
 
     def test_user_operation_case_requires_async_enclosing_operation(self) -> None:
         source = _user_operation_wait_set_source(["firstAddCall"], main_async=False)
@@ -559,6 +621,19 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
         )
         _assert_fails_with(self, source, "may only be reached from that case")
 
+    def test_case_target_label_rejects_attached_else_predecessor(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "start firstAddCall\nlabel waitNextResult",
+            "\n".join([
+                "start firstAddCall",
+                "branch if condition successfulExitCode target beforeWait",
+                "branch else target firstAddCallReady",
+                "label beforeWait",
+                "label waitNextResult",
+            ]),
+        )
+        _assert_fails_with(self, source, "may only be reached from that case")
+
     def test_case_target_label_rejects_indirect_fallthrough_predecessor(self) -> None:
         source = _user_operation_wait_set_source(["firstAddCall"]).replace(
             "start firstAddCall\nlabel waitNextResult",
@@ -576,6 +651,19 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
         )
         _assert_fails_with(self, source, "done label `allDone` may only be reached")
 
+    def test_done_label_rejects_attached_else_predecessor(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "start firstAddCall\nlabel waitNextResult",
+            "\n".join([
+                "start firstAddCall",
+                "branch if condition successfulExitCode target beforeWait",
+                "branch else target allDone",
+                "label beforeWait",
+                "label waitNextResult",
+            ]),
+        )
+        _assert_fails_with(self, source, "done label `allDone` may only be reached")
+
     def test_done_label_rejects_indirect_fallthrough_predecessor(self) -> None:
         source = _user_operation_wait_set_source(["firstAddCall"]).replace(
             "start firstAddCall\nlabel waitNextResult",
@@ -585,6 +673,489 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             "jump target waitNextResult\nlabel strayDone\nlabel allDone",
         )
         _assert_fails_with(self, source, "done label `allDone` must not be reachable by fallthrough")
+
+    def test_done_structural_gap_rejects_executable_rows_before_label(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "done allDone\nlabel firstAddCallReady",
+            "done allDone\nreturn value failedExitCode\nlabel firstAddCallReady",
+        )
+        _assert_fails_with(self, source, "done row must be followed by a label")
+
+    def test_case_result_cannot_be_read_from_another_handler(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "bind ok firstAddCallResult I64 firstAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok firstAddCallResult I64 firstAddCall",
+                "bind ok stolenSecondResult I64 secondAddCall",
+                "jump target waitNextResult",
+            ]),
+        )
+        _assert_fails_with(self, source, "result may only be read inside handler label `secondAddCallReady`")
+
+    def test_case_handler_bind_cannot_be_read_from_another_handler(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "call totalCall math.addI64",
+                "argument totalCall left I64 firstAddCallResult",
+                "argument totalCall right I64 secondAddCallResult",
+                "run totalCall",
+                "jump target waitNextResult",
+            ]),
+        )
+        _assert_fails_with(self, source, "firstAddCallResult` value may only be read inside handler label `firstAddCallReady`")
+
+    def test_case_handler_bind_cannot_be_used_by_call_argument_executed_in_done(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label waitNextResult",
+            "\n".join([
+                "call totalCall math.addI64",
+                "argument totalCall left I64 one",
+                "argument totalCall right I64 secondAddCallResult",
+                "label waitNextResult",
+            ]),
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "run totalCall",
+                "bind value totalResult I64 totalCall",
+                "return value totalResult",
+            ]),
+        )
+        _assert_fails_with(self, source, "secondAddCallResult` value may only be read inside handler label `secondAddCallReady`")
+
+    def test_case_handler_bind_argument_inside_handler_cannot_be_executed_in_done(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label waitNextResult",
+            "\n".join([
+                "call totalCall math.addI64",
+                "argument totalCall left I64 one",
+                "label waitNextResult",
+            ]),
+        ).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "argument totalCall right I64 secondAddCallResult",
+                "jump target waitNextResult",
+            ]),
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "run totalCall",
+                "bind value totalResult I64 totalCall",
+                "return value totalResult",
+            ]),
+        )
+        _assert_fails_with(self, source, "secondAddCallResult` value may only be read inside handler label `secondAddCallReady`")
+
+    def test_case_handler_bind_cannot_escape_through_mutable_memory(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label waitNextResult",
+            "memory main mutable leaked I64 0\nlabel waitNextResult",
+        ).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "set memory leaked secondAddCallResult",
+                "jump target waitNextResult",
+            ]),
+        )
+        _assert_fails_with(self, source, "may not be written into non-private state `leaked`")
+
+    def test_case_handler_bind_cannot_escape_through_record_field(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "import math standard.math\n\nstorage module",
+            "\n".join([
+                "import math standard.math",
+                "",
+                "record Point layout row align 8",
+                "field Point x I64",
+                "field Point y I64",
+                "",
+                "storage module",
+            ]),
+        ).replace(
+            "label waitNextResult",
+            "\n".join([
+                "new leakedPoint Point",
+                "fieldSet leakedPoint x one",
+                "label waitNextResult",
+            ]),
+        ).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "fieldSet leakedPoint x secondAddCallResult",
+                "jump target waitNextResult",
+            ]),
+        )
+        _assert_fails_with(self, source, "may not be written into non-private state `leakedPoint`")
+
+    def test_case_handler_bind_cannot_be_used_by_memory_initializer(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "memory main mutable leaked I64 secondAddCallResult",
+                "return value leaked",
+            ]),
+        )
+        _assert_fails_with(self, source, "secondAddCallResult` value may only be read inside handler label `secondAddCallReady`")
+
+    def test_case_handler_bind_cannot_be_sent_from_done_handler(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "send resultChannel secondAddCallResult",
+                "receive leaked I64 resultChannel",
+                "return value leaked",
+            ]),
+        )
+        _assert_fails_with(self, source, "secondAddCallResult` value may only be read inside handler label `secondAddCallReady`")
+
+    def test_case_handler_bind_cannot_escape_through_channel_send(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "send resultChannel secondAddCallResult",
+                "jump target waitNextResult",
+            ]),
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "receive leaked I64 resultChannel",
+                "return value leaked",
+            ]),
+        )
+        _assert_fails_with(self, source, "may not be written into non-private state `resultChannel`")
+
+    def test_case_handler_bind_cannot_escape_through_private_channel_receive(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "memory main mutable privateChannel I64 0",
+                "send privateChannel secondAddCallResult",
+                "jump target waitNextResult",
+            ]),
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "receive leaked I64 privateChannel",
+                "return value leaked",
+            ]),
+        )
+        _assert_fails_with(self, source, "privateChannel` value may only be read inside handler label `secondAddCallReady`")
+
+    def test_case_handler_bind_cannot_be_used_by_defer_outside_handler(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "defer cleanupAdd addPair secondAddCallResult one",
+                "return value successfulExitCode",
+            ]),
+        )
+        _assert_fails_with(self, source, "secondAddCallResult` value may only be read inside handler label `secondAddCallReady`")
+
+    def test_direct_case_call_cannot_be_used_by_defer_outside_handler(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "defer cleanupAdd addPair secondAddCall one",
+                "return value successfulExitCode",
+            ]),
+        )
+        _assert_fails_with(self, source, "secondAddCall` value may only be read inside handler label `secondAddCallReady`")
+
+    def test_case_handler_defer_must_not_cross_wait_set_reentry(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "defer cleanupSecondAdd addPair secondAddCallResult one",
+                "jump target waitNextResult",
+            ]),
+        )
+        _assert_fails_with(self, source, "must not register defer cleanup")
+
+    def test_case_handler_bind_cannot_escape_through_storage_read(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "storage local mutable privateStore I64 0",
+                "set storage privateStore secondAddCallResult",
+                "jump target waitNextResult",
+            ]),
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "read local leaked I64 privateStore",
+                "return value leaked",
+            ]),
+        )
+        _assert_fails_with(self, source, "privateStore` value may only be read inside handler label `secondAddCallReady`")
+
+    def test_case_handler_bind_cannot_escape_through_work_arg_submit(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label waitNextResult",
+            "\n".join([
+                "workerPool resultPool maxWorkers 4",
+                "work sumWork target addPair",
+                "workArg sumWork right one",
+                "label waitNextResult",
+            ]),
+        ).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "workArg sumWork left secondAddCallResult",
+                "jump target waitNextResult",
+            ]),
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "submitWork sumWork resultPool",
+                "awaitWork sumWork",
+                "return value sumWork",
+            ]),
+        )
+        _assert_fails_with(self, source, "secondAddCallResult` value may only be read inside handler label `secondAddCallReady`")
+
+    def test_submit_work_requires_declared_work_item(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "workerPool resultPool maxWorkers 4",
+                "submitWork missingWork resultPool",
+                "awaitWork missingWork",
+                "return value missingWork",
+            ]),
+        )
+        _assert_fails_with(self, source, "submitWork: work `missingWork` is not declared")
+
+    def test_submit_work_requires_user_operation_target(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "workerPool resultPool maxWorkers 4",
+                "work missingTargetWork target missingOp",
+                "submitWork missingTargetWork resultPool",
+                "awaitWork missingTargetWork",
+                "return value missingTargetWork",
+            ]),
+        )
+        _assert_fails_with(
+            self,
+            source,
+            "submitWork: work `missingTargetWork` target `missingOp` is not a user operation",
+        )
+
+    def test_case_handler_run_checked_cannot_branch_out_before_reentry(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "call checkedTotalCall math.addI64",
+                "argument checkedTotalCall left I64 secondAddCallResult",
+                "argument checkedTotalCall right I64 one",
+                "runChecked checkedTotalCall ok checkedTotal I64 error checkedError I64 else allDone",
+                "jump target waitNextResult",
+            ]),
+        )
+        _assert_fails_with(self, source, "done label `allDone` may only be reached")
+
+    def test_case_handler_argument_cannot_be_used_by_run_checked_in_done(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label waitNextResult",
+            "\n".join([
+                "call checkedTotalCall math.addI64",
+                "argument checkedTotalCall right I64 one",
+                "label waitNextResult",
+            ]),
+        ).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "argument checkedTotalCall left I64 secondAddCallResult",
+                "jump target waitNextResult",
+            ]),
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "runChecked checkedTotalCall ok checkedTotal I64 error checkedError I64 else checkedFailed",
+                "return value checkedTotal",
+                "label checkedFailed",
+                "return value failedExitCode",
+            ]),
+        )
+        _assert_fails_with(self, source, "secondAddCallResult` value may only be read inside handler label `secondAddCallReady`")
+
+    def test_await_work_result_inside_handler_cannot_be_read_from_done(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label waitNextResult",
+            "\n".join([
+                "workerPool resultPool maxWorkers 4",
+                "work sumWork target addPair",
+                "workArg sumWork right one",
+                "label waitNextResult",
+            ]),
+        ).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "workArg sumWork left secondAddCallResult",
+                "submitWork sumWork resultPool",
+                "awaitWork sumWork",
+                "jump target waitNextResult",
+            ]),
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "label allDone\nreturn value sumWork",
+        )
+        _assert_fails_with(self, source, "sumWork` value may only be read inside handler label `secondAddCallReady`")
+
+    def test_case_handler_run_result_cannot_be_read_from_done_handler(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label waitNextResult",
+            "\n".join([
+                "call totalCall math.addI64",
+                "argument totalCall left I64 one",
+                "argument totalCall right I64 two",
+                "label waitNextResult",
+            ]),
+        ).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult I64 secondAddCall\nrun totalCall\njump target waitNextResult",
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "label allDone\nbind ok totalResult I64 totalCall\nreturn value totalResult",
+        )
+        _assert_fails_with(self, source, "totalCall` value may only be read inside handler label `secondAddCallReady`")
+
+    def test_case_start_allows_exit_to_prior_label_that_cannot_reenter_start(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label startMain",
+            "\n".join([
+                "label entry",
+                "jump target startMain",
+                "label earlyExit",
+                "return value successfulExitCode",
+                "label startMain",
+            ]),
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "label allDone\njump target earlyExit",
+        )
+        ir = _emit_ir(source)
+
+        self.assertIn('br label %"earlyExit"', ir)
+
+    def test_case_start_ignores_unreachable_branch_that_bypasses_start(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label startMain",
+            "\n".join([
+                "label entry",
+                "jump target startMain",
+                "jump target waitNextResult",
+                "label startMain",
+            ]),
+        )
+        ir = _emit_ir(source)
+
+        self.assertIn('br label %"waitNextResult"', ir)
+
+    def test_case_start_rejects_backedge_to_start_region(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label startMain",
+            "label retryStart",
+        ).replace(
+            "bind ok firstAddCallResult I64 firstAddCall\njump target waitNextResult",
+            "bind ok firstAddCallResult I64 firstAddCall\njump target retryStart",
+        )
+        _assert_fails_with(self, source, "can be re-entered")
+
+    def test_case_handler_must_reenter_wait_set(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "bind ok firstAddCallResult I64 firstAddCall\njump target waitNextResult",
+            "bind ok firstAddCallResult I64 firstAddCall\nreturn value successfulExitCode",
+        )
+        _assert_fails_with(self, source, "must jump back to `waitNextResult`")
 
     def test_handler_await_after_wait_set_case_fails(self) -> None:
         source = _user_operation_wait_set_source(["firstAddCall"], handler_await=True)
@@ -659,6 +1230,27 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
         self.assertIn("SS4102", codes)
         self.assertIn("referenceIntegrity.unresolvedLabel", kinds)
 
+    def test_run_checked_references_unknown_call(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "runChecked missingCall ok missingValue I64 error missingError I64 else checkedFailed",
+                "return value missingValue",
+                "label checkedFailed",
+                "return value failedExitCode",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS4101"
+                and diagnostic.subjectName == "missingCall"
+                for diagnostic in diagnostics
+            )
+        )
+
     def test_wait_set_shape_errors_are_linted(self) -> None:
         malformed_sources = [
             _user_operation_wait_set_source(["firstAddCall"], done_without_case=True),
@@ -702,6 +1294,39 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
         self.assertIn("SS3509", [diagnostic.code for diagnostic in diagnostics])
         self.assertTrue(
             any(diagnostic.blocksCompile for diagnostic in diagnostics if diagnostic.code == "SS3509")
+        )
+
+    def test_fallible_call_declared_before_wait_set_runs_in_handler_context(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label waitNextResult",
+            "\n".join([
+                "call handlerWriteCall console.writeLine",
+                "argument handlerWriteCall console Console console",
+                "argument handlerWriteCall text CNullTerminatedByteString one",
+                "label waitNextResult",
+            ]),
+        ).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "run handlerWriteCall",
+                "ignore ok source handlerWriteCall type CSignedInt32",
+                "bind error handlerWriteError CSignedInt32 handlerWriteCall",
+                "jump target waitNextResult",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertFalse(
+            [
+                diagnostic for diagnostic in diagnostics
+                if diagnostic.code == "SS3106"
+                and diagnostic.subjectName == "handlerWriteCall"
+            ],
+            diagnostics,
         )
 
     def test_restart_after_wait_set_case_is_linted(self) -> None:
@@ -840,6 +1465,28 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             )
         )
 
+    def test_case_target_attached_else_predecessor_is_linted(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "start firstAddCall\nlabel waitNextResult",
+            "\n".join([
+                "start firstAddCall",
+                "branch if condition successfulExitCode target beforeWait",
+                "branch else target firstAddCallReady",
+                "label beforeWait",
+                "label waitNextResult",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "caseLabelPrivateEntry"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
     def test_case_target_indirect_fallthrough_predecessor_is_linted(self) -> None:
         source = _user_operation_wait_set_source(["firstAddCall"]).replace(
             "start firstAddCall\nlabel waitNextResult",
@@ -863,6 +1510,28 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
         source = _user_operation_wait_set_source(["firstAddCall"]).replace(
             "start firstAddCall\nlabel waitNextResult",
             "start firstAddCall\njump target allDone\nlabel waitNextResult",
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "doneLabelPrivateEntry"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_done_label_attached_else_predecessor_is_linted(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "start firstAddCall\nlabel waitNextResult",
+            "\n".join([
+                "start firstAddCall",
+                "branch if condition successfulExitCode target beforeWait",
+                "branch else target allDone",
+                "label beforeWait",
+                "label waitNextResult",
+            ]),
         )
         diagnostics = _lint_source(source)
 
@@ -998,6 +1667,760 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             )
         )
 
+    def test_case_start_after_dead_label_is_linted(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label startMain\ncall firstAddCall",
+            "\n".join([
+                "label startMain",
+                "return value successfulExitCode",
+                "label deadStart",
+                "call firstAddCall",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "startBeforeCase"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_done_structural_gap_is_linted(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "done allDone\nlabel firstAddCallReady",
+            "done allDone\nreturn value failedExitCode\nlabel firstAddCallReady",
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "doneStructuralGap"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_done_label_after_done_row_is_linted_as_valid(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "done allDone\nlabel firstAddCallReady",
+            "\n".join([
+                "done allDone",
+                "label allDone",
+                "return value successfulExitCode",
+                "label firstAddCallReady",
+            ]),
+        ).replace(
+            "jump target waitNextResult\nlabel allDone\nreturn value successfulExitCode",
+            "jump target waitNextResult",
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertFalse(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "doneLabelPrivateEntry"
+                for diagnostic in diagnostics
+            ),
+            diagnostics,
+        )
+
+    def test_case_result_read_from_other_handler_is_linted(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "bind ok firstAddCallResult I64 firstAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok firstAddCallResult I64 firstAddCall",
+                "bind ok stolenSecondResult I64 secondAddCall",
+                "jump target waitNextResult",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "caseResultPrivateEntry"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_case_handler_bind_read_from_other_handler_is_linted(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "call totalCall math.addI64",
+                "argument totalCall left I64 firstAddCallResult",
+                "argument totalCall right I64 secondAddCallResult",
+                "run totalCall",
+                "jump target waitNextResult",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "caseResultPrivateEntry"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_case_handler_bind_call_argument_executed_in_done_is_linted(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label waitNextResult",
+            "\n".join([
+                "call totalCall math.addI64",
+                "argument totalCall left I64 one",
+                "argument totalCall right I64 secondAddCallResult",
+                "label waitNextResult",
+            ]),
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "run totalCall",
+                "bind value totalResult I64 totalCall",
+                "return value totalResult",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "caseResultPrivateEntry"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_case_handler_bind_argument_inside_handler_run_in_done_is_linted(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label waitNextResult",
+            "\n".join([
+                "call totalCall math.addI64",
+                "argument totalCall left I64 one",
+                "label waitNextResult",
+            ]),
+        ).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "argument totalCall right I64 secondAddCallResult",
+                "jump target waitNextResult",
+            ]),
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "run totalCall",
+                "bind value totalResult I64 totalCall",
+                "return value totalResult",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "caseResultPrivateEntry"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_case_handler_bind_mutable_memory_escape_is_linted(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label waitNextResult",
+            "memory main mutable leaked I64 0\nlabel waitNextResult",
+        ).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "set memory leaked secondAddCallResult",
+                "jump target waitNextResult",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "caseResultPrivateEscape"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_case_handler_bind_record_field_escape_is_linted(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "import math standard.math\n\nstorage module",
+            "\n".join([
+                "import math standard.math",
+                "",
+                "record Point layout row align 8",
+                "field Point x I64",
+                "field Point y I64",
+                "",
+                "storage module",
+            ]),
+        ).replace(
+            "label waitNextResult",
+            "\n".join([
+                "new leakedPoint Point",
+                "fieldSet leakedPoint x one",
+                "label waitNextResult",
+            ]),
+        ).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "fieldSet leakedPoint x secondAddCallResult",
+                "jump target waitNextResult",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "caseResultPrivateEscape"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_case_handler_bind_memory_initializer_is_linted(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "memory main mutable leaked I64 secondAddCallResult",
+                "return value leaked",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "caseResultPrivateEntry"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_case_handler_bind_send_is_linted(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "send resultChannel secondAddCallResult",
+                "receive leaked I64 resultChannel",
+                "return value leaked",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "caseResultPrivateEntry"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_case_handler_bind_channel_send_escape_is_linted(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "send resultChannel secondAddCallResult",
+                "jump target waitNextResult",
+            ]),
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "receive leaked I64 resultChannel",
+                "return value leaked",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "caseResultPrivateEscape"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_case_handler_bind_private_channel_receive_is_linted(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "memory main mutable privateChannel I64 0",
+                "send privateChannel secondAddCallResult",
+                "jump target waitNextResult",
+            ]),
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "receive leaked I64 privateChannel",
+                "return value leaked",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "caseResultPrivateEntry"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_case_handler_bind_defer_is_linted(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "defer cleanupAdd addPair secondAddCallResult one",
+                "return value successfulExitCode",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "caseResultPrivateEntry"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_direct_case_call_defer_outside_handler_is_linted(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "defer cleanupAdd addPair secondAddCall one",
+                "return value successfulExitCode",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "caseResultPrivateEntry"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_case_handler_defer_before_reentry_is_linted(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "defer cleanupSecondAdd addPair secondAddCallResult one",
+                "jump target waitNextResult",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "caseHandlerDefer"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_case_handler_bind_storage_read_escape_is_linted(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "storage local mutable privateStore I64 0",
+                "set storage privateStore secondAddCallResult",
+                "jump target waitNextResult",
+            ]),
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "read local leaked I64 privateStore",
+                "return value leaked",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "caseResultPrivateEntry"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_submit_work_missing_declaration_is_linted(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "workerPool resultPool maxWorkers 4",
+                "submitWork missingWork resultPool",
+                "awaitWork missingWork",
+                "return value missingWork",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3514"
+                and diagnostic.gapEdge == "workDeclaration"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_submit_work_missing_target_operation_is_linted(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "workerPool resultPool maxWorkers 4",
+                "work missingTargetWork target missingOp",
+                "submitWork missingTargetWork resultPool",
+                "awaitWork missingTargetWork",
+                "return value missingTargetWork",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3514"
+                and diagnostic.gapEdge == "workTarget"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_case_handler_bind_work_arg_submit_is_linted(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label waitNextResult",
+            "\n".join([
+                "workerPool resultPool maxWorkers 4",
+                "work sumWork target addPair",
+                "workArg sumWork right one",
+                "label waitNextResult",
+            ]),
+        ).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "workArg sumWork left secondAddCallResult",
+                "jump target waitNextResult",
+            ]),
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "submitWork sumWork resultPool",
+                "awaitWork sumWork",
+                "return value sumWork",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "caseResultPrivateEntry"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_case_handler_run_checked_branch_out_is_linted(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "call checkedTotalCall math.addI64",
+                "argument checkedTotalCall left I64 secondAddCallResult",
+                "argument checkedTotalCall right I64 one",
+                "runChecked checkedTotalCall ok checkedTotal I64 error checkedError I64 else allDone",
+                "jump target waitNextResult",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "caseHandlerReentry"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_case_handler_argument_run_checked_in_done_is_linted(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label waitNextResult",
+            "\n".join([
+                "call checkedTotalCall math.addI64",
+                "argument checkedTotalCall right I64 one",
+                "label waitNextResult",
+            ]),
+        ).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "argument checkedTotalCall left I64 secondAddCallResult",
+                "jump target waitNextResult",
+            ]),
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "runChecked checkedTotalCall ok checkedTotal I64 error checkedError I64 else checkedFailed",
+                "return value checkedTotal",
+                "label checkedFailed",
+                "return value failedExitCode",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "caseResultPrivateEntry"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_await_work_result_inside_handler_read_from_done_is_linted(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label waitNextResult",
+            "\n".join([
+                "workerPool resultPool maxWorkers 4",
+                "work sumWork target addPair",
+                "workArg sumWork right one",
+                "label waitNextResult",
+            ]),
+        ).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "workArg sumWork left secondAddCallResult",
+                "submitWork sumWork resultPool",
+                "awaitWork sumWork",
+                "jump target waitNextResult",
+            ]),
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "label allDone\nreturn value sumWork",
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "caseResultPrivateEntry"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_case_handler_run_result_read_from_done_is_linted(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label waitNextResult",
+            "\n".join([
+                "call totalCall math.addI64",
+                "argument totalCall left I64 one",
+                "argument totalCall right I64 two",
+                "label waitNextResult",
+            ]),
+        ).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult I64 secondAddCall\nrun totalCall\njump target waitNextResult",
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "label allDone\nbind ok totalResult I64 totalCall\nreturn value totalResult",
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "caseResultPrivateEntry"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_case_start_exit_to_non_reentering_prior_label_is_linted_as_valid(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label startMain",
+            "\n".join([
+                "label entry",
+                "jump target startMain",
+                "label earlyExit",
+                "return value successfulExitCode",
+                "label startMain",
+            ]),
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "label allDone\njump target earlyExit",
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertFalse(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "singleStartExecution"
+                for diagnostic in diagnostics
+            ),
+            diagnostics,
+        )
+
+    def test_case_start_unreachable_bypass_branch_is_linted_as_valid(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label startMain",
+            "\n".join([
+                "label entry",
+                "jump target startMain",
+                "jump target waitNextResult",
+                "label startMain",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertFalse(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "startBeforeCase"
+                for diagnostic in diagnostics
+            ),
+            diagnostics,
+        )
+
+    def test_case_start_backedge_is_linted(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label startMain",
+            "label retryStart",
+        ).replace(
+            "bind ok firstAddCallResult I64 firstAddCall\njump target waitNextResult",
+            "bind ok firstAddCallResult I64 firstAddCall\njump target retryStart",
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "singleStartExecution"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_case_handler_exit_before_reentry_is_linted(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "bind ok firstAddCallResult I64 firstAddCall\njump target waitNextResult",
+            "bind ok firstAddCallResult I64 firstAddCall\nreturn value successfulExitCode",
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "caseHandlerReentry"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
     def test_multiple_prior_case_starts_are_linted(self) -> None:
         source = _user_operation_wait_set_source(["firstAddCall"]).replace(
             "start firstAddCall\nlabel waitNextResult",
@@ -1033,6 +2456,53 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             any(
                 diagnostic.code == "SS3509"
                 and diagnostic.gapEdge == "singlePriorStart"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_attached_else_bypass_of_start_is_linted(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label startMain\ncall firstAddCall",
+            "\n".join([
+                "label startMain",
+                "branch if condition successfulExitCode target doStart",
+                "branch else target waitNextResult",
+                "label doStart",
+                "call firstAddCall",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "startBeforeCase"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_attached_else_reentry_to_start_is_linted(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label startMain",
+            "label retryStart",
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "branch if condition successfulExitCode target earlyExit",
+                "branch else target retryStart",
+                "label earlyExit",
+                "return value successfulExitCode",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "singleStartExecution"
                 and diagnostic.blocksCompile
                 for diagnostic in diagnostics
             )

@@ -498,6 +498,19 @@ class JsonBodyLiteral:
         self.body_lines = body_lines  # list[(raw_body_text, lineno)]
 
 
+class SqlBodyLiteral:
+    def __init__(self, name, storage_type, sql_text, statement_kind,
+                 placeholder_count, statement_count, decl_line, body_lines):
+        self.name = name
+        self.storage_type = storage_type
+        self.sql_text = sql_text
+        self.statement_kind = statement_kind
+        self.placeholder_count = placeholder_count
+        self.statement_count = statement_count
+        self.decl_line = decl_line
+        self.body_lines = body_lines  # list[(body_text_without_base_indent, lineno)]
+
+
 class Program:
     def __init__(self):
         self.source_path = ""
@@ -544,7 +557,9 @@ class Program:
         self.web_servers = {}          # name -> WebServer
         self.html_templates = {}       # name -> HtmlTemplate
         self.json_bodies = []          # list[JsonBodyLiteral]
+        self.sql_bodies = []           # list[SqlBodyLiteral]
         self.record_json_constants = {} # name -> {recordType, fields}
+        self.sql_constants = {}        # name -> {statementKind, placeholderCount, statementCount}
         self.storage_declarations = [] # parsed storage rows for jsonBody binding
         self.type_metadata = {}        # type_name -> {invariant: [...], trust:..., memory:..., layout:..., representation:...}
         self.capabilities = {}         # name -> {effect_path, access}
@@ -964,6 +979,8 @@ _HTML_FRAGMENT_TYPES = {
     "HtmlDocument",
 }
 _HTML_HYDRATE_PREFIX = "html.hydrate."
+_SQL_BODY_VERBS = {"sqlBody"}
+_SQL_HOLE_RE = re.compile(r"\{[^{}\n]*\}")
 
 # Top-level verbs that map 1:1 to Windows VERSIONINFO StringFileInfo entries.
 # Each verb takes one quoted-string argument. The ordering here also drives
@@ -1342,6 +1359,158 @@ def _record_type_for_json_body(prog: Program, type_name: str) -> str | None:
             name = next_target
 
 
+def _is_sql_text_type(prog: Program, type_name: str) -> bool:
+    name = type_name
+    seen = set()
+    while True:
+        if name == "SqlText":
+            return True
+        if name in seen or name not in prog.type_aliases:
+            return False
+        seen.add(name)
+        next_target = prog.type_aliases[name]
+        if isinstance(next_target, list):
+            if not next_target:
+                return False
+            name = next_target[0]
+        else:
+            name = next_target
+
+
+def _sql_body_row_name(verb: str, args: list) -> str | None:
+    if verb == "sqlBody":
+        if len(args) == 1:
+            return args[0]
+        return ""
+    if verb == "sql" and args[:1] == ["body"]:
+        if len(args) == 2:
+            return args[1]
+        return ""
+    return None
+
+
+def _sql_first_verb(sql_text: str) -> str | None:
+    index = 0
+    length = len(sql_text)
+    while index < length:
+        ch = sql_text[index]
+        if ch.isspace():
+            index += 1
+            continue
+        if sql_text.startswith("--", index):
+            newline = sql_text.find("\n", index + 2)
+            if newline == -1:
+                return None
+            index = newline + 1
+            continue
+        if sql_text.startswith("/*", index):
+            end = sql_text.find("*/", index + 2)
+            if end == -1:
+                return None
+            index = end + 2
+            continue
+        if ch.isalpha():
+            start = index
+            while index < length and (sql_text[index].isalpha() or sql_text[index] == "_"):
+                index += 1
+            return sql_text[start:index].upper()
+        return None
+    return None
+
+
+def _scan_sql_text(sql_text: str):
+    placeholder_count = 0
+    statement_count = 0
+    has_statement_content = False
+    index = 0
+    length = len(sql_text)
+
+    while index < length:
+        ch = sql_text[index]
+        next_ch = sql_text[index + 1] if index + 1 < length else ""
+
+        if ch.isspace():
+            index += 1
+            continue
+        if ch == "-" and next_ch == "-":
+            index += 2
+            while index < length and sql_text[index] != "\n":
+                index += 1
+            continue
+        if ch == "/" and next_ch == "*":
+            end = sql_text.find("*/", index + 2)
+            if end == -1:
+                return placeholder_count, statement_count, "unterminated SQL block comment"
+            index = end + 2
+            continue
+        if ch == ";":
+            if has_statement_content:
+                statement_count += 1
+                has_statement_content = False
+            index += 1
+            continue
+        if ch == "?":
+            placeholder_count += 1
+            has_statement_content = True
+            index += 1
+            while index < length and sql_text[index].isdigit():
+                index += 1
+            continue
+        if ch == "'":
+            has_statement_content = True
+            index += 1
+            while index < length:
+                if sql_text[index] == "'":
+                    if index + 1 < length and sql_text[index + 1] == "'":
+                        index += 2
+                        continue
+                    index += 1
+                    break
+                index += 1
+            else:
+                return placeholder_count, statement_count, "unterminated SQL string literal"
+            continue
+        if ch == '"':
+            has_statement_content = True
+            index += 1
+            while index < length:
+                if sql_text[index] == '"':
+                    if index + 1 < length and sql_text[index + 1] == '"':
+                        index += 2
+                        continue
+                    index += 1
+                    break
+                index += 1
+            else:
+                return placeholder_count, statement_count, "unterminated SQL quoted identifier"
+            continue
+        if ch == "`":
+            has_statement_content = True
+            index += 1
+            while index < length and sql_text[index] != "`":
+                index += 1
+            if index >= length:
+                return placeholder_count, statement_count, "unterminated SQL quoted identifier"
+            index += 1
+            continue
+        if ch == "[":
+            has_statement_content = True
+            index += 1
+            while index < length and sql_text[index] != "]":
+                index += 1
+            if index >= length:
+                return placeholder_count, statement_count, "unterminated SQL bracket identifier"
+            index += 1
+            continue
+
+        has_statement_content = True
+        index += 1
+
+    if has_statement_content:
+        statement_count += 1
+    return placeholder_count, statement_count, None
+
+
 def _json_record_key(record: Record, field_name: str) -> str:
     return record.field_json_names.get(field_name, field_name)
 
@@ -1527,6 +1696,7 @@ def _record_storage_declaration(prog: Program, args, lineno: int):
         "operation": op,
         "value_present": len(args) > 4,
         "has_json_body": False,
+        "has_sql_body": False,
     })
 
 
@@ -1615,12 +1785,128 @@ def _finish_json_body_literal(prog: Program, active_json_body: dict) -> None:
     ))
 
 
+def _find_sql_body_target(prog: Program, name: str):
+    for declaration in reversed(prog.storage_declarations):
+        if declaration["name"] != name:
+            continue
+        if declaration["scope"] != "module":
+            return declaration, "bad_scope"
+        if declaration["mutability"] != "immutable":
+            return declaration, "mutable"
+        if declaration["value_present"]:
+            return declaration, "valued"
+        if declaration.get("has_sql_body"):
+            return declaration, "duplicate"
+        if declaration.get("has_json_body"):
+            return declaration, "other_body"
+        return declaration, None
+    return None, "missing"
+
+
+def _start_sql_body_literal(prog: Program, name: str, lineno: int) -> dict:
+    declaration, problem = _find_sql_body_target(prog, name)
+    if declaration is None:
+        raise SyntaxError(
+            f"line {lineno}: sqlBodyMissingTarget: sql body `{name}` "
+            "requires a preceding `storage module immutable "
+            f"{name} SqlText` row with no inline value")
+    if problem == "bad_scope":
+        raise SyntaxError(
+            f"line {lineno}: sqlBodyMissingTarget: sql body `{name}` "
+            "can only bind module-scope storage")
+    if problem == "mutable":
+        raise SyntaxError(
+            f"line {lineno}: sqlBodyMissingTarget: sql body `{name}` "
+            "can only bind immutable storage")
+    if problem == "valued":
+        raise SyntaxError(
+            f"line {lineno}: sqlBodyTargetAlreadyValued: sql body `{name}` "
+            f"targets storage declared on line {declaration['line']} with "
+            "an inline value")
+    if problem == "duplicate":
+        raise SyntaxError(
+            f"line {lineno}: duplicateSqlBody: storage `{name}` already "
+            "has a sql body literal")
+    if problem == "other_body":
+        raise SyntaxError(
+            f"line {lineno}: duplicateSqlBody: storage `{name}` already "
+            "has another syntax-island literal")
+
+    type_name = declaration["type"]
+    if _is_sql_text_type(prog, type_name):
+        return {"name": name, "line": lineno, "target": declaration,
+                "body_lines": []}
+    raise SyntaxError(
+        f"line {lineno}: sqlBodyUnsupportedType: sql body `{name}` "
+        f"targets `{type_name}`, expected SqlText")
+
+
+def _parse_sql_body(name: str, body_lines: list, decl_line: int):
+    raw_lines = [text for text, _line in body_lines]
+    while raw_lines and not raw_lines[0].strip():
+        raw_lines.pop(0)
+    while raw_lines and not raw_lines[-1].strip():
+        raw_lines.pop()
+    if not raw_lines or not any(text.strip() for text in raw_lines):
+        raise SyntaxError(
+            f"line {decl_line}: emptySqlBody: sql body `{name}` requires "
+            "at least one indented SQL line")
+    sql_text = "\n".join(raw_lines).rstrip()
+    if "\0" in sql_text:
+        raise SyntaxError(
+            f"line {decl_line}: invalidSqlBody: sql body `{name}` contains "
+            "a NUL byte")
+    dynamic_hole = _SQL_HOLE_RE.search(sql_text)
+    if dynamic_hole is not None:
+        raise SyntaxError(
+            f"line {decl_line}: sqlBodyDynamicHole: sql body `{name}` "
+            f"contains `{dynamic_hole.group(0)}`; use `?` placeholders "
+            "and sqlite.bind* rows for dynamic values")
+    statement_kind = _sql_first_verb(sql_text)
+    if statement_kind is None:
+        raise SyntaxError(
+            f"line {decl_line}: invalidSqlBody: sql body `{name}` does not "
+            "start with a SQL statement verb")
+    placeholder_count, statement_count, scan_problem = _scan_sql_text(sql_text)
+    if scan_problem is not None:
+        raise SyntaxError(
+            f"line {decl_line}: invalidSqlBody: sql body `{name}` contains "
+            f"invalid SQL text: {scan_problem}")
+    return sql_text, statement_kind, placeholder_count, statement_count
+
+
+def _finish_sql_body_literal(prog: Program, active_sql_body: dict) -> None:
+    name = active_sql_body["name"]
+    declaration = active_sql_body["target"]
+    sql_text, statement_kind, placeholder_count, statement_count = _parse_sql_body(
+        name, active_sql_body["body_lines"], active_sql_body["line"])
+    prog.consts[name] = (declaration["type"], sql_text)
+    declaration["has_sql_body"] = True
+    prog.sql_constants[name] = {
+        "statementKind": statement_kind,
+        "placeholderCount": placeholder_count,
+        "statementCount": statement_count,
+    }
+    prog.sql_bodies.append(SqlBodyLiteral(
+        name,
+        declaration["type"],
+        sql_text,
+        statement_kind,
+        placeholder_count,
+        statement_count,
+        active_sql_body["line"],
+        list(active_sql_body["body_lines"]),
+    ))
+
+
 def parse(source: str) -> Program:
     prog = Program()
     _register_builtin_middleware_control_enum(prog)
     active_html_template = None
     active_html_base_indent = None
     active_json_body = None
+    active_sql_body = None
+    active_sql_base_indent = None
     lines = list(enumerate(source.splitlines(), start=1))
     index = 0
 
@@ -1634,6 +1920,13 @@ def parse(source: str) -> Program:
         if active_json_body is not None:
             _finish_json_body_literal(prog, active_json_body)
             active_json_body = None
+
+    def _finish_sql_body():
+        nonlocal active_sql_body, active_sql_base_indent
+        if active_sql_body is not None:
+            _finish_sql_body_literal(prog, active_sql_body)
+            active_sql_body = None
+            active_sql_base_indent = None
 
     while index < len(lines):
         lineno, raw = lines[index]
@@ -1650,6 +1943,21 @@ def parse(source: str) -> Program:
             # A non-empty column-0 line ends the JSON syntax island and is
             # immediately reprocessed as normal SemanticScript.
             _finish_json_body()
+
+        if active_sql_body is not None:
+            if raw.strip() and raw[0].isspace():
+                indent = len(raw) - len(raw.lstrip(" \t"))
+                if active_sql_base_indent is None:
+                    active_sql_base_indent = indent
+                trim_count = min(active_sql_base_indent, indent)
+                active_sql_body["body_lines"].append((raw[trim_count:], lineno))
+                continue
+            if not raw.strip():
+                active_sql_body["body_lines"].append(("", lineno))
+                continue
+            # A non-empty column-0 line ends the SQL syntax island and is
+            # immediately reprocessed as normal SemanticScript.
+            _finish_sql_body()
 
         if active_html_template is not None:
             if raw.strip() and raw[0].isspace():
@@ -1698,6 +2006,17 @@ def parse(source: str) -> Program:
             continue
         verb = toks[0]
         args = toks[1:]
+        sql_body_name = _sql_body_row_name(verb, args)
+        if sql_body_name is not None:
+            if raw[:1].isspace():
+                raise SyntaxError(
+                    f"line {lineno}: sql body must start at column 0")
+            if not sql_body_name:
+                raise SyntaxError(
+                    f"line {lineno}: sql body requires: sql body NAME")
+            active_sql_body = _start_sql_body_literal(prog, sql_body_name, lineno)
+            active_sql_base_indent = None
+            continue
         if verb == "jsonBody":
             if raw[:1].isspace():
                 raise SyntaxError(
@@ -1724,6 +2043,7 @@ def parse(source: str) -> Program:
         except Exception as e:
             raise SyntaxError(f"line {lineno}: {e}\n  >> {raw}") from e
     _finish_json_body()
+    _finish_sql_body()
     _finish_html_body()
     _finalize_import_aliases(prog)
     return prog
@@ -3266,7 +3586,7 @@ def llvm_type_for(prog: Program, typename: str):
     if typename in (
         "String", "CNullTerminatedByteString", "CString",
         "HtmlFragment", "HtmlTrustedFragment", "HtmlDocument",
-        "HtmlTemplate",
+        "HtmlTemplate", "SqlText",
     ):
         return I8P
     if typename in (
@@ -3510,6 +3830,9 @@ _STRICT_SQL_STRING_TARGETS = frozenset({
 })
 
 _STRICT_SQL_ARG_SLOTS = frozenset({"sql"})
+
+_STRICT_SQL_PREPARE_TARGETS = frozenset({"sqlite.prepareStatement"})
+_STRICT_SQL_EXEC_TARGETS = frozenset({"sqlite.exec"})
 
 _STRICT_RESPONSE_WRITER_TARGETS = frozenset({
     "http.responseHtml",
@@ -6192,11 +6515,19 @@ class Codegen:
         for verb, args, _ln in op.lines:
             if verb == "work" and len(args) >= 3 and args[1] == "target":
                 work_name, target_op = args[0], args[2]
-                work_items[work_name] = {"target": target_op, "args": {}}
+                work_items[work_name] = {
+                    "target": target_op,
+                    "args": {},
+                    "declared": True,
+                }
             elif verb == "workArg" and len(args) >= 3:
                 work_name, arg_name, value_name = args[0], args[1], args[2]
                 work_items.setdefault(work_name,
-                                      {"target": None, "args": {}})
+                                      {
+                                          "target": None,
+                                          "args": {},
+                                          "declared": False,
+                                      })
                 work_items[work_name]["args"][arg_name] = value_name
 
         # ---- channel slots ----
@@ -6367,6 +6698,7 @@ class Codegen:
             if next_verb == "branch" and next_args[:2] == ["else", "target"]:
                 branch_else_by_line[row_ln] = next_args[2]
                 attached_branch_else_lines.add(next_ln)
+        source_reachable_line_numbers_cache = None
 
         def collect_await_cases(start_index):
             cases = []
@@ -6414,11 +6746,111 @@ class Codegen:
                 return [row_args[1]]
             if row_verb == "branchSelected" and len(row_args) >= 3:
                 return [row_args[2]]
+            if row_verb == "runChecked" and len(row_args) >= 9:
+                return [row_args[8]]
             if row_verb == "case" and len(row_args) >= 2:
                 return [row_args[1]]
             if row_verb == "done" and row_args:
                 return [row_args[0]]
             return []
+
+        def source_branch_targets_with_attached_else(row_verb, row_args, row_ln):
+            targets = list(source_branch_targets(row_verb, row_args))
+            else_label = branch_else_by_line.get(row_ln)
+            if else_label is not None and else_label not in targets:
+                targets.append(else_label)
+            return targets
+
+        def source_line_reachable_numbers():
+            nonlocal source_reachable_line_numbers_cache
+            if source_reachable_line_numbers_cache is not None:
+                return source_reachable_line_numbers_cache
+            if not op.lines:
+                source_reachable_line_numbers_cache = set()
+                return source_reachable_line_numbers_cache
+
+            label_indices = {
+                row_args[0]: index
+                for index, (row_verb, row_args, _row_ln) in enumerate(op.lines)
+                if row_verb == "label" and row_args
+            }
+
+            def add_label_successor(successors, label_name):
+                target_index = label_indices.get(label_name)
+                if target_index is not None:
+                    successors.append(target_index)
+
+            def add_fallthrough_successor(successors, index):
+                next_index = index + 1
+                if next_index < len(op.lines):
+                    successors.append(next_index)
+
+            def successor_indices(index):
+                row_verb, row_args, row_ln = op.lines[index]
+                successors = []
+                if row_verb == "await":
+                    await_cases, done_label, _done_lineno, _next_index = collect_await_cases(index + 1)
+                    if await_cases or done_label is not None:
+                        for _call_name, target_label, _case_lineno in await_cases:
+                            add_label_successor(successors, target_label)
+                        if done_label is not None:
+                            add_label_successor(successors, done_label)
+                        return successors
+                if row_verb in {"return", "returnOk", "returnError", "returnVoid"}:
+                    return successors
+                if row_verb == "jump" and len(row_args) >= 2 and row_args[0] == "target":
+                    add_label_successor(successors, row_args[1])
+                    return successors
+                if row_verb == "branch":
+                    if len(row_args) >= 5 and row_args[0] in {"if", "error"} and row_args[3] == "target":
+                        add_label_successor(successors, row_args[4])
+                        else_label = branch_else_by_line.get(row_ln)
+                        if else_label is None:
+                            add_fallthrough_successor(successors, index)
+                        else:
+                            add_label_successor(successors, else_label)
+                        return successors
+                    if len(row_args) >= 3 and row_args[0] == "else" and row_args[1] == "target":
+                        add_label_successor(successors, row_args[2])
+                        return successors
+                    if row_args:
+                        add_label_successor(successors, row_args[0])
+                        add_fallthrough_successor(successors, index)
+                        return successors
+                if row_verb == "branchIf" and len(row_args) >= 2:
+                    add_label_successor(successors, row_args[1])
+                    if len(row_args) >= 3:
+                        add_label_successor(successors, row_args[2])
+                    else:
+                        add_fallthrough_successor(successors, index)
+                    return successors
+                if row_verb in {"branchIfError", "branchIfGroupError", "branchIfChannelClosed"} and len(row_args) >= 2:
+                    add_label_successor(successors, row_args[1])
+                    add_fallthrough_successor(successors, index)
+                    return successors
+                if row_verb == "runChecked" and len(row_args) >= 9:
+                    add_label_successor(successors, row_args[8])
+                    add_fallthrough_successor(successors, index)
+                    return successors
+                if row_verb == "branchSelected" and len(row_args) >= 3:
+                    add_label_successor(successors, row_args[2])
+                    add_fallthrough_successor(successors, index)
+                    return successors
+                add_fallthrough_successor(successors, index)
+                return successors
+
+            reachable_indices = set()
+            stack = [0]
+            while stack:
+                current_index = stack.pop()
+                if current_index in reachable_indices:
+                    continue
+                reachable_indices.add(current_index)
+                stack.extend(successor_indices(current_index))
+            source_reachable_line_numbers_cache = {
+                op.lines[index][2] for index in reachable_indices
+            }
+            return source_reachable_line_numbers_cache
 
         def source_row_terminates_before_next_label(row_verb, row_args):
             if row_verb in {"jump", "return", "returnOk", "returnError", "returnVoid"}:
@@ -6426,6 +6858,208 @@ class Codegen:
             if row_verb == "branch" and len(row_args) >= 3 and row_args[0] == "else":
                 return True
             return False
+
+        def source_call_result_reference(row_verb, row_args):
+            if row_verb == "bind" and len(row_args) >= 4 and row_args[0] in {"value", "ok", "error"}:
+                return row_args[3]
+            if row_verb == "ignore":
+                if len(row_args) >= 5 and row_args[0] in {"value", "ok"} and row_args[1] == "source":
+                    return row_args[2]
+                if len(row_args) >= 3 and row_args[0] in {"error", "void"} and row_args[1] == "source":
+                    return row_args[2]
+            if row_verb == "await" and len(row_args) == 1:
+                return row_args[0]
+            if row_verb == "branch" and len(row_args) >= 5 and row_args[:2] == ["error", "source"]:
+                return row_args[2]
+            if row_verb == "branchIfError" and row_args:
+                return row_args[0]
+            return None
+
+        def source_symbol_definition(row_verb, row_args):
+            if row_verb == "bind" and len(row_args) >= 4 and row_args[0] in {"value", "ok", "error"}:
+                return row_args[1]
+            if row_verb == "fieldGet" and row_args:
+                return row_args[0]
+            if row_verb in {"new", "call", "recordBuild", "receive"} and row_args:
+                return row_args[0]
+            if (row_verb == "read" and len(row_args) >= 4
+                    and row_args[0] in {"sharedState", "local", "module"}):
+                return row_args[1]
+            if row_verb in {"memory", "storage"} and len(row_args) >= 4:
+                return row_args[2]
+            return None
+
+        def source_call_result_definition(row_verb, row_args):
+            if row_verb in {"run", "await", "submitWork", "awaitWork"} and row_args:
+                return row_args[0]
+            return None
+
+        def source_symbol_references(row_verb, row_args):
+            refs = set()
+            call_ref = source_call_result_reference(row_verb, row_args)
+            if call_ref is not None:
+                refs.add(call_ref)
+            if row_verb == "argument" and len(row_args) >= 4:
+                refs.add(row_args[3])
+            elif row_verb == "arg" and len(row_args) >= 3:
+                refs.add(row_args[2])
+            elif row_verb == "cancelOn" and len(row_args) >= 2:
+                refs.add(row_args[1])
+            elif row_verb in {"run", "runChecked"} and row_args:
+                refs.add(row_args[0])
+            elif row_verb == "fieldSet" and len(row_args) >= 3:
+                refs.add(row_args[0])
+                refs.add(row_args[2])
+            elif row_verb == "fieldGet" and len(row_args) >= 3:
+                refs.add(row_args[2])
+            elif row_verb in {"memory", "storage"} and len(row_args) >= 5:
+                refs.add(row_args[4])
+            elif (row_verb == "read" and len(row_args) >= 4
+                    and row_args[0] in {"sharedState", "local", "module"}):
+                refs.add(row_args[3])
+            elif row_verb == "receive" and len(row_args) >= 3:
+                refs.add(row_args[2])
+            elif row_verb == "send" and len(row_args) >= 2:
+                refs.add(row_args[1])
+            elif row_verb == "workArg" and len(row_args) >= 3:
+                refs.add(row_args[2])
+            elif row_verb in {"defer", "deferLog", "deferAwaitLog"} and len(row_args) >= 3:
+                refs.update(row_args[2:])
+            elif row_verb == "deferWhenExitLog" and len(row_args) >= 4:
+                refs.update(row_args[3:])
+            elif row_verb == "set" and len(row_args) >= 3:
+                refs.add(row_args[1])
+                refs.add(row_args[2])
+            elif row_verb == "return" and len(row_args) >= 2 and row_args[0] in {"value", "ok", "error"}:
+                refs.add(row_args[1])
+            elif row_verb in {"returnValue", "returnOk", "returnError"} and row_args:
+                refs.add(row_args[0])
+            elif row_verb == "branch" and len(row_args) >= 5 and row_args[0] == "if":
+                refs.add(row_args[2])
+            elif row_verb == "branchIf" and row_args:
+                refs.add(row_args[0])
+            elif row_verb == "makeError" and len(row_args) >= 3:
+                refs.add(row_args[2])
+            return refs
+
+        def source_label_before_line(lineno):
+            current_label = None
+            for row_verb, row_args, row_ln in op.lines:
+                if row_ln >= lineno:
+                    break
+                if row_verb == "label" and row_args:
+                    current_label = row_args[0]
+            return current_label
+
+        def source_label_reaches_line(label_name, target_lineno):
+            label_indices = {
+                row_args[0]: index
+                for index, (row_verb, row_args, _row_ln) in enumerate(op.lines)
+                if row_verb == "label" and row_args
+            }
+            line_indices = {
+                row_ln: index
+                for index, (_row_verb, _row_args, row_ln) in enumerate(op.lines)
+            }
+            start_index = label_indices.get(label_name)
+            target_index = line_indices.get(target_lineno)
+            if start_index is None or target_index is None:
+                return False
+
+            def add_label_successor(successors, target_label):
+                next_index = label_indices.get(target_label)
+                if next_index is not None:
+                    successors.append(next_index)
+
+            def add_fallthrough_successor(successors, index):
+                next_index = index + 1
+                if next_index < len(op.lines):
+                    successors.append(next_index)
+
+            def successor_indices(index):
+                row_verb, row_args, row_ln = op.lines[index]
+                successors = []
+                if row_verb == "await":
+                    await_cases, done_label, _done_lineno, _next_index = collect_await_cases(index + 1)
+                    if await_cases or done_label is not None:
+                        for _call_name, target_label, _case_lineno in await_cases:
+                            add_label_successor(successors, target_label)
+                        if done_label is not None:
+                            add_label_successor(successors, done_label)
+                        return successors
+                if row_verb in {"return", "returnOk", "returnError", "returnVoid"}:
+                    return successors
+                if row_verb == "jump" and len(row_args) >= 2 and row_args[0] == "target":
+                    add_label_successor(successors, row_args[1])
+                    return successors
+                if row_verb == "branch":
+                    if len(row_args) >= 5 and row_args[0] in {"if", "error"} and row_args[3] == "target":
+                        add_label_successor(successors, row_args[4])
+                        else_label = branch_else_by_line.get(row_ln)
+                        if else_label is None:
+                            add_fallthrough_successor(successors, index)
+                        else:
+                            add_label_successor(successors, else_label)
+                        return successors
+                    if len(row_args) >= 3 and row_args[0] == "else" and row_args[1] == "target":
+                        add_label_successor(successors, row_args[2])
+                        return successors
+                    if row_args:
+                        add_label_successor(successors, row_args[0])
+                        add_fallthrough_successor(successors, index)
+                        return successors
+                if row_verb == "branchIf" and len(row_args) >= 2:
+                    add_label_successor(successors, row_args[1])
+                    if len(row_args) >= 3:
+                        add_label_successor(successors, row_args[2])
+                    else:
+                        add_fallthrough_successor(successors, index)
+                    return successors
+                if row_verb in {"branchIfError", "branchIfGroupError", "branchIfChannelClosed"} and len(row_args) >= 2:
+                    add_label_successor(successors, row_args[1])
+                    add_fallthrough_successor(successors, index)
+                    return successors
+                if row_verb == "runChecked" and len(row_args) >= 9:
+                    add_label_successor(successors, row_args[8])
+                    add_fallthrough_successor(successors, index)
+                    return successors
+                if row_verb == "branchSelected" and len(row_args) >= 3:
+                    add_label_successor(successors, row_args[2])
+                    add_fallthrough_successor(successors, index)
+                    return successors
+                add_fallthrough_successor(successors, index)
+                return successors
+
+            seen = set()
+            stack = [start_index]
+            while stack:
+                current_index = stack.pop()
+                if current_index in seen:
+                    continue
+                if current_index == target_index:
+                    return True
+                seen.add(current_index)
+                stack.extend(successor_indices(current_index))
+            return False
+
+        def start_reentry_edge(start_lineno):
+            labels_before_start = {
+                label_name
+                for label_name, label_lineno in declared_label_lines.items()
+                if label_lineno <= start_lineno
+            }
+            for row_verb, row_args, row_ln in op.lines:
+                if row_ln <= start_lineno:
+                    continue
+                if row_ln not in source_line_reachable_numbers():
+                    continue
+                for target_label in source_branch_targets_with_attached_else(
+                        row_verb, row_args, row_ln):
+                    if (target_label in labels_before_start
+                            and source_label_reaches_line(
+                                target_label, start_lineno)):
+                        return row_verb, row_ln, target_label
+            return None
 
         def start_reaches_wait_set_entry(call_name, await_lineno):
             start_lines = [
@@ -6438,9 +7072,14 @@ class Codegen:
             ]
             if len(start_lines) > 1:
                 return False, start_lines[-1], "multiple"
+            reachable_line_numbers = source_line_reachable_numbers()
             for start_lineno in reversed(start_lines):
+                if start_lineno not in reachable_line_numbers:
+                    continue
                 blocked_by_terminator = False
                 for row_verb, row_args, row_ln in op.lines:
+                    if row_ln not in reachable_line_numbers:
+                        continue
                     if row_ln >= start_lineno:
                         break
                     if row_verb == "label":
@@ -6459,9 +7098,12 @@ class Codegen:
                 }
                 bypasses_start = False
                 for row_verb, row_args, row_ln in op.lines:
+                    if row_ln not in reachable_line_numbers:
+                        continue
                     if row_ln >= start_lineno:
                         continue
-                    for target_label in source_branch_targets(row_verb, row_args):
+                    for target_label in source_branch_targets_with_attached_else(
+                            row_verb, row_args, row_ln):
                         if target_label in intervening_labels:
                             bypasses_start = True
                             break
@@ -6470,6 +7112,22 @@ class Codegen:
                 if not bypasses_start:
                     return True, start_lineno, "ok"
             return False, (start_lines[-1] if start_lines else None), "missing"
+
+        def source_row_ignored_in_wait_set_gap(row_verb):
+            return row_verb in {
+                "__typedComment__", "__groupAnchor__",
+                "input", "output", "effect", "async",
+                "purpose", "invariant", "warning",
+            }
+
+        def next_effective_source_row_after(lineno):
+            for row_verb, row_args, row_ln in op.lines:
+                if row_ln <= lineno:
+                    continue
+                if source_row_ignored_in_wait_set_gap(row_verb):
+                    continue
+                return row_verb, row_args, row_ln
+            return None
 
         await_select_name_counts = {}
 
@@ -6571,6 +7229,14 @@ class Codegen:
                 raise ValueError(
                     f"line {lineno}: await {wait_name} done label "
                     f"`{done_label}` must be declared after its done row")
+            next_after_done = next_effective_source_row_after(done_lineno)
+            if next_after_done is not None:
+                next_verb, _next_args, next_lineno = next_after_done
+                if next_verb != "label":
+                    raise ValueError(
+                        f"line {next_lineno}: await {wait_name} done row "
+                        "must be followed by a label before executable row "
+                        f"`{next_verb}`")
             seen_case_calls = set()
             seen_case_target_labels = {}
             for call_name, target_label, case_lineno in cases:
@@ -6581,7 +7247,8 @@ class Codegen:
                 if seen_wait_set_case_calls is not None:
                     previous_case = seen_wait_set_case_calls.get(call_name)
                     if previous_case is not None:
-                        previous_wait_name, previous_case_lineno = previous_case
+                        previous_wait_name = previous_case[0]
+                        previous_case_lineno = previous_case[2]
                         raise ValueError(
                             f"line {case_lineno}: await {wait_name} case "
                             f"`{call_name}` was already awaited or consumed "
@@ -6608,6 +7275,15 @@ class Codegen:
                         f"line {case_lineno}: await {wait_name} case "
                         f"`{call_name}` start on line {start_lineno} does "
                         "not dominate the wait-set entry")
+                reentry_edge = start_reentry_edge(start_lineno)
+                if reentry_edge is not None:
+                    edge_verb, edge_lineno, edge_label = reentry_edge
+                    raise ValueError(
+                        f"line {edge_lineno}: await {wait_name} case "
+                        f"`{call_name}` start on line {start_lineno} can be "
+                        f"re-entered by `{edge_verb}` targeting "
+                        f"`{edge_label}`; use a fresh call name for each "
+                        "future")
                 if target_label not in declared_label_names:
                     raise ValueError(
                         f"line {case_lineno}: await {wait_name} case "
@@ -6654,13 +7330,14 @@ class Codegen:
                 seen_case_calls.add(call_name)
                 if seen_wait_set_case_calls is not None:
                     seen_wait_set_case_calls[call_name] = (
-                        wait_name, case_lineno)
+                        wait_name, target_label, case_lineno)
                 seen_case_target_labels[target_label] = case_lineno
             for target_label, case_lineno in seen_case_target_labels.items():
                 for row_verb, row_args, row_ln in op.lines:
                     if row_verb == "case" and row_ln == case_lineno:
                         continue
-                    if target_label not in source_branch_targets(row_verb, row_args):
+                    if target_label not in source_branch_targets_with_attached_else(
+                            row_verb, row_args, row_ln):
                         continue
                     raise ValueError(
                         f"line {case_lineno}: await {wait_name} case "
@@ -6680,8 +7357,16 @@ class Codegen:
                 previous_effective_row = (row_verb, row_args, row_ln)
             if previous_effective_row is not None:
                 prev_verb, prev_args, prev_ln = previous_effective_row
-                if prev_verb != "case" and not source_row_terminates_before_next_label(
-                        prev_verb, prev_args):
+                previous_is_owning_done_row = (
+                    prev_verb == "done"
+                    and prev_args
+                    and prev_args[0] == done_label
+                    and prev_ln == done_lineno
+                )
+                if (prev_verb != "case"
+                        and not previous_is_owning_done_row
+                        and not source_row_terminates_before_next_label(
+                            prev_verb, prev_args)):
                     raise ValueError(
                         f"line {lineno}: await {wait_name} done label "
                         f"`{done_label}` must not be reachable by "
@@ -6689,12 +7374,192 @@ class Codegen:
             for row_verb, row_args, row_ln in op.lines:
                 if row_verb == "done" and row_ln == done_lineno:
                     continue
-                if done_label not in source_branch_targets(row_verb, row_args):
+                if done_label not in source_branch_targets_with_attached_else(
+                        row_verb, row_args, row_ln):
                     continue
                 raise ValueError(
                     f"line {lineno}: await {wait_name} done label "
-                    f"`{done_label}` may only be reached from that done row; "
+                        f"`{done_label}` may only be reached from that done row; "
                     f"also referenced by `{row_verb}` on line {row_ln}")
+
+        def validate_wait_set_case_result_ownership(case_owners):
+            private_symbols = {}
+            for wait_name, target_label, case_lineno in case_owners.values():
+                target_label_line = declared_label_lines.get(target_label)
+                if target_label_line is None:
+                    continue
+                for row_verb, row_args, row_ln in op.lines:
+                    if row_ln <= target_label_line:
+                        continue
+                    if row_verb == "label":
+                        break
+                    symbol_name = source_symbol_definition(row_verb, row_args)
+                    if symbol_name is not None:
+                        private_symbols[symbol_name] = (
+                            wait_name, target_label, case_lineno, row_ln)
+                    call_result_name = source_call_result_definition(
+                        row_verb, row_args)
+                    if call_result_name is not None:
+                        private_symbols[call_result_name] = (
+                            wait_name, target_label, case_lineno, row_ln)
+                    if row_verb == "runChecked" and len(row_args) >= 6:
+                        private_symbols[row_args[2]] = (
+                            wait_name, target_label, case_lineno, row_ln)
+                        private_symbols[row_args[5]] = (
+                            wait_name, target_label, case_lineno, row_ln)
+            call_private_dependencies = {}
+
+            def private_owner_for_symbol(symbol_name):
+                owner = private_symbols.get(symbol_name)
+                if owner is not None:
+                    return owner
+                if symbol_name in case_owners:
+                    wait_name, target_label, case_lineno = case_owners[symbol_name]
+                    return wait_name, target_label, case_lineno, case_lineno
+                return None
+
+            for row_verb, row_args, _row_ln in op.lines:
+                call_name = None
+                value_name = None
+                if row_verb == "argument" and len(row_args) >= 4:
+                    call_name = row_args[0]
+                    value_name = row_args[3]
+                elif row_verb == "arg" and len(row_args) >= 3:
+                    call_name = row_args[0]
+                    value_name = row_args[2]
+                elif row_verb == "workArg" and len(row_args) >= 3:
+                    call_name = row_args[0]
+                    value_name = row_args[2]
+                if call_name is None or value_name is None:
+                    continue
+                owner = private_owner_for_symbol(value_name)
+                if owner is None:
+                    continue
+                call_private_dependencies.setdefault(call_name, []).append(
+                    (value_name, *owner))
+            for row_verb, row_args, row_ln in op.lines:
+                if row_verb == "case":
+                    continue
+                current_label = source_label_before_line(row_ln)
+                referenced_private_symbols = []
+                if row_verb in {
+                    "run", "runChecked", "start", "startInGroup", "submitWork"
+                } and row_args:
+                    for dependency in call_private_dependencies.get(row_args[0], []):
+                        symbol_name, wait_name, target_label, case_lineno, definition_lineno = dependency
+                        referenced_private_symbols.append((
+                            symbol_name, wait_name, target_label,
+                            case_lineno, definition_lineno, "value"))
+                mutation_escape = None
+                if (row_verb == "set" and len(row_args) >= 3
+                        and row_args[0] in {"memory", "storage"}):
+                    mutation_escape = (row_args[2], row_args[1])
+                elif row_verb == "fieldSet" and len(row_args) >= 3:
+                    mutation_escape = (row_args[2], row_args[0])
+                elif row_verb == "send" and len(row_args) >= 2:
+                    mutation_escape = (row_args[1], row_args[0])
+                if mutation_escape is not None:
+                    value_name, target_name = mutation_escape
+                    owner = private_owner_for_symbol(value_name)
+                    if owner is not None:
+                        wait_name, target_label, case_lineno, definition_lineno = owner
+                        target_owner = private_owner_for_symbol(target_name)
+                        target_is_private_to_same_handler = (
+                            target_owner is not None
+                            and target_owner[1] == target_label
+                        )
+                        if (row_ln > definition_lineno
+                                and current_label == target_label
+                                and not target_is_private_to_same_handler):
+                            raise ValueError(
+                                f"line {row_ln}: await {wait_name} case "
+                                f"`{value_name}` value may not be written "
+                                "into non-private state "
+                                f"`{target_name}` from handler label "
+                                f"`{target_label}`; consume it before "
+                                "re-entering the wait set or keep it in "
+                            "handler-local state")
+                referenced_call = source_call_result_reference(row_verb, row_args)
+                if referenced_call is not None and referenced_call in case_owners:
+                    wait_name, target_label, case_lineno = case_owners[referenced_call]
+                    referenced_private_symbols.append((
+                        referenced_call, wait_name, target_label,
+                        case_lineno, case_lineno, "result"))
+                for symbol_name in source_symbol_references(row_verb, row_args):
+                    owner = private_owner_for_symbol(symbol_name)
+                    if owner is None:
+                        continue
+                    wait_name, target_label, case_lineno, definition_lineno = owner
+                    referenced_private_symbols.append((
+                        symbol_name, wait_name, target_label,
+                        case_lineno, definition_lineno, "value"))
+                for symbol_name, wait_name, target_label, case_lineno, definition_lineno, value_kind in referenced_private_symbols:
+                    if row_ln <= definition_lineno:
+                        continue
+                    if current_label == target_label:
+                        continue
+                    raise ValueError(
+                        f"line {row_ln}: await {wait_name} case "
+                        f"`{symbol_name}` {value_kind} may only be read inside "
+                        f"handler label `{target_label}` from case line "
+                        f"{case_lineno}; `{row_verb}` is under label "
+                        f"`{current_label or '<entry>'}`")
+
+        def validate_wait_set_case_handler_reentry(
+            wait_name, cases, lineno, wait_entry_label):
+            if wait_entry_label is None:
+                raise ValueError(
+                    f"line {lineno}: await {wait_name} wait-set must be "
+                    "preceded by a label so case handlers can re-enter it")
+            for call_name, target_label, case_lineno in cases:
+                target_label_line = declared_label_lines.get(target_label)
+                if target_label_line is None:
+                    continue
+                saw_reentry = False
+                for row_verb, row_args, row_ln in op.lines:
+                    if row_ln <= target_label_line:
+                        continue
+                    if row_verb == "label":
+                        break
+                    if source_row_ignored_in_wait_set_gap(row_verb):
+                        continue
+                    if row_verb in {
+                        "defer", "deferLog", "deferAwaitLog",
+                        "deferWhenExitLog", "deferRunOn",
+                    }:
+                        raise ValueError(
+                            f"line {row_ln}: await {wait_name} case "
+                            f"`{call_name}` handler `{target_label}` must "
+                            "not register defer cleanup before jumping back "
+                            f"to `{wait_entry_label}`")
+                    targets = source_branch_targets_with_attached_else(
+                        row_verb, row_args, row_ln)
+                    if row_verb == "jump" and targets == [wait_entry_label]:
+                        saw_reentry = True
+                        break
+                    if row_verb in {"return", "returnOk", "returnError", "returnVoid"}:
+                        raise ValueError(
+                            f"line {row_ln}: await {wait_name} case "
+                            f"`{call_name}` handler `{target_label}` must "
+                            f"jump back to `{wait_entry_label}` before "
+                            "returning")
+                    disallowed_targets = [
+                        target for target in targets
+                        if target != wait_entry_label
+                    ]
+                    if disallowed_targets:
+                        raise ValueError(
+                            f"line {row_ln}: await {wait_name} case "
+                            f"`{call_name}` handler `{target_label}` must "
+                            f"not branch to `{disallowed_targets[0]}` before "
+                            f"all cases are consumed; jump back to "
+                            f"`{wait_entry_label}`")
+                if not saw_reentry:
+                    raise ValueError(
+                        f"line {case_lineno}: await {wait_name} case "
+                        f"`{call_name}` handler `{target_label}` must "
+                        f"jump back to `{wait_entry_label}` after handling "
+                        "the selected result")
 
         def validate_await_wait_sets_before_lowering():
             seen_wait_set_case_calls = {}
@@ -6716,12 +7581,19 @@ class Codegen:
                             row_ln,
                             seen_wait_set_case_calls,
                         )
+                        validate_wait_set_case_handler_reentry(
+                            row_args[0],
+                            await_cases,
+                            row_ln,
+                            source_label_before_line(row_ln),
+                        )
                         index = next_index
                     continue
                 if row_verb in {"case", "done"}:
                     raise ValueError(
                         f"line {row_ln}: `{row_verb}` must immediately follow "
                         "an `await NAME` wait-set row")
+            validate_wait_set_case_result_ownership(seen_wait_set_case_calls)
 
         def emit_await_select(wait_name, cases, done_label, done_lineno, lineno):
             validate_await_select_source(
@@ -7275,17 +8147,24 @@ class Codegen:
                 # subsequent `awaitWork WORK` can read it.
                 work_name = args[0]
                 work_def = work_items.get(work_name)
-                if (work_def is not None
-                        and work_def.get("target") in self._user_ops):
-                    synth_call_name = f"_workSubmit__{work_name}"
-                    calls[synth_call_name] = make_call(
-                        synth_call_name, work_def["target"], _ln)
-                    calls[synth_call_name]["args"].update(dict(work_def["args"]))
-                    self._emit_run(builder, synth_call_name, calls,
-                                   resolve, opaque_inputs, SENTINEL)
-                    # Stash under both the work name and the synth name so
-                    # `awaitWork WORK` can find the result by either route.
-                    work_def["_synth_call_name"] = synth_call_name
+                if work_def is None or not work_def.get("declared"):
+                    raise ValueError(
+                        f"line {_ln}: submitWork: work `{work_name}` is "
+                        "not declared")
+                target_op = work_def.get("target")
+                if target_op not in self._user_ops:
+                    raise ValueError(
+                        f"line {_ln}: submitWork: work `{work_name}` target "
+                        f"`{target_op}` is not a user operation")
+                synth_call_name = f"_workSubmit__{work_name}"
+                calls[synth_call_name] = make_call(
+                    synth_call_name, target_op, _ln)
+                calls[synth_call_name]["args"].update(dict(work_def["args"]))
+                self._emit_run(builder, synth_call_name, calls,
+                               resolve, opaque_inputs, SENTINEL)
+                # Stash under both the work name and the synth name so
+                # `awaitWork WORK` can find the result by either route.
+                work_def["_synth_call_name"] = synth_call_name
                 continue
             if verb == "awaitWork" and args:
                 # Direct-dispatch lowering: work already ran during
@@ -12293,6 +13172,14 @@ def _strict_call_target_map(op: Operation) -> dict:
     return targets
 
 
+def _strict_argument_parts(verb: str, args: list):
+    if verb == "argument" and len(args) >= 4:
+        return args[0], args[1], args[3]
+    if verb == "arg" and len(args) >= 3:
+        return args[0], args[1], args[2]
+    return None
+
+
 def _strict_raise_first_simple(prog: Program, diags, default_code: str,
                                phase_note: str, direction: str) -> None:
     if not diags:
@@ -12360,9 +13247,10 @@ def _check_strict_format_string_is_constant(prog: Program, diags) -> None:
         constant_names = _strict_collect_constant_string_names(prog, op)
         call_targets = _strict_call_target_map(op)
         for verb, args, lineno in op.lines:
-            if verb != "arg" or len(args) < 3:
+            arg_parts = _strict_argument_parts(verb, args)
+            if arg_parts is None:
                 continue
-            call_name, arg_name, value_name = args[0], args[1], args[2]
+            call_name, arg_name, value_name = arg_parts
             target_info = call_targets.get(call_name)
             if target_info is None:
                 continue
@@ -12389,7 +13277,7 @@ def _check_strict_sql_string_is_constant(prog: Program, diags) -> None:
     SQL text itself."""
     module_constant_names = set()
     for name, (typ, _value) in prog.consts.items():
-        if typ != "CNullTerminatedByteString":
+        if not _is_sql_constant_type(prog, typ):
             continue
         if name in prog.mutable_globals:
             continue
@@ -12397,9 +13285,10 @@ def _check_strict_sql_string_is_constant(prog: Program, diags) -> None:
     for op_name, op in prog.operations.items():
         call_targets = _strict_call_target_map(op)
         for verb, args, lineno in op.lines:
-            if verb != "arg" or len(args) < 3:
+            arg_parts = _strict_argument_parts(verb, args)
+            if arg_parts is None:
                 continue
-            call_name, arg_name, value_name = args[0], args[1], args[2]
+            call_name, arg_name, value_name = arg_parts
             target_info = call_targets.get(call_name)
             if target_info is None:
                 continue
@@ -12414,9 +13303,71 @@ def _check_strict_sql_string_is_constant(prog: Program, diags) -> None:
                 f"SS3911 sqlMustBeConstant: in operation `{op_name}`, "
                 f"call `{call_name}` (target `{target}`) uses "
                 f"`{value_name}` as `sql`; SQL text must reference a "
-                f"`storage module immutable CNullTerminatedByteString` "
+                f"`storage module immutable SqlText` or "
+                f"`CNullTerminatedByteString` "
                 f"row. Use `?` placeholders and `sqlite.bind*` for "
                 f"dynamic values"))
+
+
+def _is_sql_constant_type(prog: Program, typ: str) -> bool:
+    resolved = resolve_alias(prog, typ)
+    return typ == "SqlText" or resolved in ("SqlText", "CNullTerminatedByteString")
+
+
+def _sql_constant_usage(prog: Program):
+    for op_name, op in prog.operations.items():
+        call_targets = _strict_call_target_map(op)
+        for verb, args, lineno in op.lines:
+            arg_parts = _strict_argument_parts(verb, args)
+            if arg_parts is None:
+                continue
+            call_name, arg_name, value_name = arg_parts
+            target_info = call_targets.get(call_name)
+            if target_info is None:
+                continue
+            target = _strict_target(prog, target_info[0])
+            if target not in _STRICT_SQL_STRING_TARGETS or arg_name not in _STRICT_SQL_ARG_SLOTS:
+                continue
+            yield op_name, call_name, target, value_name, lineno
+
+
+def _check_sqlite_sql_body_usage(prog: Program, diags) -> None:
+    for op_name, call_name, target, value_name, lineno in _sql_constant_usage(prog):
+        const = prog.consts.get(value_name)
+        if const is None:
+            continue
+        _typ, value = const
+        if not isinstance(value, str):
+            continue
+        placeholder_count, statement_count, scan_problem = _scan_sql_text(value)
+        if scan_problem is not None:
+            diags.append((lineno,
+                f"SS3913 invalidSqlText: in operation `{op_name}`, call "
+                f"`{call_name}` (target `{target}`) uses SQL constant "
+                f"`{value_name}` with invalid SQL text: {scan_problem}"))
+            continue
+        if target in _STRICT_SQL_PREPARE_TARGETS and statement_count != 1:
+            diags.append((lineno,
+                f"SS3913 prepareSqlMustBeSingleStatement: in operation "
+                f"`{op_name}`, call `{call_name}` uses SQL constant "
+                f"`{value_name}` containing {statement_count} statements; "
+                "sqlite.prepareStatement accepts exactly one statement"))
+        if target in _STRICT_SQL_EXEC_TARGETS and placeholder_count:
+            diags.append((lineno,
+                f"SS3914 execSqlCannotUsePlaceholders: in operation "
+                f"`{op_name}`, call `{call_name}` uses SQL constant "
+                f"`{value_name}` containing {placeholder_count} bind "
+                "placeholder(s), but sqlite.exec has no sqlite.bind* path; "
+                "use sqlite.prepareStatement for parameterized SQL"))
+
+
+def _strict_raise_first_sql_usage_violation(prog: Program, diags) -> None:
+    _strict_raise_first_simple(
+        prog, diags, "SS3913",
+        "strictExecutable sqlite SQL body validation",
+        "Strict executable requires prepared SQL to contain exactly one "
+        "statement and sqlite.exec SQL to contain no bind placeholders.",
+    )
 
 
 def _strict_raise_first_constant_string_violation(prog: Program, diags) -> None:
@@ -12826,6 +13777,9 @@ def validate_strict_executable(prog: Program) -> None:
     _check_strict_format_string_is_constant(prog, constant_string_diags)
     _check_strict_sql_string_is_constant(prog, constant_string_diags)
     _strict_raise_first_constant_string_violation(prog, constant_string_diags)
+    sql_usage_diags = []
+    _check_sqlite_sql_body_usage(prog, sql_usage_diags)
+    _strict_raise_first_sql_usage_violation(prog, sql_usage_diags)
     step_disposition_diags = []
     _check_strict_step_result_disposition(prog, step_disposition_diags)
     _strict_raise_first_step_disposition(prog, step_disposition_diags)
@@ -13099,6 +14053,7 @@ def lint(prog: Program, strict: bool = False):
     # the matching pattern (or coalescing into the suggested primitive).
     _check_many_small_mallocs_in_op(prog, diags)
     _check_repeated_prepare_statement_same_sql(prog, diags)
+    _check_sqlite_sql_body_usage(prog, diags)
 
     # ---- security advisories: secret-buffer wipe ----
     # These ARE correctness bugs (security ones); they advise here so
@@ -13518,7 +14473,7 @@ def _check_many_small_mallocs_in_op(prog: Program, diags):
 
 
 def _check_repeated_prepare_statement_same_sql(prog: Program, diags):
-    """SS3319 — advisory: if a `storage * immutable CNullTerminatedByteString`
+    """SS3319 — advisory: if a module immutable SQL byte-string
     SQL constant is passed as the `sql` arg to `sqlite.prepareStatement`
     in more than one operation (or more than once in any single
     operation), recommend a prepared-statement cache. Every prepare/
@@ -13529,9 +14484,10 @@ def _check_repeated_prepare_statement_same_sql(prog: Program, diags):
     for op_name, op in prog.operations.items():
         call_targets = _strict_call_target_map(op)
         for verb, args, lineno in op.lines:
-            if verb != "arg" or len(args) < 3:
+            arg_parts = _strict_argument_parts(verb, args)
+            if arg_parts is None:
                 continue
-            call_name, arg_name, value_name = args[0], args[1], args[2]
+            call_name, arg_name, value_name = arg_parts
             target_info = call_targets.get(call_name)
             if target_info is None:
                 continue
@@ -13659,6 +14615,8 @@ def _check_multiple_writes_without_transaction(prog: Program, diags):
                 const = prog.consts.get(prep_sql)
                 if const is None:
                     continue
+                if not _is_sql_constant_type(prog, const[0]):
+                    continue
                 value = const[1]
                 if not isinstance(value, str):
                     continue
@@ -13668,9 +14626,10 @@ def _check_multiple_writes_without_transaction(prog: Program, diags):
                 # If any sqlite.exec arg's sql is a BEGIN/COMMIT/etc.
                 pass
         for verb, args, _lineno in op.lines:
-            if verb != "arg" or len(args) < 3:
+            arg_parts = _strict_argument_parts(verb, args)
+            if arg_parts is None:
                 continue
-            call_name, arg_name, value_name = args[0], args[1], args[2]
+            call_name, arg_name, value_name = arg_parts
             target_info = call_targets.get(call_name)
             if target_info is None:
                 continue
@@ -13680,6 +14639,8 @@ def _check_multiple_writes_without_transaction(prog: Program, diags):
                 continue
             const = prog.consts.get(value_name)
             if const is None:
+                continue
+            if not _is_sql_constant_type(prog, const[0]):
                 continue
             value = const[1]
             if isinstance(value, str) and _LINT_TRANSACTION_VERB_RE.match(value):
@@ -13705,29 +14666,39 @@ def _operation_step_call_to_sql(prog: Program, op: Operation,
     prepareStatement that produced it."""
     statement_arg = None
     for verb, args, _lineno in op.lines:
-        if verb == "arg" and len(args) >= 3 and args[0] == step_call_name:
-            if args[1] == "statement":
-                statement_arg = args[2]
-                break
+        arg_parts = _strict_argument_parts(verb, args)
+        if arg_parts is None:
+            continue
+        call_name, arg_name, value_name = arg_parts
+        if call_name == step_call_name and arg_name == "statement":
+            statement_arg = value_name
+            break
     if statement_arg is None:
         return None
     prepare_call_name = None
     for verb, args, _lineno in op.lines:
-        if verb in ("bind", "bindOk") and len(args) >= 3:
+        if verb == "bind" and len(args) >= 4:
+            if args[0] in ("ok", "value") and args[1] == statement_arg:
+                prepare_call_name = args[3]
+                break
+        if verb == "bindOk" and len(args) >= 3:
             if args[0] == statement_arg:
                 prepare_call_name = args[2]
                 break
     if prepare_call_name is None:
         return None
     for verb, args, _lineno in op.lines:
-        if verb == "arg" and len(args) >= 3 and args[0] == prepare_call_name:
-            if args[1] == "sql":
-                return args[2]
+        arg_parts = _strict_argument_parts(verb, args)
+        if arg_parts is None:
+            continue
+        call_name, arg_name, value_name = arg_parts
+        if call_name == prepare_call_name and arg_name == "sql":
+            return value_name
     return None
 
 
 def _check_dead_sql_constant(prog: Program, diags):
-    """SS3415 advisory — a `storage module immutable CNullTerminatedByteString`
+    """SS3415 advisory — a module immutable SQL byte-string
     row whose value begins with a SQL verb (SELECT/INSERT/UPDATE/DELETE/
     CREATE/PRAGMA/etc.) but which is never passed as the `sql` arg of
     `sqlite.prepareStatement` or `sqlite.exec` is dead weight. Flag it
@@ -13735,7 +14706,7 @@ def _check_dead_sql_constant(prog: Program, diags):
     code path the SQL was meant for."""
     sql_constants = {}
     for name, (typ, value) in prog.consts.items():
-        if typ != "CNullTerminatedByteString":
+        if not _is_sql_constant_type(prog, typ):
             continue
         if name in prog.mutable_globals:
             continue
@@ -13750,8 +14721,9 @@ def _check_dead_sql_constant(prog: Program, diags):
     for op in prog.operations.values():
         call_targets = _strict_call_target_map(op)
         for verb, args, _lineno in op.lines:
-            if verb == "arg" and len(args) >= 3:
-                call_name, arg_name, value_name = args[0], args[1], args[2]
+            arg_parts = _strict_argument_parts(verb, args)
+            if arg_parts is not None:
+                call_name, arg_name, value_name = arg_parts
                 if arg_name == "sql":
                     target_info = call_targets.get(call_name)
                     if target_info is not None:

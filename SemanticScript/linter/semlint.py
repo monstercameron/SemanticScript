@@ -110,6 +110,7 @@ class CallFact:
     line: SourceLine
     arg_lines: List[SourceLine] = field(default_factory=list)
     run_lines: List[SourceLine] = field(default_factory=list)
+    run_checked_lines: List[SourceLine] = field(default_factory=list)
     start_lines: List[SourceLine] = field(default_factory=list)
     await_lines: List[SourceLine] = field(default_factory=list)
     bind_lines: List[SourceLine] = field(default_factory=list)
@@ -190,6 +191,13 @@ class JsonBodyFact:
 
 
 @dataclass
+class SqlBodyFact:
+    name: str
+    line: SourceLine
+    body_lines: List[Tuple[str, int]] = field(default_factory=list)
+
+
+@dataclass
 class HtmlTemplateFact:
     name: str
     line: SourceLine
@@ -216,6 +224,7 @@ class ProgramFacts:
     result_types: Dict[str, ResultTypeFact] = field(default_factory=dict)
     singular_imports: List[SingularImportFact] = field(default_factory=list)
     json_bodies: List[JsonBodyFact] = field(default_factory=list)
+    sql_bodies: List[SqlBodyFact] = field(default_factory=list)
     html_templates: Dict[str, HtmlTemplateFact] = field(default_factory=dict)
     records: Dict[str, List[Tuple[str, str]]] = field(default_factory=dict)
     record_json_names: Dict[Tuple[str, str], str] = field(default_factory=dict)
@@ -360,6 +369,7 @@ BUILTIN_TYPE_ALIASES: Dict[str, str] = {
     "GuiKeywordToken": "CNullTerminatedByteString",
     "GuiRuntimeTarget": "CNullTerminatedByteString",
     "JsonText": "CNullTerminatedByteString",
+    "SqlText": "CNullTerminatedByteString",
     "JsonBuilder": "COpaqueMemoryAddress",
     "JsonDocument": "COpaqueMemoryAddress",
     "JsonCursor": "CSignedInt64",
@@ -526,7 +536,7 @@ _PARSER_CONTEXT_VERBS: Set[str] = {
     "pinsNullBodyFailurePath", "responseBodyForwarder", "rationale",
 }
 _PARSER_ACTION_VERBS: Set[str] = {
-    "set", "call", "arg", "argument", "timeout", "cancelOn", "run", "start", "await",
+    "set", "call", "arg", "argument", "timeout", "cancelOn", "run", "runChecked", "start", "await",
     "case", "done",
     "bind", "bindOk", "bindError", "ignore", "ignoreOk", "ignoreValue", "ignoreError", "makeError",
     "taskGroup", "startInGroup", "awaitGroup", "bindGroupError", "defer",
@@ -534,7 +544,7 @@ _PARSER_ACTION_VERBS: Set[str] = {
     "fieldSet", "send", "receive", "lock", "unlock", "select", "selectCase",
     "runSelect", "useRetry", "useCapability",
     "deferRunOn", "startInterval", "awaitIntervalTick",
-    "submitWork", "awaitWork",
+    "read", "workerPool", "work", "workArg", "submitWork", "awaitWork",
 }
 _PARSER_CONTROL_VERBS: Set[str] = {
     "label", "branch", "branchIf", "branchIfError", "branchIfGroupError",
@@ -750,11 +760,35 @@ def branch_target_names_from_row(sourceLine: SourceLine) -> List[str]:
         return [args[1]]
     if sourceLine.verb == "branchSelected" and len(args) >= 3:
         return [args[2]]
+    if sourceLine.verb == "runChecked" and len(args) >= 9:
+        return [args[8]]
     if sourceLine.verb == "case" and len(args) >= 2:
         return [args[1]]
     if sourceLine.verb == "done" and args:
         return [args[0]]
     return []
+
+
+def branch_else_targets_by_line(lines: Sequence[SourceLine]) -> Dict[int, str]:
+    branchElseByLine: Dict[int, str] = {}
+    for index, sourceLine in enumerate(lines[:-1]):
+        if (sourceLine.verb == "branch" and sourceLine.args
+                and sourceLine.args[0] in {"if", "error"}):
+            nextLine = lines[index + 1]
+            if nextLine.verb == "branch" and nextLine.args[:2] == ["else", "target"]:
+                branchElseByLine[sourceLine.number] = nextLine.args[2]
+    return branchElseByLine
+
+
+def branch_target_names_with_attached_else(
+    sourceLine: SourceLine,
+    branchElseByLine: Dict[int, str],
+) -> List[str]:
+    targets = list(branch_target_names_from_row(sourceLine))
+    elseLabel = branchElseByLine.get(sourceLine.number)
+    if elseLabel is not None and elseLabel not in targets:
+        targets.append(elseLabel)
+    return targets
 
 
 def branch_error_source(sourceLine: SourceLine) -> Optional[str]:
@@ -803,6 +837,7 @@ def parse_file(path: Path) -> ProgramFacts:
     current_op: Optional[OperationFact] = None
     active_html_body: Optional[HtmlTemplateFact] = None
     active_json_body: Optional[JsonBodyFact] = None
+    active_sql_body: Optional[SqlBodyFact] = None
 
     with path.open("r", encoding="utf-8") as source_file:
         for line_number, raw_line in enumerate(source_file, start=1):
@@ -815,6 +850,14 @@ def parse_file(path: Path) -> ProgramFacts:
                     active_json_body.body_lines.append(("", line_number))
                     continue
                 active_json_body = None
+            if active_sql_body is not None:
+                if raw.strip() and raw[0].isspace():
+                    active_sql_body.body_lines.append((raw, line_number))
+                    continue
+                if not raw.strip():
+                    active_sql_body.body_lines.append(("", line_number))
+                    continue
+                active_sql_body = None
             if active_html_body is not None:
                 if raw.strip() and raw[0].isspace():
                     active_html_body.body_lines.append((raw, line_number))
@@ -934,6 +977,13 @@ def parse_file(path: Path) -> ProgramFacts:
                 json_body = JsonBodyFact(args[0] if args else "", line)
                 program.json_bodies.append(json_body)
                 active_json_body = json_body
+            elif verb == "sqlBody" or (verb == "sql" and args[:1] == ["body"]):
+                name = args[0] if verb == "sqlBody" and args else ""
+                if verb == "sql" and len(args) >= 2:
+                    name = args[1]
+                sql_body = SqlBodyFact(name, line)
+                program.sql_bodies.append(sql_body)
+                active_sql_body = sql_body
             elif verb in _PARSER_CONTRACT_HEAVY_KINDS and args:
                 program.abstractions.setdefault(
                     args[0], AbstractionFact(verb, args[0], line))
@@ -1529,7 +1579,7 @@ VERB_MINIMUM_ARITY: Dict[str, int] = {
     "error": 1, "errorCase": 2, "enum": 1, "enumCase": 2,
     # HTML / SSX / JSON islands
     "html": 2, "htmlTemplate": 1, "htmlArg": 3, "htmlBody": 1,
-    "jsonBody": 1,
+    "jsonBody": 1, "sql": 2, "sqlBody": 1,
     # Operations + narrative
     "operation": 1, "operationBody": 2,
     "input": 4, "output": 3, "effect": 3,
@@ -1548,7 +1598,7 @@ VERB_MINIMUM_ARITY: Dict[str, int] = {
     "literalPreview": 2, "literalSource": 2, "literalTrust": 2,
     # Calls
     "call": 2, "argument": 4, "arg": 3, "timeout": 2, "cancelOn": 2,
-    "run": 1, "start": 1, "await": 1,
+    "run": 1, "runChecked": 9, "start": 1, "await": 1,
     "bind": 4, "bindOk": 3, "bindError": 3,
     "ignore": 3, "ignoreOk": 2, "ignoreValue": 2, "ignoreError": 1,
     "makeError": 2, "declareFailure": 2,
@@ -1598,7 +1648,7 @@ VERB_MINIMUM_ARITY: Dict[str, int] = {
 # Verbs that reference a `call NAME TARGET` declaration at args[0]. Used by
 # SS4101 reference-integrity checks.
 CALL_REFERENCE_VERBS_AT_ARG_ZERO: frozenset = frozenset({
-    "arg", "argument", "run", "start", "await",
+    "arg", "argument", "run", "runChecked", "start", "await",
     "ignoreOk", "ignoreValue", "branchIfError",
     "timeout", "cancelOn", "useRetry",
     "startInGroup",
@@ -1733,7 +1783,7 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     # Web
     "webServer", "serverHost", "serverPort", "route",
     "routeTimeout", "routeMiddleware",
-    "html", "htmlTemplate", "htmlArg", "htmlBody", "jsonBody",
+    "html", "htmlTemplate", "htmlArg", "htmlBody", "jsonBody", "sql", "sqlBody",
     # SS3604 coverage opt-outs — declare a route's intentional omission
     # of the cross-cutting timeout / middleware contract.
     "routeTimeoutOptOut", "routeMiddlewareOptOut",
@@ -2073,6 +2123,7 @@ class ExtendedFacts:
     operationLockSites: Dict[str, List[Tuple[SourceLine, str]]] = field(default_factory=dict)
     operationUnlockedMutexes: Dict[str, Set[str]] = field(default_factory=dict)
     operationDeferUnlockedMutexes: Dict[str, Set[str]] = field(default_factory=dict)
+    operationWorkTargets: Dict[str, Dict[str, Tuple[SourceLine, Optional[str]]]] = field(default_factory=dict)
     operationSubmittedWork: Dict[str, List[Tuple[SourceLine, str]]] = field(default_factory=dict)
     operationAwaitedWork: Dict[str, Set[str]] = field(default_factory=dict)
     # Module-scope select / case tracking
@@ -2331,6 +2382,12 @@ def gather_extended(baseFacts: ProgramFacts) -> ExtendedFacts:
             )
         elif verb == "unlock" and args and currentOperation:
             facts.operationUnlockedMutexes.setdefault(currentOperation, set()).add(args[0])
+        elif verb == "work" and args and currentOperation:
+            targetOperation = args[2] if len(args) >= 3 and args[1] == "target" else None
+            facts.operationWorkTargets.setdefault(currentOperation, {})[args[0]] = (
+                sourceLine,
+                targetOperation,
+            )
         elif verb == "submitWork" and len(args) >= 2 and currentOperation:
             # `submitWork WORK POOL` — first arg is the work item name
             facts.operationSubmittedWork.setdefault(currentOperation, []).append(
@@ -2440,7 +2497,10 @@ def collect_operation_calls(operation: OperationFact) -> Dict[str, CallFact]:
             target = operationCalls.get(branchErrorSource)
         elif verb == "case" and len(args) >= 2:
             target = operationCalls.get(args[0])
-        elif verb in {"run", "start", "await", "startInGroup", "timeout", "cancelOn"}:
+        elif verb in {
+            "run", "runChecked", "start", "await", "startInGroup",
+            "timeout", "cancelOn",
+        }:
             target = operationCalls.get(args[0])
         elif bind is not None:
             target = operationCalls.get(bind[3])
@@ -2450,6 +2510,8 @@ def collect_operation_calls(operation: OperationFact) -> Dict[str, CallFact]:
             target.arg_lines.append(sourceLine)
         elif verb == "run":
             target.run_lines.append(sourceLine)
+        elif verb == "runChecked":
+            target.run_checked_lines.append(sourceLine)
         elif verb == "start":
             target.start_lines.append(sourceLine)
         elif verb == "await":
@@ -2537,6 +2599,107 @@ def source_row_terminates_before_next_label(sourceLine: SourceLine) -> bool:
     return False
 
 
+def source_line_reachable_numbers(operation: OperationFact) -> Set[int]:
+    lines = operation.lines
+    if not lines:
+        return set()
+    branchElseByLine = branch_else_targets_by_line(lines)
+    labelIndices = {
+        sourceLine.args[0]: index
+        for index, sourceLine in enumerate(lines)
+        if sourceLine.verb == "label" and sourceLine.args
+    }
+
+    def add_label_successor(successors: List[int], labelName: str) -> None:
+        targetIndex = labelIndices.get(labelName)
+        if targetIndex is not None:
+            successors.append(targetIndex)
+
+    def add_fallthrough_successor(successors: List[int], index: int) -> None:
+        nextIndex = index + 1
+        if nextIndex < len(lines):
+            successors.append(nextIndex)
+
+    def successor_indices(index: int) -> List[int]:
+        sourceLine = lines[index]
+        args = sourceLine.args
+        successors: List[int] = []
+        if sourceLine.verb == "await":
+            cursor = index + 1
+            foundWaitSetRows = False
+            while cursor < len(lines):
+                candidate = lines[cursor]
+                if is_comment(candidate) or not candidate.tokens:
+                    cursor += 1
+                    continue
+                if candidate.verb == "case":
+                    foundWaitSetRows = True
+                    if len(candidate.args) >= 2:
+                        add_label_successor(successors, candidate.args[1])
+                    cursor += 1
+                    continue
+                if candidate.verb == "done":
+                    foundWaitSetRows = True
+                    if candidate.args:
+                        add_label_successor(successors, candidate.args[0])
+                    break
+                break
+            if foundWaitSetRows:
+                return successors
+        if sourceLine.verb in {"return", "returnOk", "returnError", "returnVoid"}:
+            return successors
+        if sourceLine.verb == "jump" and len(args) >= 2 and args[0] == "target":
+            add_label_successor(successors, args[1])
+            return successors
+        if sourceLine.verb == "branch":
+            if len(args) >= 5 and args[0] in {"if", "error"} and args[3] == "target":
+                add_label_successor(successors, args[4])
+                elseLabel = branchElseByLine.get(sourceLine.number)
+                if elseLabel is None:
+                    add_fallthrough_successor(successors, index)
+                else:
+                    add_label_successor(successors, elseLabel)
+                return successors
+            if len(args) >= 3 and args[0] == "else" and args[1] == "target":
+                add_label_successor(successors, args[2])
+                return successors
+            if args:
+                add_label_successor(successors, args[0])
+                add_fallthrough_successor(successors, index)
+                return successors
+        if sourceLine.verb == "branchIf" and len(args) >= 2:
+            add_label_successor(successors, args[1])
+            if len(args) >= 3:
+                add_label_successor(successors, args[2])
+            else:
+                add_fallthrough_successor(successors, index)
+            return successors
+        if sourceLine.verb in {"branchIfError", "branchIfGroupError", "branchIfChannelClosed"} and len(args) >= 2:
+            add_label_successor(successors, args[1])
+            add_fallthrough_successor(successors, index)
+            return successors
+        if sourceLine.verb == "runChecked" and len(args) >= 9:
+            add_label_successor(successors, args[8])
+            add_fallthrough_successor(successors, index)
+            return successors
+        if sourceLine.verb == "branchSelected" and len(args) >= 3:
+            add_label_successor(successors, args[2])
+            add_fallthrough_successor(successors, index)
+            return successors
+        add_fallthrough_successor(successors, index)
+        return successors
+
+    reachableIndices: Set[int] = set()
+    stack = [0]
+    while stack:
+        currentIndex = stack.pop()
+        if currentIndex in reachableIndices:
+            continue
+        reachableIndices.add(currentIndex)
+        stack.extend(successor_indices(currentIndex))
+    return {lines[index].number for index in reachableIndices}
+
+
 def start_reaches_wait_set_entry(
     operation: OperationFact,
     callFact: CallFact,
@@ -2547,9 +2710,15 @@ def start_reaches_wait_set_entry(
         for startLine in callFact.start_lines
         if startLine.number < awaitLine.number
     ]
+    branchElseByLine = branch_else_targets_by_line(operation.lines)
+    reachableLineNumbers = source_line_reachable_numbers(operation)
     for startLine in reversed(priorStartLines):
+        if startLine.number not in reachableLineNumbers:
+            continue
         blockedByTerminator = False
         for sourceLine in operation.lines:
+            if sourceLine.number not in reachableLineNumbers:
+                continue
             if sourceLine.number >= startLine.number:
                 break
             if sourceLine.verb == "label":
@@ -2567,9 +2736,12 @@ def start_reaches_wait_set_entry(
         }
         bypassesStart = False
         for sourceLine in operation.lines:
+            if sourceLine.number not in reachableLineNumbers:
+                continue
             if sourceLine.number >= startLine.number:
                 continue
-            if interveningLabelNames & set(branch_target_names_from_row(sourceLine)):
+            if interveningLabelNames & set(branch_target_names_with_attached_else(
+                    sourceLine, branchElseByLine)):
                 bypassesStart = True
                 break
         if not bypassesStart:
@@ -2629,6 +2801,7 @@ def call_has_value_disposition(callFact: CallFact) -> bool:
     return bool(
         callFact.bind_lines
         or callFact.bind_ok_lines
+        or callFact.run_checked_lines
         or callFact.ignore_value_lines
         or callFact.ignore_ok_lines
         or callFact.ignore_void_lines
@@ -3011,7 +3184,8 @@ def check_unused_calls(facts: ExtendedFacts) -> List[Diagnostic]:
         operationCalls = collect_operation_calls(operation)
         for callFact in operationCalls.values():
             executedSomewhere = bool(
-                callFact.run_lines or callFact.start_lines or callFact.group_start_lines
+                callFact.run_lines or callFact.run_checked_lines
+                or callFact.start_lines or callFact.group_start_lines
             )
             referencedSomewhere = bool(
                 callFact.bind_lines or callFact.bind_ok_lines or callFact.bind_error_lines
@@ -3723,7 +3897,7 @@ _REPLACED_VERB_FIXES: Dict[str, str] = {
     "ignoreValue": "ignore value source <call> type <type>",
     "ignoreOk": "ignore ok source <call> type <type>",
     "ignoreError": "ignore error source <call>",
-    "memoryHeap": "memory <operation> heap yes|no",
+    "memoryHeap": "memory <operation> heap yes|no|auto",
     "memoryArena": "memory <operation> arena <scope>",
     "memoryStackLimit": "memory <operation> stack max <size>",
     "const": "storage module immutable <name> <type> <value>",
@@ -3927,7 +4101,7 @@ def check_syntax_cutover_rows(facts: ExtendedFacts) -> List[Diagnostic]:
             if len(args) >= 3 and args[1] in {"mutable", "immutable"}:
                 validMemory = len(args) >= 5
             elif len(args) >= 3 and args[1] == "heap":
-                validMemory = len(args) == 3 and args[2] in {"yes", "no", "true", "false"}
+                validMemory = len(args) == 3 and args[2] in {"yes", "no", "true", "false", "auto"}
             elif len(args) >= 3 and args[1] == "arena":
                 validMemory = len(args) == 3
             elif len(args) >= 4 and args[1] == "stack":
@@ -3936,7 +4110,7 @@ def check_syntax_cutover_rows(facts: ExtendedFacts) -> List[Diagnostic]:
                 diagnostics.append(_syntax_cutover_diagnostic(
                     sourceLine, "memory", "memory rows require a known subkind",
                     "`memory` subkind must be heap, arena, stack, mutable, or immutable",
-                    "memory <operation> heap yes|no",
+                    "memory <operation> heap yes|no|auto",
                 ))
         elif verb == "set" and args and args[0] in {"local", "module"}:
             diagnostics.append(_syntax_cutover_diagnostic(
@@ -4335,8 +4509,49 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
     for operation in facts.base.operations.values():
         operationCitations = narrative_citations_for_operation(facts, operation.name)
         operationCalls = collect_operation_calls(operation)
+        lines = [
+            sourceLine
+            for sourceLine in operation.lines
+            if sourceLine.tokens and not is_comment(sourceLine)
+        ]
+        waitSetCaseCalls: Set[str] = set()
+        waitSetHandlerLabels: Set[str] = set()
+        labelBeforeLine: Dict[int, Optional[str]] = {}
+        currentLabel: Optional[str] = None
+        for sourceLine in lines:
+            labelBeforeLine[sourceLine.number] = currentLabel
+            if sourceLine.verb == "label" and sourceLine.args:
+                currentLabel = sourceLine.args[0]
+            if sourceLine.verb == "case" and len(sourceLine.args) >= 2:
+                waitSetCaseCalls.add(sourceLine.args[0])
+                waitSetHandlerLabels.add(sourceLine.args[1])
+
+        def in_wait_set_completion_context(callFact: CallFact) -> bool:
+            if callFact.name in waitSetCaseCalls:
+                return True
+            if labelBeforeLine.get(callFact.line.number) in waitSetHandlerLabels:
+                return True
+            relatedLines = (
+                callFact.run_lines
+                + callFact.run_checked_lines
+                + callFact.bind_lines
+                + callFact.bind_ok_lines
+                + callFact.bind_error_lines
+                + callFact.ignore_ok_lines
+                + callFact.ignore_value_lines
+                + callFact.ignore_error_lines
+                + callFact.ignore_void_lines
+                + callFact.branch_error_lines
+            )
+            return any(
+                labelBeforeLine.get(line.number) in waitSetHandlerLabels
+                for line in relatedLines
+            )
+
         for callFact in operationCalls.values():
             if callFact.target not in KNOWN_FALLIBLE_CALL_TARGETS:
+                continue
+            if callFact.run_checked_lines:
                 continue
             if callFact.target in C_SENTINEL_FALLIBLE_CALL_TARGETS:
                 if call_has_value_disposition(callFact):
@@ -4382,12 +4597,45 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
             missingDisposition: List[str] = []
             if callFact.ignore_error_lines:
                 continue
+            waitSetCompletionContext = in_wait_set_completion_context(callFact)
             if not callFact.bind_error_lines:
                 missingDisposition.append("bind error")
-            if not callFact.branch_error_lines:
+            if not waitSetCompletionContext and not callFact.branch_error_lines:
                 missingDisposition.append("branch error")
             if not missingDisposition:
                 continue
+            if waitSetCompletionContext:
+                invariantRule = (
+                    f"calls to known-fallible target `{callFact.target}` inside "
+                    "an await wait-set completion path must bind or explicitly "
+                    "ignore the error; branching from a case handler can abandon "
+                    "sibling futures"
+                )
+                fixShape = (
+                    f"bind error {callFact.name}Error <ErrorType> {callFact.name}\n"
+                    f"# or: ignore error source {callFact.name}"
+                )
+                agentHint = (
+                    "wait-set case handlers must re-enter the wait set; stash "
+                    "the error for an after-done decision or explicitly ignore it"
+                )
+            else:
+                invariantRule = (
+                    f"calls to known-fallible target `{callFact.target}` must "
+                    f"have both `bind error` and `branch error`"
+                )
+                fixShape = (
+                    f"bind error {callFact.name}Error <ErrorType> {callFact.name}\n"
+                    f"branch error source {callFact.name} target <handlerLabel>\n"
+                    f"# ...success continuation...\n"
+                    f"label <handlerLabel>\n"
+                    f"return error {callFact.name}Error"
+                )
+                agentHint = (
+                    f"`{callFact.target}` can fail at runtime; explicit error "
+                    f"disposition makes the failure path part of the operation's "
+                    f"contract"
+                )
             diagnostics.append(Diagnostic(
                 tier=Tier.T3_REFINEMENT,
                 code="SS3106",
@@ -4399,10 +4647,7 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
                 intentSlogan="fallible call without error disposition",
                 primary=span_of_line(callFact.line, "callDeclaration"),
                 related=[span_of_line(operation.line, "enclosingOperation")],
-                invariantRule=(
-                    f"calls to known-fallible target `{callFact.target}` must "
-                    f"have both `bind error` and `branch error`"
-                ),
+                invariantRule=invariantRule,
                 specAnchor="SYNTAX.md#bind",
                 citations=operationCitations,
                 fixCandidates=[
@@ -4413,24 +4658,14 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
                         # newly-introduced bindError slot — a true cycle.
                         # `bindError` values end in `Error` per SS4002.
                         name="addBindErrorAndBranchAndConsume",
-                        shape=(
-                            f"bind error {callFact.name}Error <ErrorType> {callFact.name}\n"
-                            f"branch error source {callFact.name} target <handlerLabel>\n"
-                            f"# ...success continuation...\n"
-                            f"label <handlerLabel>\n"
-                            f"return error {callFact.name}Error"
-                        ),
+                        shape=fixShape,
                         evidence=[span_of_line(callFact.line)],
                     ),
                 ],
                 confidence=Confidence.HIGH,
                 effort=Effort.LOCAL,
                 passProvenance="check_hidden_failure",
-                agentHint=(
-                    f"`{callFact.target}` can fail at runtime; explicit error "
-                    f"disposition makes the failure path part of the operation's "
-                    f"contract"
-                ),
+                agentHint=agentHint,
             ))
     return diagnostics
 
@@ -5376,9 +5611,9 @@ def check_enum_repr_comparison(facts: ExtendedFacts) -> List[Diagnostic]:
             continue
         if insideOperation:
             continue
-        if verb == "storage" and len(args) >= 5:
+        if verb == "storage" and len(args) >= 4:
             moduleScopeValueTypes[args[2]] = args[3]
-        elif verb == "sharedState" and len(args) >= 5:
+        elif verb == "sharedState" and len(args) >= 4:
             moduleScopeValueTypes[args[2]] = args[3]
         elif verb == "enumCase" and len(args) >= 2:
             moduleScopeValueTypes[args[1]] = args[0]
@@ -5400,7 +5635,7 @@ def check_enum_repr_comparison(facts: ExtendedFacts) -> List[Diagnostic]:
             args = sourceLine.args
             if verb == "input" and len(args) >= 3 and args[0] == operation.name:
                 valueTypesInScope[args[1]] = args[2]
-            elif verb == "storage" and len(args) >= 5:
+            elif verb == "storage" and len(args) >= 4:
                 valueTypesInScope[args[2]] = args[3]
             elif verb in {"bind", "bindOk", "bindError"} and len(args) >= 3:
                 valueTypesInScope[args[0]] = args[1]
@@ -6371,6 +6606,8 @@ def check_unchecked_heap_allocation(facts: ExtendedFacts) -> List[Diagnostic]:
         for callFact in operationCalls.values():
             if callFact.target not in HEAP_ALLOCATION_CALL_TARGETS:
                 continue
+            if callFact.run_checked_lines:
+                continue
             missingDisposition: List[str] = []
             if not callFact.bind_error_lines:
                 missingDisposition.append("bindError")
@@ -6879,6 +7116,105 @@ def check_unawaited_submit_work(facts: ExtendedFacts) -> List[Diagnostic]:
     return diagnostics
 
 
+def check_invalid_submit_work(facts: ExtendedFacts) -> List[Diagnostic]:
+    """`submitWork WORK POOL` must name a declared user-operation work item."""
+    diagnostics: List[Diagnostic] = []
+    userOperationNames = set(facts.base.operations.keys())
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        submittedWork = facts.operationSubmittedWork.get(operation.name, [])
+        workTargets = facts.operationWorkTargets.get(operation.name, {})
+        flaggedWork: Set[Tuple[str, str]] = set()
+
+        def add_invalid_submit_work_diagnostic(
+            submitLine: SourceLine,
+            workName: str,
+            gapEdge: str,
+            invariantRule: str,
+            workLine: Optional[SourceLine] = None,
+        ) -> None:
+            key = (workName, gapEdge)
+            if key in flaggedWork:
+                return
+            flaggedWork.add(key)
+            related = [span_of_line(operation.line, "enclosingOperation")]
+            if workLine is not None:
+                related.append(span_of_line(workLine, "workDeclaration"))
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS3514",
+                kind="concurrencyDiscipline.invalidSubmitWork",
+                severity=Severity.ERROR,
+                subjectName=workName,
+                subjectKind="work",
+                gapEdge=gapEdge,
+                intentSlogan="submitWork references invalid work item",
+                primary=span_of_line(submitLine, "submitWorkSite"),
+                related=related,
+                invariantRule=invariantRule,
+                specAnchor="SYNTAX.md#submitWork",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="declareWorkTarget",
+                        shape=(
+                            f"work {workName} target <userOperation>\n"
+                            f"submitWork {workName} <workerPool>"
+                        ),
+                        evidence=[span_of_line(submitLine)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.LOCAL,
+                passProvenance="check_invalid_submit_work",
+                agentHint=(
+                    "worker-pool lowering dispatches through a user operation; "
+                    "unknown work would otherwise await a zero-value stub"
+                ),
+            ))
+
+        for submitLine, workName in submittedWork:
+            workInfo = workTargets.get(workName)
+            if workInfo is None:
+                add_invalid_submit_work_diagnostic(
+                    submitLine,
+                    workName,
+                    "workDeclaration",
+                    (
+                        f"`submitWork {workName}` requires a preceding "
+                        f"`work {workName} target <userOperation>` row in "
+                        f"operation `{operation.name}`"
+                    ),
+                )
+                continue
+            workLine, targetOperation = workInfo
+            if not targetOperation:
+                add_invalid_submit_work_diagnostic(
+                    submitLine,
+                    workName,
+                    "workTarget",
+                    (
+                        f"`work {workName}` must name a target user operation "
+                        "before it can be submitted"
+                    ),
+                    workLine,
+                )
+                continue
+            if targetOperation not in userOperationNames:
+                add_invalid_submit_work_diagnostic(
+                    submitLine,
+                    workName,
+                    "workTarget",
+                    (
+                        f"`work {workName} target {targetOperation}` must "
+                        "target a declared user operation"
+                    ),
+                    workLine,
+                )
+    return diagnostics
+
+
 def check_select_without_cases(facts: ExtendedFacts) -> List[Diagnostic]:
     """`select NAME` declared but no `selectCase NAME …` rows attached.
     A zero-case select is a deadlock guarantee."""
@@ -6995,6 +7331,351 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
             for sourceLine in lines
             if sourceLine.verb == "label" and sourceLine.args
         }
+        branchElseByLine = branch_else_targets_by_line(lines)
+
+        def branch_targets_for_wait_set(sourceLine: SourceLine) -> List[str]:
+            return branch_target_names_with_attached_else(
+                sourceLine, branchElseByLine)
+
+        def is_wait_set_gap_ignored(sourceLine: SourceLine) -> bool:
+            return sourceLine.verb in {
+                "input", "output", "effect", "async",
+                "purpose", "invariant", "warning",
+            }
+
+        def next_effective_line_after(lineNumber: int) -> Optional[SourceLine]:
+            for candidate in lines:
+                if candidate.number <= lineNumber:
+                    continue
+                if is_wait_set_gap_ignored(candidate):
+                    continue
+                return candidate
+            return None
+
+        def label_before_line(lineNumber: int) -> Optional[str]:
+            currentLabel: Optional[str] = None
+            for candidate in lines:
+                if candidate.number >= lineNumber:
+                    break
+                if candidate.verb == "label" and candidate.args:
+                    currentLabel = candidate.args[0]
+            return currentLabel
+
+        def call_result_reference(sourceLine: SourceLine) -> Optional[str]:
+            parsedBind = bind_parts(sourceLine)
+            if parsedBind is not None:
+                return parsedBind[3]
+            parsedIgnore = ignore_parts(sourceLine)
+            if parsedIgnore is not None:
+                return parsedIgnore[1]
+            parsedBranchErrorSource = branch_error_source(sourceLine)
+            if parsedBranchErrorSource is not None:
+                return parsedBranchErrorSource
+            if sourceLine.verb == "await" and len(sourceLine.args) == 1:
+                return sourceLine.args[0]
+            return None
+
+        def symbol_definition(sourceLine: SourceLine) -> Optional[str]:
+            parsedBind = bind_parts(sourceLine)
+            if parsedBind is not None:
+                return parsedBind[1]
+            if sourceLine.verb == "fieldGet" and sourceLine.args:
+                return sourceLine.args[0]
+            if sourceLine.verb in {"new", "call", "recordBuild", "receive"} and sourceLine.args:
+                return sourceLine.args[0]
+            if (sourceLine.verb == "read" and len(sourceLine.args) >= 4
+                    and sourceLine.args[0] in {"sharedState", "local", "module"}):
+                return sourceLine.args[1]
+            if sourceLine.verb in {"memory", "storage"} and len(sourceLine.args) >= 4:
+                return sourceLine.args[2]
+            return None
+
+        def call_result_definition(sourceLine: SourceLine) -> Optional[str]:
+            if sourceLine.verb in {"run", "await", "submitWork", "awaitWork"} and sourceLine.args:
+                return sourceLine.args[0]
+            return None
+
+        def symbol_references(sourceLine: SourceLine) -> Set[str]:
+            refs: Set[str] = set()
+            resultReference = call_result_reference(sourceLine)
+            if resultReference is not None:
+                refs.add(resultReference)
+            parsedArgument = argument_parts(sourceLine)
+            if parsedArgument is not None:
+                refs.add(parsedArgument[3])
+            elif sourceLine.verb == "cancelOn" and len(sourceLine.args) >= 2:
+                refs.add(sourceLine.args[1])
+            elif sourceLine.verb in {"run", "runChecked"} and sourceLine.args:
+                refs.add(sourceLine.args[0])
+            elif sourceLine.verb == "fieldSet" and len(sourceLine.args) >= 3:
+                refs.add(sourceLine.args[0])
+                refs.add(sourceLine.args[2])
+            elif sourceLine.verb == "fieldGet" and len(sourceLine.args) >= 3:
+                refs.add(sourceLine.args[2])
+            elif sourceLine.verb in {"memory", "storage"} and len(sourceLine.args) >= 5:
+                refs.add(sourceLine.args[4])
+            elif (sourceLine.verb == "read" and len(sourceLine.args) >= 4
+                    and sourceLine.args[0] in {"sharedState", "local", "module"}):
+                refs.add(sourceLine.args[3])
+            elif sourceLine.verb == "receive" and len(sourceLine.args) >= 3:
+                refs.add(sourceLine.args[2])
+            elif sourceLine.verb == "send" and len(sourceLine.args) >= 2:
+                refs.add(sourceLine.args[1])
+            elif sourceLine.verb == "workArg" and len(sourceLine.args) >= 3:
+                refs.add(sourceLine.args[2])
+            elif sourceLine.verb in {"defer", "deferLog", "deferAwaitLog"} and len(sourceLine.args) >= 3:
+                refs.update(sourceLine.args[2:])
+            elif sourceLine.verb == "deferWhenExitLog" and len(sourceLine.args) >= 4:
+                refs.update(sourceLine.args[3:])
+            elif sourceLine.verb == "set" and len(sourceLine.args) >= 3:
+                refs.add(sourceLine.args[1])
+                refs.add(sourceLine.args[2])
+            else:
+                parsedReturn = return_parts(sourceLine)
+                if parsedReturn is not None and parsedReturn[1] is not None:
+                    refs.add(parsedReturn[1])
+                elif (sourceLine.verb == "branch" and len(sourceLine.args) >= 5
+                        and sourceLine.args[0] == "if"):
+                    refs.add(sourceLine.args[2])
+                elif sourceLine.verb == "branchIf" and sourceLine.args:
+                    refs.add(sourceLine.args[0])
+                elif sourceLine.verb == "makeError" and len(sourceLine.args) >= 3:
+                    refs.add(sourceLine.args[2])
+            return refs
+
+        def label_reaches_line(labelName: str, targetLine: SourceLine) -> bool:
+            labelIndices = {
+                candidate.args[0]: index
+                for index, candidate in enumerate(lines)
+                if candidate.verb == "label" and candidate.args
+            }
+            lineIndices = {
+                candidate.number: index
+                for index, candidate in enumerate(lines)
+            }
+            branchElseByLine: Dict[int, str] = {}
+            for index, candidate in enumerate(lines[:-1]):
+                if (candidate.verb == "branch" and candidate.args
+                        and candidate.args[0] in {"if", "error"}):
+                    nextLine = lines[index + 1]
+                    if nextLine.verb == "branch" and nextLine.args[:2] == ["else", "target"]:
+                        branchElseByLine[candidate.number] = nextLine.args[2]
+
+            def add_label_successor(successors: List[int], targetLabel: str) -> None:
+                targetIndex = labelIndices.get(targetLabel)
+                if targetIndex is not None:
+                    successors.append(targetIndex)
+
+            def add_fallthrough_successor(successors: List[int], index: int) -> None:
+                nextIndex = index + 1
+                if nextIndex < len(lines):
+                    successors.append(nextIndex)
+
+            def successor_indices(index: int) -> List[int]:
+                sourceLine = lines[index]
+                args = sourceLine.args
+                successors: List[int] = []
+                if sourceLine.verb == "await":
+                    cursor = index + 1
+                    foundWaitSetRows = False
+                    while cursor < len(lines):
+                        candidate = lines[cursor]
+                        if candidate.verb == "case":
+                            foundWaitSetRows = True
+                            if len(candidate.args) >= 2:
+                                add_label_successor(successors, candidate.args[1])
+                            cursor += 1
+                            continue
+                        if candidate.verb == "done":
+                            foundWaitSetRows = True
+                            if candidate.args:
+                                add_label_successor(successors, candidate.args[0])
+                            break
+                        break
+                    if foundWaitSetRows:
+                        return successors
+                if sourceLine.verb in {"return", "returnOk", "returnError", "returnVoid"}:
+                    return successors
+                if sourceLine.verb == "jump" and len(args) >= 2 and args[0] == "target":
+                    add_label_successor(successors, args[1])
+                    return successors
+                if sourceLine.verb == "branch":
+                    if len(args) >= 5 and args[0] in {"if", "error"} and args[3] == "target":
+                        add_label_successor(successors, args[4])
+                        elseLabel = branchElseByLine.get(sourceLine.number)
+                        if elseLabel is None:
+                            add_fallthrough_successor(successors, index)
+                        else:
+                            add_label_successor(successors, elseLabel)
+                        return successors
+                    if len(args) >= 3 and args[0] == "else" and args[1] == "target":
+                        add_label_successor(successors, args[2])
+                        return successors
+                    if args:
+                        add_label_successor(successors, args[0])
+                        add_fallthrough_successor(successors, index)
+                        return successors
+                if sourceLine.verb == "branchIf" and len(args) >= 2:
+                    add_label_successor(successors, args[1])
+                    if len(args) >= 3:
+                        add_label_successor(successors, args[2])
+                    else:
+                        add_fallthrough_successor(successors, index)
+                    return successors
+                if sourceLine.verb in {"branchIfError", "branchIfGroupError", "branchIfChannelClosed"} and len(args) >= 2:
+                    add_label_successor(successors, args[1])
+                    add_fallthrough_successor(successors, index)
+                    return successors
+                if sourceLine.verb == "runChecked" and len(args) >= 9:
+                    add_label_successor(successors, args[8])
+                    add_fallthrough_successor(successors, index)
+                    return successors
+                if sourceLine.verb == "branchSelected" and len(args) >= 3:
+                    add_label_successor(successors, args[2])
+                    add_fallthrough_successor(successors, index)
+                    return successors
+                add_fallthrough_successor(successors, index)
+                return successors
+
+            startIndex = labelIndices.get(labelName)
+            targetIndex = lineIndices.get(targetLine.number)
+            if startIndex is None or targetIndex is None:
+                return False
+            seen: Set[int] = set()
+            stack = [startIndex]
+            while stack:
+                currentIndex = stack.pop()
+                if currentIndex in seen:
+                    continue
+                if currentIndex == targetIndex:
+                    return True
+                seen.add(currentIndex)
+                stack.extend(successor_indices(currentIndex))
+            return False
+
+        def start_reentry_edge(startLine: SourceLine) -> Optional[Tuple[SourceLine, str]]:
+            reachableLineNumbers = source_line_reachable_numbers(operation)
+            labelsBeforeStart = {
+                labelName
+                for labelName, labelLine in labelLineByName.items()
+                if labelLine.number <= startLine.number
+            }
+            for candidate in lines:
+                if candidate.number <= startLine.number:
+                    continue
+                if candidate.number not in reachableLineNumbers:
+                    continue
+                for targetLabel in branch_targets_for_wait_set(candidate):
+                    if (targetLabel in labelsBeforeStart
+                            and label_reaches_line(targetLabel, startLine)):
+                        return candidate, targetLabel
+            return None
+
+        def add_case_result_ownership_diagnostic(
+            row: SourceLine,
+            callName: str,
+            waitSetName: str,
+            targetLabel: str,
+            caseLine: SourceLine,
+            *,
+            escapeTarget: Optional[str] = None,
+        ) -> None:
+            isEscape = escapeTarget is not None
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS3509",
+                kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                severity=Severity.ERROR,
+                subjectName=callName,
+                subjectKind="call",
+                gapEdge=(
+                    "caseResultPrivateEscape" if isEscape
+                    else "caseResultPrivateEntry"
+                ),
+                intentSlogan=(
+                    "wait-set case result escapes its handler"
+                    if isEscape
+                    else "wait-set case result read outside its handler"
+                ),
+                primary=span_of_line(row, "callResultUse"),
+                related=[span_of_line(caseLine, "caseSite")],
+                invariantRule=(
+                    (
+                        f"`case {callName} {targetLabel}` materializes its "
+                        f"result only for handler `{targetLabel}`; "
+                        f"`{row.verb}` cannot write it into non-private "
+                        f"state `{escapeTarget}` where later code can "
+                        "observe it"
+                    )
+                    if isEscape
+                    else (
+                        f"`case {callName} {targetLabel}` materializes its "
+                        f"result only for handler `{targetLabel}`; "
+                        f"`{row.verb}` cannot read that call from another "
+                        "label"
+                    )
+                ),
+                specAnchor="SYNTAX.md#case",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name=(
+                            "keepResultHandlerLocal" if isEscape
+                            else "moveResultReadIntoCaseHandler"
+                        ),
+                        shape=(
+                            f"# keep `{callName}` in handler-local state"
+                            if isEscape
+                            else f"label {targetLabel}\n{row.raw}"
+                        ),
+                        evidence=[span_of_line(row)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.LOCAL,
+                passProvenance="check_await_wait_set_shape",
+                agentHint="case result SSA values only dominate their selected handler block",
+            ))
+
+        def add_case_handler_reentry_diagnostic(
+            row: SourceLine,
+            callName: str,
+            waitSetName: str,
+            targetLabel: str,
+            waitEntryLabel: str,
+            gapEdge: str = "caseHandlerReentry",
+        ) -> None:
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS3509",
+                kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                severity=Severity.ERROR,
+                subjectName=callName,
+                subjectKind="call",
+                gapEdge=gapEdge,
+                intentSlogan="wait-set case handler does not re-enter wait set",
+                primary=span_of_line(row, "caseHandlerControl"),
+                invariantRule=(
+                    f"`case {callName} {targetLabel}` must finish by jumping "
+                    f"back to `{waitEntryLabel}` so remaining futures are "
+                    "consumed before the operation exits"
+                ),
+                specAnchor="SYNTAX.md#case",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="jumpBackToWaitSet",
+                        shape=f"jump target {waitEntryLabel}",
+                        evidence=[span_of_line(row)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.LOCAL,
+                passProvenance="check_await_wait_set_shape",
+                agentHint="wait-set handlers cannot abandon sibling futures without explicit cleanup semantics",
+            ))
 
         def add_wait_set_arity_diagnostic(
             row: SourceLine,
@@ -7035,6 +7716,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
         consumedLineNumbers: Set[int] = set()
         waitSetAwaitLineNumbers: Set[int] = set()
         caseCompletionLines: Dict[str, SourceLine] = {}
+        caseCompletionOwners: Dict[str, Tuple[str, str, SourceLine]] = {}
         index = 0
         while index < len(lines):
             sourceLine = lines[index]
@@ -7257,6 +7939,49 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                             passProvenance="check_await_wait_set_shape",
                             agentHint="wait-set polling needs an already-created future",
                         ))
+                    elif (callFact is not None and priorStartLines
+                            and start_reentry_edge(priorStartLines[-1]) is not None):
+                        reentryEdge = start_reentry_edge(priorStartLines[-1])
+                        assert reentryEdge is not None
+                        edgeLine, edgeLabel = reentryEdge
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=callName,
+                            subjectKind="call",
+                            gapEdge="singleStartExecution",
+                            intentSlogan="started future can be re-entered",
+                            primary=span_of_line(edgeLine, "reentryEdge"),
+                            related=[
+                                span_of_line(priorStartLines[-1], "startSite"),
+                                span_of_line(caseLine, "caseSite"),
+                            ],
+                            invariantRule=(
+                                f"`start {callName}` creates one future for "
+                                f"`case {callName} ...`; a later branch to "
+                                f"`{edgeLabel}` can execute the same start "
+                                "again. Use a fresh call name for each future."
+                            ),
+                            specAnchor="SYNTAX.md#start",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="useFreshCallNameForRestart",
+                                    shape=(
+                                        f"call <freshCallName> {callFact.target}\n"
+                                        "start <freshCallName>"
+                                    ),
+                                    evidence=[span_of_line(edgeLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="future slots are one-shot ownership cells",
+                        ))
                     elif (callFact is not None
                             and not call_can_start_async_future(
                                 facts, operation, callFact)):
@@ -7297,6 +8022,8 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                     else:
                         seenCaseCalls[callName] = caseLine
                         caseCompletionLines.setdefault(callName, caseLine)
+                        caseCompletionOwners.setdefault(
+                            callName, (waitSetName, targetLabel, caseLine))
                     labelLine = labelLineByName.get(targetLabel)
                     if labelLine is not None and labelLine.number <= caseLine.number:
                         diagnostics.append(Diagnostic(
@@ -7384,7 +8111,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                         if (referenceLine.number == caseLine.number
                                 and referenceLine.verb == "case"):
                             continue
-                        if targetLabel not in branch_target_names_from_row(referenceLine):
+                        if targetLabel not in branch_targets_for_wait_set(referenceLine):
                             continue
                         diagnostics.append(Diagnostic(
                             tier=Tier.T1_SPEC,
@@ -7460,7 +8187,41 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                 if len(doneLine.args) != 1:
                     add_wait_set_arity_diagnostic(
                         doneLine, waitSetName, "done <allCasesConsumedLabel>", 1)
-                else:
+                nextEffectiveLine = next_effective_line_after(doneLine.number)
+                if nextEffectiveLine is not None and nextEffectiveLine.verb != "label":
+                    diagnostics.append(Diagnostic(
+                        tier=Tier.T1_SPEC,
+                        code="SS3509",
+                        kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                        severity=Severity.ERROR,
+                        subjectName=waitSetName,
+                        subjectKind="awaitWaitSet",
+                        gapEdge="doneStructuralGap",
+                        intentSlogan="wait-set done row is followed by executable source",
+                        primary=span_of_line(nextEffectiveLine, "postDoneExecutable"),
+                        related=[span_of_line(doneLine, "doneSite")],
+                        invariantRule=(
+                            f"`await {waitSetName}` must hand control to a "
+                            "`case` or `done` label after its structural rows; "
+                            f"`{nextEffectiveLine.verb}` cannot appear between "
+                            "the `done` row and the next label"
+                        ),
+                        specAnchor="SYNTAX.md#done",
+                        citations=operationCitations,
+                        fixCandidates=[
+                            FixCandidate(
+                                name="moveExecutableAfterHandlerLabel",
+                                shape="label <handlerOrDoneLabel>",
+                                evidence=[span_of_line(nextEffectiveLine)],
+                            ),
+                        ],
+                        confidence=Confidence.HIGH,
+                        blocksCompile=True,
+                        effort=Effort.LOCAL,
+                        passProvenance="check_await_wait_set_shape",
+                        agentHint="wait-set lowering leaves the sequential insertion point; executable rows must live under an explicit label",
+                    ))
+                if len(doneLine.args) == 1:
                     doneLabel = doneLine.args[0]
                     doneLabelLine = labelLineByName.get(doneLabel)
                     if doneLabelLine is not None and doneLabelLine.number <= doneLine.number:
@@ -7505,9 +8266,17 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                             }:
                                 continue
                             previousEffectiveLine = candidate
+                    previousIsOwningDoneLine = (
+                        previousEffectiveLine is not None
+                        and previousEffectiveLine.verb == "done"
+                        and previousEffectiveLine.args
+                        and previousEffectiveLine.args[0] == doneLabel
+                        and previousEffectiveLine.number == doneLine.number
+                    )
                     if (doneLabelLine is not None
                             and previousEffectiveLine is not None
                             and previousEffectiveLine.verb != "case"
+                            and not previousIsOwningDoneLine
                             and not source_row_terminates_before_next_label(
                                 previousEffectiveLine)):
                         diagnostics.append(Diagnostic(
@@ -7548,7 +8317,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                         if (referenceLine.number == doneLine.number
                                 and referenceLine.verb == "done"):
                             continue
-                        if doneLabel not in branch_target_names_from_row(referenceLine):
+                        if doneLabel not in branch_targets_for_wait_set(referenceLine):
                             continue
                         diagnostics.append(Diagnostic(
                             tier=Tier.T1_SPEC,
@@ -7621,6 +8390,87 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                             passProvenance="check_await_wait_set_shape",
                             agentHint="the all-consumed path must not enter a selected-case handler",
                         ))
+            waitEntryLabel = label_before_line(sourceLine.number)
+            if caseLines and waitEntryLabel is None:
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T1_SPEC,
+                    code="SS3509",
+                    kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                    severity=Severity.ERROR,
+                    subjectName=waitSetName,
+                    subjectKind="awaitWaitSet",
+                    gapEdge="waitSetEntryLabel",
+                    intentSlogan="wait set has no re-entry label",
+                    primary=span_of_line(sourceLine, "awaitSite"),
+                    invariantRule=(
+                        f"`await {waitSetName}` must be preceded by a label "
+                        "so case handlers can jump back and consume remaining futures"
+                    ),
+                    specAnchor="SYNTAX.md#await",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="addWaitSetEntryLabel",
+                            shape=f"label wait{waitSetName}\nawait {waitSetName}",
+                            evidence=[span_of_line(sourceLine)],
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    blocksCompile=True,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_await_wait_set_shape",
+                    agentHint="wait-set case handlers re-enter through the await label",
+                ))
+            if waitEntryLabel is not None:
+                for caseLine in caseLines:
+                    if len(caseLine.args) != 2:
+                        continue
+                    callName, targetLabel = caseLine.args
+                    labelLine = labelLineByName.get(targetLabel)
+                    if labelLine is None:
+                        continue
+                    sawReentry = False
+                    for handlerLine in lines:
+                        if handlerLine.number <= labelLine.number:
+                            continue
+                        if handlerLine.verb == "label":
+                            break
+                        if is_wait_set_gap_ignored(handlerLine):
+                            continue
+                        if handlerLine.verb in {
+                            "defer", "deferLog", "deferAwaitLog",
+                            "deferWhenExitLog", "deferRunOn",
+                        }:
+                            add_case_handler_reentry_diagnostic(
+                                handlerLine, callName, waitSetName,
+                                targetLabel, waitEntryLabel,
+                                gapEdge="caseHandlerDefer")
+                            sawReentry = True
+                            break
+                        targets = branch_targets_for_wait_set(handlerLine)
+                        if handlerLine.verb == "jump" and targets == [waitEntryLabel]:
+                            sawReentry = True
+                            break
+                        if return_parts(handlerLine) is not None:
+                            add_case_handler_reentry_diagnostic(
+                                handlerLine, callName, waitSetName,
+                                targetLabel, waitEntryLabel)
+                            sawReentry = True
+                            break
+                        disallowedTargets = [
+                            target for target in targets
+                            if target != waitEntryLabel
+                        ]
+                        if disallowedTargets:
+                            add_case_handler_reentry_diagnostic(
+                                handlerLine, callName, waitSetName,
+                                targetLabel, waitEntryLabel)
+                            sawReentry = True
+                            break
+                    if not sawReentry:
+                        add_case_handler_reentry_diagnostic(
+                            caseLine, callName, waitSetName,
+                            targetLabel, waitEntryLabel)
             if not caseLines:
                 diagnostics.append(Diagnostic(
                     tier=Tier.T1_SPEC,
@@ -7717,6 +8567,118 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                 passProvenance="check_await_wait_set_shape",
                 agentHint="case/done are structural rows, not standalone control flow",
             ))
+
+        privateCaseSymbols: Dict[str, Tuple[str, str, SourceLine, SourceLine]] = {}
+        for _callName, (waitSetName, targetLabel, caseLine) in caseCompletionOwners.items():
+            labelLine = labelLineByName.get(targetLabel)
+            if labelLine is None:
+                continue
+            for candidate in lines:
+                if candidate.number <= labelLine.number:
+                    continue
+                if candidate.verb == "label":
+                    break
+                definedSymbol = symbol_definition(candidate)
+                if definedSymbol is not None:
+                    privateCaseSymbols[definedSymbol] = (
+                        waitSetName, targetLabel, caseLine, candidate)
+                definedCallResult = call_result_definition(candidate)
+                if definedCallResult is not None:
+                    privateCaseSymbols[definedCallResult] = (
+                        waitSetName, targetLabel, caseLine, candidate)
+                if candidate.verb == "runChecked" and len(candidate.args) >= 6:
+                    privateCaseSymbols[candidate.args[2]] = (
+                        waitSetName, targetLabel, caseLine, candidate)
+                    privateCaseSymbols[candidate.args[5]] = (
+                        waitSetName, targetLabel, caseLine, candidate)
+
+        callPrivateDependencies: Dict[str, List[Tuple[str, str, str, SourceLine, SourceLine]]] = {}
+
+        def private_owner_for_symbol(
+            symbolName: str,
+        ) -> Optional[Tuple[str, str, SourceLine, SourceLine]]:
+            privateOwner = privateCaseSymbols.get(symbolName)
+            if privateOwner is not None:
+                return privateOwner
+            directOwner = caseCompletionOwners.get(symbolName)
+            if directOwner is not None:
+                waitSetName, targetLabel, caseLine = directOwner
+                return waitSetName, targetLabel, caseLine, caseLine
+            return None
+
+        for sourceLine in lines:
+            parsedArgument = argument_parts(sourceLine)
+            if parsedArgument is None:
+                if sourceLine.verb == "workArg" and len(sourceLine.args) >= 3:
+                    callName = sourceLine.args[0]
+                    valueName = sourceLine.args[2]
+                else:
+                    continue
+            else:
+                callName, _parameterName, _declaredType, valueName = parsedArgument
+            privateOwner = private_owner_for_symbol(valueName)
+            if privateOwner is None:
+                continue
+            waitSetName, targetLabel, caseLine, definitionLine = privateOwner
+            callPrivateDependencies.setdefault(callName, []).append((
+                valueName, waitSetName, targetLabel, caseLine, definitionLine))
+
+        for sourceLine in lines:
+            if sourceLine.verb == "case":
+                continue
+            directCallReference = call_result_reference(sourceLine)
+            if directCallReference is not None:
+                owner = caseCompletionOwners.get(directCallReference)
+                if owner is not None:
+                    waitSetName, targetLabel, caseLine = owner
+                    if label_before_line(sourceLine.number) != targetLabel:
+                        add_case_result_ownership_diagnostic(
+                            sourceLine, directCallReference, waitSetName,
+                            targetLabel, caseLine)
+            if sourceLine.verb in {
+                "run", "runChecked", "start", "startInGroup", "submitWork"
+            } and sourceLine.args:
+                for dependency in callPrivateDependencies.get(sourceLine.args[0], []):
+                    referencedSymbol, waitSetName, targetLabel, caseLine, definitionLine = dependency
+                    if (sourceLine.number > definitionLine.number
+                            and label_before_line(sourceLine.number) != targetLabel):
+                        add_case_result_ownership_diagnostic(
+                            sourceLine, referencedSymbol, waitSetName,
+                            targetLabel, caseLine)
+            mutationEscape: Optional[Tuple[str, str]] = None
+            if (sourceLine.verb == "set" and len(sourceLine.args) >= 3
+                    and sourceLine.args[0] in {"memory", "storage"}):
+                mutationEscape = (sourceLine.args[2], sourceLine.args[1])
+            elif sourceLine.verb == "fieldSet" and len(sourceLine.args) >= 3:
+                mutationEscape = (sourceLine.args[2], sourceLine.args[0])
+            elif sourceLine.verb == "send" and len(sourceLine.args) >= 2:
+                mutationEscape = (sourceLine.args[1], sourceLine.args[0])
+            if mutationEscape is not None:
+                valueName, targetName = mutationEscape
+                privateOwner = private_owner_for_symbol(valueName)
+                if privateOwner is not None:
+                    waitSetName, targetLabel, caseLine, definitionLine = privateOwner
+                    targetOwner = private_owner_for_symbol(targetName)
+                    targetIsPrivateToSameHandler = (
+                        targetOwner is not None
+                        and targetOwner[1] == targetLabel
+                    )
+                    if (sourceLine.number > definitionLine.number
+                            and label_before_line(sourceLine.number) == targetLabel
+                            and not targetIsPrivateToSameHandler):
+                        add_case_result_ownership_diagnostic(
+                            sourceLine, valueName, waitSetName,
+                            targetLabel, caseLine, escapeTarget=targetName)
+            for referencedSymbol in symbol_references(sourceLine):
+                privateOwner = private_owner_for_symbol(referencedSymbol)
+                if privateOwner is None:
+                    continue
+                waitSetName, targetLabel, caseLine, _definitionLine = privateOwner
+                if (sourceLine.number > _definitionLine.number
+                        and label_before_line(sourceLine.number) != targetLabel):
+                    add_case_result_ownership_diagnostic(
+                        sourceLine, referencedSymbol, waitSetName,
+                        targetLabel, caseLine)
 
         for sourceLine in lines:
             if sourceLine.verb != "await" or not sourceLine.args:
@@ -8666,7 +9628,7 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
             moduleScopeValueNames.add(args[0])
         elif verb == "enumCase" and len(args) >= 2:
             moduleScopeValueNames.add(args[1])
-        elif verb in {"storage", "sharedState"} and len(args) >= 5:
+        elif verb in {"storage", "sharedState"} and len(args) >= 4:
             moduleScopeValueNames.add(args[2])
         else:
             memory = memory_parts(sourceLine)
@@ -8709,7 +9671,7 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
                 declaredValueNames.add(parsedInput[1])
             elif declarationVerb in {"const", "var", "let", "literal"} and declarationArgs:
                 declaredValueNames.add(declarationArgs[0])
-            elif declarationVerb == "storage" and len(declarationArgs) >= 5:
+            elif declarationVerb == "storage" and len(declarationArgs) >= 4:
                 declaredValueNames.add(declarationArgs[2])
             elif parsedMemory is not None and parsedMemory[1] in {"mutable", "immutable"} and len(parsedMemory[2]) >= 3:
                 declaredValueNames.add(parsedMemory[2][0])
@@ -9473,10 +10435,10 @@ def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
             moduleScopeValueTypes[args[0]] = args[1]
         elif verb == "enumCase" and len(args) >= 2:
             moduleScopeValueTypes[args[1]] = args[0]
-        elif verb == "storage" and len(args) >= 5:
-            # `storage SCOPE MUTABILITY NAME TYPE INIT`
+        elif verb == "storage" and len(args) >= 4:
+            # `storage SCOPE MUTABILITY NAME TYPE [INIT]`
             moduleScopeValueTypes[args[2]] = args[3]
-        elif verb == "sharedState" and len(args) >= 5:
+        elif verb == "sharedState" and len(args) >= 4:
             moduleScopeValueTypes[args[2]] = args[3]
 
     # Per-op: build local value-type map + call target map, then check args
@@ -9655,9 +10617,9 @@ def check_math_operand_width_drift(facts: ExtendedFacts) -> List[Diagnostic]:
             moduleScopeValueTypes[args[0]] = args[1]
         elif verb == "enumCase" and len(args) >= 2:
             moduleScopeValueTypes[args[1]] = args[0]
-        elif verb == "storage" and len(args) >= 5:
+        elif verb == "storage" and len(args) >= 4:
             moduleScopeValueTypes[args[2]] = args[3]
-        elif verb == "sharedState" and len(args) >= 5:
+        elif verb == "sharedState" and len(args) >= 4:
             moduleScopeValueTypes[args[2]] = args[3]
 
     for operation in facts.base.operations.values():
@@ -9675,7 +10637,7 @@ def check_math_operand_width_drift(facts: ExtendedFacts) -> List[Diagnostic]:
                 valueTypesInScope[args[1]] = args[2]
             elif verb in {"const", "var"} and len(args) >= 2:
                 valueTypesInScope[args[0]] = args[1]
-            elif verb == "storage" and len(args) >= 5:
+            elif verb == "storage" and len(args) >= 4:
                 valueTypesInScope[args[2]] = args[3]
             elif verb in {"bind", "bindOk", "bindError"} and len(args) >= 3:
                 valueTypesInScope[args[0]] = args[1]
@@ -10733,6 +11695,306 @@ def check_json_body_literals(facts: ExtendedFacts) -> List[Diagnostic]:
                 kind,
                 "record jsonBody mismatch",
                 rule,
+                related,
+            ))
+
+    return diagnostics
+
+
+def _is_sql_text_type_for_sql_body(facts: ExtendedFacts, type_name: str) -> bool:
+    name = type_name
+    seen: Set[str] = set()
+    aliases: Dict[str, str] = dict(BUILTIN_TYPE_ALIASES)
+    aliases.update(facts.base.type_aliases)
+    while True:
+        if name == "SqlText":
+            return True
+        if name in seen or name not in aliases:
+            return False
+        seen.add(name)
+        name = aliases[name]
+
+
+def _find_sql_body_storage_line(
+    facts: ExtendedFacts,
+    sql_body: SqlBodyFact,
+) -> Optional[SourceLine]:
+    for sourceLine in reversed(facts.base.lines):
+        if sourceLine.number >= sql_body.line.number:
+            continue
+        if sourceLine.verb != "storage" or len(sourceLine.args) < 4:
+            continue
+        if sourceLine.args[2] == sql_body.name:
+            return sourceLine
+    return None
+
+
+def _sql_body_text(sql_body: SqlBodyFact) -> str:
+    raw_lines = [text for text, _line in sql_body.body_lines]
+    while raw_lines and not raw_lines[0].strip():
+        raw_lines.pop(0)
+    while raw_lines and not raw_lines[-1].strip():
+        raw_lines.pop()
+    return "\n".join(raw_lines).rstrip()
+
+
+def _sql_first_verb_lint(sql_text: str) -> Optional[str]:
+    index = 0
+    while index < len(sql_text):
+        if sql_text[index].isspace():
+            index += 1
+            continue
+        if sql_text.startswith("--", index):
+            newline = sql_text.find("\n", index + 2)
+            if newline == -1:
+                return None
+            index = newline + 1
+            continue
+        if sql_text.startswith("/*", index):
+            end = sql_text.find("*/", index + 2)
+            if end == -1:
+                return None
+            index = end + 2
+            continue
+        if sql_text[index].isalpha():
+            start = index
+            while index < len(sql_text) and (sql_text[index].isalpha() or sql_text[index] == "_"):
+                index += 1
+            return sql_text[start:index].upper()
+        return None
+    return None
+
+
+def _scan_sql_text_lint(sql_text: str) -> Tuple[int, int, Optional[str]]:
+    placeholder_count = 0
+    statement_count = 0
+    has_statement_content = False
+    index = 0
+    while index < len(sql_text):
+        ch = sql_text[index]
+        next_ch = sql_text[index + 1] if index + 1 < len(sql_text) else ""
+        if ch.isspace():
+            index += 1
+            continue
+        if ch == "-" and next_ch == "-":
+            index += 2
+            while index < len(sql_text) and sql_text[index] != "\n":
+                index += 1
+            continue
+        if ch == "/" and next_ch == "*":
+            end = sql_text.find("*/", index + 2)
+            if end == -1:
+                return placeholder_count, statement_count, "unterminated SQL block comment"
+            index = end + 2
+            continue
+        if ch == ";":
+            if has_statement_content:
+                statement_count += 1
+                has_statement_content = False
+            index += 1
+            continue
+        if ch == "?":
+            placeholder_count += 1
+            has_statement_content = True
+            index += 1
+            while index < len(sql_text) and sql_text[index].isdigit():
+                index += 1
+            continue
+        if ch in {"'", '"', "`"}:
+            quote = ch
+            has_statement_content = True
+            index += 1
+            while index < len(sql_text):
+                if sql_text[index] == quote:
+                    if quote in {"'", '"'} and index + 1 < len(sql_text) and sql_text[index + 1] == quote:
+                        index += 2
+                        continue
+                    index += 1
+                    break
+                index += 1
+            else:
+                return placeholder_count, statement_count, "unterminated SQL quoted text"
+            continue
+        if ch == "[":
+            has_statement_content = True
+            index += 1
+            while index < len(sql_text) and sql_text[index] != "]":
+                index += 1
+            if index >= len(sql_text):
+                return placeholder_count, statement_count, "unterminated SQL bracket identifier"
+            index += 1
+            continue
+        has_statement_content = True
+        index += 1
+    if has_statement_content:
+        statement_count += 1
+    return placeholder_count, statement_count, None
+
+
+def _sql_body_diagnostic(
+    sql_body: SqlBodyFact,
+    kind: str,
+    slogan: str,
+    rule: str,
+    related: Optional[List[Span]] = None,
+) -> Diagnostic:
+    return Diagnostic(
+        tier=Tier.T0_PARSE,
+        code="SS3627",
+        kind=f"sql.{kind}",
+        severity=Severity.ERROR,
+        subjectName=sql_body.name,
+        subjectKind="sqlBody",
+        gapEdge=kind,
+        intentSlogan=slogan,
+        primary=span_of_line(sql_body.line, "sqlBodyDeclaration"),
+        related=related or [],
+        invariantRule=rule,
+        specAnchor="SYNTAX.md#sqlBody",
+        fixCandidates=[
+            FixCandidate(
+                name="repairSqlBodyLiteral",
+                shape=(
+                    f"storage module immutable {sql_body.name or '<name>'} SqlText\n"
+                    f"sql body {sql_body.name or '<name>'}\n"
+                    "  SELECT 1"
+                ),
+            ),
+        ],
+        confidence=Confidence.HIGH,
+        blocksCompile=True,
+        effort=Effort.LOCAL,
+        passProvenance="check_sql_body_literals",
+        agentHint=(
+            "sql body is indentation-sensitive; dynamic values must use ? "
+            "placeholders plus sqlite.bind* rows, never interpolation holes"
+        ),
+    )
+
+
+def check_sql_body_literals(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3627: statically validate sql body islands the same way semsc does."""
+    diagnostics: List[Diagnostic] = []
+    seen_targets: Dict[str, SqlBodyFact] = {}
+
+    for sql_body in facts.base.sql_bodies:
+        if not sql_body.name:
+            diagnostics.append(_sql_body_diagnostic(
+                sql_body,
+                "sqlBodyMissingName",
+                "sql body missing name",
+                "`sql body` requires exactly one storage target name",
+            ))
+            continue
+
+        prior = seen_targets.get(sql_body.name)
+        if prior is not None:
+            diagnostics.append(_sql_body_diagnostic(
+                sql_body,
+                "duplicateSqlBody",
+                "duplicate sql body",
+                "a storage declaration may be bound by at most one sql body island",
+                [span_of_line(prior.line, "previousSqlBody")],
+            ))
+            continue
+        seen_targets[sql_body.name] = sql_body
+
+        storage_line = _find_sql_body_storage_line(facts, sql_body)
+        if storage_line is None:
+            diagnostics.append(_sql_body_diagnostic(
+                sql_body,
+                "orphanSqlBody",
+                "sql body missing storage",
+                "`sql body NAME` requires a preceding `storage module immutable NAME SqlText` row",
+            ))
+            continue
+
+        storage_args = storage_line.args
+        scope, mutability = storage_args[0], storage_args[1]
+        storage_type = storage_args[3]
+        related = [span_of_line(storage_line, "sqlBodyStorageTarget")]
+        if scope != "module":
+            diagnostics.append(_sql_body_diagnostic(
+                sql_body,
+                "sqlBodyUnsupportedScope",
+                "unsupported sql body scope",
+                "sql body can only bind module-scope storage",
+                related,
+            ))
+            continue
+        if mutability != "immutable":
+            diagnostics.append(_sql_body_diagnostic(
+                sql_body,
+                "sqlBodyMutableTarget",
+                "sql body target mutable",
+                "sql body can only bind immutable storage",
+                related,
+            ))
+            continue
+        if len(storage_args) > 4:
+            diagnostics.append(_sql_body_diagnostic(
+                sql_body,
+                "sqlBodyTargetAlreadyValued",
+                "sql body target valued",
+                "sql body target storage must not already have an inline value",
+                related,
+            ))
+            continue
+        if not _is_sql_text_type_for_sql_body(facts, storage_type):
+            diagnostics.append(_sql_body_diagnostic(
+                sql_body,
+                "sqlBodyUnsupportedType",
+                "unsupported sql body type",
+                "sql body storage must be SqlText",
+                related,
+            ))
+            continue
+
+        sql_text = _sql_body_text(sql_body)
+        if not sql_text.strip():
+            diagnostics.append(_sql_body_diagnostic(
+                sql_body,
+                "emptySqlBody",
+                "empty sql body",
+                "sql body requires at least one indented SQL line",
+                related,
+            ))
+            continue
+        if "\0" in sql_text:
+            diagnostics.append(_sql_body_diagnostic(
+                sql_body,
+                "invalidSqlBody",
+                "invalid SQL body",
+                "sql body must not contain NUL bytes",
+                related,
+            ))
+            continue
+        dynamic_hole = re.search(r"\{[^{}\n]*\}", sql_text)
+        if dynamic_hole is not None:
+            diagnostics.append(_sql_body_diagnostic(
+                sql_body,
+                "sqlBodyDynamicHole",
+                "SQL interpolation rejected",
+                "sql body does not allow interpolation holes; use ? placeholders and sqlite.bind* rows",
+                related,
+            ))
+            continue
+        if _sql_first_verb_lint(sql_text) is None:
+            diagnostics.append(_sql_body_diagnostic(
+                sql_body,
+                "invalidSqlBody",
+                "invalid SQL body",
+                "sql body must start with a SQL statement verb after whitespace/comments",
+                related,
+            ))
+            continue
+        _placeholder_count, _statement_count, scan_problem = _scan_sql_text_lint(sql_text)
+        if scan_problem is not None:
+            diagnostics.append(_sql_body_diagnostic(
+                sql_body,
+                "invalidSqlBody",
+                "invalid SQL body",
+                f"sql body contains invalid SQL text: {scan_problem}",
                 related,
             ))
 
@@ -15275,6 +16537,7 @@ CHECKERS = [
     # Concurrency / type system / codec / resource (SS35xx, SS37xx, SS38xx, SS39xx)
     check_unawaited_task_group,
     check_lock_without_cleanup,
+    check_invalid_submit_work,
     check_unawaited_submit_work,
     check_select_without_cases,
     check_select_case_references_unknown_select,
@@ -15301,6 +16564,7 @@ CHECKERS = [
     check_deprecated_json_builder_calls,
     check_deprecated_json_finder_calls,
     check_json_body_literals,
+    check_sql_body_literals,
     check_invalid_route_method,
     check_middleware_missing_response_effect,
     check_unguarded_http_input,

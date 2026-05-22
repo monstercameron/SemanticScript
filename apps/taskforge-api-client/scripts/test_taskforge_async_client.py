@@ -273,7 +273,6 @@ done allBodiesPrinted
 label printHealthBody
 
 bind ok healthBody HttpClientBodyText healthBodyCall
-branch error source healthBodyCall target failed
 
 call printHealthLabelCall console.writeLine
 argument printHealthLabelCall console Console console
@@ -297,7 +296,6 @@ jump target waitNextBody
 label printVersionBody
 
 bind ok versionBody HttpClientBodyText versionBodyCall
-branch error source versionBodyCall target failed
 
 call printVersionLabelCall console.writeLine
 argument printVersionLabelCall console Console console
@@ -321,7 +319,6 @@ jump target waitNextBody
 label printTodosBody
 
 bind ok todosBody HttpClientBodyText todosBodyCall
-branch error source todosBodyCall target failed
 
 call printTodosLabelCall console.writeLine
 argument printTodosLabelCall console Console console

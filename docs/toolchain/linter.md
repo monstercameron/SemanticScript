@@ -169,6 +169,7 @@ async calls without timeout/cancel boundary
 file handles not closed, accepting defer metadata or explicit close calls
 SQLite database setup failures without close cleanup
 SQLite statements without finalize cleanup
+SQL body islands bound to non-`SqlText` storage or containing interpolation holes
 guard tokens without release
 circular type aliases
 incomplete JSON codecs

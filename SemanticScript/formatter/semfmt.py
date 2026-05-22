@@ -57,6 +57,7 @@ TYPED_COMMENT_PREFIXES = frozenset({
 
 INDENTED_ISLAND_VERBS = frozenset({
     "jsonBody",
+    "sqlBody",
 })
 
 REPLACED_ROW_VERBS = frozenset({
@@ -308,7 +309,7 @@ def _is_indented_island_start(line: str) -> bool:
     tokens = _formatted_code_tokens(line)
     return (
         bool(tokens) and tokens[0] in INDENTED_ISLAND_VERBS
-    ) or tokens[:3] == ["html", "body", "template"]
+    ) or tokens[:3] == ["html", "body", "template"] or tokens[:2] == ["sql", "body"]
 
 
 def preserve_branch_pair_adjacency(lines: Sequence[str]) -> List[str]:

@@ -3691,6 +3691,38 @@ jsonBody payload
         self.assertNotIn("SS3626", _codes(diagnostics))
 
 
+class TestSqlBodySyntaxIsland(unittest.TestCase):
+    def test_sql_body_argument_reference_is_declared_by_unvalued_storage(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable selectSql SqlText
+sql body selectSql
+  SELECT body FROM markers
+operation main
+input operation main databaseHandle SqliteDatabase
+output operation main Void
+purpose operation main "smoke"
+call prepareCall sqlite.prepareStatement
+argument prepareCall database SqliteDatabase databaseHandle
+argument prepareCall sql SqlText selectSql
+""")
+        codes = _codes(diagnostics)
+        self.assertNotIn("SS3627", codes)
+        self.assertNotIn("SS4105", codes)
+        self.assertNotIn("SS4301", codes)
+
+    def test_sql_body_dynamic_hole_blocks_compile(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable selectSql SqlText
+sql body selectSql
+  SELECT {unsafeValue}
+""")
+        self.assertIn("SS3627", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3627")[0]
+        self.assertTrue(matching.blocksCompile)
+        self.assertEqual(matching.kind, "sql.sqlBodyDynamicHole")
+
+
 class TestArgumentArity(unittest.TestCase):
     def test_operation_without_name_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test

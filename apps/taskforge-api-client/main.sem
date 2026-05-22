@@ -15,7 +15,6 @@ import net standard.net
 exportOperation app.taskforge_api_client main
 
 error MainError
-errorCase MainError FetchFailed HttpClientErrorCode
 errorCase MainError ConsoleWriteFailed CSignedInt32
 
 capability outboundFetch network.http.client write
@@ -113,8 +112,7 @@ done allFetchesPrinted
 label printHealthResponse
 
 bind ok healthResponse HttpTextResponse healthFetchCall
-bind error healthFetchError HttpClientErrorCode healthFetchCall
-branch error source healthFetchCall target healthFetchFailed
+ignore error source healthFetchCall
 fieldGet healthBody HttpClientBodyText healthResponse body
 
 call printHealthLabelCall console.writeLine
@@ -122,30 +120,26 @@ argument printHealthLabelCall console Console console
 argument printHealthLabelCall text CNullTerminatedByteString healthLabelText
 run printHealthLabelCall
 ignore void source printHealthLabelCall
-bind error printHealthLabelError CSignedInt32 printHealthLabelCall
+ignore error source printHealthLabelCall
 
 call printHealthBodyCall console.writeLine
 argument printHealthBodyCall console Console console
 argument printHealthBodyCall text CNullTerminatedByteString healthBody
 run printHealthBodyCall
 ignore void source printHealthBodyCall
-bind error printHealthBodyError CSignedInt32 printHealthBodyCall
+ignore error source printHealthBodyCall
 
 call releaseHealthBodyCall net.freeTextBody
 argument releaseHealthBodyCall body HttpClientBodyText healthBody
 run releaseHealthBodyCall
 ignore void source releaseHealthBodyCall
 
-branch error source printHealthLabelCall target printHealthLabelFailed
-branch error source printHealthBodyCall target printHealthBodyFailed
-
 jump target waitNextFetch
 
 label printVersionResponse
 
 bind ok versionResponse HttpTextResponse versionFetchCall
-bind error versionFetchError HttpClientErrorCode versionFetchCall
-branch error source versionFetchCall target versionFetchFailed
+ignore error source versionFetchCall
 fieldGet versionBody HttpClientBodyText versionResponse body
 
 call printVersionLabelCall console.writeLine
@@ -153,30 +147,26 @@ argument printVersionLabelCall console Console console
 argument printVersionLabelCall text CNullTerminatedByteString versionLabelText
 run printVersionLabelCall
 ignore void source printVersionLabelCall
-bind error printVersionLabelError CSignedInt32 printVersionLabelCall
+ignore error source printVersionLabelCall
 
 call printVersionBodyCall console.writeLine
 argument printVersionBodyCall console Console console
 argument printVersionBodyCall text CNullTerminatedByteString versionBody
 run printVersionBodyCall
 ignore void source printVersionBodyCall
-bind error printVersionBodyError CSignedInt32 printVersionBodyCall
+ignore error source printVersionBodyCall
 
 call releaseVersionBodyCall net.freeTextBody
 argument releaseVersionBodyCall body HttpClientBodyText versionBody
 run releaseVersionBodyCall
 ignore void source releaseVersionBodyCall
 
-branch error source printVersionLabelCall target printVersionLabelFailed
-branch error source printVersionBodyCall target printVersionBodyFailed
-
 jump target waitNextFetch
 
 label printTodosResponse
 
 bind ok todosResponse HttpTextResponse todosFetchCall
-bind error todosFetchError HttpClientErrorCode todosFetchCall
-branch error source todosFetchCall target todosFetchFailed
+ignore error source todosFetchCall
 fieldGet todosBody HttpClientBodyText todosResponse body
 
 call printTodosLabelCall console.writeLine
@@ -184,22 +174,19 @@ argument printTodosLabelCall console Console console
 argument printTodosLabelCall text CNullTerminatedByteString todosLabelText
 run printTodosLabelCall
 ignore void source printTodosLabelCall
-bind error printTodosLabelError CSignedInt32 printTodosLabelCall
+ignore error source printTodosLabelCall
 
 call printTodosBodyCall console.writeLine
 argument printTodosBodyCall console Console console
 argument printTodosBodyCall text CNullTerminatedByteString todosBody
 run printTodosBodyCall
 ignore void source printTodosBodyCall
-bind error printTodosBodyError CSignedInt32 printTodosBodyCall
+ignore error source printTodosBodyCall
 
 call releaseTodosBodyCall net.freeTextBody
 argument releaseTodosBodyCall body HttpClientBodyText todosBody
 run releaseTodosBodyCall
 ignore void source releaseTodosBodyCall
-
-branch error source printTodosLabelCall target printTodosLabelFailed
-branch error source printTodosBodyCall target printTodosBodyFailed
 
 jump target waitNextFetch
 
@@ -207,42 +194,6 @@ label allFetchesPrinted
 
 return ok successfulExitCode
 
-label healthFetchFailed
-makeError healthFetchFailure MainError.FetchFailed healthFetchError
-return error healthFetchFailure
-
-label versionFetchFailed
-makeError versionFetchFailure MainError.FetchFailed versionFetchError
-return error versionFetchFailure
-
-label todosFetchFailed
-makeError todosFetchFailure MainError.FetchFailed todosFetchError
-return error todosFetchFailure
-
 label startedLineWriteFailed
 makeError startedLineWriteFailure MainError.ConsoleWriteFailed startedLineError
 return error startedLineWriteFailure
-
-label printHealthLabelFailed
-makeError printHealthLabelFailure MainError.ConsoleWriteFailed printHealthLabelError
-return error printHealthLabelFailure
-
-label printHealthBodyFailed
-makeError printHealthBodyFailure MainError.ConsoleWriteFailed printHealthBodyError
-return error printHealthBodyFailure
-
-label printVersionLabelFailed
-makeError printVersionLabelFailure MainError.ConsoleWriteFailed printVersionLabelError
-return error printVersionLabelFailure
-
-label printVersionBodyFailed
-makeError printVersionBodyFailure MainError.ConsoleWriteFailed printVersionBodyError
-return error printVersionBodyFailure
-
-label printTodosLabelFailed
-makeError printTodosLabelFailure MainError.ConsoleWriteFailed printTodosLabelError
-return error printTodosLabelFailure
-
-label printTodosBodyFailed
-makeError printTodosBodyFailure MainError.ConsoleWriteFailed printTodosBodyError
-return error printTodosBodyFailure

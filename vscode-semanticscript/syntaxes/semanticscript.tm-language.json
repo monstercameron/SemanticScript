@@ -7,6 +7,9 @@
       "include": "#jsonBody"
     },
     {
+      "include": "#sqlBody"
+    },
+    {
       "include": "#htmlBody"
     },
     {
@@ -201,6 +204,68 @@
             {
               "name": "punctuation.definition.json.semanticscript",
               "match": "[\\[\\]{}]"
+            }
+          ]
+        }
+      ]
+    },
+    "sqlBody": {
+      "patterns": [
+        {
+          "name": "meta.embedded.block.sql.semanticscript",
+          "begin": "^(sql\\s+body|sqlBody)\\b(?:\\s+([A-Za-z_][A-Za-z0-9_]*))?.*$",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.declaration.semanticscript"
+            },
+            "2": {
+              "name": "variable.other.constant.semanticscript"
+            }
+          },
+          "end": "^(?=\\S)",
+          "patterns": [
+            {
+              "name": "comment.line.double-dash.sql.semanticscript",
+              "match": "--.*$"
+            },
+            {
+              "name": "comment.block.sql.semanticscript",
+              "begin": "/\\*",
+              "end": "\\*/"
+            },
+            {
+              "name": "string.quoted.single.sql.semanticscript",
+              "begin": "'",
+              "end": "'",
+              "patterns": [
+                {
+                  "name": "constant.character.escape.sql.semanticscript",
+                  "match": "''"
+                }
+              ]
+            },
+            {
+              "name": "string.quoted.double.sql.semanticscript",
+              "begin": "\"",
+              "end": "\"",
+              "patterns": [
+                {
+                  "name": "constant.character.escape.sql.semanticscript",
+                  "match": "\"\""
+                }
+              ]
+            },
+            {
+              "name": "constant.numeric.sql.semanticscript",
+              "match": "\\b\\d+(?:\\.\\d+)?\\b"
+            },
+            {
+              "name": "keyword.other.sql.semanticscript",
+              "match": "\\b(?:SELECT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|REPLACE|PRAGMA|BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE|WITH|FROM|WHERE|JOIN|LEFT|RIGHT|INNER|OUTER|ON|VALUES|SET|ORDER|GROUP|BY|LIMIT|OFFSET|AND|OR|NOT|NULL|IS|IN|EXISTS|CASE|WHEN|THEN|ELSE|END)\\b"
+            },
+            {
+              "name": "variable.parameter.sql-placeholder.semanticscript",
+              "match": "\\?(?:\\d+)?"
             }
           ]
         }

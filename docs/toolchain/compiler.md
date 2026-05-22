@@ -270,7 +270,7 @@ Compiler-owned call-target boundary:
 | `html.hydrate.*` / `jsonBody` | compiler syntax island plus `standard.html` / `standard.json` contracts | Generate structural glue and enforce source syntax; escaping/parsing belongs to the HTML/JSON helpers. |
 | `http.*` | `standard.http` plus native HTTP runtime | Lower request/response ABI calls and route dispatch. App response wrappers must declare `responseBodyForwarder`. |
 | `json.*` | `standard.json` plus native JSON runtime | Generate record field walking only; string escaping, primitive formatting, strict parsing, capacity, and status mapping live in `native_json`. |
-| `sqlite.*` | `standard.sqlite` plus native SQLite runtime | Lower adapter calls and resource lifetimes; schemas, migrations, and query policy stay in `.sem` source. |
+| `sql body` / `sqlite.*` | `standard.sqlite` plus native SQLite runtime | Bind `SqlText` syntax islands to constants, enforce no interpolation, and lower adapter calls/resource lifetimes. Schemas, migrations, and query policy stay in `.sem` source. |
 | `bcrypt.*` | `standard.bcrypt` plus native bcrypt runtime | Lower hashing/random/base64 adapter calls and link vendored sources only when used. |
 | `gui.*` | `standard.gui` plus native GUI runtime | Preserve GUI handler ABI and link platform runtime; UI vocabulary and validation stay in the std module. |
 | `net.fetch*` | `standard.net` plus `native_http_client` / `native_async` | Experimental prototype lowering and link selection. Request/response records, retry, caching, auth, and scheduling policy stay in `.sem` source and stdlib contracts; backend handles stay out of source. |

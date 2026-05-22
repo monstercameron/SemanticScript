@@ -24,7 +24,7 @@ The formatter is intentionally conservative:
   headings such as `# # rationale:`;
 - blank-line runs collapsed to one separator line;
 - top-level declaration and operation-body rows left unindented;
-- `html body template` and `jsonBody` indented islands preserved rather than normalized.
+- `html body template`, `jsonBody`, and `sql body` indented islands preserved rather than normalized.
 
 There is no maximum line width in the current canonical style. Long strings and
 long metadata text stay on their original physical row; the formatter does not

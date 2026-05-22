@@ -39,7 +39,7 @@ const declarationVerbs = new Set([
   'enum', 'enumCase', 'error',
   'errorCase', 'operation', 'webServer', 'serverHost', 'serverPort', 'route',
   'routeTimeout', 'routeMiddleware', 'routeTimeoutOptOut', 'routeMiddlewareOptOut',
-  'storage', 'sharedState', 'domainLiteral', 'json', 'jsonBody',
+  'storage', 'sharedState', 'domainLiteral', 'json', 'jsonBody', 'sql', 'sqlBody',
   'literal', 'listLiteral', 'html', 'htmlTemplate', 'jsonCodec', 'policy', 'errorPolicy',
   'validator', 'codec', 'schema', 'unknownFields', 'resource', 'resourceKey',
   'resourceValue', 'resourceKind', 'adapter', 'boundary', 'mapper', 'retryPolicy',
@@ -709,6 +709,7 @@ const primitiveTypes = new Map([
   ['SqliteDatabase', 'Opaque standard.sqlite database handle.'],
   ['SqliteStatement', 'Opaque standard.sqlite prepared statement handle.'],
   ['SqliteRowId', 'standard.sqlite rowid alias.'],
+  ['SqlText', 'standard.sqlite SQL source text for prepareStatement or exec.'],
   ['SqliteText', 'standard.sqlite text alias.'],
   ['SqliteBlob', 'standard.sqlite blob pointer alias.'],
   ['SqliteByteCount', 'standard.sqlite byte-count alias.'],
@@ -880,6 +881,8 @@ const verbHoverText = new Map([
   ['htmlBody', 'Starts the indentation-sensitive HTML/SSX body island for a template. The island ends at the next non-empty column-0 SemanticScript line.'],
   ['json', 'JSON syntax family: json body NAME starts an indentation-sensitive JSON literal island.'],
   ['jsonBody', 'Starts an indentation-sensitive JSON literal island bound to a preceding immutable storage binding with the same name.'],
+  ['sql', 'SQL syntax family: sql body NAME starts an indentation-sensitive SQL source island.'],
+  ['sqlBody', 'Starts an indentation-sensitive SQL source island bound to a preceding immutable SqlText storage binding with the same name.'],
   ['jsonCodec', 'Contract-heavy JSON codec declaration.'],
   ['codec', 'Contract-heavy codec declaration.'],
   ['schema', 'Codec schema attachment: schema CODEC_NAME RECORD_NAME.'],
@@ -1333,7 +1336,7 @@ const isHtmlBodyContentLine = (lineText) => {
 };
 
 const isIndentedIslandContentLine = isHtmlBodyContentLine;
-const indentedIslandVerbs = new Set(['htmlBody', 'jsonBody']);
+const indentedIslandVerbs = new Set(['htmlBody', 'jsonBody', 'sqlBody']);
 
 const createDecorationOptions = (backgroundColor, overviewRulerColor) => {
   const options = {
@@ -1532,6 +1535,11 @@ const isJsonBodyDeclaration = (tokens) => (
   || (tokenAt(tokens, 0) === 'json' && tokenAt(tokens, 1) === 'body')
 );
 
+const isSqlBodyDeclaration = (tokens) => (
+  tokenAt(tokens, 0) === 'sqlBody'
+  || (tokenAt(tokens, 0) === 'sql' && tokenAt(tokens, 1) === 'body')
+);
+
 const htmlTemplateNameIndex = (tokens) => {
   if (isHtmlTemplateDeclaration(tokens)) {
     return 2;
@@ -1548,8 +1556,12 @@ const jsonBodyNameIndex = (tokens) => (
   tokenAt(tokens, 0) === 'json' && tokenAt(tokens, 1) === 'body' ? 2 : 1
 );
 
+const sqlBodyNameIndex = (tokens) => (
+  tokenAt(tokens, 0) === 'sql' && tokenAt(tokens, 1) === 'body' ? 2 : 1
+);
+
 const startsIndentedIsland = (tokens) => (
-  isJsonBodyDeclaration(tokens) || isHtmlBodyDeclaration(tokens)
+  isJsonBodyDeclaration(tokens) || isSqlBodyDeclaration(tokens) || isHtmlBodyDeclaration(tokens)
 );
 
 const operationOwnerIndex = (tokens) => {
@@ -1764,7 +1776,7 @@ const namedDeclarationVerbs = new Set([
   'project', 'operation', 'webServer', 'record', 'enum', 'error', 'codec',
   'jsonCodec', 'validator', 'mapper', 'adapter', 'boundary', 'policy',
   'errorPolicy', 'retryPolicy', 'timeoutBudget', 'resource', 'capability',
-  'mutex', 'shared', 'channel', 'section', 'domainLiteral', 'literal', 'json', 'jsonBody',
+  'mutex', 'shared', 'channel', 'section', 'domainLiteral', 'literal', 'json', 'jsonBody', 'sql', 'sqlBody',
   'listLiteral', 'htmlTemplate', 'listType', 'arrayType', 'sliceType', 'smallListType',
   'mapType', 'collectionOperation', 'interval', 'workerPool', 'work',
   'buildProject', 'registerModule', 'modulePath', 'mainFile', 'mainOperation',
@@ -2026,6 +2038,7 @@ const buildDocumentSymbolIndex = (document) => {
       case 'domainLiteral':
       case 'literal':
       case 'jsonBody':
+      case 'sqlBody':
       case 'listLiteral':
         addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase(readableVerbName(verb).toLowerCase(), tokens, lineIndex, {
           name: tokenText(tokens, 1),
@@ -2040,6 +2053,16 @@ const buildDocumentSymbolIndex = (document) => {
             name: tokenText(tokens, jsonBodyNameIndex(tokens)),
             type: 'JsonText island',
             value: 'indented JSON',
+          }));
+        }
+        break;
+
+      case 'sql':
+        if (isSqlBodyDeclaration(tokens)) {
+          addSymbolDeclaration(symbols, tokenText(tokens, sqlBodyNameIndex(tokens)), declarationBase('sql body', tokens, lineIndex, {
+            name: tokenText(tokens, sqlBodyNameIndex(tokens)),
+            type: 'SqlText island',
+            value: 'indented SQL',
           }));
         }
         break;
@@ -2417,6 +2440,10 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
   }
 
   if (isJsonBodyDeclaration(tokens) && index === jsonBodyNameIndex(tokens)) {
+    return 'semanticscriptConstName';
+  }
+
+  if (isSqlBodyDeclaration(tokens) && index === sqlBodyNameIndex(tokens)) {
     return 'semanticscriptConstName';
   }
 
@@ -3170,6 +3197,17 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
         'Indented following lines are parsed as strict JSON until the next non-empty column-0 SemanticScript line.',
       ]);
 
+    case 'sql':
+    case 'sqlBody':
+      if (!isSqlBodyDeclaration(tokens)) {
+        break;
+      }
+
+      return detailHover(`SQL body: ${tokenText(tokens, sqlBodyNameIndex(tokens))}`, [
+        `Binds validated SQL source text to immutable SqlText storage ${inlineCode(tokenText(tokens, sqlBodyNameIndex(tokens)))}.`,
+        'Dynamic values use ? placeholders plus sqlite.bind* rows; interpolation holes are not allowed.',
+      ]);
+
     case 'operation':
       return detailHover(`Operation: ${tokenText(tokens, 1)}`, [
         `Starts the executable operation ${inlineCode(tokenText(tokens, 1))}.`,
@@ -3722,6 +3760,13 @@ const tokenUseDescription = (tokens, tokenIndex, declaration) => {
       }
       break;
 
+    case 'sql':
+    case 'sqlBody':
+      if (isSqlBodyDeclaration(tokens) && tokenIndex === sqlBodyNameIndex(tokens)) {
+        return `This token selects the immutable SqlText storage slot that receives the SQL source literal.`;
+      }
+      break;
+
     case 'input':
       if (tokenIndex === inputParts(tokens).nameIndex) {
         return `This token declares input parameter ${inlineCode(text)} for ${inlineCode(tokenText(tokens, inputParts(tokens).ownerIndex))}.`;
@@ -4234,6 +4279,8 @@ const documentSymbolNameIndex = (verb, tokens) => {
       return 2;
     case 'json':
       return isJsonBodyDeclaration(tokens) ? jsonBodyNameIndex(tokens) : 1;
+    case 'sql':
+      return isSqlBodyDeclaration(tokens) ? sqlBodyNameIndex(tokens) : 1;
     case 'htmlArg':
       return 2;
     case 'dependencyFetch':
@@ -4305,6 +4352,8 @@ const documentSymbolKind = (verb) => {
     case 'buildConstant':
     case 'json':
     case 'jsonBody':
+    case 'sql':
+    case 'sqlBody':
       return vscode.SymbolKind.Constant;
     case 'var':
     case 'let':
@@ -4382,6 +4431,10 @@ const symbolDetailText = (verb, tokens) => {
 
   if (isJsonBodyDeclaration(tokens)) {
     return 'JsonText island';
+  }
+
+  if (isSqlBodyDeclaration(tokens)) {
+    return 'SqlText island';
   }
 
   return tokenTailText(tokens, 2);

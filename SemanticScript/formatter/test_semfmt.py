@@ -120,6 +120,25 @@ class TestFormatSource(unittest.TestCase):
         island = "\n".join(formatted.splitlines()[2:6])
         self.assertEqual(json.loads(island)["message"], "keep  spaces")
 
+    def test_preserves_sql_body_indented_island(self) -> None:
+        source = (
+            "storage   module immutable selectTodoSql SqlText\n"
+            "sql   body   selectTodoSql\n"
+            "  SELECT id, title\n"
+            "  FROM todos\n"
+            "  WHERE user_id = ?\n"
+            "operation   main\n"
+        )
+        expected = (
+            "storage module immutable selectTodoSql SqlText\n"
+            "sql body selectTodoSql\n"
+            "  SELECT id, title\n"
+            "  FROM todos\n"
+            "  WHERE user_id = ?\n"
+            "operation main\n"
+        )
+        self.assertEqual(semfmt.format_source(source), expected)
+
     def test_preserves_html_body_indented_island(self) -> None:
         source = (
             "html   template   CardTemplate\n"
