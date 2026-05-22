@@ -209,8 +209,13 @@ def test_api_index_only_asserts_executable_routes():
     assert "POST /api/v1/auctions" in route_text
     assert "GET /api/v1/auctions/:auctionId" in route_text
     assert "POST /api/v1/auctions/:auctionId/start" in route_text
+    assert "POST /api/v1/auctions/:auctionId/extend" in route_text
+    assert "POST /api/v1/auctions/:auctionId/close" in route_text
     assert "POST /api/v1/auctions/:auctionId/bids" in route_text
     assert "GET /api/v1/auctions/:auctionId/events" in route_text
+    assert "POST /api/v1/auctions/:auctionId/chat/messages" in route_text
+    assert "DELETE /api/v1/auctions/:auctionId/chat/messages/:messageId" in route_text
+    assert "POST /api/v1/auctions/:auctionId/chat/messages/:messageId/report" in route_text
 
 
 def test_metrics_smoke():

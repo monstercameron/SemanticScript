@@ -886,7 +886,7 @@ def test_auth_and_api_fail_closed():
         True,
     )
     assert chat_created["data"]["message"]["status"] == "created"
-    assert chat_created["data"]["auction"]["revision"] == 4
+    assert chat_created["data"]["message"]["auctionId"] == auction_id
     expect_json(
         f"/api/v1/auctions/{auction_id}/chat/messages/msg_missing",
         404,
