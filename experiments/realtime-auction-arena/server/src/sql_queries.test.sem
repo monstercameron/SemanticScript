@@ -4,7 +4,7 @@ moduleOwns app.realtime_auction_arena.server.tests.sql_queries "Executable SQLit
 moduleDoesNotOwn app.realtime_auction_arena.server.tests.sql_queries "Schema DDL or route handler control flow."
 invariant module app.realtime_auction_arena.server.tests.sql_queries "SQL text moved out of main.sem must continue to be exercised by the live E2E SQLite command path."
 
-storage module immutable sqlQueriesUnitTestPlanSummary String "server/src/sql_queries.sem coverage: begin/commit/rollback, idempotency lookup/insert, auction create/list/snapshot/start, bid insert/update/read, event insert/replay, and accepted audit insert are imported by main.sem and verified by build plus E2E."
+storage module immutable sqlQueriesUnitTestPlanSummary String "server/src/sql_queries.sem coverage: begin/commit/rollback, idempotency lookup/insert, auction create/list/snapshot/start, bid insert/update/read, event insert/replay with after-cursor limit, accepted audit insert, and chat create/delete/report persistence plus auction-event replay ordering SQL."
 
 operation getSqlQueriesUnitTestPlan
 output operation getSqlQueriesUnitTestPlan String

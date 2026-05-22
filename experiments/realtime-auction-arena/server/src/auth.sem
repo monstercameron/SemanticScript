@@ -16,10 +16,19 @@ type ScopeList String
 type UtcSeconds I64
 type BcryptPasswordHash String
 type RefreshTokenHash String
+type RateLimitBucketKey String
 
 enum AuthRuntimeStatus repr CSignedInt32
 enumCase AuthRuntimeStatus authRuntimeBlocked 0
 enumCase AuthRuntimeStatus authRuntimeAdapterReady 1
+
+record JwtTimeValidationContract
+field JwtTimeValidationContract nowSource String
+field JwtTimeValidationContract issuedAtRule String
+field JwtTimeValidationContract notBeforeRule String
+field JwtTimeValidationContract expirationRule String
+field JwtTimeValidationContract clockSkewSeconds I64
+field JwtTimeValidationContract runtimeStatus String
 
 record JwtClaimModel
 field JwtClaimModel issuerClaim String
@@ -53,6 +62,7 @@ field JwtContract accessTokenTtlSeconds I64
 field JwtContract signingSecretSource String
 field JwtContract futureAsymmetricAlgorithm String
 field JwtContract claimModel JwtClaimModel
+field JwtContract timeValidation JwtTimeValidationContract
 
 record BcryptLimitContract
 field BcryptLimitContract maxPlaintextBytes I64
@@ -76,6 +86,34 @@ field RefreshTokenDurableRowContract tokenHashField String
 field RefreshTokenDurableRowContract rotationFields String
 field RefreshTokenDurableRowContract uniquenessRule String
 field RefreshTokenDurableRowContract transactionRule String
+
+record JwtDenylistContract
+field JwtDenylistContract tableName String
+field JwtDenylistContract primaryKey String
+field JwtDenylistContract insertRule String
+field JwtDenylistContract lookupRule String
+field JwtDenylistContract cleanupRule String
+field JwtDenylistContract runtimeStatus String
+
+record LoginRateLimitContract
+field LoginRateLimitContract durableTable String
+field LoginRateLimitContract bucketKey RateLimitBucketKey
+field LoginRateLimitContract subjectRule String
+field LoginRateLimitContract windowMillis I64
+field LoginRateLimitContract limitCount I64
+field LoginRateLimitContract publicError String
+field LoginRateLimitContract auditRule String
+field LoginRateLimitContract runtimeStatus String
+
+record AuthAuditEventContract
+field AuthAuditEventContract durableTable String
+field AuthAuditEventContract loginActions String
+field AuthAuditEventContract refreshActions String
+field AuthAuditEventContract sessionActions String
+field AuthAuditEventContract requiredFields String
+field AuthAuditEventContract redactionRule String
+field AuthAuditEventContract transactionRule String
+field AuthAuditEventContract runtimeStatus String
 
 record AuthFailureMarkers
 field AuthFailureMarkers disabledUser String
@@ -124,6 +162,7 @@ field AuthConfigContract accessTtlSeconds String
 field AuthConfigContract refreshTtlSeconds String
 field AuthConfigContract bcryptCostEnv String
 field AuthConfigContract demoSeedEnv String
+field AuthConfigContract secretLoadingRule String
 field AuthConfigContract failureMode String
 field AuthConfigContract runtimeStatus String
 
@@ -145,6 +184,9 @@ field AuthContract refresh AuthEndpointContract
 field AuthContract logout AuthEndpointContract
 field AuthContract session AuthEndpointContract
 field AuthContract refreshTokenRow RefreshTokenDurableRowContract
+field AuthContract jwtDenylist JwtDenylistContract
+field AuthContract loginRateLimit LoginRateLimitContract
+field AuthContract auditEvents AuthAuditEventContract
 field AuthContract failureMarkers AuthFailureMarkers
 field AuthContract rolePolicies AuthRolePolicyRegistry
 field AuthContract scopes ScopeRegistryContract
@@ -173,6 +215,14 @@ jsonBody authContract
               "jwtIdClaim": "jti",
               "clockSkewSeconds": 30,
               "validationRule": "verify signature first, then require iss and aud exact match, nbf <= now + skew, iat <= now + skew, exp > now - skew, non-empty sub, role, scopes, and jti, and reject revoked jti rows"
+          },
+          "timeValidation": {
+              "nowSource": "runtime wall-clock UTC seconds read at validation time",
+              "issuedAtRule": "iat must be <= now + 30 seconds and must not be older than the accepted access-token TTL plus skew",
+              "notBeforeRule": "nbf must be <= now + 30 seconds",
+              "expirationRule": "exp must be > now - 30 seconds and issued tokens use now + 900 seconds by default",
+              "clockSkewSeconds": 30,
+              "runtimeStatus": "executable for issued active demo tokens: login and refresh stamp iat/nbf from runtime UTC seconds, set exp to iat + 900, and session validates stored active-token iat/nbf/exp with skew; typed claim extraction for arbitrary incoming tokens remains a runtime gap"
           }
       },
       "password": {
@@ -192,28 +242,28 @@ jsonBody authContract
           "requiredBody": "username, password",
           "publicErrors": "invalid_credentials, rate_limited",
           "auditEvent": "auth.login.accepted or auth.login.rejected",
-          "runtimeStatus": "executable demo: JSON body decode, content-type/body-size guards, bcrypt 72-byte precheck, bcrypt verify against seeded auctioneer account, and claim-bearing HS256 access token issue; rate limiting, audit, disabled-user lookup, and SQLite writes pending"
+          "runtimeStatus": "executable demo: JSON body decode, content-type/body-size guards, SQLite login rate-limit bucket, bcrypt 72-byte precheck, bcrypt verify against seeded auctioneer/bidder accounts, runtime-time claim-bearing HS256 access token issue, and durable login accepted/rejected audit rows; disabled-user lookup remains pending"
       },
       "refresh": {
           "path": "POST /api/v1/auth/refresh",
           "requiredBody": "refreshToken",
           "publicErrors": "invalid_refresh_token, expired_refresh_token, revoked_refresh_token",
           "auditEvent": "auth.refresh.accepted or auth.refresh.rejected",
-          "runtimeStatus": "executable demo: opaque refresh token verifies against a process-local bcrypt hash and rotates; durable SQLite refresh_tokens transaction pending in main.sem"
+          "runtimeStatus": "executable demo: opaque refresh token verifies against a process-local bcrypt hash, rotates, and issues a fresh runtime-time access token; durable SQLite refresh_tokens transaction pending in main.sem"
       },
       "logout": {
           "path": "POST /api/v1/auth/logout",
           "requiredBody": "refreshToken",
           "publicErrors": "unauthorized",
           "auditEvent": "auth.logout",
-          "runtimeStatus": "executable demo: valid refresh token hash revokes process-local session; durable refresh-token revocation and JWT denylist writes pending"
+          "runtimeStatus": "executable demo: valid refresh token hash revokes process-local session; durable refresh-token revocation, logout audit, and JWT denylist writes pending"
       },
       "session": {
           "path": "GET /api/v1/session",
           "requiredBody": "none",
           "publicErrors": "unauthorized, expired_token, bad_signature, wrong_audience, insufficient_role",
           "auditEvent": "auth.session.checked",
-          "runtimeStatus": "executable demo: Authorization bearer token is HS256-verified, checked for required arena claims, and matched against process-local session; runtime-clock expiration and durable denylist checks pending"
+          "runtimeStatus": "executable demo: Authorization bearer token is HS256-verified with env/default secret, matched against process-local session, and checked against stored iat/nbf/exp runtime bounds; typed per-claim extraction, split failure envelopes, session audit, and durable denylist checks pending"
       },
       "refreshTokenRow": {
           "tableName": "refresh_tokens",
@@ -224,6 +274,34 @@ jsonBody authContract
           "rotationFields": "issued_at, expires_at, last_used_at, revoked_at, replaced_by_refresh_token_id",
           "uniquenessRule": "token_hash unique; active token is one row where revoked_at=0 and expires_at is in the future",
           "transactionRule": "refresh runs in one transaction: select active row, verify hash, revoke old row, insert replacement row, append audit event, commit"
+      },
+      "jwtDenylist": {
+          "tableName": "revoked_jwts",
+          "primaryKey": "jti",
+          "insertRule": "logout or admin revocation inserts the active JWT jti, user_id, exp, revoked_at, and request_id when typed claims are available",
+          "lookupRule": "session and protected-route auth reject a signed token when revoked_jwts has the same jti and expires_at is still in the future",
+          "cleanupRule": "maintenance may delete rows only after expires_at plus access-token clock skew",
+          "runtimeStatus": "contract; schema exists, but executable demo cannot persist or check revoked jti rows until typed JWT claim extraction and durable session wiring are added"
+      },
+      "loginRateLimit": {
+          "durableTable": "rate_limit_buckets",
+          "bucketKey": "auth.login:<username_norm>:<ip_hash>",
+          "subjectRule": "bucket by normalized username and hashed client IP so disabled or unknown users share the same public timing and error path",
+          "windowMillis": 60000,
+          "limitCount": 10,
+          "publicError": "rate_limited",
+          "auditRule": "append auth.login.rejected with reason rate_limited without disclosing whether the username exists",
+          "runtimeStatus": "executable for login by submitted username and 60000 ms window; client IP hashing remains blocked on request context support"
+      },
+      "auditEvents": {
+          "durableTable": "audit_events",
+          "loginActions": "auth.login.accepted, auth.login.rejected",
+          "refreshActions": "auth.refresh.accepted, auth.refresh.rejected, auth.logout",
+          "sessionActions": "auth.session.checked",
+          "requiredFields": "auditEventId, requestId, actorUserId when known, actorRole when known, action, outcome, reason, payloadJson, createdAt, ipHash, userAgentHash",
+          "redactionRule": "payloadJson must never contain plaintext passwords, password hashes, bearer tokens, refresh tokens, cookies, raw Authorization headers, raw IPs, or raw user agents",
+          "transactionRule": "login success/failure and refresh/logout decisions append durable audit rows in the same SQLite transaction as the auth state they accept or reject",
+          "runtimeStatus": "executable for login accepted, invalid_credentials rejected, and rate_limited rejected rows; refresh, logout, and session audit rows remain pending"
       },
       "failureMarkers": {
           "disabledUser": "login and refresh reject disabled users as invalid_credentials or invalid_refresh_token without leaking account status",
@@ -320,11 +398,12 @@ jsonBody authContract
           "refreshTtlSeconds": "AUCTION_ARENA_REFRESH_TOKEN_TTL_SECONDS default 2592000 and clamped by deployment policy",
           "bcryptCostEnv": "AUCTION_ARENA_BCRYPT_COST default 12, minimum 10",
           "demoSeedEnv": "AUCTION_ARENA_DEMO_SEED enables seeded auctioneer and demo bidder only for local development",
+          "secretLoadingRule": "AUCTION_ARENA_JWT_SECRET must be read from environment or config at startup, be at least 32 random bytes after decoding, be redacted from logs, and never use a source literal outside deterministic local demo mode",
           "failureMode": "startup fails readiness if required production auth config is absent or invalid",
-          "runtimeStatus": "contract; executable still uses a source-level demo HS256 secret and fixed demo expiration"
+          "runtimeStatus": "executable reads AUCTION_ARENA_JWT_SECRET when present and at least 32 bytes, otherwise uses deterministic local demo fallback; production fatal-missing-secret mode remains pending"
       },
-      "mainIntegrationPatch": {
-          "value": "Remaining main.sem integration: replace process-local refresh state with a refresh_tokens row transaction; load JWT secret from environment/config; validate exp/iat/nbf against runtime time; add durable revoked_jwts checks; split 403 authorization failures from 401 authentication failures; wire viewer, admin, operator, service, chat, extend, and close role/scope policies."
+      "authContextIntegrationPatch": {
+          "value": "Remaining auth_context integration: replace process-local refresh state with a refresh_tokens row transaction; make production JWT secret absence fatal; add typed JWT claim extraction and durable revoked_jwts checks; split auth failure envelopes and 403 authorization failures; audit refresh/logout/session; wire viewer, admin, operator, service, and full chat role/scope policies."
       }
   }
 

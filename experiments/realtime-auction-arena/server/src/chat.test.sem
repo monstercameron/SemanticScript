@@ -4,7 +4,7 @@ moduleOwns app.realtime_auction_arena.server.tests.chat_contract "Chat post, del
 moduleDoesNotOwn app.realtime_auction_arena.server.tests.chat_contract "HTTP/2 or WebSocket transport."
 invariant module app.realtime_auction_arena.server.tests.chat_contract "Chat must use event replay ordering without mutating AuctionState.revision."
 
-storage module immutable chatContractUnitTestPlanSummary String "server/src/chat.sem coverage: post, delete, report, moderation roles, byte limit, rate limits, replay ordering, and revision isolation."
+storage module immutable chatContractUnitTestPlanSummary String "server/src/chat.sem coverage: post/delete/report route contracts, bidder/report role helpers, moderation role helper, byte limit helper, rate-limit helper, replay ordering helper, and revision isolation helper."
 
 operation getChatContractUnitTestPlan
 output operation getChatContractUnitTestPlan String

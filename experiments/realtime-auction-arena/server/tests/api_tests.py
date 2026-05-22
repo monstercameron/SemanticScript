@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+import time
 import uuid
 import urllib.error
 import urllib.request
@@ -17,6 +18,27 @@ def unique_key(prefix):
 def request(path, method="GET", body=None, headers=None):
     data = None
     merged_headers = {"X-Request-Id": REQUEST_ID}
+    if headers:
+        merged_headers.update(headers)
+    if body is not None:
+        data = body.encode("utf-8")
+        merged_headers.setdefault("Content-Type", "application/json")
+    req = urllib.request.Request(
+        BASE_URL + path,
+        data=data,
+        headers=merged_headers,
+        method=method,
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=3) as response:
+            return response.status, dict(response.headers), response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        return exc.code, dict(exc.headers), exc.read().decode("utf-8")
+
+
+def request_without_request_id(path, method="GET", body=None, headers=None):
+    data = None
+    merged_headers = {}
     if headers:
         merged_headers.update(headers)
     if body is not None:
@@ -155,6 +177,27 @@ def test_health_ready_and_api_envelopes():
     )
 
 
+def test_missing_request_id_gets_generated_header_and_dynamic_envelope():
+    status, headers, text = request_without_request_id("/healthz")
+    assert status == 200
+    assert headers.get("X-Api-Version") == "v1"
+    generated = headers.get("X-Request-Id")
+    assert generated
+    assert generated != REQUEST_ID
+    assert generated != "req_runtime_header_unavailable"
+    assert_envelope(text)
+
+    login = login_as_auctioneer()
+    auth = {"Authorization": f"Bearer {login['data']['accessToken']}"}
+    status, headers, text = request_without_request_id("/api/v1/auctions", headers=auth)
+    assert status == 200
+    assert headers.get("X-Api-Version") == "v1"
+    generated = headers.get("X-Request-Id")
+    assert generated
+    payload = assert_envelope(text)
+    assert payload["requestId"] == generated
+
+
 def test_api_index_only_asserts_executable_routes():
     payload = expect_json("/api/v1", 200, ok=True)
     route_text = "\n".join(payload["data"]["routes"])
@@ -177,12 +220,46 @@ def test_metrics_smoke():
     assert "auction_server_bootstrap_info" in text
     assert 'auction_server_bootstrap_info{api_version="v1",runtime="native_http_exact_routes"} 1' in text
     assert 'auction_server_runtime_gap{feature="long_lived_sse"} 1' in text
-    assert 'auction_server_runtime_gap{feature="request_logging_counters"} 1' in text
     assert 'auction_server_runtime_gap{feature="durable_auth_sessions"} 1' in text
-    assert 'auction_server_runtime_gap{feature="chat_routes"} 1' in text
+    assert "http_requests_total " in text
+    assert 'auth_attempts_total{route="POST /api/v1/auth/login",outcome="accepted"}' in text
+    assert 'auth_attempts_total{route="POST /api/v1/auth/login",outcome="rejected"}' in text
+    assert 'auction_commands_total{outcome="accepted"}' in text
+    assert 'auction_commands_total{outcome="rejected"}' in text
+    assert "auction_bids_total" in text
+    assert "rate_limit_hits_total " in text
+    assert "active_sse_clients " in text
+    assert "auction_server_sse_slow_client_drops_total 0" in text
+    assert "auction_server_sse_subscriber_queue_capacity 256" in text
+    assert "auction_server_sse_heartbeat_millis 15000" in text
+
+
+def test_known_paths_reject_unsupported_methods():
+    expect_json(
+        "/api/v1/auth/login",
+        405,
+        ok=False,
+        code="method_not_allowed",
+        method="GET",
+    )
+    expect_json(
+        "/healthz",
+        405,
+        ok=False,
+        code="method_not_allowed",
+        method="POST",
+    )
+    expect_json(
+        "/api/v1/auctions",
+        405,
+        ok=False,
+        code="method_not_allowed",
+        method="DELETE",
+    )
 
 
 def test_auth_demo_flow_is_enveloped():
+    before_login_seconds = int(time.time())
     payload = login_as_auctioneer()
     assert payload["data"]["tokenType"] == "Bearer"
     assert payload["data"]["accessToken"].count(".") == 2
@@ -196,13 +273,14 @@ def test_auth_demo_flow_is_enveloped():
     assert token_payload["sub"] == "user_auctioneer_001"
     assert token_payload["role"] == "auctioneer"
     assert token_payload["scopes"] == ["auctions:write", "bids:read", "chat:moderate"]
-    assert "iat" in token_payload
-    assert "nbf" in token_payload
-    assert token_payload["exp"] == 2000000000
+    assert before_login_seconds - 1 <= token_payload["iat"] <= int(time.time()) + 1
+    assert token_payload["nbf"] == token_payload["iat"]
+    assert token_payload["exp"] == token_payload["iat"] + 900
     assert "jti" in token_payload
 
 
 def test_bidder_demo_flow_is_enveloped():
+    before_login_seconds = int(time.time())
     payload = login_as_bidder()
     assert payload["data"]["user"]["username"] == "bidder"
     assert payload["data"]["user"]["role"] == "bidder"
@@ -210,6 +288,9 @@ def test_bidder_demo_flow_is_enveloped():
     assert token_payload["sub"] == "user_bidder_demo"
     assert token_payload["role"] == "bidder"
     assert token_payload["scopes"] == ["auctions:read", "bids:write", "chat:write"]
+    assert before_login_seconds - 1 <= token_payload["iat"] <= int(time.time()) + 1
+    assert token_payload["nbf"] == token_payload["iat"]
+    assert token_payload["exp"] == token_payload["iat"] + 900
     session = expect_json(
         "/api/v1/session",
         200,
@@ -344,6 +425,61 @@ def test_auction_create_start_bid_and_events_flow():
         body="{}",
     )
     assert missing_key["data"] is None
+    expect_json(
+        "/api/v1/auctions/auc_missing_start/start",
+        400,
+        ok=False,
+        code="missing_idempotency_key",
+        method="POST",
+        body='{"expectedRevision":0}',
+    )
+    expect_json(
+        "/api/v1/auctions/auc_missing_extend/extend",
+        400,
+        ok=False,
+        code="missing_idempotency_key",
+        method="POST",
+        body='{"expectedRevision":0,"extendByMillis":60000}',
+    )
+    expect_json(
+        "/api/v1/auctions/auc_missing_close/close",
+        400,
+        ok=False,
+        code="missing_idempotency_key",
+        method="POST",
+        body='{"expectedRevision":0}',
+    )
+    expect_json(
+        "/api/v1/auctions/auc_missing_bid/bids",
+        400,
+        ok=False,
+        code="missing_idempotency_key",
+        method="POST",
+        body='{"amount":120,"expectedRevision":0}',
+    )
+    expect_json(
+        "/api/v1/auctions/auc_missing_chat/chat/messages",
+        400,
+        ok=False,
+        code="missing_idempotency_key",
+        method="POST",
+        body='{"text":"hello"}',
+    )
+    expect_json(
+        "/api/v1/auctions/auc_missing_chat/chat/messages/msg_missing",
+        400,
+        ok=False,
+        code="missing_idempotency_key",
+        method="DELETE",
+    )
+    expect_json(
+        "/api/v1/auctions/auc_missing_chat/chat/messages/msg_missing/report",
+        400,
+        ok=False,
+        code="missing_idempotency_key",
+        method="POST",
+        body="{}",
+    )
 
     unauthorized = expect_json(
         "/api/v1/auctions",
@@ -363,6 +499,18 @@ def test_auction_create_start_bid_and_events_flow():
     )
     auction_id = created["data"]["auction"]["auctionId"]
     assert auction_id.startswith("auc_")
+
+    create_unknown = json.loads(auction_body(f"Unknown Field Lot {uuid.uuid4().hex}"))
+    create_unknown["unexpected"] = True
+    expect_json(
+        "/api/v1/auctions",
+        400,
+        ok=False,
+        code="validation_failed",
+        method="POST",
+        body=json.dumps(create_unknown, separators=(",", ":")),
+        headers={**auth, "Idempotency-Key": unique_key("idem_py_create_unknown")},
+    )
 
     replayed = expect_json(
         "/api/v1/auctions",
@@ -398,6 +546,16 @@ def test_auction_create_start_bid_and_events_flow():
 
     snapshot = expect_json(f"/api/v1/auctions/{auction_id}", 200, ok=True, headers=auth)
     assert snapshot["data"]["auction"]["revision"] == 0
+
+    post_auction_command(
+        f"/api/v1/auctions/{auction_id}/start",
+        {"expectedRevision": 0, "unexpected": True},
+        auth,
+        unique_key("idem_py_start_unknown"),
+        400,
+        False,
+        code="validation_failed",
+    )
 
     bidder_login = login_as_bidder()
     bidder_auth = {"Authorization": f"Bearer {bidder_login['data']['accessToken']}"}
@@ -502,6 +660,15 @@ def test_auction_create_start_bid_and_events_flow():
         {"amount": 1001, "expectedRevision": 1},
         auth,
         unique_key("idem_py_bid_above_max"),
+        409,
+        False,
+        code="amount_too_high",
+    )
+    post_auction_command(
+        f"/api/v1/auctions/{auction_id}/bids",
+        {"amount": 120, "expectedRevision": 1, "unexpected": True},
+        auth,
+        unique_key("idem_py_bid_unknown"),
         400,
         False,
         code="validation_failed",

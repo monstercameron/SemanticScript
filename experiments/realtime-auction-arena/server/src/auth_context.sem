@@ -1,0 +1,1825 @@
+module app.realtime_auction_arena.server.auth_context
+purpose module app.realtime_auction_arena.server.auth_context "Executable authentication context for the Realtime Auction Arena server."
+moduleOwns app.realtime_auction_arena.server.auth_context "Process-local demo auth state, auth login rate-limit SQL, JWT secret resolution, bearer authorization helpers, and auth route handlers."
+moduleDoesNotOwn app.realtime_auction_arena.server.auth_context "Route registration, non-auth auction command handlers, database bootstrap ownership, static auth contract declarations, shared response envelopes, or native cryptographic primitives."
+invariant module app.realtime_auction_arena.server.auth_context "Auth state mutations stay behind unchanged operation names so the main route shell can bind handlers from this context after cleanup."
+
+import http standard.http
+import sqlite_std standard.sqlite
+import json standard.json
+import jwt standard.jwt
+import bcrypt standard.bcrypt
+import stdlib standard.stdlib
+import runtime app.realtime_auction_arena.server.runtime_constants
+import helpers app.realtime_auction_arena.server.http_helpers
+import chat app.realtime_auction_arena.server.chat
+
+exportOperation app.realtime_auction_arena.server.auth_context resolveJwtSigningSecret
+exportOperation app.realtime_auction_arena.server.auth_context insertAuthAuditEvent
+exportOperation app.realtime_auction_arena.server.auth_context consumeLoginRateLimit
+exportOperation app.realtime_auction_arena.server.auth_context requestHasValidBearerToken
+exportOperation app.realtime_auction_arena.server.auth_context requestHasAuctioneerBearerToken
+exportOperation app.realtime_auction_arena.server.auth_context requestHasBidderBearerToken
+exportOperation app.realtime_auction_arena.server.auth_context requestHasChatModeratorBearerToken
+exportOperation app.realtime_auction_arena.server.auth_context authLoginHandler
+exportOperation app.realtime_auction_arena.server.auth_context authRefreshHandler
+exportOperation app.realtime_auction_arena.server.auth_context authLogoutHandler
+exportOperation app.realtime_auction_arena.server.auth_context sessionHandler
+
+exportConstant app.realtime_auction_arena.server.auth_context authAuctioneerTimedAccessPayloadFormat
+exportConstant app.realtime_auction_arena.server.auth_context authBidderTimedAccessPayloadFormat
+exportConstant app.realtime_auction_arena.server.auth_context authLoginRoutePattern
+exportConstant app.realtime_auction_arena.server.auth_context authLoginRateScope
+exportConstant app.realtime_auction_arena.server.auth_context authAuditActionLoginAccepted
+exportConstant app.realtime_auction_arena.server.auth_context authAuditActionLoginRejected
+exportConstant app.realtime_auction_arena.server.auth_context authAuditPayloadEmpty
+exportConstant app.realtime_auction_arena.server.auth_context authAuditErrorInvalidCredentials
+exportConstant app.realtime_auction_arena.server.auth_context authAuditErrorRateLimited
+exportConstant app.realtime_auction_arena.server.auth_context authAuditErrorNone
+exportConstant app.realtime_auction_arena.server.auth_context authAuditOutcomeRejectedCode
+exportConstant app.realtime_auction_arena.server.auth_context authLoginRateLimitWindowMillis
+exportConstant app.realtime_auction_arena.server.auth_context authLoginRateLimitCount
+exportConstant app.realtime_auction_arena.server.auth_context sqlDeleteExpiredAuthRateLimitBuckets
+exportConstant app.realtime_auction_arena.server.auth_context sqlUpsertLoginRateLimit
+exportConstant app.realtime_auction_arena.server.auth_context sqlSelectLoginRateLimit
+exportConstant app.realtime_auction_arena.server.auth_context sqlInsertAuthAuditEvent
+
+capability httpRequestReader http.request read
+purpose operation httpRequestReader "Authority to inspect incoming auth request headers and bounded bodies."
+capability httpResponseWriter http.response write
+purpose operation httpResponseWriter "Authority to write auth route HTTP response headers and bodies."
+capability heapAllocCapability heap allocate
+purpose operation heapAllocCapability "Authority to allocate per-request auth JSON and token scratch buffers."
+capability heapFreeCapability heap free
+purpose operation heapFreeCapability "Authority to release per-request auth JSON and token scratch buffers."
+capability memoryBufferReadWriteCapability memory.buffer readWrite
+purpose operation memoryBufferReadWriteCapability "Authority to read parsed auth buffers, compare bearer strings, and wipe password scratch memory."
+capability jsonDocumentReadCapability json.document.tree read
+purpose operation jsonDocumentReadCapability "Authority to read parsed auth JSON document cursors."
+capability jsonDocumentWriteCapability json.document.tree write
+purpose operation jsonDocumentWriteCapability "Authority to create and destroy per-request auth JSON documents."
+capability bcryptHashCompute bcrypt.hash compute
+purpose operation bcryptHashCompute "Authority to verify login passwords and hash or verify refresh tokens through the native bcrypt runtime."
+capability jwtTokenSigner jwt.hs256 signVerify
+purpose operation jwtTokenSigner "Authority to issue and verify HS256 access tokens through the native JWT runtime."
+capability sqliteDatabaseReadWriter database readWrite
+purpose operation sqliteDatabaseReadWriter "Authority to persist auth rate-limit and audit rows through standard.sqlite."
+capability processEnvironmentReader process.environment read
+purpose operation processEnvironmentReader "Authority to read deployment auth configuration from process environment variables."
+
+storage module mutable demoAuthSessionActive CSignedInt32 0
+storage module mutable currentAccessToken CNullTerminatedByteString ""
+storage module mutable currentRefreshTokenHash CNullTerminatedByteString ""
+storage module mutable currentAuthIssueArena COpaqueMemoryAddress 0
+storage module mutable currentAuthUserId CNullTerminatedByteString ""
+storage module mutable currentAuthUsername CNullTerminatedByteString ""
+storage module mutable currentAuthDisplayName CNullTerminatedByteString ""
+storage module mutable currentAuthRoleName CNullTerminatedByteString ""
+storage module mutable currentAuthScopesJson CNullTerminatedByteString ""
+storage module mutable currentAuthRoleCode CSignedInt64 0
+storage module mutable currentAuthPayloadTemplate JwtPayloadTemplate ""
+storage module mutable currentAuthIssuedAt CSignedInt64 0
+storage module mutable currentAuthNotBefore CSignedInt64 0
+storage module mutable currentAuthExpiresAt CSignedInt64 0
+
+storage module immutable authAuctioneerTimedAccessPayloadFormat CNullTerminatedByteString "{\"iss\":\"realtime-auction-arena\",\"aud\":\"api-v1\",\"sub\":\"user_auctioneer_001\",\"role\":\"auctioneer\",\"scopes\":[\"auctions:write\",\"bids:read\",\"chat:moderate\"],\"iat\":%lld,\"nbf\":%lld,\"exp\":%lld,\"jti\":\"%%s\"}"
+storage module immutable authBidderTimedAccessPayloadFormat CNullTerminatedByteString "{\"iss\":\"realtime-auction-arena\",\"aud\":\"api-v1\",\"sub\":\"user_bidder_demo\",\"role\":\"bidder\",\"scopes\":[\"auctions:read\",\"bids:write\",\"chat:write\"],\"iat\":%lld,\"nbf\":%lld,\"exp\":%lld,\"jti\":\"%%s\"}"
+storage module immutable authLoginRoutePattern CNullTerminatedByteString "/api/v1/auth/login"
+storage module immutable authLoginRateScope CNullTerminatedByteString "auth.login"
+storage module immutable authAuditActionLoginAccepted CNullTerminatedByteString "auth.login.accepted"
+storage module immutable authAuditActionLoginRejected CNullTerminatedByteString "auth.login.rejected"
+storage module immutable authAuditPayloadEmpty CNullTerminatedByteString "{}"
+storage module immutable authAuditErrorInvalidCredentials CNullTerminatedByteString "invalid_credentials"
+storage module immutable authAuditErrorRateLimited CNullTerminatedByteString "rate_limited"
+storage module immutable authAuditErrorNone CNullTerminatedByteString ""
+storage module immutable authAuditOutcomeRejectedCode CSignedInt64 4
+storage module immutable authLoginRateLimitWindowMillis CSignedInt64 60000
+storage module immutable authLoginRateLimitCount CSignedInt64 10
+storage module immutable sqlDeleteExpiredAuthRateLimitBuckets CNullTerminatedByteString "DELETE FROM rate_limit_buckets WHERE reset_at <= ?"
+storage module immutable sqlUpsertLoginRateLimit CNullTerminatedByteString "INSERT INTO rate_limit_buckets(bucket_key, scope, actor_user_id, route_pattern, window_start, window_ms, count, denied_count, limit_count, reset_at, updated_at) VALUES (?, 'auth.login', '', '/api/v1/auth/login', ?, 60000, 1, 0, 10, ?, ?) ON CONFLICT(bucket_key, window_start) DO UPDATE SET count = count + 1, updated_at = excluded.updated_at"
+storage module immutable sqlSelectLoginRateLimit CNullTerminatedByteString "SELECT count FROM rate_limit_buckets WHERE bucket_key = ? AND window_start = ? LIMIT 1"
+storage module immutable sqlInsertAuthAuditEvent CNullTerminatedByteString "INSERT INTO audit_events(audit_event_id, schema_version, actor_user_id, actor_role, request_id, action, outcome, error_code, payload_json, created_at) VALUES ('aud_' || lower(hex(randomblob(8))), 1, ?, ?, ?, ?, ?, ?, ?, ?)"
+
+operation resolveJwtSigningSecret
+output operation resolveJwtSigningSecret JwtSecret
+effect resolveJwtSigningSecret read process.environment
+effect resolveJwtSigningSecret read memory.buffer
+memory resolveJwtSigningSecret arena request
+async resolveJwtSigningSecret no
+useCapability resolveJwtSigningSecret processEnvironmentReader
+useCapability resolveJwtSigningSecret memoryBufferReadWriteCapability
+purpose operation resolveJwtSigningSecret "Return AUCTION_ARENA_JWT_SECRET when configured, otherwise the deterministic local demo secret."
+invariant operation resolveJwtSigningSecret "The returned secret is never logged or included in an HTTP response."
+label startResolveJwtSigningSecret
+call getenvJwtSecretCall c.getenv
+argument getenvJwtSecretCall name CNullTerminatedByteString runtime.authJwtSecretEnvName
+run getenvJwtSecretCall
+bind value envJwtSecret CNullTerminatedByteString getenvJwtSecretCall
+call envJwtSecretMissingCall pointer.isNull
+argument envJwtSecretMissingCall ptr COpaqueMemoryAddress envJwtSecret
+run envJwtSecretMissingCall
+bind value envJwtSecretMissing Bool envJwtSecretMissingCall
+branch if condition envJwtSecretMissing target returnDemoJwtSecret
+call envJwtSecretLengthCall c.strlen
+argument envJwtSecretLengthCall s CNullTerminatedByteString envJwtSecret
+run envJwtSecretLengthCall
+bind value envJwtSecretLength CSignedInt64 envJwtSecretLengthCall
+call envJwtSecretTooShortCall math.lessThanI64
+argument envJwtSecretTooShortCall left I64 envJwtSecretLength
+argument envJwtSecretTooShortCall right I64 32
+run envJwtSecretTooShortCall
+bind value envJwtSecretTooShort Bool envJwtSecretTooShortCall
+branch if condition envJwtSecretTooShort target returnDemoJwtSecret
+return value envJwtSecret
+label returnDemoJwtSecret
+return value runtime.demoJwtSigningSecret
+
+operation insertAuthAuditEvent
+input operation insertAuthAuditEvent database SqliteDatabase
+input operation insertAuthAuditEvent actorUserId CNullTerminatedByteString
+input operation insertAuthAuditEvent actorRole CSignedInt64
+input operation insertAuthAuditEvent requestId CNullTerminatedByteString
+input operation insertAuthAuditEvent action CNullTerminatedByteString
+input operation insertAuthAuditEvent outcome CSignedInt64
+input operation insertAuthAuditEvent errorCode CNullTerminatedByteString
+input operation insertAuthAuditEvent payloadJson CNullTerminatedByteString
+input operation insertAuthAuditEvent createdAt CSignedInt64
+output operation insertAuthAuditEvent Bool
+effect insertAuthAuditEvent readWrite database
+memory insertAuthAuditEvent heap no
+async insertAuthAuditEvent no
+useCapability insertAuthAuditEvent sqliteDatabaseReadWriter
+purpose operation insertAuthAuditEvent "Persist one redacted auth audit row for login decisions."
+invariant operation insertAuthAuditEvent "Payloads are caller-supplied redacted JSON and never contain passwords, bearer tokens, or refresh tokens."
+label startInsertAuthAuditEvent
+call prepareAuthAuditCall sqlite.prepareStatement
+argument prepareAuthAuditCall database SqliteDatabase database
+argument prepareAuthAuditCall sql CNullTerminatedByteString sqlInsertAuthAuditEvent
+run prepareAuthAuditCall
+bind ok authAuditStatement SqliteStatement prepareAuthAuditCall
+bind error prepareAuthAuditError SqliteStatementPrepareFailure prepareAuthAuditCall
+branch error source prepareAuthAuditCall target insertAuthAuditRejected
+defer finalizeAuthAuditDefer sqlite.finalizeStatement authAuditStatement
+call bindAuthAuditActorCall sqlite.bindText
+argument bindAuthAuditActorCall statement SqliteStatement authAuditStatement
+argument bindAuthAuditActorCall parameterIndex CSignedInt32 runtime.bindIndex1
+argument bindAuthAuditActorCall value CNullTerminatedByteString actorUserId
+run bindAuthAuditActorCall
+ignore void source bindAuthAuditActorCall
+call bindAuthAuditRoleCall sqlite.bindInt64
+argument bindAuthAuditRoleCall statement SqliteStatement authAuditStatement
+argument bindAuthAuditRoleCall parameterIndex CSignedInt32 runtime.bindIndex2
+argument bindAuthAuditRoleCall value CSignedInt64 actorRole
+run bindAuthAuditRoleCall
+ignore void source bindAuthAuditRoleCall
+call bindAuthAuditRequestCall sqlite.bindText
+argument bindAuthAuditRequestCall statement SqliteStatement authAuditStatement
+argument bindAuthAuditRequestCall parameterIndex CSignedInt32 runtime.bindIndex3
+argument bindAuthAuditRequestCall value CNullTerminatedByteString requestId
+run bindAuthAuditRequestCall
+ignore void source bindAuthAuditRequestCall
+call bindAuthAuditActionCall sqlite.bindText
+argument bindAuthAuditActionCall statement SqliteStatement authAuditStatement
+argument bindAuthAuditActionCall parameterIndex CSignedInt32 runtime.bindIndex4
+argument bindAuthAuditActionCall value CNullTerminatedByteString action
+run bindAuthAuditActionCall
+ignore void source bindAuthAuditActionCall
+call bindAuthAuditOutcomeCall sqlite.bindInt64
+argument bindAuthAuditOutcomeCall statement SqliteStatement authAuditStatement
+argument bindAuthAuditOutcomeCall parameterIndex CSignedInt32 runtime.bindIndex5
+argument bindAuthAuditOutcomeCall value CSignedInt64 outcome
+run bindAuthAuditOutcomeCall
+ignore void source bindAuthAuditOutcomeCall
+call bindAuthAuditErrorCall sqlite.bindText
+argument bindAuthAuditErrorCall statement SqliteStatement authAuditStatement
+argument bindAuthAuditErrorCall parameterIndex CSignedInt32 runtime.bindIndex6
+argument bindAuthAuditErrorCall value CNullTerminatedByteString errorCode
+run bindAuthAuditErrorCall
+ignore void source bindAuthAuditErrorCall
+call bindAuthAuditPayloadCall sqlite.bindText
+argument bindAuthAuditPayloadCall statement SqliteStatement authAuditStatement
+argument bindAuthAuditPayloadCall parameterIndex CSignedInt32 runtime.bindIndex7
+argument bindAuthAuditPayloadCall value CNullTerminatedByteString payloadJson
+run bindAuthAuditPayloadCall
+ignore void source bindAuthAuditPayloadCall
+call bindAuthAuditCreatedCall sqlite.bindInt64
+argument bindAuthAuditCreatedCall statement SqliteStatement authAuditStatement
+argument bindAuthAuditCreatedCall parameterIndex CSignedInt32 runtime.bindIndex8
+argument bindAuthAuditCreatedCall value CSignedInt64 createdAt
+run bindAuthAuditCreatedCall
+ignore void source bindAuthAuditCreatedCall
+call stepAuthAuditCall sqlite.stepStatement
+argument stepAuthAuditCall statement SqliteStatement authAuditStatement
+run stepAuthAuditCall
+ignore ok source stepAuthAuditCall type CSignedInt32
+bind error stepAuthAuditError SqliteStatementStepFailure stepAuthAuditCall
+branch error source stepAuthAuditCall target insertAuthAuditRejected
+return value runtime.boolTrue
+label insertAuthAuditRejected
+return value runtime.boolFalse
+
+operation consumeLoginRateLimit
+input operation consumeLoginRateLimit database SqliteDatabase
+input operation consumeLoginRateLimit bucketKey CNullTerminatedByteString
+input operation consumeLoginRateLimit nowMillis CSignedInt64
+output operation consumeLoginRateLimit Bool
+effect consumeLoginRateLimit readWrite database
+memory consumeLoginRateLimit heap no
+async consumeLoginRateLimit no
+useCapability consumeLoginRateLimit sqliteDatabaseReadWriter
+purpose operation consumeLoginRateLimit "Increment the auth.login rate-limit bucket and return true while the current window is within limit."
+invariant operation consumeLoginRateLimit "Bucket keys are server-side only and are never reflected in the public response."
+label startConsumeLoginRateLimit
+call rateWindowRemainderCall math.moduloI64
+argument rateWindowRemainderCall left I64 nowMillis
+argument rateWindowRemainderCall right I64 authLoginRateLimitWindowMillis
+run rateWindowRemainderCall
+bind value loginRateWindowRemainder CSignedInt64 rateWindowRemainderCall
+call rateWindowStartCall math.subtractI64
+argument rateWindowStartCall left I64 nowMillis
+argument rateWindowStartCall right I64 loginRateWindowRemainder
+run rateWindowStartCall
+bind value loginRateWindowStart CSignedInt64 rateWindowStartCall
+call rateResetAtCall math.addI64
+argument rateResetAtCall left I64 loginRateWindowStart
+argument rateResetAtCall right I64 authLoginRateLimitWindowMillis
+run rateResetAtCall
+bind value loginRateResetAt CSignedInt64 rateResetAtCall
+call prepareCleanupLoginRateCall sqlite.prepareStatement
+argument prepareCleanupLoginRateCall database SqliteDatabase database
+argument prepareCleanupLoginRateCall sql CNullTerminatedByteString sqlDeleteExpiredAuthRateLimitBuckets
+run prepareCleanupLoginRateCall
+bind ok cleanupLoginRateStatement SqliteStatement prepareCleanupLoginRateCall
+bind error cleanupLoginRateError SqliteStatementPrepareFailure prepareCleanupLoginRateCall
+branch error source prepareCleanupLoginRateCall target loginRateLimitUnavailable
+defer finalizeCleanupLoginRateDefer sqlite.finalizeStatement cleanupLoginRateStatement
+call bindCleanupLoginRateCall sqlite.bindInt64
+argument bindCleanupLoginRateCall statement SqliteStatement cleanupLoginRateStatement
+argument bindCleanupLoginRateCall parameterIndex CSignedInt32 runtime.bindIndex1
+argument bindCleanupLoginRateCall value CSignedInt64 nowMillis
+run bindCleanupLoginRateCall
+ignore void source bindCleanupLoginRateCall
+call stepCleanupLoginRateCall sqlite.stepStatement
+argument stepCleanupLoginRateCall statement SqliteStatement cleanupLoginRateStatement
+run stepCleanupLoginRateCall
+ignore ok source stepCleanupLoginRateCall type CSignedInt32
+bind error stepCleanupLoginRateError SqliteStatementStepFailure stepCleanupLoginRateCall
+branch error source stepCleanupLoginRateCall target loginRateLimitUnavailable
+
+call prepareUpsertLoginRateCall sqlite.prepareStatement
+argument prepareUpsertLoginRateCall database SqliteDatabase database
+argument prepareUpsertLoginRateCall sql CNullTerminatedByteString sqlUpsertLoginRateLimit
+run prepareUpsertLoginRateCall
+bind ok upsertLoginRateStatement SqliteStatement prepareUpsertLoginRateCall
+bind error upsertLoginRateError SqliteStatementPrepareFailure prepareUpsertLoginRateCall
+branch error source prepareUpsertLoginRateCall target loginRateLimitUnavailable
+defer finalizeUpsertLoginRateDefer sqlite.finalizeStatement upsertLoginRateStatement
+call bindUpsertLoginRateKeyCall sqlite.bindText
+argument bindUpsertLoginRateKeyCall statement SqliteStatement upsertLoginRateStatement
+argument bindUpsertLoginRateKeyCall parameterIndex CSignedInt32 runtime.bindIndex1
+argument bindUpsertLoginRateKeyCall value CNullTerminatedByteString bucketKey
+run bindUpsertLoginRateKeyCall
+ignore void source bindUpsertLoginRateKeyCall
+call bindUpsertLoginRateWindowCall sqlite.bindInt64
+argument bindUpsertLoginRateWindowCall statement SqliteStatement upsertLoginRateStatement
+argument bindUpsertLoginRateWindowCall parameterIndex CSignedInt32 runtime.bindIndex2
+argument bindUpsertLoginRateWindowCall value CSignedInt64 loginRateWindowStart
+run bindUpsertLoginRateWindowCall
+ignore void source bindUpsertLoginRateWindowCall
+call bindUpsertLoginRateResetCall sqlite.bindInt64
+argument bindUpsertLoginRateResetCall statement SqliteStatement upsertLoginRateStatement
+argument bindUpsertLoginRateResetCall parameterIndex CSignedInt32 runtime.bindIndex3
+argument bindUpsertLoginRateResetCall value CSignedInt64 loginRateResetAt
+run bindUpsertLoginRateResetCall
+ignore void source bindUpsertLoginRateResetCall
+call bindUpsertLoginRateUpdatedCall sqlite.bindInt64
+argument bindUpsertLoginRateUpdatedCall statement SqliteStatement upsertLoginRateStatement
+argument bindUpsertLoginRateUpdatedCall parameterIndex CSignedInt32 runtime.bindIndex4
+argument bindUpsertLoginRateUpdatedCall value CSignedInt64 nowMillis
+run bindUpsertLoginRateUpdatedCall
+ignore void source bindUpsertLoginRateUpdatedCall
+call stepUpsertLoginRateCall sqlite.stepStatement
+argument stepUpsertLoginRateCall statement SqliteStatement upsertLoginRateStatement
+run stepUpsertLoginRateCall
+ignore ok source stepUpsertLoginRateCall type CSignedInt32
+bind error stepUpsertLoginRateError SqliteStatementStepFailure stepUpsertLoginRateCall
+branch error source stepUpsertLoginRateCall target loginRateLimitUnavailable
+
+call prepareSelectLoginRateCall sqlite.prepareStatement
+argument prepareSelectLoginRateCall database SqliteDatabase database
+argument prepareSelectLoginRateCall sql CNullTerminatedByteString sqlSelectLoginRateLimit
+run prepareSelectLoginRateCall
+bind ok selectLoginRateStatement SqliteStatement prepareSelectLoginRateCall
+bind error selectLoginRateError SqliteStatementPrepareFailure prepareSelectLoginRateCall
+branch error source prepareSelectLoginRateCall target loginRateLimitUnavailable
+defer finalizeSelectLoginRateDefer sqlite.finalizeStatement selectLoginRateStatement
+call bindSelectLoginRateKeyCall sqlite.bindText
+argument bindSelectLoginRateKeyCall statement SqliteStatement selectLoginRateStatement
+argument bindSelectLoginRateKeyCall parameterIndex CSignedInt32 runtime.bindIndex1
+argument bindSelectLoginRateKeyCall value CNullTerminatedByteString bucketKey
+run bindSelectLoginRateKeyCall
+ignore void source bindSelectLoginRateKeyCall
+call bindSelectLoginRateWindowCall sqlite.bindInt64
+argument bindSelectLoginRateWindowCall statement SqliteStatement selectLoginRateStatement
+argument bindSelectLoginRateWindowCall parameterIndex CSignedInt32 runtime.bindIndex2
+argument bindSelectLoginRateWindowCall value CSignedInt64 loginRateWindowStart
+run bindSelectLoginRateWindowCall
+ignore void source bindSelectLoginRateWindowCall
+call stepSelectLoginRateCall sqlite.stepStatement
+argument stepSelectLoginRateCall statement SqliteStatement selectLoginRateStatement
+run stepSelectLoginRateCall
+bind ok selectLoginRateStepStatus CSignedInt32 stepSelectLoginRateCall
+bind error stepSelectLoginRateError SqliteStatementStepFailure stepSelectLoginRateCall
+branch error source stepSelectLoginRateCall target loginRateLimitUnavailable
+call loginRateRowFoundCall math.equalCSignedInt32
+argument loginRateRowFoundCall left CSignedInt32 selectLoginRateStepStatus
+argument loginRateRowFoundCall right CSignedInt32 runtime.sqliteRowStepStatus
+run loginRateRowFoundCall
+bind value loginRateRowFound Bool loginRateRowFoundCall
+branch if condition loginRateRowFound target loginRateRowAccepted
+branch else target loginRateLimitUnavailable
+label loginRateRowAccepted
+call readLoginRateCountCall sqlite.columnInt64
+argument readLoginRateCountCall statement SqliteStatement selectLoginRateStatement
+argument readLoginRateCountCall columnIndex CSignedInt32 runtime.columnIndex0
+run readLoginRateCountCall
+bind value loginRateCount CSignedInt64 readLoginRateCountCall
+call loginRateExceededCall math.greaterThanI64
+argument loginRateExceededCall left I64 loginRateCount
+argument loginRateExceededCall right I64 authLoginRateLimitCount
+run loginRateExceededCall
+bind value loginRateExceeded Bool loginRateExceededCall
+branch if condition loginRateExceeded target loginRateLimitDenied
+return value runtime.boolTrue
+label loginRateLimitDenied
+return value runtime.boolFalse
+label loginRateLimitUnavailable
+return value runtime.boolFalse
+
+operation requestHasValidBearerToken
+input operation requestHasValidBearerToken request HttpRequest
+output operation requestHasValidBearerToken Bool
+effect requestHasValidBearerToken read http.request.header
+effect requestHasValidBearerToken read memory.buffer
+effect requestHasValidBearerToken read process.environment
+memory requestHasValidBearerToken arena request
+async requestHasValidBearerToken no
+useCapability requestHasValidBearerToken httpRequestReader
+useCapability requestHasValidBearerToken memoryBufferReadWriteCapability
+useCapability requestHasValidBearerToken jwtTokenSigner
+useCapability requestHasValidBearerToken processEnvironmentReader
+purpose operation requestHasValidBearerToken "Return true when the request carries the current active HS256 bearer token."
+invariant operation requestHasValidBearerToken "Auction handlers fail closed on missing, malformed, unsigned, stale, or logged-out bearer tokens."
+label startRequestHasValidBearerToken
+call bearerAuthHeaderCall http.requestHeader
+argument bearerAuthHeaderCall request HttpRequest request
+argument bearerAuthHeaderCall name CNullTerminatedByteString runtime.authorizationHeaderName
+run bearerAuthHeaderCall
+bind value bearerAuthorizationHeader CNullTerminatedByteString bearerAuthHeaderCall
+call bearerAuthHeaderMissingCall pointer.isNull
+argument bearerAuthHeaderMissingCall ptr COpaqueMemoryAddress bearerAuthorizationHeader
+run bearerAuthHeaderMissingCall
+bind value bearerAuthHeaderMissing Bool bearerAuthHeaderMissingCall
+branch if condition bearerAuthHeaderMissing target requestBearerRejected
+call requestBearerPrefixCompareCall c.strncmp
+argument requestBearerPrefixCompareCall left CNullTerminatedByteString bearerAuthorizationHeader
+argument requestBearerPrefixCompareCall right CNullTerminatedByteString runtime.bearerPrefixText
+argument requestBearerPrefixCompareCall count CSignedInt64 runtime.bearerPrefixLength
+run requestBearerPrefixCompareCall
+bind value requestBearerPrefixCompareResult CSignedInt32 requestBearerPrefixCompareCall
+call requestBearerPrefixMatchesCall math.equalCSignedInt32
+argument requestBearerPrefixMatchesCall left CSignedInt32 requestBearerPrefixCompareResult
+argument requestBearerPrefixMatchesCall right CSignedInt32 runtime.authSuccessCode
+run requestBearerPrefixMatchesCall
+bind value requestBearerPrefixMatches Bool requestBearerPrefixMatchesCall
+branch if condition requestBearerPrefixMatches target requestBearerPrefixAccepted
+branch else target requestBearerRejected
+label requestBearerPrefixAccepted
+call requestBearerTokenPointerCall pointer.offset
+argument requestBearerTokenPointerCall base COpaqueMemoryAddress bearerAuthorizationHeader
+argument requestBearerTokenPointerCall offset CByteCount runtime.bearerPrefixLength
+run requestBearerTokenPointerCall
+bind value requestBearerTokenPointer JwtAccessToken requestBearerTokenPointerCall
+call requestJwtSecretCall resolveJwtSigningSecret
+run requestJwtSecretCall
+bind value requestJwtSecret JwtSecret requestJwtSecretCall
+call requestBearerVerifyCall jwt.hs256VerifyToken
+argument requestBearerVerifyCall token JwtAccessToken requestBearerTokenPointer
+argument requestBearerVerifyCall secret JwtSecret requestJwtSecret
+run requestBearerVerifyCall
+bind value requestBearerVerifyResult CSignedInt32 requestBearerVerifyCall
+call requestBearerVerifiedCall math.equalCSignedInt32
+argument requestBearerVerifiedCall left CSignedInt32 requestBearerVerifyResult
+argument requestBearerVerifiedCall right CSignedInt32 runtime.authMatchCode
+run requestBearerVerifiedCall
+bind value requestBearerVerified Bool requestBearerVerifiedCall
+branch if condition requestBearerVerified target requestBearerSignatureAccepted
+branch else target requestBearerRejected
+label requestBearerSignatureAccepted
+call requestBearerTokenTextCall pointer.offset
+argument requestBearerTokenTextCall base COpaqueMemoryAddress bearerAuthorizationHeader
+argument requestBearerTokenTextCall offset CByteCount runtime.bearerPrefixLength
+run requestBearerTokenTextCall
+bind value requestBearerTokenText CNullTerminatedByteString requestBearerTokenTextCall
+call requestBearerTokenCompareCall c.strcmp
+argument requestBearerTokenCompareCall left CNullTerminatedByteString requestBearerTokenText
+argument requestBearerTokenCompareCall right CNullTerminatedByteString currentAccessToken
+run requestBearerTokenCompareCall
+bind value requestBearerTokenCompareResult CSignedInt32 requestBearerTokenCompareCall
+call requestBearerTokenMatchesCall math.equalCSignedInt32
+argument requestBearerTokenMatchesCall left CSignedInt32 requestBearerTokenCompareResult
+argument requestBearerTokenMatchesCall right CSignedInt32 runtime.authSuccessCode
+run requestBearerTokenMatchesCall
+bind value requestBearerTokenMatches Bool requestBearerTokenMatchesCall
+branch if condition requestBearerTokenMatches target requestBearerCurrentAccepted
+branch else target requestBearerRejected
+label requestBearerCurrentAccepted
+call requestActiveSessionCall math.equalCSignedInt32
+argument requestActiveSessionCall left CSignedInt32 demoAuthSessionActive
+argument requestActiveSessionCall right CSignedInt32 runtime.authActiveFlag
+run requestActiveSessionCall
+bind value requestActiveSession Bool requestActiveSessionCall
+branch if condition requestActiveSession target requestBearerAccepted
+branch else target requestBearerRejected
+label requestBearerAccepted
+return value runtime.boolTrue
+label requestBearerRejected
+return value runtime.boolFalse
+
+operation requestHasAuctioneerBearerToken
+input operation requestHasAuctioneerBearerToken request HttpRequest
+output operation requestHasAuctioneerBearerToken Bool
+effect requestHasAuctioneerBearerToken read http.request.header
+effect requestHasAuctioneerBearerToken read memory.buffer
+memory requestHasAuctioneerBearerToken arena request
+async requestHasAuctioneerBearerToken no
+useCapability requestHasAuctioneerBearerToken httpRequestReader
+useCapability requestHasAuctioneerBearerToken memoryBufferReadWriteCapability
+useCapability requestHasAuctioneerBearerToken jwtTokenSigner
+purpose operation requestHasAuctioneerBearerToken "Return true when the active bearer token belongs to the seeded auctioneer role."
+invariant operation requestHasAuctioneerBearerToken "Write routes for auction management fail closed unless the active process-local principal is an auctioneer."
+label startRequestHasAuctioneerBearerToken
+call auctioneerBearerValidCall requestHasValidBearerToken
+argument auctioneerBearerValidCall request HttpRequest request
+run auctioneerBearerValidCall
+bind value auctioneerBearerValid Bool auctioneerBearerValidCall
+branch if condition auctioneerBearerValid target auctioneerBearerSignatureAccepted
+branch else target auctioneerBearerRejected
+label auctioneerBearerSignatureAccepted
+call auctioneerRoleMatchesCall math.equalI64
+argument auctioneerRoleMatchesCall left I64 currentAuthRoleCode
+argument auctioneerRoleMatchesCall right I64 runtime.auctioneerRoleCode
+run auctioneerRoleMatchesCall
+bind value auctioneerRoleMatches Bool auctioneerRoleMatchesCall
+branch if condition auctioneerRoleMatches target auctioneerRoleAccepted
+branch else target auctioneerBearerRejected
+label auctioneerRoleAccepted
+call auctioneerScopesCompareCall c.strcmp
+argument auctioneerScopesCompareCall left CNullTerminatedByteString currentAuthScopesJson
+argument auctioneerScopesCompareCall right CNullTerminatedByteString runtime.demoScopesJson
+run auctioneerScopesCompareCall
+bind value auctioneerScopesCompareResult CSignedInt32 auctioneerScopesCompareCall
+call auctioneerScopesMatchCall math.equalCSignedInt32
+argument auctioneerScopesMatchCall left CSignedInt32 auctioneerScopesCompareResult
+argument auctioneerScopesMatchCall right CSignedInt32 runtime.authSuccessCode
+run auctioneerScopesMatchCall
+bind value auctioneerScopesMatch Bool auctioneerScopesMatchCall
+branch if condition auctioneerScopesMatch target auctioneerBearerAccepted
+branch else target auctioneerBearerRejected
+label auctioneerBearerAccepted
+return value runtime.boolTrue
+label auctioneerBearerRejected
+return value runtime.boolFalse
+
+operation requestHasBidderBearerToken
+input operation requestHasBidderBearerToken request HttpRequest
+output operation requestHasBidderBearerToken Bool
+effect requestHasBidderBearerToken read http.request.header
+effect requestHasBidderBearerToken read memory.buffer
+memory requestHasBidderBearerToken arena request
+async requestHasBidderBearerToken no
+useCapability requestHasBidderBearerToken httpRequestReader
+useCapability requestHasBidderBearerToken memoryBufferReadWriteCapability
+useCapability requestHasBidderBearerToken jwtTokenSigner
+purpose operation requestHasBidderBearerToken "Return true when the active bearer token belongs to the seeded bidder role."
+invariant operation requestHasBidderBearerToken "Bid and chat write routes fail closed unless the active process-local principal is a bidder."
+label startRequestHasBidderBearerToken
+call bidderBearerValidCall requestHasValidBearerToken
+argument bidderBearerValidCall request HttpRequest request
+run bidderBearerValidCall
+bind value bidderBearerValid Bool bidderBearerValidCall
+branch if condition bidderBearerValid target bidderBearerSignatureAccepted
+branch else target bidderBearerRejected
+label bidderBearerSignatureAccepted
+call bidderRoleMatchesCall math.equalI64
+argument bidderRoleMatchesCall left I64 currentAuthRoleCode
+argument bidderRoleMatchesCall right I64 runtime.bidderRoleCode
+run bidderRoleMatchesCall
+bind value bidderRoleMatches Bool bidderRoleMatchesCall
+branch if condition bidderRoleMatches target bidderRoleAccepted
+branch else target bidderBearerRejected
+label bidderRoleAccepted
+call bidderScopesCompareCall c.strcmp
+argument bidderScopesCompareCall left CNullTerminatedByteString currentAuthScopesJson
+argument bidderScopesCompareCall right CNullTerminatedByteString runtime.demoBidderScopesJson
+run bidderScopesCompareCall
+bind value bidderScopesCompareResult CSignedInt32 bidderScopesCompareCall
+call bidderScopesMatchCall math.equalCSignedInt32
+argument bidderScopesMatchCall left CSignedInt32 bidderScopesCompareResult
+argument bidderScopesMatchCall right CSignedInt32 runtime.authSuccessCode
+run bidderScopesMatchCall
+bind value bidderScopesMatch Bool bidderScopesMatchCall
+branch if condition bidderScopesMatch target bidderBearerAccepted
+branch else target bidderBearerRejected
+label bidderBearerAccepted
+return value runtime.boolTrue
+label bidderBearerRejected
+return value runtime.boolFalse
+
+operation requestHasChatModeratorBearerToken
+input operation requestHasChatModeratorBearerToken request HttpRequest
+output operation requestHasChatModeratorBearerToken Bool
+effect requestHasChatModeratorBearerToken read http.request.header
+effect requestHasChatModeratorBearerToken read memory.buffer
+memory requestHasChatModeratorBearerToken arena request
+async requestHasChatModeratorBearerToken no
+useCapability requestHasChatModeratorBearerToken httpRequestReader
+useCapability requestHasChatModeratorBearerToken memoryBufferReadWriteCapability
+useCapability requestHasChatModeratorBearerToken jwtTokenSigner
+purpose operation requestHasChatModeratorBearerToken "Return true when the active bearer token belongs to an auctioneer or admin chat moderator."
+invariant operation requestHasChatModeratorBearerToken "Chat moderation stays in app policy helpers; native auth only verifies bearer material."
+label startRequestHasChatModeratorBearerToken
+call moderatorBearerValidCall requestHasValidBearerToken
+argument moderatorBearerValidCall request HttpRequest request
+run moderatorBearerValidCall
+bind value moderatorBearerValid Bool moderatorBearerValidCall
+branch if condition moderatorBearerValid target moderatorBearerSignatureAccepted
+branch else target moderatorBearerRejected
+label moderatorBearerSignatureAccepted
+call moderatorRoleCall chat.chatActorCanModerate
+argument moderatorRoleCall actorRole CSignedInt64 currentAuthRoleCode
+run moderatorRoleCall
+bind value moderatorRoleAccepted Bool moderatorRoleCall
+branch if condition moderatorRoleAccepted target moderatorBearerAccepted
+branch else target moderatorBearerRejected
+label moderatorBearerAccepted
+return value runtime.boolTrue
+label moderatorBearerRejected
+return value runtime.boolFalse
+
+operation authLoginHandler
+input operation authLoginHandler request HttpRequest
+input operation authLoginHandler response HttpResponse
+output operation authLoginHandler CSignedInt32
+effect authLoginHandler read http.request.body
+effect authLoginHandler write http.response
+effect authLoginHandler read json.document.tree
+effect authLoginHandler write json.document.tree
+effect authLoginHandler read memory.buffer
+effect authLoginHandler write memory.buffer
+effect authLoginHandler allocate heap
+effect authLoginHandler free heap
+effect authLoginHandler readWrite database
+effect authLoginHandler read process.environment
+memory authLoginHandler heap yes
+async authLoginHandler no
+useCapability authLoginHandler httpRequestReader
+useCapability authLoginHandler httpResponseWriter
+useCapability authLoginHandler jsonDocumentReadCapability
+useCapability authLoginHandler jsonDocumentWriteCapability
+useCapability authLoginHandler memoryBufferReadWriteCapability
+useCapability authLoginHandler heapAllocCapability
+useCapability authLoginHandler heapFreeCapability
+useCapability authLoginHandler bcryptHashCompute
+useCapability authLoginHandler jwtTokenSigner
+useCapability authLoginHandler sqliteDatabaseReadWriter
+useCapability authLoginHandler processEnvironmentReader
+purpose operation authLoginHandler "Verify the seeded auctioneer demo account with bcrypt and issue an HS256 access token plus random refresh token."
+invariant operation authLoginHandler "Invalid username, invalid password, malformed JSON, and missing fields all return the same invalid_credentials envelope."
+label startAuthLoginHandler
+call loginContentTypeCall helpers.requestContentTypeIsJson
+argument loginContentTypeCall request HttpRequest request
+run loginContentTypeCall
+bind value loginContentTypeAccepted Bool loginContentTypeCall
+branch if condition loginContentTypeAccepted target loginContentTypeValidated
+branch else target loginUnsupportedMediaType
+label loginContentTypeValidated
+call bodyLengthCall http.requestBodyLength
+argument bodyLengthCall request HttpRequest request
+run bodyLengthCall
+bind value bodyLength CByteCount bodyLengthCall
+call bodyTooLargeCall math.greaterThanI64
+argument bodyTooLargeCall left I64 bodyLength
+argument bodyTooLargeCall right I64 runtime.maxJsonBodyBytes
+run bodyTooLargeCall
+bind value bodyTooLarge Bool bodyTooLargeCall
+branch if condition bodyTooLarge target returnPayloadTooLarge
+call bodyTextCall http.requestBodyText
+argument bodyTextCall request HttpRequest request
+run bodyTextCall
+bind value loginBodyText CNullTerminatedByteString bodyTextCall
+call bodyMissingCall pointer.isNull
+argument bodyMissingCall ptr COpaqueMemoryAddress loginBodyText
+run bodyMissingCall
+bind value loginBodyMissing Bool bodyMissingCall
+branch if condition loginBodyMissing target loginInvalidCredentialsRejected
+call parseLoginBodyCall json.createDocument
+argument parseLoginBodyCall jsonText CNullTerminatedByteString loginBodyText
+argument parseLoginBodyCall capacityBytes JsonCapacityBytes runtime.authJsonDocumentCapacity
+run parseLoginBodyCall
+bind ok loginDocument JsonDocument parseLoginBodyCall
+bind error parseLoginBodyError JsonAccessError parseLoginBodyCall
+branch error source parseLoginBodyCall target loginParseInvalidCredentialsFailed
+defer releaseLoginDocumentDefer json.destroyDocument loginDocument
+call loginRootCall json.documentRoot
+argument loginRootCall document JsonDocument loginDocument
+run loginRootCall
+bind value loginRoot JsonCursor loginRootCall
+call allocateLoginUsernameScratchCall c.malloc
+argument allocateLoginUsernameScratchCall size CByteCount runtime.authUsernameScratchCapacity
+run allocateLoginUsernameScratchCall
+bind ok loginUsernameScratch COpaqueMemoryAddress allocateLoginUsernameScratchCall
+bind error allocateLoginUsernameScratchError COpaqueMemoryAddress allocateLoginUsernameScratchCall
+branch error source allocateLoginUsernameScratchCall target loginUsernameAllocationFailed
+defer releaseLoginUsernameScratchDefer c.free loginUsernameScratch
+call allocateLoginPasswordScratchCall c.malloc
+argument allocateLoginPasswordScratchCall size CByteCount runtime.authPasswordScratchCapacity
+run allocateLoginPasswordScratchCall
+bind ok loginPasswordScratch COpaqueMemoryAddress allocateLoginPasswordScratchCall
+bind error allocateLoginPasswordScratchError COpaqueMemoryAddress allocateLoginPasswordScratchCall
+branch error source allocateLoginPasswordScratchCall target loginPasswordAllocationFailed
+defer releaseLoginPasswordScratchDefer c.free loginPasswordScratch
+call loginUsernameCursorCall json.objectFieldAt
+argument loginUsernameCursorCall document JsonDocument loginDocument
+argument loginUsernameCursorCall cursor JsonCursor loginRoot
+argument loginUsernameCursorCall fieldName CNullTerminatedByteString runtime.authUsernameField
+run loginUsernameCursorCall
+bind ok loginUsernameCursor JsonCursor loginUsernameCursorCall
+bind error loginUsernameCursorError JsonAccessError loginUsernameCursorCall
+branch error source loginUsernameCursorCall target loginUsernameFieldInvalidFailed
+call readLoginUsernameCall json.cursorString
+argument readLoginUsernameCall document JsonDocument loginDocument
+argument readLoginUsernameCall cursor JsonCursor loginUsernameCursor
+argument readLoginUsernameCall scratch COpaqueMemoryAddress loginUsernameScratch
+argument readLoginUsernameCall scratchCapacity CSignedInt64 runtime.authUsernameScratchCapacity
+run readLoginUsernameCall
+bind ok loginUsernameText CNullTerminatedByteString readLoginUsernameCall
+bind error readLoginUsernameError JsonAccessError readLoginUsernameCall
+branch error source readLoginUsernameCall target loginUsernameReadInvalidFailed
+call loginPasswordCursorCall json.objectFieldAt
+argument loginPasswordCursorCall document JsonDocument loginDocument
+argument loginPasswordCursorCall cursor JsonCursor loginRoot
+argument loginPasswordCursorCall fieldName CNullTerminatedByteString runtime.authPasswordField
+run loginPasswordCursorCall
+bind ok loginPasswordCursor JsonCursor loginPasswordCursorCall
+bind error loginPasswordCursorError JsonAccessError loginPasswordCursorCall
+branch error source loginPasswordCursorCall target loginPasswordFieldInvalidFailed
+call readLoginPasswordCall json.cursorString
+argument readLoginPasswordCall document JsonDocument loginDocument
+argument readLoginPasswordCall cursor JsonCursor loginPasswordCursor
+argument readLoginPasswordCall scratch COpaqueMemoryAddress loginPasswordScratch
+argument readLoginPasswordCall scratchCapacity CSignedInt64 runtime.authPasswordScratchCapacity
+run readLoginPasswordCall
+bind ok loginPasswordText CNullTerminatedByteString readLoginPasswordCall
+bind error readLoginPasswordError JsonAccessError readLoginPasswordCall
+branch error source readLoginPasswordCall target loginPasswordReadInvalidFailed
+call loginOpenDatabaseCall openOrReuseArenaDatabase
+run loginOpenDatabaseCall
+bind value loginDatabase SqliteDatabase loginOpenDatabaseCall
+call loginDatabaseMissingCall pointer.isNull
+argument loginDatabaseMissingCall ptr COpaqueMemoryAddress loginDatabase
+run loginDatabaseMissingCall
+bind value loginDatabaseMissing Bool loginDatabaseMissingCall
+branch if condition loginDatabaseMissing target loginDatabaseUnavailable
+call loginRateNowCall http.nowMillis
+run loginRateNowCall
+bind value loginRateNow CSignedInt64 loginRateNowCall
+call consumeLoginRateCall consumeLoginRateLimit
+argument consumeLoginRateCall database SqliteDatabase loginDatabase
+argument consumeLoginRateCall bucketKey CNullTerminatedByteString loginUsernameText
+argument consumeLoginRateCall nowMillis CSignedInt64 loginRateNow
+run consumeLoginRateCall
+bind value loginRateAllowed Bool consumeLoginRateCall
+branch if condition loginRateAllowed target loginRateAccepted
+branch else target loginRateLimitedRejected
+label loginRateAccepted
+call loginPasswordLengthCall c.strlen
+argument loginPasswordLengthCall s CNullTerminatedByteString loginPasswordText
+run loginPasswordLengthCall
+bind value loginPasswordLength CSignedInt64 loginPasswordLengthCall
+call loginPasswordTooLongCall math.greaterThanI64
+argument loginPasswordTooLongCall left I64 loginPasswordLength
+argument loginPasswordTooLongCall right I64 runtime.bcryptPasswordMaxBytes
+run loginPasswordTooLongCall
+bind value loginPasswordTooLong Bool loginPasswordTooLongCall
+branch if condition loginPasswordTooLong target wipeLoginPasswordAndReject
+storage local mutable loginSelectedUserId CNullTerminatedByteString runtime.demoUserId
+storage local mutable loginSelectedUsername CNullTerminatedByteString runtime.demoUsername
+storage local mutable loginSelectedDisplayName CNullTerminatedByteString runtime.demoDisplayName
+storage local mutable loginSelectedRoleName CNullTerminatedByteString runtime.demoRoleName
+storage local mutable loginSelectedScopesJson CNullTerminatedByteString runtime.demoScopesJson
+storage local mutable loginSelectedRoleCode CSignedInt64 runtime.auctioneerRoleCode
+storage local mutable loginSelectedPayloadTemplate JwtPayloadTemplate runtime.demoAccessTokenPayloadTemplate
+storage local mutable loginSelectedPayloadFormat CNullTerminatedByteString authAuctioneerTimedAccessPayloadFormat
+call usernameCompareCall c.strcmp
+argument usernameCompareCall left CNullTerminatedByteString loginUsernameText
+argument usernameCompareCall right CNullTerminatedByteString runtime.demoUsername
+run usernameCompareCall
+bind value usernameCompareResult CSignedInt32 usernameCompareCall
+call usernameMatchesCall math.equalCSignedInt32
+argument usernameMatchesCall left CSignedInt32 usernameCompareResult
+argument usernameMatchesCall right CSignedInt32 runtime.authSuccessCode
+run usernameMatchesCall
+bind value usernameMatches Bool usernameMatchesCall
+branch if condition usernameMatches target loginAuctioneerUsernameAccepted
+branch else target loginCheckBidderUsername
+label loginCheckBidderUsername
+call bidderUsernameCompareCall c.strcmp
+argument bidderUsernameCompareCall left CNullTerminatedByteString loginUsernameText
+argument bidderUsernameCompareCall right CNullTerminatedByteString runtime.demoBidderUsername
+run bidderUsernameCompareCall
+bind value bidderUsernameCompareResult CSignedInt32 bidderUsernameCompareCall
+call bidderUsernameMatchesCall math.equalCSignedInt32
+argument bidderUsernameMatchesCall left CSignedInt32 bidderUsernameCompareResult
+argument bidderUsernameMatchesCall right CSignedInt32 runtime.authSuccessCode
+run bidderUsernameMatchesCall
+bind value bidderUsernameMatches Bool bidderUsernameMatchesCall
+branch if condition bidderUsernameMatches target loginBidderUsernameAccepted
+branch else target loginUsernameRejected
+label loginAuctioneerUsernameAccepted
+jump target loginUsernameAccepted
+label loginBidderUsernameAccepted
+set memory loginSelectedUserId runtime.demoBidderUserId
+set memory loginSelectedUsername runtime.demoBidderUsername
+set memory loginSelectedDisplayName runtime.demoBidderDisplayName
+set memory loginSelectedRoleName runtime.demoBidderRoleName
+set memory loginSelectedScopesJson runtime.demoBidderScopesJson
+set memory loginSelectedRoleCode runtime.bidderRoleCode
+set memory loginSelectedPayloadTemplate runtime.demoBidderAccessTokenPayloadTemplate
+set memory loginSelectedPayloadFormat authBidderTimedAccessPayloadFormat
+jump target loginUsernameAccepted
+label loginUsernameRejected
+call usernameMissVerifyCall bcrypt.verifyPassword
+argument usernameMissVerifyCall plaintext CNullTerminatedByteString loginPasswordText
+argument usernameMissVerifyCall expectedHash CNullTerminatedByteString runtime.demoPasswordHash
+run usernameMissVerifyCall
+ignore value source usernameMissVerifyCall type CSignedInt32
+jump target wipeLoginPasswordAndReject
+label loginUsernameAccepted
+call verifyPasswordCall bcrypt.verifyPassword
+argument verifyPasswordCall plaintext CNullTerminatedByteString loginPasswordText
+argument verifyPasswordCall expectedHash CNullTerminatedByteString runtime.demoPasswordHash
+run verifyPasswordCall
+bind value verifyPasswordResult CSignedInt32 verifyPasswordCall
+storage local immutable passwordWipeByte CSignedInt32 0
+call wipeLoginPasswordCall c.memset
+argument wipeLoginPasswordCall ptr COpaqueMemoryAddress loginPasswordScratch
+argument wipeLoginPasswordCall value CSignedInt32 passwordWipeByte
+argument wipeLoginPasswordCall byteCount CSignedInt64 runtime.authPasswordScratchCapacity
+run wipeLoginPasswordCall
+ignore value source wipeLoginPasswordCall type COpaqueMemoryAddress
+call passwordMatchesCall math.equalCSignedInt32
+argument passwordMatchesCall left CSignedInt32 verifyPasswordResult
+argument passwordMatchesCall right CSignedInt32 runtime.authMatchCode
+run passwordMatchesCall
+bind value passwordMatches Bool passwordMatchesCall
+branch if condition passwordMatches target loginAccepted
+branch else target loginAuditedInvalidCredentialsRejected
+label wipeLoginPasswordAndReject
+storage local immutable rejectedPasswordWipeByte CSignedInt32 0
+call wipeRejectedLoginPasswordCall c.memset
+argument wipeRejectedLoginPasswordCall ptr COpaqueMemoryAddress loginPasswordScratch
+argument wipeRejectedLoginPasswordCall value CSignedInt32 rejectedPasswordWipeByte
+argument wipeRejectedLoginPasswordCall byteCount CSignedInt64 runtime.authPasswordScratchCapacity
+run wipeRejectedLoginPasswordCall
+ignore value source wipeRejectedLoginPasswordCall type COpaqueMemoryAddress
+jump target loginAuditedInvalidCredentialsRejected
+label loginAccepted
+call allocateLoginIssueArenaCall c.malloc
+argument allocateLoginIssueArenaCall size CByteCount runtime.authIssueArenaCapacity
+run allocateLoginIssueArenaCall
+bind ok loginIssueArena COpaqueMemoryAddress allocateLoginIssueArenaCall
+bind error allocateLoginIssueArenaError COpaqueMemoryAddress allocateLoginIssueArenaCall
+branch error source allocateLoginIssueArenaCall target loginIssueArenaAllocationFailed
+call loginAccessTokenBufferCall pointer.offset
+argument loginAccessTokenBufferCall base COpaqueMemoryAddress loginIssueArena
+argument loginAccessTokenBufferCall offset CByteCount runtime.authIssueAccessTokenOffset
+run loginAccessTokenBufferCall
+bind value loginAccessTokenBuffer JwtOutputBuffer loginAccessTokenBufferCall
+call loginRefreshRandomBufferCall pointer.offset
+argument loginRefreshRandomBufferCall base COpaqueMemoryAddress loginIssueArena
+argument loginRefreshRandomBufferCall offset CByteCount runtime.authIssueRefreshRandomOffset
+run loginRefreshRandomBufferCall
+bind value loginRefreshRandomBuffer COpaqueMemoryAddress loginRefreshRandomBufferCall
+call loginRefreshTokenBufferCall pointer.offset
+argument loginRefreshTokenBufferCall base COpaqueMemoryAddress loginIssueArena
+argument loginRefreshTokenBufferCall offset CByteCount runtime.authIssueRefreshTokenOffset
+run loginRefreshTokenBufferCall
+bind value loginRefreshTokenBuffer COpaqueMemoryAddress loginRefreshTokenBufferCall
+call loginRefreshHashBufferCall pointer.offset
+argument loginRefreshHashBufferCall base COpaqueMemoryAddress loginIssueArena
+argument loginRefreshHashBufferCall offset CByteCount runtime.authIssueRefreshHashOffset
+run loginRefreshHashBufferCall
+bind value loginRefreshHashBuffer COpaqueMemoryAddress loginRefreshHashBufferCall
+call loginPayloadTemplateBufferCall pointer.offset
+argument loginPayloadTemplateBufferCall base COpaqueMemoryAddress loginIssueArena
+argument loginPayloadTemplateBufferCall offset CByteCount runtime.authIssuePayloadTemplateOffset
+run loginPayloadTemplateBufferCall
+bind value loginPayloadTemplateBuffer COpaqueMemoryAddress loginPayloadTemplateBufferCall
+call loginPayloadTemplateTextCall pointer.offset
+argument loginPayloadTemplateTextCall base COpaqueMemoryAddress loginIssueArena
+argument loginPayloadTemplateTextCall offset CByteCount runtime.authIssuePayloadTemplateOffset
+run loginPayloadTemplateTextCall
+bind value loginPayloadTemplateText JwtPayloadTemplate loginPayloadTemplateTextCall
+call loginResponseBodyBufferCall pointer.offset
+argument loginResponseBodyBufferCall base COpaqueMemoryAddress loginIssueArena
+argument loginResponseBodyBufferCall offset CByteCount runtime.authIssueResponseBodyOffset
+run loginResponseBodyBufferCall
+bind value loginResponseBodyBuffer AuthEnvelopeBuffer loginResponseBodyBufferCall
+call loginNowSecondsCall math.divideI64
+argument loginNowSecondsCall left I64 loginRateNow
+argument loginNowSecondsCall right I64 runtime.authMillisPerSecond
+run loginNowSecondsCall
+bind value loginNowSeconds CSignedInt64 loginNowSecondsCall
+call loginExpiresAtCall math.addI64
+argument loginExpiresAtCall left I64 loginNowSeconds
+argument loginExpiresAtCall right I64 runtime.authAccessTokenTtlSeconds
+run loginExpiresAtCall
+bind value loginExpiresAt CSignedInt64 loginExpiresAtCall
+call formatLoginPayloadTemplateCall c.snprintf
+argument formatLoginPayloadTemplateCall buffer COpaqueMemoryAddress loginPayloadTemplateBuffer
+argument formatLoginPayloadTemplateCall size CSignedInt64 runtime.authPayloadTemplateBufferCapacity
+argument formatLoginPayloadTemplateCall format CNullTerminatedByteString loginSelectedPayloadFormat
+argument formatLoginPayloadTemplateCall first CSignedInt64 loginNowSeconds
+argument formatLoginPayloadTemplateCall second CSignedInt64 loginNowSeconds
+argument formatLoginPayloadTemplateCall third CSignedInt64 loginExpiresAt
+run formatLoginPayloadTemplateCall
+ignore ok source formatLoginPayloadTemplateCall type CSignedInt32
+call loginJwtSecretCall resolveJwtSigningSecret
+run loginJwtSecretCall
+bind value loginJwtSecret JwtSecret loginJwtSecretCall
+call signLoginAccessTokenCall jwt.hs256SignJsonPayloadWithRandomJti
+argument signLoginAccessTokenCall secret JwtSecret loginJwtSecret
+argument signLoginAccessTokenCall payloadTemplate JwtPayloadTemplate loginPayloadTemplateText
+argument signLoginAccessTokenCall outBuffer JwtOutputBuffer loginAccessTokenBuffer
+argument signLoginAccessTokenCall outCapacity CSignedInt32 runtime.authAccessTokenCapacityArg
+run signLoginAccessTokenCall
+bind value signLoginAccessTokenStatus CSignedInt32 signLoginAccessTokenCall
+call signLoginAccessTokenOkCall math.equalCSignedInt32
+argument signLoginAccessTokenOkCall left CSignedInt32 signLoginAccessTokenStatus
+argument signLoginAccessTokenOkCall right CSignedInt32 runtime.authSuccessCode
+run signLoginAccessTokenOkCall
+bind value signLoginAccessTokenOk Bool signLoginAccessTokenOkCall
+branch if condition signLoginAccessTokenOk target loginAccessTokenSigned
+branch else target loginInternalErrorFailed
+label loginAccessTokenSigned
+call loginAccessTokenTextCall pointer.offset
+argument loginAccessTokenTextCall base COpaqueMemoryAddress loginIssueArena
+argument loginAccessTokenTextCall offset CByteCount runtime.authIssueAccessTokenOffset
+run loginAccessTokenTextCall
+bind value loginAccessTokenText JwtAccessToken loginAccessTokenTextCall
+call loginRefreshRandomCall bcrypt.randomBytes
+argument loginRefreshRandomCall outBuffer COpaqueMemoryAddress loginRefreshRandomBuffer
+argument loginRefreshRandomCall byteCount CSignedInt32 runtime.authRefreshRandomByteCount
+run loginRefreshRandomCall
+bind value loginRefreshRandomStatus CSignedInt32 loginRefreshRandomCall
+call loginRefreshRandomOkCall math.equalCSignedInt32
+argument loginRefreshRandomOkCall left CSignedInt32 loginRefreshRandomStatus
+argument loginRefreshRandomOkCall right CSignedInt32 runtime.authSuccessCode
+run loginRefreshRandomOkCall
+bind value loginRefreshRandomOk Bool loginRefreshRandomOkCall
+branch if condition loginRefreshRandomOk target loginRefreshRandomReady
+branch else target loginInternalErrorFailed
+label loginRefreshRandomReady
+memory authLoginHandler mutable loginRefreshTokenLength CSignedInt32 0
+set memory loginRefreshTokenLength runtime.authSuccessCode
+call loginRefreshEncodeCall bcrypt.base64UrlEncode
+argument loginRefreshEncodeCall inputBuffer COpaqueMemoryAddress loginRefreshRandomBuffer
+argument loginRefreshEncodeCall inputCount CSignedInt32 runtime.authRefreshRandomByteCount
+argument loginRefreshEncodeCall outputBuffer COpaqueMemoryAddress loginRefreshTokenBuffer
+argument loginRefreshEncodeCall outputCapacity CSignedInt32 runtime.authRefreshTokenCapacityArg
+argument loginRefreshEncodeCall outputLengthOut CSignedInt32 loginRefreshTokenLength
+run loginRefreshEncodeCall
+bind value loginRefreshEncodeStatus CSignedInt32 loginRefreshEncodeCall
+call loginRefreshEncodeOkCall math.equalCSignedInt32
+argument loginRefreshEncodeOkCall left CSignedInt32 loginRefreshEncodeStatus
+argument loginRefreshEncodeOkCall right CSignedInt32 runtime.authSuccessCode
+run loginRefreshEncodeOkCall
+bind value loginRefreshEncodeOk Bool loginRefreshEncodeOkCall
+branch if condition loginRefreshEncodeOk target loginRefreshTokenEncoded
+branch else target loginInternalErrorFailed
+label loginRefreshTokenEncoded
+call loginRefreshHashCall bcrypt.hashPassword
+argument loginRefreshHashCall plaintext CNullTerminatedByteString loginRefreshTokenBuffer
+argument loginRefreshHashCall cost CSignedInt32 runtime.authBcryptCost
+argument loginRefreshHashCall outBuffer COpaqueMemoryAddress loginRefreshHashBuffer
+argument loginRefreshHashCall outCapacity CSignedInt32 runtime.authRefreshHashCapacityArg
+run loginRefreshHashCall
+bind value loginRefreshHashStatus CSignedInt32 loginRefreshHashCall
+call loginRefreshHashOkCall math.equalCSignedInt32
+argument loginRefreshHashOkCall left CSignedInt32 loginRefreshHashStatus
+argument loginRefreshHashOkCall right CSignedInt32 runtime.authSuccessCode
+run loginRefreshHashOkCall
+bind value loginRefreshHashOk Bool loginRefreshHashOkCall
+branch if condition loginRefreshHashOk target loginRefreshTokenHashed
+branch else target loginInternalErrorFailed
+label loginRefreshTokenHashed
+call loginFormatEnvelopeCall jwt.formatBearerLoginEnvelope
+argument loginFormatEnvelopeCall accessToken JwtAccessToken loginAccessTokenText
+argument loginFormatEnvelopeCall refreshToken CNullTerminatedByteString loginRefreshTokenBuffer
+argument loginFormatEnvelopeCall userId CNullTerminatedByteString loginSelectedUserId
+argument loginFormatEnvelopeCall username CNullTerminatedByteString loginSelectedUsername
+argument loginFormatEnvelopeCall displayName CNullTerminatedByteString loginSelectedDisplayName
+argument loginFormatEnvelopeCall roleName CNullTerminatedByteString loginSelectedRoleName
+argument loginFormatEnvelopeCall scopesJson CNullTerminatedByteString loginSelectedScopesJson
+argument loginFormatEnvelopeCall outBuffer AuthEnvelopeBuffer loginResponseBodyBuffer
+argument loginFormatEnvelopeCall outCapacity CSignedInt32 runtime.authEnvelopeBodyCapacityArg
+run loginFormatEnvelopeCall
+bind value loginFormatEnvelopeStatus CSignedInt32 loginFormatEnvelopeCall
+call loginFormatEnvelopeOkCall math.equalCSignedInt32
+argument loginFormatEnvelopeOkCall left CSignedInt32 loginFormatEnvelopeStatus
+argument loginFormatEnvelopeOkCall right CSignedInt32 runtime.authSuccessCode
+run loginFormatEnvelopeOkCall
+bind value loginFormatEnvelopeOk Bool loginFormatEnvelopeOkCall
+branch if condition loginFormatEnvelopeOk target loginEnvelopeFormatted
+branch else target loginInternalErrorFailed
+label loginEnvelopeFormatted
+call loginResponseBodyTextCall pointer.offset
+argument loginResponseBodyTextCall base COpaqueMemoryAddress loginIssueArena
+argument loginResponseBodyTextCall offset CByteCount runtime.authIssueResponseBodyOffset
+run loginResponseBodyTextCall
+bind value loginResponseBodyText CNullTerminatedByteString loginResponseBodyTextCall
+call insertLoginAcceptedAuditCall insertAuthAuditEvent
+argument insertLoginAcceptedAuditCall database SqliteDatabase loginDatabase
+argument insertLoginAcceptedAuditCall actorUserId CNullTerminatedByteString loginSelectedUserId
+argument insertLoginAcceptedAuditCall actorRole CSignedInt64 loginSelectedRoleCode
+argument insertLoginAcceptedAuditCall requestId CNullTerminatedByteString runtime.fallbackRequestId
+argument insertLoginAcceptedAuditCall action CNullTerminatedByteString authAuditActionLoginAccepted
+argument insertLoginAcceptedAuditCall outcome CSignedInt64 runtime.auditOutcomeAcceptedCode
+argument insertLoginAcceptedAuditCall errorCode CNullTerminatedByteString authAuditErrorNone
+argument insertLoginAcceptedAuditCall payloadJson CNullTerminatedByteString authAuditPayloadEmpty
+argument insertLoginAcceptedAuditCall createdAt CSignedInt64 loginRateNow
+run insertLoginAcceptedAuditCall
+bind value loginAcceptedAuditInserted Bool insertLoginAcceptedAuditCall
+branch if condition loginAcceptedAuditInserted target loginAcceptedAuditReady
+branch else target loginInternalErrorFailed
+label loginAcceptedAuditReady
+storage local immutable authAcceptedCounterStep CSignedInt64 1
+call incrementLoginAcceptedMetricCall math.addI64
+argument incrementLoginAcceptedMetricCall left I64 metricsAuthLoginAcceptedTotal
+argument incrementLoginAcceptedMetricCall right I64 authAcceptedCounterStep
+run incrementLoginAcceptedMetricCall
+bind value nextLoginAcceptedTotal CSignedInt64 incrementLoginAcceptedMetricCall
+set storage metricsAuthLoginAcceptedTotal nextLoginAcceptedTotal
+call insertLoginAcceptedRequestLogCall insertRequestLogEvent
+argument insertLoginAcceptedRequestLogCall database SqliteDatabase loginDatabase
+argument insertLoginAcceptedRequestLogCall method CNullTerminatedByteString runtime.methodPost
+argument insertLoginAcceptedRequestLogCall path CNullTerminatedByteString runtime.routeAuthLogin
+argument insertLoginAcceptedRequestLogCall routePattern CNullTerminatedByteString runtime.routeAuthLogin
+argument insertLoginAcceptedRequestLogCall status CSignedInt64 runtime.okStatusInt64
+argument insertLoginAcceptedRequestLogCall actorUserId CNullTerminatedByteString loginSelectedUserId
+argument insertLoginAcceptedRequestLogCall actorRole CSignedInt64 loginSelectedRoleCode
+argument insertLoginAcceptedRequestLogCall durationMs CSignedInt64 0
+argument insertLoginAcceptedRequestLogCall auctionId CNullTerminatedByteString runtime.emptyAuctionId
+argument insertLoginAcceptedRequestLogCall idempotencyKey CNullTerminatedByteString runtime.emptyAuthTokenText
+argument insertLoginAcceptedRequestLogCall requestBytes CSignedInt64 bodyLength
+argument insertLoginAcceptedRequestLogCall responseBytes CSignedInt64 0
+argument insertLoginAcceptedRequestLogCall errorCode CNullTerminatedByteString runtime.emptyErrorCode
+argument insertLoginAcceptedRequestLogCall observedAt CSignedInt64 loginRateNow
+run insertLoginAcceptedRequestLogCall
+ignore value source insertLoginAcceptedRequestLogCall type Bool
+set storage currentAuthIssueArena loginIssueArena
+set storage currentAccessToken loginAccessTokenText
+set storage currentRefreshTokenHash loginRefreshHashBuffer
+set storage currentAuthUserId loginSelectedUserId
+set storage currentAuthUsername loginSelectedUsername
+set storage currentAuthDisplayName loginSelectedDisplayName
+set storage currentAuthRoleName loginSelectedRoleName
+set storage currentAuthScopesJson loginSelectedScopesJson
+set storage currentAuthRoleCode loginSelectedRoleCode
+set storage currentAuthPayloadTemplate loginPayloadTemplateText
+set storage currentAuthIssuedAt loginNowSeconds
+set storage currentAuthNotBefore loginNowSeconds
+set storage currentAuthExpiresAt loginExpiresAt
+set storage demoAuthSessionActive runtime.authActiveFlag
+call acceptedWriteCall helpers.writeJsonEnvelope
+argument acceptedWriteCall response HttpResponse response
+argument acceptedWriteCall status CSignedInt32 runtime.okStatus
+argument acceptedWriteCall responseBody CNullTerminatedByteString loginResponseBodyText
+run acceptedWriteCall
+bind value acceptedWriteStatus CSignedInt32 acceptedWriteCall
+return value acceptedWriteStatus
+label returnPayloadTooLarge
+call tooLargeWriteCall helpers.writePayloadTooLargeEnvelope
+argument tooLargeWriteCall response HttpResponse response
+run tooLargeWriteCall
+bind value tooLargeWriteStatus CSignedInt32 tooLargeWriteCall
+return value tooLargeWriteStatus
+label loginUnsupportedMediaType
+call loginUnsupportedMediaTypeWriteCall helpers.writeUnsupportedMediaTypeEnvelope
+argument loginUnsupportedMediaTypeWriteCall response HttpResponse response
+run loginUnsupportedMediaTypeWriteCall
+bind value loginUnsupportedMediaTypeWriteStatus CSignedInt32 loginUnsupportedMediaTypeWriteCall
+return value loginUnsupportedMediaTypeWriteStatus
+label loginParseInvalidCredentialsFailed
+call acknowledgeLoginParseErrorCall helpers.acknowledgeJsonAccessError
+argument acknowledgeLoginParseErrorCall errorValue JsonAccessError parseLoginBodyError
+run acknowledgeLoginParseErrorCall
+ignore void source acknowledgeLoginParseErrorCall
+jump target loginInvalidCredentialsRejected
+label loginUsernameAllocationFailed
+call acknowledgeLoginUsernameAllocationCall helpers.acknowledgeAllocationError
+argument acknowledgeLoginUsernameAllocationCall errorValue COpaqueMemoryAddress allocateLoginUsernameScratchError
+run acknowledgeLoginUsernameAllocationCall
+ignore void source acknowledgeLoginUsernameAllocationCall
+jump target loginInternalErrorFailed
+label loginPasswordAllocationFailed
+call acknowledgeLoginPasswordAllocationCall helpers.acknowledgeAllocationError
+argument acknowledgeLoginPasswordAllocationCall errorValue COpaqueMemoryAddress allocateLoginPasswordScratchError
+run acknowledgeLoginPasswordAllocationCall
+ignore void source acknowledgeLoginPasswordAllocationCall
+jump target loginInternalErrorFailed
+label loginUsernameFieldInvalidFailed
+call acknowledgeLoginUsernameFieldCall helpers.acknowledgeJsonAccessError
+argument acknowledgeLoginUsernameFieldCall errorValue JsonAccessError loginUsernameCursorError
+run acknowledgeLoginUsernameFieldCall
+ignore void source acknowledgeLoginUsernameFieldCall
+jump target loginInvalidCredentialsRejected
+label loginUsernameReadInvalidFailed
+call acknowledgeLoginUsernameReadCall helpers.acknowledgeJsonAccessError
+argument acknowledgeLoginUsernameReadCall errorValue JsonAccessError readLoginUsernameError
+run acknowledgeLoginUsernameReadCall
+ignore void source acknowledgeLoginUsernameReadCall
+jump target loginInvalidCredentialsRejected
+label loginPasswordFieldInvalidFailed
+call acknowledgeLoginPasswordFieldCall helpers.acknowledgeJsonAccessError
+argument acknowledgeLoginPasswordFieldCall errorValue JsonAccessError loginPasswordCursorError
+run acknowledgeLoginPasswordFieldCall
+ignore void source acknowledgeLoginPasswordFieldCall
+jump target loginInvalidCredentialsRejected
+label loginPasswordReadInvalidFailed
+call acknowledgeLoginPasswordReadCall helpers.acknowledgeJsonAccessError
+argument acknowledgeLoginPasswordReadCall errorValue JsonAccessError readLoginPasswordError
+run acknowledgeLoginPasswordReadCall
+ignore void source acknowledgeLoginPasswordReadCall
+jump target loginInvalidCredentialsRejected
+label loginIssueArenaAllocationFailed
+call acknowledgeLoginIssueArenaAllocationCall helpers.acknowledgeAllocationError
+argument acknowledgeLoginIssueArenaAllocationCall errorValue COpaqueMemoryAddress allocateLoginIssueArenaError
+run acknowledgeLoginIssueArenaAllocationCall
+ignore void source acknowledgeLoginIssueArenaAllocationCall
+jump target loginInternalErrorFailed
+label loginRateLimitedRejected
+storage local immutable loginRateLimitCounterStep CSignedInt64 1
+call incrementLoginRejectedByRateCall math.addI64
+argument incrementLoginRejectedByRateCall left I64 metricsAuthLoginRejectedTotal
+argument incrementLoginRejectedByRateCall right I64 loginRateLimitCounterStep
+run incrementLoginRejectedByRateCall
+bind value nextLoginRejectedRateTotal CSignedInt64 incrementLoginRejectedByRateCall
+set storage metricsAuthLoginRejectedTotal nextLoginRejectedRateTotal
+call incrementLoginRateLimitMetricCall math.addI64
+argument incrementLoginRateLimitMetricCall left I64 metricsRateLimitHitsTotal
+argument incrementLoginRateLimitMetricCall right I64 loginRateLimitCounterStep
+run incrementLoginRateLimitMetricCall
+bind value nextLoginRateLimitHitsTotal CSignedInt64 incrementLoginRateLimitMetricCall
+set storage metricsRateLimitHitsTotal nextLoginRateLimitHitsTotal
+call insertLoginRateLimitedAuditCall insertAuthAuditEvent
+argument insertLoginRateLimitedAuditCall database SqliteDatabase loginDatabase
+argument insertLoginRateLimitedAuditCall actorUserId CNullTerminatedByteString runtime.emptyAuthTokenText
+argument insertLoginRateLimitedAuditCall actorRole CSignedInt64 0
+argument insertLoginRateLimitedAuditCall requestId CNullTerminatedByteString runtime.fallbackRequestId
+argument insertLoginRateLimitedAuditCall action CNullTerminatedByteString authAuditActionLoginRejected
+argument insertLoginRateLimitedAuditCall outcome CSignedInt64 authAuditOutcomeRejectedCode
+argument insertLoginRateLimitedAuditCall errorCode CNullTerminatedByteString authAuditErrorRateLimited
+argument insertLoginRateLimitedAuditCall payloadJson CNullTerminatedByteString authAuditPayloadEmpty
+argument insertLoginRateLimitedAuditCall createdAt CSignedInt64 loginRateNow
+run insertLoginRateLimitedAuditCall
+ignore value source insertLoginRateLimitedAuditCall type Bool
+call insertLoginRateLimitedRequestLogCall insertRequestLogEvent
+argument insertLoginRateLimitedRequestLogCall database SqliteDatabase loginDatabase
+argument insertLoginRateLimitedRequestLogCall method CNullTerminatedByteString runtime.methodPost
+argument insertLoginRateLimitedRequestLogCall path CNullTerminatedByteString runtime.routeAuthLogin
+argument insertLoginRateLimitedRequestLogCall routePattern CNullTerminatedByteString runtime.routeAuthLogin
+argument insertLoginRateLimitedRequestLogCall status CSignedInt64 runtime.tooManyRequestsStatusInt64
+argument insertLoginRateLimitedRequestLogCall actorUserId CNullTerminatedByteString runtime.emptyAuthTokenText
+argument insertLoginRateLimitedRequestLogCall actorRole CSignedInt64 0
+argument insertLoginRateLimitedRequestLogCall durationMs CSignedInt64 0
+argument insertLoginRateLimitedRequestLogCall auctionId CNullTerminatedByteString runtime.emptyAuctionId
+argument insertLoginRateLimitedRequestLogCall idempotencyKey CNullTerminatedByteString runtime.emptyAuthTokenText
+argument insertLoginRateLimitedRequestLogCall requestBytes CSignedInt64 bodyLength
+argument insertLoginRateLimitedRequestLogCall responseBytes CSignedInt64 0
+argument insertLoginRateLimitedRequestLogCall errorCode CNullTerminatedByteString runtime.rateLimitedErrorCode
+argument insertLoginRateLimitedRequestLogCall observedAt CSignedInt64 loginRateNow
+run insertLoginRateLimitedRequestLogCall
+ignore value source insertLoginRateLimitedRequestLogCall type Bool
+call rateLimitedLoginWriteCall helpers.writeRateLimitedEnvelope
+argument rateLimitedLoginWriteCall response HttpResponse response
+run rateLimitedLoginWriteCall
+bind value rateLimitedLoginWriteStatus CSignedInt32 rateLimitedLoginWriteCall
+return value rateLimitedLoginWriteStatus
+label loginAuditedInvalidCredentialsRejected
+storage local immutable loginRejectedCounterStep CSignedInt64 1
+call incrementLoginRejectedMetricCall math.addI64
+argument incrementLoginRejectedMetricCall left I64 metricsAuthLoginRejectedTotal
+argument incrementLoginRejectedMetricCall right I64 loginRejectedCounterStep
+run incrementLoginRejectedMetricCall
+bind value nextLoginRejectedTotal CSignedInt64 incrementLoginRejectedMetricCall
+set storage metricsAuthLoginRejectedTotal nextLoginRejectedTotal
+call insertLoginRejectedAuditCall insertAuthAuditEvent
+argument insertLoginRejectedAuditCall database SqliteDatabase loginDatabase
+argument insertLoginRejectedAuditCall actorUserId CNullTerminatedByteString runtime.emptyAuthTokenText
+argument insertLoginRejectedAuditCall actorRole CSignedInt64 0
+argument insertLoginRejectedAuditCall requestId CNullTerminatedByteString runtime.fallbackRequestId
+argument insertLoginRejectedAuditCall action CNullTerminatedByteString authAuditActionLoginRejected
+argument insertLoginRejectedAuditCall outcome CSignedInt64 authAuditOutcomeRejectedCode
+argument insertLoginRejectedAuditCall errorCode CNullTerminatedByteString authAuditErrorInvalidCredentials
+argument insertLoginRejectedAuditCall payloadJson CNullTerminatedByteString authAuditPayloadEmpty
+argument insertLoginRejectedAuditCall createdAt CSignedInt64 loginRateNow
+run insertLoginRejectedAuditCall
+ignore value source insertLoginRejectedAuditCall type Bool
+call insertLoginRejectedRequestLogCall insertRequestLogEvent
+argument insertLoginRejectedRequestLogCall database SqliteDatabase loginDatabase
+argument insertLoginRejectedRequestLogCall method CNullTerminatedByteString runtime.methodPost
+argument insertLoginRejectedRequestLogCall path CNullTerminatedByteString runtime.routeAuthLogin
+argument insertLoginRejectedRequestLogCall routePattern CNullTerminatedByteString runtime.routeAuthLogin
+argument insertLoginRejectedRequestLogCall status CSignedInt64 runtime.unauthorizedStatusInt64
+argument insertLoginRejectedRequestLogCall actorUserId CNullTerminatedByteString runtime.emptyAuthTokenText
+argument insertLoginRejectedRequestLogCall actorRole CSignedInt64 0
+argument insertLoginRejectedRequestLogCall durationMs CSignedInt64 0
+argument insertLoginRejectedRequestLogCall auctionId CNullTerminatedByteString runtime.emptyAuctionId
+argument insertLoginRejectedRequestLogCall idempotencyKey CNullTerminatedByteString runtime.emptyAuthTokenText
+argument insertLoginRejectedRequestLogCall requestBytes CSignedInt64 bodyLength
+argument insertLoginRejectedRequestLogCall responseBytes CSignedInt64 0
+argument insertLoginRejectedRequestLogCall errorCode CNullTerminatedByteString runtime.invalidCredentialsErrorCode
+argument insertLoginRejectedRequestLogCall observedAt CSignedInt64 loginRateNow
+run insertLoginRejectedRequestLogCall
+ignore value source insertLoginRejectedRequestLogCall type Bool
+jump target loginInvalidCredentialsRejected
+label loginDatabaseUnavailable
+call loginDatabaseUnavailableWriteCall helpers.writeDatabaseUnavailableEnvelope
+argument loginDatabaseUnavailableWriteCall response HttpResponse response
+run loginDatabaseUnavailableWriteCall
+bind value loginDatabaseUnavailableWriteStatus CSignedInt32 loginDatabaseUnavailableWriteCall
+return value loginDatabaseUnavailableWriteStatus
+label loginInvalidCredentialsRejected
+call invalidLoginWriteCall helpers.writeInvalidCredentialsEnvelope
+argument invalidLoginWriteCall response HttpResponse response
+run invalidLoginWriteCall
+bind value invalidLoginWriteStatus CSignedInt32 invalidLoginWriteCall
+return value invalidLoginWriteStatus
+label loginInternalErrorFailed
+call loginInternalWriteCall helpers.writeMalformedJsonServerErrorEnvelope
+argument loginInternalWriteCall response HttpResponse response
+run loginInternalWriteCall
+bind value loginInternalWriteStatus CSignedInt32 loginInternalWriteCall
+return value loginInternalWriteStatus
+
+operation authRefreshHandler
+input operation authRefreshHandler request HttpRequest
+input operation authRefreshHandler response HttpResponse
+output operation authRefreshHandler CSignedInt32
+effect authRefreshHandler read http.request.body
+effect authRefreshHandler write http.response
+effect authRefreshHandler read json.document.tree
+effect authRefreshHandler write json.document.tree
+effect authRefreshHandler read memory.buffer
+effect authRefreshHandler write memory.buffer
+effect authRefreshHandler allocate heap
+effect authRefreshHandler free heap
+effect authRefreshHandler read process.environment
+memory authRefreshHandler heap yes
+async authRefreshHandler no
+useCapability authRefreshHandler httpRequestReader
+useCapability authRefreshHandler httpResponseWriter
+useCapability authRefreshHandler jsonDocumentReadCapability
+useCapability authRefreshHandler jsonDocumentWriteCapability
+useCapability authRefreshHandler memoryBufferReadWriteCapability
+useCapability authRefreshHandler heapAllocCapability
+useCapability authRefreshHandler heapFreeCapability
+useCapability authRefreshHandler bcryptHashCompute
+useCapability authRefreshHandler jwtTokenSigner
+useCapability authRefreshHandler processEnvironmentReader
+purpose operation authRefreshHandler "Verify the current refresh token against its process-local bcrypt hash and rotate both auth tokens."
+invariant operation authRefreshHandler "The plaintext refresh token is returned only once; subsequent refresh/logout checks use the stored bcrypt hash."
+label startAuthRefreshHandler
+call refreshContentTypeCall helpers.requestContentTypeIsJson
+argument refreshContentTypeCall request HttpRequest request
+run refreshContentTypeCall
+bind value refreshContentTypeAccepted Bool refreshContentTypeCall
+branch if condition refreshContentTypeAccepted target refreshContentTypeValidated
+branch else target refreshUnsupportedMediaType
+label refreshContentTypeValidated
+call refreshBodyLengthCall http.requestBodyLength
+argument refreshBodyLengthCall request HttpRequest request
+run refreshBodyLengthCall
+bind value refreshBodyLength CByteCount refreshBodyLengthCall
+call refreshBodyTooLargeCall math.greaterThanI64
+argument refreshBodyTooLargeCall left I64 refreshBodyLength
+argument refreshBodyTooLargeCall right I64 runtime.maxJsonBodyBytes
+run refreshBodyTooLargeCall
+bind value refreshBodyTooLarge Bool refreshBodyTooLargeCall
+branch if condition refreshBodyTooLarge target refreshPayloadTooLarge
+call refreshBodyTextCall http.requestBodyText
+argument refreshBodyTextCall request HttpRequest request
+run refreshBodyTextCall
+bind value refreshBodyText CNullTerminatedByteString refreshBodyTextCall
+call refreshBodyMissingCall pointer.isNull
+argument refreshBodyMissingCall ptr COpaqueMemoryAddress refreshBodyText
+run refreshBodyMissingCall
+bind value refreshBodyMissing Bool refreshBodyMissingCall
+branch if condition refreshBodyMissing target refreshInvalidRejected
+call parseRefreshBodyCall json.createDocument
+argument parseRefreshBodyCall jsonText CNullTerminatedByteString refreshBodyText
+argument parseRefreshBodyCall capacityBytes JsonCapacityBytes runtime.authJsonDocumentCapacity
+run parseRefreshBodyCall
+bind ok refreshDocument JsonDocument parseRefreshBodyCall
+bind error parseRefreshError JsonAccessError parseRefreshBodyCall
+branch error source parseRefreshBodyCall target refreshParseInvalidFailed
+defer releaseRefreshDocumentDefer json.destroyDocument refreshDocument
+call refreshRootCall json.documentRoot
+argument refreshRootCall document JsonDocument refreshDocument
+run refreshRootCall
+bind value refreshRoot JsonCursor refreshRootCall
+call allocateRefreshScratchCall c.malloc
+argument allocateRefreshScratchCall size CByteCount runtime.authRefreshScratchCapacity
+run allocateRefreshScratchCall
+bind ok refreshScratch COpaqueMemoryAddress allocateRefreshScratchCall
+bind error allocateRefreshScratchError COpaqueMemoryAddress allocateRefreshScratchCall
+branch error source allocateRefreshScratchCall target refreshAllocationInvalidFailed
+defer releaseRefreshScratchDefer c.free refreshScratch
+call refreshTokenCursorCall json.objectFieldAt
+argument refreshTokenCursorCall document JsonDocument refreshDocument
+argument refreshTokenCursorCall cursor JsonCursor refreshRoot
+argument refreshTokenCursorCall fieldName CNullTerminatedByteString runtime.authRefreshTokenField
+run refreshTokenCursorCall
+bind ok refreshTokenCursor JsonCursor refreshTokenCursorCall
+bind error refreshTokenCursorError JsonAccessError refreshTokenCursorCall
+branch error source refreshTokenCursorCall target refreshFieldInvalidFailed
+call readRefreshTokenCall json.cursorString
+argument readRefreshTokenCall document JsonDocument refreshDocument
+argument readRefreshTokenCall cursor JsonCursor refreshTokenCursor
+argument readRefreshTokenCall scratch COpaqueMemoryAddress refreshScratch
+argument readRefreshTokenCall scratchCapacity CSignedInt64 runtime.authRefreshScratchCapacity
+run readRefreshTokenCall
+bind ok refreshTokenText CNullTerminatedByteString readRefreshTokenCall
+bind error readRefreshTokenError JsonAccessError readRefreshTokenCall
+branch error source readRefreshTokenCall target refreshReadInvalidFailed
+call refreshVerifyCall bcrypt.verifyPassword
+argument refreshVerifyCall plaintext CNullTerminatedByteString refreshTokenText
+argument refreshVerifyCall expectedHash CNullTerminatedByteString currentRefreshTokenHash
+run refreshVerifyCall
+bind value refreshVerifyResult CSignedInt32 refreshVerifyCall
+call refreshMatchesCall math.equalCSignedInt32
+argument refreshMatchesCall left CSignedInt32 refreshVerifyResult
+argument refreshMatchesCall right CSignedInt32 runtime.authMatchCode
+run refreshMatchesCall
+bind value refreshMatches Bool refreshMatchesCall
+branch if condition refreshMatches target refreshAccepted
+branch else target refreshInvalidRejected
+label refreshAccepted
+storage local mutable refreshSelectedPayloadFormat CNullTerminatedByteString authAuctioneerTimedAccessPayloadFormat
+call refreshBidderRoleCall math.equalI64
+argument refreshBidderRoleCall left I64 currentAuthRoleCode
+argument refreshBidderRoleCall right I64 runtime.bidderRoleCode
+run refreshBidderRoleCall
+bind value refreshBidderRole Bool refreshBidderRoleCall
+branch if condition refreshBidderRole target refreshBidderPayloadSelected
+branch else target refreshPayloadFormatSelected
+label refreshBidderPayloadSelected
+set memory refreshSelectedPayloadFormat authBidderTimedAccessPayloadFormat
+label refreshPayloadFormatSelected
+call allocateRefreshIssueArenaCall c.malloc
+argument allocateRefreshIssueArenaCall size CByteCount runtime.authIssueArenaCapacity
+run allocateRefreshIssueArenaCall
+bind ok refreshIssueArena COpaqueMemoryAddress allocateRefreshIssueArenaCall
+bind error allocateRefreshIssueArenaError COpaqueMemoryAddress allocateRefreshIssueArenaCall
+branch error source allocateRefreshIssueArenaCall target refreshIssueArenaAllocationFailed
+call refreshAccessTokenBufferCall pointer.offset
+argument refreshAccessTokenBufferCall base COpaqueMemoryAddress refreshIssueArena
+argument refreshAccessTokenBufferCall offset CByteCount runtime.authIssueAccessTokenOffset
+run refreshAccessTokenBufferCall
+bind value refreshAccessTokenBuffer JwtOutputBuffer refreshAccessTokenBufferCall
+call refreshRandomBufferCall pointer.offset
+argument refreshRandomBufferCall base COpaqueMemoryAddress refreshIssueArena
+argument refreshRandomBufferCall offset CByteCount runtime.authIssueRefreshRandomOffset
+run refreshRandomBufferCall
+bind value refreshRandomBuffer COpaqueMemoryAddress refreshRandomBufferCall
+call refreshNewTokenBufferCall pointer.offset
+argument refreshNewTokenBufferCall base COpaqueMemoryAddress refreshIssueArena
+argument refreshNewTokenBufferCall offset CByteCount runtime.authIssueRefreshTokenOffset
+run refreshNewTokenBufferCall
+bind value refreshNewTokenBuffer COpaqueMemoryAddress refreshNewTokenBufferCall
+call refreshHashBufferCall pointer.offset
+argument refreshHashBufferCall base COpaqueMemoryAddress refreshIssueArena
+argument refreshHashBufferCall offset CByteCount runtime.authIssueRefreshHashOffset
+run refreshHashBufferCall
+bind value refreshHashBuffer COpaqueMemoryAddress refreshHashBufferCall
+call refreshPayloadTemplateBufferCall pointer.offset
+argument refreshPayloadTemplateBufferCall base COpaqueMemoryAddress refreshIssueArena
+argument refreshPayloadTemplateBufferCall offset CByteCount runtime.authIssuePayloadTemplateOffset
+run refreshPayloadTemplateBufferCall
+bind value refreshPayloadTemplateBuffer COpaqueMemoryAddress refreshPayloadTemplateBufferCall
+call refreshPayloadTemplateTextCall pointer.offset
+argument refreshPayloadTemplateTextCall base COpaqueMemoryAddress refreshIssueArena
+argument refreshPayloadTemplateTextCall offset CByteCount runtime.authIssuePayloadTemplateOffset
+run refreshPayloadTemplateTextCall
+bind value refreshPayloadTemplateText JwtPayloadTemplate refreshPayloadTemplateTextCall
+call refreshResponseBodyBufferCall pointer.offset
+argument refreshResponseBodyBufferCall base COpaqueMemoryAddress refreshIssueArena
+argument refreshResponseBodyBufferCall offset CByteCount runtime.authIssueResponseBodyOffset
+run refreshResponseBodyBufferCall
+bind value refreshResponseBodyBuffer AuthEnvelopeBuffer refreshResponseBodyBufferCall
+call refreshNowMillisCall http.nowMillis
+run refreshNowMillisCall
+bind value refreshNowMillis CSignedInt64 refreshNowMillisCall
+call refreshNowSecondsCall math.divideI64
+argument refreshNowSecondsCall left I64 refreshNowMillis
+argument refreshNowSecondsCall right I64 runtime.authMillisPerSecond
+run refreshNowSecondsCall
+bind value refreshNowSeconds CSignedInt64 refreshNowSecondsCall
+call refreshExpiresAtCall math.addI64
+argument refreshExpiresAtCall left I64 refreshNowSeconds
+argument refreshExpiresAtCall right I64 runtime.authAccessTokenTtlSeconds
+run refreshExpiresAtCall
+bind value refreshExpiresAt CSignedInt64 refreshExpiresAtCall
+call formatRefreshPayloadTemplateCall c.snprintf
+argument formatRefreshPayloadTemplateCall buffer COpaqueMemoryAddress refreshPayloadTemplateBuffer
+argument formatRefreshPayloadTemplateCall size CSignedInt64 runtime.authPayloadTemplateBufferCapacity
+argument formatRefreshPayloadTemplateCall format CNullTerminatedByteString refreshSelectedPayloadFormat
+argument formatRefreshPayloadTemplateCall first CSignedInt64 refreshNowSeconds
+argument formatRefreshPayloadTemplateCall second CSignedInt64 refreshNowSeconds
+argument formatRefreshPayloadTemplateCall third CSignedInt64 refreshExpiresAt
+run formatRefreshPayloadTemplateCall
+ignore ok source formatRefreshPayloadTemplateCall type CSignedInt32
+call refreshJwtSecretCall resolveJwtSigningSecret
+run refreshJwtSecretCall
+bind value refreshJwtSecret JwtSecret refreshJwtSecretCall
+call signRefreshAccessTokenCall jwt.hs256SignJsonPayloadWithRandomJti
+argument signRefreshAccessTokenCall secret JwtSecret refreshJwtSecret
+argument signRefreshAccessTokenCall payloadTemplate JwtPayloadTemplate refreshPayloadTemplateText
+argument signRefreshAccessTokenCall outBuffer JwtOutputBuffer refreshAccessTokenBuffer
+argument signRefreshAccessTokenCall outCapacity CSignedInt32 runtime.authAccessTokenCapacityArg
+run signRefreshAccessTokenCall
+bind value signRefreshAccessTokenStatus CSignedInt32 signRefreshAccessTokenCall
+call signRefreshAccessTokenOkCall math.equalCSignedInt32
+argument signRefreshAccessTokenOkCall left CSignedInt32 signRefreshAccessTokenStatus
+argument signRefreshAccessTokenOkCall right CSignedInt32 runtime.authSuccessCode
+run signRefreshAccessTokenOkCall
+bind value signRefreshAccessTokenOk Bool signRefreshAccessTokenOkCall
+branch if condition signRefreshAccessTokenOk target refreshAccessTokenSigned
+branch else target refreshInternalErrorFailed
+label refreshAccessTokenSigned
+call refreshAccessTokenTextCall pointer.offset
+argument refreshAccessTokenTextCall base COpaqueMemoryAddress refreshIssueArena
+argument refreshAccessTokenTextCall offset CByteCount runtime.authIssueAccessTokenOffset
+run refreshAccessTokenTextCall
+bind value refreshAccessTokenText JwtAccessToken refreshAccessTokenTextCall
+call refreshRandomCall bcrypt.randomBytes
+argument refreshRandomCall outBuffer COpaqueMemoryAddress refreshRandomBuffer
+argument refreshRandomCall byteCount CSignedInt32 runtime.authRefreshRandomByteCount
+run refreshRandomCall
+bind value refreshRandomStatus CSignedInt32 refreshRandomCall
+call refreshRandomOkCall math.equalCSignedInt32
+argument refreshRandomOkCall left CSignedInt32 refreshRandomStatus
+argument refreshRandomOkCall right CSignedInt32 runtime.authSuccessCode
+run refreshRandomOkCall
+bind value refreshRandomOk Bool refreshRandomOkCall
+branch if condition refreshRandomOk target refreshRandomReady
+branch else target refreshInternalErrorFailed
+label refreshRandomReady
+memory authRefreshHandler mutable refreshNewTokenLength CSignedInt32 0
+set memory refreshNewTokenLength runtime.authSuccessCode
+call refreshEncodeCall bcrypt.base64UrlEncode
+argument refreshEncodeCall inputBuffer COpaqueMemoryAddress refreshRandomBuffer
+argument refreshEncodeCall inputCount CSignedInt32 runtime.authRefreshRandomByteCount
+argument refreshEncodeCall outputBuffer COpaqueMemoryAddress refreshNewTokenBuffer
+argument refreshEncodeCall outputCapacity CSignedInt32 runtime.authRefreshTokenCapacityArg
+argument refreshEncodeCall outputLengthOut CSignedInt32 refreshNewTokenLength
+run refreshEncodeCall
+bind value refreshEncodeStatus CSignedInt32 refreshEncodeCall
+call refreshEncodeOkCall math.equalCSignedInt32
+argument refreshEncodeOkCall left CSignedInt32 refreshEncodeStatus
+argument refreshEncodeOkCall right CSignedInt32 runtime.authSuccessCode
+run refreshEncodeOkCall
+bind value refreshEncodeOk Bool refreshEncodeOkCall
+branch if condition refreshEncodeOk target refreshTokenEncoded
+branch else target refreshInternalErrorFailed
+label refreshTokenEncoded
+call refreshHashCall bcrypt.hashPassword
+argument refreshHashCall plaintext CNullTerminatedByteString refreshNewTokenBuffer
+argument refreshHashCall cost CSignedInt32 runtime.authBcryptCost
+argument refreshHashCall outBuffer COpaqueMemoryAddress refreshHashBuffer
+argument refreshHashCall outCapacity CSignedInt32 runtime.authRefreshHashCapacityArg
+run refreshHashCall
+bind value refreshHashStatus CSignedInt32 refreshHashCall
+call refreshHashOkCall math.equalCSignedInt32
+argument refreshHashOkCall left CSignedInt32 refreshHashStatus
+argument refreshHashOkCall right CSignedInt32 runtime.authSuccessCode
+run refreshHashOkCall
+bind value refreshHashOk Bool refreshHashOkCall
+branch if condition refreshHashOk target refreshTokenHashed
+branch else target refreshInternalErrorFailed
+label refreshTokenHashed
+call refreshFormatEnvelopeCall jwt.formatBearerRefreshEnvelope
+argument refreshFormatEnvelopeCall accessToken JwtAccessToken refreshAccessTokenText
+argument refreshFormatEnvelopeCall refreshToken CNullTerminatedByteString refreshNewTokenBuffer
+argument refreshFormatEnvelopeCall outBuffer AuthEnvelopeBuffer refreshResponseBodyBuffer
+argument refreshFormatEnvelopeCall outCapacity CSignedInt32 runtime.authEnvelopeBodyCapacityArg
+run refreshFormatEnvelopeCall
+bind value refreshFormatEnvelopeStatus CSignedInt32 refreshFormatEnvelopeCall
+call refreshFormatEnvelopeOkCall math.equalCSignedInt32
+argument refreshFormatEnvelopeOkCall left CSignedInt32 refreshFormatEnvelopeStatus
+argument refreshFormatEnvelopeOkCall right CSignedInt32 runtime.authSuccessCode
+run refreshFormatEnvelopeOkCall
+bind value refreshFormatEnvelopeOk Bool refreshFormatEnvelopeOkCall
+branch if condition refreshFormatEnvelopeOk target refreshEnvelopeFormatted
+branch else target refreshInternalErrorFailed
+label refreshEnvelopeFormatted
+call refreshResponseBodyTextCall pointer.offset
+argument refreshResponseBodyTextCall base COpaqueMemoryAddress refreshIssueArena
+argument refreshResponseBodyTextCall offset CByteCount runtime.authIssueResponseBodyOffset
+run refreshResponseBodyTextCall
+bind value refreshResponseBodyText CNullTerminatedByteString refreshResponseBodyTextCall
+set storage currentAuthIssueArena refreshIssueArena
+set storage currentAccessToken refreshAccessTokenText
+set storage currentRefreshTokenHash refreshHashBuffer
+set storage currentAuthPayloadTemplate refreshPayloadTemplateText
+set storage currentAuthIssuedAt refreshNowSeconds
+set storage currentAuthNotBefore refreshNowSeconds
+set storage currentAuthExpiresAt refreshExpiresAt
+set storage demoAuthSessionActive runtime.authActiveFlag
+call refreshWriteCall helpers.writeJsonEnvelope
+argument refreshWriteCall response HttpResponse response
+argument refreshWriteCall status CSignedInt32 runtime.okStatus
+argument refreshWriteCall responseBody CNullTerminatedByteString refreshResponseBodyText
+run refreshWriteCall
+bind value refreshWriteStatus CSignedInt32 refreshWriteCall
+return value refreshWriteStatus
+label refreshParseInvalidFailed
+call acknowledgeRefreshParseErrorCall helpers.acknowledgeJsonAccessError
+argument acknowledgeRefreshParseErrorCall errorValue JsonAccessError parseRefreshError
+run acknowledgeRefreshParseErrorCall
+ignore void source acknowledgeRefreshParseErrorCall
+jump target refreshInvalidRejected
+label refreshAllocationInvalidFailed
+call acknowledgeRefreshAllocationCall helpers.acknowledgeAllocationError
+argument acknowledgeRefreshAllocationCall errorValue COpaqueMemoryAddress allocateRefreshScratchError
+run acknowledgeRefreshAllocationCall
+ignore void source acknowledgeRefreshAllocationCall
+jump target refreshInvalidRejected
+label refreshFieldInvalidFailed
+call acknowledgeRefreshFieldCall helpers.acknowledgeJsonAccessError
+argument acknowledgeRefreshFieldCall errorValue JsonAccessError refreshTokenCursorError
+run acknowledgeRefreshFieldCall
+ignore void source acknowledgeRefreshFieldCall
+jump target refreshInvalidRejected
+label refreshReadInvalidFailed
+call acknowledgeRefreshReadCall helpers.acknowledgeJsonAccessError
+argument acknowledgeRefreshReadCall errorValue JsonAccessError readRefreshTokenError
+run acknowledgeRefreshReadCall
+ignore void source acknowledgeRefreshReadCall
+jump target refreshInvalidRejected
+label refreshIssueArenaAllocationFailed
+call acknowledgeRefreshIssueArenaAllocationCall helpers.acknowledgeAllocationError
+argument acknowledgeRefreshIssueArenaAllocationCall errorValue COpaqueMemoryAddress allocateRefreshIssueArenaError
+run acknowledgeRefreshIssueArenaAllocationCall
+ignore void source acknowledgeRefreshIssueArenaAllocationCall
+jump target refreshInternalErrorFailed
+label refreshPayloadTooLarge
+call refreshTooLargeWriteCall helpers.writePayloadTooLargeEnvelope
+argument refreshTooLargeWriteCall response HttpResponse response
+run refreshTooLargeWriteCall
+bind value refreshTooLargeWriteStatus CSignedInt32 refreshTooLargeWriteCall
+return value refreshTooLargeWriteStatus
+label refreshUnsupportedMediaType
+call refreshUnsupportedMediaTypeWriteCall helpers.writeUnsupportedMediaTypeEnvelope
+argument refreshUnsupportedMediaTypeWriteCall response HttpResponse response
+run refreshUnsupportedMediaTypeWriteCall
+bind value refreshUnsupportedMediaTypeWriteStatus CSignedInt32 refreshUnsupportedMediaTypeWriteCall
+return value refreshUnsupportedMediaTypeWriteStatus
+label refreshInternalErrorFailed
+call refreshInternalWriteCall helpers.writeMalformedJsonServerErrorEnvelope
+argument refreshInternalWriteCall response HttpResponse response
+run refreshInternalWriteCall
+bind value refreshInternalWriteStatus CSignedInt32 refreshInternalWriteCall
+return value refreshInternalWriteStatus
+label refreshInvalidRejected
+call invalidRefreshWriteCall helpers.writeInvalidRefreshTokenEnvelope
+argument invalidRefreshWriteCall response HttpResponse response
+run invalidRefreshWriteCall
+bind value invalidRefreshWriteStatus CSignedInt32 invalidRefreshWriteCall
+return value invalidRefreshWriteStatus
+
+operation authLogoutHandler
+input operation authLogoutHandler request HttpRequest
+input operation authLogoutHandler response HttpResponse
+output operation authLogoutHandler CSignedInt32
+effect authLogoutHandler read http.request.body
+effect authLogoutHandler write http.response
+effect authLogoutHandler read json.document.tree
+effect authLogoutHandler write json.document.tree
+effect authLogoutHandler read memory.buffer
+effect authLogoutHandler allocate heap
+effect authLogoutHandler free heap
+memory authLogoutHandler heap yes
+async authLogoutHandler no
+useCapability authLogoutHandler httpRequestReader
+useCapability authLogoutHandler httpResponseWriter
+useCapability authLogoutHandler jsonDocumentReadCapability
+useCapability authLogoutHandler jsonDocumentWriteCapability
+useCapability authLogoutHandler memoryBufferReadWriteCapability
+useCapability authLogoutHandler heapAllocCapability
+useCapability authLogoutHandler heapFreeCapability
+useCapability authLogoutHandler bcryptHashCompute
+purpose operation authLogoutHandler "Revoke the process-local demo session when the refresh token is valid."
+invariant operation authLogoutHandler "Logout clears the demo session flag before writing the success envelope."
+label startAuthLogoutHandler
+call logoutContentTypeCall helpers.requestContentTypeIsJson
+argument logoutContentTypeCall request HttpRequest request
+run logoutContentTypeCall
+bind value logoutContentTypeAccepted Bool logoutContentTypeCall
+branch if condition logoutContentTypeAccepted target logoutContentTypeValidated
+branch else target logoutUnsupportedMediaType
+label logoutContentTypeValidated
+call logoutBodyLengthCall http.requestBodyLength
+argument logoutBodyLengthCall request HttpRequest request
+run logoutBodyLengthCall
+bind value logoutBodyLength CByteCount logoutBodyLengthCall
+call logoutBodyTooLargeCall math.greaterThanI64
+argument logoutBodyTooLargeCall left I64 logoutBodyLength
+argument logoutBodyTooLargeCall right I64 runtime.maxJsonBodyBytes
+run logoutBodyTooLargeCall
+bind value logoutBodyTooLarge Bool logoutBodyTooLargeCall
+branch if condition logoutBodyTooLarge target logoutPayloadTooLarge
+call logoutBodyTextCall http.requestBodyText
+argument logoutBodyTextCall request HttpRequest request
+run logoutBodyTextCall
+bind value logoutBodyText CNullTerminatedByteString logoutBodyTextCall
+call logoutBodyMissingCall pointer.isNull
+argument logoutBodyMissingCall ptr COpaqueMemoryAddress logoutBodyText
+run logoutBodyMissingCall
+bind value logoutBodyMissing Bool logoutBodyMissingCall
+branch if condition logoutBodyMissing target logoutInvalidRejected
+call parseLogoutBodyCall json.createDocument
+argument parseLogoutBodyCall jsonText CNullTerminatedByteString logoutBodyText
+argument parseLogoutBodyCall capacityBytes JsonCapacityBytes runtime.authJsonDocumentCapacity
+run parseLogoutBodyCall
+bind ok logoutDocument JsonDocument parseLogoutBodyCall
+bind error parseLogoutError JsonAccessError parseLogoutBodyCall
+branch error source parseLogoutBodyCall target logoutParseInvalidFailed
+defer releaseLogoutDocumentDefer json.destroyDocument logoutDocument
+call logoutRootCall json.documentRoot
+argument logoutRootCall document JsonDocument logoutDocument
+run logoutRootCall
+bind value logoutRoot JsonCursor logoutRootCall
+call allocateLogoutScratchCall c.malloc
+argument allocateLogoutScratchCall size CByteCount runtime.authRefreshScratchCapacity
+run allocateLogoutScratchCall
+bind ok logoutScratch COpaqueMemoryAddress allocateLogoutScratchCall
+bind error allocateLogoutScratchError COpaqueMemoryAddress allocateLogoutScratchCall
+branch error source allocateLogoutScratchCall target logoutAllocationInvalidFailed
+defer releaseLogoutScratchDefer c.free logoutScratch
+call logoutTokenCursorCall json.objectFieldAt
+argument logoutTokenCursorCall document JsonDocument logoutDocument
+argument logoutTokenCursorCall cursor JsonCursor logoutRoot
+argument logoutTokenCursorCall fieldName CNullTerminatedByteString runtime.authRefreshTokenField
+run logoutTokenCursorCall
+bind ok logoutTokenCursor JsonCursor logoutTokenCursorCall
+bind error logoutTokenCursorError JsonAccessError logoutTokenCursorCall
+branch error source logoutTokenCursorCall target logoutFieldInvalidFailed
+call readLogoutTokenCall json.cursorString
+argument readLogoutTokenCall document JsonDocument logoutDocument
+argument readLogoutTokenCall cursor JsonCursor logoutTokenCursor
+argument readLogoutTokenCall scratch COpaqueMemoryAddress logoutScratch
+argument readLogoutTokenCall scratchCapacity CSignedInt64 runtime.authRefreshScratchCapacity
+run readLogoutTokenCall
+bind ok logoutTokenText CNullTerminatedByteString readLogoutTokenCall
+bind error readLogoutTokenError JsonAccessError readLogoutTokenCall
+branch error source readLogoutTokenCall target logoutReadInvalidFailed
+call logoutVerifyCall bcrypt.verifyPassword
+argument logoutVerifyCall plaintext CNullTerminatedByteString logoutTokenText
+argument logoutVerifyCall expectedHash CNullTerminatedByteString currentRefreshTokenHash
+run logoutVerifyCall
+bind value logoutVerifyResult CSignedInt32 logoutVerifyCall
+call logoutMatchesCall math.equalCSignedInt32
+argument logoutMatchesCall left CSignedInt32 logoutVerifyResult
+argument logoutMatchesCall right CSignedInt32 runtime.authMatchCode
+run logoutMatchesCall
+bind value logoutMatches Bool logoutMatchesCall
+branch if condition logoutMatches target logoutAccepted
+branch else target logoutInvalidRejected
+label logoutAccepted
+set storage demoAuthSessionActive runtime.authInactiveFlag
+set storage currentAccessToken runtime.emptyAuthTokenText
+set storage currentRefreshTokenHash runtime.emptyAuthTokenText
+set storage currentAuthIssueArena runtime.emptyAuthArena
+set storage currentAuthUserId runtime.emptyAuthTokenText
+set storage currentAuthUsername runtime.emptyAuthTokenText
+set storage currentAuthDisplayName runtime.emptyAuthTokenText
+set storage currentAuthRoleName runtime.emptyAuthTokenText
+set storage currentAuthScopesJson runtime.emptyAuthTokenText
+set storage currentAuthRoleCode 0
+set storage currentAuthPayloadTemplate runtime.emptyJwtPayloadTemplate
+set storage currentAuthIssuedAt 0
+set storage currentAuthNotBefore 0
+set storage currentAuthExpiresAt 0
+call logoutWriteCall helpers.writeAuthLogoutSuccessEnvelope
+argument logoutWriteCall response HttpResponse response
+run logoutWriteCall
+bind value logoutWriteStatus CSignedInt32 logoutWriteCall
+return value logoutWriteStatus
+label logoutParseInvalidFailed
+call acknowledgeLogoutParseErrorCall helpers.acknowledgeJsonAccessError
+argument acknowledgeLogoutParseErrorCall errorValue JsonAccessError parseLogoutError
+run acknowledgeLogoutParseErrorCall
+ignore void source acknowledgeLogoutParseErrorCall
+jump target logoutInvalidRejected
+label logoutAllocationInvalidFailed
+call acknowledgeLogoutAllocationCall helpers.acknowledgeAllocationError
+argument acknowledgeLogoutAllocationCall errorValue COpaqueMemoryAddress allocateLogoutScratchError
+run acknowledgeLogoutAllocationCall
+ignore void source acknowledgeLogoutAllocationCall
+jump target logoutInvalidRejected
+label logoutFieldInvalidFailed
+call acknowledgeLogoutFieldCall helpers.acknowledgeJsonAccessError
+argument acknowledgeLogoutFieldCall errorValue JsonAccessError logoutTokenCursorError
+run acknowledgeLogoutFieldCall
+ignore void source acknowledgeLogoutFieldCall
+jump target logoutInvalidRejected
+label logoutReadInvalidFailed
+call acknowledgeLogoutReadCall helpers.acknowledgeJsonAccessError
+argument acknowledgeLogoutReadCall errorValue JsonAccessError readLogoutTokenError
+run acknowledgeLogoutReadCall
+ignore void source acknowledgeLogoutReadCall
+jump target logoutInvalidRejected
+label logoutPayloadTooLarge
+call logoutTooLargeWriteCall helpers.writePayloadTooLargeEnvelope
+argument logoutTooLargeWriteCall response HttpResponse response
+run logoutTooLargeWriteCall
+bind value logoutTooLargeWriteStatus CSignedInt32 logoutTooLargeWriteCall
+return value logoutTooLargeWriteStatus
+label logoutUnsupportedMediaType
+call logoutUnsupportedMediaTypeWriteCall helpers.writeUnsupportedMediaTypeEnvelope
+argument logoutUnsupportedMediaTypeWriteCall response HttpResponse response
+run logoutUnsupportedMediaTypeWriteCall
+bind value logoutUnsupportedMediaTypeWriteStatus CSignedInt32 logoutUnsupportedMediaTypeWriteCall
+return value logoutUnsupportedMediaTypeWriteStatus
+label logoutInvalidRejected
+call invalidLogoutWriteCall helpers.writeInvalidRefreshTokenEnvelope
+argument invalidLogoutWriteCall response HttpResponse response
+run invalidLogoutWriteCall
+bind value invalidLogoutWriteStatus CSignedInt32 invalidLogoutWriteCall
+return value invalidLogoutWriteStatus
+
+operation sessionHandler
+input operation sessionHandler request HttpRequest
+input operation sessionHandler response HttpResponse
+output operation sessionHandler CSignedInt32
+effect sessionHandler read http.request.header
+effect sessionHandler write http.response
+effect sessionHandler read memory.buffer
+effect sessionHandler read process.environment
+memory sessionHandler arena request
+async sessionHandler no
+useCapability sessionHandler httpRequestReader
+useCapability sessionHandler httpResponseWriter
+useCapability sessionHandler memoryBufferReadWriteCapability
+useCapability sessionHandler jwtTokenSigner
+useCapability sessionHandler processEnvironmentReader
+purpose operation sessionHandler "Return the seeded user session when the Authorization bearer token is signed, current, and active."
+invariant operation sessionHandler "Session lookup fails closed when the bearer token is absent, unsigned, stale, mismatched, or revoked by logout."
+label startSessionHandler
+call authHeaderCall http.requestHeader
+argument authHeaderCall request HttpRequest request
+argument authHeaderCall name CNullTerminatedByteString runtime.authorizationHeaderName
+run authHeaderCall
+bind value authorizationHeader CNullTerminatedByteString authHeaderCall
+call authHeaderMissingCall pointer.isNull
+argument authHeaderMissingCall ptr COpaqueMemoryAddress authorizationHeader
+run authHeaderMissingCall
+bind value authHeaderMissing Bool authHeaderMissingCall
+branch if condition authHeaderMissing target sessionUnauthorized
+call bearerPrefixCompareCall c.strncmp
+argument bearerPrefixCompareCall left CNullTerminatedByteString authorizationHeader
+argument bearerPrefixCompareCall right CNullTerminatedByteString runtime.bearerPrefixText
+argument bearerPrefixCompareCall count CSignedInt64 runtime.bearerPrefixLength
+run bearerPrefixCompareCall
+bind value bearerPrefixCompareResult CSignedInt32 bearerPrefixCompareCall
+call bearerPrefixMatchesCall math.equalCSignedInt32
+argument bearerPrefixMatchesCall left CSignedInt32 bearerPrefixCompareResult
+argument bearerPrefixMatchesCall right CSignedInt32 runtime.authSuccessCode
+run bearerPrefixMatchesCall
+bind value bearerPrefixMatches Bool bearerPrefixMatchesCall
+branch if condition bearerPrefixMatches target sessionBearerPrefixAccepted
+branch else target sessionUnauthorized
+label sessionBearerPrefixAccepted
+call bearerTokenPointerCall pointer.offset
+argument bearerTokenPointerCall base COpaqueMemoryAddress authorizationHeader
+argument bearerTokenPointerCall offset CByteCount runtime.bearerPrefixLength
+run bearerTokenPointerCall
+bind value bearerTokenPointer JwtAccessToken bearerTokenPointerCall
+call sessionJwtSecretCall resolveJwtSigningSecret
+run sessionJwtSecretCall
+bind value sessionJwtSecret JwtSecret sessionJwtSecretCall
+call sessionTokenVerifyCall jwt.hs256VerifyToken
+argument sessionTokenVerifyCall token JwtAccessToken bearerTokenPointer
+argument sessionTokenVerifyCall secret JwtSecret sessionJwtSecret
+run sessionTokenVerifyCall
+bind value sessionTokenVerifyResult CSignedInt32 sessionTokenVerifyCall
+call sessionTokenVerifiedCall math.equalCSignedInt32
+argument sessionTokenVerifiedCall left CSignedInt32 sessionTokenVerifyResult
+argument sessionTokenVerifiedCall right CSignedInt32 runtime.authMatchCode
+run sessionTokenVerifiedCall
+bind value sessionTokenVerified Bool sessionTokenVerifiedCall
+branch if condition sessionTokenVerified target sessionTokenSignatureAccepted
+branch else target sessionUnauthorized
+label sessionTokenSignatureAccepted
+call bearerTokenTextCall pointer.offset
+argument bearerTokenTextCall base COpaqueMemoryAddress authorizationHeader
+argument bearerTokenTextCall offset CByteCount runtime.bearerPrefixLength
+run bearerTokenTextCall
+bind value bearerTokenText CNullTerminatedByteString bearerTokenTextCall
+call sessionTokenCompareCall c.strcmp
+argument sessionTokenCompareCall left CNullTerminatedByteString bearerTokenText
+argument sessionTokenCompareCall right CNullTerminatedByteString currentAccessToken
+run sessionTokenCompareCall
+bind value sessionTokenCompareResult CSignedInt32 sessionTokenCompareCall
+call sessionTokenMatchesCall math.equalCSignedInt32
+argument sessionTokenMatchesCall left CSignedInt32 sessionTokenCompareResult
+argument sessionTokenMatchesCall right CSignedInt32 runtime.authSuccessCode
+run sessionTokenMatchesCall
+bind value sessionTokenMatches Bool sessionTokenMatchesCall
+branch if condition sessionTokenMatches target sessionTokenAccepted
+branch else target sessionUnauthorized
+label sessionTokenAccepted
+call sessionNowMillisCall http.nowMillis
+run sessionNowMillisCall
+bind value sessionNowMillis CSignedInt64 sessionNowMillisCall
+call sessionNowSecondsCall math.divideI64
+argument sessionNowSecondsCall left I64 sessionNowMillis
+argument sessionNowSecondsCall right I64 runtime.authMillisPerSecond
+run sessionNowSecondsCall
+bind value sessionNowSeconds CSignedInt64 sessionNowSecondsCall
+call sessionNowPlusSkewCall math.addI64
+argument sessionNowPlusSkewCall left I64 sessionNowSeconds
+argument sessionNowPlusSkewCall right I64 runtime.authClockSkewSeconds
+run sessionNowPlusSkewCall
+bind value sessionNowPlusSkew CSignedInt64 sessionNowPlusSkewCall
+call sessionNotBeforeFutureCall math.greaterThanI64
+argument sessionNotBeforeFutureCall left I64 currentAuthNotBefore
+argument sessionNotBeforeFutureCall right I64 sessionNowPlusSkew
+run sessionNotBeforeFutureCall
+bind value sessionNotBeforeFuture Bool sessionNotBeforeFutureCall
+branch if condition sessionNotBeforeFuture target sessionUnauthorized
+call sessionIssuedFutureCall math.greaterThanI64
+argument sessionIssuedFutureCall left I64 currentAuthIssuedAt
+argument sessionIssuedFutureCall right I64 sessionNowPlusSkew
+run sessionIssuedFutureCall
+bind value sessionIssuedFuture Bool sessionIssuedFutureCall
+branch if condition sessionIssuedFuture target sessionUnauthorized
+call sessionNowMinusSkewCall math.subtractI64
+argument sessionNowMinusSkewCall left I64 sessionNowSeconds
+argument sessionNowMinusSkewCall right I64 runtime.authClockSkewSeconds
+run sessionNowMinusSkewCall
+bind value sessionNowMinusSkew CSignedInt64 sessionNowMinusSkewCall
+call sessionExpiresAfterNowCall math.greaterThanI64
+argument sessionExpiresAfterNowCall left I64 currentAuthExpiresAt
+argument sessionExpiresAfterNowCall right I64 sessionNowMinusSkew
+run sessionExpiresAfterNowCall
+bind value sessionExpiresAfterNow Bool sessionExpiresAfterNowCall
+branch if condition sessionExpiresAfterNow target sessionTimeClaimsAccepted
+branch else target sessionUnauthorized
+label sessionTimeClaimsAccepted
+call activeSessionCall math.equalCSignedInt32
+argument activeSessionCall left CSignedInt32 demoAuthSessionActive
+argument activeSessionCall right CSignedInt32 runtime.authActiveFlag
+run activeSessionCall
+bind value activeSession Bool activeSessionCall
+branch if condition activeSession target sessionAccepted
+branch else target sessionUnauthorized
+label sessionAccepted
+call sessionBidderRoleCall math.equalI64
+argument sessionBidderRoleCall left I64 currentAuthRoleCode
+argument sessionBidderRoleCall right I64 runtime.bidderRoleCode
+run sessionBidderRoleCall
+bind value sessionBidderRole Bool sessionBidderRoleCall
+branch if condition sessionBidderRole target sessionBidderAccepted
+branch else target sessionAuctioneerAccepted
+label sessionBidderAccepted
+call sessionBidderWriteCall helpers.writeAuthBidderSessionEnvelope
+argument sessionBidderWriteCall response HttpResponse response
+run sessionBidderWriteCall
+bind value sessionBidderWriteStatus CSignedInt32 sessionBidderWriteCall
+return value sessionBidderWriteStatus
+label sessionAuctioneerAccepted
+call sessionAuctioneerWriteCall helpers.writeAuthSessionEnvelope
+argument sessionAuctioneerWriteCall response HttpResponse response
+run sessionAuctioneerWriteCall
+bind value sessionAuctioneerWriteStatus CSignedInt32 sessionAuctioneerWriteCall
+return value sessionAuctioneerWriteStatus
+label sessionUnauthorized
+call unauthorizedWriteCall helpers.writeUnauthorizedEnvelope
+argument unauthorizedWriteCall response HttpResponse response
+run unauthorizedWriteCall
+bind value unauthorizedWriteStatus CSignedInt32 unauthorizedWriteCall
+return value unauthorizedWriteStatus

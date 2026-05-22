@@ -192,7 +192,7 @@ jsonBody middlewareContract
           "requestFinishFields": "requestId, routePattern, status, actorId, durationMs, errorCode",
           "redactedFields": "authorization, cookie, refreshToken, password, passwordHash",
           "eventNames": "http.request.start, http.request.finish",
-          "runtimeStatus": "header stamping is executable; JSON structured stdout and durable request_log insert need string builder/time/sqlite composition"
+          "runtimeStatus": "header stamping, request counters, and durable finish rows for auth/command paths are executable; full structured stdout remains planned"
       },
       "requestLog": {
           "durableTable": "request_log",
@@ -201,14 +201,14 @@ jsonBody middlewareContract
           "requiredFields": "request_id, method, path, route_pattern, status, actor_user_id, actor_role, duration_ms, request_bytes, response_bytes, error_code, started_at, finished_at",
           "failureRule": "best-effort request-log failure must not commit a command transaction that otherwise failed; command transaction rollback wins over log persistence",
           "retentionRule": "keep full local demo request logs for development; production retention is deployment-configured and may sample successful reads",
-          "runtimeStatus": "contract; executable reflects request headers but does not persist request_log rows or maintain runtime counters"
+          "runtimeStatus": "executable auth and command routes persist finish rows; IP and user-agent fields are stored only as redaction markers"
       },
       "audit": {
           "durableTable": "audit_events",
           "requiredFields": "auditEventId, requestId, actorUserId, action, outcome, payloadJson, createdAt",
           "actionNames": "auth.login.accepted, auth.login.rejected, auth.refresh.accepted, auth.refresh.rejected, auth.logout, auction.create, auction.start, auction.extend, auction.close, bid.accepted, bid.rejected, chat.message.created, chat.message.deleted, chat.message.reported",
           "redactionRule": "payloadJson never stores raw credentials, bearer tokens, refresh tokens, cookies, or password hashes",
-          "runtimeGap": "audit rows require SQLite transaction helper and route-level actor context"
+          "runtimeGap": "accepted command, rejected bid, and login audit rows are executable; denied/failed coverage continues expanding route by route"
       },
       "rateLimit": {
           "durableTable": "rate_limit_buckets",
@@ -245,25 +245,25 @@ jsonBody middlewareContract
               "auditRule": "log subscription drops as operational events, not domain auction events"
           },
           "storageRule": "rate_limit_buckets are updated in the same command transaction before domain mutation; read-only subscription limits may use a short transaction before opening SSE",
-          "runtimeStatus": "contract; no live limiter is wired in main.sem yet"
+          "runtimeStatus": "login uses durable SQLite buckets, chat uses executable policy/bucket checks, and bid uses a process-local demo limiter"
       },
       "metrics": {
           "endpoint": "GET /metrics",
           "contentType": "text/plain; charset=utf-8",
-          "bootstrapSeries": "auction_server_bootstrap_info, auction_server_runtime_gap",
-          "plannedSeries": "http_requests_total, http_request_duration_ms, auth_attempts_total, auction_commands_total, auction_events_total, idempotency_replays_total, rate_limit_rejections_total, active_sse_clients, sse_disconnects_total, chat_messages_total",
+          "bootstrapSeries": "auction_server_bootstrap_info",
+          "plannedSeries": "http_requests_total, auth_attempts_total, auction_commands_total, auction_bids_total, rate_limit_hits_total, active_sse_clients, auction_server_sse_slow_client_drops_total",
           "labelRule": "labels use bounded route patterns and stable codes, never raw paths, ids, usernames, tokens, or request bodies",
-          "runtimeGap": "live counters and histograms need shared state plus monotonic time support"
+          "runtimeGap": "runtime counters/gauges are executable; histograms still need a monotonic duration aggregation helper"
       },
       "sse": {
           "route": "GET /api/v1/auctions/:auctionId/events",
           "contentType": "text/event-stream; charset=utf-8",
           "authRule": "viewer policy with auctions:read or bids:read before replay or live subscription",
-          "replayRule": "replay committed auction_events ordered by sequence after Last-Event-ID or ?after, then attach subscriber to live fanout without losing committed events",
+          "replayRule": "replay committed auction_events ordered by sequence after Last-Event-ID or ?after, bounded by ?limit 1..200 for JSON replay, then attach subscriber to live fanout without losing committed events when SSE exists",
           "heartbeatMillis": 15000,
           "subscriberQueueLimit": 256,
           "disconnectRule": "client disconnect removes subscriber, decrements active_sse_clients, and never rolls back committed events",
-          "runtimeStatus": "contract; current executable route returns bounded JSON replay and does not keep a long-lived SSE response open"
+          "runtimeStatus": "current executable route returns bounded JSON replay with Last-Event-ID/?after/?limit and does not keep a long-lived SSE response open"
       },
       "config": {
           "databasePathEnv": "AUCTION_ARENA_DB optional path override, default local auction_arena.sqlite3",

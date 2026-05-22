@@ -57,7 +57,10 @@ field EventStreamRouteDetail replayInputs String
 field EventStreamRouteDetail replayOrdering String
 field EventStreamRouteDetail liveStreamRule String
 field EventStreamRouteDetail heartbeatRule String
+field EventStreamRouteDetail heartbeatMillis I64
 field EventStreamRouteDetail backpressureRule String
+field EventStreamRouteDetail subscriberQueueLimit I64
+field EventStreamRouteDetail metricsRule String
 field EventStreamRouteDetail runtimeStatus String
 
 record ChatRouteDetail
@@ -96,14 +99,14 @@ jsonBody routeCatalog
       "auctionsCreate": { "method": "POST", "path": "/api/v1/auctions", "handler": "auctionsCreateHandler", "authPolicy": "admin_or_auctioneer", "requiredScopes": "auctions:write", "requiredPathParams": "none", "revisionRequirement": "none; creates revision 0", "rejectionCodes": "unauthorized, forbidden, missing_idempotency_key, idempotency_conflict, validation_failed, auction_policy_rejected", "idempotencyRequired": true, "runtimeStatus": "executable_sqlite_idempotent" },
       "auctionSnapshot": { "method": "GET", "path": "/api/v1/auctions/:auctionId", "handler": "auctionSnapshotHandler", "authPolicy": "viewer", "requiredScopes": "auctions:read or bids:read", "requiredPathParams": "auctionId", "revisionRequirement": "none; returns current revision", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, auction_not_found", "idempotencyRequired": false, "runtimeStatus": "executable_sqlite" },
       "auctionStart": { "method": "POST", "path": "/api/v1/auctions/:auctionId/start", "handler": "auctionStartHandler", "authPolicy": "admin_or_auctioneer", "requiredScopes": "auctions:write", "requiredPathParams": "auctionId", "revisionRequirement": "expectedRevision required and must match current revision", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, missing_expected_revision, stale_revision, auction_not_found, lifecycle_rejected", "idempotencyRequired": true, "runtimeStatus": "executable_sqlite_idempotent" },
-      "auctionExtend": { "method": "POST", "path": "/api/v1/auctions/:auctionId/extend", "handler": "auctionExtendHandler", "authPolicy": "admin_or_auctioneer", "requiredScopes": "auctions:write", "requiredPathParams": "auctionId", "revisionRequirement": "expectedRevision required and must match current revision", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, missing_expected_revision, stale_revision, auction_not_found, lifecycle_rejected, extension_out_of_bounds", "idempotencyRequired": true, "runtimeStatus": "blocked_persistence_handler; dynamic route params are available" },
-      "auctionClose": { "method": "POST", "path": "/api/v1/auctions/:auctionId/close", "handler": "auctionCloseHandler", "authPolicy": "admin_or_auctioneer", "requiredScopes": "auctions:write", "requiredPathParams": "auctionId", "revisionRequirement": "expectedRevision required and must match current revision", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, missing_expected_revision, stale_revision, auction_not_found, lifecycle_rejected", "idempotencyRequired": true, "runtimeStatus": "blocked_persistence_handler; dynamic route params are available" },
+      "auctionExtend": { "method": "POST", "path": "/api/v1/auctions/:auctionId/extend", "handler": "auctionExtendHandler", "authPolicy": "admin_or_auctioneer", "requiredScopes": "auctions:write", "requiredPathParams": "auctionId", "revisionRequirement": "expectedRevision required and must match current revision", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, missing_expected_revision, stale_revision, auction_not_found, lifecycle_rejected, extension_out_of_bounds", "idempotencyRequired": true, "runtimeStatus": "executable_sqlite_idempotent" },
+      "auctionClose": { "method": "POST", "path": "/api/v1/auctions/:auctionId/close", "handler": "auctionCloseHandler", "authPolicy": "admin_or_auctioneer", "requiredScopes": "auctions:write", "requiredPathParams": "auctionId", "revisionRequirement": "expectedRevision required and must match current revision", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, missing_expected_revision, stale_revision, auction_not_found, lifecycle_rejected", "idempotencyRequired": true, "runtimeStatus": "executable_sqlite_idempotent" },
       "auctionBid": { "method": "POST", "path": "/api/v1/auctions/:auctionId/bids", "handler": "auctionBidHandler", "authPolicy": "bidder", "requiredScopes": "bids:write", "requiredPathParams": "auctionId", "revisionRequirement": "expectedRevision required unless policy allows stale revisions", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, missing_expected_revision, stale_revision, auction_missing, auction_not_running, actor_not_bidder, amount_too_low, amount_too_high, same_bidder_in_a_row", "idempotencyRequired": true, "runtimeStatus": "executable_sqlite_idempotent_demo_bidder" },
-      "auctionEvents": { "method": "GET", "path": "/api/v1/auctions/:auctionId/events", "handler": "auctionEventsHandler", "authPolicy": "viewer", "requiredScopes": "auctions:read or bids:read", "requiredPathParams": "auctionId", "revisionRequirement": "none; uses event sequence cursor", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, auction_not_found, replay_cursor_invalid", "idempotencyRequired": false, "runtimeStatus": "executable_json_replay_not_long_lived_sse" },
+      "auctionEvents": { "method": "GET", "path": "/api/v1/auctions/:auctionId/events", "handler": "auctionEventsHandler", "authPolicy": "seeded_viewer", "requiredScopes": "auctioneer demo scopes or bidder demo scopes; future production policy is auctions:read or bids:read", "requiredPathParams": "auctionId", "revisionRequirement": "none; uses event sequence cursor", "rejectionCodes": "unauthorized, forbidden_later, invalid_route_param, auction_not_found, replay_cursor_invalid", "idempotencyRequired": false, "runtimeStatus": "executable_authenticated_json_replay_with_after_limit_eventType_not_long_lived_sse" },
       "auctionAudit": { "method": "GET", "path": "/api/v1/auctions/:auctionId/audit", "handler": "auctionAuditHandler", "authPolicy": "admin", "requiredScopes": "audit:read", "requiredPathParams": "auctionId", "revisionRequirement": "none; audit reads are paginated by occurredAt or auditEventId", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, auction_not_found, validation_failed", "idempotencyRequired": false, "runtimeStatus": "planned_admin_audit_query; no handler registered in current native server" },
-      "chatCreate": { "method": "POST", "path": "/api/v1/auctions/:auctionId/chat/messages", "handler": "chatCreateHandler", "authPolicy": "bidder", "requiredScopes": "chat:write", "requiredPathParams": "auctionId", "revisionRequirement": "none; chat does not change auction revision", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, chat_rejected", "idempotencyRequired": true, "runtimeStatus": "blocked_chat_persistence_handler; dynamic route params are available" },
-      "chatDelete": { "method": "DELETE", "path": "/api/v1/auctions/:auctionId/chat/messages/:messageId", "handler": "chatDeleteHandler", "authPolicy": "admin_or_auctioneer", "requiredScopes": "chat:moderate", "requiredPathParams": "auctionId,messageId", "revisionRequirement": "none; chat moderation does not change auction revision", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, message_not_found", "idempotencyRequired": true, "runtimeStatus": "blocked_chat_persistence_handler; dynamic route params are available" },
-      "chatReport": { "method": "POST", "path": "/api/v1/auctions/:auctionId/chat/messages/:messageId/report", "handler": "chatReportHandler", "authPolicy": "bidder", "requiredScopes": "chat:write", "requiredPathParams": "auctionId,messageId", "revisionRequirement": "none; chat report does not change auction revision", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, message_not_found", "idempotencyRequired": true, "runtimeStatus": "blocked_chat_persistence_handler; dynamic route params are available" }
+      "chatCreate": { "method": "POST", "path": "/api/v1/auctions/:auctionId/chat/messages", "handler": "chatCreateHandler", "authPolicy": "bidder", "requiredScopes": "chat:write", "requiredPathParams": "auctionId", "revisionRequirement": "none; chat does not change auction revision", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, validation_failed, rate_limited", "idempotencyRequired": true, "runtimeStatus": "executable_sqlite_idempotent_demo_bidder" },
+      "chatDelete": { "method": "DELETE", "path": "/api/v1/auctions/:auctionId/chat/messages/:messageId", "handler": "chatDeleteHandler", "authPolicy": "admin_or_auctioneer", "requiredScopes": "chat:moderate", "requiredPathParams": "auctionId,messageId", "revisionRequirement": "none; chat moderation does not change auction revision", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, message_not_found", "idempotencyRequired": true, "runtimeStatus": "guard_route_registered; moderation persistence remains contract work" },
+      "chatReport": { "method": "POST", "path": "/api/v1/auctions/:auctionId/chat/messages/:messageId/report", "handler": "chatReportHandler", "authPolicy": "bidder", "requiredScopes": "chat:write", "requiredPathParams": "auctionId,messageId", "revisionRequirement": "none; chat report does not change auction revision", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, message_not_found, rate_limited", "idempotencyRequired": true, "runtimeStatus": "guard_route_registered; report persistence remains contract work" }
   }
 
 storage module immutable routeEnterpriseBehavior RouteEnterpriseBehavior
@@ -118,7 +121,7 @@ jsonBody routeEnterpriseBehavior
           "emittedEvents": "auction.extended with previousClosesAtUtcMillis, newClosesAtUtcMillis, extensionMillis, reason",
           "successStatus": "200 OK",
           "idempotencyBehavior": "same scoped key and same request hash replays original envelope; different hash returns idempotency_conflict",
-          "runtimeStatus": "contract only; no current main.sem handler registration"
+          "runtimeStatus": "executable_sqlite_idempotent"
       },
       "close": {
           "routeKey": "auctionClose",
@@ -129,27 +132,30 @@ jsonBody routeEnterpriseBehavior
           "emittedEvents": "auction.closed with finalBid, winnerUserId, closedAtUtcMillis, reason",
           "successStatus": "200 OK",
           "idempotencyBehavior": "same scoped key and same request hash replays original envelope; different hash returns idempotency_conflict",
-          "runtimeStatus": "contract only; no current main.sem handler registration"
+          "runtimeStatus": "executable_sqlite_idempotent"
       },
       "events": {
           "routeKey": "auctionEvents",
           "authPolicy": "viewer with auctions:read or bids:read",
-          "replayInputs": "Last-Event-ID header or ?after event sequence cursor; Last-Event-ID wins when both are present",
-          "replayOrdering": "SELECT committed auction_events for auctionId ordered by sequence ASC before live subscription",
+          "replayInputs": "Last-Event-ID header or ?after event sequence cursor; Last-Event-ID wins when both are present; ?limit bounds JSON replay to 1..200 rows",
+          "replayOrdering": "SELECT committed auction_events for auctionId where sequence is greater than cursor, ordered by sequence ASC; executable JSON rows include eventTypeCode plus stable eventType text before any future live subscription",
           "liveStreamRule": "after replay, attach to per-auction fanout and write text/event-stream frames with id set to eventId and event type set to persisted event type",
           "heartbeatRule": "send heartbeat comments every 15000 ms without consuming event sequence",
+          "heartbeatMillis": 15000,
           "backpressureRule": "bounded subscriber queue of 256 events; overflow closes only that subscriber and increments metrics",
-          "runtimeStatus": "JSON replay is executable; long-lived SSE subscription, heartbeat, and fanout remain integration work"
+          "subscriberQueueLimit": 256,
+          "metricsRule": "metrics expose zero-valued active_sse_clients and slow-client drop counters until runtime fanout is executable",
+          "runtimeStatus": "bounded authenticated JSON replay with Last-Event-ID/?after/?limit and eventType text is executable; long-lived SSE subscription, heartbeat writes, disconnect cleanup, per-client queues, and fanout remain runtime integration work"
       },
       "chatCreate": {
           "routeKey": "chatCreate",
           "actorPolicy": "bidder with chat:write",
-          "bodySchema": "text, clientNonce; text must be valid UTF-8 and <= maxChatMessageBytes after byte counting",
-          "idempotencyBehavior": "scope by auctionId, actorUserId, route, clientNonce or Idempotency-Key",
+          "bodySchema": "text; text must be valid UTF-8 and <= maxChatMessageBytes after byte counting",
+          "idempotencyBehavior": "scope by auctionId, actorUserId, route, and Idempotency-Key",
           "persistenceRule": "insert chat_messages row and chat.message.created auction_events row in one transaction",
           "emittedEvents": "chat.message.created",
           "revisionRule": "does not change AuctionState.revision but consumes auction event sequence",
-          "runtimeStatus": "contract only; no current main.sem handler registration"
+          "runtimeStatus": "executable SQLite handler persists chat_messages and chat.message.created, leaves auction revision unchanged, and participates in bounded JSON replay"
       },
       "chatDelete": {
           "routeKey": "chatDelete",
@@ -159,7 +165,7 @@ jsonBody routeEnterpriseBehavior
           "persistenceRule": "mark chat_messages status deleted, append chat.message.deleted, append audit_events",
           "emittedEvents": "chat.message.deleted",
           "revisionRule": "does not change AuctionState.revision but consumes auction event sequence",
-          "runtimeStatus": "contract only; no current main.sem handler registration"
+          "runtimeStatus": "guard route registered in chat_context; moderation persistence remains contract work"
       },
       "chatReport": {
           "routeKey": "chatReport",
@@ -169,10 +175,10 @@ jsonBody routeEnterpriseBehavior
           "persistenceRule": "append moderation/report state and chat.message.reported event without rewriting original message text",
           "emittedEvents": "chat.message.reported",
           "revisionRule": "does not change AuctionState.revision but consumes auction event sequence",
-          "runtimeStatus": "contract only; no current main.sem handler registration"
+          "runtimeStatus": "guard route registered in chat_context; report persistence remains contract work"
       },
-      "audit": { "method": "GET", "path": "/api/v1/auctions/:auctionId/audit", "handler": "auctionAuditHandler", "authPolicy": "admin", "requiredScopes": "audit:read", "requiredPathParams": "auctionId", "revisionRequirement": "none", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, auction_not_found, validation_failed", "idempotencyRequired": false, "runtimeStatus": "contract only; no current main.sem handler registration" },
-      "executableStatusSummary": "Current executable status: health, readiness, metrics, API index, demo auth, authenticated SQLite auction list/snapshot/create/start/bid, seeded role/scope checks for registered auctioneer commands and bidder bids, idempotency replay/conflict, and JSON event replay. Enterprise contracts still require main.sem integration for full viewer/admin/service role policies, 403 authz responses, extend/close, audit query, chat routes, long-lived SSE, request logs, rate limits, and production config."
+      "audit": { "method": "GET", "path": "/api/v1/auctions/:auctionId/audit", "handler": "auctionAuditHandler", "authPolicy": "admin", "requiredScopes": "audit:read", "requiredPathParams": "auctionId", "revisionRequirement": "none", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, auction_not_found, validation_failed", "idempotencyRequired": false, "runtimeStatus": "contract only; not registered in the route shell" },
+      "executableStatusSummary": "Current executable status: health, readiness, metrics, API index, demo auth, authenticated SQLite auction list/snapshot/create/start/extend/close/bid/chat-create, guard-registered chat delete/report routes, seeded role/scope checks for registered auctioneer commands plus bidder bid/chat writes, idempotency replay/conflict, lifecycle rejection envelopes, request logs, rate limits, and bounded JSON event replay with cursor pagination. Enterprise contracts still require context integration for full viewer/admin/service role policies, 403 authz responses, audit query, chat delete/report persistence, long-lived SSE, and production config."
   }
 
 operation getRouteCatalog

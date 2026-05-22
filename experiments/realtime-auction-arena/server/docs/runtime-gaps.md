@@ -8,8 +8,8 @@ in `experiments/realtime-auction-arena/server/src`, not in native runtime code.
 
 - Native `webServer` on `127.0.0.1:18083`.
 - Registered routes for health, readiness, metrics, API index, auth, session,
-  auction list/create/snapshot/start/bid, JSON event replay, and explicit API
-  not-found.
+  auction list/create/snapshot/start/bid/extend/close, JSON event replay, and
+  explicit API not-found.
 - SQLite open and schema initialization from `server/sql/schema.sql` during
   readiness and command handling.
 - Stable response headers: `X-Api-Version`, `X-Request-Id`,
@@ -18,57 +18,109 @@ in `experiments/realtime-auction-arena/server/src`, not in native runtime code.
   `missing_idempotency_key`, `idempotency_conflict`, `unauthorized`,
   `auction_not_found`, `stale_revision`, and `auction_not_running`.
 - Demo auth flow: JSON login body parsing, bcrypt verification for the seeded
-  `auctioneer` account, bcrypt 72-byte precheck, opaque refresh-token
-  generation, bcrypt-hashed process-local refresh-token storage, refresh
-  rotation, logout revocation, and current-bearer session lookup.
+  `auctioneer` and `bidder` accounts, bcrypt 72-byte precheck, opaque
+  refresh-token generation, bcrypt-hashed process-local refresh-token storage,
+  refresh rotation, logout revocation, current-bearer session lookup, optional
+  `AUCTION_ARENA_JWT_SECRET` signing/verification override, runtime
+  `iat`/`nbf`/`exp = iat + 900` token issue, stored active-token time
+  validation during session lookup, SQLite-backed login rate-limit buckets, and
+  durable login accepted/rejected audit rows.
 - `standard.jwt` exposes generic HS256 primitives: sign a caller-supplied JSON
   payload template with a generated `jti`, and verify compact JWT signatures.
   The arena issuer, audience, subject, role, and scopes live in
-  `server/src/main.sem`.
-- SQLite-backed auction create/list/snapshot/start/bid flows with transaction
-  guards, persisted `auction_events`, scoped `idempotency_keys`, accepted-command
-  `audit_events`, and JSON event replay.
+  `server/src/auth_context.sem`.
+- SQLite-backed auction create/list/snapshot/start/bid/extend/close flows with
+  transaction guards, persisted `auction_events`, scoped `idempotency_keys`,
+  accepted-command `audit_events`, and bounded JSON event replay with `Last-Event-ID`,
+  `?after`, `?limit`, seeded viewer authorization, and stable `eventType` text
+  beside numeric event codes.
 - Python E2E coverage for auth, refresh replay, stale access-token rejection,
-  create/start/bid idempotency replay and conflict, event replay, audit rows,
-  and idempotency rows.
-- Prometheus-style bootstrap metrics and runtime-gap markers.
+  wrong-role bid denial, env-backed JWT signatures, runtime access-token time
+  claims, login rate limiting, login audit rows, create/start/bid/extend/close
+  idempotency replay and conflict, event replay, audit rows, and idempotency
+  rows.
+- Prometheus-style bootstrap metrics, runtime-gap markers, and zero-valued SSE
+  contract gauges/counters for active clients, slow-client drops, subscriber
+  queue capacity, and heartbeat interval.
+- `405 method_not_allowed` envelopes for unsupported methods on known
+  executable paths.
+- Build-time server config defaults in `server/build.sem` plus documented
+  deployment config keys for database path, bind address, request limits, rate
+  limits, SSE heartbeat, and graceful shutdown.
 
 ## Still Missing
 
-- Production auth hardening: secret loading from environment/config, runtime
-  clock validation for `exp`/`iat`/`nbf`, JWT denylist persistence, durable
-  refresh-token/session rows, disabled/locked user checks, and login rate
-  limiting.
-- Role/scope authorization is not enforced from decoded principals yet. The
-  current auction routes require only the active signed bearer token; bid writes
-  still attribute to the seeded demo bidder.
+- Production auth hardening still missing: production mode that makes absent or
+  invalid `AUCTION_ARENA_JWT_SECRET` fatal, typed JWT claim extraction for
+  arbitrary incoming tokens, JWT denylist persistence/lookup, durable
+  refresh-token/session rows, disabled/locked user checks, and
+  refresh/logout/session audit rows.
+- Registered create/start routes and the bid route enforce the process-local
+  seeded role/scope split, but authorization is not enforced from decoded JWT
+  principals yet. Viewer, admin, service, and chat policies, plus the `403
+  forbidden` split for authenticated-but-unauthorized callers, remain missing.
 - Long-lived SSE needs streaming response APIs, heartbeat writes, disconnect
-  detection, per-client queues, backpressure, and replay cursor parsing.
-  `/events` is currently authenticated JSON replay.
-- Chat, extend, close, audit query, and admin APIs are not registered handlers
-  yet.
-- Request logging and runtime-backed metrics need a reusable request context,
-  monotonic clock reads, dynamic request-id generation, structured log writing,
-  and counters/gauges backed by server state.
-- Rejected/denied/failed command audit rows are not written yet. The current
-  executable writes accepted create/start/bid audit rows only.
+  detection, per-client queues, and backpressure. `/events` is currently
+  authenticated and authorized bounded JSON replay for the seeded auctioneer or
+  bidder principals; replay cursor, page-size parsing, event ordering, and
+  event type naming are executable for the JSON fallback. The contract now fixes
+  replay-before-live ordering, 15000 ms heartbeats, 256-item per-client queues,
+  disconnect cleanup, and slow-client drop metrics for the future streaming
+  path.
+- Chat create is executable; chat delete/report are registered guard routes
+  while moderation persistence remains contract work. Audit query and admin APIs
+  are not registered handlers yet.
+- Request logging now writes durable finish rows for registered auction command
+  accepts and bid rejects, but still needs a reusable request context,
+  monotonic duration measurement, dynamic request-id generation for every path,
+  start rows, and broader runtime-backed counters/gauges.
+- Rejected bid audit rows are durable for executable bid rule rejects.
+  Denied/failed command audit rows and refresh/logout/session audit rows remain
+  planned.
 - Idempotency uses the raw request body as the request-hash surrogate. Canonical
   JSON hashing and fully atomic replay lookup plus write under one transaction
   are still needed for concurrent production semantics.
 - Typed JSON command parsing still accepts only the fields the handlers read; a
   strict unknown-field validator is still planned.
-- Method-not-allowed behavior for unsupported methods on known routes is still
-  owned by the native dispatcher surface.
+- Event replay cursor and limit parsing is executable but uses the standard
+  decimal-prefix parser; strict rejection of trailing junk and the dedicated
+  `replay_cursor_invalid` envelope remain planned.
+- Production-grade graceful shutdown remains blocked on signal/cancellation
+  APIs. The server contract and Python harnesses define shutdown order and
+  terminate only after current smoke/load/demo requests complete.
+
+## Graceful Shutdown Plan
+
+The app-level shutdown sequence is:
+
+1. Stop accepting new HTTP requests at the process manager or native server
+   boundary.
+2. Mark server state as draining so new auction/chat commands fail with a stable
+   `server_shutting_down` code once command queues exist.
+3. Let already accepted SQLite command transactions commit or roll back under
+   their existing transaction guard.
+4. Broadcast only events that committed before the drain marker.
+5. Close SSE subscribers with a final heartbeat/error frame when long-lived SSE
+   is executable.
+6. Flush structured request logs, checkpoint/close SQLite, and exit before the
+   grace deadline.
+
+Current executable validation uses the Python E2E/load/demo harnesses: each
+starts the local server, completes requests, terminates the process, and then
+opens SQLite to verify the database remains readable. Native signal handling,
+task cancellation, and async subscriber drains remain runtime features.
 
 ## Language And Runtime Pressure Points
 
 - Dynamic string building for response envelopes and request ids.
-- Typed JWT claim extraction and validation in SemanticScript.
+- Typed JWT claim extraction for arbitrary incoming tokens in SemanticScript.
 - Middleware-local request context shared across route handlers.
 - SQLite transaction helper ergonomics for `BEGIN IMMEDIATE`, rollback guards,
   and commit.
-- Async channels, cancelable timers, fake clocks, and per-auction supervisors.
-- Long-lived HTTP response streams for SSE.
+- Async channels, cancelable timers, fake clocks, bounded per-auction command
+  queues, and per-auction supervisors.
+- Long-lived HTTP response streams for SSE, plus client-disconnect detection
+  and nonblocking per-subscriber writes.
 - Structured logging and monotonic time measurement.
 - Native HTTP client and async-safe Win32 UI update primitives for the desktop
   client.

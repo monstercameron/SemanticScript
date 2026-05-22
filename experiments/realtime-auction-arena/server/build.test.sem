@@ -4,7 +4,7 @@ moduleOwns app.realtime_auction_arena.server.tests.build "Assertions that the se
 moduleDoesNotOwn app.realtime_auction_arena.server.tests.build "Native compiler implementation."
 invariant module app.realtime_auction_arena.server.tests.build "The build plan test must mention module registration, native target shape, and test discovery."
 
-storage module immutable serverBuildUnitTestPlanSummary String "server/build.sem coverage: module registration, native webServer target, port 18083, and *.test.sem discovery."
+storage module immutable serverBuildUnitTestPlanSummary String "server/build.sem coverage: module registration, native webServer target, port 18083, *.test.sem discovery, build-time server config keys, and graceful shutdown plan defaults."
 
 operation getServerBuildUnitTestPlan
 output operation getServerBuildUnitTestPlan String

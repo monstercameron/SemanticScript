@@ -1,0 +1,14 @@
+module app.realtime_auction_arena.server.tests.auth_context
+purpose module app.realtime_auction_arena.server.tests.auth_context "Unit coverage contract for server/src/auth_context.sem."
+moduleOwns app.realtime_auction_arena.server.tests.auth_context "Executable auth context coverage for JWT secret resolution, login audit/rate-limit persistence, bearer authorization helpers, and auth route handlers."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.auth_context "Native bcrypt/JWT primitives, SQLite adapter internals, or cross-context database bootstrap behavior."
+invariant module app.realtime_auction_arena.server.tests.auth_context "Auth context tests must cover moved operation names while main.sem keeps stable route-registration names."
+
+storage module immutable authContextUnitTestPlanSummary String "server/src/auth_context.sem coverage: resolveJwtSigningSecret env/default behavior; insertAuthAuditEvent bind/step failure paths; consumeLoginRateLimit cleanup/upsert/select and denied/unavailable branches; requestHasValidBearerToken bearer prefix, HS256 verify, current-token, and active-session checks; auctioneer, bidder, and chat moderator role/scope helpers; authLoginHandler JSON/content-length/password/rate-limit/audit/token issue paths; authRefreshHandler rotation paths; authLogoutHandler valid-refresh revocation; sessionHandler bearer validation, runtime timestamp bounds, bidder session envelope, auctioneer session envelope, and unauthorized fallback."
+
+operation getAuthContextUnitTestPlan
+output operation getAuthContextUnitTestPlan String
+memory getAuthContextUnitTestPlan heap no
+async getAuthContextUnitTestPlan no
+purpose operation getAuthContextUnitTestPlan "Return the executable auth context unit coverage plan."
+return value authContextUnitTestPlanSummary

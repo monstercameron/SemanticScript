@@ -118,7 +118,7 @@ jsonBody auctionApiContract
           "rejectionCodes": "unauthorized, forbidden, missing_idempotency_key, idempotency_conflict, invalid_json, validation_failed, auction_policy_rejected",
           "revisionRule": "no existing revision check; insert starts at revision 0",
           "eventRule": "persist auction.created with sequence 1 in same transaction",
-          "runtimeStatus": "blocked by persistence transaction and create handler integration; exact POST /api/v1/auctions currently fails closed"
+          "runtimeStatus": "executable SQLite transaction with strict body parsing, idempotency replay/conflict, audit/request logs, and auction.created event persistence"
       },
       "snapshot": {
           "method": "GET",
@@ -134,7 +134,7 @@ jsonBody auctionApiContract
           "rejectionCodes": "unauthorized, forbidden, invalid_route_param, auction_not_found",
           "revisionRule": "snapshot returns current revision without changing it",
           "eventRule": "no event emitted",
-          "runtimeStatus": "blocked by persistence read handler integration; native dynamic route params are available"
+          "runtimeStatus": "executable authenticated SQLite snapshot handler with native dynamic route params"
       },
       "start": {
           "method": "POST",
@@ -150,7 +150,7 @@ jsonBody auctionApiContract
           "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, missing_expected_revision, stale_revision, auction_not_found, lifecycle_rejected",
           "revisionRule": "draft to running increments revision by one",
           "eventRule": "persist auction.started after state update in same transaction",
-          "runtimeStatus": "blocked by persistence transaction and command handler integration; native dynamic route params are available"
+          "runtimeStatus": "executable SQLite transaction with strict body parsing, idempotency replay/conflict, audit/request logs, and auction.started event persistence"
       },
       "extend": {
           "method": "POST",
@@ -166,7 +166,7 @@ jsonBody auctionApiContract
           "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, missing_expected_revision, stale_revision, auction_not_found, lifecycle_rejected, extension_out_of_bounds",
           "revisionRule": "running extension increments revision by one",
           "eventRule": "persist auction.extended with previous and new close times",
-          "runtimeStatus": "blocked by persistence transaction and command handler integration; native dynamic route params are available"
+          "runtimeStatus": "executable SQLite transaction with strict body parsing, idempotency replay/conflict, audit/request logs, and auction.extended event persistence"
       },
       "close": {
           "method": "POST",
@@ -182,7 +182,7 @@ jsonBody auctionApiContract
           "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, missing_expected_revision, stale_revision, auction_not_found, lifecycle_rejected",
           "revisionRule": "running to closed increments revision by one and freezes winner",
           "eventRule": "persist auction.closed after state update in same transaction",
-          "runtimeStatus": "blocked by persistence transaction and command handler integration; native dynamic route params are available"
+          "runtimeStatus": "executable SQLite transaction with strict body parsing, idempotency replay/conflict, audit/request logs, and auction.closed event persistence"
       },
       "bid": {
           "method": "POST",
@@ -198,7 +198,7 @@ jsonBody auctionApiContract
           "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, missing_expected_revision, stale_revision, auction_missing, auction_not_running, actor_not_bidder, amount_too_low, amount_too_high, same_bidder_in_a_row",
           "revisionRule": "accepted bid increments revision by one; rejected bid preserves revision but is persisted for audit",
           "eventRule": "accepted bid emits bid.accepted and maybe auction.extended when anti-sniping applies; rejected bid emits bid.rejected",
-          "runtimeStatus": "blocked by persistence transaction and bid handler integration; native dynamic route params are available"
+          "runtimeStatus": "executable SQLite transaction with strict body parsing, idempotency replay/conflict, accepted/rejected bid persistence, audit/request logs, and event persistence"
       }
   }
 

@@ -4,7 +4,7 @@ moduleOwns app.realtime_auction_arena.server.tests.auction_events "Event schema 
 moduleDoesNotOwn app.realtime_auction_arena.server.tests.auction_events "SSE transport."
 invariant module app.realtime_auction_arena.server.tests.auction_events "Event contract tests must name schema-version and replay-order requirements."
 
-storage module immutable auctionEventsUnitTestPlanSummary String "server/src/auction_events.sem coverage: auction lifecycle events, bid events, chat events, schema version, and replay sequence."
+storage module immutable auctionEventsUnitTestPlanSummary String "server/src/auction_events.sem coverage: auction lifecycle events, bid events, chat events, schema version, replay sequence, Last-Event-ID/?after cursor precedence, bounded ?limit replay, and the remaining long-lived SSE transport gap."
 
 operation getAuctionEventsUnitTestPlan
 output operation getAuctionEventsUnitTestPlan String

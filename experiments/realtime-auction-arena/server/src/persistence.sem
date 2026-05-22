@@ -62,7 +62,7 @@ jsonBody persistenceReadinessPlan
   {
       "checks": "database open, PRAGMA foreign_keys=ON, PRAGMA journal_mode=WAL, PRAGMA busy_timeout, schema version, migration ledger, seed rows, table list, index list, read probes, write probe inside rolled-back transaction",
       "failureMode": "Return /readyz ok=false with database=schema_not_ready and keep /healthz independent.",
-      "startupIntegration": "main.sem should call persistence startup before route registration reports ready; route handlers should read the cached readiness result."
+      "startupIntegration": "server_context should call persistence startup before route registration reports ready; route handlers should read the cached readiness result."
   }
 
 storage module immutable persistenceTransactionPlan PersistenceTransactionPlan

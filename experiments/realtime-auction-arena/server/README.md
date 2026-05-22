@@ -30,27 +30,85 @@ the E2E harness verifies:
 - bcrypt's 72-byte password boundary before verify;
 - JSON write-route guardrails for unsupported media type and body size;
 - command-route idempotency-key presence checks;
-- persisted auction create/list/snapshot/start/bid flows;
+- persisted auction create/list/snapshot/start/bid/extend/close flows;
 - seeded role/scope guards for registered auctioneer command routes and the
   bidder bid route;
-- idempotency replay and conflict handling for create/start/bid commands;
-- persisted auction event rows and JSON event replay for create/start/bid;
-- durable accepted-command audit rows for create/start/bid;
+- `405 method_not_allowed` envelopes for unsupported methods on known
+  executable paths;
+- idempotency replay and conflict handling for create/start/bid/extend/close
+  commands;
+- persisted auction event rows and bounded JSON event replay for
+  create/start/bid/extend/close;
+- durable accepted-command audit rows for create/start/bid/extend/close;
+- executable chat create with bidder auth, strict JSON `text` parsing,
+  text-only storage, `chat.message.created` event append, and replay ordering;
+- runtime-backed request, auth, command, bid, rate-limit, and auction-count
+  metrics plus explicit zero-valued SSE placeholder gauges/counters;
 - oversized login bodies return a clean `413 payload_too_large` JSON envelope.
 
-This is still not a production-complete backend. Production secret loading,
-SQLite-backed refresh-token/session persistence, full admin/service/viewer
-policy coverage, a separate `403 forbidden` authz response, long-lived SSE
-streams, chat routes, extend/close routes, structured request logging, rate
-limiting, rejected/denied/auth audit rows, and runtime-backed metrics are still
-open work tracked in `TODO.md`. HS256 access-token signing,
-signature verification, process-local bcrypt-hashed refresh-token rotation, and
-the persisted create/start/bid/event/audit happy path are executable.
+This is still not a production-complete backend. SQLite-backed
+refresh-token/session persistence, full admin/service/viewer policy coverage,
+a separate `403 forbidden` authz response, long-lived SSE streams, chat
+delete/report persistence, refresh/logout/session audit rows, JWT denylist
+checks, and production fatal-missing-secret mode are still open work tracked in
+`TODO.md`. HS256 access-token signing, signature verification, environment JWT
+secret override, process-local bcrypt-hashed refresh-token rotation, and the
+persisted create/start/bid/extend/close/chat/event/audit happy path are
+executable.
 
 The executable API harness intentionally does not assert long-lived SSE
-subscriptions, chat behavior, durable auth sessions, rejected-command audit
-rows, rate limits, or runtime-backed request counters. Those remain target
-contracts until their runtime storage and streaming integrations exist.
+subscriptions, durable multi-session auth, chat delete/report moderation, or
+admin audit-query behavior. Those remain target contracts until their runtime
+storage and streaming integrations exist.
+
+## Build Config And Hardening Knobs
+
+`build.sem` is the current build-tape source of truth for local server defaults
+and deployment config keys. The executable still uses static local defaults, but
+the contract now names the settings production integration must supply:
+
+```text
+AUCTION_ARENA_HOST
+AUCTION_ARENA_PORT
+AUCTION_ARENA_DB
+AUCTION_ARENA_JWT_SECRET
+AUCTION_ARENA_MAX_JSON_BODY_BYTES
+AUCTION_ARENA_CORS_ORIGINS
+AUCTION_ARENA_RATE_LIMIT_MODE
+AUCTION_ARENA_SSE_HEARTBEAT_MILLIS
+AUCTION_ARENA_REQUEST_LOG_MODE
+```
+
+Production readiness must fail closed when required secret/config material is
+missing or unsafe demo defaults are enabled. The source-embedded demo JWT secret
+is still a development-only blocker tracked in `TODO.md`.
+
+Graceful shutdown is documented as a server contract because the current native
+webServer surface does not expose signal/cancellation hooks to SemanticScript.
+The app-level order is: stop accepting requests, reject new commands, drain
+accepted SQLite transactions, broadcast only committed events, close live
+subscribers once SSE exists, checkpoint/close SQLite, and exit within the grace
+deadline.
+
+## Demo And Load Harnesses
+
+The Python harnesses are intentionally external clients; they do not move
+auction behavior into native/runtime code.
+
+```powershell
+python experiments/realtime-auction-arena/server/tests/enterprise_contract_tests.py
+python experiments/realtime-auction-arena/server/scripts/load_smoke.py --bids 20 --concurrency 6
+python experiments/realtime-auction-arena/server/scripts/full_demo.py --require-full
+```
+
+`load_smoke.py` builds and starts a clean local server by default, creates and
+starts an auction, submits many accepted bids, then runs a small concurrent
+stale-revision race and verifies the SQLite accepted-bid count.
+
+`full_demo.py --require-full` validates the current executable demo path:
+schema readiness, admin seed row, auctioneer login, auction create/start,
+bidder login, accepted bids, chat create, auction close, ordered event replay,
+chat persistence, and audit rows.
 
 ## Responsibilities
 
@@ -94,8 +152,8 @@ DELETE /api/v1/auctions/:auctionId/chat/messages/:messageId
 POST /api/v1/auctions/:auctionId/chat/messages/:messageId/report
 ```
 
-Routes listed with create/list/snapshot/start/bid/event replay are executable as
-called out above. Extend, close, audit query, chat, and true long-lived SSE
+Routes listed with create/list/snapshot/start/extend/close/bid/event replay are
+executable as called out above. Audit query, chat, and true long-lived SSE
 semantics remain planned enterprise routes.
 
 ## API Contract
@@ -594,7 +652,7 @@ role: bidder
 
 `POST /api/v1/auth/login` parses JSON, verifies the password with the native
 bcrypt adapter, builds the Realtime Auction Arena claim payload in
-`server/src/main.sem`, asks `standard.jwt` to sign that caller-owned payload,
+`server/src/auth_context.sem`, asks `standard.jwt` to sign that caller-owned payload,
 returns an HS256 bearer JWT and an opaque random refresh token, stores only the
 refresh token's bcrypt hash in process-local state, and activates a
 process-local demo session. `GET /api/v1/session` verifies the
@@ -964,15 +1022,22 @@ durably accepted.
 
 ```text
 src/
-  main.sem                     server entrypoint
-  runtime_constants.sem        HTTP/auth/JSON/bind/event constants imported by main
-  sql_queries.sem              executable SQLite statement text imported by main
-  wire_envelopes.sem           static native HTTP JSON wire bodies imported by main
+  main.sem                     native route shell, timeout/middleware wiring, context imports
+  server_context.sem           database bootstrap, health/readiness/metrics, shell handlers
+  auth_context.sem             login, refresh, logout, session, bearer auth helpers
+  observability_context.sem    metrics state, audit insert helpers, request-log helpers
+  auction_context.sem          auction list/snapshot/create/start/extend/close/bid handlers
+  event_context.sem            event type names and bounded JSON replay handler
+  chat_context.sem             chat create handler plus registered delete/report guards
+  runtime_constants.sem        HTTP/auth/JSON/bind/event constants imported by contexts
+  sql_queries.sem              executable SQLite statement text imported by contexts
+  wire_envelopes.sem           static native HTTP JSON wire bodies imported by helpers
+  http_helpers.sem             common headers, envelope writers, content-type checks
   models.sem                   shared records, enums, and role types
   auction_domain.sem           records, enums, and validation rules
   auction_events.sem           event records and JSON encoding
   auction_supervisor.sem       async command loop once channels exist
-  routes.sem                   HTTP route handlers
+  routes.sem                   route catalog and enterprise behavior contract
   auth.sem                     bcrypt login, JWT verification, role checks
   middleware.sem               request id, logging, auth, idempotency
   chat.sem                     chat commands and moderation rules

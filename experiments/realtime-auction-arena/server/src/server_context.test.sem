@@ -1,0 +1,14 @@
+module app.realtime_auction_arena.server.tests.server_context
+purpose module app.realtime_auction_arena.server.tests.server_context "Unit coverage contract for server/src/server_context.sem."
+moduleOwns app.realtime_auction_arena.server.tests.server_context "Assertions that server shell context owns readiness state, public shell handlers, metrics counters, and request middleware after the context split."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.server_context "Native route registration, auth commands, auction commands, chat commands, or durable business-rule tests."
+invariant module app.realtime_auction_arena.server.tests.server_context "The shell-context plan must keep handler names stable so main.sem route declarations remain ABI-only wiring."
+
+storage module immutable serverContextUnitTestPlanSummary String "server/src/server_context.sem coverage: schema literal and database readiness cache, openOrReuseArenaDatabase success/failure/cache branches, health and readiness envelopes, Prometheus metrics formatting from process counters, API index/not-found/method-not-allowed envelopes, and requestContextMiddleware request counter plus request-id/path header stamping."
+
+operation getServerContextUnitTestPlan
+output operation getServerContextUnitTestPlan String
+memory getServerContextUnitTestPlan heap no
+async getServerContextUnitTestPlan no
+purpose operation getServerContextUnitTestPlan "Return the server context unit coverage plan."
+return value serverContextUnitTestPlanSummary
