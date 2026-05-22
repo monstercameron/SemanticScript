@@ -2,6 +2,10 @@
 
 ## 2026-05-22
 
+- `7ee77dee86a9d098583acf42afea20bfd04c819d` - `app: add TaskForge API todo client`
+  - Adds `apps/taskforge-api-client`, a standalone browser todo app that consumes the existing `taskforge-web` JSON API through relative `/api/*` calls.
+  - Adds a local Python same-origin proxy so browser auth cookies work without CORS changes while forwarding `/api/version`, auth, list, create, complete, uncomplete, and delete routes to the TaskForge backend.
+  - Documents run/test flow, source layout, API coverage, and verifies the proxy contract with a fake TaskForge API harness covering login, cookie forwarding, todo fetch, create, complete, and delete.
 - `136f37e6c6f94ecb90be395f300ed3ad522dcc98` - `chore: cut over project layout and syntax cleanup`
   - Renames the retained demo set from `app/` into the polished `apps/` tree: `desktop-window-smoke`, `html-template-lab`, `http-runtime-gauntlet`, `taskforge-tui`, and `taskforge-web`. Parks the Kilo port under `experiments/kilo-port`, removes retired todo/web/demo folders, deletes the old raw `samples/` mirrors and syntax fixture `.sem` files, and moves the durable language notes into `docs/`.
   - Removes the stale SemanticScript bootstrap/compiler-parity tree and old feature-coverage scripts from the active release surface, while keeping the Python reference compiler as the supported implementation path. Moves shared call-contract data under `SemanticScript/shared/`, refreshes repo docs around release hygiene and current folders, and updates CI/tests for the new app paths.
