@@ -109,7 +109,7 @@ field BuildI64Constant type String
 field BuildI64Constant value I64
 
 record BuildConstants
-field BuildConstants apiVersion BuildStringConstant
+field BuildConstants projectApiVersion BuildStringConstant
 field BuildConstants fallbackRequestId BuildStringConstant
 field BuildConstants maxJsonBodyBytes BuildI64Constant
 field BuildConstants bcryptPasswordMaxBytes BuildI64Constant
@@ -211,7 +211,7 @@ jsonBody realtimeAuctionArenaServerBuildPlan
           }
       },
       "constants": {
-          "apiVersion": { "type": "String", "value": "v1" },
+          "projectApiVersion": { "type": "String", "value": "v1" },
           "fallbackRequestId": { "type": "String", "value": "req_runtime_header_unavailable" },
           "maxJsonBodyBytes": { "type": "I64", "value": 65536 },
           "bcryptPasswordMaxBytes": { "type": "I64", "value": 72 },
