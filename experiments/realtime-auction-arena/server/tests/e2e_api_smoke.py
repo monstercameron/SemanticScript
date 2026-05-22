@@ -201,6 +201,25 @@ def post_auction_command(path, body, headers, key, status, ok, code=None):
     )
 
 
+def registered_method_not_allowed_cases():
+    cases = []
+    main_source = SERVER_DIR / "src" / "main.sem"
+    for line in main_source.read_text(encoding="utf-8").splitlines():
+        if not line.startswith("route realtimeAuctionArenaServer "):
+            continue
+        if not line.endswith(" methodNotAllowedHandler"):
+            continue
+        method = line.split()[2]
+        route_pattern = line.split('"')[1]
+        path = (
+            route_pattern
+            .replace(":auctionId", "auc_method_matrix")
+            .replace(":messageId", "msg_method_matrix")
+        )
+        cases.append((method, path))
+    return cases
+
+
 def test_public_routes():
     health = expect_json("/healthz", 200, ok=True)
     assert health["data"]["status"] == "ok"
@@ -222,6 +241,9 @@ def test_public_routes():
     assert "POST /api/v1/auctions/:auctionId/close" in route_text
     assert "POST /api/v1/auctions/:auctionId/bids" in route_text
     assert "GET /api/v1/auctions/:auctionId/events" in route_text
+    assert "POST /api/v1/auctions/:auctionId/chat/messages" in route_text
+    assert "DELETE /api/v1/auctions/:auctionId/chat/messages/:messageId" in route_text
+    assert "POST /api/v1/auctions/:auctionId/chat/messages/:messageId/report" in route_text
 
     expect_json("/api/v1/auctions", 401, ok=False, code="unauthorized")
 
@@ -243,6 +265,13 @@ def test_public_routes():
         ok=False,
         code="method_not_allowed",
     )
+
+
+def test_registered_method_not_allowed_routes():
+    cases = registered_method_not_allowed_cases()
+    assert len(cases) >= 80, f"expected broad method guard matrix, got {len(cases)}"
+    for method, path in cases:
+        expect_json(path, 405, ok=False, code="method_not_allowed", method=method)
 
 
 def test_generated_request_id_without_client_header():
@@ -847,6 +876,34 @@ def test_auth_and_api_fail_closed():
     )
     assert same_bidder_bid["data"]["bid"]["accepted"] is True
     assert same_bidder_bid["data"]["auction"]["revision"] == 4
+
+    chat_created = post_auction_command(
+        f"/api/v1/auctions/{auction_id}/chat/messages",
+        {"text": "e2e chat message"},
+        active_headers,
+        "idem_e2e_chat_create_001",
+        201,
+        True,
+    )
+    assert chat_created["data"]["message"]["status"] == "created"
+    assert chat_created["data"]["auction"]["revision"] == 4
+    expect_json(
+        f"/api/v1/auctions/{auction_id}/chat/messages/msg_missing",
+        404,
+        ok=False,
+        code="message_not_found",
+        method="DELETE",
+        headers={**active_headers, "Idempotency-Key": "idem_e2e_chat_delete_guard_001"},
+    )
+    expect_json(
+        f"/api/v1/auctions/{auction_id}/chat/messages/msg_missing/report",
+        404,
+        ok=False,
+        code="message_not_found",
+        method="POST",
+        body=json.dumps({"reason": "spam"}, separators=(",", ":")),
+        headers={**active_headers, "Idempotency-Key": "idem_e2e_chat_report_guard_001"},
+    )
 
     relogin = login_as("auctioneer")
     active_headers = {"Authorization": f"Bearer {relogin['data']['accessToken']}"}
