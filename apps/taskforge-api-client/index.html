@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TaskForge API Todo Client</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-block">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <path d="M5 12.5 9.2 16 19 6" />
+              <path d="M4 5.5h9" />
+              <path d="M4 18.5h16" />
+            </svg>
+          </div>
+          <div>
+            <h1>TaskForge Todos</h1>
+            <p id="apiVersion">API status pending</p>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <span id="sessionPill" class="session-pill">Signed out</span>
+          <button id="refreshButton" class="icon-button" type="button" title="Refresh todos" aria-label="Refresh todos">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <path d="M21 12a9 9 0 0 1-15.4 6.4L4 17" />
+              <path d="M3 12A9 9 0 0 1 18.4 5.6L20 7" />
+              <path d="M4 17v4h4" />
+              <path d="M20 7V3h-4" />
+            </svg>
+          </button>
+          <button id="logoutButton" class="secondary-button hidden" type="button">Sign out</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <aside class="side-panel">
+          <section id="loginPanel" class="panel">
+            <div class="panel-heading">
+              <h2>Sign in</h2>
+              <span class="panel-kicker">TaskForge session</span>
+            </div>
+            <form id="loginForm" class="stack" autocomplete="off">
+              <label>
+                <span>Username</span>
+                <input name="username" type="text" value="demo" required />
+              </label>
+              <label>
+                <span>Password</span>
+                <input name="password" type="password" value="demo1234" required />
+              </label>
+              <button class="primary-button" type="submit">Sign in</button>
+              <button id="demoButton" class="secondary-button" type="button">Use demo account</button>
+            </form>
+            <p id="loginMessage" class="status-line" role="status"></p>
+          </section>
+
+          <section id="composerPanel" class="panel hidden">
+            <div class="panel-heading">
+              <h2>New todo</h2>
+              <span class="panel-kicker">POST /api/todos</span>
+            </div>
+            <form id="createForm" class="stack">
+              <label>
+                <span>Title</span>
+                <input id="newTitle" name="title" type="text" maxlength="120" required />
+              </label>
+              <label>
+                <span>Notes</span>
+                <textarea name="body" rows="4" maxlength="500"></textarea>
+              </label>
+              <label>
+                <span>Priority</span>
+                <select name="priority">
+                  <option value="1">High</option>
+                  <option value="2" selected>Medium</option>
+                  <option value="3">Low</option>
+                </select>
+              </label>
+              <button class="primary-button" type="submit">Add todo</button>
+            </form>
+            <p id="createMessage" class="status-line" role="status"></p>
+          </section>
+        </aside>
+
+        <section class="list-panel">
+          <div class="list-header">
+            <div>
+              <h2>Your todos</h2>
+              <p id="countLine">Sign in to load todos.</p>
+            </div>
+            <div class="stats-row" aria-label="Todo counts">
+              <span><strong id="openCount">0</strong> open</span>
+              <span><strong id="doneCount">0</strong> done</span>
+            </div>
+          </div>
+
+          <div class="toolbar" aria-label="Todo filters">
+            <div class="segmented" role="group" aria-label="Filter todos">
+              <button class="filter-button active" type="button" data-filter="all">All</button>
+              <button class="filter-button" type="button" data-filter="open">Open</button>
+              <button class="filter-button" type="button" data-filter="done">Done</button>
+            </div>
+            <label class="search-box">
+              <span class="sr-only">Search todos</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-3.2-3.2" />
+              </svg>
+              <input id="searchInput" type="search" placeholder="Search" />
+            </label>
+          </div>
+
+          <div id="errorBanner" class="error-banner hidden" role="alert"></div>
+          <ul id="todoList" class="todo-list" aria-live="polite"></ul>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
