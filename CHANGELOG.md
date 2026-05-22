@@ -2,6 +2,20 @@
 
 ## 2026-05-22
 
+- `c97c21564408ce8700fd9e9e0d3f790591ea28ea` - `experiments: adjust auction chat guard smoke`
+  - Updates the Realtime Auction Arena E2E smoke contract for chat delete guards: bidder tokens are denied before missing-message lookup, while auctioneer tokens still receive `message_not_found`.
+- `b29f6a602039877f8e80c1a71354d85389f552a5` - `experiments: refresh auction route smoke coverage`
+  - Updates the Realtime Auction Arena static API index envelope and API tests for extend, close, event, and chat routes, and tightens the E2E chat-create assertion to verify the returned message auction id.
+- `9bc704f56335625dd656de336865f09247e27041` - `experiments: align auction E2E chat events`
+  - Updates the Realtime Auction Arena E2E smoke expectations for `chat.message.created` event replay and invokes the registered method guard matrix from the script entrypoint.
+- `7be76cb5cb03d79da7481b1b8341188e9ffc1858` - `experiments: cover auction method guard matrix`
+  - Expands the Realtime Auction Arena E2E smoke harness to derive registered method-not-allowed routes from `main.sem`, assert their 405 envelopes, and cover chat create plus delete/report guard assertions.
+- `52ecfc4428dc1dbaf0f3a379d9e8f5852a9780fa` - `experiments: refactor auction server contexts`
+  - Splits the Realtime Auction Arena server from a monolithic route implementation into focused server, auth, observability, auction, event, chat, and HTTP helper context modules, with build registration and unit-plan coverage.
+  - Expands executable behavior for lifecycle extend/close, bounded event replay, chat create, request ids, method guards, login rate limits, JWT secret/time claims, metrics/audit/request logs, and rejected-bid persistence, with docs, demo/load scripts, API/E2E coverage, enterprise contracts, and SQLite persistence tests.
+- `295f41d853ba86aa737367c82755da005efb4862` - `compiler: tighten async work validation`
+  - Makes compiler and linter fallible-call checks source-order aware and wait-set-handler aware, including mixed `runChecked`/unchecked execution and private case-result escapes through defers.
+  - Validates `submitWork` worker pools, ordered work declarations and `workArg` rows, preserves imported `literalSource` origin paths, expands compiler/linter coverage, and tightens the TaskForge async overlap threshold.
 - `318bac845317d814b94102cf113a005d8089048e` - `experiments: rename auction API version build field`
   - Renames the Realtime Auction Arena build-plan constants field from `apiVersion` to `projectApiVersion` so the schema and JSON body avoid the generic API name collision.
 - `d98c7e76f8a4c5611d075e2006148b6596e1de03` - `experiments: implement SQLite auction flow`
