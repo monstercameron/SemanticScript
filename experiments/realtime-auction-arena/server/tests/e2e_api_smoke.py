@@ -984,17 +984,18 @@ def test_auth_and_api_fail_closed():
     )
 
     events = expect_json(f"/api/v1/auctions/{auction_id}/events", 200, ok=True, headers=active_headers)
-    assert events["data"]["count"] == 6
+    assert events["data"]["count"] == 7
     assert events["data"]["after"] == 0
     assert events["data"]["limit"] == 200
-    assert events["data"]["nextAfter"] == 6
-    assert [event["eventTypeCode"] for event in events["data"]["events"]] == [1, 2, 3, 5, 5, 4]
+    assert events["data"]["nextAfter"] == 7
+    assert [event["eventTypeCode"] for event in events["data"]["events"]] == [1, 2, 3, 5, 5, 8, 4]
     assert [event["eventType"] for event in events["data"]["events"]] == [
         "auction.created",
         "auction.started",
         "auction.extended",
         "bid.accepted",
         "bid.accepted",
+        "chat.message.created",
         "auction.closed",
     ]
     after_events_path = f"/api/v1/auctions/{auction_id}/events?after=2&limit=2"
@@ -1036,8 +1037,8 @@ def test_auth_and_api_fail_closed():
         route_path=f"/api/v1/auctions/{auction_id}/events",
     )
     assert last_event_id_events["data"]["after"] == 3
-    assert last_event_id_events["data"]["count"] == 3
-    assert [event["sequence"] for event in last_event_id_events["data"]["events"]] == [4, 5, 6]
+    assert last_event_id_events["data"]["count"] == 4
+    assert [event["sequence"] for event in last_event_id_events["data"]["events"]] == [4, 5, 6, 7]
     db_path = SERVER_DIR / "auction_arena.sqlite3"
     with sqlite3.connect(db_path) as conn:
         seed_users = set(conn.execute("SELECT user_id, username, role FROM users").fetchall())
@@ -1215,6 +1216,7 @@ def main():
     process = start_server()
     try:
         test_public_routes()
+        test_registered_method_not_allowed_routes()
         test_auth_and_api_fail_closed()
         test_generated_request_id_without_client_header()
         test_metrics_route()
