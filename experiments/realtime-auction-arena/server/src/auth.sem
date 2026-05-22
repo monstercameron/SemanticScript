@@ -84,6 +84,49 @@ field AuthFailureMarkers wrongAudience String
 field AuthFailureMarkers insufficientRole String
 field AuthFailureMarkers bcryptInputTooLong String
 
+record AuthRolePolicy
+field AuthRolePolicy name String
+field AuthRolePolicy allowedRoles String
+field AuthRolePolicy requiredScopes String
+field AuthRolePolicy routeFamilies String
+field AuthRolePolicy failureStatus String
+field AuthRolePolicy runtimeStatus String
+
+record AuthRolePolicyRegistry
+field AuthRolePolicyRegistry anonymous AuthRolePolicy
+field AuthRolePolicyRegistry authenticated AuthRolePolicy
+field AuthRolePolicyRegistry viewer AuthRolePolicy
+field AuthRolePolicyRegistry bidder AuthRolePolicy
+field AuthRolePolicyRegistry adminOrAuctioneer AuthRolePolicy
+field AuthRolePolicyRegistry admin AuthRolePolicy
+field AuthRolePolicyRegistry operator AuthRolePolicy
+field AuthRolePolicyRegistry service AuthRolePolicy
+
+record ScopeRegistryContract
+field ScopeRegistryContract auctionsRead String
+field ScopeRegistryContract auctionsWrite String
+field ScopeRegistryContract bidsRead String
+field ScopeRegistryContract bidsWrite String
+field ScopeRegistryContract chatRead String
+field ScopeRegistryContract chatWrite String
+field ScopeRegistryContract chatModerate String
+field ScopeRegistryContract auditRead String
+field ScopeRegistryContract metricsRead String
+field ScopeRegistryContract serviceInternal String
+field ScopeRegistryContract matchingRule String
+field ScopeRegistryContract runtimeStatus String
+
+record AuthConfigContract
+field AuthConfigContract jwtSecretEnv String
+field AuthConfigContract issuerEnv String
+field AuthConfigContract audienceEnv String
+field AuthConfigContract accessTtlSeconds String
+field AuthConfigContract refreshTtlSeconds String
+field AuthConfigContract bcryptCostEnv String
+field AuthConfigContract demoSeedEnv String
+field AuthConfigContract failureMode String
+field AuthConfigContract runtimeStatus String
+
 record MainIntegrationPatch
 field MainIntegrationPatch value String
 
@@ -103,6 +146,9 @@ field AuthContract logout AuthEndpointContract
 field AuthContract session AuthEndpointContract
 field AuthContract refreshTokenRow RefreshTokenDurableRowContract
 field AuthContract failureMarkers AuthFailureMarkers
+field AuthContract rolePolicies AuthRolePolicyRegistry
+field AuthContract scopes ScopeRegistryContract
+field AuthContract config AuthConfigContract
 field AuthContract mainIntegrationPatch MainIntegrationPatch
 
 storage module immutable authContract AuthContract
@@ -186,8 +232,99 @@ jsonBody authContract
           "insufficientRole": "authorization middleware returns forbidden with insufficient_role for authenticated principals without required role/scope",
           "bcryptInputTooLong": "login rejects password plaintext longer than 72 bytes before bcrypt.verify"
       },
+      "rolePolicies": {
+          "anonymous": {
+              "name": "anonymous",
+              "allowedRoles": "none required",
+              "requiredScopes": "none",
+              "routeFamilies": "auth.login and public health/readiness/index routes",
+              "failureStatus": "not applicable",
+              "runtimeStatus": "executable for public routes and login"
+          },
+          "authenticated": {
+              "name": "authenticated",
+              "allowedRoles": "viewer, bidder, auctioneer, admin, service",
+              "requiredScopes": "valid bearer token with non-empty sub, role, scopes, and active session",
+              "routeFamilies": "session, authenticated auction reads, event replay",
+              "failureStatus": "401 unauthorized",
+              "runtimeStatus": "executable demo bearer-token presence/signature/current-token/session check; registered write-route role and scope checks execute in main.sem"
+          },
+          "viewer": {
+              "name": "viewer",
+              "allowedRoles": "viewer, bidder, auctioneer, admin, service",
+              "requiredScopes": "auctions:read or bids:read",
+              "routeFamilies": "GET /api/v1/auctions, GET /api/v1/auctions/:auctionId, GET /api/v1/auctions/:auctionId/events",
+              "failureStatus": "401 unauthorized or 403 forbidden",
+              "runtimeStatus": "contract; current executable accepts the active demo bearer token for reads without viewer per-scope enforcement"
+          },
+          "bidder": {
+              "name": "bidder",
+              "allowedRoles": "bidder or service acting with bids:write/chat:write",
+              "requiredScopes": "bids:write for bids, chat:write for chat create/report",
+              "routeFamilies": "POST /api/v1/auctions/:auctionId/bids, chat create, chat report",
+              "failureStatus": "401 unauthorized or 403 forbidden",
+              "runtimeStatus": "executable for the registered bid route with seeded bidder role and bids:write scope"
+          },
+          "adminOrAuctioneer": {
+              "name": "admin_or_auctioneer",
+              "allowedRoles": "auctioneer, admin, service",
+              "requiredScopes": "auctions:write for create/start/extend/close; chat:moderate for moderation",
+              "routeFamilies": "auction create/start/extend/close and chat delete",
+              "failureStatus": "401 unauthorized or 403 forbidden",
+              "runtimeStatus": "executable for registered create/start routes with seeded auctioneer role and auctions:write scope; extend/close remain handler work"
+          },
+          "admin": {
+              "name": "admin",
+              "allowedRoles": "admin, service",
+              "requiredScopes": "audit:read and users:write where applicable",
+              "routeFamilies": "audit queries, future user management",
+              "failureStatus": "401 unauthorized or 403 forbidden",
+              "runtimeStatus": "contract only"
+          },
+          "operator": {
+              "name": "operator",
+              "allowedRoles": "admin, service",
+              "requiredScopes": "metrics:read",
+              "routeFamilies": "GET /metrics once protected",
+              "failureStatus": "401 unauthorized or 403 forbidden",
+              "runtimeStatus": "contract; metrics endpoint is currently public bootstrap text"
+          },
+          "service": {
+              "name": "service",
+              "allowedRoles": "service",
+              "requiredScopes": "service:internal plus route-specific scopes",
+              "routeFamilies": "automation, load tests, future internal maintenance",
+              "failureStatus": "401 unauthorized or 403 forbidden",
+              "runtimeStatus": "contract only"
+          }
+      },
+      "scopes": {
+          "auctionsRead": "auctions:read",
+          "auctionsWrite": "auctions:write",
+          "bidsRead": "bids:read",
+          "bidsWrite": "bids:write",
+          "chatRead": "chat:read",
+          "chatWrite": "chat:write",
+          "chatModerate": "chat:moderate",
+          "auditRead": "audit:read",
+          "metricsRead": "metrics:read",
+          "serviceInternal": "service:internal",
+          "matchingRule": "authorization succeeds only when the principal role is allowed by policy and at least one listed scope satisfies the route requirement; service principals must also carry service:internal",
+          "runtimeStatus": "registered auctioneer command routes and the bid route check exact seeded scope sets; viewer/admin/operator/service policy matching remains contract work"
+      },
+      "config": {
+          "jwtSecretEnv": "AUCTION_ARENA_JWT_SECRET required outside deterministic local demo mode",
+          "issuerEnv": "AUCTION_ARENA_JWT_ISSUER optional override, default realtime-auction-arena",
+          "audienceEnv": "AUCTION_ARENA_JWT_AUDIENCE optional override, default api-v1",
+          "accessTtlSeconds": "AUCTION_ARENA_ACCESS_TOKEN_TTL_SECONDS default 900 and clamped to 300..900",
+          "refreshTtlSeconds": "AUCTION_ARENA_REFRESH_TOKEN_TTL_SECONDS default 2592000 and clamped by deployment policy",
+          "bcryptCostEnv": "AUCTION_ARENA_BCRYPT_COST default 12, minimum 10",
+          "demoSeedEnv": "AUCTION_ARENA_DEMO_SEED enables seeded auctioneer and demo bidder only for local development",
+          "failureMode": "startup fails readiness if required production auth config is absent or invalid",
+          "runtimeStatus": "contract; executable still uses a source-level demo HS256 secret and fixed demo expiration"
+      },
       "mainIntegrationPatch": {
-          "value": "Remaining main.sem integration: replace process-local refresh state with a refresh_tokens row transaction; load JWT secret from environment/config; validate exp/iat/nbf against runtime time; add durable revoked_jwts checks; wire role/scope guards for admin_or_auctioneer and bidder policies."
+          "value": "Remaining main.sem integration: replace process-local refresh state with a refresh_tokens row transaction; load JWT secret from environment/config; validate exp/iat/nbf against runtime time; add durable revoked_jwts checks; split 403 authorization failures from 401 authentication failures; wire viewer, admin, operator, service, chat, extend, and close role/scope policies."
       }
   }
 

@@ -32,10 +32,15 @@ Invoke-WebRequest http://127.0.0.1:18083/healthz -UseBasicParsing
 Invoke-WebRequest http://127.0.0.1:18083/metrics -UseBasicParsing
 ```
 
-The executable currently serves the versioned API shell, static JSON envelopes,
-bootstrap metrics, and auth/session runtime-gap responses. Full JWT login,
-SQLite command transactions, dynamic auction routes, and SSE replay are still
-tracked in [server/TODO.md](server/TODO.md).
+The executable currently serves the versioned API shell, static and dynamic JSON
+envelopes, bootstrap metrics, bcrypt-backed demo auth, HS256 bearer tokens
+signed from app-owned claim payloads, SQLite schema initialization,
+create/list/snapshot/start/bid command routes, scoped idempotency replay and
+conflict handling, seeded auctioneer/bidder role guards, accepted-command audit
+rows, and JSON event replay. True long-lived SSE, chat, durable auth sessions,
+full admin/service/viewer policies, extend/close commands, request logs, rate
+limits, and the Win32/browser clients are still tracked in
+[server/TODO.md](server/TODO.md).
 
 ## Demo Story
 
@@ -374,15 +379,15 @@ This experiment should make gaps concrete.
 
 1. Versioned API shell with response envelopes, request IDs, and structured
    logs.
-2. Seed admin user, bcrypt login, access JWT, refresh token, and role checks.
-3. Server with in-memory auction state and JSON polling.
+2. Seed local auctioneer user, bcrypt login, access JWT, and refresh token.
+3. Server with SQLite-backed auction state and JSON polling/replay.
 4. Browser client that polls versioned snapshot routes and posts bids.
 5. Async auction supervisor with an internal command queue.
 6. SSE broadcast from the server to multiple browser clients.
 7. Timer-based automatic close and anti-sniping extension.
 8. Auction-floor chat over POST plus the existing SSE stream.
 9. Win32 auctioneer app that controls the server through authenticated HTTP.
-10. SQLite event log, audit log, idempotency keys, and reconnect replay.
+10. Expand SQLite audit/request logs, rejected-command history, and reconnect replay.
 11. Deterministic test harness with fake time and simulated clients.
 
 ## Non-Goals For The First Pass

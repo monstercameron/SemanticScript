@@ -11,35 +11,46 @@ server is the system of record.
 
 ## Current Executable Status
 
-The checked-in server currently proves the API shell plus an executable demo
-auth flow, not the full enterprise backend. The native webServer target builds
-and the E2E harness verifies:
+The checked-in server now proves the API shell, executable demo auth, and the
+core SQLite-backed auction command path. The native webServer target builds and
+the E2E harness verifies:
 
 - `GET /healthz`, `GET /readyz`, `GET /metrics`, `GET /api/v1`, and
-  `GET /api/v1/auctions`;
+  authenticated `GET /api/v1/auctions`;
 - stable `v1` envelopes, `X-Request-Id` echo, `X-Api-Version`,
   `X-Max-Body-Bytes`, `X-Route-Path`, and API 404 responses;
-- bcrypt-verified login for the seeded `auctioneer` demo account;
-- HS256 bearer-token session lookup with required issuer/audience/subject/role/
-  scope claims, refresh-token rotation, logout revocation, bad-signature
-  rejection, stale-token rejection after refresh, refresh replay rejection, and
+- SQLite database open/schema initialization during readiness;
+- bcrypt-verified login for the seeded `auctioneer` and `bidder` demo
+  accounts;
+- HS256 bearer-token issuance from app-owned claim payloads, signature
+  verification through `standard.jwt`, active-token session lookup,
+  refresh-token rotation, logout revocation, bad-signature rejection,
+  stale-token rejection after refresh, refresh replay rejection, and
   post-logout `401` behavior;
 - bcrypt's 72-byte password boundary before verify;
 - JSON write-route guardrails for unsupported media type and body size;
-- command-route idempotency-key presence checks before fail-closed writes;
-- protected write routes fail closed with `403` once required guards pass;
+- command-route idempotency-key presence checks;
+- persisted auction create/list/snapshot/start/bid flows;
+- seeded role/scope guards for registered auctioneer command routes and the
+  bidder bid route;
+- idempotency replay and conflict handling for create/start/bid commands;
+- persisted auction event rows and JSON event replay for create/start/bid;
+- durable accepted-command audit rows for create/start/bid;
 - oversized login bodies return a clean `413 payload_too_large` JSON envelope.
 
-Production secret loading, SQLite-backed refresh-token persistence, auction
-mutation handlers, SSE replay, chat routes, structured request logging, and
-audit writes are still open work tracked in `TODO.md`. HS256 access-token
-signing/claim checks and process-local bcrypt-hashed refresh-token rotation are
-executable.
+This is still not a production-complete backend. Production secret loading,
+SQLite-backed refresh-token/session persistence, full admin/service/viewer
+policy coverage, a separate `403 forbidden` authz response, long-lived SSE
+streams, chat routes, extend/close routes, structured request logging, rate
+limiting, rejected/denied/auth audit rows, and runtime-backed metrics are still
+open work tracked in `TODO.md`. HS256 access-token signing,
+signature verification, process-local bcrypt-hashed refresh-token rotation, and
+the persisted create/start/bid/event/audit happy path are executable.
 
-The executable API harness intentionally does not assert persistence, SSE replay,
-auction lifecycle mutations, chat behavior, durable audit rows, or runtime-backed
-request counters. Those remain target contracts until their runtime storage and
-streaming integrations exist.
+The executable API harness intentionally does not assert long-lived SSE
+subscriptions, chat behavior, durable auth sessions, rejected-command audit
+rows, rate limits, or runtime-backed request counters. Those remain target
+contracts until their runtime storage and streaming integrations exist.
 
 ## Responsibilities
 
@@ -83,10 +94,9 @@ DELETE /api/v1/auctions/:auctionId/chat/messages/:messageId
 POST /api/v1/auctions/:auctionId/chat/messages/:messageId/report
 ```
 
-Routes listed with `:auctionId` or chat/audit/SSE semantics are planned
-enterprise routes unless called out in the executable status above. The current
-live server registers the static API/auth/auction-list shell and fails closed
-for auction creation while transactional writes are unfinished.
+Routes listed with create/list/snapshot/start/bid/event replay are executable as
+called out above. Extend, close, audit query, chat, and true long-lived SSE
+semantics remain planned enterprise routes.
 
 ## API Contract
 
@@ -570,18 +580,24 @@ Rules:
 
 Use bcrypt for password storage and JWT for access tokens.
 
-The current executable demo account is:
+The current executable demo accounts are:
 
 ```text
 username: auctioneer
 password: auctioneer-demo-password
 role: auctioneer
+
+username: bidder
+password: auctioneer-demo-password
+role: bidder
 ```
 
 `POST /api/v1/auth/login` parses JSON, verifies the password with the native
-bcrypt adapter, returns an HS256-signed bearer JWT and an opaque random refresh
-token, stores only the refresh token's bcrypt hash in process-local state, and
-activates a process-local demo session. `GET /api/v1/session` verifies the
+bcrypt adapter, builds the Realtime Auction Arena claim payload in
+`server/src/main.sem`, asks `standard.jwt` to sign that caller-owned payload,
+returns an HS256 bearer JWT and an opaque random refresh token, stores only the
+refresh token's bcrypt hash in process-local state, and activates a
+process-local demo session. `GET /api/v1/session` verifies the
 `Authorization: Bearer ...` token signature and accepts only the current active
 access token. `POST /api/v1/auth/refresh` verifies the refresh hash and rotates
 both tokens. `POST /api/v1/auth/logout` verifies the current refresh token and
@@ -949,6 +965,9 @@ durably accepted.
 ```text
 src/
   main.sem                     server entrypoint
+  runtime_constants.sem        HTTP/auth/JSON/bind/event constants imported by main
+  sql_queries.sem              executable SQLite statement text imported by main
+  wire_envelopes.sem           static native HTTP JSON wire bodies imported by main
   models.sem                   shared records, enums, and role types
   auction_domain.sem           records, enums, and validation rules
   auction_events.sem           event records and JSON encoding
@@ -963,7 +982,7 @@ tests/
   rule_tests.sem               deterministic rule checks
   auth_tests.sem               bcrypt/JWT/session contract checks
   chat_tests.sem               chat moderation and rate-limit checks
-  api_tests.py                 external HTTP integration harness later
+  api_tests.py                 external HTTP integration harness
 
 docs/
   runtime-gaps.md              notes on missing language/runtime pieces
@@ -992,16 +1011,18 @@ This server should expose missing or immature features quickly:
 
 ## First Milestone
 
-Build a single-auction in-memory server with JSON polling before adding true
-SSE. The first working loop should still be versioned and observable:
+The first working loop is now SQLite-backed JSON polling/replay, not an
+in-memory placeholder:
 
-1. Seed an admin user with a bcrypt password hash.
+1. Seed a local auctioneer user with a bcrypt password hash.
 2. `POST /api/v1/auth/login`
 3. `POST /api/v1/auctions`
 4. `POST /api/v1/auctions/:id/start`
 5. `POST /api/v1/auctions/:id/bids`
 6. `GET /api/v1/auctions/:id`
-7. Browser renders current state by polling.
+7. `GET /api/v1/auctions/:id/events` returns committed event replay.
+8. The E2E harness verifies accepted-command audit rows and scoped idempotency
+   rows in SQLite.
 
 Once that works, move bid handling behind an async supervisor and replace
 polling with SSE broadcast, then add chat over POST plus the same SSE event

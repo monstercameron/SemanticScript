@@ -1,12 +1,17 @@
 import base64
 import json
 import os
+import uuid
 import urllib.error
 import urllib.request
 
 
 BASE_URL = os.environ.get("AUCTION_ARENA_BASE_URL", "http://127.0.0.1:18083")
 REQUEST_ID = "req_python_smoke"
+
+
+def unique_key(prefix):
+    return f"{prefix}_{uuid.uuid4().hex}"
 
 
 def request(path, method="GET", body=None, headers=None):
@@ -85,9 +90,69 @@ def login_as_auctioneer():
     )
 
 
+def login_as_bidder():
+    return expect_json(
+        "/api/v1/auth/login",
+        200,
+        ok=True,
+        method="POST",
+        body='{"username":"bidder","password":"auctioneer-demo-password"}',
+    )
+
+
+def auction_body(title, max_bid_amount=1000):
+    return json.dumps(
+        {
+            "title": title,
+            "description": "API harness auction",
+            "startingBid": 100,
+            "minimumIncrement": 10,
+            "maxBidAmount": max_bid_amount,
+            "startsAtUtcMillis": 1,
+            "closesAtUtcMillis": 999999999999,
+            "antiSnipingWindowMillis": 60000,
+            "antiSnipingExtensionMillis": 60000,
+        },
+        separators=(",", ":"),
+    )
+
+
+def create_auction(auth, title, idempotency_key=None, max_bid_amount=1000):
+    body = auction_body(title, max_bid_amount=max_bid_amount)
+    headers = {**auth, "Idempotency-Key": idempotency_key or unique_key("idem_py_create")}
+    payload = expect_json(
+        "/api/v1/auctions",
+        201,
+        ok=True,
+        method="POST",
+        body=body,
+        headers=headers,
+    )
+    return payload, body, headers
+
+
+def post_auction_command(path, body, auth, key, status, ok, code=None):
+    return expect_json(
+        path,
+        status,
+        ok=ok,
+        code=code,
+        method="POST",
+        body=json.dumps(body, separators=(",", ":")),
+        headers={**auth, "Idempotency-Key": key},
+    )
+
+
 def test_health_ready_and_api_envelopes():
-    for path in ["/healthz", "/readyz", "/api/v1", "/api/v1/auctions"]:
+    for path in ["/healthz", "/readyz", "/api/v1"]:
         expect_json(path, 200, ok=True)
+    login = login_as_auctioneer()
+    expect_json(
+        "/api/v1/auctions",
+        200,
+        ok=True,
+        headers={"Authorization": f"Bearer {login['data']['accessToken']}"},
+    )
 
 
 def test_api_index_only_asserts_executable_routes():
@@ -99,6 +164,10 @@ def test_api_index_only_asserts_executable_routes():
     assert "GET /api/v1/session" in route_text
     assert "GET /api/v1/auctions" in route_text
     assert "POST /api/v1/auctions" in route_text
+    assert "GET /api/v1/auctions/:auctionId" in route_text
+    assert "POST /api/v1/auctions/:auctionId/start" in route_text
+    assert "POST /api/v1/auctions/:auctionId/bids" in route_text
+    assert "GET /api/v1/auctions/:auctionId/events" in route_text
 
 
 def test_metrics_smoke():
@@ -108,8 +177,9 @@ def test_metrics_smoke():
     assert "auction_server_bootstrap_info" in text
     assert 'auction_server_bootstrap_info{api_version="v1",runtime="native_http_exact_routes"} 1' in text
     assert 'auction_server_runtime_gap{feature="long_lived_sse"} 1' in text
-    assert 'auction_server_runtime_gap{feature="sqlite_persistence"} 1' in text
     assert 'auction_server_runtime_gap{feature="request_logging_counters"} 1' in text
+    assert 'auction_server_runtime_gap{feature="durable_auth_sessions"} 1' in text
+    assert 'auction_server_runtime_gap{feature="chat_routes"} 1' in text
 
 
 def test_auth_demo_flow_is_enveloped():
@@ -130,6 +200,24 @@ def test_auth_demo_flow_is_enveloped():
     assert "nbf" in token_payload
     assert token_payload["exp"] == 2000000000
     assert "jti" in token_payload
+
+
+def test_bidder_demo_flow_is_enveloped():
+    payload = login_as_bidder()
+    assert payload["data"]["user"]["username"] == "bidder"
+    assert payload["data"]["user"]["role"] == "bidder"
+    token_payload = decode_jwt_payload(payload["data"]["accessToken"])
+    assert token_payload["sub"] == "user_bidder_demo"
+    assert token_payload["role"] == "bidder"
+    assert token_payload["scopes"] == ["auctions:read", "bids:write", "chat:write"]
+    session = expect_json(
+        "/api/v1/session",
+        200,
+        ok=True,
+        headers={"Authorization": f"Bearer {payload['data']['accessToken']}"},
+    )
+    assert session["data"]["user"]["username"] == "bidder"
+    assert session["data"]["user"]["role"] == "bidder"
 
 
 def test_auth_rejects_bad_password():
@@ -240,7 +328,13 @@ def test_oversized_login_body_returns_413_envelope():
     assert payload["data"] is None
 
 
-def test_auction_create_fails_closed_until_runtime_writes_exist():
+def test_auction_create_start_bid_and_events_flow():
+    login = login_as_auctioneer()
+    auth = {"Authorization": f"Bearer {login['data']['accessToken']}"}
+    token_payload = decode_jwt_payload(login["data"]["accessToken"])
+    assert token_payload["role"] == "auctioneer"
+    assert "bids:write" not in token_payload["scopes"]
+
     missing_key = expect_json(
         "/api/v1/auctions",
         400,
@@ -251,16 +345,223 @@ def test_auction_create_fails_closed_until_runtime_writes_exist():
     )
     assert missing_key["data"] is None
 
-    payload = expect_json(
+    unauthorized = expect_json(
         "/api/v1/auctions",
-        403,
+        401,
         ok=False,
-        code="forbidden",
+        code="unauthorized",
         method="POST",
         body="{}",
         headers={"Idempotency-Key": "idem_py_create_001"},
     )
-    assert payload["data"] is None
+    assert unauthorized["data"] is None
+
+    created, create_body, create_headers = create_auction(
+        auth,
+        f"Python Smoke Lot {uuid.uuid4().hex}",
+        idempotency_key=unique_key("idem_py_create_flow"),
+    )
+    auction_id = created["data"]["auction"]["auctionId"]
+    assert auction_id.startswith("auc_")
+
+    replayed = expect_json(
+        "/api/v1/auctions",
+        201,
+        ok=True,
+        method="POST",
+        body=create_body,
+        headers=create_headers,
+    )
+    assert replayed["data"]["auction"]["auctionId"] == auction_id
+
+    create_conflict = expect_json(
+        "/api/v1/auctions",
+        409,
+        ok=False,
+        code="idempotency_conflict",
+        method="POST",
+        body=create_body.replace("Python Smoke Lot", "Other Lot"),
+        headers=create_headers,
+    )
+    assert create_conflict["data"] is None
+
+    expect_json("/api/v1/auctions/auc_missing_snapshot", 404, ok=False, code="auction_not_found", headers=auth)
+    post_auction_command(
+        "/api/v1/auctions/auc_missing_start/start",
+        {"expectedRevision": 0},
+        auth,
+        unique_key("idem_py_start_missing"),
+        404,
+        False,
+        code="auction_not_found",
+    )
+
+    snapshot = expect_json(f"/api/v1/auctions/{auction_id}", 200, ok=True, headers=auth)
+    assert snapshot["data"]["auction"]["revision"] == 0
+
+    bidder_login = login_as_bidder()
+    bidder_auth = {"Authorization": f"Bearer {bidder_login['data']['accessToken']}"}
+    bidder_payload = decode_jwt_payload(bidder_login["data"]["accessToken"])
+    assert bidder_payload["role"] == "bidder"
+    assert bidder_payload["scopes"] == ["auctions:read", "bids:write", "chat:write"]
+
+    post_auction_command(
+        "/api/v1/auctions/auc_missing_bid/bids",
+        {"amount": 120, "expectedRevision": 0},
+        bidder_auth,
+        unique_key("idem_py_bid_missing"),
+        404,
+        False,
+        code="auction_not_found",
+    )
+    expect_json(
+        "/api/v1/auctions/auc_missing_events/events",
+        404,
+        ok=False,
+        code="auction_not_found",
+        headers=bidder_auth,
+    )
+    post_auction_command(
+        f"/api/v1/auctions/{auction_id}/bids",
+        {"amount": 120, "expectedRevision": 0},
+        bidder_auth,
+        unique_key("idem_py_bid_before_start"),
+        409,
+        False,
+        code="auction_not_running",
+    )
+
+    login = login_as_auctioneer()
+    auth = {"Authorization": f"Bearer {login['data']['accessToken']}"}
+
+    start_body = {"expectedRevision": 0}
+    start_key = unique_key("idem_py_start_flow")
+    started = post_auction_command(
+        f"/api/v1/auctions/{auction_id}/start",
+        start_body,
+        auth,
+        start_key,
+        200,
+        True,
+    )
+    assert started["data"]["auction"]["revision"] == 1
+
+    replayed_start = post_auction_command(
+        f"/api/v1/auctions/{auction_id}/start",
+        start_body,
+        auth,
+        start_key,
+        200,
+        True,
+    )
+    assert replayed_start["data"]["auction"]["revision"] == 1
+
+    post_auction_command(
+        f"/api/v1/auctions/{auction_id}/start",
+        {"expectedRevision": 1},
+        auth,
+        start_key,
+        409,
+        False,
+        code="idempotency_conflict",
+    )
+    post_auction_command(
+        f"/api/v1/auctions/{auction_id}/start",
+        {"expectedRevision": 0},
+        auth,
+        unique_key("idem_py_start_stale"),
+        409,
+        False,
+        code="stale_revision",
+    )
+
+    post_auction_command(
+        f"/api/v1/auctions/{auction_id}/bids",
+        {"amount": 120, "expectedRevision": 1},
+        auth,
+        unique_key("idem_py_auctioneer_bid_denied"),
+        401,
+        False,
+        code="unauthorized",
+    )
+
+    bidder_login = login_as_bidder()
+    auth = {"Authorization": f"Bearer {bidder_login['data']['accessToken']}"}
+
+    post_auction_command(
+        f"/api/v1/auctions/{auction_id}/bids",
+        {"amount": 100, "expectedRevision": 1},
+        auth,
+        unique_key("idem_py_bid_below_min"),
+        409,
+        False,
+        code="bid_below_minimum",
+    )
+    post_auction_command(
+        f"/api/v1/auctions/{auction_id}/bids",
+        {"amount": 1001, "expectedRevision": 1},
+        auth,
+        unique_key("idem_py_bid_above_max"),
+        400,
+        False,
+        code="validation_failed",
+    )
+
+    bid_body = {"amount": 120, "expectedRevision": 1}
+    bid_key = unique_key("idem_py_bid_flow")
+    bid = post_auction_command(
+        f"/api/v1/auctions/{auction_id}/bids",
+        bid_body,
+        auth,
+        bid_key,
+        201,
+        True,
+    )
+    assert bid["data"]["bid"]["accepted"] is True
+    assert bid["data"]["auction"]["revision"] == 2
+
+    replayed_bid = post_auction_command(
+        f"/api/v1/auctions/{auction_id}/bids",
+        bid_body,
+        auth,
+        bid_key,
+        201,
+        True,
+    )
+    assert replayed_bid["data"]["bid"]["bidId"] == bid["data"]["bid"]["bidId"]
+
+    post_auction_command(
+        f"/api/v1/auctions/{auction_id}/bids",
+        {"amount": 130, "expectedRevision": 1},
+        auth,
+        bid_key,
+        409,
+        False,
+        code="idempotency_conflict",
+    )
+    post_auction_command(
+        f"/api/v1/auctions/{auction_id}/bids",
+        {"amount": 140, "expectedRevision": 1},
+        auth,
+        unique_key("idem_py_bid_stale"),
+        409,
+        False,
+        code="stale_revision",
+    )
+
+    same_bidder_bid = post_auction_command(
+        f"/api/v1/auctions/{auction_id}/bids",
+        {"amount": 140, "expectedRevision": 2},
+        auth,
+        unique_key("idem_py_bid_same_bidder"),
+        201,
+        True,
+    )
+    assert same_bidder_bid["data"]["bid"]["accepted"] is True
+    assert same_bidder_bid["data"]["auction"]["revision"] == 3
+
+    events = expect_json(f"/api/v1/auctions/{auction_id}/events", 200, ok=True, headers=auth)
+    assert [event["eventTypeCode"] for event in events["data"]["events"]] == [1, 2, 5, 5]
 
 
 def test_write_routes_reject_non_json_content_type():

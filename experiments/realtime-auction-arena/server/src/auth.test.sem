@@ -4,7 +4,7 @@ moduleOwns app.realtime_auction_arena.server.tests.auth_contract "JWT, bcrypt, r
 moduleDoesNotOwn app.realtime_auction_arena.server.tests.auth_contract "Cryptographic primitive implementations or durable session storage."
 invariant module app.realtime_auction_arena.server.tests.auth_contract "Auth tests must distinguish executable demo auth from production storage and typed-claim hardening."
 
-storage module immutable authContractUnitTestPlanSummary String "server/src/auth.sem coverage: HS256 plan, env secret, exact JWT claim model iss/aud/sub/role/scopes/exp/iat/nbf/jti, bcrypt cost and 72-byte pre-verify limit, durable refresh_tokens row references, login, refresh, logout, session, disabled-user, expired-token, wrong-audience, and role/scope failures."
+storage module immutable authContractUnitTestPlanSummary String "server/src/auth.sem coverage: HS256 plan, production auth config env keys, exact JWT claim model iss/aud/sub/role/scopes/exp/iat/nbf/jti, bcrypt cost and 72-byte pre-verify limit, durable refresh_tokens row references, login, refresh, logout, session, disabled-user, expired-token, wrong-audience, role policy registry, scope registry, admin_or_auctioneer, bidder, operator, service, and role/scope failure contracts."
 
 operation getAuthContractUnitTestPlan
 output operation getAuthContractUnitTestPlan String

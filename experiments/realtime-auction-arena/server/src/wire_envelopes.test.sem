@@ -1,0 +1,14 @@
+module app.realtime_auction_arena.server.tests.wire_envelopes
+purpose module app.realtime_auction_arena.server.tests.wire_envelopes "Unit coverage contract for server/src/wire_envelopes.sem."
+moduleOwns app.realtime_auction_arena.server.tests.wire_envelopes "Static native HTTP wire-envelope grouping coverage."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.wire_envelopes "Dynamic JSON builders for auction, bid, event, login, refresh, or idempotent responses."
+invariant module app.realtime_auction_arena.server.tests.wire_envelopes "Static envelopes remain isolated from route logic until request-id-aware dynamic formatting replaces them."
+
+storage module immutable wireEnvelopesUnitTestPlanSummary String "server/src/wire_envelopes.sem coverage: health, readiness, API index, auth/session failures and success scaffolds, payload/content-type/idempotency guard errors, persistence errors, auction rule errors, and not-found wire bodies are imported by main.sem and covered by live API/E2E assertions."
+
+operation getWireEnvelopesUnitTestPlan
+output operation getWireEnvelopesUnitTestPlan String
+memory getWireEnvelopesUnitTestPlan heap no
+async getWireEnvelopesUnitTestPlan no
+purpose operation getWireEnvelopesUnitTestPlan "Return the wire envelope constants coverage plan."
+return value wireEnvelopesUnitTestPlanSummary

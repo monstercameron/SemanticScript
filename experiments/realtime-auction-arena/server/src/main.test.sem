@@ -4,7 +4,7 @@ moduleOwns app.realtime_auction_arena.server.tests.main "Route shell, common hea
 moduleDoesNotOwn app.realtime_auction_arena.server.tests.main "Auction business rules or durable persistence."
 invariant module app.realtime_auction_arena.server.tests.main "Every executable JSON route must be covered by the Python API smoke harness and a static unit-plan row."
 
-storage module immutable serverMainUnitTestPlanSummary String "server/src/main.sem coverage: health, readiness, metrics, API index, auctions list, bcrypt-backed demo login, refresh, logout, bearer session success/failure, envelope shape, and route-local JsonText runtime edge."
+storage module immutable serverMainUnitTestPlanSummary String "server/src/main.sem coverage: webServer route registration, request middleware wiring, health, readiness, metrics, API index, auctions list, bcrypt-backed demo login, refresh, logout, bearer session success/failure, imported runtime constants, imported SQL text, imported static wire envelopes, and route-local dynamic JsonText runtime edges."
 
 operation getServerMainUnitTestPlan
 output operation getServerMainUnitTestPlan String

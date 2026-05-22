@@ -83,3 +83,6 @@ experiments/realtime-auction-arena/**/__pycache__/
 experiments/realtime-auction-arena/**/*.pyc
 experiments/realtime-auction-arena/build/
 experiments/realtime-auction-arena/**/build/
+experiments/realtime-auction-arena/server/*.sqlite3
+experiments/realtime-auction-arena/server/*.sqlite3-shm
+experiments/realtime-auction-arena/server/*.sqlite3-wal

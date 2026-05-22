@@ -1,0 +1,41 @@
+module app.realtime_auction_arena.server.sql_queries
+purpose module app.realtime_auction_arena.server.sql_queries "Executable SQLite statement text for the Realtime Auction Arena server."
+moduleOwns app.realtime_auction_arena.server.sql_queries "SQL statement constants used by the live SQLite command and replay handlers."
+moduleDoesNotOwn app.realtime_auction_arena.server.sql_queries "Schema DDL, transaction control behavior, domain policy, or response formatting."
+invariant module app.realtime_auction_arena.server.sql_queries "Constants in this module are imported by executable handlers so main.sem can stay focused on route flow."
+
+exportConstant app.realtime_auction_arena.server.sql_queries sqlBeginTransaction
+exportConstant app.realtime_auction_arena.server.sql_queries sqlCommitTransaction
+exportConstant app.realtime_auction_arena.server.sql_queries sqlRollbackTransaction
+exportConstant app.realtime_auction_arena.server.sql_queries sqlSelectIdempotency
+exportConstant app.realtime_auction_arena.server.sql_queries sqlInsertIdempotency
+exportConstant app.realtime_auction_arena.server.sql_queries sqlInsertAuction
+exportConstant app.realtime_auction_arena.server.sql_queries sqlSelectAuctionByRowId
+exportConstant app.realtime_auction_arena.server.sql_queries sqlSelectAuctionsList
+exportConstant app.realtime_auction_arena.server.sql_queries sqlSelectAuctionSnapshot
+exportConstant app.realtime_auction_arena.server.sql_queries sqlUpdateAuctionStart
+exportConstant app.realtime_auction_arena.server.sql_queries sqlSelectAuctionCommandState
+exportConstant app.realtime_auction_arena.server.sql_queries sqlInsertBidAccepted
+exportConstant app.realtime_auction_arena.server.sql_queries sqlSelectBidByRowId
+exportConstant app.realtime_auction_arena.server.sql_queries sqlUpdateAuctionAfterBid
+exportConstant app.realtime_auction_arena.server.sql_queries sqlInsertAuctionEvent
+exportConstant app.realtime_auction_arena.server.sql_queries sqlSelectAuctionEvents
+exportConstant app.realtime_auction_arena.server.sql_queries sqlInsertAuditEvent
+
+storage module immutable sqlBeginTransaction CNullTerminatedByteString "BEGIN IMMEDIATE"
+storage module immutable sqlCommitTransaction CNullTerminatedByteString "COMMIT"
+storage module immutable sqlRollbackTransaction CNullTerminatedByteString "ROLLBACK"
+storage module immutable sqlSelectIdempotency CNullTerminatedByteString "SELECT request_hash, response_json FROM idempotency_keys WHERE scope = ? AND key = ? AND actor_user_id = ? AND auction_id = ? AND expires_at > ? LIMIT 1"
+storage module immutable sqlInsertIdempotency CNullTerminatedByteString "INSERT OR REPLACE INTO idempotency_keys(scope, key, request_hash, actor_user_id, auction_id, response_status, response_json, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+storage module immutable sqlInsertAuction CNullTerminatedByteString "INSERT INTO auctions(auction_id, seller_user_id, created_by_user_id, status, title, description, starting_bid_minor, minimum_increment_minor, max_bid_minor, anti_sniping_window_ms, anti_sniping_extension_ms, current_bid_minor, revision, event_sequence, created_at, starts_at, closes_at, updated_at) VALUES ('auc_' || lower(hex(randomblob(8))), ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?, ?, ?)"
+storage module immutable sqlSelectAuctionByRowId CNullTerminatedByteString "SELECT auction_id, title, description, status, starting_bid_minor, minimum_increment_minor, max_bid_minor, anti_sniping_window_ms, anti_sniping_extension_ms, current_bid_minor, revision, event_sequence, starts_at, closes_at, accepted_bid_count FROM auctions WHERE rowid = ? LIMIT 1"
+storage module immutable sqlSelectAuctionsList CNullTerminatedByteString "SELECT auction_id, title, status, current_bid_minor, revision, event_sequence, closes_at, accepted_bid_count FROM auctions ORDER BY created_at DESC LIMIT 100"
+storage module immutable sqlSelectAuctionSnapshot CNullTerminatedByteString "SELECT auction_id, title, description, status, starting_bid_minor, minimum_increment_minor, max_bid_minor, anti_sniping_window_ms, anti_sniping_extension_ms, current_bid_minor, revision, event_sequence, starts_at, closes_at, accepted_bid_count, last_bidder_user_id FROM auctions WHERE auction_id = ? LIMIT 1"
+storage module immutable sqlUpdateAuctionStart CNullTerminatedByteString "UPDATE auctions SET status = 2, revision = revision + 1, event_sequence = event_sequence + 1, updated_at = ? WHERE auction_id = ? AND status = 1 AND revision = ?"
+storage module immutable sqlSelectAuctionCommandState CNullTerminatedByteString "SELECT status, current_bid_minor, minimum_increment_minor, max_bid_minor, revision, event_sequence, last_bidder_user_id FROM auctions WHERE auction_id = ? LIMIT 1"
+storage module immutable sqlInsertBidAccepted CNullTerminatedByteString "INSERT INTO bids(bid_id, auction_id, bidder_user_id, amount_minor, status, reject_reason, expected_revision, has_expected_revision, request_id, idempotency_key, created_at) VALUES ('bid_' || lower(hex(randomblob(8))), ?, ?, ?, 1, 0, ?, 1, ?, ?, ?)"
+storage module immutable sqlSelectBidByRowId CNullTerminatedByteString "SELECT bid_id FROM bids WHERE rowid = ? LIMIT 1"
+storage module immutable sqlUpdateAuctionAfterBid CNullTerminatedByteString "UPDATE auctions SET current_bid_minor = ?, current_winner_user_id = ?, last_bid_id = ?, last_bidder_user_id = ?, accepted_bid_count = accepted_bid_count + 1, revision = revision + 1, event_sequence = event_sequence + 1, updated_at = ? WHERE auction_id = ? AND status = 2 AND revision = ?"
+storage module immutable sqlInsertAuctionEvent CNullTerminatedByteString "INSERT INTO auction_events(event_id, auction_id, sequence, auction_revision, schema_version, event_type, actor_user_id, request_id, idempotency_key, bid_id, payload_json, created_at) VALUES ('evt_' || lower(hex(randomblob(8))), ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)"
+storage module immutable sqlSelectAuctionEvents CNullTerminatedByteString "SELECT sequence, auction_revision, event_type, payload_json, created_at FROM auction_events WHERE auction_id = ? ORDER BY sequence ASC LIMIT 200"
+storage module immutable sqlInsertAuditEvent CNullTerminatedByteString "INSERT INTO audit_events(audit_event_id, schema_version, actor_user_id, actor_role, request_id, idempotency_key, action, command_kind, auction_id, bid_id, outcome, error_code, payload_json, created_at) VALUES ('aud_' || lower(hex(randomblob(8))), 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?)"

@@ -1,0 +1,14 @@
+module app.realtime_auction_arena.server.tests.sql_queries
+purpose module app.realtime_auction_arena.server.tests.sql_queries "Unit coverage contract for server/src/sql_queries.sem."
+moduleOwns app.realtime_auction_arena.server.tests.sql_queries "Executable SQLite statement grouping coverage for command, replay, idempotency, audit, and transaction SQL text."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.sql_queries "Schema DDL or route handler control flow."
+invariant module app.realtime_auction_arena.server.tests.sql_queries "SQL text moved out of main.sem must continue to be exercised by the live E2E SQLite command path."
+
+storage module immutable sqlQueriesUnitTestPlanSummary String "server/src/sql_queries.sem coverage: begin/commit/rollback, idempotency lookup/insert, auction create/list/snapshot/start, bid insert/update/read, event insert/replay, and accepted audit insert are imported by main.sem and verified by build plus E2E."
+
+operation getSqlQueriesUnitTestPlan
+output operation getSqlQueriesUnitTestPlan String
+memory getSqlQueriesUnitTestPlan heap no
+async getSqlQueriesUnitTestPlan no
+purpose operation getSqlQueriesUnitTestPlan "Return the SQL query constants coverage plan."
+return value sqlQueriesUnitTestPlanSummary

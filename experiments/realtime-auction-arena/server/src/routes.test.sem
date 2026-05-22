@@ -4,7 +4,7 @@ moduleOwns app.realtime_auction_arena.server.tests.routes "Route catalog coverag
 moduleDoesNotOwn app.realtime_auction_arena.server.tests.routes "Native dispatcher fallback behavior."
 invariant module app.realtime_auction_arena.server.tests.routes "Every public route in the README/API contract must appear in the route catalog."
 
-storage module immutable routesUnitTestPlanSummary String "server/src/routes.sem coverage: health, readiness, metrics, API index, auth, session, auctions, auction commands, SSE, chat, API versioning, auth policy, scopes, dynamic route params, revision requirements, idempotency, rejection codes, and honest runtime status."
+storage module immutable routesUnitTestPlanSummary String "server/src/routes.sem coverage: browser shell, health, readiness, metrics, API index, auth, session, auctions, create/list/snapshot/start/bid executable SQLite status, extend/close target command contracts, audit query route, JSON event replay versus long-lived SSE target behavior, chat create/delete/report contracts, API versioning, auth policy, scopes, dynamic route params, revision requirements, idempotency, rejection codes, and honest runtime status."
 
 operation getRoutesUnitTestPlan
 output operation getRoutesUnitTestPlan String

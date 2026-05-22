@@ -60,12 +60,38 @@ field LogContract redactedFields String
 field LogContract eventNames String
 field LogContract runtimeStatus String
 
+record RequestLogContract
+field RequestLogContract durableTable String
+field RequestLogContract startRule String
+field RequestLogContract finishRule String
+field RequestLogContract requiredFields String
+field RequestLogContract failureRule String
+field RequestLogContract retentionRule String
+field RequestLogContract runtimeStatus String
+
 record AuditContract
 field AuditContract durableTable String
 field AuditContract requiredFields String
 field AuditContract actionNames String
 field AuditContract redactionRule String
 field AuditContract runtimeGap String
+
+record RateLimitPolicyContract
+field RateLimitPolicyContract name String
+field RateLimitPolicyContract subject String
+field RateLimitPolicyContract windowMillis I64
+field RateLimitPolicyContract limitCount I64
+field RateLimitPolicyContract publicError String
+field RateLimitPolicyContract auditRule String
+
+record RateLimitContract
+field RateLimitContract durableTable String
+field RateLimitContract login RateLimitPolicyContract
+field RateLimitContract bid RateLimitPolicyContract
+field RateLimitContract chat RateLimitPolicyContract
+field RateLimitContract eventStream RateLimitPolicyContract
+field RateLimitContract storageRule String
+field RateLimitContract runtimeStatus String
 
 record MetricsContract
 field MetricsContract endpoint String
@@ -75,6 +101,25 @@ field MetricsContract plannedSeries String
 field MetricsContract labelRule String
 field MetricsContract runtimeGap String
 
+record SseTransportContract
+field SseTransportContract route String
+field SseTransportContract contentType String
+field SseTransportContract authRule String
+field SseTransportContract replayRule String
+field SseTransportContract heartbeatMillis I64
+field SseTransportContract subscriberQueueLimit I64
+field SseTransportContract disconnectRule String
+field SseTransportContract runtimeStatus String
+
+record ServerConfigContract
+field ServerConfigContract databasePathEnv String
+field ServerConfigContract corsOriginsEnv String
+field ServerConfigContract bodyLimitEnv String
+field ServerConfigContract sseHeartbeatEnv String
+field ServerConfigContract rateLimitEnv String
+field ServerConfigContract startupValidationRule String
+field ServerConfigContract runtimeStatus String
+
 record MiddlewareContract
 field MiddlewareContract requestId RequestIdContract
 field MiddlewareContract apiVersion ApiVersionContract
@@ -83,8 +128,12 @@ field MiddlewareContract contentType ContentTypeContract
 field MiddlewareContract limits SecurityLimitContract
 field MiddlewareContract idempotency IdempotencyContract
 field MiddlewareContract logs LogContract
+field MiddlewareContract requestLog RequestLogContract
 field MiddlewareContract audit AuditContract
+field MiddlewareContract rateLimit RateLimitContract
 field MiddlewareContract metrics MetricsContract
+field MiddlewareContract sse SseTransportContract
+field MiddlewareContract config ServerConfigContract
 
 storage module immutable middlewareContract MiddlewareContract
 jsonBody middlewareContract
@@ -145,20 +194,85 @@ jsonBody middlewareContract
           "eventNames": "http.request.start, http.request.finish",
           "runtimeStatus": "header stamping is executable; JSON structured stdout and durable request_log insert need string builder/time/sqlite composition"
       },
+      "requestLog": {
+          "durableTable": "request_log",
+          "startRule": "write or buffer request start after route match with requestId, method, path, routePattern, startedAt, actorUserId when known, requestBytes, ipHash, and userAgentHash",
+          "finishRule": "finish row with status, durationMs, responseBytes, stable errorCode, actor role, and finishedAt before response completion when possible",
+          "requiredFields": "request_id, method, path, route_pattern, status, actor_user_id, actor_role, duration_ms, request_bytes, response_bytes, error_code, started_at, finished_at",
+          "failureRule": "best-effort request-log failure must not commit a command transaction that otherwise failed; command transaction rollback wins over log persistence",
+          "retentionRule": "keep full local demo request logs for development; production retention is deployment-configured and may sample successful reads",
+          "runtimeStatus": "contract; executable reflects request headers but does not persist request_log rows or maintain runtime counters"
+      },
       "audit": {
           "durableTable": "audit_events",
           "requiredFields": "auditEventId, requestId, actorUserId, action, outcome, payloadJson, createdAt",
-          "actionNames": "auth.login.accepted, auth.login.rejected, auth.refresh.accepted, auth.refresh.rejected, auth.logout, auction.create, bid.place, chat.message",
+          "actionNames": "auth.login.accepted, auth.login.rejected, auth.refresh.accepted, auth.refresh.rejected, auth.logout, auction.create, auction.start, auction.extend, auction.close, bid.accepted, bid.rejected, chat.message.created, chat.message.deleted, chat.message.reported",
           "redactionRule": "payloadJson never stores raw credentials, bearer tokens, refresh tokens, cookies, or password hashes",
           "runtimeGap": "audit rows require SQLite transaction helper and route-level actor context"
+      },
+      "rateLimit": {
+          "durableTable": "rate_limit_buckets",
+          "login": {
+              "name": "auth.login",
+              "subject": "username_norm plus ipHash",
+              "windowMillis": 60000,
+              "limitCount": 10,
+              "publicError": "rate_limited",
+              "auditRule": "audit auth.login.rejected with reason rate_limited without exposing whether the username exists"
+          },
+          "bid": {
+              "name": "auction.bid",
+              "subject": "auctionId plus actorUserId plus sessionId",
+              "windowMillis": 10000,
+              "limitCount": 20,
+              "publicError": "rate_limited",
+              "auditRule": "persist rejected bid/rate-limit audit without mutating auction revision"
+          },
+          "chat": {
+              "name": "chat.message.create",
+              "subject": "auctionId plus actorUserId plus sessionId",
+              "windowMillis": 10000,
+              "limitCount": 8,
+              "publicError": "rate_limited",
+              "auditRule": "audit chat.message.rejected with reason rate_limited"
+          },
+          "eventStream": {
+              "name": "auction.events.subscribe",
+              "subject": "auctionId plus actorUserId plus sessionId",
+              "windowMillis": 60000,
+              "limitCount": 30,
+              "publicError": "rate_limited",
+              "auditRule": "log subscription drops as operational events, not domain auction events"
+          },
+          "storageRule": "rate_limit_buckets are updated in the same command transaction before domain mutation; read-only subscription limits may use a short transaction before opening SSE",
+          "runtimeStatus": "contract; no live limiter is wired in main.sem yet"
       },
       "metrics": {
           "endpoint": "GET /metrics",
           "contentType": "text/plain; charset=utf-8",
           "bootstrapSeries": "auction_server_bootstrap_info, auction_server_runtime_gap",
-          "plannedSeries": "http_requests_total, http_request_duration_ms, auth_attempts_total, auction_commands_total, auction_events_total, idempotency_replays_total",
+          "plannedSeries": "http_requests_total, http_request_duration_ms, auth_attempts_total, auction_commands_total, auction_events_total, idempotency_replays_total, rate_limit_rejections_total, active_sse_clients, sse_disconnects_total, chat_messages_total",
           "labelRule": "labels use bounded route patterns and stable codes, never raw paths, ids, usernames, tokens, or request bodies",
           "runtimeGap": "live counters and histograms need shared state plus monotonic time support"
+      },
+      "sse": {
+          "route": "GET /api/v1/auctions/:auctionId/events",
+          "contentType": "text/event-stream; charset=utf-8",
+          "authRule": "viewer policy with auctions:read or bids:read before replay or live subscription",
+          "replayRule": "replay committed auction_events ordered by sequence after Last-Event-ID or ?after, then attach subscriber to live fanout without losing committed events",
+          "heartbeatMillis": 15000,
+          "subscriberQueueLimit": 256,
+          "disconnectRule": "client disconnect removes subscriber, decrements active_sse_clients, and never rolls back committed events",
+          "runtimeStatus": "contract; current executable route returns bounded JSON replay and does not keep a long-lived SSE response open"
+      },
+      "config": {
+          "databasePathEnv": "AUCTION_ARENA_DB optional path override, default local auction_arena.sqlite3",
+          "corsOriginsEnv": "AUCTION_ARENA_CORS_ORIGINS comma-separated allowlist; wildcard is local-demo only",
+          "bodyLimitEnv": "AUCTION_ARENA_MAX_JSON_BODY_BYTES optional override clamped by deployment policy",
+          "sseHeartbeatEnv": "AUCTION_ARENA_SSE_HEARTBEAT_MILLIS optional override, default 15000",
+          "rateLimitEnv": "AUCTION_ARENA_RATE_LIMIT_MODE disabled|local|sqlite, default sqlite outside tests",
+          "startupValidationRule": "readiness fails when required production config is missing, database schema is unavailable, or unsafe demo settings are enabled in production",
+          "runtimeStatus": "contract; executable currently uses static local defaults and bootstrap readiness"
       }
   }
 

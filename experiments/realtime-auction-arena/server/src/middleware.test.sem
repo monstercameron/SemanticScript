@@ -4,7 +4,7 @@ moduleOwns app.realtime_auction_arena.server.tests.middleware "Envelope, limits,
 moduleDoesNotOwn app.realtime_auction_arena.server.tests.middleware "Native structured logging implementation."
 invariant module app.realtime_auction_arena.server.tests.middleware "Security-sensitive fields must be named in redaction coverage."
 
-storage module immutable middlewareUnitTestPlanSummary String "server/src/middleware.sem coverage: envelope fields, request limits, route limits, log fields, audit fields, and redaction of auth/password secrets."
+storage module immutable middlewareUnitTestPlanSummary String "server/src/middleware.sem coverage: envelope fields, request limits, route limits, durable request_log fields, audit fields, rate_limit_buckets policies for login/bid/chat/SSE, server config env keys, SSE transport behavior, metrics, and redaction of auth/password/token secrets."
 
 operation getMiddlewareUnitTestPlan
 output operation getMiddlewareUnitTestPlan String
