@@ -19,7 +19,7 @@ storage module immutable stddefModuleVersionText CNullTerminatedByteString "stan
 #   (CByteCount, COpaqueMemoryAddress, etc.) so this module only
 #   exposes the few callable surfaces â€” sizeof-style accessors for
 #   the common ABI types â€” as module-scope domainLiteral constants
-#   per the refined-syntax pattern (AST.md Â§2.12.5). The previous
+#   per the refined-syntax pattern (docs/ast.md section 2.12.5). The previous
 #   shape (zero-arg operations returning `Result CSignedInt64 Void`)
 #   is removed because constants belong in domainLiteral, not in
 #   operation bodies.

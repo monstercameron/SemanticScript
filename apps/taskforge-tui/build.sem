@@ -1,0 +1,194 @@
+# TaskForgeTui regular SemanticScript build plan.
+# Build configuration is ordinary typed record data; semsc lowers BuildPlan internally.
+
+module app.taskForgeTui.build
+purpose module app.taskForgeTui.build "Describe the TaskForgeTui build as ordinary typed SemanticScript data."
+moduleOwns app.taskForgeTui.build "Build project metadata, module registration, target options, version metadata, and build constants."
+moduleDoesNotOwn app.taskForgeTui.build "Runtime application behavior; registered app modules own operations, routes, exports, and UI/domain logic."
+invariant module app.taskForgeTui.build "Build configuration is data first: records hold settings, and configure operation returns the selected BuildPlan."
+
+record BuildProject
+field BuildProject id String
+field BuildProject name String
+field BuildProject modulePath String
+field BuildProject languageVersion String
+field BuildProject projectVersion String
+field BuildProject license String
+field BuildProject sourceRoot String
+field BuildProject testPattern String
+field BuildProject testRoot String
+
+record BuildModule
+field BuildModule moduleName String
+field BuildModule sourcePath String
+field BuildModule mainFile String
+
+record BuildModules
+field BuildModules main BuildModule
+
+record BuildTarget
+field BuildTarget runtime String
+field BuildTarget nativeRuntime String
+field BuildTarget nativeRuntimeVersion I64
+field BuildTarget profile String
+field BuildTarget optLevel I64
+field BuildTarget runtimeChecks String
+field BuildTarget persistLlvmIr String
+field BuildTarget emitLlvmIr String
+field BuildTarget emitOptimizedLlvmIr Bool
+field BuildTarget buildFolderName String
+field BuildTarget cpuBaseline String
+field BuildTarget cpuTune String
+field BuildTarget cpuFeatureCheck String
+field BuildTarget formatterLineWidth I64
+field BuildTarget linterMaxTier String
+field BuildTarget docsOutput String
+field BuildTarget nativeOutput String
+field BuildTarget keepResources Bool
+field BuildTarget comptimeOperation String
+
+record BuildMetadata
+field BuildMetadata buildSource String
+field BuildMetadata runtimeContract String
+
+record BuildVersionInfo
+field BuildVersionInfo version String
+field BuildVersionInfo publisher String
+field BuildVersionInfo description String
+field BuildVersionInfo copyright String
+field BuildVersionInfo productName String
+field BuildVersionInfo internalName String
+field BuildVersionInfo originalFilename String
+field BuildVersionInfo comments String
+field BuildVersionInfo metadata BuildMetadata
+
+record BuildConstant
+field BuildConstant type String
+field BuildConstant value String
+
+record BuildConstants
+
+record BuildPlan
+field BuildPlan project BuildProject
+field BuildPlan modules BuildModules
+field BuildPlan mainModule String
+field BuildPlan mainOperation String
+field BuildPlan target BuildTarget
+field BuildPlan versionInfo BuildVersionInfo
+field BuildPlan constants BuildConstants
+
+storage module immutable taskForgeTuiBuildPlan BuildPlan
+jsonBody taskForgeTuiBuildPlan
+  {
+      "project": {
+          "name": "TaskForgeTui",
+          "id": "taskForgeTui",
+          "modulePath": "github.com/monstercameron/SemanticScript/apps/taskforge-tui",
+          "languageVersion": "1.0",
+          "projectVersion": "1.0.0",
+          "license": "MIT",
+          "sourceRoot": ".",
+          "testPattern": "*.test.sem",
+          "testRoot": "."
+      },
+      "modules": {
+          "main": {
+              "moduleName": "app.taskforge_tui",
+              "sourcePath": ".",
+              "mainFile": "main.sem"
+          }
+      },
+      "mainModule": "main",
+      "target": {
+          "runtime": "nativeExe",
+          "nativeRuntime": "native",
+          "nativeRuntimeVersion": 1,
+          "profile": "dev",
+          "optLevel": 2,
+          "runtimeChecks": "panic",
+          "persistLlvmIr": "yes",
+          "emitLlvmIr": "auto",
+          "emitOptimizedLlvmIr": false,
+          "buildFolderName": "build",
+          "cpuBaseline": "generic",
+          "cpuTune": "generic",
+          "cpuFeatureCheck": "auto",
+          "formatterLineWidth": 100,
+          "linterMaxTier": "T4",
+          "docsOutput": "docs",
+          "nativeOutput": "taskforge_tui.exe",
+          "keepResources": false,
+          "comptimeOperation": "configureTaskForgeTuiBuild"
+      },
+      "versionInfo": {
+          "version": "1.0.0.0",
+          "publisher": "Earl Cameron",
+          "description": "SemanticScript TaskForge TUI - keyboard-driven console todo app with JSON persistence.",
+          "copyright": "Copyright (c) 2026 Earl Cameron. Licensed under the project LICENSE.",
+          "productName": "TaskForge TUI",
+          "internalName": "taskforge_tui",
+          "originalFilename": "taskforge_tui.exe",
+          "comments": "Built from apps/taskforge-tui/main.sem by the SemanticScript reference compiler.",
+          "metadata": {
+              "buildSource": "apps/taskforge-tui/main.sem",
+              "runtimeContract": "native 1"
+          }
+      },
+      "constants": {},
+      "mainOperation": "main"
+  }
+
+# Icon registry is still row-shaped because those facts are individual resource edges.
+iconRoleDefinition applicationPrimary "Primary application icon — Explorer file view, taskbar, Start tile, Alt-Tab thumbnail."
+iconRoleDefinition applicationSecondary "Secondary application icon — notification badge, tray, secondary windows."
+iconRoleDefinition documentType "Icon shown by file managers for files of a registered document type."
+icon todoPrimaryIcon
+iconRole todoPrimaryIcon applicationPrimary
+iconPurpose todoPrimaryIcon "Stylized 'T' on a teal rounded-square background. Every Windows shell surface (Explorer list, taskbar, Start tile, Alt-Tab) reads this same icon group at the matching pixel size."
+iconImage todoPrimaryAt16
+iconImageGroup todoPrimaryAt16 todoPrimaryIcon
+iconImagePath todoPrimaryAt16 "assets/icons/icon-16.png"
+iconImageFormat todoPrimaryAt16 png
+iconImageWidth todoPrimaryAt16 16
+iconImageHeight todoPrimaryAt16 16
+iconImageScale todoPrimaryAt16 1
+iconImageDepth todoPrimaryAt16 bits32
+iconImagePlatform todoPrimaryAt16 any
+iconImagePurpose todoPrimaryAt16 "Smallest cell — Explorer details column, system tray, 16px hicolor theme on Linux."
+iconImage todoPrimaryAt32
+iconImageGroup todoPrimaryAt32 todoPrimaryIcon
+iconImagePath todoPrimaryAt32 "assets/icons/icon-32.png"
+iconImageFormat todoPrimaryAt32 png
+iconImageWidth todoPrimaryAt32 32
+iconImageHeight todoPrimaryAt32 32
+iconImageScale todoPrimaryAt32 1
+iconImageDepth todoPrimaryAt32 bits32
+iconImagePlatform todoPrimaryAt32 any
+iconImagePurpose todoPrimaryAt32 "Taskbar at 100% DPI, Alt-Tab thumbnail row, medium Explorer view."
+iconImage todoPrimaryAt48
+iconImageGroup todoPrimaryAt48 todoPrimaryIcon
+iconImagePath todoPrimaryAt48 "assets/icons/icon-48.png"
+iconImageFormat todoPrimaryAt48 png
+iconImageWidth todoPrimaryAt48 48
+iconImageHeight todoPrimaryAt48 48
+iconImageScale todoPrimaryAt48 1
+iconImageDepth todoPrimaryAt48 bits32
+iconImagePlatform todoPrimaryAt48 any
+iconImagePurpose todoPrimaryAt48 "Windows large-icon Explorer view; required for Shell shell32 compatibility."
+iconImage todoPrimaryAt256
+iconImageGroup todoPrimaryAt256 todoPrimaryIcon
+iconImagePath todoPrimaryAt256 "assets/icons/icon-256.png"
+iconImageFormat todoPrimaryAt256 png
+iconImageWidth todoPrimaryAt256 256
+iconImageHeight todoPrimaryAt256 256
+iconImageScale todoPrimaryAt256 1
+iconImageDepth todoPrimaryAt256 bits32
+iconImagePlatform todoPrimaryAt256 any
+iconImagePurpose todoPrimaryAt256 "Windows Extra Large Icons view, taskbar at 200% DPI, Properties dialog preview, Linux 256x256 hicolor."
+
+operation configureTaskForgeTuiBuild
+output operation configureTaskForgeTuiBuild BuildPlan
+memory configureTaskForgeTuiBuild heap no
+async configureTaskForgeTuiBuild no
+purpose operation configureTaskForgeTuiBuild "Return the typed build plan for TaskForgeTui."
+return value taskForgeTuiBuildPlan

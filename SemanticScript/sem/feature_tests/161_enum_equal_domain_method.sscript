@@ -1,11 +1,10 @@
 # expect.stdout: equal\nnotEqual\n
 # expect.exit: 0
-# expect.xfail: bootstrap compiler emits enum case names instead of integer constants for enum.equal operands.
 # Tests: enum.equal domain-method dispatch.
 # `SaveTodosStatus.equal` (repr CSignedInt32) and `ScreenMode.equal`
 # (repr CSignedInt64) compile to the matching math.equal* primitive based
 # on the enum's declared repr. The compare must produce a real Bool that
-# branches at runtime — a no-op lowering would fail the equality test
+# branches at runtime â€” a no-op lowering would fail the equality test
 # and print the wrong branch.
 project EnumEqualDomainMethod
 target console
@@ -36,7 +35,7 @@ storage local immutable equalText CNullTerminatedByteString "equal"
 storage local immutable notEqualText CNullTerminatedByteString "notEqual"
 storage local immutable successfulExitCode ExitCode 0
 
-# Both arguments are SaveSucceeded — must compare equal via repr-CSignedInt32 path.
+# Both arguments are SaveSucceeded â€” must compare equal via repr-CSignedInt32 path.
 call sameStatusCall SaveTodosStatus.equal
 argument sameStatusCall left SaveTodosStatus SaveSucceeded
 argument sameStatusCall right SaveTodosStatus SaveSucceeded
@@ -62,7 +61,7 @@ ignore value source writeFailSameCall type CSignedInt32
 return ok successfulExitCode
 
 label checkDifferentMode
-# ListMode != EditMode — must compare not-equal via repr-CSignedInt64 path.
+# ListMode != EditMode â€” must compare not-equal via repr-CSignedInt64 path.
 call differentModeCall ScreenMode.equal
 argument differentModeCall left ScreenMode ListMode
 argument differentModeCall right ScreenMode EditMode

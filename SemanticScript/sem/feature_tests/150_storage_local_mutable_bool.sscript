@@ -1,6 +1,5 @@
 # expect.stdout: 1\n
 # expect.exit: 0
-# expect.xfail: feature_coverage.py runs through bootstrap_general.sscript which does not yet recognize `storage local mutable Bool`. Direct semsc.py compilation is correct: alloca i1; initial store true; set local toggles to false then back to true; final read prints 1. `python compiler/semsc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints `1`.
 project StorageLocalMutableBool
 target console
 runtime AgentRuntime 0.1
@@ -13,8 +12,8 @@ output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose operation main "storage local mutable Bool: alloca i1; set local true→false→true via separate const sources."
-invariant operation main "Final state is true (1) — verified via integer-printing the loaded value."
+purpose operation main "storage local mutable Bool: alloca i1; set local trueâ†’falseâ†’true via separate const sources."
+invariant operation main "Final state is true (1) â€” verified via integer-printing the loaded value."
 label startMain
 storage module immutable initialFlagTrueValue Bool true
 storage module immutable transitionToFalseValue Bool false

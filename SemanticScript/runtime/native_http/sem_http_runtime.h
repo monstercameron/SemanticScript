@@ -152,7 +152,7 @@ long long ss_http_now_millis(void);
 /*
  * Ensures the named directory exists, creating it if missing. Refuses
  * to create parents — the directory's parent must already exist. The
- * todo-web-pro app uses this once at startup to make sure
+ * taskforge-web app uses this once at startup to make sure
  * build/images/ is ready for uploads. Returns SS_HTTP_OK on success,
  * SS_HTTP_ERR_CONFIG on a NULL or empty path, or SS_HTTP_ERR_ENGINE
  * if the platform mkdir call failed for a reason other than

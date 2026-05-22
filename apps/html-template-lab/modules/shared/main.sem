@@ -1,0 +1,19 @@
+module app.html_template_lab.shared
+purpose module app.html_template_lab.shared "Shared presentation constants for the HTML console demo."
+moduleOwns app.html_template_lab.shared "Static presentation copy and class names consumed by page and domain modules."
+moduleDoesNotOwn app.html_template_lab.shared "Todo item data ownership or page/component rendering operations."
+invariant module app.html_template_lab.shared "Every exported value is immutable module storage so downstream modules read stable demo copy."
+
+exportConstant app.html_template_lab.shared todoDashboardPageTitleText
+exportConstant app.html_template_lab.shared todoDashboardIntroText
+exportConstant app.html_template_lab.shared shellClassName
+exportConstant app.html_template_lab.shared panelClassName
+exportConstant app.html_template_lab.shared openTodoClassName
+exportConstant app.html_template_lab.shared doneTodoClassName
+
+storage module immutable todoDashboardPageTitleText String "TaskForge TUI HTML Template Lab"
+storage module immutable todoDashboardIntroText String "Server-rendered HTML generated from first-class SemanticScript templates."
+storage module immutable shellClassName String "todo-shell"
+storage module immutable panelClassName String "todo-panel"
+storage module immutable openTodoClassName String "todo-row todo-row-open"
+storage module immutable doneTodoClassName String "todo-row todo-row-done"

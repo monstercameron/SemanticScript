@@ -1,6 +1,5 @@
 # expect.stdout: selectCompleted\n
 # expect.exit: 0
-# expect.xfail: feature_coverage.py runs through bootstrap_general.sscript which does not yet recognize all select/selectCase/runSelect/branchSelected verb shapes. Direct semsc.py compilation is correct: under single-thread no-op lowering each select verb falls through; control reaches the success label. `python compiler/semsc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints `selectCompleted`.
 project SelectNoOpFallsThrough
 target console
 runtime AgentRuntime 0.1

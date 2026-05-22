@@ -1,6 +1,5 @@
 # expect.stdout: hello from external literal\n
 # expect.exit: 0
-# expect.xfail: feature_coverage.py runs through bootstrap_general.sscript which does not yet inline the bytes of a `literalSource` path into a `literal` const. Direct semsc.py compilation works correctly (`python compiler/semsc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints the contents of _modules/external_greeting_literal.txt). Closing means teaching bootstrap_general to read literalSource paths at compile time and embed the bytes as the literal's const value.
 project LiteralSourceLoader
 target console
 runtime AgentRuntime 0.1

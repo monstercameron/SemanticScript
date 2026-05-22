@@ -19,7 +19,7 @@ explicit runtime checks, and refinement-only documentation forms.
 
 ## Current Status
 
-Active editor tooling. Version `1.0.4` supports highlighting, semantic tokens,
+Active editor tooling. Version `1.0.5` supports highlighting, semantic tokens,
 hovers, same-file navigation, completions, lint integration, and direct
 `semsc.py` executable builds from VS Code. The package also includes a
 SemanticScript gallery icon, language file icon fallback, and selectable

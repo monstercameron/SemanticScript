@@ -6,12 +6,9 @@ Python test harnesses and small compiler fixtures.
 
 - `test_compiler.py` covers parser, codegen, diagnostics, and native emit behavior.
 - `test_stdlib.py` compiles and runs stdlib modules.
-- `compare.py`, `sem_alias_parity.py`, `feature_coverage.py`, and
-  `sem_compiler_parity.py` support broader parity/coverage checks.
+- `compare.py` and `sem_alias_parity.py` support broader parity/coverage checks.
 - `tiny.sem` and `tiny.sscript` are minimal source fixtures.
 - `stdout_blocking.js` is a small host-language fixture.
-- `sem_compiler_build/` and `feature_coverage/` may appear locally as ignored
-  generated output directories containing emitted `.ll` and `.exe` files.
 
 ## Current Status
 

@@ -2365,18 +2365,18 @@ const domainTargetHoverText = (text) => {
   const methodName = text.split('.')[1];
 
   if (methodName && methodName.startsWith('checkedMultiply')) {
-    return 'AST.md: checked domain multiply lowers to `math.checkedMultiplyI64`; it is fallible and should use `bindOk`, `bindError`, and `branchIfError`.';
+    return 'docs/ast.md: checked domain multiply lowers to `math.checkedMultiplyI64`; it is fallible and should use `bindOk`, `bindError`, and `branchIfError`.';
   }
 
   if (methodName === 'square') {
-    return 'AST.md: domain `square` is a semantic method for multiplying a value by itself while keeping the source domain context visible.';
+    return 'docs/ast.md: domain `square` is a semantic method for multiplying a value by itself while keeping the source domain context visible.';
   }
 
   if (['equal', 'notEqual', 'lessThan', 'lessThanOrEqual', 'greaterThan', 'greaterThanOrEqual'].includes(methodName)) {
     return 'SYNTAX.md: enum/domain comparison methods preserve the declared type in source. For repr-backed enums the compiler resolves this to the matching width-specific math target, with no implicit widening at the call site.';
   }
 
-  return 'AST.md: `TypeName.methodName` lowers to an underlying primitive based on the alias type while preserving domain context in source.';
+  return 'docs/ast.md: `TypeName.methodName` lowers to an underlying primitive based on the alias type while preserving domain context in source.';
 };
 
 const tokenTypeForSymbol = (text, index, tokens) => {
@@ -3706,7 +3706,7 @@ const provideHover = (document, position) => {
   if (opaqueInputs.has(text)) {
     return markdownHover(
       `Opaque input: ${text}`,
-      'AST.md: opaque dependency inputs may appear in `arg` lines to preserve dependency context, but they do not flow into computation.'
+      'docs/ast.md: opaque dependency inputs may appear in `arg` lines to preserve dependency context, but they do not flow into computation.'
     );
   }
 

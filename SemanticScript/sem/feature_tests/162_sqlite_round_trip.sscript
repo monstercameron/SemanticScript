@@ -1,12 +1,11 @@
 # expect.stdout: sqliteRoundTripOk\n
 # expect.exit: 0
-# expect.xfail: standard.sqlite is wired into semsc.py but the bootstrap_general compiler does not yet know about the sqlite.* call targets, so this test is currently driven only by the semsc end-to-end test in SemanticScript/tests/test_compiler.py (`test_sqlite_syntax_sample_runs_end_to_end`). Promote out of xfail once bootstrap_general.sscript gets the same dispatch surface.
 #
 # Deep-audit smoke for standard.sqlite. Exercises open -> exec(CREATE) ->
 # exec(INSERT literal) -> prepare(SELECT) -> step -> columnText round trip
 # and writes the selected body to stdout. If the lowering for any sqlite.*
 # call became a no-op, columnText would return an empty string and the
-# stdout comparison would fail — satisfying the "must fail under no-op
+# stdout comparison would fail â€” satisfying the "must fail under no-op
 # lowering" requirement that feature_tests 130-160 are built around.
 
 project SqliteRoundTrip

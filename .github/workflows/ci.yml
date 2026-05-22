@@ -41,7 +41,7 @@ jobs:
           python -m pip install -r requirements.txt
 
       - name: Compile Python sources
-        run: python -m compileall -q SemanticScript python samples
+        run: python -m compileall -q SemanticScript python
 
       - name: Run formatter unit tests
         run: python -m unittest SemanticScript/formatter/test_semfmt.py -v
@@ -106,17 +106,8 @@ jobs:
       - name: Run standard library tests
         run: python SemanticScript/tests/test_stdlib.py
 
-      - name: Run JavaScript/reference parity tests
+      - name: Run reference parity tests
         run: python SemanticScript/tests/compare.py
 
-      - name: Run .sem alias parity tests
+      - name: Run .sem alias source/parity tests
         run: python SemanticScript/tests/sem_alias_parity.py
-
-      - name: Run self-hosted compiler parity tests
-        run: python SemanticScript/tests/sem_compiler_parity.py
-
-      - name: Run feature coverage tests
-        run: python SemanticScript/tests/feature_coverage.py
-
-      - name: Run bootstrap chain
-        run: python SemanticScript/bootstrap/run_bootstrap_chain.py

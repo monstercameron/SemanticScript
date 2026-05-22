@@ -48,7 +48,7 @@ to be usable without `git submodule update`.
 - Path: `third_party/bcrypt`
 - Upstream: https://www.openwall.com/crypt/
 - Purpose: bcrypt password hashing for the `SemanticScript/runtime/native_bcrypt/`
-  adapter (used by the `app/todo-web-pro` web app for user passwords + session-token
+  adapter (used by the `apps/taskforge-web` web app for user passwords + session-token
   salt + base64url helpers).
 - License: public domain (with fallback permissive terms — see
   [`bcrypt/README.AgentScript.md`](bcrypt/README.AgentScript.md)).

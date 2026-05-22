@@ -126,7 +126,7 @@ Code or restart the extension host before checking hovers.
 
 When adding a language verb:
 
-1. Add TextMate coverage in `syntaxes/semanticscript.tmLanguage.json`.
+1. Add TextMate coverage in `syntaxes/semanticscript.tm-language.json`.
 2. Add semantic classification in `extension.js`.
 3. Add context-aware hover text for the concrete line schema.
 4. Add identifier indexing if the verb declares or references a symbol.

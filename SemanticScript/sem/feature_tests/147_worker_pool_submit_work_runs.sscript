@@ -1,6 +1,5 @@
 # expect.stdout: 77\n
 # expect.exit: 0
-# expect.xfail: feature_coverage.py runs through bootstrap_general.sscript which does not yet emit a real call for `submitWork`. Direct semsc.py compilation is correct: the work item runs the helper which writes 77 to shared state; awaitWork is no-op since the synchronous lowering ran the work inline. `python compiler/semsc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints `77`.
 project WorkerPoolSubmitWorkRuns
 target console
 runtime AgentRuntime 0.1

@@ -1,0 +1,314 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "SemanticScript",
+  "scopeName": "source.semanticscript",
+  "patterns": [
+    {
+      "include": "#jsonBody"
+    },
+    {
+      "include": "#htmlBody"
+    },
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#declarationVerbs"
+    },
+    {
+      "include": "#contextVerbs"
+    },
+    {
+      "include": "#actionVerbs"
+    },
+    {
+      "include": "#controlVerbs"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#primitiveTargets"
+    },
+    {
+      "include": "#generatedTargets"
+    },
+    {
+      "include": "#domainTargets"
+    },
+    {
+      "include": "#errorVariants"
+    },
+    {
+      "include": "#schemaValues"
+    },
+    {
+      "include": "#qualifiedNames"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#symbols"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.semanticscript",
+          "match": "#.*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.semanticscript",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.semanticscript",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "htmlBody": {
+      "patterns": [
+        {
+          "name": "meta.embedded.block.html.semanticscript",
+          "begin": "^(\\s*)(html\\s+body\\s+template|htmlBody)\\b(?:\\s+([A-Za-z_][A-Za-z0-9_]*))?.*$",
+          "beginCaptures": {
+            "2": {
+              "name": "keyword.context.semanticscript"
+            },
+            "3": {
+              "name": "entity.name.type.template.semanticscript"
+            }
+          },
+          "end": "^(?=\\S)",
+          "patterns": [
+            {
+              "include": "#htmlArgHoles"
+            },
+            {
+              "name": "constant.other.html-doctype.semanticscript",
+              "match": "<!doctype\\s+html>"
+            },
+            {
+              "name": "entity.name.tag.html.semanticscript",
+              "match": "</?\\s*([A-Za-z][A-Za-z0-9:-]*)\\b"
+            },
+            {
+              "name": "entity.other.attribute-name.html.semanticscript",
+              "match": "\\b([A-Za-z_:][A-Za-z0-9_:.:-]*)\\s*="
+            },
+            {
+              "name": "string.quoted.double.html.semanticscript",
+              "begin": "\"",
+              "end": "\"",
+              "patterns": [
+                {
+                  "include": "#htmlArgHoles"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "htmlArgHoles": {
+      "patterns": [
+        {
+          "name": "variable.other.html-hole.semanticscript",
+          "match": "\\{\\s*((?:htmlArg\\.)?)([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)\\s*\\}",
+          "captures": {
+            "1": {
+              "name": "entity.name.namespace.semanticscript"
+            },
+            "2": {
+              "name": "variable.parameter.html-arg.semanticscript"
+            }
+          }
+        }
+      ]
+    },
+    "jsonBody": {
+      "patterns": [
+        {
+          "name": "meta.embedded.block.json.semanticscript",
+          "begin": "^(json\\s+body|jsonBody)\\b(?:\\s+([A-Za-z_][A-Za-z0-9_]*))?.*$",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.declaration.semanticscript"
+            },
+            "2": {
+              "name": "variable.other.constant.semanticscript"
+            }
+          },
+          "end": "^(?=\\S)",
+          "patterns": [
+            {
+              "name": "support.type.property-name.json.semanticscript",
+              "begin": "\"(?=(?:[^\"\\\\]|\\\\.)*\"\\s*:)",
+              "beginCaptures": {
+                "0": {
+                  "name": "punctuation.definition.string.begin.json.semanticscript"
+                }
+              },
+              "end": "\"",
+              "endCaptures": {
+                "0": {
+                  "name": "punctuation.definition.string.end.json.semanticscript"
+                }
+              },
+              "patterns": [
+                {
+                  "name": "constant.character.escape.json.semanticscript",
+                  "match": "\\\\(?:[\"\\\\/bfnrt]|u[0-9A-Fa-f]{4})"
+                }
+              ]
+            },
+            {
+              "name": "string.quoted.double.json.semanticscript",
+              "begin": "\"",
+              "end": "\"",
+              "patterns": [
+                {
+                  "name": "constant.character.escape.json.semanticscript",
+                  "match": "\\\\(?:[\"\\\\/bfnrt]|u[0-9A-Fa-f]{4})"
+                }
+              ]
+            },
+            {
+              "name": "constant.numeric.json.semanticscript",
+              "match": "-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?"
+            },
+            {
+              "name": "constant.language.json.semanticscript",
+              "match": "\\b(?:true|false|null)\\b"
+            },
+            {
+              "name": "punctuation.separator.json.semanticscript",
+              "match": "[:,]"
+            },
+            {
+              "name": "punctuation.definition.json.semanticscript",
+              "match": "[\\[\\]{}]"
+            }
+          ]
+        }
+      ]
+    },
+    "declarationVerbs": {
+      "patterns": [
+        {
+          "name": "keyword.declaration.semanticscript",
+          "match": "^(\\s*)(section|project|target|runtime|entry|module|mode|languageMode|buildProject|modulePath|languageVersion|projectVersion|projectLicense|sourceRoot|registerModule|mainFile|mainOperation|testPattern|testRoot|dependencySource|dependencyFetch|dependencyCache|dependencyLock|dependencyIntegrity|targetRuntime|buildProfile|runtimeChecks|optLevel|persistLlvmIr|emitLlvmIr|llvmIrOutput|emitOptimizedLlvmIr|optimizedLlvmIrOutput|buildDir|buildRoot|buildFolderName|cpuBaseline|cpuTune|cpuFeature|cpuFeatureCheck|nativeOutput|nativeHttpHost|nativeHttpPort|formatterSetting|linterSetting|docsOutput|iconRoleDefinition|icon|iconRole|iconPurpose|iconImage|iconImageGroup|iconImagePath|iconImageFormat|iconImageWidth|iconImageHeight|iconImageScale|iconImageDepth|iconImagePlatform|iconImagePurpose|comptimeOperation|moduleFolder|modulePurpose|moduleOwns|moduleDoesNotOwn|moduleDependency|moduleWarning|moduleInvariant|moduleSecurity|moduleObservability|exportType|exportError|exportOperation|exportCapability|exportConstant|version|publisher|description|copyright|productName|internalName|originalFilename|trademark|comments|metadata|dependency|dependencyEffect|dependencyExports|dependencyFunction|dependencyFunctionInput|dependencyFunctionOutput|dependencyFunctionEffect|dependencyFunctionAsync|import|importModule|importOperation|importType|importError|importCapability|importConstant|type|typeParameter|typeInvariant|typeRepresentation|typeTrust|typeMemory|typeLayout|typeLiteralEncoding|typeLiteralTerminator|record|recordLayout|recordAlign|field|fieldDefault|fieldInvariant|enum|enumCase|error|errorCase|operation|webServer|serverHost|serverPort|route|routeTimeout|routeMiddleware|routeTimeoutOptOut|routeMiddlewareOptOut|storage|sharedState|domainLiteral|json|jsonBody|literal|listLiteral|html|htmlTemplate|jsonCodec|policy|errorPolicy|validator|codec|schema|unknownFields|resource|resourceKey|resourceValue|resourceKind|adapter|boundary|mapper|retryPolicy|timeoutBudget|capability|authority|mutex|shared|channel|listType|arrayType|sliceType|smallListType|mapType|interval|workerPool|work|const|var|testCovers)\\b"
+        }
+      ]
+    },
+    "contextVerbs": {
+      "patterns": [
+        {
+          "name": "keyword.context.semanticscript",
+          "match": "^(\\s*)(input|output|effect|memory|memoryHeap|memoryArena|memoryAllocationSource|memoryStackLimit|async|operationBody|purpose|invariant|warning|precondition|failure|guarantee|security|timing|observability|pinsNullBodyFailurePath|responseBodyForwarder|htmlArg|htmlBody|rationale|dependencyPath|dependencyFailure|intrinsicName|runtimeBinding|runtimeBindingPrecondition|runtimeBindingFailure|recordConstructor|recordConstructorFailure|recordBuildFailure|jsonCodecStrict|jsonCodecUnknownFields|jsonCodecDecodeTarget|jsonCodecEncodeTarget|jsonCodecRequiredField|jsonCodecInput|jsonCodecOutput|jsonCodecDecodeFailure|jsonCodecEncodeFailure|jsonCodecLimit|trustBoundary|trustBoundaryKind|trustBoundaryInput|trustBoundaryOutput|trustBoundaryValidator|trustBoundarySource|domainLiteralSource|domainLiteralTrust|domainLiteralValidation|literalBytes|literalDigest|literalPreview|literalSource|literalTrust|sharedStateOwner|sharedStateGuard|guardTokenSource|guardTokenOwner|guardTokenProtects|guardTokenRelease|listAllocator|arrayLength|smallListInlineCapacity|smallListSpillAllocator|mapKey|mapValue|mapAllocator|listLiteralLength|listLiteralIndexBase|listLiteralIndexPolicy|listLiteralItem|collectionOperation|collectionOperationArg|collectionOperationOutput|collectionOperationFailure|collectionOperationEffect|collectionOperationAllocation|collectionOperationMutation|collectionOperationIndexPolicy|collectionOperationLengthSource|collectionOperationBorrowSource|collectionOperationCapacitySource|collectionOperationSpillAllocator|collectionOperationSpillFailure|retryMaxAttempts|retryInitialDelay|retryMaximumDelay|retryJitter|group|groupPurpose|groupInput|groupOutput|groupError|groupFailure|groupTiming|deferLogSink|deferRunOn|deferOrder|deferFailurePolicy|deferConsumes|deferAwaitLogSink|deferAwaitTimeout|deferWhenExitLogSink|workArg)\\b"
+        }
+      ]
+    },
+    "actionVerbs": {
+      "patterns": [
+        {
+          "name": "keyword.action.semanticscript",
+          "match": "^(\\s*)(set|call|arg|argument|run|runChecked|start|await|bind|bindOk|bindError|bindOwned|bindOkOwned|ignore|ignoreOk|ignoreValue|ignoreError|declareFailure|makeError|requireNonNull|new|fieldGet|fieldSet|recordBuilder|recordSet|recordCopy|recordBuild|read|timeout|cancelOn|defer|deferLog|deferAwaitLog|deferWhenExitLog|select|selectCase|runSelect|taskGroup|startInGroup|awaitGroup|bindGroupError|send|receive|lock|unlock|useRetry|useCapability|startInterval|awaitIntervalTick|submitWork|awaitWork)\\b"
+        }
+      ]
+    },
+    "controlVerbs": {
+      "patterns": [
+        {
+          "name": "keyword.control.semanticscript",
+          "match": "^(\\s*)(label|branch|jump|branchIf|branchIfError|branchSelected|branchIfGroupError|branchIfChannelClosed|return|returnOk|returnError|returnValue|returnVoid)\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.integer.semanticscript",
+          "match": "\\b-?\\d+\\b"
+        }
+      ]
+    },
+    "primitiveTargets": {
+      "patterns": [
+        {
+          "name": "entity.name.function.primitive-target.semanticscript",
+          "match": "\\b(?:c\\.[A-Za-z_][A-Za-z0-9_]*|pointer\\.(?:loadByte|storeByte|offset|difference|isNull)|console\\.(?:writeLine|writeIntegerLine|writeInteger|writeFloatLine)|scheduler\\.sleep|retryPolicy\\.delayForAttempt|metrics\\.computeIncrementI64|bcrypt\\.[A-Za-z_][A-Za-z0-9_]*|sqlite\\.[A-Za-z_][A-Za-z0-9_]*|json\\.(?!(?:parse|stringify|encode|decode)\\.)[a-z][A-Za-z0-9_]*|http\\.[A-Za-z_][A-Za-z0-9_]*|gui\\.[A-Za-z_][A-Za-z0-9_]*|math\\.[A-Za-z_][A-Za-z0-9_]*)\\b"
+        }
+      ]
+    },
+    "domainTargets": {
+      "patterns": [
+        {
+          "name": "entity.name.function.domain-target.semanticscript",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\.(?:add|addPositiveStep|subtract|subtractStep|subtractPositiveStep|multiply|multiplyByStep|multiplyByCounter|divide|modulo|moduloBy|equal|notEqual|lessThan|lessThanOrEqual|greaterThan|greaterThanOrEqual|square|checkedMultiply|checkedMultiplyByCounter|checkedMultiplyByStep|length|append|get|set|slice|insert|update|remove)\\b"
+        }
+      ]
+    },
+    "generatedTargets": {
+      "patterns": [
+        {
+          "name": "entity.name.function.generated-target.semanticscript",
+          "match": "\\b(?:json\\.(?:decode|encode|parse|stringify)\\.[A-Z][A-Za-z0-9_]*|html\\.hydrate\\.[A-Z][A-Za-z0-9_]*)\\b"
+        }
+      ]
+    },
+    "errorVariants": {
+      "patterns": [
+        {
+          "name": "constant.language.error-variant.semanticscript",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\.[A-Z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+    "schemaValues": {
+      "patterns": [
+        {
+          "name": "constant.language.schema-value.semanticscript",
+          "match": "\\b(?:true|false|yes|no|capturedOutputReplay|strictExecutable|refinedSyntax|local|module|operation|template|parameter|body|memory|storage|source|target|condition|type|value|ok|error|void|if|else|process|sharedState|immutable|mutable|read|write|append|open|close|allocate|free|observe|execute|connect|send|receive|delete|configure|create|update|network|log|sourceTape|runtimeBinding|recordConstructor|intrinsic|externalDependency|codecDecode|codecEncode|collectionOperation|success|decode|encode|github|http|as|dev|prod|auto|nativeExe|webServer|windowsGui|applicationPrimary|applicationSecondary|documentType|png|ico|bits32|bits24|bits8|any|windows|macos|linux|verticalStack|horizontalStack|grid|absolute|single|multiple|click|valueChanged|selectionChanged|enterPressed|keyPressed|focusGained|focusLost|closeRequested|resized|shown|hidden|reject|ignore|keep|none|maximumBytes|sha256|utf8|nullByte|validatedRuntimeValue|trustedStaticLiteral|trustedUtf8Literal|trustedExternalCNullTerminatedUtf8Source|trustedInternal|trustedSessionContext|trustedStaticAsset|rawPointerToValidatedCString|rawUtf8ToValidatedText|row|column|packed|heap|arena|request|inPlace|boundsChecked|denseZeroIndexed|all|immutableUpdate|borrowedView|zeroBasedChecked|zeroBasedCheckedRange|contiguousUniqueAscending|arena\\.request|arena\\.process|arena\\.static|returnOk|returnError|continueMiddlewareControl|shortCircuitMiddlewareControl|readOnlySqliteOpenMode|readWriteSqliteOpenMode|readWriteCreateSqliteOpenMode|inMemorySqliteOpenMode|reverseRegistration|logAndSuppress|protectedBy|ownedBy)\\b"
+        }
+      ]
+    },
+    "qualifiedNames": {
+      "patterns": [
+        {
+          "name": "entity.name.namespace.semanticscript",
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)+\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.semanticscript",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+    "symbols": {
+      "patterns": [
+        {
+          "name": "variable.other.semanticscript",
+          "match": "\\b[a-z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    }
+  }
+}

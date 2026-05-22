@@ -23,10 +23,10 @@ Use structured tool output before patching behavior that touches routes,
 effects, capabilities, or generated native ABI:
 
 ```powershell
-python SemanticScript\tools\sem.py inspect-ir app\todo-web-pro\build.sem
-python SemanticScript\tools\sem.py context --json app\todo-web-pro\build.sem
-python SemanticScript\tools\sem.py symbols --json app\todo-web-pro\build.sem
-python SemanticScript\tools\sem.py lint --engine semlint app\todo-web-pro\build.sem --format json
+python SemanticScript\tools\sem.py inspect-ir apps\taskforge-web\build.sem
+python SemanticScript\tools\sem.py context --json apps\taskforge-web\build.sem
+python SemanticScript\tools\sem.py symbols --json apps\taskforge-web\build.sem
+python SemanticScript\tools\sem.py lint --engine semlint apps\taskforge-web\build.sem --format json
 ```
 
 `context --json` is the quick project envelope: roots, entrypoints, tool
@@ -54,5 +54,5 @@ python SemanticScript\tools\sem.py clean
 
 Expected ignored locations include `build/`, `.semcache/`, native executable and
 object output, LLVM IR output, packaged VSIX files, Python caches, and local app
-data such as `app/todo/todos.json`. Pass `--force` only after reviewing the dry
+data such as `apps/taskforge-tui/todos.json`. Pass `--force` only after reviewing the dry
 run.

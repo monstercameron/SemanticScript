@@ -64,17 +64,11 @@ rebuilt from the release tag.
 
 ## Python Sample Policy
 
-`samples/python/` is the canonical location for Python comparison samples.
+`python/` is the canonical location for Python comparison samples.
 
-The top-level `python/` directory remains tracked for 1.0 as a compatibility
-mirror for existing scripts and docs. When a mirrored sample changes, update both
-copies in the same change. New Python comparison samples should be added under
-`samples/python/`; add a top-level mirror only when compatibility requires it.
-
-Run both sample aggregators after changing mirrored files:
+Run the sample aggregator after changing comparison programs:
 
 ```powershell
-python samples/python/run_all.py
 python python/run_all.py
 ```
 
@@ -103,7 +97,7 @@ release changes. Generated artifacts must stay ignored and untracked, including:
 - `.exe`, `.ll`, `.bc`, object files, and native build folders;
 - Python caches and test build directories;
 - packaged `.vsix` files;
-- local todo app data such as `app/todo/todos.json`.
+- local todo app data such as `apps/taskforge-tui/todos.json`.
 
 Use a dry run before removing ignored local artifacts:
 
@@ -121,7 +115,7 @@ git clean -Xdf
 
 Public release history should not contain generated `.exe`, `.ll`, `.bc`,
 `.obj`, `.o`, `.pdb`, `.res`, `.rc`, `.vsix`, native build-folder output, or
-local app data such as `app/todo/todos.json`. Use the non-destructive history
+local app data such as `apps/taskforge-tui/todos.json`. Use the non-destructive history
 scan in `RELEASE.md` before deciding whether a history scrub is needed. If a
 scrub is required, prefer `git filter-repo` or another repeatable
 non-interactive tool and record the exact command in release notes.

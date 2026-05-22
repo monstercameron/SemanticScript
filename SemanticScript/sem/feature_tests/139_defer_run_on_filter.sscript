@@ -1,6 +1,5 @@
 # expect.stdout: cleanupOnError\n
 # expect.exit: 1
-# expect.xfail: feature_coverage.py runs through bootstrap_general.sscript which does not yet honor `deferRunOn` path filtering. Direct semsc.py compilation is correct: the returnError path runs only the deferOnErrorOnly cleanup, not the deferOnOkOnly cleanup. `python compiler/semsc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints `cleanupOnError` and exits 1. Closing means teaching bootstrap_general to collect deferRunOn lines and filter cleanup at each exit path.
 project DeferRunOnFilter
 target console
 runtime AgentRuntime 0.1

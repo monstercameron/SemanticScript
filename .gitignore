@@ -47,17 +47,14 @@ CMakeCache.txt
 build.ninja
 cmake_install.cmake
 
-SemanticScript/tests/sem_compiler_build/
-SemanticScript/tests/feature_coverage/
-SemanticScript/bootstrap/bootstrap_general.ll
 SemanticScript/bench/baselines.local/
 SemanticScript/bench/results/
 
 .claude/
 
-app/todo/todos.json
-app/Kilo_port/kilo.txt
-app/Kilo_port/upstream-kilo/
+apps/taskforge-tui/todos.json
+experiments/kilo-port/kilo.txt
+experiments/kilo-port/upstream-kilo/
 
 .DS_Store
 Thumbs.db
@@ -66,3 +63,13 @@ Thumbs.db
 # Subagent probe / scratch files
 .tmp_*.sscript
 .tmp_*.sem
+
+# Disposable experiment scratch data. Durable findings live in research/.
+experiments/*
+!experiments/syntax-baseline.sem
+!experiments/syntax-hybrid.sem
+!experiments/syntax-refinement.sem
+!experiments/kilo-port/
+!experiments/kilo-port/**
+experiments/kilo-port/build/
+experiments/kilo-port/**/build/

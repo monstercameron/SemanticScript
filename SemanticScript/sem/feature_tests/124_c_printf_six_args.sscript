@@ -13,7 +13,7 @@ output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap auto
 async main no
-purpose operation main "Exercise c.printf with 6 args (format + 5 trailing i64 binds). Probes whether bootstrap dispatches 6-arg c.printf through the PlusFive emitter rather than falling to UNHANDLED."
+purpose operation main "Exercise c.printf with 6 args (format + 5 trailing i64 binds). Probes whether backend dispatches 6-arg c.printf through the PlusFive emitter rather than falling to UNHANDLED."
 invariant operation main "Output is 'a=1 b=2 c=3 d=4 e=5\\n'."
 label startMain
 storage module immutable triggerSize CByteCount 1

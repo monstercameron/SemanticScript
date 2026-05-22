@@ -48,11 +48,11 @@ For project builds, `build.sem` registers modules and the module source files
 own their own imports/exports:
 
 ```semanticscript
-buildProject todoTui
-sourceRoot todoTui "."
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
-mainOperation todoTui main
+buildProject taskForgeTui
+sourceRoot taskForgeTui "."
+registerModule taskForgeTui app.taskforge_tui "."
+mainFile taskForgeTui "main.sem"
+mainOperation taskForgeTui main
 
 importModule app.todo
 ```
@@ -141,15 +141,15 @@ enter the native Windows message loop and exit that loop when the main window
 closes.
 
 ```semanticscript
-project HelloGui
+project DesktopWindowSmoke
 target windowsGui
 runtime native 1
 entry console main
-module examples.helloGui
+module examples.desktopWindowSmoke
 
 importModule gui standard.gui
 
-storage module immutable title GuiText "Hello GUI"
+storage module immutable title GuiText "Desktop Window Smoke"
 storage module immutable width GuiPixels 800
 storage module immutable height GuiPixels 480
 storage module immutable resizable CSignedInt32 1

@@ -25,7 +25,7 @@ on `vscode-semanticscript/`.
 Run these before sending a narrow tooling or docs change:
 
 ```powershell
-python -m compileall -q SemanticScript python samples
+python -m compileall -q SemanticScript python
 python -m unittest SemanticScript/linter/test_semlint.py -v
 python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sscript --parse-only
 python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sem --parse-only
@@ -42,8 +42,6 @@ python SemanticScript/tests/test_compiler.py
 python SemanticScript/tests/test_stdlib.py
 python SemanticScript/tests/compare.py
 python SemanticScript/tests/sem_alias_parity.py
-python SemanticScript/tests/feature_coverage.py
-python SemanticScript/bootstrap/run_bootstrap_chain.py
 ```
 
 Some broader checks require Node.js, LLVM/clang, and a working native compiler

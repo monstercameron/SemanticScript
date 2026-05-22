@@ -1,6 +1,5 @@
 # expect.stdout: 7\n
 # expect.exit: 0
-# expect.xfail: feature_coverage.py runs through bootstrap_general.sscript which does not yet recognize `start`/`await` body verbs that flow through `useRetry`/sharedState mutation. Direct semsc.py compilation is correct: `python compiler/semsc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints `7` because the synchronous `start` lowering runs the helper and the helper writes 7 into shared state before `await`. Closing means teaching bootstrap_general to alias start→run and await→no-op.
 project StartAwaitSyncLowering
 target console
 runtime AgentRuntime 0.1

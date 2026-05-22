@@ -130,6 +130,5 @@ Run broader compiler tests when lowering changed:
 ```powershell
 cd SemanticScript
 python tests/test_compiler.py
-python tests/sem_compiler_parity.py
 python tests/test_stdlib.py
 ```

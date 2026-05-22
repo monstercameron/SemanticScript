@@ -1,6 +1,5 @@
 # expect.stdout: 99\n
 # expect.exit: 0
-# expect.xfail: feature_coverage.py runs through bootstrap_general.sscript which does not yet alloca per-channel slots for send/receive. Direct semsc.py compilation is correct: single-slot channel takes the last send before the receive. `python compiler/semsc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints `99`.
 project ChannelSendOverwrite
 target console
 runtime AgentRuntime 0.1

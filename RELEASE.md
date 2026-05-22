@@ -45,8 +45,7 @@ Each public release should have a manifest at
 the same JSON to the GitHub release when publishing externally. The manifest
 should record the release tag, commit SHA, release date, tool versions,
 validation environments, exact commands, skipped checks, generated artifacts,
-checksums, signature status, deferred features, and known xfail/bootstrap
-limitations.
+checksums, signature status, deferred features, and known limitations.
 
 ## Environment
 
@@ -55,7 +54,7 @@ Minimum release validation environment:
 - Python 3.11 or 3.12
 - dependencies from `requirements.txt`
 - Node.js 20 or newer for VS Code extension syntax checks
-- LLVM/clang for native emit, stdlib, bootstrap, and parity checks
+- LLVM/clang for native emit, stdlib, and parity checks
 
 On Windows, set `SEMSC_CLANG` when clang is not on PATH:
 
@@ -70,7 +69,7 @@ These commands mirror the lightweight CI workflow:
 ```powershell
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-python -m compileall -q SemanticScript python samples
+python -m compileall -q SemanticScript python
 python SemanticScript/tools/release_versions.py
 python -m unittest SemanticScript/linter/test_semlint.py -v
 python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sscript --parse-only
@@ -89,9 +88,6 @@ python SemanticScript/tests/test_compiler.py
 python SemanticScript/tests/test_stdlib.py
 python SemanticScript/tests/compare.py
 python SemanticScript/tests/sem_alias_parity.py
-python SemanticScript/tests/sem_compiler_parity.py
-python SemanticScript/tests/feature_coverage.py
-python SemanticScript/bootstrap/run_bootstrap_chain.py
 ```
 
 Package the VS Code extension only after validation passes and the release owner
@@ -111,7 +107,7 @@ release artifacts.
 
 Before tagging, confirm the release hygiene policies:
 
-- `samples/python/` is the canonical Python comparison-sample tree.
+- `python/` is the canonical Python comparison-sample tree.
 - top-level `python/` remains a 1.0 compatibility mirror and must stay aligned
   when mirrored files change.
 - `.sem` files directly under `SemanticScript/sem/` are intentionally tracked
@@ -144,7 +140,7 @@ public release history:
 ```powershell
 $artifactHistory = git log --all --name-only --pretty=format: -- `
   "*.exe" "*.ll" "*.bc" "*.obj" "*.o" "*.pdb" "*.res" "*.rc" "*.vsix" `
-  "app/todo/todos.json"
+  "apps/taskforge-tui/todos.json"
 if ($artifactHistory) {
   $artifactHistory | Sort-Object -Unique
   throw "Generated artifacts were found in Git history."
@@ -162,9 +158,9 @@ tagging.
 The CI workflow intentionally leaves some checks manual because they require
 local native toolchains, long-running app processes, or release-owner approval:
 
-- app webserver harnesses such as `app/todo-web/test_todo_web.py`,
-  `app/todo-web-advanced/test_advanced_todo_web.py`, and
-  `app/http-api-gauntlet/scripts/test_http_api_gauntlet.py`;
+- app webserver harnesses such as
+  `apps/http-runtime-gauntlet/scripts/test_http_runtime_gauntlet.py` and
+  `apps/taskforge-web/scripts/test_taskforge_web.py`;
 - native runtime CMake builds when a runner lacks the required compiler,
   pthreads, SQLite, or JSON runtime dependency shape;
 - VSIX packaging with `npm --prefix vscode-semanticscript run package:vsix`.
@@ -174,8 +170,8 @@ local native toolchains, long-running app processes, or release-owner approval:
 1. Confirm `git status --short` contains only intentional release changes.
 2. Install Python dependencies from `requirements.txt`.
 3. Run focused CI parity commands.
-4. Run full release validation commands when compiler, stdlib, bootstrap,
-   extension, or sample behavior changed.
+4. Run full release validation commands when compiler, stdlib, extension, or
+   sample behavior changed.
 5. Confirm docs and command examples use current SemanticScript names.
 6. Confirm package outputs are ignored or attached outside the repository.
 7. Confirm formatter output is clean with `python

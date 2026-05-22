@@ -493,9 +493,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         description="Format SemanticScript .sem and .sscript source files.",
         epilog=(
             "examples:\n"
-            "  semfmt app/todo/main.sscript\n"
+            "  semfmt apps/taskforge-tui/main.sem\n"
             "  semfmt --check SemanticScript/tests/tiny.sem\n"
-            "  semfmt --diff \"app/**/*.sem\"\n"
+            "  semfmt --diff \"apps/**/*.sem\"\n"
             "  semfmt --stdin-file-name scratch.sem < scratch.sem"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,

@@ -10,10 +10,13 @@ organize them:
 
 ```text
 SYNTAX.md                         complete syntax inventory and status table
+docs/ast.md                       language and AST design notes
 SemanticScript/compiler/semsc.py       reference parser, AST, lowering, CLI
 SemanticScript/linter/semlint.py       canonical standalone structured linter
 SemanticScript/compiler/libc_registry.py
                                   c.* ABI registry
+SemanticScript/shared/call_contracts.py
+                                  shared call and route contract facts
 STDLIB.md                         stdlib module inventory
 vscode-semanticscript/                editor syntax, hovers, semantic tokens
 ```
@@ -24,6 +27,7 @@ doc file that owns that behavior. Avoid giant catch-all edits.
 ## Contents
 
 - `agents.md` is the compact agent-facing guide.
+- `ast.md` records the language and AST design notes.
 - `optimization-guide.md` records optimization and app-boundary rules.
 - `language/` explains the language model and schemas.
 - `reference/` contains target, verb, and maintenance references.
@@ -42,7 +46,6 @@ matrix. The release-level boundary is:
 | Surface | 1.0 support level | Source of truth |
 |---|---|---|
 | Python reference compiler | Supported release compiler for `.sscript` and `.sem`, console entry, LLVM IR, JIT run, and clang-linked executables. | `SemanticScript/compiler/semsc.py`, [toolchain/compiler.md](toolchain/compiler.md) |
-| Bootstrap / self-hosting | Preview and release-tested, but not the production compiler. | `SemanticScript/bootstrap/README.md`, `tests/sem_compiler_parity.py` |
 | VS Code extension | Supported editor tooling for `.sscript` / `.sem`; syntax visibility is not executable support. | [toolchain/vscode-extension.md](toolchain/vscode-extension.md) |
 | Refined syntax and partial rows | Inspectable and documented as metadata, fallback, partial, or implemented. | `SYNTAX.md`, [toolchain/compiler.md](toolchain/compiler.md) |
 | Web / HTTP runtime | Preview native HTTP/1.1 listener for exact routed `target webServer` programs; HTTP/2/H2O and richer request/response APIs remain future work. | [toolchain/compiler.md](toolchain/compiler.md) |

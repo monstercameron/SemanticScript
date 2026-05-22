@@ -1,6 +1,5 @@
 # expect.stdout: hello\nfirstCleanup\nsecondCleanup\n
 # expect.exit: 0
-# expect.xfail: feature_coverage.py runs through bootstrap_general.sscript which does not yet lower `defer`/`deferLog` to a real cleanup call sequence at op exits. Direct semsc.py compilation works correctly (`python compiler/semsc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints the three lines in reverse-registration order and exits 0). Closing means teaching bootstrap_general to collect defers and emit them in reverse-registration order before each return.
 project DeferReverseOrder
 target console
 runtime AgentRuntime 0.1

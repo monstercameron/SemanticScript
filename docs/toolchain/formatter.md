@@ -6,10 +6,10 @@
 ## Commands
 
 ```powershell
-python SemanticScript/formatter/semfmt.py app/todo/main.sscript
+python SemanticScript/formatter/semfmt.py apps/taskforge-tui/main.sem
 python SemanticScript/formatter/semfmt.py --check SemanticScript/tests/tiny.sem
-python SemanticScript/formatter/semfmt.py --diff "app/**/*.sem"
-python SemanticScript/tools/sem.py fmt --check app/todo
+python SemanticScript/formatter/semfmt.py --diff "apps/**/*.sem"
+python SemanticScript/tools/sem.py fmt --check apps/taskforge-tui
 ```
 
 ## Canonical Defaults

@@ -451,44 +451,44 @@ purpose main "smoke"
         self.assertNotIn("SS0001", _codes(diagnostics))
 
     def test_build_tape_verbs_not_flagged(self) -> None:
-        diagnostics = _lint_source("""buildProject todoTui
-project TodoTuiApp
-modulePath todoTui github.com/monstercameron/SemanticScript/app/todo
-languageVersion todoTui "1.0"
-projectVersion todoTui "1.0.0"
-projectLicense todoTui MIT
-sourceRoot todoTui "."
-registerModule todoTui app.todo "."
-mainFile todoTui "fixture.sscript"
-mainOperation todoTui main
-testPattern todoTui "*.test.sem"
-testRoot todoTui "."
-dependencySource todoTui semstd github.com/monstercameron/SemanticScript/std
-dependencyIntegrity todoTui semstd "sha256-example"
-buildProfile todoTui dev
-runtimeChecks todoTui panic
-persistLlvmIr todoTui no
-optLevel todoTui 2
-emitLlvmIr todoTui auto
-llvmIrOutput todoTui "build/todo.ll"
-emitOptimizedLlvmIr todoTui no
-optimizedLlvmIrOutput todoTui "build/todo.opt.ll"
-buildRoot todoTui "."
-buildFolderName todoTui build
-cpuBaseline todoTui generic
-cpuTune todoTui generic
-cpuFeature todoTui avx2 off
-cpuFeatureCheck todoTui auto
-nativeOutput todoTui "todo.exe"
-nativeHttpHost todoTui "127.0.0.1"
-nativeHttpPort todoTui 18080
-formatterSetting todoTui lineWidth 100
-linterSetting todoTui maxTier T4
-docsOutput todoTui "docs"
-keepResources todoTui no
-resourcesDir todoTui "build/resources"
-targetRuntime todoTui nativeExe
-comptimeOperation todoTui configureTodoTuiBuild
+        diagnostics = _lint_source("""buildProject taskForgeTui
+project TaskForgeTui
+modulePath taskForgeTui github.com/monstercameron/SemanticScript/apps/taskforge-tui
+languageVersion taskForgeTui "1.0"
+projectVersion taskForgeTui "1.0.0"
+projectLicense taskForgeTui MIT
+sourceRoot taskForgeTui "."
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "fixture.sscript"
+mainOperation taskForgeTui main
+testPattern taskForgeTui "*.test.sem"
+testRoot taskForgeTui "."
+dependencySource taskForgeTui semstd github.com/monstercameron/SemanticScript/std
+dependencyIntegrity taskForgeTui semstd "sha256-example"
+buildProfile taskForgeTui dev
+runtimeChecks taskForgeTui panic
+persistLlvmIr taskForgeTui no
+optLevel taskForgeTui 2
+emitLlvmIr taskForgeTui auto
+llvmIrOutput taskForgeTui "build/todo.ll"
+emitOptimizedLlvmIr taskForgeTui no
+optimizedLlvmIrOutput taskForgeTui "build/todo.opt.ll"
+buildRoot taskForgeTui "."
+buildFolderName taskForgeTui build
+cpuBaseline taskForgeTui generic
+cpuTune taskForgeTui generic
+cpuFeature taskForgeTui avx2 off
+cpuFeatureCheck taskForgeTui auto
+nativeOutput taskForgeTui "taskforge_tui.exe"
+nativeHttpHost taskForgeTui "127.0.0.1"
+nativeHttpPort taskForgeTui 18080
+formatterSetting taskForgeTui lineWidth 100
+linterSetting taskForgeTui maxTier T4
+docsOutput taskForgeTui "docs"
+keepResources taskForgeTui no
+resourcesDir taskForgeTui "build/resources"
+targetRuntime taskForgeTui nativeExe
+comptimeOperation taskForgeTui configureTaskForgeTuiBuild
 iconRoleDefinition applicationPrimary "Primary app icon."
 icon todoPrimaryIcon
 iconRole todoPrimaryIcon applicationPrimary
@@ -793,32 +793,32 @@ class TestProjectBuildTapeSchema(unittest.TestCase):
     def _write_complete_project(self, root: Path, extraRows: str = "") -> Path:
         (root / "main.sem").write_text("module app.todo\n", encoding="utf-8")
         buildPath = root / "build.sem"
-        buildPath.write_text(f"""buildProject todoTui
-project TodoTuiApp
-modulePath todoTui github.com/example/todo
-languageVersion todoTui "1.0"
-projectVersion todoTui "1.0.0"
-projectLicense todoTui MIT
-sourceRoot todoTui "."
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
-mainOperation todoTui main
-testPattern todoTui "*.test.sem"
-testRoot todoTui "."
-targetRuntime todoTui nativeExe
-buildProfile todoTui dev
-runtimeChecks todoTui panic
-persistLlvmIr todoTui auto
-optLevel todoTui 2
-emitLlvmIr todoTui auto
-emitOptimizedLlvmIr todoTui no
-buildFolderName todoTui build
-cpuBaseline todoTui generic
-cpuTune todoTui generic
-cpuFeatureCheck todoTui auto
-formatterSetting todoTui lineWidth 100
-linterSetting todoTui maxTier T4
-docsOutput todoTui "docs"
+        buildPath.write_text(f"""buildProject taskForgeTui
+project TaskForgeTui
+modulePath taskForgeTui github.com/example/todo
+languageVersion taskForgeTui "1.0"
+projectVersion taskForgeTui "1.0.0"
+projectLicense taskForgeTui MIT
+sourceRoot taskForgeTui "."
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "main.sem"
+mainOperation taskForgeTui main
+testPattern taskForgeTui "*.test.sem"
+testRoot taskForgeTui "."
+targetRuntime taskForgeTui nativeExe
+buildProfile taskForgeTui dev
+runtimeChecks taskForgeTui panic
+persistLlvmIr taskForgeTui auto
+optLevel taskForgeTui 2
+emitLlvmIr taskForgeTui auto
+emitOptimizedLlvmIr taskForgeTui no
+buildFolderName taskForgeTui build
+cpuBaseline taskForgeTui generic
+cpuTune taskForgeTui generic
+cpuFeatureCheck taskForgeTui auto
+formatterSetting taskForgeTui lineWidth 100
+linterSetting taskForgeTui maxTier T4
+docsOutput taskForgeTui "docs"
 {extraRows}""", encoding="utf-8")
         return buildPath
 
@@ -891,8 +891,8 @@ storage module immutable todoBuildPlan BuildPlan
 jsonBody todoBuildPlan
   {{
     "project": {{
-      "id": "todoTui",
-      "name": "TodoTuiApp",
+      "id": "taskForgeTui",
+      "name": "TaskForgeTui",
       "modulePath": "github.com/example/todo",
       "languageVersion": "1.0",
       "projectVersion": "1.0.0",
@@ -963,8 +963,8 @@ jsonBody todoBuildPlan
         self.assertIn("SS2525", _codes(diagnostics))
 
     def test_missing_required_rows_are_flagged(self) -> None:
-        diagnostics = _lint_source("""buildProject todoTui
-project TodoTuiApp
+        diagnostics = _lint_source("""buildProject taskForgeTui
+project TaskForgeTui
 """)
         self.assertIn("SS2522", _codes(diagnostics))
 
@@ -972,7 +972,7 @@ project TodoTuiApp
         with TemporaryDirectory() as tempDir:
             buildPath = self._write_complete_project(
                 Path(tempDir),
-                extraRows="optLevel todoTui 9\n",
+                extraRows="optLevel taskForgeTui 9\n",
             )
             diagnostics = semlint.lint_path(buildPath)
         self.assertIn("SS2524", _codes(diagnostics))
@@ -982,7 +982,7 @@ project TodoTuiApp
         with TemporaryDirectory() as tempDir:
             buildPath = self._write_complete_project(
                 Path(tempDir),
-                extraRows="buildProfile todoTui prod\n",
+                extraRows="buildProfile taskForgeTui prod\n",
             )
             diagnostics = semlint.lint_path(buildPath)
         self.assertIn("SS2524", _codes(diagnostics))
@@ -1000,7 +1000,7 @@ project TodoTuiApp
         with TemporaryDirectory() as tempDir:
             buildPath = self._write_complete_project(
                 Path(tempDir),
-                extraRows="buildFolderName todoTui nested/build\n",
+                extraRows="buildFolderName taskForgeTui nested/build\n",
             )
             diagnostics = semlint.lint_path(buildPath)
         self.assertIn("SS2526", _codes(diagnostics))
@@ -1009,7 +1009,7 @@ project TodoTuiApp
         with TemporaryDirectory() as tempDir:
             buildPath = self._write_complete_project(
                 Path(tempDir),
-                extraRows="cpuFeature todoTui avx2 maybe\n",
+                extraRows="cpuFeature taskForgeTui avx2 maybe\n",
             )
             diagnostics = semlint.lint_path(buildPath)
         self.assertIn("SS2525", _codes(diagnostics))
@@ -1020,14 +1020,14 @@ project TodoTuiApp
             buildPath = self._write_complete_project(
                 Path(tempDir),
                 extraRows=(
-                    "dependency todoTui semstd github.com/example/semstd v1.0.0\n"
-                    "dependencyFetch todoTui semstd github example/semstd v1.0.0\n"
-                    "dependencyIntegrity todoTui semstd commit:abcdef1234567890\n"
-                    "dependency todoTui api github.com/example/api v2.0.0\n"
-                    "dependencyFetch todoTui api http \"https://example.com/api.tar.gz\"\n"
-                    f"dependencyIntegrity todoTui api sha256:{digest}\n"
-                    "dependencyCache todoTui \".semcache\"\n"
-                    "dependencyLock todoTui \"sem.lock\"\n"
+                    "dependency taskForgeTui semstd github.com/example/semstd v1.0.0\n"
+                    "dependencyFetch taskForgeTui semstd github example/semstd v1.0.0\n"
+                    "dependencyIntegrity taskForgeTui semstd commit:abcdef1234567890\n"
+                    "dependency taskForgeTui api github.com/example/api v2.0.0\n"
+                    "dependencyFetch taskForgeTui api http \"https://example.com/api.tar.gz\"\n"
+                    f"dependencyIntegrity taskForgeTui api sha256:{digest}\n"
+                    "dependencyCache taskForgeTui \".semcache\"\n"
+                    "dependencyLock taskForgeTui \"sem.lock\"\n"
                 ),
             )
             diagnostics = semlint.lint_path(buildPath)
@@ -1043,7 +1043,7 @@ project TodoTuiApp
         with TemporaryDirectory() as tempDir:
             buildPath = self._write_complete_project(
                 Path(tempDir),
-                extraRows="dependencyFetch todoTui missing http \"http://example.com/api.tar.gz\"\n",
+                extraRows="dependencyFetch taskForgeTui missing http \"http://example.com/api.tar.gz\"\n",
             )
             diagnostics = semlint.lint_path(buildPath)
         codes = _codes(diagnostics)
@@ -1055,8 +1055,8 @@ project TodoTuiApp
             buildPath = self._write_complete_project(
                 Path(tempDir),
                 extraRows=(
-                    "dependency todoTui api github.com/example/api v1.0.0\n"
-                    "dependencySource todoTui api git \"https://example.com/api.git\"\n"
+                    "dependency taskForgeTui api github.com/example/api v1.0.0\n"
+                    "dependencySource taskForgeTui api git \"https://example.com/api.git\"\n"
                 ),
             )
             diagnostics = semlint.lint_path(buildPath)
@@ -1067,8 +1067,8 @@ project TodoTuiApp
             buildPath = self._write_complete_project(
                 Path(tempDir),
                 extraRows=(
-                    "dependency todoTui semstd github.com/example/semstd main\n"
-                    "dependencyFetch todoTui semstd github example/semstd main\n"
+                    "dependency taskForgeTui semstd github.com/example/semstd main\n"
+                    "dependencyFetch taskForgeTui semstd github example/semstd main\n"
                 ),
             )
             diagnostics = semlint.lint_path(buildPath)
@@ -1088,9 +1088,9 @@ class TestProjectModuleRegistry(unittest.TestCase):
             root = Path(tempDir)
             (root / "main.sem").write_text("module app.todo\n", encoding="utf-8")
             buildPath = root / "build.sem"
-            buildPath.write_text("""buildProject todoTui
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
+            buildPath.write_text("""buildProject taskForgeTui
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "main.sem"
 exportOperation app.todo main
 """, encoding="utf-8")
             diagnostics = semlint.lint_path(buildPath)
@@ -1099,9 +1099,9 @@ exportOperation app.todo main
     def test_registered_module_exports_are_local_and_clean(self) -> None:
         with TemporaryDirectory() as tempDir:
             root = Path(tempDir)
-            (root / "build.sem").write_text("""buildProject todoTui
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
+            (root / "build.sem").write_text("""buildProject taskForgeTui
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "main.sem"
 """, encoding="utf-8")
             modulePath = root / "main.sem"
             modulePath.write_text("""module app.todo
@@ -1120,9 +1120,9 @@ returnVoid
     def test_exported_symbol_must_be_declared(self) -> None:
         with TemporaryDirectory() as tempDir:
             root = Path(tempDir)
-            (root / "build.sem").write_text("""buildProject todoTui
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
+            (root / "build.sem").write_text("""buildProject taskForgeTui
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "main.sem"
 """, encoding="utf-8")
             modulePath = root / "main.sem"
             modulePath.write_text("""module app.todo
@@ -1134,9 +1134,9 @@ exportOperation app.todo missingMain
     def test_storage_constant_export_counts_as_declared(self) -> None:
         with TemporaryDirectory() as tempDir:
             root = Path(tempDir)
-            (root / "build.sem").write_text("""buildProject todoTui
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
+            (root / "build.sem").write_text("""buildProject taskForgeTui
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "main.sem"
 """, encoding="utf-8")
             modulePath = root / "main.sem"
             modulePath.write_text("""module app.todo
@@ -1149,9 +1149,9 @@ storage module immutable publicLimit I64 5
     def test_unregistered_module_declaration_is_flagged(self) -> None:
         with TemporaryDirectory() as tempDir:
             root = Path(tempDir)
-            (root / "build.sem").write_text("""buildProject todoTui
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
+            (root / "build.sem").write_text("""buildProject taskForgeTui
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "main.sem"
 """, encoding="utf-8")
             modulePath = root / "main.sem"
             modulePath.write_text("""module app.other
@@ -1162,9 +1162,9 @@ mainFile todoTui "main.sem"
     def test_unregistered_module_import_is_flagged(self) -> None:
         with TemporaryDirectory() as tempDir:
             root = Path(tempDir)
-            (root / "build.sem").write_text("""buildProject todoTui
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
+            (root / "build.sem").write_text("""buildProject taskForgeTui
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "main.sem"
 """, encoding="utf-8")
             modulePath = root / "main.sem"
             modulePath.write_text("""module app.todo
@@ -1176,9 +1176,9 @@ importModule app.missing
     def test_standard_html_import_is_allowed_in_registered_module(self) -> None:
         with TemporaryDirectory() as tempDir:
             root = Path(tempDir)
-            (root / "build.sem").write_text("""buildProject todoTui
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
+            (root / "build.sem").write_text("""buildProject taskForgeTui
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "main.sem"
 """, encoding="utf-8")
             modulePath = root / "main.sem"
             modulePath.write_text("""module app.todo
@@ -1315,9 +1315,9 @@ returnVoid
     def test_missing_registered_module_source_is_flagged(self) -> None:
         with TemporaryDirectory() as tempDir:
             buildPath = Path(tempDir) / "build.sem"
-            buildPath.write_text("""buildProject todoTui
-registerModule todoTui app.todo "missing"
-mainFile todoTui "main.sem"
+            buildPath.write_text("""buildProject taskForgeTui
+registerModule taskForgeTui app.todo "missing"
+mainFile taskForgeTui "main.sem"
 """, encoding="utf-8")
             diagnostics = semlint.lint_path(buildPath)
         self.assertIn("SS2501", _codes(diagnostics))
@@ -1325,9 +1325,9 @@ mainFile todoTui "main.sem"
     def test_duplicate_export_is_flagged(self) -> None:
         with TemporaryDirectory() as tempDir:
             root = Path(tempDir)
-            (root / "build.sem").write_text("""buildProject todoTui
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
+            (root / "build.sem").write_text("""buildProject taskForgeTui
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "main.sem"
 """, encoding="utf-8")
             modulePath = root / "main.sem"
             modulePath.write_text("""module app.todo
@@ -1344,9 +1344,9 @@ returnVoid
     def test_mutable_storage_export_is_flagged(self) -> None:
         with TemporaryDirectory() as tempDir:
             root = Path(tempDir)
-            (root / "build.sem").write_text("""buildProject todoTui
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
+            (root / "build.sem").write_text("""buildProject taskForgeTui
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "main.sem"
 """, encoding="utf-8")
             modulePath = root / "main.sem"
             modulePath.write_text("""module app.todo
@@ -1359,9 +1359,9 @@ storage module mutable mutableRevision I64 0
     def test_local_storage_export_is_flagged(self) -> None:
         with TemporaryDirectory() as tempDir:
             root = Path(tempDir)
-            (root / "build.sem").write_text("""buildProject todoTui
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
+            (root / "build.sem").write_text("""buildProject taskForgeTui
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "main.sem"
 """, encoding="utf-8")
             modulePath = root / "main.sem"
             modulePath.write_text("""module app.todo
@@ -1461,9 +1461,9 @@ storage module immutable maxTodoCount I64 128
     def test_exported_operation_quality_diagnostics(self) -> None:
         with TemporaryDirectory() as tempDir:
             root = Path(tempDir)
-            (root / "build.sem").write_text("""buildProject todoTui
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
+            (root / "build.sem").write_text("""buildProject taskForgeTui
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "main.sem"
 """, encoding="utf-8")
             modulePath = root / "main.sem"
             modulePath.write_text("""module app.todo
@@ -6293,7 +6293,7 @@ returnVoid
 operation refOp
 output refOp Void
 purpose refOp "smoke"
-warning refOp "the assertion at test_http_api_gauntlet.py:273-279 verifies this"
+warning refOp "the assertion at test_http_runtime_gauntlet.py:273-279 verifies this"
 label startRefOp
 returnVoid
 """)

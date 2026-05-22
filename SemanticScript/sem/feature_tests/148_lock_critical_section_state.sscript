@@ -1,6 +1,5 @@
 # expect.stdout: 30\n
 # expect.exit: 0
-# expect.xfail: feature_coverage.py runs through bootstrap_general.sscript which does not yet honor mutable sharedState within a lock/unlock pair. Direct semsc.py compilation is correct: single-thread lock is a no-op; the counter walks 0→10→20→30. `python compiler/semsc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints `30`.
 project LockCriticalSectionState
 target console
 runtime AgentRuntime 0.1

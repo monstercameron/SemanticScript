@@ -1,6 +1,5 @@
 # expect.stdout: 3\n
 # expect.exit: 0
-# expect.xfail: feature_coverage.py runs through bootstrap_general.sscript which does not yet wrap `run CALL` in a retry loop. Direct semsc.py compilation is correct: the policy allows 3 attempts; the helper always returns a negative value; each attempt increments shared state; after exhaustion, shared state holds 3. `python compiler/semsc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints `3`. Verifies retry loop runs exactly retryMaxAttempts times when call always fails.
 project UseRetryExhaustionCounts
 target console
 runtime AgentRuntime 0.1

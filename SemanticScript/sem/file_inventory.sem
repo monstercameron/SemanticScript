@@ -57,14 +57,14 @@ memory main heap no
 memoryStackLimit main 16KiB
 async main no
 
-purpose operation main "Print the JavaScript folder inventory exactly as javascript/file-inventory.js emits it"
+purpose operation main "Print the retired JavaScript reference inventory snapshot"
 invariant operation main "Files appear in alphabetical order with line and byte counts as observed at capture time"
 
 label startMain
 
 storage local immutable fileInventoryTitleText String "JavaScript Folder Inventory"
 storage local immutable fileInventoryTitleUnderlineText String "==========================="
-storage local immutable fileInventoryDirectoryText String "directory: SemanticScript/samples/javascript"
+storage local immutable fileInventoryDirectoryText String "directory: retired/javascript-reference-snapshot"
 storage local immutable fileInventoryScriptCountText String "scriptCount: 29"
 storage local immutable fileInventoryAsyncWorkflowText String "async-workflow.js          lines= 47 bytes=1241"
 storage local immutable fileInventoryComplexCheckoutText String "complex-checkout-saga.js   lines=439 bytes=12035"

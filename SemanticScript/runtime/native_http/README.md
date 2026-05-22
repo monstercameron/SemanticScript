@@ -34,11 +34,10 @@ cmake -S SemanticScript/runtime/native_http -B SemanticScript/runtime/native_htt
   -DCMAKE_RC_COMPILER="C:/Program Files/LLVM/bin/llvm-rc.exe"
 ```
 
-The CMake demo executable starts a blocking server. The Todo Web app has the
-repeatable end-to-end HTTP test:
+The CMake demo executable starts a blocking server. The curated app set keeps
+repeatable end-to-end HTTP tests:
 
 ```powershell
-python app/todo-web/test_todo_web.py
-python app/todo-web-advanced/test_advanced_todo_web.py
-python app/http-api-gauntlet/scripts/test_http_api_gauntlet.py
+python apps/http-runtime-gauntlet/scripts/test_http_runtime_gauntlet.py
+python apps/taskforge-web/scripts/test_taskforge_web.py
 ```

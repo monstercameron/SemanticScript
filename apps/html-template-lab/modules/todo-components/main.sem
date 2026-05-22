@@ -1,0 +1,62 @@
+module app.html_template_lab.todo_components
+purpose module app.html_template_lab.todo_components "Reusable HTML/SSX components for the console-rendered todo dashboard."
+moduleOwns app.html_template_lab.todo_components "Component-level HTML templates and hydration operations."
+moduleDoesNotOwn app.html_template_lab.todo_components "Page shell composition, console output, or todo persistence."
+invariant module app.html_template_lab.todo_components "Dynamic holes inside html body templates only read hydrate argument values."
+
+import html standard.html
+
+exportOperation app.html_template_lab.todo_components renderTodoListFragment
+
+html template TodoListTemplate
+purpose operation TodoListTemplate "Render a fixed three-row ordered todo list as an HTML fragment."
+guarantee TodoListTemplate "This template renders exactly three todo rows; dynamic collection rendering is future work."
+html body template TodoListTemplate
+  <section class="todo-list-region" aria-label="Todo list">
+    <ol class="todo-list">
+      <li class="{firstTodoClassName}">
+        <span class="todo-title">{firstTodoTitleText}</span>
+        <span class="todo-status">{firstTodoStatusText}</span>
+      </li>
+      <li class="{secondTodoClassName}">
+        <span class="todo-title">{secondTodoTitleText}</span>
+        <span class="todo-status">{secondTodoStatusText}</span>
+      </li>
+      <li class="{thirdTodoClassName}">
+        <span class="todo-title">{thirdTodoTitleText}</span>
+        <span class="todo-status">{thirdTodoStatusText}</span>
+      </li>
+    </ol>
+  </section>
+
+operation renderTodoListFragment
+input operation renderTodoListFragment firstTodoTitleText String
+input operation renderTodoListFragment firstTodoStatusText String
+input operation renderTodoListFragment firstTodoClassName String
+input operation renderTodoListFragment secondTodoTitleText String
+input operation renderTodoListFragment secondTodoStatusText String
+input operation renderTodoListFragment secondTodoClassName String
+input operation renderTodoListFragment thirdTodoTitleText String
+input operation renderTodoListFragment thirdTodoStatusText String
+input operation renderTodoListFragment thirdTodoClassName String
+output operation renderTodoListFragment HtmlFragment
+memory renderTodoListFragment heap no
+async renderTodoListFragment no
+purpose operation renderTodoListFragment "Hydrate the reusable fixed three-row todo list component from explicit caller inputs."
+invariant operation renderTodoListFragment "The component has no request, console, persistence, or todo-domain access; all dynamic content arrives through operation inputs forwarded into bare HTML holes."
+
+label startRenderTodoListFragment
+
+call hydrateTodoListCall html.hydrate.TodoListTemplate
+argument hydrateTodoListCall firstTodoTitleText String firstTodoTitleText
+argument hydrateTodoListCall firstTodoStatusText String firstTodoStatusText
+argument hydrateTodoListCall firstTodoClassName String firstTodoClassName
+argument hydrateTodoListCall secondTodoTitleText String secondTodoTitleText
+argument hydrateTodoListCall secondTodoStatusText String secondTodoStatusText
+argument hydrateTodoListCall secondTodoClassName String secondTodoClassName
+argument hydrateTodoListCall thirdTodoTitleText String thirdTodoTitleText
+argument hydrateTodoListCall thirdTodoStatusText String thirdTodoStatusText
+argument hydrateTodoListCall thirdTodoClassName String thirdTodoClassName
+run hydrateTodoListCall
+bind value todoListFragment HtmlFragment hydrateTodoListCall
+return value todoListFragment

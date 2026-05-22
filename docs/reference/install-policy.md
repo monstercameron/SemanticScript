@@ -30,7 +30,7 @@ A future `semup` or equivalent version manager should:
 
 The version manager should not be required for source checkout development.
 Running `python SemanticScript/tools/sem.py ...` from a checkout remains the
-bootstrap workflow.
+source checkout workflow.
 
 ## Artifact Checks
 

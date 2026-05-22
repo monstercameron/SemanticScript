@@ -15,7 +15,7 @@
 # bespoke logging adapter.
 #
 # Concurrency model: the package assumes a single-process, single-writer
-# app. The blocking HTTP backend that todo-web-pro uses satisfies that;
+# app. The blocking HTTP backend that taskforge-web uses satisfies that;
 # a multi-worker refine should replace this module with a log-shipper
 # bridge so each worker doesn't fight for the file handle.
 #
@@ -49,7 +49,7 @@
 # Path defaults: openLogFile is the canonical entry. The package does
 # NOT auto-open or pick a default path — apps must call openLogFile
 # explicitly so the path is grep-able from a single call site. The
-# todo-web-pro app calls `openLogFile("logs/log.log")` once at server
+# taskforge-web app calls `openLogFile("logs/log.log")` once at server
 # startup; the parent directory `logs/` must already exist (we don't
 # pull mkdir into this module — apps create the dir via
 # http.ensureDirectory or its console equivalent before opening).
@@ -364,7 +364,7 @@ branch if condition escapeSourceIsNull target escapeJsonStringEmpty
 # Implementation uses c.snprintf with %s — that handles the common case
 # (no `"` or `\\` in the message) by simple copy. The escape contract
 # is documented; a production refine could swap the snprintf for a
-# real per-byte loop. For the todo-web-pro app the message texts are
+# real per-byte loop. For the taskforge-web app the message texts are
 # operation-internal constants ("user.login.success", "todo.created.id-N",
 # etc.) that contain neither character, so snprintf is sufficient.
 storage local immutable escapePassthroughFormat CNullTerminatedByteString "%s"

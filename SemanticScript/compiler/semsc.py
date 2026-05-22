@@ -2,9 +2,9 @@
 semsc - the SemanticScript compiler.
 
 Implements a faithful subset of the SemanticScript language (per
-../SemanticScript.md and AST.md). Compiles SemanticScript semantic tape to
-LLVM IR via llvmlite, then either JIT-executes via MCJIT or writes the IR to a
-.ll file.
+../../docs/semantic-script.md and ../../docs/ast.md). Compiles SemanticScript
+semantic tape to LLVM IR via llvmlite, then either JIT-executes via MCJIT or
+writes the IR to a .ll file.
 
 Top-level verbs:
   project, target, runtime, entry, module
@@ -64,7 +64,7 @@ for _import_path in (_COMPILER_DIR, _SEMANTICSCRIPT_ROOT):
     if _import_path not in sys.path:
         sys.path.insert(0, _import_path)
 import libc_registry
-from call_contracts import (
+from shared.call_contracts import (
     KNOWN_FALLIBLE_CALL_TARGETS,
     SUPPORTED_HTTP_ROUTE_METHODS,
     fallibility_kind,
@@ -892,7 +892,7 @@ def _canonicalize_syntax_row(verb, args, lineno):
     return verb, args
 
 
-# Closed set of recognized `mode` declarations. See AST.md §10.
+# Closed set of recognized `mode` declarations. See docs/ast.md §10.
 _KNOWN_MODES = {
     "capturedOutputReplay",
 }
@@ -901,8 +901,8 @@ _KNOWN_LANGUAGE_MODES = {
     "strictExecutable",
     "refinedSyntax",
     # `permissiveExecutable` is the explicit opt-out from the strict
-    # executable wall. It exists so that bootstrap, research, and legacy
-    # files can compile without claiming strictness; strict is the default
+    # executable wall. It exists so that research and legacy files can
+    # compile without claiming strictness; strict is the default
     # for every other source.
     "permissiveExecutable",
 }
@@ -2475,7 +2475,7 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
     if verb == "mode":
         # mode NAME — declares an honest classification of the program's
         # algorithm. The closed set of supported values is documented in
-        # AST.md §10:
+        # docs/ast.md §10:
         #   capturedOutputReplay  the program's stdout is a transcript captured
         #                         from a sibling implementation rather than the
         #                         output of a re-run algorithm in SemanticScript
@@ -3078,7 +3078,7 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
             # `storage module immutable` defers to a value already
             # registered by an earlier `buildConstant` (or a prior
             # storage row). Without setdefault, a project's
-            # `buildConstant todoWebPro X CNullTerminatedByteString
+            # `buildConstant taskForgeWeb X CNullTerminatedByteString
             # "yes"` row in build.sem would be silently clobbered by
             # a fallback `storage module immutable X
             # CNullTerminatedByteString "no"` in the imported main.sem
@@ -7706,8 +7706,8 @@ class Codegen:
             return
         if target == "console.writeFloatLine":
             # Print a CFloat64 / F64 with C's `%f\n` format (six fractional
-            # digits — the printf default — to match the bootstrap-emitted
-            # behavior). The value arg is widened to double if the LLVM
+            # digits — the printf default — to match native-output behavior).
+            # The value arg is widened to double if the LLVM
             # type is a float; passed straight through if already a double.
             v = arg_val_named("value")
             if isinstance(v.type, ir.IntType):
@@ -10016,8 +10016,7 @@ class Codegen:
         # translation unit. Rather than fail codegen, emit a dummy zero result
         # so the surrounding control flow + bind chain still compiles. A real
         # runtime (when wired) would supply the implementation by linking
-        # against the named module's exports. This mirrors what
-        # bootstrap_general.sscript does via its runUnhandled path.
+        # against the named module's exports.
         if "." in target or target in self.prog.validators or target in self.prog.policies:
             zero = ir.Constant(I64, 0)
             call["result"] = zero
@@ -10763,7 +10762,7 @@ def _strict_validate_sqlite_database_cleanup(prog: Program, op: Operation,
                 lineno,
                 call_name=open_call["name"],
                 call_target=open_call["target"],
-                note="SQLite bootstrap failures after open must close the fresh handle",
+                note="SQLite setup failures after open must close the fresh handle",
             )
 
 
@@ -11534,7 +11533,7 @@ def lint(prog: Program, strict: bool = False):
       missingPurpose              -- §3 abstraction admission test
       missingEffectDeclaration    -- §2 checkability law
       branchTargetExists          -- §4 control flow must be graphable
-      duplicatedDomainLiteral     -- AST.md invariant 8
+      duplicatedDomainLiteral     -- docs/ast.md invariant 8
       groupCommentBalance         -- §7 attention anchors
       failureLabelAggregation     -- §12 failure flow precision
     """
@@ -11803,7 +11802,7 @@ def _check_group_balance(anchors, diags, scope: str):
 def _check_duplicated_domain_literals(prog: Program, diags):
     """Warn when two consts share the same String literal — the implicit
     rule is that a domain value lives in exactly one named const so that
-    edits propagate (AST.md invariant 8). Exempt programs declared as
+    edits propagate (docs/ast.md invariant 8). Exempt programs declared as
     `mode capturedOutputReplay`: their consts are positional transcript
     rows whose role identity is the position, not the value."""
     if "capturedOutputReplay" in prog.modes:

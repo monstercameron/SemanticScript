@@ -21,15 +21,15 @@ python compiler/semsc.py sem/fizzbuzz.sscript --run
 python compiler/semsc.py sem/fizzbuzz.sscript --emit-ir
 python compiler/semsc.py sem/fizzbuzz.sscript --emit-optimized-ir fizzbuzz.opt.ll --run
 python compiler/semsc.py sem/fizzbuzz.sscript --emit-exe
-python tools/sem.py build ../app/todo --parse-only --quiet
-python tools/sem.py check ../app/todo --quiet
-python tools/sem.py emit-ir ../app/todo --quiet
+python tools/sem.py build ../apps/taskforge-tui --parse-only --quiet
+python tools/sem.py check ../apps/taskforge-tui --quiet
+python tools/sem.py emit-ir ../apps/taskforge-tui --quiet
 python tools/sem.py clean
-python tools/sem.py lint ../app/todo -- --summary
-python tools/sem.py fmt --check ../app/todo
+python tools/sem.py lint ../apps/taskforge-tui -- --summary
+python tools/sem.py fmt --check ../apps/taskforge-tui
 python tools/sem.py doctor
-python tools/sem.py context --json ../app/todo
-python tools/sem.py symbols --json ../app/todo
+python tools/sem.py context --json ../apps/taskforge-tui
+python tools/sem.py symbols --json ../apps/taskforge-tui
 ```
 
 The `sem` driver also exposes `run`, `inspect-ir`, `compare-profiles`, and
@@ -146,28 +146,28 @@ python C:\tools\SemanticScript\compiler\semsc.py C:\apps\demo\main.sem --std-pat
 
 Generated `.exe`, `.ll`, linker resource files, and temporary link inputs live
 under the managed build directory by default. A basename such as
-`--emit-exe todo.exe` also resolves into that directory; pass a path with a
+`--emit-exe taskforge_tui.exe` also resolves into that directory; pass a path with a
 directory component to opt into a different output file location.
 
 Use `--build-root` when the build folder should live somewhere else but still
 be a managed folder:
 
 ```powershell
-python compiler/semsc.py ..\app\todo\build.sem --emit-exe --build-root ..\artifacts
-# writes into app/artifacts/build/
+python compiler/semsc.py ..\apps\taskforge-tui\build.sem --emit-exe --build-root ..\artifacts
+# writes into apps/artifacts/build/
 
-python compiler/semsc.py ..\app\todo\build.sem --emit-exe --build-root ..\artifacts --build-folder-name semantic-build
-# writes into app/artifacts/semantic-build/
+python compiler/semsc.py ..\apps\taskforge-tui\build.sem --emit-exe --build-root ..\artifacts --build-folder-name semantic-build
+# writes into apps/artifacts/semantic-build/
 ```
 
 Use `--build-dir` only when you want to name the exact artifact directory:
 
 ```powershell
-python compiler/semsc.py ..\app\todo\build.sem --emit-exe --build-dir C:\sem-artifacts\todo-dev
+python compiler/semsc.py ..\apps\taskforge-tui\build.sem --emit-exe --build-dir C:\sem-artifacts\todo-dev
 ```
 
 The repository ignores `build/` folders, so app-local artifacts such as
-`app/todo/build/todo.exe` stay out of source control.
+`apps/taskforge-tui/build/taskforge_tui.exe` stay out of source control.
 
 `build.sem` can carry the same artifact and LLVM defaults so project builds are
 repeatable without TOML/YAML sidecars:
@@ -212,13 +212,13 @@ resulting `.res` is linked into the PE alongside the LLVM IR object.
 
 **Default behavior is residue-free:** the intermediate `.rc`, `.res`, and
 `.ico` live in a system tempdir and are deleted after linking. The
-resource bytes survive only inside `todo.exe`. After a clean build the
+resource bytes survive only inside `taskforge_tui.exe`. After a clean build the
 output directory contains only the executable (and `.ll` if IR
 persistence is on):
 
 ```text
 build/
-  todo.exe
+  taskforge_tui.exe
   todo.ll
 ```
 
@@ -244,8 +244,7 @@ embedded.
 
 | Area | 1.0 status | Supported in 1.0 | Not a 1.0 guarantee |
 |---|---|---|---|
-| Python reference compiler | Supported | `SemanticScript/compiler/semsc.py` is the release compiler. It accepts `.sscript` and `.sem`, resolves `importModule`, emits LLVM IR, JIT-runs `entry console`, and can link native executables through clang. | It is not a general web server host and it is not replaced by the SemanticScript-written bootstrap compiler. |
-| Bootstrap and self-hosting | Preview, release-tested | `bootstrap/run_bootstrap_chain.py` and `tests/sem_compiler_parity.py` are valid release verification commands. The staged SemanticScript-written compilers demonstrate input-dependent IR generation for documented subsets. | Self-hosting is not complete. `bootstrap_general.sscript` is not the 1.0 production compiler and does not compile the whole language. |
+| Python reference compiler | Supported | `SemanticScript/compiler/semsc.py` is the release compiler. It accepts `.sscript` and `.sem`, resolves `importModule`, emits LLVM IR, JIT-runs `entry console`, and can link native executables through clang. | It is not a general web server host, and the repository no longer includes a maintained SemanticScript-written compiler path. |
 | VS Code extension | Supported editor tooling | `vscode-semanticscript/` registers `.sscript` and `.sem`, provides highlighting, hovers, semantic roles, and optional `semlint` / `semlint` diagnostics. | Highlighted or hovered syntax is not automatically executable compiler support. The compiler and `SYNTAX.md` decide runtime support. |
 | Refined syntax | Partial, inspectable | The parser accepts many refined declarative lines for AST, linter, and editor inspection. Pure metadata is preserved or skipped safely. Some concurrency and dataflow forms lower to documented synchronous fallbacks. | Refined syntax is not uniformly runtime-complete. Use `--parse-only` for forms whose backend is intentionally absent. |
 | Web / HTTP runtime | Preview, release-tested | Routed `target webServer` programs emit a native HTTP/1.1 listener with exact method/path dispatch. Handlers use `input request HttpRequest`, `input response HttpResponse`, and `output CSignedInt32`. The native adapter supports request method/path/header/query/body text/body bytes reads, bounded multipart part reads, response text/bytes/SSE-event/header writes, and one path-scoped middleware callback. | HTTP/2/H2O, path params, route timeout enforcement, static-file serving, graceful shutdown hooks, structured body decoders, long-lived streaming bodies, method-scoped middleware, and persistent state are not 1.0 guarantees. Unrouted webserver files still compile as library/stub programs. |
@@ -321,12 +320,12 @@ build tapes should use `entry console main` and run the GUI through
 Run the committed GUI smoke app from a Windows shell with LLVM/clang available:
 
 ```powershell
-python SemanticScript\tools\sem.py check app\hello-gui --quiet
-python SemanticScript\tools\sem.py build app\hello-gui --quiet
-app\hello-gui\build\hello_gui.exe
+python SemanticScript\tools\sem.py check apps\desktop-window-smoke --quiet
+python SemanticScript\tools\sem.py build apps\desktop-window-smoke --quiet
+apps\desktop-window-smoke\build\desktop_window_smoke.exe
 ```
 
-Expected behavior: a top-level window titled `Hello GUI` appears. Closing the
+Expected behavior: a top-level window titled `Desktop Window Smoke` appears. Closing the
 window exits the process with status `0`. The source should keep using ordinary
 `operation` / `call` / `arg` / `run` rows with `importModule gui standard.gui`;
 do not add `entry windowsGui`.
@@ -392,10 +391,8 @@ Primary compiler test commands:
 
 ```powershell
 python tests/compare.py
-python tests/sem_compiler_parity.py
 python tests/test_compiler.py
 python tests/test_stdlib.py
-python bootstrap/run_bootstrap_chain.py
 ```
 
 Feature programs live in:

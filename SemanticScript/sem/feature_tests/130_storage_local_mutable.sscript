@@ -1,6 +1,5 @@
 # expect.stdout: 10\n13\n
 # expect.exit: 0
-# expect.xfail: feature_coverage.py runs through bootstrap_general.sscript which does not yet recognize `storage local mutable` / `set local`. Direct semsc.py compilation works correctly (`python compiler/semsc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints `10\n13\n` and exits 0). Closing means teaching bootstrap_general to parse `storage <scope> <mutability> NAME TYPE VALUE` and emit alloca/store/load for the local-mutable form.
 project StorageLocalMutable
 target console
 runtime AgentRuntime 0.1

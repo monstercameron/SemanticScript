@@ -1,13 +1,14 @@
 """
 sem_alias_parity.py - verify .sem sample equivalents.
 
-This harness checks the .sem siblings for the JavaScript parity samples:
+This harness checks the .sem siblings for the optional reference parity samples:
   1. every listed .sscript sample has a .sem equivalent
   2. the .sem source uses the 1.0 storage/memory forms instead of legacy
      const/var/memory/set forms
   3. the .sem source contains executable call/run/control-flow code, not only
      declarations or literal output constants
-  4. the .sem program stdout matches its JavaScript oracle
+  4. when optional JavaScript oracles are present, the .sem program stdout
+     matches its JavaScript oracle
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from compare import PROGRAMS, run_js, normalize
+from compare import JS_DIR, PROGRAMS, run_js, normalize
 
 
 HERE = Path(__file__).resolve().parent
@@ -114,6 +115,14 @@ def run_sem(path: Path) -> tuple[int, str]:
 def main() -> int:
     failures = 0
     programs = list(PROGRAMS) + EXTRA_PROGRAMS
+    js_oracles_available = Path(JS_DIR).is_dir()
+
+    if not js_oracles_available:
+        print(
+            "[SKIP] JavaScript reference oracles are not present; "
+            "alias parity validation is skipped."
+        )
+        return 0
 
     for js_basename, sscript_basename, stdin_input, mode in programs:
         sem_path = SEM_DIR / sscript_basename.replace(".sscript", ".sem")

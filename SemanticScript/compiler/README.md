@@ -5,13 +5,13 @@ Python reference compiler and C ABI registry for SemanticScript.
 ## Contents
 
 - `semsc.py` parses, lints, lowers to LLVM IR, runs JIT execution, and emits native executables.
-- `libc_registry.py` maps temporary `c.*` bootstrap calls to C ABI signatures and aliases.
+- `libc_registry.py` maps temporary `c.*` C ABI calls to signatures and aliases.
 
 ## Current Status
 
 Active implementation. The compiler currently supports executable
 SemanticScript plus some refined syntax metadata. Low-level `c.*` targets remain
-as a bootstrap backend layer while the top-level SemanticScript API is designed.
+as a backend interop layer while the top-level SemanticScript API is designed.
 
 ## Maintenance
 

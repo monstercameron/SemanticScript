@@ -5,7 +5,7 @@ rules.
 
 ## Contents
 
-- `call-targets.md` lists built-in targets, domain methods, user operations, and current `c.*` bootstrap calls.
+- `call-targets.md` lists built-in targets, domain methods, user operations, and current low-level `c.*` calls.
 - `install-policy.md` defines the initial archive install shape and future version-manager plan.
 - `verb-index.md` indexes language verbs and line shapes.
 - `maintenance.md` describes how to keep language, compiler, linter, docs, and editor support aligned.

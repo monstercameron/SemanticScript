@@ -43,7 +43,7 @@ CLEAN_FILE_SUFFIXES = frozenset({
     ".rc",
     ".vsix",
 })
-CLEAN_EXACT_RELATIVE_PATHS = frozenset({"app/todo/todos.json"})
+CLEAN_EXACT_RELATIVE_PATHS = frozenset({"apps/taskforge-tui/todos.json"})
 
 
 def _source_fingerprint(source: Path) -> str:
@@ -467,19 +467,6 @@ def _row_values(facts, verb: str, index: int = 0) -> list[str]:
     return values
 
 
-def _count_xfail_markers() -> int:
-    feature_root = ROOT / "sem" / "feature_tests"
-    if not feature_root.exists():
-        return 0
-    count = 0
-    for path in feature_root.glob("*.sscript"):
-        try:
-            count += path.read_text(encoding="utf-8").count("expect.xfail")
-        except OSError:
-            continue
-    return count
-
-
 def _syntax_status_counts() -> dict:
     syntax_path = ROOT.parent / "SYNTAX.md"
     counts = {"implemented": 0, "partial": 0, "notImplemented": 0}
@@ -581,7 +568,6 @@ def _build_context_payload(path: Path) -> dict:
             },
         },
         "knownDeferredFeatures": {
-            "xfailFeatureTests": _count_xfail_markers(),
             "partialSyntaxRows": syntax_counts["partial"],
             "notImplementedSyntaxRows": syntax_counts["notImplemented"],
         },

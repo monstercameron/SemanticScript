@@ -1,6 +1,5 @@
 # expect.stdout: cleanupBeforeError\n
 # expect.exit: 1
-# expect.xfail: feature_coverage.py runs through bootstrap_general.sscript which does not yet emit defer cleanup before returnError. Direct semsc.py compilation is correct: branchIfError jumps to the failure label, the defer fires before returnError, output is `cleanupBeforeError`. `python compiler/semsc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints `cleanupBeforeError` and exits 1.
 project DeferFiresOnBranchToReturnError
 target console
 runtime AgentRuntime 0.1

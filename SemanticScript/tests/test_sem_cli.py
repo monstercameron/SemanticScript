@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from SemanticScript.call_contracts import (
+from SemanticScript.shared.call_contracts import (
     CALL_CHANNEL_ERROR,
     CALL_CHANNEL_OK,
     CALL_CHANNEL_VALUE,

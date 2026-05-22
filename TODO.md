@@ -93,22 +93,9 @@ review. A task is only done when the linked command or artifact is clean.
   - [x] Fix `string_analyzer.sscript` parity: JS reports `characters: 104`
         and SemanticScript reports `characters: 101`; top-word ordering also
         differs (`favors` vs `semanticscript` in the fifth slot).
-- [x] Fix `python SemanticScript\tests\sem_compiler_parity.py`.
-  - [x] Fix `string_analyzer.sscript` parity under `bootstrap_general`.
-  - [x] Fix `webserver_console.sscript` long-running parity under
-        `bootstrap_general`.
-- [x] Fix unexpected failures in `python SemanticScript\tests\feature_coverage.py`.
-  - [x] `121_cross_file_import.sscript`: emitted IR contains
-        `%addSevenCall_res = add i64 35, %`.
-  - [x] `88_string_byte_scan_loop.sscript`: expected `14\n`, actual `17\n`.
-  - [x] `89_pointer_returning_recursion.sscript`: expected `ipt\n`, actual
-        `script\n`.
-  - [x] `92_c_fopen_fclose.sscript`: expected `opened\n` and exit `0`, actual
-        empty stdout and exit `1`.
-- [x] Decide how to treat the 30 `expect.xfail` feature tests before 1.0.
-  - [ ] Either close the bootstrap gaps and remove the xfail markers.
-  - [x] Or explicitly scope 1.0 to the Python reference compiler and document
-        `bootstrap_general.sscript` as experimental/self-hosting progress.
+- [x] Decide how to treat the 30 expected-failure feature tests before 1.0.
+  - [x] Scope 1.0 to the Python reference compiler.
+  - [x] Remove the stale compiler-stage xfail workflow from the active tree.
 
 ## P1 - Runtime And Syntax Scope
 
@@ -122,7 +109,7 @@ review. A task is only done when the linked command or artifact is clean.
   - [x] `TaskList.append` / `TaskMap.get`.
 - [x] Make the 1.0 support matrix explicit:
   - [x] Python reference compiler support.
-  - [x] Self-hosting/bootstrap support.
+  - [x] SemanticScript-written compiler excluded from 1.0.
   - [x] VS Code extension support.
   - [x] Refined syntax support.
   - [x] Web/HTTP runtime support.
@@ -245,8 +232,8 @@ requiring a separate linter invocation.
   - [x] Emit the branch to the declared failure label.
   - [x] Preserve existing `defer` behavior on both paths.
 - [ ] Migrate app examples after the syntax exists.
-  - [ ] Convert `app/todo-web-pro` heap allocations to `runChecked`.
-  - [ ] Convert `app/todo-web-pro` SQLite bootstrap calls to `runChecked`.
+  - [ ] Convert `apps/taskforge-web` heap allocations to `runChecked`.
+  - [ ] Convert `apps/taskforge-web` SQLite bootstrap calls to `runChecked`.
   - [ ] Convert native HTTP response writes in sample apps to `runChecked`
         where appropriate.
   - [ ] Keep legacy examples only where they deliberately document old syntax.
@@ -398,7 +385,7 @@ requiring a separate linter invocation.
         cursor movement.
   - [ ] Require dirty-state mutation only on the applied branch.
   - [ ] Require cursor movement only on the applied branch.
-- [ ] Migrate `app/Kilo_port`.
+- [ ] Migrate `app/kilo-port`.
   - [ ] Convert `insertEmptyRowAt` to the selected strict result shape.
   - [ ] Convert `splitRowAt` to the selected strict result shape.
   - [ ] Update caller branches to use the new result/status.
@@ -576,7 +563,7 @@ surface is now `entry console main` plus `standard.gui` function calls.
 - [x] Added `targetRuntime PROJECT windowsGui` to semlint build-tape
       validation.
 - [x] Kept `entry windowsGui` out of the first committed executable surface.
-- [x] Converted `app/hello-gui` to `entry console main` plus standard
+- [x] Converted `apps/desktop-window-smoke` to `entry console main` plus standard
       `operation` / `call` / `arg` / `run` syntax.
 - [x] Added `standard.gui` as the canonical contract module.
 - [x] Added GUI type aliases, enums, capabilities, token constants, and runtime
@@ -585,10 +572,10 @@ surface is now `entry console main` plus `standard.gui` function calls.
 - [x] Added a native Win32 GUI runtime adapter with a backend-neutral
       `ss_gui_*` ABI.
 - [x] Added the compiler link hook for the native GUI adapter.
-- [x] Added a minimal `app/hello-gui` sample.
-- [x] Built `app/hello-gui/build/hello_gui.exe`.
+- [x] Added a minimal `apps/desktop-window-smoke` sample.
+- [x] Built `apps/desktop-window-smoke/build/desktop_window_smoke.exe`.
 - [x] Verified the executable renders a Windows top-level window titled
-      `Hello GUI` and exits `0` after the window is closed.
+      `Desktop Window Smoke` and exits `0` after the window is closed.
 
 ### GUI Target And Entry Model
 
@@ -1075,8 +1062,8 @@ is the preferred source shape.
 - [ ] Add compiler IR tests proving GUI config tables are emitted.
 - [ ] Add linker tests proving Windows GUI builds include subsystem flags.
 - [ ] Add linker tests proving `user32` and `gdi32` link args are added.
-- [ ] Add a smoke sample under `app/hello-gui`.
-- [ ] Add a Todo GUI sample under `app/todo-gui` only after the hello sample
+- [ ] Add a smoke sample under `apps/desktop-window-smoke`.
+- [ ] Add a TaskForge GUI sample under `apps/taskforge-gui` only after the hello sample
       proves the base runtime.
 - [ ] Add a runtime health test that opens and closes a window on Windows CI
       if the runner supports desktop interaction.
@@ -1109,11 +1096,10 @@ product".
 
 ### Compiler And Language Strictness
 
-- [x] Decide whether self-hosting is a 1.0 requirement.
-  - [ ] If yes, make the SemanticScript-written bootstrap compiler compile the
-        full documented language.
-  - [x] If no, keep documenting `semsc.py` as the production 1.0 compiler and
-        bootstrap as preview.
+- [x] Decide whether a SemanticScript-written compiler is a 1.0 requirement.
+  - [x] Keep documenting `semsc.py` as the production 1.0 compiler.
+  - [x] Remove the unmaintained SemanticScript-written compiler path from the
+        active tree.
 - [x] Replace unknown/missing operation output fallback-to-`i32` with a stricter
       diagnostic for release-mode builds, or document the fallback as a scoped
       compiler compatibility behavior.
@@ -1509,7 +1495,7 @@ would fail under a no-op lowering.
 - [x] Update `SemanticScript/linter/semlint.py` to walk `jsonBody` islands
       and surface the same parse/type diagnostics that `semsc.py` emits,
       so `ascc --lint --parse-only` reports them without a full compile.
-- [x] Update `vscode-semanticscript/syntaxes/semanticscript.tmLanguage.json`
+- [x] Update `vscode-semanticscript/syntaxes/semanticscript.tm-language.json`
       to highlight the `jsonBody NAME` row and JSON-token the island lines.
 - [x] Update `vscode-semanticscript/extension.js` symbol/hover support to
       treat `jsonBody NAME` as a value-producing declaration that resolves
@@ -1658,8 +1644,8 @@ would fail under a no-op lowering.
   - [x] Add a regression feature test for parsing a negative integer through
         `json.parse.I64` so `branchIfError` cannot mistake the decoded value
         for an error status.
-- [x] Confirm JSON feature coverage has zero FAIL and zero XFAIL in
-      `python SemanticScript/tests/feature_coverage.py json`.
+- [x] Confirm JSON compiler feature cases are covered by the maintained
+      reference-compiler tests with zero expected-failure metadata.
 
 #### Documentation
 
@@ -1674,9 +1660,9 @@ would fail under a no-op lowering.
 - [x] Update `SemanticScript/std/README.md` JSON section to reference the
       new types/errors/enum and the high-level entry points.
 
-#### App Migration (todo-web-pro)
+#### App Migration (taskforge-web)
 
-- [x] Replace the static success bodies in `app/todo-web-pro/main.sem`
+- [x] Replace the static success bodies in `apps/taskforge-web/main.sem`
       (`healthBodyJson`, `versionBodyJson`, `logoutResponseBody`,
       `deleteOkBody`, `completeOkBody`, `uncompleteOkBody`) with
       `storage local immutable NAME JsonText` rows backed by
@@ -1685,7 +1671,7 @@ would fail under a no-op lowering.
       `loginResponseFormat`, `createResponseFormat`, and `listRowFormat`
       with record-typed codecs invoked via `json.stringify.<TypeName>`.
 - [x] Replace the streaming list serializer at
-      `app/todo-web-pro/main.sem:2200-2380` with a single
+      `apps/taskforge-web/main.sem:2200-2380` with a single
       `json.createEmptyDocument` + `appendArrayElementObject` loop +
       `json.serializeDocument` pipeline so the unescaped `%s` title bug
       in `listRowFormat` goes away by construction.
@@ -1693,7 +1679,7 @@ would fail under a no-op lowering.
       `passwordMissing` error responses with one `JsonDecodeError` switch
       in front of `json.parse.LoginRequest` and
       `json.parse.RegisterRequest`.
-- [x] Run `python app/todo-web-pro/scripts/test_todo_web_pro.py` after
+- [x] Run `python apps/taskforge-web/scripts/test_taskforge_web.py` after
       each migration step to confirm response shapes remain byte-stable.
 
 #### Removal Of Pre-CRUD JSON Surfaces
@@ -1775,7 +1761,7 @@ behavior regressions.
   - [x] Remove the deprecated `json.*` call names from
         `vscode-semanticscript/extension.js` symbol/hover tables.
   - [x] Remove deprecated highlights from
-        `vscode-semanticscript/syntaxes/semanticscript.tmLanguage.json`.
+        `vscode-semanticscript/syntaxes/semanticscript.tm-language.json`.
 - [ ] Update `docs/reference/verb-index.md` to delete every removed
       `json.*` verb entry.
 - [x] Rewrite `docs/optimization-guide.md` JSON sections around
@@ -1803,11 +1789,10 @@ behavior regressions.
 Every test below must follow the deep-audit pattern
 (`feedback_verify_impld_claims`): each case asserts a semantic outcome that
 would fail under a no-op lowering, not just that the call returns OK. Place
-the new tests under `SemanticScript/tests/feature/` so
-`feature_coverage.py` picks them up automatically. Each batch finishes only
-when `python SemanticScript/tests/feature_coverage.py` is green.
+the new tests under `SemanticScript/sem/feature_tests/` and wire them through
+the maintained reference-compiler test path before marking a batch complete.
 
-- [ ] Add `SemanticScript/tests/feature/<NNN>_json_document_tokenizer_edges.sscript`
+- [ ] Add `SemanticScript/sem/feature_tests/<NNN>_json_document_tokenizer_edges.sscript`
       covering JSON tokenizer corner cases.
   - [ ] Empty object `{}` parses to a zero-field root and serializes
         identically.
@@ -2051,7 +2036,7 @@ when `python SemanticScript/tests/feature_coverage.py` is green.
   - [ ] Seed the corpus with the malformed-surrogate, deep-nesting,
         big-string, and full-escape cases above.
 - [ ] Add memory-safety coverage.
-  - [ ] Run the full feature_coverage suite under
+  - [ ] Run the maintained native/runtime feature suite under
         `valgrind --leak-check=full` on Linux CI and assert zero leaks.
   - [ ] Run the full suite under AddressSanitizer on supported
         platforms and assert no errors.
@@ -2063,7 +2048,7 @@ when `python SemanticScript/tests/feature_coverage.py` is green.
         the equivalent assertion in the new feature tests; confirm
         zero coverage gaps before deleting the legacy test.
   - [ ] Same diff against `json_runtime_adversarial.sscript`.
-  - [ ] `python app/todo-web-pro/scripts/test_todo_web_pro.py` passes
+  - [ ] `python apps/taskforge-web/scripts/test_taskforge_web.py` passes
         identically before and after the app migration, with
         byte-stable response bodies; archive the pre/post diff in the
         CHANGELOG entry for the migration.
@@ -2537,7 +2522,7 @@ workstreams.
   - [x] Explain how `main.sem` and `build.sem` interact.
   - [x] Explain how tests are discovered from `*.test.sem`.
   - [x] Explain how generated artifacts stay outside source control.
-- [ ] Add examples under `samples/` or `app/`.
+- [ ] Add examples under `apps/` or `SemanticScript/sem/feature_tests/`.
   - [x] Minimal `build.sem` plus `main.sem` console sample.
   - [ ] Multi-folder module sample with every module registered in `build.sem`.
   - [ ] Webserver sample using `build.sem`, `main.sem`, and folder modules.
@@ -3739,7 +3724,7 @@ order.
   - [x] String scanning.
   - [ ] JSON encode/decode once implemented.
   - [ ] Todo web hello route.
-  - [ ] HTTP API gauntlet route matrix.
+  - [ ] HTTP Runtime Gauntlet route matrix.
 - [ ] Add benchmark guardrails.
   - [x] Store baselines outside normal source unless intentionally committed.
   - [x] Add tolerance thresholds.
@@ -3877,7 +3862,7 @@ order.
   - [ ] Commit or intentionally remove untracked README/doc files.
   - [x] Confirm generated `.exe`, `.ll`, `__pycache__`, `todos.json`, and
         `.vsix` artifacts are ignored and absent from source control.
-- [x] Decide whether duplicate top-level `python/` and `samples/python/`
+- [x] Decide whether duplicate top-level `python/` and `python/`
       folders should both remain.
 - [x] Decide whether `.sem` mirror files under `SemanticScript/sem/` should be
       tracked alias fixtures or generated artifacts.
@@ -3984,12 +3969,9 @@ assign cleanly.
   - [x] Add CI coverage for `SemanticScript/tests/test_stdlib.py`.
   - [x] Add CI coverage for `SemanticScript/tests/compare.py`.
   - [x] Add CI coverage for `SemanticScript/tests/sem_alias_parity.py`.
-  - [x] Add CI coverage for `SemanticScript/tests/sem_compiler_parity.py`.
-  - [x] Add CI coverage for `SemanticScript/tests/feature_coverage.py`.
-  - [x] Add CI coverage for `SemanticScript/bootstrap/run_bootstrap_chain.py`.
-  - [ ] Add CI coverage for `app/todo-web/test_todo_web.py`.
-  - [ ] Add CI coverage for `app/todo-web-advanced/test_advanced_todo_web.py`.
-  - [ ] Add CI coverage for `app/http-api-gauntlet/scripts/test_http_api_gauntlet.py`.
+  - [ ] Add CI coverage for `apps/http-runtime-gauntlet/scripts/test_http_runtime_gauntlet.py`.
+  - [ ] Add CI coverage for `apps/taskforge-web/scripts/test_taskforge_web.py`.
+  - [ ] Add CI coverage for `apps/http-runtime-gauntlet/scripts/test_http_runtime_gauntlet.py`.
   - [ ] Add CI coverage for the native HTTP runtime CMake build where the
         runner toolchain supports it.
   - [ ] Add CI coverage for the native JSON runtime CMake build if it remains
@@ -4043,7 +4025,7 @@ assign cleanly.
   - [ ] Record artifact checksums.
   - [ ] Record whether signatures were generated.
   - [ ] Record known deferred features from `TODO.md`.
-  - [ ] Record known xfail/bootstrap limitations.
+  - [ ] Record known deferred limitations.
   - [x] Add a release checklist item requiring the manifest before tagging.
   - [x] Decide whether manifests are committed, attached to GitHub releases, or
         both.
@@ -4078,7 +4060,7 @@ assign cleanly.
 - [x] Remove stale `experiments/` references from current docs.
   - [x] `README.md`.
   - [x] `SYNTAX.md`.
-  - [x] `SemanticScript/AST.md`.
+  - [x] `docs/ast.md`.
   - [x] `docs/toolchain/vscode-extension.md`.
   - [x] `SemanticScript/compiler/semsc.py` comments if they refer to deleted
         paths rather than current refined examples.
@@ -4115,7 +4097,7 @@ assign cleanly.
 - [x] Add `SECURITY.md`.
 - [x] Add `CONTRIBUTING.md`.
 - [x] Add a top-level release checklist command block in `README.md`.
-- [x] Decide whether the duplicate top-level `python/` and `samples/python/`
+- [x] Decide whether the duplicate top-level `python/` and `python/`
       folders should both remain.
 - [x] Decide whether `.sem` mirror files under `SemanticScript/sem/` should be
       tracked as alias fixtures or generated artifacts.

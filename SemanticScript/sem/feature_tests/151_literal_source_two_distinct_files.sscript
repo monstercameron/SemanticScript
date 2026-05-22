@@ -1,6 +1,5 @@
 # expect.stdout: alpha greeting from disk\nbeta greeting from disk\n
 # expect.exit: 0
-# expect.xfail: feature_coverage.py runs through bootstrap_general.sscript which does not yet inline the bytes of `literalSource` paths into `literal` consts. Direct semsc.py compilation is correct: both files are loaded; each literal const carries its own bytes. `python compiler/semsc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints both lines.
 project LiteralSourceTwoFiles
 target console
 runtime AgentRuntime 0.1

@@ -7,10 +7,6 @@ Covers the smaller, language-level invariants that the parity suite
   - tokenizer escape handling
   - parser line-number tracking
   - simple end-to-end compile-and-JIT for a few canonical programs
-  - the bootstrap chain stages 3, 4, 5: each one should compile,
-    emit deterministic IR, and (when fed through clang) produce an
-    executable whose stdout and exit code match the values declared
-    in its input .sscript file.
 
 Run:
     python tests/test_compiler.py
@@ -29,9 +25,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 COMPILER_DIR = ROOT / "compiler"
-BOOTSTRAP_DIR = ROOT / "bootstrap"
-APP_DIR = ROOT.parent / "app"
-HELLO_GUI_DIR = APP_DIR / "hello-gui"
+APP_DIR = ROOT.parent / "apps"
+HELLO_GUI_DIR = APP_DIR / "desktop-window-smoke"
 
 sys.path.insert(0, str(COMPILER_DIR))
 import semsc  # noqa: E402
@@ -2326,8 +2321,8 @@ def test_html_template_complex_modules_jit_and_aot_output():
                   f"jit={jit_proc.stdout!r} aot={run_proc.stdout!r}")
 
 
-def test_html_console_demo_runs_from_registered_modules():
-    build_path = ROOT.parent / "app" / "html-console-demo" / "build.sem"
+def test_html_template_lab_runs_from_registered_modules():
+    build_path = APP_DIR / "html-template-lab" / "build.sem"
     proc = subprocess.run(
         [sys.executable, str(COMPILER_DIR / "semsc.py"),
          str(build_path), "--run", "--quiet"],
@@ -2337,7 +2332,7 @@ def test_html_console_demo_runs_from_registered_modules():
           proc.returncode == 0,
           f"rc={proc.returncode} stderr={proc.stderr!r}")
     check("html demo: stdout contains hydrated todo page",
-          "<title>Todo TUI HTML Console Demo</title>" in proc.stdout
+          "<title>TaskForge TUI HTML Template Lab</title>" in proc.stdout
           and "Split HTML rendering into modules" in proc.stdout
           and "<main class=\"todo-shell\">" in proc.stdout,
           f"stdout={proc.stdout!r}")
@@ -3480,7 +3475,7 @@ def test_build_tape_validation_rejects_insecure_dependency_fetch():
               f"raised={raised} msg={msg!r}")
 
 
-def test_hello_gui_sample_uses_refined_gui_surface():
+def test_desktop_window_smoke_sample_uses_refined_gui_surface():
     build_path = HELLO_GUI_DIR / "build.sem"
     main_path = HELLO_GUI_DIR / "main.sem"
     check("hello gui sample: build.sem exists",
@@ -3496,11 +3491,11 @@ def test_hello_gui_sample_uses_refined_gui_surface():
     main_text = main_path.read_text(encoding="utf-8")
     check("hello gui sample: regular BuildPlan selects windowsGui",
           "record BuildPlan" in build_text
-          and "storage module immutable helloGuiBuildPlan BuildPlan" in build_text
+          and "storage module immutable desktopWindowSmokeBuildPlan BuildPlan" in build_text
           and '"runtime": "windowsGui"' in build_text
           and '"mainOperation": "main"' in build_text
           and '"guiSurface": "standard.gui|gui.* functions"' in build_text
-          and "buildProject helloGui" not in build_text
+          and "buildProject desktopWindowSmoke" not in build_text
           and not re.search(r"(?m)^entry\s+windowsGui\b", build_text),
           build_text)
 
@@ -3533,7 +3528,7 @@ def test_hello_gui_sample_uses_refined_gui_surface():
           main_text)
 
 
-def test_hello_gui_parser_contract_when_supported():
+def test_desktop_window_smoke_parser_contract_when_supported():
     main_path = HELLO_GUI_DIR / "main.sem"
     source = main_path.read_text(encoding="utf-8")
     try:
@@ -3572,7 +3567,7 @@ def test_hello_gui_parser_contract_when_supported():
           repr(sorted(call_targets)))
 
 
-def test_hello_gui_build_tape_contract_when_supported():
+def test_desktop_window_smoke_build_tape_contract_when_supported():
     build_path = HELLO_GUI_DIR / "build.sem"
     source = build_path.read_text(encoding="utf-8")
     try:
@@ -3605,10 +3600,10 @@ def test_hello_gui_build_tape_contract_when_supported():
           f"entry={prog.entry!r} mainOperation={semsc._build_metadata_value(prog, 'mainOperation')!r}")
 
 
-def test_hello_gui_codegen_contract_when_supported():
+def test_desktop_window_smoke_codegen_contract_when_supported():
     build_path = HELLO_GUI_DIR / "build.sem"
     with tempfile.TemporaryDirectory() as tmpdir:
-        ir_path = Path(tmpdir) / "hello_gui.ll"
+        ir_path = Path(tmpdir) / "desktop_window_smoke.ll"
         proc = subprocess.run(
             [sys.executable, str(COMPILER_DIR / "semsc.py"),
              str(build_path), "--emit-ir", str(ir_path), "--quiet"],
@@ -3629,7 +3624,7 @@ def test_hello_gui_codegen_contract_when_supported():
           and "ss_gui_application_run_builder" in ir_text,
           ir_text)
     check("gui codegen: emits standard.gui window text",
-          "Hello GUI" in ir_text,
+          "Desktop Window Smoke" in ir_text,
           ir_text)
 
 
@@ -4547,165 +4542,6 @@ def test_runtime_profiles_control_panic_context():
 
 
 # ============================================================
-# Bootstrap chain validation
-# ============================================================
-
-def _ensure_built(stage_basename):
-    src = BOOTSTRAP_DIR / f"{stage_basename}.sscript"
-    exe = BOOTSTRAP_DIR / f"{stage_basename}.exe"
-    if exe.exists() and exe.stat().st_mtime >= src.stat().st_mtime:
-        return exe
-    proc = subprocess.run(
-        [sys.executable, str(COMPILER_DIR / "semsc.py"),
-         str(src), "--emit-exe", str(exe), "--quiet"],
-        capture_output=True, text=True,
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"failed to build {stage_basename}.exe\nSTDERR:\n{proc.stderr}")
-    return exe
-
-
-def _emit_ir(stage_exe):
-    proc = subprocess.run([str(stage_exe)], capture_output=True, text=True)
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"{stage_exe.name} exited {proc.returncode}\nSTDERR:\n{proc.stderr}")
-    return proc.stdout
-
-
-def test_bootstrap3_emits_constant_return_ir():
-    exe = _ensure_built("bootstrap3")
-    ir_text = _emit_ir(exe)
-    input_text = (BOOTSTRAP_DIR / "input3.sscript").read_text(encoding="utf-8")
-    expected = int(re.search(r"ExitCode (\d+)", input_text).group(1))
-    check("bootstrap3: IR contains 'define i32 @main()'",
-          "define i32 @main()" in ir_text,
-          f"IR was:\n{ir_text}")
-    check("bootstrap3: IR returns the parsed ExitCode literal",
-          f"ret i32 {expected}" in ir_text,
-          f"expected ret i32 {expected}, IR:\n{ir_text}")
-
-
-def test_bootstrap4_emits_greeting_and_exit():
-    exe = _ensure_built("bootstrap4")
-    ir_text = _emit_ir(exe)
-    input_text = (BOOTSTRAP_DIR / "input4.sscript").read_text(encoding="utf-8")
-    marker = 'CNullTerminatedByteString "'
-    idx = input_text.find(marker)
-    g_start = idx + len(marker)
-    g_end = input_text.index('"', g_start)
-    expected_greeting = input_text[g_start:g_end]
-    expected_exit = int(re.search(r"ExitCode (\d+)", input_text).group(1))
-    check("bootstrap4: IR contains greeting bytes",
-          expected_greeting in ir_text,
-          f"greeting {expected_greeting!r} not in IR")
-    check("bootstrap4: IR returns parsed ExitCode",
-          f"ret i32 {expected_exit}" in ir_text,
-          f"expected ret i32 {expected_exit}")
-    check("bootstrap4: IR declares puts",
-          "declare i32 @puts(i8*)" in ir_text,
-          "no puts declaration in IR")
-
-
-def test_bootstrap_general_real_dispatch():
-    """bootstrap_general.sscript is the legacy self-hosting dispatch smoke.
-
-    The syntax cutover intentionally moved the first-party sem/ corpus to the
-    new row shapes. The pre-cutover bootstrap_general binary is still useful as
-    a linkability check, but it is no longer the semantic oracle for converted
-    source until the self-hosting parser is ported to the new grammar.
-    """
-    import shutil
-    exe = _ensure_built("bootstrap_general")
-    clang = (os.environ.get("SEMSC_CLANG")
-             or shutil.which("clang")
-             or r"C:/Program Files/LLVM/bin/clang.exe")
-    if not Path(clang).exists():
-        check("bootstrap_general: clang available", False,
-              f"clang not found at {clang}")
-        return
-    import tempfile
-    work = Path(tempfile.gettempdir()) / "semsc_general_tests"
-    work.mkdir(exist_ok=True)
-    PROJECT_ROOT = BOOTSTRAP_DIR.parent.parent
-    pairs = [
-        ("hello.sscript", "hello.js"),
-        ("hello_world.sscript", "hello-world.js"),
-        ("hello_via_helper.sscript", "hello.js"),
-        ("inventory_manager.sscript", "inventory-manager.js"),
-        ("counterintuitive_closure_capture.sscript", "counterintuitive-closure-capture.js"),
-        ("file_inventory.sscript", "file-inventory.js"),
-        ("json_order_summary.sscript", "json-order-summary.js"),
-    ]
-    for sem_basename, js_basename in pairs:
-        env = dict(os.environ)
-        sem_path = BOOTSTRAP_DIR.parent / "sem" / sem_basename
-        env["SEMANTIC_SCRIPT_INPUT"] = str(sem_path)
-        proc = subprocess.run([str(exe)], env=env,
-                              capture_output=True, text=True, timeout=15)
-        ll = work / (sem_basename.replace(".sscript", ".ll"))
-        ll.write_text(proc.stdout, encoding="utf-8", newline="\n")
-        out_exe = work / (sem_basename.replace(".sscript", ".exe"))
-        link = subprocess.run([clang, "-O2", "-o", str(out_exe), str(ll)],
-                              capture_output=True, text=True)
-        check(f"bootstrap_general: {sem_basename} produces linkable IR",
-              link.returncode == 0,
-              f"clang failure: {link.stderr.strip()[:200]}")
-        if link.returncode != 0:
-            continue
-        run = subprocess.run([str(out_exe)],
-                             capture_output=True, text=True, timeout=15)
-        check(f"bootstrap_general: {sem_basename} linked exe exits cleanly",
-              run.returncode == 0,
-              f"rc={run.returncode} stdout={run.stdout[:80]!r} stderr={run.stderr[:120]!r}")
-
-
-def test_bootstrap6_scales_with_input():
-    exe = _ensure_built("bootstrap6")
-    ir_text = _emit_ir(exe)
-    input_text = (BOOTSTRAP_DIR / "input6.sscript").read_text(encoding="utf-8")
-    greetings = re.findall(r'CNullTerminatedByteString "([^"]*)"', input_text)
-    n = len(greetings)
-    check("bootstrap6: emits one @.s<i> constant per input greeting",
-          all(f"@.s{i}" in ir_text for i in range(n)),
-          f"missing @.s<i> for some i in 0..{n-1}")
-    check("bootstrap6: emits one @print<i> helper per input greeting",
-          all(f"@print{i}()" in ir_text for i in range(n)),
-          f"missing @print<i> for some i in 0..{n-1}")
-    check("bootstrap6: main calls every helper in order",
-          all(f"call void @print{i}()" in ir_text for i in range(n)),
-          "main is missing one or more @print<i> calls")
-    expected_exit = int(re.search(r"ExitCode (\d+)", input_text).group(1))
-    check("bootstrap6: ret i32 matches parsed ExitCode",
-          f"ret i32 {expected_exit}" in ir_text,
-          "ret i32 doesn't match parsed ExitCode")
-
-
-def test_bootstrap5_emits_countdown_loop():
-    exe = _ensure_built("bootstrap5")
-    ir_text = _emit_ir(exe)
-    input_text = (BOOTSTRAP_DIR / "input5.sscript").read_text(encoding="utf-8")
-    expected_start = int(re.search(r"CountdownValue (\d+)", input_text).group(1))
-    expected_exit = int(re.search(r"ExitCode (\d+)", input_text).group(1))
-    check("bootstrap5: IR contains loopHead label",
-          "loopHead:" in ir_text,
-          "no loopHead label")
-    check("bootstrap5: IR contains loopBody label",
-          "loopBody:" in ir_text,
-          "no loopBody label")
-    check("bootstrap5: IR contains loopExit label",
-          "loopExit:" in ir_text,
-          "no loopExit label")
-    check("bootstrap5: IR stores parsed start value",
-          f"store i64 {expected_start}, i64* %counter" in ir_text,
-          f"no store of {expected_start}")
-    check("bootstrap5: IR returns parsed ExitCode",
-          f"ret i32 {expected_exit}" in ir_text,
-          f"no ret i32 {expected_exit}")
-
-
-# ============================================================
 # Driver
 # ============================================================
 
@@ -4766,7 +4602,7 @@ def main():
     test_standard_import_std_path_override_wins_outside_repo()
     test_html_template_long_dynamic_arg_is_bounded_and_terminated()
     test_html_template_complex_modules_jit_and_aot_output()
-    test_html_console_demo_runs_from_registered_modules()
+    test_html_template_lab_runs_from_registered_modules()
     test_html_template_codegen_rejects_bad_hydration_edges()
     test_cli_accepts_sem_alias()
     test_success_message_renderer()
@@ -4790,10 +4626,10 @@ def main():
     test_build_tape_validation_rejects_missing_required_rows()
     test_build_tape_validation_accepts_dependency_fetch_rows()
     test_build_tape_validation_rejects_insecure_dependency_fetch()
-    test_hello_gui_sample_uses_refined_gui_surface()
-    test_hello_gui_parser_contract_when_supported()
-    test_hello_gui_build_tape_contract_when_supported()
-    test_hello_gui_codegen_contract_when_supported()
+    test_desktop_window_smoke_sample_uses_refined_gui_surface()
+    test_desktop_window_smoke_parser_contract_when_supported()
+    test_desktop_window_smoke_build_tape_contract_when_supported()
+    test_desktop_window_smoke_codegen_contract_when_supported()
     test_build_tape_llvm_flags_drive_outputs()
     test_cpu_build_config_defaults_to_portable_generic()
     test_cpu_build_config_collects_feature_overrides()
@@ -4817,11 +4653,6 @@ def main():
     test_backend_diagnostic_maps_symbol_to_source_call()
     test_runtime_check_resolution_profiles()
     test_runtime_profiles_control_panic_context()
-    test_bootstrap3_emits_constant_return_ir()
-    test_bootstrap4_emits_greeting_and_exit()
-    test_bootstrap5_emits_countdown_loop()
-    test_bootstrap6_scales_with_input()
-    test_bootstrap_general_real_dispatch()
 
     print("=" * 60)
     if FAILURES:

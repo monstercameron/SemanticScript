@@ -1,6 +1,5 @@
 # expect.stdout: 15\n
 # expect.exit: 0
-# expect.xfail: nested records — `field Segment start Point` where Point is itself a record is treated as a flat i64 field (single alloca %mySegment_start). fieldSet/fieldGet with dotted paths (`start.x`) emit `%mySegment_start.x` which has no alloca. Requires (a) `new` walker to detect record-typed fields and recursively emit `%<var>_<outer>_<inner> = alloca <innerType>` per leaf field, and (b) fieldSet/fieldGet to translate dots to underscores when emitting SSA names. No corpus program currently uses nested records.
 project NestedRecord
 target console
 runtime AgentRuntime 0.1

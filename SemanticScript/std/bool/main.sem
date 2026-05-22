@@ -16,7 +16,7 @@ storage module immutable boolModuleVersionText CNullTerminatedByteString "standa
 #
 # rationale: C's <stdbool.h> existed because C added Bool late and
 #   needed an integer compatibility layer. SemanticScript has Bool as a
-#   first-class primitive (`Bool` = LLVM i1, see AST.md Â§5), so this
+#   first-class primitive (`Bool` = LLVM i1, see docs/ast.md section 5), so this
 #   module exposes total Boolean combinators returning Bool directly.
 #   Two ABI-bridge ops translate between Bool and CSignedInt32 0/1
 #   for FFI calls that still expect the C contract.

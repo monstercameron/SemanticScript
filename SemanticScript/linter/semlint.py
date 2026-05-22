@@ -41,7 +41,7 @@ from typing import Dict, List, Optional, Sequence, Set, Tuple
 _SEMANTICSCRIPT_ROOT = Path(__file__).resolve().parents[1]
 if str(_SEMANTICSCRIPT_ROOT) not in sys.path:
     sys.path.insert(0, str(_SEMANTICSCRIPT_ROOT))
-from call_contracts import (
+from shared.call_contracts import (
     EXPLICIT_DISPOSITION_FALLIBLE_CALL_TARGETS as SHARED_EXPLICIT_DISPOSITION_FALLIBLE_CALL_TARGETS,
     KNOWN_FALLIBLE_CALL_TARGETS as SHARED_KNOWN_FALLIBLE_CALL_TARGETS,
     RESULT_FALLIBLE_CALL_TARGETS as SHARED_RESULT_FALLIBLE_CALL_TARGETS,
@@ -10586,16 +10586,16 @@ def check_main_file_must_exist(facts: ExtendedFacts) -> List[Diagnostic]:
     directory when sourceRoot is absent).
 
     This catches the rename-rot scenario: when the module file gets
-    renamed (e.g. `http_api_gauntlet.sscript` → `main.sem`) and the
+    renamed (e.g. `http_runtime_gauntlet.sscript` → `main.sem`) and the
     `mainFile` row in `build.sem` isn't updated, semsc would silently
     fail later in the build OR — worse — `importModule` would resolve
     via the module registry and the `mainFile` row would become a
     decorative lie. The lint surfaces the mismatch BEFORE compile.
 
     Resolution rules (matching semsc.py's build-tape resolver):
-      1. `mainFile httpApiGauntlet "main.sem"` is resolved relative to
+      1. `mainFile httpRuntimeGauntlet "main.sem"` is resolved relative to
          the directory of the build tape file.
-      2. If `sourceRoot httpApiGauntlet "."` is declared, the file is
+      2. If `sourceRoot httpRuntimeGauntlet "."` is declared, the file is
          resolved relative to (build-tape-dir / sourceRoot-path).
       3. The path is required to exist; the file's content is NOT
          parsed (that's a separate concern handled by the importModule
@@ -11226,7 +11226,7 @@ def check_narrative_references_line_number(facts: ExtendedFacts) -> List[Diagnos
 
     This is the prevention rule for the external-review finding:
     several narrative lines in the gauntlet sscript referenced
-    `semsc.py:3674` and `test_http_api_gauntlet.py:273-279`, and both
+    `semsc.py:3674` and `test_http_runtime_gauntlet.py:273-279`, and both
     references would silently drift the moment those files got an
     insertion. Replacing the references with function names + rule
     IDs makes the citation stable.

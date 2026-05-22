@@ -1,6 +1,5 @@
 # expect.stdout: 7.500000\n
 # expect.exit: 0
-# expect.xfail: feature_coverage.py runs through bootstrap_general.sscript which does not yet recognize `storage local mutable` of CFloat64. Direct semsc.py compilation is correct: alloca double; initial store 3.5; add 4.0; store back; load and print. `python compiler/semsc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints `7.500000`.
 project StorageLocalMutableFloat
 target console
 runtime AgentRuntime 0.1

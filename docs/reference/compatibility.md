@@ -59,10 +59,10 @@ Rows marked `Partial`, `Not impl'd`, or `Proposed` in `SYNTAX.md` are not stable
 1.0 executable guarantees. They may be parser-only, linter-only, metadata-only,
 or design targets for future compiler/runtime work.
 
-Bootstrap/self-hosting compiler stages, package fetching, language server,
-documentation generator, test runner, installer/version manager, full registry
-workflow, record JSON codecs, and declarative GUI top-level rows are preview or
-future work unless a narrower row in `SYNTAX.md` says otherwise.
+Package fetching, language server, documentation generator, test runner,
+installer/version manager, full registry workflow, record JSON codecs, and
+declarative GUI top-level rows are preview or future work unless a narrower row
+in `SYNTAX.md` says otherwise.
 
 ## Deprecation
 

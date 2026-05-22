@@ -7,18 +7,15 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SEM = REPO_ROOT / "SemanticScript" / "tools" / "sem.py"
-APP_ROOT = REPO_ROOT / "app"
+APP_ROOT = REPO_ROOT / "apps"
 STD_ROOT = REPO_ROOT / "SemanticScript" / "std"
 
 APP_CHECK_TARGETS = (
-    APP_ROOT / "hello-gui",
-    APP_ROOT / "html-console-demo",
-    APP_ROOT / "http-api-gauntlet",
-    APP_ROOT / "Kilo_port",
-    APP_ROOT / "todo",
-    APP_ROOT / "todo-web" / "todo_web.sscript",
-    APP_ROOT / "todo-web-advanced" / "advanced_todo_web.sscript",
-    APP_ROOT / "todo-web-pro",
+    APP_ROOT / "desktop-window-smoke",
+    APP_ROOT / "html-template-lab",
+    APP_ROOT / "http-runtime-gauntlet",
+    APP_ROOT / "taskforge-tui",
+    APP_ROOT / "taskforge-web",
 )
 
 REPLACED_ROW_RE = re.compile(

@@ -1,6 +1,5 @@
 # expect.stdout: 0\n
 # expect.exit: 0
-# expect.xfail: feature_coverage.py runs through bootstrap_general.sscript which does not yet lower the refined-syntax `operationBody runtimeBinding` / `runtimeBinding NAME TARGET` to a libc call — so compareCString becomes a stub that crashes at runtime. Direct semsc.py compilation works correctly (`python compiler/semsc.py THIS_FILE --emit-ir /tmp/x.ll && clang /tmp/x.ll -o /tmp/x.exe && /tmp/x.exe` prints `0` and exits 0). Closing means propagating the runtimeBinding lowering into bootstrap.
 project RefinedStrcmpRuntime
 target console
 runtime AgentRuntime 0.1

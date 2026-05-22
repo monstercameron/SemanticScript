@@ -1,0 +1,128 @@
+# Desktop Window Smoke build plan prototype.
+# This file uses regular SemanticScript records, jsonBody constants, and a
+# normal operation instead of one build-specific verb per field.
+
+module app.desktop_window_smoke.build
+purpose module app.desktop_window_smoke.build "Describe the Desktop Window Smoke build as ordinary typed SemanticScript data."
+moduleOwns app.desktop_window_smoke.build "Build project metadata, module selection, target options, Windows version info, and the BuildPlan-returning operation."
+moduleDoesNotOwn app.desktop_window_smoke.build "GUI application construction; app.desktop_window_smoke owns the runtime GUI operation graph."
+invariant module app.desktop_window_smoke.build "Build configuration is data first: records hold settings, and configureDesktopWindowSmokeBuild returns the selected BuildPlan."
+
+record BuildProject
+field BuildProject id String
+field BuildProject name String
+field BuildProject modulePath String
+field BuildProject languageVersion String
+field BuildProject projectVersion String
+field BuildProject license String
+
+record BuildModule
+field BuildModule moduleName String
+field BuildModule sourceRoot String
+field BuildModule sourcePath String
+field BuildModule mainFile String
+field BuildModule mainOperation String
+field BuildModule testPattern String
+field BuildModule testRoot String
+
+record BuildTarget
+field BuildTarget runtime String
+field BuildTarget nativeRuntime String
+field BuildTarget nativeRuntimeVersion I64
+field BuildTarget profile String
+field BuildTarget optLevel I64
+field BuildTarget runtimeChecks String
+field BuildTarget persistLlvmIr Bool
+field BuildTarget emitLlvmIr String
+field BuildTarget emitOptimizedLlvmIr Bool
+field BuildTarget buildFolderName String
+field BuildTarget cpuBaseline String
+field BuildTarget cpuTune String
+field BuildTarget cpuFeatureCheck String
+field BuildTarget formatterLineWidth I64
+field BuildTarget linterMaxTier String
+field BuildTarget docsOutput String
+field BuildTarget nativeOutput String
+
+record WindowsVersionMetadata
+field WindowsVersionMetadata buildSource String
+field WindowsVersionMetadata runtimeContract String
+field WindowsVersionMetadata guiSurface String
+
+record WindowsVersionInfo
+field WindowsVersionInfo version String
+field WindowsVersionInfo publisher String
+field WindowsVersionInfo description String
+field WindowsVersionInfo productName String
+field WindowsVersionInfo internalName String
+field WindowsVersionInfo originalFilename String
+field WindowsVersionInfo comments String
+field WindowsVersionInfo metadata WindowsVersionMetadata
+
+record BuildPlan
+field BuildPlan project BuildProject
+field BuildPlan module BuildModule
+field BuildPlan target BuildTarget
+field BuildPlan versionInfo WindowsVersionInfo
+
+storage module immutable desktopWindowSmokeBuildPlan BuildPlan
+jsonBody desktopWindowSmokeBuildPlan
+  {
+    "project": {
+      "id": "desktopWindowSmoke",
+      "name": "DesktopWindowSmoke",
+      "modulePath": "github.com/monstercameron/SemanticScript/apps/desktop-window-smoke",
+      "languageVersion": "1.0",
+      "projectVersion": "0.1.0",
+      "license": "MIT"
+    },
+    "module": {
+      "moduleName": "app.desktop_window_smoke",
+      "sourceRoot": ".",
+      "sourcePath": ".",
+      "mainFile": "main.sem",
+      "mainOperation": "main",
+      "testPattern": "*.test.sem",
+      "testRoot": "."
+    },
+    "target": {
+      "runtime": "windowsGui",
+      "nativeRuntime": "native",
+      "nativeRuntimeVersion": 1,
+      "profile": "dev",
+      "optLevel": 2,
+      "runtimeChecks": "panic",
+      "persistLlvmIr": true,
+      "emitLlvmIr": "auto",
+      "emitOptimizedLlvmIr": false,
+      "buildFolderName": "build",
+      "cpuBaseline": "generic",
+      "cpuTune": "generic",
+      "cpuFeatureCheck": "auto",
+      "formatterLineWidth": 100,
+      "linterMaxTier": "T4",
+      "docsOutput": "docs",
+      "nativeOutput": "desktop_window_smoke.exe"
+    },
+    "versionInfo": {
+      "version": "0.1.0.0",
+      "publisher": "Earl Cameron",
+      "description": "SemanticScript Desktop Window Smoke - minimal declarative Windows desktop window.",
+      "productName": "Desktop Window Smoke",
+      "internalName": "desktop_window_smoke",
+      "originalFilename": "desktop_window_smoke.exe",
+      "comments": "Built from apps/desktop-window-smoke/main.sem by the SemanticScript reference compiler.",
+      "metadata": {
+        "buildSource": "apps/desktop-window-smoke/main.sem",
+        "runtimeContract": "native 1",
+        "guiSurface": "standard.gui|gui.* functions"
+      }
+    }
+  }
+
+operation configureDesktopWindowSmokeBuild
+output operation configureDesktopWindowSmokeBuild BuildPlan
+memory configureDesktopWindowSmokeBuild heap no
+async configureDesktopWindowSmokeBuild no
+purpose operation configureDesktopWindowSmokeBuild "Return the typed build plan for the Desktop Window Smoke app."
+return value desktopWindowSmokeBuildPlan

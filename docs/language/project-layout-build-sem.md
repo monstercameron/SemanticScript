@@ -1,7 +1,7 @@
 # Project Layout and build.sem
 
 This page defines the current SemanticScript project-layout rule set. It is
-based on the `app/todo` lab project and the current `semsc.py` / `semlint.py`
+based on the `apps/taskforge-tui` lab project and the current `semsc.py` / `semlint.py`
 behavior.
 
 The short version:
@@ -20,7 +20,7 @@ exports are explicit and must name symbols declared by that module source.
 Use one folder per project or app:
 
 ```text
-app/todo/
+apps/taskforge-tui/
   build.sem
   main.sem
   domain/
@@ -31,7 +31,7 @@ app/todo/
     main.sem
   main.test.sem
   build/
-    todo.exe
+    taskforge_tui.exe
     todo.ll
     resources/
   .semcache/
@@ -62,37 +62,37 @@ artifact policy, and future comptime hooks.
 Example:
 
 ```semanticscript
-buildProject todoTui
-project TodoTuiApp
-modulePath todoTui github.com/monstercameron/SemanticScript/app/todo
-languageVersion todoTui "1.0"
-projectVersion todoTui "1.0.0"
-projectLicense todoTui MIT
+buildProject taskForgeTui
+project TaskForgeTui
+modulePath taskForgeTui github.com/monstercameron/SemanticScript/apps/taskforge-tui
+languageVersion taskForgeTui "1.0"
+projectVersion taskForgeTui "1.0.0"
+projectLicense taskForgeTui MIT
 
-sourceRoot todoTui "."
-registerModule todoTui app.todo "."
-registerModule todoTui app.todo.domain "domain"
-registerModule todoTui app.todo.persistence "persistence"
-mainFile todoTui "main.sem"
-mainOperation todoTui main
-testPattern todoTui "*.test.sem"
+sourceRoot taskForgeTui "."
+registerModule taskForgeTui app.taskforge_tui "."
+registerModule taskForgeTui app.taskforge_tui.domain "domain"
+registerModule taskForgeTui app.taskforge_tui.persistence "persistence"
+mainFile taskForgeTui "main.sem"
+mainOperation taskForgeTui main
+testPattern taskForgeTui "*.test.sem"
 
 target console
 runtime native 1
 entry console main
 
-targetRuntime todoTui nativeExe
-buildProfile todoTui dev
-optLevel todoTui 2
-runtimeChecks todoTui panic
-persistLlvmIr todoTui yes
-cpuBaseline todoTui generic
-cpuTune todoTui generic
-cpuFeatureCheck todoTui auto
-nativeOutput todoTui "todo.exe"
-keepResources todoTui no
+targetRuntime taskForgeTui nativeExe
+buildProfile taskForgeTui dev
+optLevel taskForgeTui 2
+runtimeChecks taskForgeTui panic
+persistLlvmIr taskForgeTui yes
+cpuBaseline taskForgeTui generic
+cpuTune taskForgeTui generic
+cpuFeatureCheck taskForgeTui auto
+nativeOutput taskForgeTui "taskforge_tui.exe"
+keepResources taskForgeTui no
 
-comptimeOperation todoTui configureTodoTuiBuild
+comptimeOperation taskForgeTui configureTaskForgeTuiBuild
 
 importModule app.todo
 ```
@@ -217,25 +217,25 @@ CPU flags are a build-tape concern, not a module-source concern. The safe
 default is portable:
 
 ```semanticscript
-cpuBaseline todoTui generic
-cpuTune todoTui generic
-cpuFeatureCheck todoTui auto
+cpuBaseline taskForgeTui generic
+cpuTune taskForgeTui generic
+cpuFeatureCheck taskForgeTui auto
 ```
 
 For a local-only performance build, a project may request host-native lowering:
 
 ```semanticscript
-cpuBaseline todoTui native
-cpuTune todoTui native
-cpuFeatureCheck todoTui require
+cpuBaseline taskForgeTui native
+cpuTune taskForgeTui native
+cpuFeatureCheck taskForgeTui require
 ```
 
 Specific features can be required or disabled:
 
 ```semanticscript
-cpuBaseline todoTui x86_64_v2
-cpuFeature todoTui avx2 off
-cpuFeatureCheck todoTui auto
+cpuBaseline taskForgeTui x86_64_v2
+cpuFeature taskForgeTui avx2 off
+cpuFeatureCheck taskForgeTui auto
 ```
 
 `cpuFeatureCheck auto` inspects the build machine with LLVM before codegen and
@@ -293,44 +293,44 @@ compatibility window, but the alias-first form is preferred.
 `build.sem`:
 
 ```semanticscript
-buildProject helloGui
-project HelloGui
-modulePath helloGui github.com/example/hello-gui
-languageVersion helloGui "1.0"
-projectVersion helloGui "1.0.0"
-projectLicense helloGui MIT
+buildProject desktopWindowSmoke
+project DesktopWindowSmoke
+modulePath desktopWindowSmoke github.com/example/desktop-window-smoke
+languageVersion desktopWindowSmoke "1.0"
+projectVersion desktopWindowSmoke "1.0.0"
+projectLicense desktopWindowSmoke MIT
 
-sourceRoot helloGui "."
-registerModule helloGui app.hello_gui "."
-mainFile helloGui "main.sem"
-testRoot helloGui "."
-testPattern helloGui "*.test.sem"
+sourceRoot desktopWindowSmoke "."
+registerModule desktopWindowSmoke app.desktop_window_smoke "."
+mainFile desktopWindowSmoke "main.sem"
+testRoot desktopWindowSmoke "."
+testPattern desktopWindowSmoke "*.test.sem"
 
 target windowsGui
 runtime native 1
 
-targetRuntime helloGui windowsGui
-buildProfile helloGui dev
-runtimeChecks helloGui panic
-optLevel helloGui 2
-persistLlvmIr helloGui yes
-buildFolderName helloGui build
-cpuBaseline helloGui generic
-cpuTune helloGui generic
-cpuFeatureCheck helloGui auto
-nativeOutput helloGui "hello_gui.exe"
+targetRuntime desktopWindowSmoke windowsGui
+buildProfile desktopWindowSmoke dev
+runtimeChecks desktopWindowSmoke panic
+optLevel desktopWindowSmoke 2
+persistLlvmIr desktopWindowSmoke yes
+buildFolderName desktopWindowSmoke build
+cpuBaseline desktopWindowSmoke generic
+cpuTune desktopWindowSmoke generic
+cpuFeatureCheck desktopWindowSmoke auto
+nativeOutput desktopWindowSmoke "desktop_window_smoke.exe"
 
 entry console main
-importModule app.hello_gui
+importModule app.desktop_window_smoke
 ```
 
 `main.sem`:
 
 ```semanticscript
-module app.hello_gui
+module app.desktop_window_smoke
 importModule gui standard.gui
 
-storage module immutable title GuiText "Hello GUI"
+storage module immutable title GuiText "Desktop Window Smoke"
 storage module immutable width GuiPixels 800
 storage module immutable height GuiPixels 480
 storage module immutable resizable CSignedInt32 1
@@ -655,16 +655,16 @@ Dependency rows live in `build.sem` because fetching source is build-time
 authority, not ordinary program behavior.
 
 ```semanticscript
-dependency todoTui semstd github.com/example/semstd v1.0.0
-dependencyFetch todoTui semstd github example/semstd v1.0.0
-dependencyIntegrity todoTui semstd commit:abcdef1234567890
+dependency taskForgeTui semstd github.com/example/semstd v1.0.0
+dependencyFetch taskForgeTui semstd github example/semstd v1.0.0
+dependencyIntegrity taskForgeTui semstd commit:abcdef1234567890
 
-dependency todoTui semhttp github.com/example/semhttp v0.3.0
-dependencyFetch todoTui semhttp http "https://example.com/semhttp-v0.3.0.tar.gz"
-dependencyIntegrity todoTui semhttp sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+dependency taskForgeTui semhttp github.com/example/semhttp v0.3.0
+dependencyFetch taskForgeTui semhttp http "https://example.com/semhttp-v0.3.0.tar.gz"
+dependencyIntegrity taskForgeTui semhttp sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
-dependencyCache todoTui ".semcache"
-dependencyLock todoTui "sem.lock"
+dependencyCache taskForgeTui ".semcache"
+dependencyLock taskForgeTui "sem.lock"
 ```
 
 Rules:
@@ -712,10 +712,10 @@ The compiler-managed artifact directory defaults to `SOURCE_DIR/build`.
 Examples:
 
 ```powershell
-python SemanticScript\compiler\semsc.py app\todo\build.sem --emit-exe
-python SemanticScript\compiler\semsc.py app\todo\build.sem --emit-exe --build-root ..\artifacts
-python SemanticScript\compiler\semsc.py app\todo\build.sem --emit-exe --build-folder-name semantic-build
-python SemanticScript\compiler\semsc.py app\todo\build.sem --emit-exe --build-dir C:\sem-artifacts\todo-dev
+python SemanticScript\compiler\semsc.py apps\taskforge-tui\build.sem --emit-exe
+python SemanticScript\compiler\semsc.py apps\taskforge-tui\build.sem --emit-exe --build-root ..\artifacts
+python SemanticScript\compiler\semsc.py apps\taskforge-tui\build.sem --emit-exe --build-folder-name semantic-build
+python SemanticScript\compiler\semsc.py apps\taskforge-tui\build.sem --emit-exe --build-dir C:\sem-artifacts\todo-dev
 ```
 
 Rules:
@@ -725,7 +725,7 @@ Rules:
   name, not a path.
 - `--build-dir PATH` selects the exact artifact directory and cannot be
   combined with `--build-root` or `--build-folder-name`.
-- Basename outputs such as `--emit-exe todo.exe` resolve into the managed build
+- Basename outputs such as `--emit-exe taskforge_tui.exe` resolve into the managed build
   directory.
 - Generated resources live under `build/resources/` only when resources are
   persisted for debugging; otherwise they are transient and embedded into the

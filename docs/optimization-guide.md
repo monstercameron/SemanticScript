@@ -68,7 +68,7 @@ declares `Result A Void` without any `returnError` path.
 
 ## App Boundary Rule
 
-Treat `c.*` as a bootstrap/backend boundary, not as the normal application API.
+Treat `c.*` as a backend boundary, not as the normal application API.
 Application code should call SemanticScript-facing operations once a matching
 surface exists:
 
@@ -90,13 +90,13 @@ memory.zero
 memory.copy
 ```
 
-Direct `c.*` calls are acceptable in low-level bootstrap/runtime modules,
+Direct `c.*` calls are acceptable in low-level runtime/backend modules,
 stdlib implementation files, compiler smoke tests, and backend bring-up samples.
 They should be avoided in top-level apps and user-facing examples unless the
 top-level SemanticScript API is still missing.
 
 This keeps the dependency direction clean: apps depend on SemanticScript
-contracts, stdlib/runtime code owns the temporary C bootstrap, and the backend
+contracts, stdlib/runtime code owns the temporary C interop layer, and the backend
 can later replace libc with Win32, POSIX syscalls, or a custom runtime without
 rewriting app code.
 
@@ -330,7 +330,7 @@ a substitute for code that actually runs.
 
 Heap allocation failure is also executable control flow. Every heap-producing
 call (`memory.allocate`, `c.malloc`, allocator-backed string builders, or
-runtime bootstrap allocators) must bind the returned pointer, check it with
+runtime setup allocators) must bind the returned pointer, check it with
 `pointer.isNull`, and branch to an OOM path before the first dereference or
 copy. The OOM path must return a typed error/status or cleanly unwind to the
 caller; a warning comment, optimistic use, or crash-by-null-dereference is not a
@@ -340,10 +340,10 @@ For C heap allocators, `semlint.py` reports SS3305
 `memoryDiscipline.uncheckedHeapAllocation` unless each `c.malloc`, `c.calloc`,
 or `c.realloc` call has both `bindError` and `branchIfError`.
 
-Partial bootstrap failures must close any handles already opened. For SQLite,
+Partial setup failures must close any handles already opened. For SQLite,
 that means a successful `sqlite3_open` followed by a failed schema creation,
 pragma setup, prepare, or migration step must call the matching close operation
-before returning failure. Prefer a shared cleanup label for bootstrap code so
+before returning failure. Prefer a shared cleanup label for setup code so
 every failure after handle acquisition passes through the same executable close
 path. A `defer` row is enough only when the current backend lowers it on that
 failure path; otherwise write the close call directly.
@@ -693,23 +693,23 @@ PowerShell `(Get-Item file.exe).VersionInfo`, and via `version.dll`'s
 `VerQueryValue` for arbitrary user keys.
 
 ```semanticscript
-project TodoTuiApp
+project TaskForgeTui
 target console
 runtime native 1
 entry console main
 
 version "1.0.0.0"
 publisher "Earl Cameron"
-description "SemanticScript Todo TUI — keyboard-driven console todo app."
+description "SemanticScript TaskForge TUI — keyboard-driven console todo app."
 copyright "Copyright (c) 2026 Earl Cameron."
-productName "Todo TUI"
+productName "TaskForge TUI"
 internalName "todo"
-originalFilename "todo.exe"
-comments "Built from app/todo/main.sem by the SemanticScript compiler."
-metadata "BuildSource" "app/todo/main.sem"
+originalFilename "taskforge_tui.exe"
+comments "Built from apps/taskforge-tui/main.sem by the SemanticScript compiler."
+metadata "BuildSource" "apps/taskforge-tui/main.sem"
 metadata "RuntimeContract" "native 1"
 
-registerModule todoTui app.todo "."
+registerModule taskForgeTui app.taskforge_tui "."
 ```
 
 Mapping to Windows VERSIONINFO StringFileInfo entries:
@@ -805,7 +805,7 @@ on):
 
 ```text
 build/
-  todo.exe
+  taskforge_tui.exe
   todo.ll
 ```
 
@@ -814,16 +814,16 @@ isn't appearing or a custom metadata key isn't readable), opt in via the
 build tape:
 
 ```semanticscript
-keepResources    todoTui yes
+keepResources    taskForgeTui yes
 # or, with an explicit directory:
-resourcesDir     todoTui "build/resources"
+resourcesDir     taskForgeTui "build/resources"
 ```
 
 Or per-invocation via the CLI:
 
 ```text
-python compiler/semsc.py build.sem --emit-exe build/todo.exe --keep-resources
-python compiler/semsc.py build.sem --emit-exe build/todo.exe --resource-dir /tmp/icon-debug
+python compiler/semsc.py build.sem --emit-exe build/taskforge_tui.exe --keep-resources
+python compiler/semsc.py build.sem --emit-exe build/taskforge_tui.exe --resource-dir /tmp/icon-debug
 ```
 
 CLI flags override `build.sem` declarations. The default is intentionally
@@ -1187,7 +1187,7 @@ prose. The discipline:
 - The drift guard `TestHttpTargetSourceOfTruth` (`test_semlint.py`)
   asserts every `http.*` target from `semsc.py` is mentioned in
   `SYNTAX.md`. For other cross-doc references, manual review is the
-  only enforcement — add `grep -F 'SYNTAX.md#anchor' app/` to the
+  only enforcement — add `grep -F 'SYNTAX.md#anchor' apps/` to the
   review checklist if you add a new tracking citation pattern.
 - If a tracking citation breaks (anchor renamed, row removed), fix
   the source row rather than silently updating the reference; the
@@ -1285,7 +1285,7 @@ The brittle form is:
 ```semanticscript
 # DON'T:
 invariant gauntletMiddleware "see semsc.py:3674 for the lowering"
-warning requiredHeaderHandler "asserted at test_http_api_gauntlet.py:273-279"
+warning requiredHeaderHandler "asserted at test_http_runtime_gauntlet.py:273-279"
 ```
 
 Both citations drift the moment the referenced file gets an insertion
@@ -1298,7 +1298,7 @@ The stable form is:
 ```semanticscript
 # DO:
 invariant gauntletMiddleware "see semsc.py's pointer.isNull lowering"
-warning requiredHeaderHandler "asserted by the `/reflect/required-header-or-fail` block in test_http_api_gauntlet.py"
+warning requiredHeaderHandler "asserted by the `/reflect/required-header-or-fail` block in test_http_runtime_gauntlet.py"
 ```
 
 `semlint` SS3613 `narrativeReferencesLineNumber` flags `<file>:<line>`

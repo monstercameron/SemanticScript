@@ -3,9 +3,8 @@
 # Dotted typed-method call targets (TaskList.append, TaskMap.get,
 # json.parse.X, json.stringify.X) compile cleanly but are not runtime-complete.
 # semsc.py routes non-primitive generated codecs and typed collection calls through the
-# external-module fallback in _emit_run; bootstrap_general.exe lowers them
-# through its runUnhandled dummy-SSA path. Both produce well-typed IR with
-# zero-shaped stub results. semlint flags this as an explicit runtime gap.
+# external-module fallback in _emit_run, producing well-typed IR with zero-shaped
+# stub results. semlint flags this as an explicit runtime gap.
 project TypedMethodCallsCompile
 target console
 runtime AgentRuntime 0.1

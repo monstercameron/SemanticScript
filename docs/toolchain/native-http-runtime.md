@@ -133,10 +133,10 @@ Current local Windows result:
 - `SemanticScript/runtime/native_http` builds with clang, Ninja, and
   `llvm-rc`.
 - The default adapter backend now serves blocking HTTP/1.1 exact routes through
-  native sockets and is used by `app/todo-web/test_todo_web.py`.
-- The advanced Todo Web smoke additionally covers response headers, request
-  headers, query parameters, bounded request body reads, and middleware
-  execution with `python app/todo-web-advanced/test_advanced_todo_web.py`.
+  native sockets and is covered by `apps/http-runtime-gauntlet/scripts/test_http_runtime_gauntlet.py`.
+- TaskForge Web additionally verifies the application path through HTML pages,
+  static assets, auth/session flow, sqlite persistence, and JSON APIs with
+  `python apps/taskforge-web/scripts/test_taskforge_web.py`.
 - H2O configures with local OpenSSL/zlib and `DISABLE_LIBUV=ON`.
 - H2O's `libh2o-evloop` build requires Unix-like shell tools for generated
   headers; Git for Windows supplies `sh`, `perl`, and `sed`.
@@ -157,7 +157,8 @@ cmake --build SemanticScript/runtime/native_http/build
 Working native webserver smoke:
 
 ```powershell
-python app/todo-web/test_todo_web.py
+python apps/http-runtime-gauntlet/scripts/test_http_runtime_gauntlet.py
+python apps/taskforge-web/scripts/test_taskforge_web.py
 ```
 
 Backend options from here:
