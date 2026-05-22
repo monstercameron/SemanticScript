@@ -5,10 +5,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Keep request buffering capped at 64 KiB. The native backend buffers one
- * request at a time, so larger uploads need a streaming/multipart path rather
- * than raising this shared allocation ceiling. */
-#define SS_HTTP_MAX_REQUEST_BYTES 65536
+/* Keep the fallback backend's full-request buffer bounded. Applications should
+ * enforce their own smaller body policy with ss_http_request_body_length; this
+ * transport ceiling only prevents unbounded allocation in the blocking adapter.
+ */
+#define SS_HTTP_MAX_REQUEST_BYTES (1024 * 1024)
 #define SS_HTTP_MAX_HEADERS 32
 #define SS_HTTP_MAX_QUERY_PARAMS 32
 #define SS_HTTP_MAX_MULTIPART_PARTS 16

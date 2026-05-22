@@ -71,3 +71,6 @@ endif()
 
 add_executable(sem_async_health_demo health_demo.c)
 target_link_libraries(sem_async_health_demo PRIVATE sem_async_runtime)
+
+add_executable(sem_async_manual_timer_order_demo manual_timer_order_demo.c)
+target_link_libraries(sem_async_manual_timer_order_demo PRIVATE sem_async_runtime)

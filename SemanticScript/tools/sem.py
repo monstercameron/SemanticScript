@@ -605,6 +605,9 @@ def _runtime_feature_flags() -> dict:
         "nativeWin32GuiRuntime": (
             runtime_root / "native_win32_gui" / "sem_win32_gui_runtime.c"
         ).exists(),
+        "nativeWinui3GuiScaffold": (
+            runtime_root / "native_winui3_gui" / "sem_winui3_gui_runtime.h"
+        ).exists(),
         "nativeBcryptRuntime": (runtime_root / "native_bcrypt" / "sem_bcrypt_runtime.c").exists(),
         "vendoredSqlite": (third_party_root / "sqlite" / "sqlite3.c").exists(),
         "vendoredBcrypt": (third_party_root / "bcrypt").exists(),
@@ -631,6 +634,7 @@ def _build_context_payload(path: Path) -> dict:
         "mainOperation": _row_value(facts, "mainOperation", 1) if facts else "",
         "targetRuntime": _row_value(facts, "targetRuntime", 1) if facts else "",
         "asyncRuntime": _row_value(facts, "asyncRuntime", 1) if facts else "",
+        "guiBackend": _row_value(facts, "guiBackend", 1) if facts else "",
         "targets": _row_values(facts, "target") if facts else [],
         "nativeOutput": _row_value(facts, "nativeOutput", 1) if facts else "",
     }
@@ -810,7 +814,7 @@ def _call_reference_from_line(source_line) -> str:
     if not args:
         return ""
     verb = source_line.verb
-    if verb in {"argument", "run", "start", "await", "startInGroup", "timeout", "cancelOn"}:
+    if verb in {"argument", "run", "start", "await", "case", "startInGroup", "timeout", "cancelOn"}:
         return args[0]
     if verb == "arg":
         return args[0]
@@ -1021,6 +1025,8 @@ def _operation_call_payloads(operation) -> list[dict]:
             })
         elif source_line.verb in {"run", "start", "await"}:
             call_payload["disposition"][source_line.verb] = True
+        elif source_line.verb == "case":
+            call_payload["disposition"]["await"] = True
         else:
             bind_payload = _bind_variant_payload(source_line)
             if bind_payload is not None:

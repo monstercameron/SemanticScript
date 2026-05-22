@@ -242,6 +242,19 @@ int ss_async_future_cancel(SSFuture *future) {
     return ss_async_future_complete(future, SS_ASYNC_ERR_CANCELLED, NULL);
 }
 
+int ss_async_future_await(SSAsyncLoop *loop, SSFuture *future) {
+    if (loop == NULL || future == NULL) {
+        return SS_ASYNC_ERR_CONFIG;
+    }
+    while (!future->ready) {
+        int status = ss_async_loop_run_once(loop);
+        if (status != SS_ASYNC_OK) {
+            return status;
+        }
+    }
+    return future->status;
+}
+
 int ss_async_future_is_ready(const SSFuture *future) {
     return future != NULL && future->ready;
 }

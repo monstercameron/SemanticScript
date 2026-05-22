@@ -19,6 +19,7 @@ moduleOwns standard.bcrypt "The official import path `standard.bcrypt`, the Bcry
 moduleDoesNotOwn standard.bcrypt "The bcrypt algorithm implementation (crypt_blowfish.c lives under third_party/bcrypt/), the native CSPRNG (platform-specific entries in sem_bcrypt_runtime.c), caller-owned scratch-buffer allocation (apps must c.malloc the buffers themselves and defer c.free), or user-facing session storage (apps own the sessions SQL table)."
 invariant module standard.bcrypt "The standard module entry is this file; downstream modules may import it as alias `bcrypt` before using compiler-owned targets in the `bcrypt.*` namespace."
 moduleSecurity standard.bcrypt "BcryptPasswordHash values MUST always carry the `$2b$NN$...` prefix and exactly 60 chars; the native runtime adapter refuses to verify against any other format so a deployment cannot silently drift to a weaker variant by writing legacy `$2a$`/`$2x$`/`$2y$` strings to the database."
+moduleSecurity standard.bcrypt "Authentication flows SHOULD keep bcrypt cost as an immutable source constant, use bcryptRecommendedCost unless the application policy chooses otherwise, and equalize public verification paths in `.sem` with a dummy bcrypt.verifyPassword when user-existence timing would leak account state. The compiler only lowers bcrypt.* ABI calls."
 
 # ----- trust types -----
 

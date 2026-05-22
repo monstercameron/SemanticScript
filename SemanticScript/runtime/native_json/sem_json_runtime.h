@@ -130,6 +130,41 @@ int ss_json_builder_element_null(SSJsonBuilder *builder);
 const char *ss_json_builder_finish(SSJsonBuilder *builder);
 size_t      ss_json_builder_length(const SSJsonBuilder *builder);
 
+/* ----- primitive codec helpers -----
+ *
+ * High-level json.stringify.<primitive> / json.parse.<primitive> aliases lower
+ * through these helpers so formatting, escaping, strict token parsing,
+ * trailing-junk rejection, and caller scratch capacity checks live in the
+ * native JSON runtime rather than in compiler-side formatting stubs. */
+int ss_json_stringify_string(
+    const char *value,
+    char *scratch,
+    int64_t scratch_capacity,
+    const char **out
+);
+int ss_json_stringify_int64(
+    long long value,
+    char *scratch,
+    int64_t scratch_capacity,
+    const char **out
+);
+int ss_json_stringify_double(
+    double value,
+    char *scratch,
+    int64_t scratch_capacity,
+    const char **out
+);
+int ss_json_stringify_bool(
+    int value_truthiness,
+    char *scratch,
+    int64_t scratch_capacity,
+    const char **out
+);
+
+int ss_json_parse_int64(const char *json_text, long long *out);
+int ss_json_parse_double(const char *json_text, double *out);
+int ss_json_parse_bool(const char *json_text, int *out);
+
 /* ----- finder (decode side) -----
  *
  * All finders operate on a flat object — they scan for `"name":` at the

@@ -37,6 +37,7 @@ int ss_async_future_on_ready(
 );
 int ss_async_future_complete(SSFuture *future, int status, void *result);
 int ss_async_future_cancel(SSFuture *future);
+int ss_async_future_await(SSAsyncLoop *loop, SSFuture *future);
 int ss_async_future_is_ready(const SSFuture *future);
 int ss_async_future_status(const SSFuture *future);
 void *ss_async_future_result(const SSFuture *future);

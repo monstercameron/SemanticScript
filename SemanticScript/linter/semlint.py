@@ -527,6 +527,7 @@ _PARSER_CONTEXT_VERBS: Set[str] = {
 }
 _PARSER_ACTION_VERBS: Set[str] = {
     "set", "call", "arg", "argument", "timeout", "cancelOn", "run", "start", "await",
+    "case", "done",
     "bind", "bindOk", "bindError", "ignore", "ignoreOk", "ignoreValue", "ignoreError", "makeError",
     "taskGroup", "startInGroup", "awaitGroup", "bindGroupError", "defer",
     "deferLog", "deferAwaitLog", "deferWhenExitLog", "new", "fieldGet",
@@ -749,6 +750,10 @@ def branch_target_names_from_row(sourceLine: SourceLine) -> List[str]:
         return [args[1]]
     if sourceLine.verb == "branchSelected" and len(args) >= 3:
         return [args[2]]
+    if sourceLine.verb == "case" and len(args) >= 2:
+        return [args[1]]
+    if sourceLine.verb == "done" and args:
+        return [args[0]]
     return []
 
 
@@ -1490,7 +1495,7 @@ VERB_MINIMUM_ARITY: Dict[str, int] = {
     "sourceRoot": 2, "mainFile": 2, "mainOperation": 2,
     "testPattern": 2, "dependencySource": 3, "dependencyFetch": 4,
     "dependencyCache": 2, "dependencyLock": 2, "dependencyIntegrity": 3,
-    "buildProfile": 2, "runtimeChecks": 2, "asyncRuntime": 2, "persistLlvmIr": 2,
+    "buildProfile": 2, "runtimeChecks": 2, "asyncRuntime": 2, "guiBackend": 2, "persistLlvmIr": 2,
     "nativeOutput": 2, "targetRuntime": 2, "comptimeOperation": 2,
     "projectVersion": 2, "projectLicense": 2, "testRoot": 2,
     "nativeHttpHost": 2, "nativeHttpPort": 2,
@@ -1506,6 +1511,7 @@ VERB_MINIMUM_ARITY: Dict[str, int] = {
     "moduleFolder": 2, "modulePurpose": 2, "moduleOwns": 2,
     "moduleDoesNotOwn": 2, "moduleDependency": 2, "moduleWarning": 2,
     "moduleInvariant": 2, "moduleSecurity": 2, "moduleObservability": 2,
+    "nativeRuntimeSource": 2, "nativeRuntimeLinkArg": 2,
     "exportType": 2, "exportError": 2, "exportOperation": 2,
     "exportCapability": 2, "exportConstant": 2,
     "iconRoleDefinition": 2, "icon": 1, "iconRole": 2, "iconPurpose": 2,
@@ -1572,6 +1578,7 @@ VERB_MINIMUM_ARITY: Dict[str, int] = {
     "bindGroupError": 3, "send": 2, "receive": 3,
     "lock": 1, "unlock": 1,
     "select": 1, "selectCase": 3, "runSelect": 1,
+    "case": 2, "done": 1,
     "interval": 1, "startInterval": 1, "awaitIntervalTick": 1,
     "workerPool": 1, "work": 1, "workArg": 3, "submitWork": 2, "awaitWork": 1,
     # Guard tokens
@@ -1636,7 +1643,7 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "buildProject", "modulePath", "languageVersion", "sourceRoot",
     "mainFile", "mainOperation", "testPattern", "dependency", "dependencySource",
     "dependencyFetch", "dependencyCache", "dependencyLock", "dependencyIntegrity",
-    "buildProfile", "runtimeChecks", "asyncRuntime", "persistLlvmIr",
+    "buildProfile", "runtimeChecks", "asyncRuntime", "guiBackend", "persistLlvmIr",
     "nativeOutput", "targetRuntime", "comptimeOperation", "registerModule",
     "buildConstant",
     "projectVersion", "projectLicense", "testRoot", "nativeHttpHost",
@@ -1648,6 +1655,7 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "moduleFolder", "modulePurpose", "moduleOwns", "moduleDoesNotOwn",
     "moduleDependency", "moduleWarning", "moduleInvariant", "moduleSecurity",
     "moduleObservability",
+    "nativeRuntimeSource", "nativeRuntimeLinkArg",
     "exportType", "exportError", "exportOperation", "exportCapability",
     "exportConstant",
     "iconRoleDefinition", "icon", "iconRole", "iconPurpose",
@@ -1691,6 +1699,7 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "literalSource", "literalTrust",
     # Calls
     "call", "argument", "arg", "timeout", "cancelOn", "run", "start", "await",
+    "case", "done",
     "bind", "bindOk", "bindError", "ignore", "ignoreOk", "ignoreValue", "ignoreError",
     "makeError", "declareFailure",
     # Control flow
@@ -2157,7 +2166,7 @@ def gather_extended(baseFacts: ProgramFacts) -> ExtendedFacts:
             facts.operationAuthority.setdefault(args[0], []).append(sourceLine)
         elif verb == "label" and args and currentOperation:
             facts.labels[args[0]] = LabelFact(args[0], sourceLine, currentOperation)
-        elif verb in {"branch", "jump", "branchIf", "branchIfError", "branchIfGroupError", "branchIfChannelClosed", "branchSelected"}:
+        elif verb in {"branch", "jump", "branchIf", "branchIfError", "branchIfGroupError", "branchIfChannelClosed", "branchSelected", "case", "done"}:
             facts.labelReferences.update(branch_target_names_from_row(sourceLine))
         elif verb == "errorCase" and len(args) >= 2:
             facts.errorCases[(args[0], args[1])] = ErrorCaseFact(args[0], args[1], sourceLine)
@@ -2429,6 +2438,8 @@ def collect_operation_calls(operation: OperationFact) -> Dict[str, CallFact]:
             target = operationCalls.get(ignore[1])
         elif branchErrorSource is not None:
             target = operationCalls.get(branchErrorSource)
+        elif verb == "case" and len(args) >= 2:
+            target = operationCalls.get(args[0])
         elif verb in {"run", "start", "await", "startInGroup", "timeout", "cancelOn"}:
             target = operationCalls.get(args[0])
         elif bind is not None:
@@ -2442,6 +2453,8 @@ def collect_operation_calls(operation: OperationFact) -> Dict[str, CallFact]:
         elif verb == "start":
             target.start_lines.append(sourceLine)
         elif verb == "await":
+            target.await_lines.append(sourceLine)
+        elif verb == "case":
             target.await_lines.append(sourceLine)
         elif bind is not None and bind[0] == "value":
             target.bind_lines.append(sourceLine)
@@ -2466,6 +2479,102 @@ def collect_operation_calls(operation: OperationFact) -> Dict[str, CallFact]:
         elif verb == "cancelOn":
             target.cancel_lines.append(sourceLine)
     return operationCalls
+
+
+def wait_set_await_line_numbers(operation: OperationFact) -> Set[int]:
+    """Return `await NAME` rows that introduce an await/case/done wait set.
+
+    In that shape NAME is a local wait-set label for diagnostics/tracing, not a
+    declared `call NAME TARGET`, so call-reference checks must not resolve it.
+    """
+    wait_set_lines: Set[int] = set()
+    lines = operation.lines
+    for index, sourceLine in enumerate(lines):
+        if (is_comment(sourceLine) or not sourceLine.tokens
+                or sourceLine.verb != "await" or not sourceLine.args):
+            continue
+        next_index = index + 1
+        while next_index < len(lines):
+            next_line = lines[next_index]
+            if is_comment(next_line) or not next_line.tokens:
+                next_index += 1
+                continue
+            if next_line.verb in {"case", "done"}:
+                wait_set_lines.add(sourceLine.number)
+            break
+    return wait_set_lines
+
+
+def operation_async_enabled(operation: OperationFact) -> bool:
+    for sourceLine in operation.lines:
+        if (sourceLine.verb == "async" and len(sourceLine.args) >= 2
+                and sourceLine.args[0] == operation.name
+                and sourceLine.args[1].lower() in {"yes", "true", "1", "on"}):
+            return True
+    return False
+
+
+def call_can_start_async_future(
+    facts: ExtendedFacts,
+    operation: OperationFact,
+    callFact: CallFact,
+) -> bool:
+    target = callFact.target
+    if target in {"net.fetchText", "fetchText", "standard.net.fetchText"}:
+        return True
+    if not operation_async_enabled(operation):
+        return False
+    if target in facts.base.operations:
+        return True
+    return False
+
+
+def source_row_terminates_before_next_label(sourceLine: SourceLine) -> bool:
+    if sourceLine.verb in {"jump", "return", "returnOk", "returnError", "returnVoid"}:
+        return True
+    if sourceLine.verb == "branch" and len(sourceLine.args) >= 3 and sourceLine.args[0] == "else":
+        return True
+    return False
+
+
+def start_reaches_wait_set_entry(
+    operation: OperationFact,
+    callFact: CallFact,
+    awaitLine: SourceLine,
+) -> bool:
+    priorStartLines = [
+        startLine
+        for startLine in callFact.start_lines
+        if startLine.number < awaitLine.number
+    ]
+    for startLine in reversed(priorStartLines):
+        blockedByTerminator = False
+        for sourceLine in operation.lines:
+            if sourceLine.number >= startLine.number:
+                break
+            if sourceLine.verb == "label":
+                blockedByTerminator = False
+                continue
+            if source_row_terminates_before_next_label(sourceLine):
+                blockedByTerminator = True
+        if blockedByTerminator:
+            continue
+        interveningLabelNames = {
+            sourceLine.args[0]
+            for sourceLine in operation.lines
+            if (sourceLine.verb == "label" and sourceLine.args
+                and startLine.number < sourceLine.number < awaitLine.number)
+        }
+        bypassesStart = False
+        for sourceLine in operation.lines:
+            if sourceLine.number >= startLine.number:
+                continue
+            if interveningLabelNames & set(branch_target_names_from_row(sourceLine)):
+                bypassesStart = True
+                break
+        if not bypassesStart:
+            return True
+    return False
 
 
 def operation_input_types(operation: OperationFact) -> Dict[str, str]:
@@ -3852,6 +3961,11 @@ _HTML_RAW_TEXT_RE = re.compile(
     r"<(style|script)\b[^>]*>.*?</\1\s*>",
     re.IGNORECASE | re.DOTALL,
 )
+_HTML_RAW_HYDRATION_TYPES: frozenset = frozenset({
+    "HtmlFragment",
+    "HtmlTrustedFragment",
+    "HtmlDocument",
+})
 
 
 def _html_line_for(template: HtmlTemplateFact, line_number: int, raw: str) -> SourceLine:
@@ -6860,6 +6974,833 @@ def check_select_case_references_unknown_select(facts: ExtendedFacts) -> List[Di
     return diagnostics
 
 
+def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
+    """Validate the compact `await WAIT_SET` / `case` / `done` block shape.
+
+    The wait-set name is not a call reference; the cases are the call
+    references. This checker catches malformed blocks before the compiler has
+    to fail deeper in lowering.
+    """
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        operationCalls = collect_operation_calls(operation)
+        lines = [
+            sourceLine
+            for sourceLine in operation.lines
+            if sourceLine.tokens and not is_comment(sourceLine)
+        ]
+        labelLineByName = {
+            sourceLine.args[0]: sourceLine
+            for sourceLine in lines
+            if sourceLine.verb == "label" and sourceLine.args
+        }
+
+        def add_wait_set_arity_diagnostic(
+            row: SourceLine,
+            waitSetName: str,
+            expectedShape: str,
+            expectedCount: int,
+        ) -> None:
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS3509",
+                kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                severity=Severity.ERROR,
+                subjectName=waitSetName or row.verb,
+                subjectKind="awaitWaitSetRow",
+                gapEdge="argumentCount",
+                intentSlogan=f"`{row.verb}` has wrong argument count",
+                primary=span_of_line(row, f"{row.verb}Site"),
+                invariantRule=(
+                    f"`{row.verb}` rows in an await wait set must have exactly "
+                    f"{expectedCount} argument(s): `{expectedShape}`"
+                ),
+                specAnchor=f"SYNTAX.md#{row.verb}",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="useExactWaitSetRowShape",
+                        shape=expectedShape,
+                        evidence=[span_of_line(row)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.TRIVIAL,
+                passProvenance="check_await_wait_set_shape",
+                agentHint="wait-set structural rows do not accept trailing metadata tokens",
+            ))
+
+        consumedLineNumbers: Set[int] = set()
+        waitSetAwaitLineNumbers: Set[int] = set()
+        caseCompletionLines: Dict[str, SourceLine] = {}
+        index = 0
+        while index < len(lines):
+            sourceLine = lines[index]
+            if sourceLine.verb != "await":
+                index += 1
+                continue
+            nextIndex = index + 1
+            if nextIndex >= len(lines) or lines[nextIndex].verb not in {"case", "done"}:
+                index += 1
+                continue
+            waitSetAwaitLineNumbers.add(sourceLine.number)
+            waitSetName = sourceLine.args[0] if sourceLine.args else ""
+            if len(sourceLine.args) != 1:
+                add_wait_set_arity_diagnostic(
+                    sourceLine, waitSetName, "await <waitSetName>", 1)
+            if waitSetName and waitSetName in operationCalls:
+                callFact = operationCalls[waitSetName]
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T1_SPEC,
+                    code="SS3509",
+                    kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                    severity=Severity.ERROR,
+                    subjectName=waitSetName,
+                    subjectKind="awaitWaitSet",
+                    gapEdge="waitSetNameCallCollision",
+                    intentSlogan="wait-set name collides with call name",
+                    primary=span_of_line(sourceLine, "awaitSite"),
+                    related=[span_of_line(callFact.line, "callDeclaration")],
+                    invariantRule=(
+                        f"`await {waitSetName}` followed by `case` rows is "
+                        "a wait set, not a call; choose a wait-set name that "
+                        "does not match any declared call"
+                    ),
+                    specAnchor="SYNTAX.md#await",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="renameWaitSet",
+                            shape="await <freshWaitSetName>",
+                            evidence=[span_of_line(sourceLine)],
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    blocksCompile=True,
+                    effort=Effort.TRIVIAL,
+                    passProvenance="check_await_wait_set_shape",
+                    agentHint="wait-set names are local branch/select names, not call references",
+                ))
+            caseLines: List[SourceLine] = []
+            seenCaseCalls: Dict[str, SourceLine] = {}
+            seenCaseLabels: Dict[str, SourceLine] = {}
+            cursor = nextIndex
+            while cursor < len(lines) and lines[cursor].verb == "case":
+                caseLine = lines[cursor]
+                consumedLineNumbers.add(caseLine.number)
+                if len(caseLine.args) != 2:
+                    add_wait_set_arity_diagnostic(
+                        caseLine, waitSetName, "case <startedCall> <handlerLabel>", 2)
+                    caseLines.append(caseLine)
+                    cursor += 1
+                    continue
+                if len(caseLine.args) >= 1:
+                    callName = caseLine.args[0]
+                    targetLabel = caseLine.args[1]
+                    previousCase = seenCaseCalls.get(callName)
+                    previousCompletion = caseCompletionLines.get(callName)
+                    callFact = operationCalls.get(callName)
+                    priorStartLines = (
+                        [
+                            startLine
+                            for startLine in callFact.start_lines
+                            if startLine.number < sourceLine.number
+                        ]
+                        if callFact is not None
+                        else []
+                    )
+                    hasMultiplePriorStarts = len(priorStartLines) > 1
+                    hasStartBeforeWaitSet = (
+                        callFact is not None
+                        and not hasMultiplePriorStarts
+                        and start_reaches_wait_set_entry(
+                            operation, callFact, sourceLine)
+                    )
+                    if previousCase is not None:
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=waitSetName,
+                            subjectKind="awaitWaitSet",
+                            gapEdge="uniqueCaseCall",
+                            intentSlogan="duplicate wait-set case",
+                            primary=span_of_line(caseLine, "caseSite"),
+                            related=[span_of_line(previousCase, "previousCase")],
+                            invariantRule=(
+                                f"`await {waitSetName}` may list each started "
+                                "call at most once"
+                            ),
+                            specAnchor="SYNTAX.md#case",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="removeDuplicateCase",
+                                    shape=f"# remove duplicate `case {callName} ...`",
+                                    evidence=[span_of_line(caseLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.TRIVIAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="duplicate cases would make consumed-state ambiguous",
+                        ))
+                    elif previousCompletion is not None:
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=callName,
+                            subjectKind="call",
+                            gapEdge="singleCompletionEdge",
+                            intentSlogan="call appears in multiple wait sets",
+                            primary=span_of_line(caseLine, "caseSite"),
+                            related=[span_of_line(previousCompletion, "previousCase")],
+                            invariantRule=(
+                                f"`case {callName} ...` awaits and consumes the "
+                                "call; the same call cannot be listed in a later "
+                                "wait set"
+                            ),
+                            specAnchor="SYNTAX.md#case",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="useFreshStartedCall",
+                                    shape=f"call <newCallName> <target>\nstart <newCallName>\ncase <newCallName> <handlerLabel>",
+                                    evidence=[span_of_line(caseLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="wait-set cases are future ownership handoffs",
+                        ))
+                    elif callFact is not None and hasMultiplePriorStarts:
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=callName,
+                            subjectKind="call",
+                            gapEdge="singlePriorStart",
+                            intentSlogan="wait-set case has multiple prior starts",
+                            primary=span_of_line(caseLine, "caseSite"),
+                            related=[
+                                span_of_line(startLine, "priorStart")
+                                for startLine in priorStartLines
+                            ],
+                            invariantRule=(
+                                f"`case {callName} ...` must refer to exactly "
+                                "one prior `start`; repeated starts need fresh "
+                                "call names so each future has one owner"
+                            ),
+                            specAnchor="SYNTAX.md#case",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="splitRepeatedStarts",
+                                    shape=(
+                                        f"call <freshCallName> {callFact.target}\n"
+                                        "start <freshCallName>\n"
+                                        f"case <freshCallName> {targetLabel}"
+                                    ),
+                                    evidence=[span_of_line(caseLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="the compiler stores one future slot per call name",
+                        ))
+                    elif callFact is not None and not hasStartBeforeWaitSet:
+                        relatedSpans = [span_of_line(callFact.line, "callDeclaration")]
+                        relatedSpans.extend(
+                            span_of_line(startLine, "lateStart")
+                            for startLine in callFact.start_lines
+                        )
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=callName,
+                            subjectKind="call",
+                            gapEdge="startBeforeCase",
+                            intentSlogan="wait-set case lacks prior start",
+                            primary=span_of_line(caseLine, "caseSite"),
+                            related=relatedSpans,
+                            invariantRule=(
+                                f"`case {callName} ...` may only appear in an "
+                                f"`await {waitSetName}` block after "
+                                f"`start {callName}` has created the future"
+                            ),
+                            specAnchor="SYNTAX.md#case",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="moveStartBeforeWaitSet",
+                                    shape=f"start {callName}",
+                                    evidence=[span_of_line(caseLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="wait-set polling needs an already-created future",
+                        ))
+                    elif (callFact is not None
+                            and not call_can_start_async_future(
+                                facts, operation, callFact)):
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=callName,
+                            subjectKind="call",
+                            gapEdge="asyncFutureCase",
+                            intentSlogan="wait-set case is not an async future",
+                            primary=span_of_line(caseLine, "caseSite"),
+                            related=[span_of_line(callFact.line, "callDeclaration")],
+                            invariantRule=(
+                                f"`case {callName} ...` requires a call target "
+                                "that `start` lowers to an async future"
+                            ),
+                            specAnchor="SYNTAX.md#case",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="useAsyncFutureCall",
+                                    shape=(
+                                        f"call {callName} <asyncOperationOrNetFetch>\n"
+                                        f"start {callName}\n"
+                                        f"case {callName} {targetLabel}"
+                                    ),
+                                    evidence=[span_of_line(caseLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="started synchronous calls do not create future slots for wait-set polling",
+                        ))
+                    else:
+                        seenCaseCalls[callName] = caseLine
+                        caseCompletionLines.setdefault(callName, caseLine)
+                    labelLine = labelLineByName.get(targetLabel)
+                    if labelLine is not None and labelLine.number <= caseLine.number:
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=targetLabel,
+                            subjectKind="label",
+                            gapEdge="caseLabelDeclarationOrder",
+                            intentSlogan="wait-set case label appears too early",
+                            primary=span_of_line(caseLine, "caseSite"),
+                            related=[span_of_line(labelLine, "labelDeclaration")],
+                            invariantRule=(
+                                f"`case {callName} {targetLabel}` must branch "
+                                "to a handler label declared after the case row"
+                            ),
+                            specAnchor="SYNTAX.md#case",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="moveCaseHandlerAfterWaitSet",
+                                    shape=f"label {targetLabel}",
+                                    evidence=[span_of_line(labelLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="case handlers are selected continuations, not ordinary entry labels",
+                        ))
+                    previousEffectiveLine = None
+                    if labelLine is not None:
+                        for candidate in lines:
+                            if candidate.number >= labelLine.number:
+                                break
+                            if candidate.verb in {
+                                "input", "output", "effect", "async",
+                                "purpose", "invariant", "warning",
+                            }:
+                                continue
+                            previousEffectiveLine = candidate
+                    if (labelLine is not None
+                            and previousEffectiveLine is not None
+                            and previousEffectiveLine.verb != "done"
+                            and not source_row_terminates_before_next_label(
+                                previousEffectiveLine)):
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=targetLabel,
+                            subjectKind="label",
+                            gapEdge="caseLabelPrivateEntry",
+                            intentSlogan="wait-set case label has fallthrough predecessor",
+                            primary=span_of_line(labelLine, "caseHandlerLabel"),
+                            related=[
+                                span_of_line(caseLine, "caseSite"),
+                                span_of_line(previousEffectiveLine, "fallthroughPredecessor"),
+                            ],
+                            invariantRule=(
+                                f"`case {callName} {targetLabel}` owns the "
+                                "entry edge into its handler; the preceding "
+                                "source row must terminate or be the wait-set "
+                                "`done` row"
+                            ),
+                            specAnchor="SYNTAX.md#case",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="terminateBeforeCaseHandler",
+                                    shape="jump target <nonCaseHandlerLabel>",
+                                    evidence=[span_of_line(previousEffectiveLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="fallthrough predecessors can break dominance for materialized case results",
+                        ))
+                    for referenceLine in lines:
+                        if (referenceLine.number == caseLine.number
+                                and referenceLine.verb == "case"):
+                            continue
+                        if targetLabel not in branch_target_names_from_row(referenceLine):
+                            continue
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=targetLabel,
+                            subjectKind="label",
+                            gapEdge="caseLabelPrivateEntry",
+                            intentSlogan="wait-set case label has another predecessor",
+                            primary=span_of_line(referenceLine, "labelReference"),
+                            related=[span_of_line(caseLine, "caseSite")],
+                            invariantRule=(
+                                f"`case {callName} {targetLabel}` owns the "
+                                "entry edge into its handler; other source "
+                                "branches must not target that label"
+                            ),
+                            specAnchor="SYNTAX.md#case",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="branchToSeparateLabel",
+                                    shape="jump target <nonCaseHandlerLabel>",
+                                    evidence=[span_of_line(referenceLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="extra predecessors can break dominance for materialized case results",
+                        ))
+                    previousLabel = seenCaseLabels.get(targetLabel)
+                    if previousLabel is not None:
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=targetLabel,
+                            subjectKind="label",
+                            gapEdge="uniqueCaseLabel",
+                            intentSlogan="wait-set case label is reused",
+                            primary=span_of_line(caseLine, "caseSite"),
+                            related=[span_of_line(previousLabel, "previousCase")],
+                            invariantRule=(
+                                f"`await {waitSetName}` must branch each case "
+                                "to a distinct handler label so the selected "
+                                "call result dominates that handler"
+                            ),
+                            specAnchor="SYNTAX.md#case",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="useDistinctCaseHandler",
+                                    shape=f"case {callName} <freshHandlerLabel>",
+                                    evidence=[span_of_line(caseLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="shared wait-set handler labels can break result dominance",
+                        ))
+                    else:
+                        seenCaseLabels[targetLabel] = caseLine
+                caseLines.append(caseLine)
+                cursor += 1
+            doneLine = lines[cursor] if cursor < len(lines) and lines[cursor].verb == "done" else None
+            if doneLine is not None:
+                consumedLineNumbers.add(doneLine.number)
+                if len(doneLine.args) != 1:
+                    add_wait_set_arity_diagnostic(
+                        doneLine, waitSetName, "done <allCasesConsumedLabel>", 1)
+                else:
+                    doneLabel = doneLine.args[0]
+                    doneLabelLine = labelLineByName.get(doneLabel)
+                    if doneLabelLine is not None and doneLabelLine.number <= doneLine.number:
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=doneLabel,
+                            subjectKind="label",
+                            gapEdge="doneLabelDeclarationOrder",
+                            intentSlogan="wait-set done label appears too early",
+                            primary=span_of_line(doneLine, "doneSite"),
+                            related=[span_of_line(doneLabelLine, "labelDeclaration")],
+                            invariantRule=(
+                                f"`done {doneLabel}` must branch to a label "
+                                "declared after the wait-set `done` row"
+                            ),
+                            specAnchor="SYNTAX.md#done",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="moveDoneLabelAfterWaitSet",
+                                    shape=f"label {doneLabel}",
+                                    evidence=[span_of_line(doneLabelLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="done labels are all-consumed continuations, not ordinary entry labels",
+                        ))
+                    previousEffectiveLine = None
+                    if doneLabelLine is not None:
+                        for candidate in lines:
+                            if candidate.number >= doneLabelLine.number:
+                                break
+                            if candidate.verb in {
+                                "input", "output", "effect", "async",
+                                "purpose", "invariant", "warning",
+                            }:
+                                continue
+                            previousEffectiveLine = candidate
+                    if (doneLabelLine is not None
+                            and previousEffectiveLine is not None
+                            and previousEffectiveLine.verb != "case"
+                            and not source_row_terminates_before_next_label(
+                                previousEffectiveLine)):
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=doneLabel,
+                            subjectKind="label",
+                            gapEdge="doneLabelPrivateEntry",
+                            intentSlogan="wait-set done label has fallthrough predecessor",
+                            primary=span_of_line(doneLabelLine, "doneLabel"),
+                            related=[
+                                span_of_line(doneLine, "doneSite"),
+                                span_of_line(previousEffectiveLine, "fallthroughPredecessor"),
+                            ],
+                            invariantRule=(
+                                f"`done {doneLabel}` owns the all-consumed "
+                                "entry edge; the preceding source row must "
+                                "terminate or be the wait-set `case` row"
+                            ),
+                            specAnchor="SYNTAX.md#done",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="terminateBeforeDoneLabel",
+                                    shape="jump target <nonDoneLabel>",
+                                    evidence=[span_of_line(previousEffectiveLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="fallthrough into done can skip unconsumed wait-set cases",
+                        ))
+                    for referenceLine in lines:
+                        if (referenceLine.number == doneLine.number
+                                and referenceLine.verb == "done"):
+                            continue
+                        if doneLabel not in branch_target_names_from_row(referenceLine):
+                            continue
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=doneLabel,
+                            subjectKind="label",
+                            gapEdge="doneLabelPrivateEntry",
+                            intentSlogan="wait-set done label has another predecessor",
+                            primary=span_of_line(referenceLine, "labelReference"),
+                            related=[span_of_line(doneLine, "doneSite")],
+                            invariantRule=(
+                                f"`done {doneLabel}` owns the all-consumed "
+                                "entry edge into its continuation; other "
+                                "source branches must not target that label"
+                            ),
+                            specAnchor="SYNTAX.md#done",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="branchToSeparateLabel",
+                                    shape="jump target <nonDoneLabel>",
+                                    evidence=[span_of_line(referenceLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="direct entry into done can skip unconsumed wait-set cases",
+                        ))
+                    for caseLine in caseLines:
+                        if len(caseLine.args) != 2 or caseLine.args[1] != doneLabel:
+                            continue
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=doneLabel,
+                            subjectKind="label",
+                            gapEdge="caseDoneLabelDisjoint",
+                            intentSlogan="wait-set case label matches done label",
+                            primary=span_of_line(caseLine, "caseSite"),
+                            related=[span_of_line(doneLine, "doneSite")],
+                            invariantRule=(
+                                f"`await {waitSetName}` case handlers must be "
+                                "disjoint from the `done` label; `done` is only "
+                                "entered after every case has been consumed"
+                            ),
+                            specAnchor="SYNTAX.md#done",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="splitCaseAndDoneLabels",
+                                    shape=(
+                                        f"case {caseLine.args[0]} <freshHandlerLabel>\n"
+                                        f"done {doneLabel}"
+                                    ),
+                                    evidence=[
+                                        span_of_line(caseLine),
+                                        span_of_line(doneLine),
+                                    ],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="the all-consumed path must not enter a selected-case handler",
+                        ))
+            if not caseLines:
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T1_SPEC,
+                    code="SS3509",
+                    kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                    severity=Severity.ERROR,
+                    subjectName=waitSetName,
+                    subjectKind="awaitWaitSet",
+                    gapEdge="case",
+                    intentSlogan="wait set has no cases",
+                    primary=span_of_line(sourceLine, "awaitSite"),
+                    invariantRule=(
+                        f"`await {waitSetName}` followed by `done` must include "
+                        "at least one `case CALL LABEL` row"
+                    ),
+                    specAnchor="SYNTAX.md#case",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="addCase",
+                            shape=f"case <startedCall> <handlerLabel>\ndone <doneLabel>",
+                            evidence=[span_of_line(sourceLine)],
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    blocksCompile=True,
+                    effort=Effort.TRIVIAL,
+                    passProvenance="check_await_wait_set_shape",
+                    agentHint="a wait set with no selectable futures cannot make progress",
+                ))
+            if doneLine is None:
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T1_SPEC,
+                    code="SS3509",
+                    kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                    severity=Severity.ERROR,
+                    subjectName=waitSetName,
+                    subjectKind="awaitWaitSet",
+                    gapEdge="done",
+                    intentSlogan="wait set missing done",
+                    primary=span_of_line(sourceLine, "awaitSite"),
+                    invariantRule=(
+                        f"`await {waitSetName}` with `case` rows must end with "
+                        "`done LABEL` so the all-consumed path is explicit"
+                    ),
+                    specAnchor="SYNTAX.md#done",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="addDone",
+                            shape="done <allCasesConsumedLabel>",
+                            evidence=[span_of_line(caseLines[-1] if caseLines else sourceLine)],
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    blocksCompile=True,
+                    effort=Effort.TRIVIAL,
+                    passProvenance="check_await_wait_set_shape",
+                    agentHint="the compiler refuses await wait sets without an all-consumed branch",
+                ))
+            index = (cursor + 1) if doneLine is not None else cursor
+
+        for sourceLine in lines:
+            if sourceLine.verb not in {"case", "done"}:
+                continue
+            if sourceLine.number in consumedLineNumbers:
+                continue
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS3509",
+                kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                severity=Severity.ERROR,
+                subjectName=sourceLine.args[0] if sourceLine.args else sourceLine.verb,
+                subjectKind="awaitWaitSetRow",
+                gapEdge="await",
+                intentSlogan="wait-set row is orphaned",
+                primary=span_of_line(sourceLine, f"{sourceLine.verb}Site"),
+                invariantRule=(
+                    f"`{sourceLine.verb}` rows must immediately follow an "
+                    "`await WAIT_SET` block"
+                ),
+                specAnchor="SYNTAX.md#await",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="moveUnderAwait",
+                        shape="await <waitSetName>\ncase <startedCall> <handlerLabel>\ndone <allCasesConsumedLabel>",
+                        evidence=[span_of_line(sourceLine)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.TRIVIAL,
+                passProvenance="check_await_wait_set_shape",
+                agentHint="case/done are structural rows, not standalone control flow",
+            ))
+
+        for sourceLine in lines:
+            if sourceLine.verb != "await" or not sourceLine.args:
+                continue
+            if sourceLine.number in waitSetAwaitLineNumbers:
+                continue
+            caseLine = caseCompletionLines.get(sourceLine.args[0])
+            if caseLine is None:
+                continue
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS3509",
+                kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                severity=Severity.ERROR,
+                subjectName=sourceLine.args[0],
+                subjectKind="call",
+                gapEdge="singleCompletionEdge",
+                intentSlogan="call completed by both case and await",
+                primary=span_of_line(sourceLine, "awaitSite"),
+                related=[span_of_line(caseLine, "caseSite")],
+                invariantRule=(
+                    f"`case {sourceLine.args[0]} ...` inside an await wait set "
+                    "already awaits and materializes that call before branching; "
+                    f"do not also write `await {sourceLine.args[0]}`"
+                ),
+                specAnchor="SYNTAX.md#await",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="removeDuplicateAwait",
+                        shape=f"# remove `await {sourceLine.args[0]}`",
+                        evidence=[span_of_line(sourceLine)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.TRIVIAL,
+                passProvenance="check_await_wait_set_shape",
+                agentHint="await wait-set case rows own the future consumption",
+            ))
+        for callName, caseLine in caseCompletionLines.items():
+            callFact = operationCalls.get(callName)
+            if callFact is None:
+                continue
+            for startLine in callFact.start_lines:
+                if startLine.number <= caseLine.number:
+                    continue
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T1_SPEC,
+                    code="SS3509",
+                    kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                    severity=Severity.ERROR,
+                    subjectName=callName,
+                    subjectKind="call",
+                    gapEdge="startAfterCaseCompletion",
+                    intentSlogan="call restarted after wait-set case",
+                    primary=span_of_line(startLine, "startSite"),
+                    related=[span_of_line(caseLine, "caseSite")],
+                    invariantRule=(
+                        f"`case {callName} ...` consumes that call future; "
+                        f"do not later write `start {callName}`. Use a fresh "
+                        "call name for a new future."
+                    ),
+                    specAnchor="SYNTAX.md#case",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="useFreshCallName",
+                            shape=(
+                                f"call <freshCallName> {callFact.target}\n"
+                                "start <freshCallName>"
+                            ),
+                            evidence=[span_of_line(startLine)],
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    blocksCompile=True,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_await_wait_set_shape",
+                    agentHint="wait-set cases are one-shot future ownership transfers",
+                ))
+    return diagnostics
+
+
 def check_async_call_missing_boundary(facts: ExtendedFacts) -> List[Diagnostic]:
     """An awaited call should declare BOTH a `timeout CALL DURATION` and
     a `cancelOn CALL TOKEN` — without them the await is unbounded and
@@ -7755,6 +8696,7 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
         callTargetByCallName = operationCallTargetsByOperationName.get(operation.name, {})
         declaredLabelNames = operationLabelsByOperationName.get(operation.name, set())
         declaredValueNames: Set[str] = set(moduleScopeValueNames)
+        waitSetAwaitLines = wait_set_await_line_numbers(operation)
         for declarationLine in operation.lines:
             if not declarationLine.tokens or is_comment(declarationLine):
                 continue
@@ -7801,6 +8743,10 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
                 referencedCallName = parsedIgnore[1]
             elif parsedBranchErrorSource is not None:
                 referencedCallName = parsedBranchErrorSource
+            elif verb == "await" and sourceLine.number in waitSetAwaitLines:
+                referencedCallName = None
+            elif verb == "case" and sourceLine.args:
+                referencedCallName = sourceLine.args[0]
             elif verb in CALL_REFERENCE_VERBS_AT_ARG_ZERO and sourceLine.args:
                 referencedCallName = sourceLine.args[0]
             elif parsedBind is not None:
@@ -9862,11 +10808,16 @@ NULLABLE_HTTP_REQUEST_READS: frozenset = frozenset({
     "http.multipartPartContentType",
 })
 
+HTTP_REQUEST_READER_TARGETS: frozenset = (
+    NON_NULLABLE_HTTP_REQUEST_READS | NULLABLE_HTTP_REQUEST_READS
+)
+
 # Response writers that reject a null `body` argument at runtime. Passing
 # a nullable bind to any of these surfaces the adapter's null-body 500
 # unless the handler has guarded the pointer first OR explicitly opted
 # into the failure-path contract via a warning text marker.
 HTTP_RESPONSE_BODY_WRITERS: frozenset = frozenset({
+    "http.responseHtml",
     "http.responseText",
     "http.responseBytes",
     "http.responseSseEvent",
@@ -10417,6 +11368,103 @@ def check_unguarded_http_input(facts: ExtendedFacts) -> List[Diagnostic]:
                             "exposes adapter internals to clients"
                         ),
                     ))
+    return diagnostics
+
+
+def check_untrusted_http_html_hydration(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3616 — request-derived bytes may flow into html.hydrate only through
+    escaped string-like holes. Passing them as HtmlFragment / HtmlDocument
+    would opt into raw insertion and bypass the compiler's HTML escaping.
+    """
+    diagnostics: List[Diagnostic] = []
+    for operationName, operationFact in facts.base.operations.items():
+        operationCalls = collect_operation_calls(operationFact)
+        if not operationCalls:
+            continue
+        untrustedBindLines: Dict[str, SourceLine] = {}
+        for callFact in operationCalls.values():
+            if callFact.target not in HTTP_REQUEST_READER_TARGETS:
+                continue
+            for bindLine in [*callFact.bind_lines, *callFact.bind_ok_lines]:
+                parsedBind = bind_parts(bindLine)
+                if parsedBind is None:
+                    continue
+                untrustedBindLines[parsedBind[1]] = bindLine
+        if not untrustedBindLines:
+            continue
+
+        valueTypes = _operation_value_types(facts, operationFact)
+        for callFact in operationCalls.values():
+            if not callFact.target.startswith("html.hydrate."):
+                continue
+            templateName = callFact.target[len("html.hydrate."):]
+            for argLine in callFact.arg_lines:
+                parsedArgument = argument_parts(argLine)
+                if parsedArgument is None:
+                    continue
+                _callName, parameterName, declaredType, valueName = parsedArgument
+                sourceLine = untrustedBindLines.get(valueName)
+                if sourceLine is None:
+                    continue
+                effectiveType = declaredType or valueTypes.get(valueName)
+                resolvedType = _resolve_type_alias_head(
+                    effectiveType, facts.base.type_aliases)
+                if resolvedType not in _HTML_RAW_HYDRATION_TYPES:
+                    continue
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T2_LOWERING,
+                    code="SS3616",
+                    kind="webserver.untrustedHtmlHydration",
+                    severity=Severity.ERROR,
+                    subjectName=valueName,
+                    subjectKind="htmlHydrateArgument",
+                    gapEdge="html.trustBoundary",
+                    intentSlogan=(
+                        f"request-derived `{valueName}` reaches raw HTML "
+                        f"hydrate arg `{parameterName}`"
+                    ),
+                    primary=span_of_line(argLine, "htmlHydrateArgument"),
+                    related=[
+                        span_of_line(sourceLine, "requestReadBind"),
+                        span_of_line(callFact.line, "htmlHydrateCall"),
+                    ],
+                    invariantRule=(
+                        "values bound from http.request* readers are untrusted; "
+                        "they may be passed to `html.hydrate.*` only as "
+                        "string-like arguments that the compiler escapes. Raw "
+                        "HTML types (`HtmlFragment`, `HtmlTrustedFragment`, "
+                        "`HtmlDocument`) require a separate reviewed escape or "
+                        "trust-conversion operation before hydration."
+                    ),
+                    specAnchor="SYNTAX.md#html",
+                    citations=narrative_citations_for_operation(facts, operationName),
+                    fixCandidates=[
+                        FixCandidate(
+                            name="passAsEscapedString",
+                            shape=(
+                                f"argument {callFact.name} {parameterName} "
+                                f"String {valueName}"
+                            ),
+                        ),
+                        FixCandidate(
+                            name="insertTrustConversion",
+                            shape=(
+                                f"# convert `{valueName}` through a reviewed "
+                                "HTML sanitizer/trust boundary before passing a "
+                                f"{resolvedType or 'raw HTML'} argument"
+                            ),
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    blocksCompile=True,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_untrusted_http_html_hydration",
+                    agentHint=(
+                        "String hydrate holes are escaped by the compiler; raw "
+                        "fragment/document holes are not. Do not type request "
+                        "bytes as raw HTML without a visible sanitizer boundary."
+                    ),
+                ))
     return diagnostics
 
 
@@ -11446,7 +12494,7 @@ EXPORT_VERB_DECLARATION_KIND: Dict[str, str] = {
 BUILD_TAPE_PROJECT_VERBS: Set[str] = {
     "modulePath", "languageVersion", "projectVersion", "projectLicense",
     "sourceRoot", "mainFile", "mainOperation", "testPattern", "testRoot",
-    "targetRuntime", "buildProfile", "runtimeChecks", "asyncRuntime",
+    "targetRuntime", "buildProfile", "runtimeChecks", "asyncRuntime", "guiBackend",
     "persistLlvmIr", "nativeOutput", "keepResources", "resourcesDir",
     "nativeHttpHost", "nativeHttpPort",
     "formatterSetting", "linterSetting", "docsOutput",
@@ -11464,7 +12512,7 @@ BUILD_TAPE_PROJECT_VERBS: Set[str] = {
 BUILD_TAPE_SINGLETON_VERBS: Set[str] = {
     "modulePath", "languageVersion", "projectVersion", "projectLicense",
     "sourceRoot", "mainFile", "mainOperation", "targetRuntime",
-    "buildProfile", "runtimeChecks", "asyncRuntime", "persistLlvmIr", "nativeOutput",
+    "buildProfile", "runtimeChecks", "asyncRuntime", "guiBackend", "persistLlvmIr", "nativeOutput",
     "keepResources", "resourcesDir", "nativeHttpHost", "nativeHttpPort",
     "docsOutput", "optLevel", "emitLlvmIr", "llvmIrOutput",
     "emitOptimizedLlvmIr", "optimizedLlvmIrOutput",
@@ -11484,6 +12532,7 @@ BUILD_TAPE_CHOICES: Dict[str, Set[str]] = {
     "buildProfile": {"dev", "prod"},
     "runtimeChecks": {"off", "traps", "panic"},
     "asyncRuntime": {"none", "libuv"},
+    "guiBackend": {"win32", "winui3"},
     "persistLlvmIr": {"auto", "yes", "no"},
     "keepResources": {"yes", "no", "true", "false", "on", "off", "1", "0"},
     "emitLlvmIr": {"auto", "yes", "no"},
@@ -12441,6 +13490,22 @@ def check_project_build_tape_schema(facts: ExtendedFacts) -> List[Diagnostic]:
                 "`target.profile` must be dev or prod",
                 "BuildPlan target.profile lowers to buildProfile.",
                 "\"profile\": \"dev\"",
+            ))
+        gui_backend = _regular_build_plan_text(target, "guiBackend") or ""
+        if gui_backend and gui_backend not in BUILD_TAPE_CHOICES["guiBackend"]:
+            diagnostics.append(_build_tape_diagnostic(
+                plan_line,
+                "SS2525",
+                "buildTape.invalidChoiceValue",
+                gui_backend,
+                "target.guiBackend",
+                "closedEnumValue",
+                f"`{gui_backend}` is not valid for BuildPlan target.guiBackend",
+                (
+                    "BuildPlan target.guiBackend lowers to guiBackend and "
+                    f"accepts only {', '.join(sorted(BUILD_TAPE_CHOICES['guiBackend']))}."
+                ),
+                "\"guiBackend\": \"win32\"",
             ))
         runtime_checks = _regular_build_plan_text(target, "runtimeChecks") or ""
         if runtime_checks and runtime_checks not in BUILD_TAPE_CHOICES["runtimeChecks"]:
@@ -14213,6 +15278,7 @@ CHECKERS = [
     check_unawaited_submit_work,
     check_select_without_cases,
     check_select_case_references_unknown_select,
+    check_await_wait_set_shape,
     check_async_call_missing_boundary,
     check_await_without_start,
     check_started_call_without_await,
@@ -14238,6 +15304,7 @@ CHECKERS = [
     check_invalid_route_method,
     check_middleware_missing_response_effect,
     check_unguarded_http_input,
+    check_untrusted_http_html_hydration,
     check_route_coverage_drift,
     check_legacy_null_body_marker,
     check_pins_null_body_failure_path_missing_rationale,

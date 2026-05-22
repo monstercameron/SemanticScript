@@ -98,9 +98,22 @@ int ss_http_client_fetch_text_start(
     size_t max_body_bytes,
     SSHttpFetchFuture **out_future
 );
+int ss_http_client_fetch_text_request_start(
+    SSAsyncLoop *loop,
+    const char *url,
+    unsigned long long timeout_ms,
+    size_t max_body_bytes,
+    unsigned int redirect_limit,
+    SSHttpFetchFuture **out_future
+);
 int ss_http_client_fetch_text_await(SSAsyncLoop *loop, SSHttpFetchFuture *future);
+int ss_http_client_fetch_is_ready(const SSHttpFetchFuture *future);
 long ss_http_client_fetch_status(const SSHttpFetchFuture *future);
 const char *ss_http_client_fetch_body_text(const SSHttpFetchFuture *future);
+int ss_http_client_fetch_body_text_copy(
+    const SSHttpFetchFuture *future,
+    char **out_body
+);
 const void *ss_http_client_fetch_body_bytes(const SSHttpFetchFuture *future);
 size_t ss_http_client_fetch_body_length(const SSHttpFetchFuture *future);
 int ss_http_client_fetch_error_code(const SSHttpFetchFuture *future);

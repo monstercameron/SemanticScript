@@ -14,8 +14,9 @@ Current status:
   and body-byte reads, bounded multipart part reads, response text/bytes,
   one-shot SSE event bodies, response header writes, and one path-scoped
   middleware callback.
-- Request bodies are bounded to 64 KiB of headers plus body. Larger requests
-  return `413 Payload Too Large`.
+- Buffered requests are capped at 1 MiB by the fallback adapter to prevent
+  unbounded allocation. Apps enforce smaller API body policies through
+  `http.requestBodyLength` and return their own envelopes.
 - `SEM_HTTP_WITH_H2O=ON` is reserved for the next step: replacing the fallback
   backend with `libh2o-evloop` / H2O.
 

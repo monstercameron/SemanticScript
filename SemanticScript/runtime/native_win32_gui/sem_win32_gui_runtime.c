@@ -7,16 +7,36 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <commctrl.h>
 
 #ifndef EM_SETCUEBANNER
 #define EM_SETCUEBANNER 0x1501
 #endif
 
+#ifndef DWMWA_WINDOW_CORNER_PREFERENCE
+#define DWMWA_WINDOW_CORNER_PREFERENCE 33
+#endif
+
+#ifndef DWMWA_SYSTEMBACKDROP_TYPE
+#define DWMWA_SYSTEMBACKDROP_TYPE 38
+#endif
+
+#ifndef DWMWCP_ROUND
+#define DWMWCP_ROUND 2
+#endif
+
+#ifndef DWMSBT_MAINWINDOW
+#define DWMSBT_MAINWINDOW 2
+#endif
+
 #define SS_GUI_CLASS_NAME L"SemanticScriptGuiWindow"
 #define SS_GUI_DEFAULT_WINDOW_WIDTH 800
 #define SS_GUI_DEFAULT_WINDOW_HEIGHT 600
-#define SS_GUI_PADDING 12
-#define SS_GUI_GAP 8
+#define SS_GUI_PADDING 16
+#define SS_GUI_GAP 10
+
+typedef HRESULT (WINAPI *SSGuiDwmSetWindowAttributeFn)(HWND, DWORD, LPCVOID, DWORD);
+typedef UINT (WINAPI *SSGuiGetDpiForWindowFn)(HWND);
 
 typedef struct SSGuiWindowState SSGuiWindowState;
 typedef struct SSGuiControlState SSGuiControlState;
@@ -46,6 +66,8 @@ struct SSGuiSession {
     size_t window_count;
     SSGuiControlState *controls;
     size_t control_count;
+    HFONT control_font;
+    int owns_control_font;
     char *text_buffer;
     size_t text_buffer_capacity;
     int32_t run_status;
@@ -266,6 +288,128 @@ static wchar_t *utf8_to_wide(const char *text) {
     return result;
 }
 
+static int32_t initialize_common_controls(void) {
+    INITCOMMONCONTROLSEX controls;
+
+    memset(&controls, 0, sizeof(controls));
+    controls.dwSize = sizeof(controls);
+    controls.dwICC = ICC_STANDARD_CLASSES | ICC_WIN95_CLASSES;
+
+    return InitCommonControlsEx(&controls) ? SS_GUI_OK : SS_GUI_ERR_PLATFORM;
+}
+
+static UINT dpi_for_window(HWND hwnd) {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    HWND dc_owner = hwnd;
+    HDC dc;
+    int dpi;
+
+    if (user32 != NULL && hwnd != NULL) {
+        SSGuiGetDpiForWindowFn get_dpi_for_window =
+            (SSGuiGetDpiForWindowFn)GetProcAddress(user32, "GetDpiForWindow");
+        if (get_dpi_for_window != NULL) {
+            UINT window_dpi = get_dpi_for_window(hwnd);
+            if (window_dpi > 0) {
+                return window_dpi;
+            }
+        }
+    }
+
+    dc = GetDC(hwnd);
+    if (dc == NULL && hwnd != NULL) {
+        dc_owner = NULL;
+        dc = GetDC(NULL);
+    }
+    if (dc == NULL) {
+        return 96;
+    }
+
+    dpi = GetDeviceCaps(dc, LOGPIXELSX);
+    ReleaseDC(dc_owner, dc);
+
+    return dpi > 0 ? (UINT)dpi : 96;
+}
+
+static int scale_for_window(HWND hwnd, int value) {
+    if (value <= 0) {
+        return value;
+    }
+    return MulDiv(value, (int)dpi_for_window(hwnd), 96);
+}
+
+static int32_t initialize_session_font(SSGuiSession *session) {
+    NONCLIENTMETRICSW metrics;
+
+    if (session == NULL) {
+        return SS_GUI_ERR_CONFIG;
+    }
+
+    memset(&metrics, 0, sizeof(metrics));
+    metrics.cbSize = sizeof(metrics);
+    if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(metrics), &metrics, 0)) {
+        session->control_font = CreateFontIndirectW(&metrics.lfMessageFont);
+        if (session->control_font != NULL) {
+            session->owns_control_font = 1;
+            return SS_GUI_OK;
+        }
+    }
+
+    session->control_font = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+    session->owns_control_font = 0;
+    return session->control_font != NULL ? SS_GUI_OK : SS_GUI_ERR_PLATFORM;
+}
+
+static void release_session_font(SSGuiSession *session) {
+    if (session != NULL && session->owns_control_font && session->control_font != NULL) {
+        DeleteObject(session->control_font);
+    }
+    if (session != NULL) {
+        session->control_font = NULL;
+        session->owns_control_font = 0;
+    }
+}
+
+static void apply_modern_window_frame(HWND hwnd) {
+    HMODULE dwmapi;
+    SSGuiDwmSetWindowAttributeFn set_window_attribute;
+    int corner_preference = DWMWCP_ROUND;
+    int backdrop_type = DWMSBT_MAINWINDOW;
+
+    if (hwnd == NULL) {
+        return;
+    }
+
+    dwmapi = LoadLibraryW(L"dwmapi.dll");
+    if (dwmapi == NULL) {
+        return;
+    }
+
+    set_window_attribute =
+        (SSGuiDwmSetWindowAttributeFn)GetProcAddress(dwmapi, "DwmSetWindowAttribute");
+    if (set_window_attribute != NULL) {
+        (void)set_window_attribute(
+            hwnd,
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            &corner_preference,
+            sizeof(corner_preference)
+        );
+        (void)set_window_attribute(
+            hwnd,
+            DWMWA_SYSTEMBACKDROP_TYPE,
+            &backdrop_type,
+            sizeof(backdrop_type)
+        );
+    }
+
+    FreeLibrary(dwmapi);
+}
+
+static void apply_control_font(const SSGuiSession *session, HWND hwnd) {
+    if (session != NULL && session->control_font != NULL && hwnd != NULL) {
+        SendMessageW(hwnd, WM_SETFONT, (WPARAM)session->control_font, TRUE);
+    }
+}
+
 static SSGuiWindowState *find_window_state(SSGuiSession *session, SSGuiWindowId id) {
     size_t index;
 
@@ -401,19 +545,29 @@ static int32_t dispatch_control_event(
 }
 
 static int control_preferred_height(const SSGuiControlState *control) {
+    HWND hwnd = control != NULL && control->window != NULL ? control->window->hwnd : NULL;
+    int base_height;
+
     switch (control->config->kind) {
         case SS_GUI_CONTROL_TEXT_LABEL:
-            return 22;
+            base_height = 24;
+            break;
         case SS_GUI_CONTROL_TEXT_BOX:
-            return 28;
+            base_height = 32;
+            break;
         case SS_GUI_CONTROL_BUTTON:
         case SS_GUI_CONTROL_CHECK_BOX:
-            return 32;
+            base_height = 36;
+            break;
         case SS_GUI_CONTROL_LIST_BOX:
-            return 120;
+            base_height = 144;
+            break;
         default:
-            return 28;
+            base_height = 32;
+            break;
     }
+
+    return scale_for_window(hwnd, base_height);
 }
 
 static int count_visible_controls(const SSGuiWindowState *window) {
@@ -436,19 +590,21 @@ static void layout_vertical_stack(SSGuiWindowState *window, const RECT *client_r
     int visible_count = count_visible_controls(window);
     int client_width = client_rect->right - client_rect->left;
     int client_height = client_rect->bottom - client_rect->top;
-    int content_width = client_width - (SS_GUI_PADDING * 2);
+    int padding = scale_for_window(window->hwnd, SS_GUI_PADDING);
+    int gap = scale_for_window(window->hwnd, SS_GUI_GAP);
+    int content_width = client_width - (padding * 2);
     int available_height;
     int fixed_total = 0;
     int flexible_count = 0;
     int flexible_height = 0;
-    int y = SS_GUI_PADDING;
+    int y = padding;
     size_t index;
 
     if (visible_count <= 0 || content_width <= 0 || client_height <= 0) {
         return;
     }
 
-    available_height = client_height - (SS_GUI_PADDING * 2) - (SS_GUI_GAP * (visible_count - 1));
+    available_height = client_height - (padding * 2) - (gap * (visible_count - 1));
     if (available_height < 0) {
         available_height = client_height;
     }
@@ -466,9 +622,10 @@ static void layout_vertical_stack(SSGuiWindowState *window, const RECT *client_r
     }
 
     if (flexible_count > 0) {
+        int minimum_list_height = scale_for_window(window->hwnd, 88);
         flexible_height = (available_height - fixed_total) / flexible_count;
-        if (flexible_height < 80) {
-            flexible_height = 80;
+        if (flexible_height < minimum_list_height) {
+            flexible_height = minimum_list_height;
         }
     }
 
@@ -483,8 +640,8 @@ static void layout_vertical_stack(SSGuiWindowState *window, const RECT *client_r
         height = control->config->kind == SS_GUI_CONTROL_LIST_BOX
             ? flexible_height
             : control_preferred_height(control);
-        MoveWindow(control->hwnd, SS_GUI_PADDING, y, content_width, height, TRUE);
-        y += height + SS_GUI_GAP;
+        MoveWindow(control->hwnd, padding, y, content_width, height, TRUE);
+        y += height + gap;
     }
 }
 
@@ -493,17 +650,19 @@ static void layout_horizontal_stack(SSGuiWindowState *window, const RECT *client
     int visible_count = count_visible_controls(window);
     int client_width = client_rect->right - client_rect->left;
     int client_height = client_rect->bottom - client_rect->top;
-    int content_height = client_height - (SS_GUI_PADDING * 2);
+    int padding = scale_for_window(window->hwnd, SS_GUI_PADDING);
+    int gap = scale_for_window(window->hwnd, SS_GUI_GAP);
+    int content_height = client_height - (padding * 2);
     int available_width;
     int control_width;
-    int x = SS_GUI_PADDING;
+    int x = padding;
     size_t index;
 
     if (visible_count <= 0 || content_height <= 0 || client_width <= 0) {
         return;
     }
 
-    available_width = client_width - (SS_GUI_PADDING * 2) - (SS_GUI_GAP * (visible_count - 1));
+    available_width = client_width - (padding * 2) - (gap * (visible_count - 1));
     control_width = available_width / visible_count;
     if (control_width < 1) {
         control_width = 1;
@@ -514,8 +673,8 @@ static void layout_horizontal_stack(SSGuiWindowState *window, const RECT *client
         if (control->window != window || control->hwnd == NULL || !control->config->visible) {
             continue;
         }
-        MoveWindow(control->hwnd, x, SS_GUI_PADDING, control_width, content_height, TRUE);
-        x += control_width + SS_GUI_GAP;
+        MoveWindow(control->hwnd, x, padding, control_width, content_height, TRUE);
+        x += control_width + gap;
     }
 }
 
@@ -610,6 +769,8 @@ static int32_t create_windows(SSGuiSession *session) {
         if (window->hwnd == NULL) {
             return SS_GUI_ERR_PLATFORM;
         }
+
+        apply_modern_window_frame(window->hwnd);
     }
 
     return SS_GUI_OK;
@@ -676,6 +837,7 @@ static int32_t create_controls(SSGuiSession *session) {
         SSGuiWindowState *window = find_window_state(session, config->window_id);
         wchar_t *text = utf8_to_wide(config->text);
         HWND hwnd;
+        int padding;
 
         if (window == NULL || window->hwnd == NULL) {
             free(text);
@@ -686,14 +848,15 @@ static int32_t create_controls(SSGuiSession *session) {
         }
 
         control->window = window;
+        padding = scale_for_window(window->hwnd, SS_GUI_PADDING);
         hwnd = CreateWindowExW(
             0,
             control_class_name(config->kind),
             text,
             control_style(config),
-            SS_GUI_PADDING,
-            SS_GUI_PADDING,
-            config->width > 0 ? config->width : 100,
+            padding,
+            padding,
+            config->width > 0 ? config->width : scale_for_window(window->hwnd, 160),
             config->height > 0 ? config->height : control_preferred_height(control),
             window->hwnd,
             (HMENU)(UINT_PTR)config->id,
@@ -708,6 +871,7 @@ static int32_t create_controls(SSGuiSession *session) {
 
         control->hwnd = hwnd;
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)control);
+        apply_control_font(session, hwnd);
 
         if (!config->enabled) {
             EnableWindow(hwnd, FALSE);
@@ -1043,6 +1207,11 @@ int32_t ss_gui_application_run(const SSGuiApplicationConfig *config) {
     session.control_count = config->control_count;
     session.run_status = SS_GUI_OK;
 
+    status = initialize_common_controls();
+    if (status != SS_GUI_OK) {
+        return status;
+    }
+
     if (register_gui_window_class(session.instance) == 0) {
         return SS_GUI_ERR_PLATFORM;
     }
@@ -1071,12 +1240,20 @@ int32_t ss_gui_application_run(const SSGuiApplicationConfig *config) {
         session.controls[index].config = &config->controls[index];
     }
 
+    status = initialize_session_font(&session);
+    if (status != SS_GUI_OK) {
+        free(session.controls);
+        free(session.windows);
+        return status;
+    }
+
     status = create_windows(&session);
     if (status == SS_GUI_OK) {
         status = create_controls(&session);
     }
     if (status != SS_GUI_OK) {
         destroy_remaining_windows(&session);
+        release_session_font(&session);
         free(session.controls);
         free(session.windows);
         return status;
@@ -1085,6 +1262,7 @@ int32_t ss_gui_application_run(const SSGuiApplicationConfig *config) {
     main_window = find_window_state(&session, config->main_window_id);
     if (main_window == NULL || main_window->hwnd == NULL) {
         destroy_remaining_windows(&session);
+        release_session_font(&session);
         free(session.controls);
         free(session.windows);
         return SS_GUI_ERR_CONFIG;
@@ -1117,6 +1295,7 @@ int32_t ss_gui_application_run(const SSGuiApplicationConfig *config) {
     }
 
     destroy_remaining_windows(&session);
+    release_session_font(&session);
     free(session.text_buffer);
     free(session.controls);
     free(session.windows);

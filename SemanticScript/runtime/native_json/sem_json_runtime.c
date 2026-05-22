@@ -372,6 +372,123 @@ size_t ss_json_builder_length(const SSJsonBuilder *builder) {
     return builder->length;
 }
 
+int ss_json_stringify_string(
+    const char *value,
+    char *scratch,
+    int64_t scratch_capacity,
+    const char **out
+) {
+    if (scratch == NULL || out == NULL || scratch_capacity < 2) {
+        return SS_JSON_ERR_CONFIG;
+    }
+    *out = NULL;
+    SSJsonBuilder builder;
+    memset(&builder, 0, sizeof(builder));
+    builder.buffer = scratch;
+    builder.capacity = (size_t)scratch_capacity;
+    builder.length = 0;
+    builder.error_state = SS_JSON_OK;
+    builder.buffer[0] = '\0';
+    int rc = builder_append_quoted_string(&builder, value);
+    if (rc != SS_JSON_OK) {
+        scratch[0] = '\0';
+        return rc;
+    }
+    *out = scratch;
+    return SS_JSON_OK;
+}
+
+int ss_json_stringify_int64(
+    long long value,
+    char *scratch,
+    int64_t scratch_capacity,
+    const char **out
+) {
+    if (scratch == NULL || out == NULL || scratch_capacity < 2) {
+        return SS_JSON_ERR_CONFIG;
+    }
+    *out = NULL;
+    SSJsonBuilder builder;
+    memset(&builder, 0, sizeof(builder));
+    builder.buffer = scratch;
+    builder.capacity = (size_t)scratch_capacity;
+    builder.length = 0;
+    builder.error_state = SS_JSON_OK;
+    builder.buffer[0] = '\0';
+    char number_text[32];
+    int written = snprintf(number_text, sizeof(number_text), "%lld", value);
+    if (written < 0 || written >= (int)sizeof(number_text)) {
+        scratch[0] = '\0';
+        return SS_JSON_ERR_OVERFLOW;
+    }
+    int rc = builder_append_bytes(&builder, number_text, (size_t)written);
+    if (rc != SS_JSON_OK) {
+        scratch[0] = '\0';
+        return rc;
+    }
+    *out = scratch;
+    return SS_JSON_OK;
+}
+
+int ss_json_stringify_double(
+    double value,
+    char *scratch,
+    int64_t scratch_capacity,
+    const char **out
+) {
+    if (scratch == NULL || out == NULL || scratch_capacity < 2) {
+        return SS_JSON_ERR_CONFIG;
+    }
+    *out = NULL;
+    SSJsonBuilder builder;
+    memset(&builder, 0, sizeof(builder));
+    builder.buffer = scratch;
+    builder.capacity = (size_t)scratch_capacity;
+    builder.length = 0;
+    builder.error_state = SS_JSON_OK;
+    builder.buffer[0] = '\0';
+    char number_text[32];
+    int written = snprintf(number_text, sizeof(number_text), "%.17g", value);
+    if (written < 0 || written >= (int)sizeof(number_text)) {
+        scratch[0] = '\0';
+        return SS_JSON_ERR_OVERFLOW;
+    }
+    int rc = builder_append_bytes(&builder, number_text, (size_t)written);
+    if (rc != SS_JSON_OK) {
+        scratch[0] = '\0';
+        return rc;
+    }
+    *out = scratch;
+    return SS_JSON_OK;
+}
+
+int ss_json_stringify_bool(
+    int value_truthiness,
+    char *scratch,
+    int64_t scratch_capacity,
+    const char **out
+) {
+    if (scratch == NULL || out == NULL || scratch_capacity < 2) {
+        return SS_JSON_ERR_CONFIG;
+    }
+    *out = NULL;
+    SSJsonBuilder builder;
+    memset(&builder, 0, sizeof(builder));
+    builder.buffer = scratch;
+    builder.capacity = (size_t)scratch_capacity;
+    builder.length = 0;
+    builder.error_state = SS_JSON_OK;
+    builder.buffer[0] = '\0';
+    int rc = builder_append_cstring(
+        &builder, value_truthiness ? "true" : "false");
+    if (rc != SS_JSON_OK) {
+        scratch[0] = '\0';
+        return rc;
+    }
+    *out = scratch;
+    return SS_JSON_OK;
+}
+
 /* ----- finder (decode) helpers ----- */
 
 static const char *skip_whitespace(const char *scan) {
@@ -1345,6 +1462,59 @@ int ss_json_document_create_from_text(
     }
     *out = document;
     return SS_JSON_OK;
+}
+
+static int primitive_parse_has_only_trailing_ws(const char *scan) {
+    scan = skip_whitespace(scan);
+    return *scan == '\0';
+}
+
+int ss_json_parse_int64(const char *json_text, long long *out) {
+    if (json_text == NULL || out == NULL) {
+        return SS_JSON_ERR_CONFIG;
+    }
+    const char *scan = skip_whitespace(json_text);
+    long long int_value = 0;
+    double double_value = 0.0;
+    int is_double = 0;
+    int rc = parse_json_number(&scan, &int_value, &double_value, &is_double);
+    if (rc != SS_JSON_OK || is_double || !primitive_parse_has_only_trailing_ws(scan)) {
+        return SS_JSON_ERR_MALFORMED_PATH;
+    }
+    *out = int_value;
+    return SS_JSON_OK;
+}
+
+int ss_json_parse_double(const char *json_text, double *out) {
+    if (json_text == NULL || out == NULL) {
+        return SS_JSON_ERR_CONFIG;
+    }
+    const char *scan = skip_whitespace(json_text);
+    long long int_value = 0;
+    double double_value = 0.0;
+    int is_double = 0;
+    int rc = parse_json_number(&scan, &int_value, &double_value, &is_double);
+    if (rc != SS_JSON_OK || !primitive_parse_has_only_trailing_ws(scan)) {
+        return SS_JSON_ERR_MALFORMED_PATH;
+    }
+    *out = is_double ? double_value : (double)int_value;
+    return SS_JSON_OK;
+}
+
+int ss_json_parse_bool(const char *json_text, int *out) {
+    if (json_text == NULL || out == NULL) {
+        return SS_JSON_ERR_CONFIG;
+    }
+    const char *scan = skip_whitespace(json_text);
+    if (strncmp(scan, "true", 4) == 0 && primitive_parse_has_only_trailing_ws(scan + 4)) {
+        *out = 1;
+        return SS_JSON_OK;
+    }
+    if (strncmp(scan, "false", 5) == 0 && primitive_parse_has_only_trailing_ws(scan + 5)) {
+        *out = 0;
+        return SS_JSON_OK;
+    }
+    return SS_JSON_ERR_MALFORMED_PATH;
 }
 
 void ss_json_document_destroy(SSJsonDocument *document) {

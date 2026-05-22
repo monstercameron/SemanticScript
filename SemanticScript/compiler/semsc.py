@@ -589,6 +589,7 @@ BODY_VERBS_CODEGEN = {
     "purpose", "invariant", "warning",
     "label", "set",
     "call", "argument", "timeout", "cancelOn", "run", "runChecked", "start", "await",
+    "case", "done",
     "bind", "ignore",
     "makeError",
     "branch", "jump",
@@ -928,12 +929,24 @@ _HTML_RAW_TEXT_RE = re.compile(
 )
 _HTML_ATTR_VALUE_PREFIX_RE = re.compile(
     r"([A-Za-z_:][A-Za-z0-9_:.-]*)\s*=\s*([\"'])[^\"']*$")
+_HTML_ATTR_NAME_RE = re.compile(r"[A-Za-z_:][A-Za-z0-9_:.-]*")
 _HTML_URL_ATTRS = {
     "action",
     "formaction",
     "href",
     "poster",
     "src",
+}
+_HTML_BOOLEAN_ATTRS = {
+    "allowfullscreen", "async", "autofocus", "autoplay", "checked",
+    "controls", "default", "defer", "disabled", "formnovalidate",
+    "hidden", "inert", "ismap", "itemscope", "loop", "multiple",
+    "muted", "nomodule", "novalidate", "open", "playsinline",
+    "readonly", "required", "reversed", "selected",
+}
+_HTML_VOID_ELEMENTS = {
+    "area", "base", "br", "col", "embed", "hr", "img", "input",
+    "link", "meta", "param", "source", "track", "wbr",
 }
 _HTML_TRUST_TYPES = {
     "HtmlFragment",
@@ -976,7 +989,7 @@ _BUILD_TAPE_PROJECT_VERBS = frozenset({
     "modulePath", "languageVersion", "projectVersion", "projectLicense",
     "sourceRoot", "mainFile", "mainOperation", "testPattern", "testRoot",
     "targetRuntime", "buildProfile", "runtimeChecks", "persistLlvmIr",
-    "asyncRuntime",
+    "asyncRuntime", "guiBackend",
     "nativeOutput", "keepResources", "resourcesDir",
     "nativeHttpHost", "nativeHttpPort",
     "formatterSetting", "linterSetting", "docsOutput",
@@ -1003,7 +1016,7 @@ _BUILD_TAPE_SINGLETON_VERBS = frozenset({
     "modulePath", "languageVersion", "projectVersion", "projectLicense",
     "sourceRoot", "mainFile", "mainOperation", "targetRuntime",
     "buildProfile", "runtimeChecks", "persistLlvmIr", "nativeOutput",
-    "asyncRuntime",
+    "asyncRuntime", "guiBackend",
     "keepResources", "resourcesDir", "nativeHttpHost", "nativeHttpPort",
     "docsOutput", "optLevel", "emitLlvmIr", "llvmIrOutput",
     "emitOptimizedLlvmIr", "optimizedLlvmIrOutput",
@@ -1044,6 +1057,7 @@ _BUILD_TAPE_CHOICES = {
     "buildProfile": {"dev", "prod"},
     "runtimeChecks": {"off", "traps", "panic"},
     "asyncRuntime": {"none", "libuv"},
+    "guiBackend": {"win32", "winui3"},
     "persistLlvmIr": {"auto", "yes", "no"},
     "keepResources": {"yes", "no", "true", "false", "on", "off", "1", "0"},
     "emitLlvmIr": {"auto", "yes", "no"},
@@ -2017,6 +2031,7 @@ def _regular_build_plan_compat_source(source: str, source_path: str) -> str:
         ("cpuTune", "cpuTune"),
         ("cpuFeatureCheck", "cpuFeatureCheck"),
         ("asyncRuntime", "asyncRuntime"),
+        ("guiBackend", "guiBackend"),
         ("nativeHttpHost", "nativeHttpHost"),
         ("resourcesDir", "resourcesDir"),
         ("buildDir", "buildDir"),
@@ -2896,6 +2911,13 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
 
     # ----- operations -----
     if verb == "operation":
+        if not args:
+            raise SyntaxError(f"line {lineno}: operation requires: operation NAME")
+        if args[0] in prog.operations:
+            previous_line = prog.operations[args[0]].decl_line
+            raise SyntaxError(
+                f"line {lineno}: duplicate operation `{args[0]}`; "
+                f"first declared on line {previous_line}")
         op = Operation(args[0], decl_line=lineno)
         prog.operations[args[0]] = op
         prog.current_op = op
@@ -3096,12 +3118,14 @@ NULLABLE_HTTP_REQUEST_READS = frozenset({
 })
 
 HTTP_RESPONSE_BODY_WRITERS = frozenset({
+    "http.responseHtml",
     "http.responseText",
     "http.responseBytes",
     "http.responseSseEvent",
 })
 
 HTTP_RESPONSE_NULLABLE_SLOTS = {
+    "http.responseHtml": frozenset({"body"}),
     "http.responseText": frozenset({"body"}),
     "http.responseBytes": frozenset({"body"}),
     "http.responseSseEvent": frozenset({"event", "data"}),
@@ -3488,6 +3512,7 @@ _STRICT_SQL_STRING_TARGETS = frozenset({
 _STRICT_SQL_ARG_SLOTS = frozenset({"sql"})
 
 _STRICT_RESPONSE_WRITER_TARGETS = frozenset({
+    "http.responseHtml",
     "http.responseText",
     "http.responseBytes",
     "http.responseSseEvent",
@@ -3662,6 +3687,7 @@ class Codegen:
         self._web_route_handler_names = set()
         self._trace_seq_global = None
         self._trace_decimal_writer_id = 0
+        self._async_user_op_wrappers = {}
         self._declare_externals()
 
     def _declare_externals(self):
@@ -4066,6 +4092,84 @@ class Codegen:
         self._http_runtime_funcs[name] = fn
         return fn
 
+    def _async_user_op_wrapper(self, op_name: str, op_info: dict):
+        cached = self._async_user_op_wrappers.get(op_name)
+        if cached is not None:
+            return cached
+
+        ret_ty = op_info["return_type"]
+        param_tys = [param[1] for param in op_info["params"]]
+        context_ty = ir.LiteralStructType([I8P, I32, ret_ty] + param_tys)
+        context_ptr_ty = context_ty.as_pointer()
+        safe_name = re.sub(r"[^A-Za-z0-9_]", "_", op_name)
+        work_fn_ty = ir.FunctionType(VOID, [I8P])
+        after_fn_ty = ir.FunctionType(VOID, [I8P, I32])
+
+        work_fn = ir.Function(
+            self.module,
+            work_fn_ty,
+            name=f"__sem_async_work_{safe_name}")
+        work_builder = ir.IRBuilder(work_fn.append_basic_block("entry"))
+        work_context = work_builder.bitcast(
+            work_fn.args[0], context_ptr_ty, name="ctx")
+        arg_values = []
+        zero = ir.Constant(I32, 0)
+        for index, _param_ty in enumerate(param_tys, start=3):
+            arg_ptr = work_builder.gep(
+                work_context,
+                [zero, ir.Constant(I32, index)],
+                inbounds=True,
+                name=f"arg{index - 3}_ptr")
+            arg_values.append(
+                work_builder.load(arg_ptr, name=f"arg{index - 3}"))
+        result = work_builder.call(
+            op_info["fn"], arg_values, name=f"{safe_name}_result")
+        result_ptr = work_builder.gep(
+            work_context,
+            [zero, ir.Constant(I32, 2)],
+            inbounds=True,
+            name="result_ptr")
+        work_builder.store(result, result_ptr)
+        work_builder.ret_void()
+
+        after_fn = ir.Function(
+            self.module,
+            after_fn_ty,
+            name=f"__sem_async_after_{safe_name}")
+        after_builder = ir.IRBuilder(after_fn.append_basic_block("entry"))
+        after_context = after_builder.bitcast(
+            after_fn.args[0], context_ptr_ty, name="ctx")
+        future_ptr = after_builder.gep(
+            after_context,
+            [zero, zero],
+            inbounds=True,
+            name="future_ptr")
+        future = after_builder.load(future_ptr, name="future")
+        complete_fn = self._runtime_func(
+            "ss_async_future_complete", I32, [I8P, I32, I8P])
+        after_builder.call(
+            complete_fn,
+            [future, after_fn.args[1], after_fn.args[0]])
+        after_builder.ret_void()
+
+        # Over-allocate by slot count instead of reverse-engineering every
+        # target ABI's struct layout. The context only stores scalar/pointer
+        # values that this compiler already knows how to pass at the ABI
+        # boundary, and every supported target currently has <= 8-byte scalar
+        # alignment.
+        context_size = 64 + (len(context_ty.elements) * 8)
+        cached = {
+            "context_ty": context_ty,
+            "context_ptr_ty": context_ptr_ty,
+            "context_size": context_size,
+            "work_fn": work_fn,
+            "after_fn": after_fn,
+            "work_fn_ptr_ty": work_fn_ty.as_pointer(),
+            "after_fn_ptr_ty": after_fn_ty.as_pointer(),
+        }
+        self._async_user_op_wrappers[op_name] = cached
+        return cached
+
     def _coerce_for_libc(self, builder, value, target_typ_name: str):
         """Coerce an SSA value to match a libc parameter's declared type."""
         target_ll = llvm_type_for(self.prog, target_typ_name)
@@ -4223,7 +4327,74 @@ class Codegen:
                 chars[index] = " "
         return "".join(chars)
 
+    def _html_find_tag_end(self, body: str, tag_start: int) -> int:
+        quote = None
+        index = tag_start + 1
+        while index < len(body):
+            char = body[index]
+            if quote is not None:
+                if char == quote:
+                    quote = None
+            elif char in ("\"", "'"):
+                quote = char
+            elif char == ">":
+                return index
+            index += 1
+        return -1
+
+    def _validate_html_template_structure(self, template: HtmlTemplate,
+                                          body: str) -> None:
+        index = 0
+        while index < len(body):
+            tag_start = body.find("<", index)
+            if tag_start == -1:
+                return
+            if body.startswith("<!--", tag_start):
+                comment_end = body.find("-->", tag_start + 4)
+                if comment_end == -1:
+                    raise ValueError(
+                        f"htmlBody {template.name}: unterminated HTML comment")
+                index = comment_end + 3
+                continue
+            tag_end = self._html_find_tag_end(body, tag_start)
+            if tag_end == -1:
+                raise ValueError(
+                    f"htmlBody {template.name}: unterminated HTML tag")
+            tag_text = body[tag_start + 1:tag_end].strip()
+            if tag_text in {"", "/"}:
+                index = tag_end + 1
+                continue
+            if tag_text.startswith("{") or tag_text.startswith("/{"):
+                index = tag_end + 1
+                continue
+            if tag_text.startswith("!") or tag_text.startswith("?"):
+                index = tag_end + 1
+                continue
+            name_offset = 1 if tag_text.startswith("/") else 0
+            while name_offset < len(tag_text) and tag_text[name_offset].isspace():
+                name_offset += 1
+            tag_name_match = _HTML_ATTR_NAME_RE.match(tag_text, name_offset)
+            if tag_name_match is None:
+                raise ValueError(
+                    f"htmlBody {template.name}: malformed HTML tag `{tag_text}`")
+            tag_name = tag_name_match.group(0).lower()
+            if (not tag_text.startswith("/")
+                    and tag_name in {"script", "style"}):
+                close_match = re.search(
+                    rf"</\s*{re.escape(tag_name)}\s*>",
+                    body[tag_end + 1:],
+                    re.IGNORECASE,
+                )
+                if close_match is None:
+                    raise ValueError(
+                        f"htmlBody {template.name}: raw `{tag_name}` element "
+                        "is missing a closing tag")
+                index = tag_end + 1 + close_match.end()
+                continue
+            index = tag_end + 1
+
     def _validate_html_dynamic_holes(self, template: HtmlTemplate, body: str):
+        self._validate_html_template_structure(template, body)
         masked = self._html_mask_raw_text_elements(body)
         html_hole_spans = {
             (match.start(), match.end())
@@ -4239,6 +4410,71 @@ class Codegen:
                 f"htmlBody {template.name}: dynamic hole `{{{content}}}` "
                 "must be a bare name or dotted field path")
 
+    def _html_hole_context_from_tag(self, body: str, tag_start: int,
+                                    hole_start: int):
+        index = tag_start + 1
+        if body.startswith("!--", index):
+            return "comment", None
+        if index < hole_start and body[index] in ("!", "?"):
+            return "doctype", None
+        if index < hole_start and body[index] == "/":
+            index += 1
+        while index < hole_start and body[index].isspace():
+            index += 1
+        tag_name = _HTML_ATTR_NAME_RE.match(body, index)
+        if tag_name is None:
+            return "tag", None
+        if hole_start <= tag_name.end():
+            return "tag", None
+        index = tag_name.end()
+
+        while index <= hole_start:
+            while index < hole_start and body[index].isspace():
+                index += 1
+            if index == hole_start and hole_start < len(body) and body[hole_start] == "{":
+                return "booleanAttribute", None
+            if index >= hole_start:
+                return "tag", None
+            if body[index] in "/>":
+                return "tag", None
+            attr_match = _HTML_ATTR_NAME_RE.match(body, index)
+            if attr_match is None:
+                return "tag", None
+            attr_name = attr_match.group(0).lower()
+            if hole_start <= attr_match.end():
+                return "tag", attr_name
+            index = attr_match.end()
+            while index < hole_start and body[index].isspace():
+                index += 1
+            if index == hole_start and hole_start < len(body) and body[hole_start] == "{":
+                if attr_name in _HTML_BOOLEAN_ATTRS:
+                    return "booleanAttribute", attr_name
+                return "tag", attr_name
+            if index >= hole_start:
+                return "tag", attr_name
+            if body[index] != "=":
+                continue
+            index += 1
+            while index < hole_start and body[index].isspace():
+                index += 1
+            if index >= hole_start:
+                return "unquotedAttribute", attr_name
+            if body[index] in ("\"", "'"):
+                quote = body[index]
+                value_start = index + 1
+                quote_end = body.find(quote, value_start)
+                if quote_end == -1 or hole_start <= quote_end:
+                    return "attribute", attr_name
+                index = quote_end + 1
+                continue
+            value_start = index
+            while (index < hole_start and not body[index].isspace()
+                   and body[index] not in "/>"):
+                index += 1
+            if value_start <= hole_start <= index:
+                return "unquotedAttribute", attr_name
+        return "tag", None
+
     def _html_hole_context(self, body: str, hole_start: int):
         for raw_match in _HTML_RAW_TEXT_RE.finditer(body):
             if raw_match.start() < hole_start < raw_match.end():
@@ -4251,13 +4487,7 @@ class Codegen:
         last_gt = body.rfind(">", 0, hole_start)
         if last_lt <= last_gt:
             return "text", None
-        tag_prefix = body[last_lt + 1:hole_start]
-        if tag_prefix.lstrip().startswith("!"):
-            return "doctype", None
-        attr_match = _HTML_ATTR_VALUE_PREFIX_RE.search(tag_prefix)
-        if attr_match:
-            return "attribute", attr_match.group(1).lower()
-        return "tag", None
+        return self._html_hole_context_from_tag(body, last_lt, hole_start)
 
     def _validate_html_arg_context(self, template: HtmlTemplate, arg_name: str,
                                    type_name: str, context_kind: str,
@@ -4283,6 +4513,18 @@ class Codegen:
             raise ValueError(
                 f"htmlBody {template.name}: hole `{arg_name}` cannot "
                 f"hydrate raw `{attr_name}` text")
+        if context_kind == "unquotedAttribute":
+            raise ValueError(
+                f"htmlBody {template.name}: attribute hole `{arg_name}` "
+                f"for `{attr_name}` must be inside a quoted attribute value")
+        if context_kind == "booleanAttribute":
+            if attr_name:
+                target = f"boolean attribute `{attr_name}`"
+            else:
+                target = "boolean or dynamic attribute syntax"
+            raise ValueError(
+                f"htmlBody {template.name}: hole `{arg_name}` cannot hydrate "
+                f"{target}; boolean attribute presence must be static")
         if resolved in _HTML_STRING_TYPES:
             is_string_like = True
         else:
@@ -4300,6 +4542,11 @@ class Codegen:
             raise ValueError(
                 f"htmlBody {template.name}: hole `{arg_name}` has "
                 f"type `{type_name}` and cannot hydrate attribute `{attr_name}`")
+        if attr_name in _HTML_BOOLEAN_ATTRS:
+            raise ValueError(
+                f"htmlBody {template.name}: dynamic boolean attribute "
+                f"`{attr_name}` hole `{arg_name}` is rejected; boolean "
+                "attribute presence must be static")
         if attr_name in _HTML_URL_ATTRS:
             raise ValueError(
                 f"htmlBody {template.name}: dynamic `{attr_name}` attribute "
@@ -4864,6 +5111,28 @@ class Codegen:
                 break
         mapping = self._RUNTIME_BINDING_MAP.get(target)
         if mapping is None:
+            if target and target.startswith("native."):
+                symbol = target[len("native."):]
+                if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", symbol):
+                    raise ValueError(
+                        f"line {target_line}: invalid native runtime symbol "
+                        f"`{symbol}` for operation `{op.name}`")
+                rty = fn.function_type.return_type
+                params = list(fn.args)
+                param_tys = [param.type for param in params]
+                extern = self._runtime_func(symbol, rty, param_tys)
+                self.provenance.record_external(symbol, {
+                    "operation": op.name,
+                    "name": op.name,
+                    "target": target,
+                    "line": target_line,
+                })
+                result = builder.call(extern, params)
+                if rty == VOID:
+                    builder.ret_void()
+                else:
+                    builder.ret(result)
+                return True
             if target in self._UNSUPPORTED_DOMAIN_RUNTIME_BINDINGS:
                 raise ValueError(
                     f"line {target_line}: unsupported non-ABI runtimeBinding "
@@ -5095,9 +5364,17 @@ class Codegen:
         is_var = set()     # set of mutable var names
 
         # Pre-create blocks for every label in source order
+        declared_label_lines = {}
         for verb, args, _ln in op.lines:
             if verb == "label":
                 labels[args[0]] = fn.append_basic_block(args[0])
+                declared_label_lines[args[0]] = _ln
+        declared_label_names = set(labels.keys())
+        declared_call_names = {
+            args[0]
+            for verb, args, _ln in op.lines
+            if verb == "call" and args
+        }
 
         SENTINEL = object()
         opaque_inputs = OPAQUE_INPUTS
@@ -5324,6 +5601,522 @@ class Codegen:
                 "field_types": field_types,
             }
             return record_values[value_name]
+
+        async_loop_slot = None
+
+        def ensure_async_loop():
+            nonlocal async_loop_slot
+            if async_loop_slot is None:
+                with builder.goto_entry_block():
+                    async_loop_slot = builder.alloca(
+                        I8P, name="ss_async_loop_slot")
+                builder.store(ir.Constant(I8P, None), async_loop_slot)
+                init_fn = self._runtime_func(
+                    "ss_async_loop_init", I32, [I8P.as_pointer()])
+                loop_status = builder.call(
+                    init_fn, [async_loop_slot], name="ss_async_loop_init_status")
+                # The first async start will fail with runtime-unavailable or
+                # config if the loop did not initialize. Keep the explicit
+                # status value alive for trace/provenance without adding a
+                # second control-flow branch here.
+                _ = loop_status
+            return builder.load(async_loop_slot, name="ss_async_loop")
+
+        def record_field_value(record_symbol, field_path, target_type=None):
+            source = record_values.get(record_symbol)
+            if source is None:
+                raise ValueError(f"record `{record_symbol}` has no allocated fields")
+            slot = source["slots"].get(field_path)
+            if slot is None:
+                raise ValueError(
+                    f"record `{record_symbol}` has no field `{field_path}`")
+            value = builder.load(
+                slot,
+                name=f"{record_symbol}_{field_path.replace('.', '_')}_async")
+            if target_type is not None:
+                value = coerce_to_type(value, target_type)
+            return value
+
+        def canonical_call_target(call_obj):
+            raw_target = call_obj.get("target", "")
+            target = _TARGET_ALIASES.get(raw_target, raw_target)
+            return self.prog.operation_aliases.get(target, target)
+
+        def is_async_fetch_target(call_obj):
+            return canonical_call_target(call_obj) in {
+                "net.fetchText",
+                "fetchText",
+                "standard.net.fetchText",
+            }
+
+        operation_async_enabled = any(
+            row_verb == "async"
+            and len(row_args) >= 2
+            and row_args[0] == op.name
+            and str(row_args[1]).lower() in {"yes", "true", "1", "on"}
+            for row_verb, row_args, _row_ln in op.lines
+        )
+
+        def user_op_call_target(call_obj):
+            return canonical_call_target(call_obj)
+
+        def is_async_user_op_target(call_obj):
+            return user_op_call_target(call_obj) in self._user_ops
+
+        def default_value_for_type(target_type):
+            if isinstance(target_type, ir.PointerType):
+                return ir.Constant(target_type, None)
+            if isinstance(target_type, (ir.FloatType, ir.DoubleType)):
+                return ir.Constant(target_type, 0.0)
+            return ir.Constant(target_type, 0)
+
+        def error_cond_for_result(result, name):
+            if isinstance(result.type, ir.IntType):
+                return builder.icmp_signed(
+                    "!=", result, ir.Constant(result.type, 0),
+                    name=f"{name}_isErr")
+            if isinstance(result.type, ir.PointerType):
+                return builder.icmp_unsigned(
+                    "==", result, ir.Constant(result.type, None),
+                    name=f"{name}_isErr")
+            if isinstance(result.type, (ir.FloatType, ir.DoubleType)):
+                return builder.fcmp_ordered(
+                    "!=", result, ir.Constant(result.type, 0.0),
+                    name=f"{name}_isErr")
+            return ir.Constant(I1, 0)
+
+        def user_op_argument_values(call_name, call_obj, op_info):
+            values = []
+            call_arg_values = list(call_obj["args"].values())
+            param_names = [param[0] for param in op_info["params"]]
+            for param_index, (pname, llty, _ptype) in enumerate(op_info["params"]):
+                sym = call_obj["args"].get(pname)
+                if sym is None:
+                    if len(call_arg_values) == len(op_info["params"]):
+                        sym = call_arg_values[param_index]
+                    else:
+                        raise ValueError(
+                            f"{call_name}: missing arg `{pname}` for operation "
+                            f"`{user_op_call_target(call_obj)}` "
+                            f"(call passed {len(call_arg_values)} args, op declares "
+                            f"{len(param_names)})")
+                try:
+                    value = resolve(sym)
+                except ValueError:
+                    raise ValueError(
+                        f"{call_name}: unresolved arg value `{sym}` for "
+                        f"operation `{user_op_call_target(call_obj)}` "
+                        f"parameter `{pname}`")
+                if value is SENTINEL:
+                    raise ValueError(
+                        f"{call_name}: opaque-input symbol used as data arg "
+                        f"`{pname}` for `{user_op_call_target(call_obj)}`")
+                values.append(coerce_to_type(value, llty))
+            return values
+
+        def emit_async_fetch_start(call_name):
+            call_obj = calls[call_name]
+            if not is_async_fetch_target(call_obj):
+                return False
+            if call_obj.get("async_awaited"):
+                raise ValueError(
+                    f"start: `{call_name}` was already awaited or consumed "
+                    "by an await wait-set case")
+            request_symbol = call_obj["args"].get("request")
+            if request_symbol is None:
+                raise ValueError(f"start: `{call_name}` missing request argument")
+            loop = ensure_async_loop()
+            url = record_field_value(request_symbol, "url", I8P)
+            timeout_ms = record_field_value(
+                request_symbol, "policy.timeoutMillis", I64)
+            max_body_bytes = record_field_value(
+                request_symbol, "policy.maxBodyBytes", I64)
+            redirect_limit = record_field_value(
+                request_symbol, "policy.redirectLimit", I32)
+            with builder.goto_entry_block():
+                future_out = builder.alloca(
+                    I8P, name=f"{call_name}_future_out")
+            builder.store(ir.Constant(I8P, None), future_out)
+            start_fn = self._runtime_func(
+                "ss_http_client_fetch_text_request_start",
+                I32,
+                [I8P, I8P, I64, I64, I32, I8P.as_pointer()])
+            self.provenance.record_external(
+                "ss_http_client_fetch_text_request_start", call_obj)
+            start_status = builder.call(
+                start_fn,
+                [loop, url, timeout_ms, max_body_bytes, redirect_limit, future_out],
+                name=f"{call_name}_start_status")
+            call_obj["future_slot"] = future_out
+            call_obj["start_status"] = start_status
+            call_obj["result"] = builder.load(
+                future_out, name=f"{call_name}_future")
+            call_obj["error_value"] = start_status
+            call_obj["error_cond"] = builder.icmp_unsigned(
+                "!=", start_status, ir.Constant(I32, 0),
+                name=f"{call_name}_start_is_error")
+            return True
+
+        def emit_async_fetch_await(call_name):
+            call_obj = calls[call_name]
+            if not is_async_fetch_target(call_obj):
+                return False
+            if call_obj.get("async_awaited"):
+                raise ValueError(
+                    f"await: `{call_name}` was already awaited or consumed "
+                    "by an await wait-set case")
+            future_slot = call_obj.get("future_slot")
+            if future_slot is None:
+                raise ValueError(
+                    f"await: `{call_name}` targets {canonical_call_target(call_obj)} "
+                    "but was not started with async lowering")
+            loop = ensure_async_loop()
+            future = builder.load(future_slot, name=f"{call_name}_await_future")
+            await_fn = self._runtime_func(
+                "ss_http_client_fetch_text_await", I32, [I8P, I8P])
+            self.provenance.record_external(
+                "ss_http_client_fetch_text_await", call_obj)
+            await_status = builder.call(
+                await_fn, [loop, future], name=f"{call_name}_await_status")
+
+            status_fn = self._runtime_func(
+                "ss_http_client_fetch_status", I64, [I8P])
+            body_copy_fn = self._runtime_func(
+                "ss_http_client_fetch_body_text_copy",
+                I32,
+                [I8P, I8P.as_pointer()])
+            free_future_fn = self._runtime_func(
+                "ss_http_client_fetch_free", VOID, [I8P])
+            self.provenance.record_external(
+                "ss_http_client_fetch_status", call_obj)
+            self.provenance.record_external(
+                "ss_http_client_fetch_body_text_copy", call_obj)
+            self.provenance.record_external(
+                "ss_http_client_fetch_free", call_obj)
+            with builder.goto_entry_block():
+                body_out = builder.alloca(I8P, name=f"{call_name}_async_body_out")
+                response_status = builder.alloca(
+                    I32, name=f"{call_name}_async_response_status")
+                response_body = builder.alloca(
+                    I8P, name=f"{call_name}_async_response_body")
+            builder.store(ir.Constant(I8P, None), body_out)
+            http_status = builder.call(
+                status_fn, [future], name=f"{call_name}_async_http_status")
+            body_copy_status = builder.call(
+                body_copy_fn, [future, body_out],
+                name=f"{call_name}_body_copy_status")
+            body = builder.load(body_out, name=f"{call_name}_async_body")
+            builder.call(free_future_fn, [future])
+            builder.store(ir.Constant(I8P, None), future_slot)
+            builder.store(coerce_to_type(http_status, I32), response_status)
+            builder.store(body, response_body)
+            start_status = call_obj.get("start_status", ir.Constant(I32, 0))
+            start_error = builder.icmp_unsigned(
+                "!=", start_status, ir.Constant(I32, 0),
+                name=f"{call_name}_start_error_at_await")
+            await_or_copy_status = builder.select(
+                builder.icmp_unsigned(
+                    "!=", await_status, ir.Constant(I32, 0),
+                    name=f"{call_name}_await_is_error"),
+                await_status,
+                body_copy_status,
+                name=f"{call_name}_await_or_copy_status")
+            final_status = builder.select(
+                start_error,
+                start_status,
+                await_or_copy_status,
+                name=f"{call_name}_async_status")
+            call_obj["record_result"] = {
+                "type": "HttpTextResponse",
+                "slots": {
+                    "status": response_status,
+                    "body": response_body,
+                },
+                "field_types": {
+                    "status": "HttpClientStatusCode",
+                    "body": "HttpClientBodyText",
+                },
+            }
+            call_obj["result"] = body
+            call_obj["error_value"] = final_status
+            call_obj["error_cond"] = builder.icmp_unsigned(
+                "!=", final_status, ir.Constant(I32, 0),
+                name=f"{call_name}_async_is_error")
+            call_obj["async_awaited"] = True
+            return True
+
+        def emit_async_user_op_start(call_name):
+            call_obj = calls[call_name]
+            target = user_op_call_target(call_obj)
+            op_info = self._user_ops.get(target)
+            if op_info is None or not operation_async_enabled:
+                return False
+            if call_obj.get("async_awaited"):
+                raise ValueError(
+                    f"start: `{call_name}` was already awaited or consumed "
+                    "by an await wait-set case")
+
+            arg_values = user_op_argument_values(call_name, call_obj, op_info)
+            wrapper = self._async_user_op_wrapper(target, op_info)
+            loop = ensure_async_loop()
+            malloc_fn = self._libc_func("malloc")
+            free_fn = self._libc_func("free")
+            future_create_fn = self._runtime_func(
+                "ss_async_future_create", I8P, [I8P])
+            future_destroy_fn = self._runtime_func(
+                "ss_async_future_destroy", VOID, [I8P])
+            queue_work_fn = self._runtime_func(
+                "ss_async_queue_work",
+                I32,
+                [
+                    I8P,
+                    wrapper["work_fn_ptr_ty"],
+                    wrapper["after_fn_ptr_ty"],
+                    I8P,
+                ])
+            self.provenance.record_external("ss_async_future_create", call_obj)
+            self.provenance.record_external("ss_async_queue_work", call_obj)
+
+            with builder.goto_entry_block():
+                future_slot = builder.alloca(I8P, name=f"{call_name}_future_out")
+                context_slot = builder.alloca(I8P, name=f"{call_name}_context_out")
+                status_slot = builder.alloca(I32, name=f"{call_name}_start_status_out")
+            builder.store(ir.Constant(I8P, None), future_slot)
+            builder.store(ir.Constant(I8P, None), context_slot)
+            builder.store(ir.Constant(I32, -1), status_slot)
+
+            ctx_i8p = builder.call(
+                malloc_fn,
+                [ir.Constant(I64, wrapper["context_size"])],
+                name=f"{call_name}_context")
+            builder.store(ctx_i8p, context_slot)
+
+            fn = builder.function
+            create_future_block = fn.append_basic_block(f"{call_name}_create_future")
+            allocation_failed_block = fn.append_basic_block(f"{call_name}_alloc_failed")
+            queue_block = fn.append_basic_block(f"{call_name}_queue")
+            future_failed_block = fn.append_basic_block(f"{call_name}_future_failed")
+            queue_failed_block = fn.append_basic_block(f"{call_name}_queue_failed")
+            start_done_block = fn.append_basic_block(f"{call_name}_start_done")
+
+            builder.cbranch(
+                builder.icmp_unsigned(
+                    "==", ctx_i8p, ir.Constant(I8P, None),
+                    name=f"{call_name}_context_is_null"),
+                allocation_failed_block,
+                create_future_block)
+
+            builder.position_at_end(allocation_failed_block)
+            builder.store(ir.Constant(I32, 3), status_slot)
+            builder.branch(start_done_block)
+
+            builder.position_at_end(create_future_block)
+            future = builder.call(
+                future_create_fn, [loop], name=f"{call_name}_future")
+            builder.store(future, future_slot)
+            builder.cbranch(
+                builder.icmp_unsigned(
+                    "==", future, ir.Constant(I8P, None),
+                    name=f"{call_name}_future_is_null"),
+                future_failed_block,
+                queue_block)
+
+            builder.position_at_end(future_failed_block)
+            builder.call(free_fn, [ctx_i8p])
+            builder.store(ir.Constant(I8P, None), context_slot)
+            builder.store(ir.Constant(I32, 3), status_slot)
+            builder.branch(start_done_block)
+
+            builder.position_at_end(queue_block)
+            context = builder.bitcast(
+                ctx_i8p, wrapper["context_ptr_ty"], name=f"{call_name}_ctx")
+            zero = ir.Constant(I32, 0)
+            future_ptr = builder.gep(
+                context, [zero, zero], inbounds=True,
+                name=f"{call_name}_ctx_future_ptr")
+            builder.store(future, future_ptr)
+            for index, value in enumerate(arg_values, start=3):
+                arg_ptr = builder.gep(
+                    context,
+                    [zero, ir.Constant(I32, index)],
+                    inbounds=True,
+                    name=f"{call_name}_ctx_arg{index - 3}_ptr")
+                builder.store(value, arg_ptr)
+            queue_status = builder.call(
+                queue_work_fn,
+                [loop, wrapper["work_fn"], wrapper["after_fn"], ctx_i8p],
+                name=f"{call_name}_queue_status")
+            builder.cbranch(
+                builder.icmp_unsigned(
+                    "!=", queue_status, ir.Constant(I32, 0),
+                    name=f"{call_name}_queue_failed_cond"),
+                queue_failed_block,
+                start_done_block)
+
+            builder.position_at_end(queue_failed_block)
+            builder.call(future_destroy_fn, [future])
+            builder.call(free_fn, [ctx_i8p])
+            builder.store(ir.Constant(I8P, None), future_slot)
+            builder.store(ir.Constant(I8P, None), context_slot)
+            builder.store(queue_status, status_slot)
+            builder.branch(start_done_block)
+
+            builder.position_at_end(start_done_block)
+            if not builder.block.is_terminated:
+                current_status = builder.load(
+                    status_slot, name=f"{call_name}_queued_status_current")
+                is_unset = builder.icmp_signed(
+                    "==", current_status, ir.Constant(I32, -1),
+                    name=f"{call_name}_status_unset")
+                final_start_status = builder.select(
+                    is_unset,
+                    ir.Constant(I32, 0),
+                    current_status,
+                    name=f"{call_name}_start_status")
+                builder.store(final_start_status, status_slot)
+            else:
+                final_start_status = ir.Constant(I32, 3)
+
+            call_obj["future_slot"] = future_slot
+            call_obj["context_slot"] = context_slot
+            call_obj["start_status_slot"] = status_slot
+            call_obj["start_status"] = builder.load(
+                status_slot, name=f"{call_name}_start_status_value")
+            call_obj["result"] = builder.load(
+                future_slot, name=f"{call_name}_future_value")
+            call_obj["error_value"] = call_obj["start_status"]
+            call_obj["error_cond"] = builder.icmp_unsigned(
+                "!=", call_obj["start_status"], ir.Constant(I32, 0),
+                name=f"{call_name}_start_is_error")
+            return True
+
+        def emit_async_user_op_await(call_name):
+            call_obj = calls[call_name]
+            target = user_op_call_target(call_obj)
+            op_info = self._user_ops.get(target)
+            if op_info is None or not operation_async_enabled:
+                return False
+            if call_obj.get("async_awaited"):
+                raise ValueError(
+                    f"await: `{call_name}` was already awaited or consumed "
+                    "by an await wait-set case")
+            future_slot = call_obj.get("future_slot")
+            if future_slot is None:
+                raise ValueError(
+                    f"await: `{call_name}` targets user operation `{target}` "
+                    "but was not started with async lowering")
+
+            wrapper = self._async_user_op_wrapper(target, op_info)
+            loop = ensure_async_loop()
+            await_fn = self._runtime_func(
+                "ss_async_future_await", I32, [I8P, I8P])
+            result_fn = self._runtime_func(
+                "ss_async_future_result", I8P, [I8P])
+            future_destroy_fn = self._runtime_func(
+                "ss_async_future_destroy", VOID, [I8P])
+            free_fn = self._libc_func("free")
+            self.provenance.record_external("ss_async_future_await", call_obj)
+            self.provenance.record_external("ss_async_future_result", call_obj)
+            self.provenance.record_external("ss_async_future_destroy", call_obj)
+
+            ret_ty = op_info["return_type"]
+            with builder.goto_entry_block():
+                result_slot = builder.alloca(
+                    ret_ty, name=f"{call_name}_async_result_out")
+                status_slot = builder.alloca(
+                    I32, name=f"{call_name}_await_status_out")
+            builder.store(default_value_for_type(ret_ty), result_slot)
+            builder.store(ir.Constant(I32, 3), status_slot)
+
+            future = builder.load(future_slot, name=f"{call_name}_await_future")
+            await_status = builder.call(
+                await_fn, [loop, future], name=f"{call_name}_await_status")
+            start_status_value = call_obj.get("start_status")
+            if start_status_value is None and call_obj.get("start_status_slot") is not None:
+                start_status_value = builder.load(
+                    call_obj["start_status_slot"],
+                    name=f"{call_name}_start_status_reload")
+            if start_status_value is None:
+                start_status_value = ir.Constant(I32, 0)
+            start_failed = builder.icmp_unsigned(
+                "!=", start_status_value, ir.Constant(I32, 0),
+                name=f"{call_name}_start_failed_at_await")
+            final_status = builder.select(
+                start_failed,
+                start_status_value,
+                await_status,
+                name=f"{call_name}_async_runtime_status")
+            builder.store(final_status, status_slot)
+
+            fn = builder.function
+            load_result_block = fn.append_basic_block(f"{call_name}_load_async_result")
+            cleanup_error_block = fn.append_basic_block(f"{call_name}_async_error_cleanup")
+            after_await_block = fn.append_basic_block(f"{call_name}_after_async_await")
+            builder.cbranch(
+                builder.icmp_unsigned(
+                    "!=", final_status, ir.Constant(I32, 0),
+                    name=f"{call_name}_runtime_failed"),
+                cleanup_error_block,
+                load_result_block)
+
+            builder.position_at_end(load_result_block)
+            ctx_i8p = builder.call(
+                result_fn, [future], name=f"{call_name}_result_context")
+            context = builder.bitcast(
+                ctx_i8p, wrapper["context_ptr_ty"], name=f"{call_name}_result_ctx")
+            result_ptr = builder.gep(
+                context,
+                [ir.Constant(I32, 0), ir.Constant(I32, 2)],
+                inbounds=True,
+                name=f"{call_name}_result_ptr")
+            result = builder.load(result_ptr, name=f"{call_name}_async_result")
+            builder.store(result, result_slot)
+            builder.call(free_fn, [ctx_i8p])
+            if call_obj.get("context_slot") is not None:
+                builder.store(ir.Constant(I8P, None), call_obj["context_slot"])
+            builder.call(future_destroy_fn, [future])
+            builder.store(ir.Constant(I8P, None), future_slot)
+            builder.branch(after_await_block)
+
+            builder.position_at_end(cleanup_error_block)
+            ctx_from_slot = (
+                builder.load(call_obj["context_slot"], name=f"{call_name}_error_ctx")
+                if call_obj.get("context_slot") is not None
+                else ir.Constant(I8P, None)
+            )
+            builder.call(free_fn, [ctx_from_slot])
+            if call_obj.get("context_slot") is not None:
+                builder.store(ir.Constant(I8P, None), call_obj["context_slot"])
+            builder.call(future_destroy_fn, [future])
+            builder.store(ir.Constant(I8P, None), future_slot)
+            builder.branch(after_await_block)
+
+            builder.position_at_end(after_await_block)
+            final_result = builder.load(
+                result_slot, name=f"{call_name}_async_final_result")
+            runtime_status = builder.load(
+                status_slot, name=f"{call_name}_async_final_status")
+            runtime_error = builder.icmp_unsigned(
+                "!=", runtime_status, ir.Constant(I32, 0),
+                name=f"{call_name}_async_runtime_is_error")
+            result_error = error_cond_for_result(final_result, call_name)
+            call_obj["result"] = final_result
+            if isinstance(final_result.type, ir.IntType):
+                coerced_runtime_status = coerce_to_type(
+                    runtime_status, final_result.type)
+                call_obj["error_value"] = builder.select(
+                    runtime_error,
+                    coerced_runtime_status,
+                    final_result,
+                    name=f"{call_name}_async_error_value")
+            else:
+                call_obj["error_value"] = runtime_status
+            call_obj["error_cond"] = builder.or_(
+                runtime_error,
+                result_error,
+                name=f"{call_name}_async_is_error")
+            call_obj["async_awaited"] = True
+            return True
 
         def const_record_field(record_name, field_path):
             record_const = prog.record_json_constants.get(record_name)
@@ -5575,7 +6368,434 @@ class Codegen:
                 branch_else_by_line[row_ln] = next_args[2]
                 attached_branch_else_lines.add(next_ln)
 
-        for verb, args, _ln in op.lines:
+        def collect_await_cases(start_index):
+            cases = []
+            done_label = None
+            done_lineno = None
+            index = start_index
+            while index < len(op.lines):
+                row_verb, row_args, row_ln = op.lines[index]
+                if row_verb in {"__typedComment__", "__groupAnchor__"}:
+                    index += 1
+                    continue
+                if row_verb == "case":
+                    if len(row_args) != 2:
+                        raise ValueError(
+                            f"line {row_ln}: case requires: case CALL LABEL")
+                    cases.append((row_args[0], row_args[1], row_ln))
+                    index += 1
+                    continue
+                if row_verb == "done":
+                    if len(row_args) != 1:
+                        raise ValueError(
+                            f"line {row_ln}: done requires: done LABEL")
+                    done_label = row_args[0]
+                    done_lineno = row_ln
+                    index += 1
+                break
+            return cases, done_label, done_lineno, index
+
+        def source_branch_targets(row_verb, row_args):
+            if row_verb == "jump" and len(row_args) >= 2 and row_args[0] == "target":
+                return [row_args[1]]
+            if row_verb == "branch":
+                if len(row_args) >= 5 and row_args[0] in {"if", "error"} and row_args[3] == "target":
+                    return [row_args[4]]
+                if len(row_args) >= 3 and row_args[0] == "else" and row_args[1] == "target":
+                    return [row_args[2]]
+                if row_args:
+                    return [row_args[0]]
+            if row_verb == "branchIf" and len(row_args) >= 2:
+                targets = [row_args[1]]
+                if len(row_args) >= 3:
+                    targets.append(row_args[2])
+                return targets
+            if row_verb in {"branchIfError", "branchIfGroupError", "branchIfChannelClosed"} and len(row_args) >= 2:
+                return [row_args[1]]
+            if row_verb == "branchSelected" and len(row_args) >= 3:
+                return [row_args[2]]
+            if row_verb == "case" and len(row_args) >= 2:
+                return [row_args[1]]
+            if row_verb == "done" and row_args:
+                return [row_args[0]]
+            return []
+
+        def source_row_terminates_before_next_label(row_verb, row_args):
+            if row_verb in {"jump", "return", "returnOk", "returnError", "returnVoid"}:
+                return True
+            if row_verb == "branch" and len(row_args) >= 3 and row_args[0] == "else":
+                return True
+            return False
+
+        def start_reaches_wait_set_entry(call_name, await_lineno):
+            start_lines = [
+                row_ln
+                for row_verb, row_args, row_ln in op.lines
+                if row_verb == "start"
+                and row_args
+                and row_args[0] == call_name
+                and row_ln < await_lineno
+            ]
+            if len(start_lines) > 1:
+                return False, start_lines[-1], "multiple"
+            for start_lineno in reversed(start_lines):
+                blocked_by_terminator = False
+                for row_verb, row_args, row_ln in op.lines:
+                    if row_ln >= start_lineno:
+                        break
+                    if row_verb == "label":
+                        blocked_by_terminator = False
+                        continue
+                    if source_row_terminates_before_next_label(row_verb, row_args):
+                        blocked_by_terminator = True
+                if blocked_by_terminator:
+                    continue
+                intervening_labels = {
+                    row_args[0]: row_ln
+                    for row_verb, row_args, row_ln in op.lines
+                    if row_verb == "label"
+                    and row_args
+                    and start_lineno < row_ln < await_lineno
+                }
+                bypasses_start = False
+                for row_verb, row_args, row_ln in op.lines:
+                    if row_ln >= start_lineno:
+                        continue
+                    for target_label in source_branch_targets(row_verb, row_args):
+                        if target_label in intervening_labels:
+                            bypasses_start = True
+                            break
+                    if bypasses_start:
+                        break
+                if not bypasses_start:
+                    return True, start_lineno, "ok"
+            return False, (start_lines[-1] if start_lines else None), "missing"
+
+        await_select_name_counts = {}
+
+        def async_start_failed_cond(call_name, call_obj):
+            start_status = None
+            if call_obj.get("start_status_slot") is not None:
+                start_status = builder.load(
+                    call_obj["start_status_slot"],
+                    name=f"{call_name}_select_start_status")
+            elif call_obj.get("start_status") is not None:
+                start_status = call_obj["start_status"]
+            if start_status is None:
+                start_status = ir.Constant(I32, 0)
+            if start_status.type != I32:
+                start_status = coerce_to_type(start_status, I32)
+            return builder.icmp_unsigned(
+                "!=", start_status, ir.Constant(I32, 0),
+                name=f"{call_name}_select_start_failed")
+
+        def async_case_ready_cond(
+            wait_name, block_prefix, call_name, case_index, wait_error_slot):
+            call_obj = calls.get(call_name)
+            if call_obj is None:
+                raise ValueError(
+                    f"await {wait_name}: case references unknown call `{call_name}`")
+            if call_obj.get("async_awaited"):
+                raise ValueError(
+                    f"await {wait_name}: case `{call_name}` was already "
+                    "awaited or consumed by an earlier wait-set case")
+            future_slot = call_obj.get("future_slot")
+            if future_slot is None:
+                raise ValueError(
+                    f"await {wait_name}: case `{call_name}` was not started "
+                    "with async lowering")
+            future = builder.load(
+                future_slot,
+                name=f"{block_prefix}_{call_name}_case_future")
+            if is_async_fetch_target(call_obj):
+                ready_fn = self._runtime_func(
+                    "ss_http_client_fetch_is_ready", I32, [I8P])
+                self.provenance.record_external(
+                    "ss_http_client_fetch_is_ready", call_obj)
+            elif is_async_user_op_target(call_obj) and operation_async_enabled:
+                ready_fn = self._runtime_func(
+                    "ss_async_future_is_ready", I32, [I8P])
+                self.provenance.record_external(
+                    "ss_async_future_is_ready", call_obj)
+            else:
+                raise ValueError(
+                    f"await {wait_name}: case `{call_name}` does not target "
+                    "a supported async future")
+            ready_value = builder.call(
+                ready_fn,
+                [future],
+                name=f"{block_prefix}_{case_index}_{call_name}_ready")
+            ready_cond = builder.icmp_unsigned(
+                "!=", ready_value, ir.Constant(I32, 0),
+                name=f"{block_prefix}_{case_index}_{call_name}_is_ready")
+            start_failed = async_start_failed_cond(call_name, call_obj)
+            ready_or_start_failed = builder.or_(
+                ready_cond,
+                start_failed,
+                name=f"{block_prefix}_{case_index}_{call_name}_ready_or_start_failed")
+            wait_error_status = builder.load(
+                wait_error_slot,
+                name=f"{block_prefix}_{case_index}_{call_name}_poll_status")
+            wait_error = builder.icmp_unsigned(
+                "!=",
+                wait_error_status,
+                ir.Constant(I32, 0),
+                name=f"{block_prefix}_{case_index}_{call_name}_poll_failed")
+            return builder.or_(
+                ready_or_start_failed,
+                wait_error,
+                name=f"{block_prefix}_{case_index}_{call_name}_selectable")
+
+        def emit_await_select(wait_name, cases, done_label, done_lineno, lineno):
+            if not cases:
+                raise ValueError(
+                    f"line {lineno}: await {wait_name} requires at least one "
+                    "following case row")
+            if done_label is None:
+                raise ValueError(
+                    f"line {lineno}: await {wait_name} requires a following "
+                    "done LABEL row")
+            if wait_name in declared_call_names:
+                raise ValueError(
+                    f"line {lineno}: await wait-set name `{wait_name}` "
+                    "collides with a declared call name")
+            if done_label not in declared_label_names:
+                raise ValueError(
+                    f"line {lineno}: await {wait_name} done label "
+                    f"`{done_label}` is not declared")
+            done_label_line = declared_label_lines.get(done_label)
+            if done_label_line is not None and done_label_line <= lineno:
+                raise ValueError(
+                    f"line {lineno}: await {wait_name} done label "
+                    f"`{done_label}` must be declared after its done row")
+            seen_case_calls = set()
+            seen_case_target_labels = {}
+            for call_name, target_label, case_lineno in cases:
+                if call_name in seen_case_calls:
+                    raise ValueError(
+                        f"line {case_lineno}: duplicate await case `{call_name}` "
+                        f"for wait set `{wait_name}`")
+                if call_name not in declared_call_names:
+                    raise ValueError(
+                        f"await {wait_name}: case references unknown call "
+                        f"`{call_name}`")
+                start_reaches_entry, start_lineno, start_reason = start_reaches_wait_set_entry(
+                    call_name, lineno)
+                if not start_reaches_entry:
+                    if start_reason == "multiple":
+                        raise ValueError(
+                            f"line {case_lineno}: await {wait_name} case "
+                            f"`{call_name}` has multiple prior start rows; "
+                            "use a fresh call name for each future")
+                    if start_lineno is None:
+                        raise ValueError(
+                            f"await {wait_name}: case `{call_name}` was not "
+                            "started with async lowering")
+                    raise ValueError(
+                        f"line {case_lineno}: await {wait_name} case "
+                        f"`{call_name}` start on line {start_lineno} does "
+                        "not dominate the wait-set entry")
+                if target_label not in declared_label_names:
+                    raise ValueError(
+                        f"line {case_lineno}: await {wait_name} case "
+                        f"`{call_name}` target label `{target_label}` "
+                        "is not declared")
+                target_label_line = declared_label_lines.get(target_label)
+                if target_label_line is not None and target_label_line <= case_lineno:
+                    raise ValueError(
+                        f"line {case_lineno}: await {wait_name} case "
+                        f"target label `{target_label}` must be declared "
+                        "after its case row")
+                previous_effective_row = None
+                for row_verb, row_args, row_ln in op.lines:
+                    if row_ln >= target_label_line:
+                        break
+                    if row_verb in {
+                        "__typedComment__", "__groupAnchor__",
+                        "input", "output", "effect", "async",
+                        "purpose", "invariant", "warning",
+                    }:
+                        continue
+                    previous_effective_row = (row_verb, row_args, row_ln)
+                if previous_effective_row is not None:
+                    prev_verb, prev_args, prev_ln = previous_effective_row
+                    if prev_verb != "done" and not source_row_terminates_before_next_label(
+                            prev_verb, prev_args):
+                        raise ValueError(
+                            f"line {case_lineno}: await {wait_name} case "
+                            f"target label `{target_label}` must not be "
+                            f"reachable by fallthrough from `{prev_verb}` "
+                            f"on line {prev_ln}")
+                if target_label == done_label:
+                    raise ValueError(
+                        f"line {case_lineno}: await {wait_name} case "
+                        f"target label `{target_label}` must differ from "
+                        "the done label")
+                previous_target_lineno = seen_case_target_labels.get(target_label)
+                if previous_target_lineno is not None:
+                    raise ValueError(
+                        f"line {case_lineno}: await {wait_name} case "
+                        f"target label `{target_label}` is used by "
+                        f"multiple cases; first used on line "
+                        f"{previous_target_lineno}")
+                seen_case_calls.add(call_name)
+                seen_case_target_labels[target_label] = case_lineno
+            for target_label, case_lineno in seen_case_target_labels.items():
+                for row_verb, row_args, row_ln in op.lines:
+                    if row_verb == "case" and row_ln == case_lineno:
+                        continue
+                    if target_label not in source_branch_targets(row_verb, row_args):
+                        continue
+                    raise ValueError(
+                        f"line {case_lineno}: await {wait_name} case "
+                        f"target label `{target_label}` may only be reached "
+                        f"from that case; also referenced by `{row_verb}` "
+                        f"on line {row_ln}")
+            previous_effective_row = None
+            for row_verb, row_args, row_ln in op.lines:
+                if row_ln >= done_label_line:
+                    break
+                if row_verb in {
+                    "__typedComment__", "__groupAnchor__",
+                    "input", "output", "effect", "async",
+                    "purpose", "invariant", "warning",
+                }:
+                    continue
+                previous_effective_row = (row_verb, row_args, row_ln)
+            if previous_effective_row is not None:
+                prev_verb, prev_args, prev_ln = previous_effective_row
+                if prev_verb != "case" and not source_row_terminates_before_next_label(
+                        prev_verb, prev_args):
+                    raise ValueError(
+                        f"line {lineno}: await {wait_name} done label "
+                        f"`{done_label}` must not be reachable by "
+                        f"fallthrough from `{prev_verb}` on line {prev_ln}")
+            for row_verb, row_args, row_ln in op.lines:
+                if row_verb == "done" and row_ln == done_lineno:
+                    continue
+                if done_label not in source_branch_targets(row_verb, row_args):
+                    continue
+                raise ValueError(
+                    f"line {lineno}: await {wait_name} done label "
+                    f"`{done_label}` may only be reached from that done row; "
+                    f"also referenced by `{row_verb}` on line {row_ln}")
+
+            wait_name_use_count = await_select_name_counts.get(wait_name, 0)
+            await_select_name_counts[wait_name] = wait_name_use_count + 1
+            block_prefix = (
+                wait_name
+                if wait_name_use_count == 0
+                else f"{wait_name}_{wait_name_use_count}")
+            consumed_slots = {}
+            with builder.goto_entry_block():
+                wait_error_slot = builder.alloca(
+                    I32, name=f"{block_prefix}_await_poll_error_status")
+                builder.store(ir.Constant(I32, 0), wait_error_slot)
+            for call_name, _target_label, _case_lineno in cases:
+                with builder.goto_entry_block():
+                    consumed_slot = builder.alloca(
+                        I1, name=f"{block_prefix}_{call_name}_consumed")
+                    builder.store(ir.Constant(I1, 0), consumed_slot)
+                consumed_slots[call_name] = consumed_slot
+
+            fn = builder.function
+            check_block = fn.append_basic_block(f"{block_prefix}_await_check")
+            case_blocks = [
+                fn.append_basic_block(f"{block_prefix}_{index}_{call_name}_case_check")
+                for index, (call_name, _target_label, _case_lineno)
+                in enumerate(cases)
+            ]
+            poll_block = fn.append_basic_block(f"{block_prefix}_await_poll")
+
+            if not builder.block.is_terminated:
+                builder.branch(check_block)
+
+            builder.position_at_end(check_block)
+            all_consumed = ir.Constant(I1, 1)
+            for call_name, _target_label, _case_lineno in cases:
+                consumed = builder.load(
+                    consumed_slots[call_name],
+                    name=f"{block_prefix}_{call_name}_consumed_value")
+                all_consumed = builder.and_(
+                    all_consumed,
+                    consumed,
+                    name=f"{block_prefix}_{call_name}_all_consumed")
+            record_label_defers(done_label, active_defers)
+            builder.cbranch(all_consumed, get_block(done_label), case_blocks[0])
+
+            for index, (call_name, target_label, _case_lineno) in enumerate(cases):
+                builder.position_at_end(case_blocks[index])
+                consumed = builder.load(
+                    consumed_slots[call_name],
+                    name=f"{block_prefix}_{index}_{call_name}_consumed")
+                not_consumed = builder.icmp_unsigned(
+                    "==",
+                    consumed,
+                    ir.Constant(I1, 0),
+                    name=f"{block_prefix}_{index}_{call_name}_not_consumed")
+                selectable = async_case_ready_cond(
+                    wait_name, block_prefix, call_name, index, wait_error_slot)
+                eligible = builder.and_(
+                    not_consumed,
+                    selectable,
+                    name=f"{block_prefix}_{index}_{call_name}_eligible")
+                selected_block = fn.append_basic_block(
+                    f"{block_prefix}_{index}_{call_name}_selected")
+                next_block = (
+                    case_blocks[index + 1]
+                    if index + 1 < len(case_blocks)
+                    else poll_block
+                )
+                builder.cbranch(eligible, selected_block, next_block)
+
+                builder.position_at_end(selected_block)
+                builder.store(ir.Constant(I1, 1), consumed_slots[call_name])
+                if not emit_async_fetch_await(call_name):
+                    if not emit_async_user_op_await(call_name):
+                        raise ValueError(
+                            f"await {wait_name}: case `{call_name}` does not "
+                            "target a supported async future")
+                record_label_defers(target_label, active_defers)
+                self._emit_trace_event(
+                    builder, "branch.decision", "branch", op.name,
+                    wait_name, target_label, lineno)
+                builder.branch(get_block(target_label))
+
+            builder.position_at_end(poll_block)
+            loop = ensure_async_loop()
+            run_once_fn = self._runtime_func(
+                "ss_async_loop_run_once", I32, [I8P])
+            self.provenance.record_external("ss_async_loop_run_once", None)
+            poll_status = builder.call(
+                run_once_fn,
+                [loop],
+                name=f"{block_prefix}_await_poll_status")
+            poll_failed = builder.icmp_unsigned(
+                "!=",
+                poll_status,
+                ir.Constant(I32, 0),
+                name=f"{block_prefix}_await_poll_failed")
+            poll_error_block = fn.append_basic_block(
+                f"{block_prefix}_await_poll_error")
+            poll_continue_block = fn.append_basic_block(
+                f"{block_prefix}_await_poll_continue")
+            builder.cbranch(poll_failed, poll_error_block, poll_continue_block)
+
+            builder.position_at_end(poll_error_block)
+            builder.store(poll_status, wait_error_slot)
+            builder.branch(check_block)
+
+            builder.position_at_end(poll_continue_block)
+            builder.branch(check_block)
+
+            dead_block = fn.append_basic_block(f"after_{block_prefix}_await_select")
+            builder.position_at_end(dead_block)
+            builder.unreachable()
+
+        line_index = 0
+        while line_index < len(op.lines):
+            verb, args, _ln = op.lines[line_index]
+            line_index += 1
             # ----- metadata: ignored at codegen -----
             if verb in ("input", "output", "effect", "async",
                         "purpose", "invariant", "warning"):
@@ -5890,12 +7110,51 @@ class Codegen:
                 continue
 
             if verb in ("start", "await"):
-                # synchronous fallback for this implementation level
+                if not args:
+                    raise ValueError(f"line {_ln}: {verb} requires a call or wait-set name")
                 if verb == "await":
-                    trace_call_event("call.start", args[0])
-                    self._emit_run(builder, args[0], calls, resolve, opaque_inputs, SENTINEL)
-                    trace_call_event("call.end", args[0])
+                    await_cases, done_label, done_lineno, next_index = collect_await_cases(line_index)
+                    if await_cases or done_label is not None:
+                        if len(args) != 1:
+                            raise ValueError(
+                                f"line {_ln}: await wait set requires: await NAME")
+                        emit_await_select(args[0], await_cases, done_label, done_lineno, _ln)
+                        line_index = next_index
+                        continue
+                call_name = args[0]
+                if verb == "start":
+                    trace_call_event("call.start", call_name)
+                    lowered_async = emit_async_fetch_start(call_name)
+                    if not lowered_async:
+                        lowered_async = emit_async_user_op_start(call_name)
+                    trace_call_event("call.end", call_name)
+                    if lowered_async:
+                        continue
+                    if is_async_fetch_target(calls[call_name]):
+                        raise ValueError(
+                            f"start: `{call_name}` targets "
+                            f"{canonical_call_target(calls[call_name])} "
+                            "but was not lowered to an async future")
+                if verb == "await":
+                    trace_call_event("call.await", call_name)
+                    lowered_async = emit_async_fetch_await(call_name)
+                    if not lowered_async:
+                        lowered_async = emit_async_user_op_await(call_name)
+                    trace_call_event("call.await.end", call_name)
+                    if lowered_async:
+                        continue
+                # synchronous fallback for non-net targets at this
+                # implementation level
+                if verb == "await":
+                    trace_call_event("call.start", call_name)
+                    self._emit_run(builder, call_name, calls, resolve, opaque_inputs, SENTINEL)
+                    trace_call_event("call.end", call_name)
                 continue
+
+            if verb in ("case", "done"):
+                raise ValueError(
+                    f"line {_ln}: `{verb}` must immediately follow an "
+                    "`await NAME` wait-set row")
 
             if verb == "bind" and args[0] in ("value", "ok"):
                 _variant, value_name, _type_name, call_name = args[0], args[1], args[2], args[3]
@@ -9267,6 +10526,30 @@ class Codegen:
         # without updating all three sites, that test fails with a
         # specific drift diff. Do not "fix" the test by hiding the
         # drift; fix the drift.
+        if target == "http.responseHtml":
+            response = arg_val_named("response")
+            status = arg_val_named("status")
+            body = arg_val_named("body")
+            content_type = self._i8p(builder, "text/html; charset=utf-8")
+            if isinstance(status.type, ir.IntType) and status.type.width != 32:
+                status = builder.trunc(status, I32) if status.type.width > 32 else builder.sext(status, I32)
+            if isinstance(response.type, ir.IntType):
+                response = builder.inttoptr(response, I8P)
+            if isinstance(body.type, ir.IntType):
+                body = builder.inttoptr(body, I8P)
+            response_text = self._runtime_func(
+                "ss_http_response_text",
+                I32,
+                [I8P, I32, I8P, I8P]
+            )
+            self.provenance.record_external("ss_http_response_text", call)
+            call["result"] = builder.call(
+                response_text,
+                [response, status, body, content_type],
+                name=f"{call_name}_res"
+            )
+            return
+
         if target == "http.responseText":
             response = arg_val_named("response")
             status = arg_val_named("status")
@@ -11658,6 +12941,14 @@ def lint(prog: Program, strict: bool = False):
                 # in source order represents a backward edge — i.e. a loop.
                 if args[0] in labels_declared:
                     operation_has_loop = True
+            elif verb == "case" and len(args) >= 2:
+                label_references.append((args[1], lineno, "case"))
+                if args[1] in labels_declared:
+                    operation_has_loop = True
+            elif verb == "done" and args:
+                label_references.append((args[0], lineno, "done"))
+                if args[0] in labels_declared:
+                    operation_has_loop = True
             elif verb == "label" and args:
                 labels_declared.add(args[0])
             elif verb == "makeError" and args:
@@ -12841,8 +14132,42 @@ def _rc_escape(value: str) -> str:
     return cleaned
 
 
+def _render_windows_gui_manifest() -> str:
+    """Return the manifest used by `windowsGui` executables.
+
+    The Common Controls v6 dependency is what switches classic Win32 control
+    classes from the old flat look to themed controls when the host OS supports
+    them. DPI awareness keeps the runtime's DPI-scaled layout metrics aligned
+    with Windows' per-monitor scaling behavior.
+    """
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        '<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">\n'
+        '  <assemblyIdentity version="1.0.0.0" processorArchitecture="*" '
+        'name="SemanticScript.WindowsGui" type="win32"/>\n'
+        '  <dependency>\n'
+        '    <dependentAssembly>\n'
+        '      <assemblyIdentity type="win32" '
+        'name="Microsoft.Windows.Common-Controls" version="6.0.0.0" '
+        'processorArchitecture="*" publicKeyToken="6595b64144ccf1df" '
+        'language="*"/>\n'
+        '    </dependentAssembly>\n'
+        '  </dependency>\n'
+        '  <application xmlns="urn:schemas-microsoft-com:asm.v3">\n'
+        '    <windowsSettings>\n'
+        '      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">'
+        'true/PM</dpiAware>\n'
+        '      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">'
+        'PerMonitorV2, PerMonitor</dpiAwareness>\n'
+        '    </windowsSettings>\n'
+        '  </application>\n'
+        '</assembly>\n'
+    )
+
+
 def _render_versioninfo_rc(prog: Program, exe_path: str,
-                            icon_path: str = None) -> str:
+                            icon_path: str = None,
+                            manifest_path: str = None) -> str:
     """Build the Windows .rc source for the program's project metadata.
     Returns the .rc text. Standard StringFileInfo keys map directly from
     the project metadata; custom_metadata adds arbitrary entries below the
@@ -12896,10 +14221,16 @@ def _render_versioninfo_rc(prog: Program, exe_path: str,
         icon_path_rc = icon_path.replace("\\", "\\\\")
         icon_line = f"1 ICON \"{icon_path_rc}\"\n"
 
+    manifest_line = ""
+    if manifest_path:
+        manifest_path_rc = manifest_path.replace("\\", "\\\\")
+        manifest_line = f"1 24 \"{manifest_path_rc}\"\n"
+
     return (
         "// Auto-generated by SemanticScript compiler; do not edit by hand.\n"
         "#pragma code_page(65001)\n"
         + icon_line +
+        manifest_line +
         "1 VERSIONINFO\n"
         f"FILEVERSION    {version_quad}\n"
         f"PRODUCTVERSION {version_quad}\n"
@@ -12954,14 +14285,18 @@ def _find_resource_compiler():
 
 def _compile_windows_resource(prog: Program, exe_path: str,
                               resource_dir: str = None):
-    """Generate and compile a Windows VERSIONINFO resource for the program's
-    metadata. Returns the path to the linkable resource object (.res or .o)
-    plus any temp files to clean up, or (None, []) if metadata is empty,
-    we're not building for Windows, or no resource compiler is available."""
+    """Generate and compile Windows resources for the program.
+
+    Returns the path to the linkable resource object (.res or .o) plus any
+    temp files to clean up, or (None, []) if no resources are needed, we're
+    not building for Windows, or no resource compiler is available.
+    """
     import subprocess
 
     icon_selection = _select_windows_icon_payload(prog)
-    if not (prog.project_metadata or prog.custom_metadata or icon_selection):
+    needs_windows_gui_manifest = _program_uses_gui_runtime(prog)
+    if not (prog.project_metadata or prog.custom_metadata or icon_selection or
+            needs_windows_gui_manifest):
         return None, []
     if sys.platform != "win32":
         return None, []
@@ -12969,7 +14304,7 @@ def _compile_windows_resource(prog: Program, exe_path: str,
     compiler = _find_resource_compiler()
     if compiler is None:
         sys.stderr.write(
-            "semsc: warning: project metadata / icon resources were declared "
+            "semsc: warning: Windows resources were declared "
             "but no Windows resource compiler is available (set SEMSC_WINRC "
             "or install llvm-rc / windres); linking without resources\n")
         return None, []
@@ -13011,7 +14346,29 @@ def _compile_windows_resource(prog: Program, exe_path: str,
                 if not resource_dir:
                     temp_files.append(ico_path)
 
-    rc_text = _render_versioninfo_rc(prog, exe_path, icon_path=icon_path_for_rc)
+    manifest_path_for_rc = None
+    if needs_windows_gui_manifest:
+        manifest_text = _render_windows_gui_manifest()
+        if resource_dir:
+            manifest_path = os.path.join(resource_dir, f"{resource_stem}.manifest")
+            with open(manifest_path, "w", encoding="utf-8", newline="\n") as manifest_file:
+                manifest_file.write(manifest_text)
+        else:
+            import tempfile
+            manifest_handle = tempfile.NamedTemporaryFile(
+                suffix=".manifest", delete=False, mode="w", encoding="utf-8", newline="\n")
+            manifest_handle.write(manifest_text)
+            manifest_handle.close()
+            manifest_path = manifest_handle.name
+            temp_files.append(manifest_path)
+        manifest_path_for_rc = os.path.abspath(manifest_path)
+
+    rc_text = _render_versioninfo_rc(
+        prog,
+        exe_path,
+        icon_path=icon_path_for_rc,
+        manifest_path=manifest_path_for_rc,
+    )
     # Write UTF-8 with BOM. llvm-rc's preprocessor (clang-derived) reads
     # UTF-8 directly with the BOM and the `#pragma code_page(65001)`
     # already inside the .rc; rc.exe also handles UTF-8+BOM. UTF-16 LE
@@ -13049,7 +14406,7 @@ def _compile_windows_resource(prog: Program, exe_path: str,
     if proc.returncode != 0:
         sys.stderr.write(
             f"semsc: warning: resource compiler `{compiler_kind}` failed "
-            f"({proc.returncode}); linking without VERSIONINFO\n"
+            f"({proc.returncode}); linking without Windows resources\n"
             f"{proc.stderr}\n")
         for path in temp_files:
             try:
@@ -13951,6 +15308,19 @@ def _resolve_imports(source: str, source_path: str, explicit_std_paths=None,
         "moduleObservability ", "moduleDependency ",
     )
 
+    def is_stdlib_origin(path: str) -> bool:
+        if not path:
+            return False
+        origin_abs = os.path.abspath(path)
+        for stdlib_dir in stdlib_dirs:
+            stdlib_abs = os.path.abspath(stdlib_dir)
+            try:
+                if os.path.commonpath([origin_abs, stdlib_abs]) == stdlib_abs:
+                    return True
+            except ValueError:
+                continue
+        return False
+
     def append_line(line: str, origin_path: str, origin_line: int,
                     imported: bool) -> None:
         out_lines.append(line)
@@ -13963,10 +15333,25 @@ def _resolve_imports(source: str, source_path: str, explicit_std_paths=None,
         })
 
     def process(text: str, base_dir: str, is_root: bool, origin_path: str):
+        skipping_imported_main = False
+        skip_imported_main = (not is_root) and is_stdlib_origin(origin_path)
         for origin_line, line in enumerate(text.splitlines(), start=1):
             stripped = line.strip()
+            parts = stripped.split()
+            is_operation_row = len(parts) >= 2 and parts[0] == "operation"
+            if skipping_imported_main:
+                if is_operation_row and parts[1] != "main":
+                    skipping_imported_main = False
+                else:
+                    continue
+            if skip_imported_main and is_operation_row and parts[1] == "main":
+                # Imported stdlib modules may carry standalone smoke-test
+                # `operation main` bodies. They are not part of the imported
+                # API and collide with other imported smoke tests, so drop the
+                # whole imported main body while preserving exported helpers.
+                skipping_imported_main = True
+                continue
             if stripped.startswith("import "):
-                parts = stripped.split()
                 if len(parts) >= 3:
                     dotted = parts[2]
                     path = find_module_file(dotted, base_dir)
@@ -14072,9 +15457,80 @@ def _program_uses_gui_runtime(prog: Program) -> bool:
     return False
 
 
+def _build_metadata_span(prog: Program, key: str, value: str = None) -> DiagnosticSpan:
+    for lineno in sorted(prog.source_lines):
+        raw = prog.source_lines.get(lineno, "")
+        tokens = tokenize_line(raw)
+        if not tokens or tokens[0] != key:
+            continue
+        args = tokens[1:]
+        if value is not None:
+            if len(args) < 2 or str(_unwrap(args[1])) != value:
+                continue
+        return DiagnosticSpan(
+            path=prog.source_path or "<source>",
+            line=lineno or 0,
+            column=1,
+            raw=raw,
+            role="buildMetadata",
+        )
+    return DiagnosticSpan(
+        path=prog.source_path or "<source>",
+        line=0,
+        column=1,
+        raw="",
+        role="buildMetadata",
+    )
+
+
+def _gui_backend_for_program(prog: Program) -> str:
+    backend = _build_metadata_value(prog, "guiBackend") or "win32"
+    if backend not in _BUILD_TAPE_CHOICES["guiBackend"]:
+        raise CompilerDiagnosticError(CompilerDiagnostic(
+            code="SSCG003",
+            phase="native-runtime-selection",
+            message=(
+                f"guiBackend value `{backend}` is invalid; expected one of "
+                f"{sorted(_BUILD_TAPE_CHOICES['guiBackend'])}"),
+            primary=_build_metadata_span(prog, "guiBackend", backend),
+            direction=(
+                "Use `guiBackend PROJECT win32` or omit the row. `winui3` is "
+                "reserved for the Windows App SDK backend scaffold."),
+            suggested_fixes=[
+                "Replace the guiBackend value with `win32`.",
+                "Remove the guiBackend row to use the compatibility default `win32`.",
+            ],
+            agent_hint="Do not invent another GUI source API; backend selection is a build setting.",
+        ))
+    return backend
+
+
 def _native_gui_link_inputs(prog: Program):
     if not _program_uses_gui_runtime(prog):
         return [], []
+
+    backend = _gui_backend_for_program(prog)
+    if backend == "winui3":
+        raise CompilerDiagnosticError(CompilerDiagnostic(
+            code="SSCG003",
+            phase="native-runtime-selection",
+            message=(
+                "guiBackend winui3 is recognized but not buildable yet; "
+                "Windows App SDK / C++/WinRT package integration has not landed"),
+            primary=_build_metadata_span(prog, "guiBackend", "winui3"),
+            direction=(
+                "The current executable GUI backend is `win32`. The WinUI 3 "
+                "directory is only a scaffold until the compiler has a Windows "
+                "App SDK build path and deployment model."),
+            suggested_fixes=[
+                "Use `guiBackend PROJECT win32` for now, or omit the row.",
+                "See SemanticScript/runtime/native_winui3_gui/README.md for the missing Windows App SDK integration work.",
+            ],
+            agent_hint=(
+                "Keep the public source API as standard.gui gui.* calls. Add the "
+                "WinUI 3 adapter behind the existing ss_gui_* C ABI before "
+                "allowing this backend."),
+        ))
 
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     runtime_source = os.path.join(
@@ -14086,7 +15542,13 @@ def _native_gui_link_inputs(prog: Program):
     )
     link_args = []
     if os.name == "nt":
-        link_args.extend(["-luser32", "-lgdi32", "-Xlinker", "/SUBSYSTEM:WINDOWS"])
+        link_args.extend([
+            "-luser32",
+            "-lgdi32",
+            "-lcomctl32",
+            "-Xlinker",
+            "/SUBSYSTEM:WINDOWS",
+        ])
     return [runtime_source], link_args
 
 
@@ -14357,6 +15819,80 @@ def _native_bcrypt_link_inputs(prog: Program):
     return extra_sources, extra_link_args
 
 
+def _native_declared_link_inputs(prog: Program):
+    """Return native sources/link args declared by imported std modules.
+
+    Standard-library modules own concrete native adapter placement via
+    top-level metadata rows:
+
+      nativeRuntimeSource MODULE "relative/or/absolute/path.c"
+      nativeRuntimeLinkArg MODULE any "-lm"
+      nativeRuntimeLinkArg MODULE windows "-lbcrypt"
+
+    The compiler only resolves those declarations; it does not know the
+    component-specific call names.
+    """
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    current_platform = "windows" if os.name == "nt" else "posix"
+    extra_sources = []
+    extra_link_args = []
+    for metadata in prog.hard_metadata.values():
+        for row in metadata.get("nativeRuntimeSource", []):
+            if not row:
+                continue
+            source_path = row[0]
+            if not os.path.isabs(source_path):
+                source_path = os.path.join(repo_root, source_path)
+            extra_sources.append(os.path.normpath(source_path))
+        for row in metadata.get("nativeRuntimeLinkArg", []):
+            if not row:
+                continue
+            if len(row) == 1:
+                extra_link_args.append(row[0])
+                continue
+            platform, link_arg = row[0], row[1]
+            if platform in ("any", current_platform):
+                extra_link_args.append(link_arg)
+    return extra_sources, extra_link_args
+
+
+def _program_uses_async_runtime(prog: Program) -> bool:
+    """True when source-level start/await targets a user operation.
+
+    HTTP fetch intrinsics also use native_async, but they link it through the
+    native_http_client collector. This trigger exists for programmable async
+    user operations that do not otherwise touch standard.net.
+    """
+    for op in prog.operations.values():
+        call_targets = {}
+        op_async_enabled = False
+        for verb, args, _lineno in op.lines:
+            if (verb == "async" and len(args) >= 2 and args[0] == op.name
+                    and str(args[1]).lower() in {"yes", "true", "1", "on"}):
+                op_async_enabled = True
+            elif verb == "call" and len(args) >= 2:
+                target = _TARGET_ALIASES.get(args[1], args[1])
+                target = prog.operation_aliases.get(target, target)
+                call_targets[args[0]] = target
+        if not op_async_enabled:
+            continue
+        for verb, args, _lineno in op.lines:
+            if verb not in ("start", "await", "case") or not args:
+                continue
+            target = call_targets.get(args[0])
+            if target in prog.operations:
+                return True
+    return False
+
+
+def _native_async_link_inputs(prog: Program):
+    if not _program_uses_async_runtime(prog):
+        return [], []
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    async_dir = os.path.join(repo_root, "SemanticScript", "runtime", "native_async")
+    return [os.path.join(async_dir, "sem_async_runtime.c")], []
+
+
 _NATIVE_HTTP_CLIENT_TARGETS = frozenset({
     "net.fetchText",
     "net.fetchBytes",
@@ -14414,9 +15950,19 @@ _NATIVE_RUNTIME_LINK_REGISTRY = (
         "collector": _native_bcrypt_link_inputs,
     },
     {
+        "component": "declared_native",
+        "owner": "standard-library/runtimeBinding",
+        "collector": _native_declared_link_inputs,
+    },
+    {
         "component": "native_gui",
         "owner": "standard.gui/runtime",
         "collector": _native_gui_link_inputs,
+    },
+    {
+        "component": "native_async",
+        "owner": "compiler/runtime",
+        "collector": _native_async_link_inputs,
     },
     {
         "component": "native_http_client",
@@ -14446,7 +15992,9 @@ def _native_runtime_link_inputs(prog: Program):
         link_args = list(link_args or [])
         if not sources and not link_args:
             continue
-        aggregate_sources.extend(sources)
+        for source_path in sources:
+            if source_path not in aggregate_sources:
+                aggregate_sources.append(source_path)
         aggregate_args.extend(link_args)
         components.append({
             "component": entry["component"],
@@ -15300,8 +16848,15 @@ def main():
         sys.exit(3)
     ir_text = str(mod)
 
-    runtime_sources, runtime_link_args, runtime_link_components = (
-        _native_runtime_link_inputs(prog))
+    try:
+        runtime_sources, runtime_link_args, runtime_link_components = (
+            _native_runtime_link_inputs(prog))
+    except CompilerDiagnosticError as e:
+        print(e.diagnostic.render(args.diagnostics_format), file=sys.stderr)
+        if os.environ.get("SEMSC_TRACEBACK"):
+            import traceback as _tb
+            _tb.print_exc(file=sys.stderr)
+        sys.exit(3)
     inspect_ir_path = _resolve_agent_json_output_path(
         args.source, build_dir, args.inspect_ir, ".inspect-ir.json")
     trace_map_path = _resolve_agent_json_output_path(

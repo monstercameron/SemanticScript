@@ -15,11 +15,14 @@ Exits non-zero on first failure, prints a summary otherwise.
 """
 
 import os
+import http.client
 import json
 import re
+import socket
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -54,7 +57,7 @@ def run_semsc_source(source, *args, suffix=".sscript"):
         )
 
 
-def compile_and_run_semsc_source(source, *, timeout=300, suffix=".sscript"):
+def compile_and_run_semsc_source(source, *, timeout=300, run_timeout=30, suffix=".sscript"):
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = Path(tmpdir) / f"sample{suffix}"
         exe_path = Path(tmpdir) / ("sample.exe" if os.name == "nt" else "sample")
@@ -68,7 +71,7 @@ def compile_and_run_semsc_source(source, *, timeout=300, suffix=".sscript"):
         if compile_proc.returncode != 0 or not exe_path.exists():
             return compile_proc, None
         run_proc = subprocess.run(
-            [str(exe_path)], capture_output=True, text=True, timeout=30)
+            [str(exe_path)], capture_output=True, text=True, timeout=run_timeout)
         return compile_proc, run_proc
 
 
@@ -789,6 +792,64 @@ def test_build_registry_missing_source_is_error():
           f"rc={proc.returncode} stderr={proc.stderr!r}")
 
 
+def test_build_registry_rejects_duplicate_imported_operation_names():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        build_path = root / "build.sem"
+        consumer_path = root / "main.sem"
+        provider_path = root / "provider.sem"
+        build_path.write_text("\n".join([
+            "buildProject duplicateOps",
+            "project DuplicateOps",
+            "modulePath duplicateOps github.com/example/duplicate-ops",
+            "languageVersion duplicateOps \"1.0\"",
+            "projectVersion duplicateOps \"1.0.0\"",
+            "projectLicense duplicateOps MIT",
+            "sourceRoot duplicateOps \".\"",
+            "targetRuntime duplicateOps nativeExe",
+            "buildProfile duplicateOps dev",
+            "optLevel duplicateOps 2",
+            "runtimeChecks duplicateOps panic",
+            "persistLlvmIr duplicateOps auto",
+            "target console",
+            "runtime native 1",
+            "entry console main",
+            "registerModule duplicateOps app.consumer \"main.sem\"",
+            "registerModule duplicateOps app.provider \"provider.sem\"",
+            "mainFile duplicateOps \"main.sem\"",
+            "mainOperation duplicateOps main",
+            "import consumer app.consumer",
+        ]), encoding="utf-8", newline="\n")
+        provider_path.write_text("\n".join([
+            "module app.provider",
+            "exportOperation app.provider duplicateHelper",
+            "operation duplicateHelper",
+            "output operation duplicateHelper ExitCode",
+            "purpose operation duplicateHelper \"provider helper\"",
+            "return value 1",
+        ]), encoding="utf-8", newline="\n")
+        consumer_path.write_text("\n".join([
+            "module app.consumer",
+            "import provider app.provider",
+            "operation duplicateHelper",
+            "output operation duplicateHelper ExitCode",
+            "purpose operation duplicateHelper \"consumer helper\"",
+            "return value 2",
+            "operation main",
+            "output operation main ExitCode",
+            "purpose operation main \"entry\"",
+            "return value 0",
+        ]), encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(build_path), "--parse-only", "--quiet"],
+            capture_output=True, text=True,
+        )
+    check("build registry: duplicate imported operation names fail parse",
+          proc.returncode == 2 and "duplicate operation `duplicateHelper`" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
 def test_strict_rejects_missing_output_contract():
     src = "\n".join([
         "project MissingOutput",
@@ -972,6 +1033,42 @@ def test_strict_web_contracts_accept_lowercase_route_method():
     check("strict HTTP: supported route methods are case-insensitive",
           proc.returncode == 0,
           f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_native_http_rejects_invalid_parameter_route_patterns_at_startup():
+    invalid_paths = [
+        "/echo/:",
+        "/echo//:slug",
+        "/echo/:slug/:",
+        "echo/:slug",
+    ]
+    for index, route_path in enumerate(invalid_paths, start=1):
+        src = "\n".join([
+            f"project InvalidPathParamRoute{index}",
+            "target webServer",
+            "runtime native 1",
+            "webServer invalidRouteServer",
+            "serverHost invalidRouteServer \"127.0.0.1\"",
+            f"serverPort invalidRouteServer {18190 + index}",
+            f"route invalidRouteServer GET \"{route_path}\" invalidHandler",
+            "operation invalidHandler",
+            "input operation invalidHandler request HttpRequest",
+            "input operation invalidHandler response HttpResponse",
+            "output operation invalidHandler CSignedInt32",
+            "memory invalidHandler arena request",
+            "async invalidHandler no",
+            "label startInvalidHandler",
+            "return value 0",
+        ])
+        compile_proc, run_proc = compile_and_run_semsc_source(src, run_timeout=5)
+        check(f"native HTTP: invalid route pattern {route_path!r} compiles",
+              compile_proc.returncode == 0 and run_proc is not None,
+              f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+        if run_proc is None:
+            continue
+        check(f"native HTTP: invalid route pattern {route_path!r} fails config startup",
+              run_proc.returncode == 1,
+              f"rc={run_proc.returncode} stdout={run_proc.stdout!r} stderr={run_proc.stderr!r}")
 
 
 def test_strict_executable_mode_rejects_http_contracts_without_lint_flag():
@@ -2614,8 +2711,65 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
              "argument hydrateBadCall fragment HtmlFragment fragment",
              "run hydrateBadCall",
              "return value 0",
+          ]),
+          "cannot hydrate attribute"),
+        ("boolean attribute dynamic hole",
+         "\n".join([
+             "project BadHtml",
+             "target console",
+             "runtime native 1",
+             "entry console main",
+             "storage module immutable checkedText String \"checked\"",
+             "html template BadTemplate",
+             "html body template BadTemplate",
+             "  <input checked=\"{checkedText}\">",
+             "operation main",
+             "output operation main ExitCode",
+             "purpose operation main \"bad html\"",
+             "call hydrateBadCall html.hydrate.BadTemplate",
+             "argument hydrateBadCall checkedText String checkedText",
+             "run hydrateBadCall",
+             "return value 0",
          ]),
-         "cannot hydrate attribute"),
+         "dynamic boolean attribute `checked`"),
+        ("unquoted attribute dynamic hole",
+         "\n".join([
+             "project BadHtml",
+             "target console",
+             "runtime native 1",
+             "entry console main",
+             "storage module immutable className String \"card\"",
+             "html template BadTemplate",
+             "html body template BadTemplate",
+             "  <div class={className}></div>",
+             "operation main",
+             "output operation main ExitCode",
+             "purpose operation main \"bad html\"",
+             "call hydrateBadCall html.hydrate.BadTemplate",
+             "argument hydrateBadCall className String className",
+             "run hydrateBadCall",
+             "return value 0",
+         ]),
+         "must be inside a quoted attribute value"),
+        ("unterminated html tag",
+         "\n".join([
+             "project BadHtml",
+             "target console",
+             "runtime native 1",
+             "entry console main",
+             "storage module immutable className String \"card\"",
+             "html template BadTemplate",
+             "html body template BadTemplate",
+             "  <div class=\"{className}\"",
+             "operation main",
+             "output operation main ExitCode",
+             "purpose operation main \"bad html\"",
+             "call hydrateBadCall html.hydrate.BadTemplate",
+             "argument hydrateBadCall className String className",
+             "run hydrateBadCall",
+             "return value 0",
+         ]),
+         "unterminated HTML tag"),
         ("record field wrong type",
          "\n".join([
              "project BadHtml",
@@ -3676,6 +3830,7 @@ def test_desktop_window_smoke_sample_uses_refined_gui_surface():
           "record BuildPlan" in build_text
           and "storage module immutable desktopWindowSmokeBuildPlan BuildPlan" in build_text
           and '"runtime": "windowsGui"' in build_text
+          and '"guiBackend": "win32"' in build_text
           and '"mainOperation": "main"' in build_text
           and '"guiSurface": "standard.gui|gui.* functions"' in build_text
           and "buildProject desktopWindowSmoke" not in build_text
@@ -3706,8 +3861,8 @@ def test_desktop_window_smoke_sample_uses_refined_gui_surface():
           heavy_gui_decl.group(0) if heavy_gui_decl else main_text)
     check("hello gui sample: keeps construction explicit in operation bodies",
           "gui." in main_text
-          and "input operation addTaskFromInput session GuiSession" in main_text
-          and "input operation addTaskFromInput event GuiEvent" in main_text,
+          and "input operation appendGreetingFromInput session GuiSession" in main_text
+          and "input operation appendGreetingFromInput event GuiEvent" in main_text,
           main_text)
 
 
@@ -3777,10 +3932,54 @@ def test_desktop_window_smoke_build_tape_contract_when_supported():
     check("gui build tape: target windowsGui is recorded",
           "windowsGui" in prog.targets,
           repr(prog.targets))
+    check("gui build tape: guiBackend win32 is recorded",
+          semsc._build_metadata_value(prog, "guiBackend") == "win32",
+          repr(semsc._build_metadata_rows(prog, "guiBackend")))
     check("gui build plan: windowsGui lowers to the standard entry/mainOperation metadata",
           prog.entry == ("console", "main")
           and semsc._build_metadata_value(prog, "mainOperation") == "main",
           f"entry={prog.entry!r} mainOperation={semsc._build_metadata_value(prog, 'mainOperation')!r}")
+
+
+def test_gui_backend_selection_contract():
+    source_lines = [
+        "project GuiBackendSmoke",
+        "target windowsGui",
+        "runtime native 1",
+        "buildProject guiBackendSmoke",
+        "guiBackend guiBackendSmoke win32",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "purpose operation main \"exercise gui backend selection\"",
+        "storage local immutable successExitCode ExitCode 0",
+        "return value successExitCode",
+    ]
+    prog = semsc.parse("\n".join(source_lines))
+    sources, link_args = semsc._native_gui_link_inputs(prog)
+    check("gui backend: explicit win32 selects active runtime",
+          any("native_win32_gui" in source for source in sources)
+          and (os.name != "nt" or "-lcomctl32" in link_args),
+          f"sources={sources!r} link_args={link_args!r}")
+
+    winui3_source = "\n".join(
+        line.replace("guiBackend guiBackendSmoke win32", "guiBackend guiBackendSmoke winui3")
+        for line in source_lines
+    )
+    winui3_prog = semsc.parse(winui3_source)
+    try:
+        semsc._native_gui_link_inputs(winui3_prog)
+    except semsc.CompilerDiagnosticError as e:
+        diagnostic = e.diagnostic
+        check("gui backend: winui3 emits structured unavailable diagnostic",
+              diagnostic.code == "SSCG003"
+              and diagnostic.phase == "native-runtime-selection"
+              and "not buildable yet" in diagnostic.message,
+              diagnostic.render("agent"))
+    else:
+        check("gui backend: winui3 emits structured unavailable diagnostic", False)
 
 
 def test_desktop_window_smoke_codegen_contract_when_supported():
@@ -3807,7 +4006,7 @@ def test_desktop_window_smoke_codegen_contract_when_supported():
           and "ss_gui_application_run_builder" in ir_text,
           ir_text)
     check("gui codegen: emits standard.gui window text",
-          "Desktop Window Smoke" in ir_text,
+          "Hello GUI" in ir_text,
           ir_text)
 
 
@@ -4060,6 +4259,323 @@ def test_web_codegen_rejects_unsupported_http_target():
           and "http.responseJson" in proc.stderr
           and "call jsonWriteCall http.responseJson" in proc.stderr,
           proc.stderr)
+
+
+def test_web_codegen_response_html_sets_fixed_content_type():
+    src = "\n".join([
+        "project ResponseHtmlTarget",
+        "target webServer",
+        "runtime native 1",
+        "module fixture",
+        "webServer fixtureServer",
+        "serverHost fixtureServer \"127.0.0.1\"",
+        "serverPort fixtureServer 18081",
+        "route fixtureServer GET \"/\" htmlHandler",
+        "capability httpResponseWriter http.response write",
+        "operation htmlHandler",
+        "input operation htmlHandler request HttpRequest",
+        "input operation htmlHandler response HttpResponse",
+        "output operation htmlHandler CSignedInt32",
+        "effect htmlHandler write http.response",
+        "memory htmlHandler arena request",
+        "async htmlHandler no",
+        "useCapability htmlHandler httpResponseWriter",
+        "purpose operation htmlHandler \"Exercise http.responseHtml lowering\"",
+        "storage module immutable okStatus CSignedInt32 200",
+        "storage module immutable htmlBody CNullTerminatedByteString \"<h1>ok</h1>\"",
+        "call htmlWriteCall http.responseHtml",
+        "argument htmlWriteCall response HttpResponse response",
+        "argument htmlWriteCall status CSignedInt32 okStatus",
+        "argument htmlWriteCall body CNullTerminatedByteString htmlBody",
+        "run htmlWriteCall",
+        "bind value responseStatus CSignedInt32 htmlWriteCall",
+        "return value responseStatus",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "response_html.sscript"
+        ir_path = Path(tmpdir) / "response_html.ll"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-ir", str(ir_path)],
+            capture_output=True, text=True,
+        )
+        ir_text = ir_path.read_text(encoding="utf-8") if ir_path.exists() else ""
+    check("web codegen: responseHtml emits IR", proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+    check("web codegen: responseHtml reuses text runtime",
+          "ss_http_response_text" in ir_text, ir_text)
+    check("web codegen: responseHtml fixes text/html content type",
+          "text/html; charset=utf-8" in ir_text, ir_text)
+
+
+def test_webserver_hydrated_html_response_headers_escaping_and_failure():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as port_socket:
+        port_socket.bind(("127.0.0.1", 0))
+        port = port_socket.getsockname()[1]
+
+    source = "\n".join([
+        "project HtmlWebserverResponse",
+        "target webServer",
+        "runtime native 1",
+        "webServer htmlServer",
+        "serverHost htmlServer \"127.0.0.1\"",
+        f"serverPort htmlServer {port}",
+        "route htmlServer GET \"/html\" htmlHandler",
+        "route htmlServer GET \"/fail\" failHandler",
+        "html template EscapeTemplate",
+        "html body template EscapeTemplate",
+        "  <p data-label=\"{labelText}\">{labelText}</p>",
+        "storage module immutable okStatus CSignedInt32 200",
+        "storage module immutable failureStatus CSignedInt32 7",
+        "storage module immutable labelText String \"A < B & \\\"C\\\"\"",
+        "operation htmlHandler",
+        "input operation htmlHandler request HttpRequest",
+        "input operation htmlHandler response HttpResponse",
+        "output operation htmlHandler CSignedInt32",
+        "effect htmlHandler write http.response",
+        "memory htmlHandler arena request",
+        "async htmlHandler no",
+        "call hydrateEscapeCall html.hydrate.EscapeTemplate",
+        "argument hydrateEscapeCall labelText String labelText",
+        "run hydrateEscapeCall",
+        "bind value escapedHtml HtmlDocument hydrateEscapeCall",
+        "call htmlWriteCall http.responseHtml",
+        "argument htmlWriteCall response HttpResponse response",
+        "argument htmlWriteCall status CSignedInt32 okStatus",
+        "argument htmlWriteCall body HtmlDocument escapedHtml",
+        "run htmlWriteCall",
+        "bind value responseStatus CSignedInt32 htmlWriteCall",
+        "return value responseStatus",
+        "operation failHandler",
+        "input operation failHandler request HttpRequest",
+        "input operation failHandler response HttpResponse",
+        "output operation failHandler CSignedInt32",
+        "memory failHandler arena request",
+        "async failHandler no",
+        "return value failureStatus",
+    ])
+
+    def request(path):
+        connection = http.client.HTTPConnection(
+            "127.0.0.1", port, timeout=3)
+        try:
+            connection.request("GET", path)
+            response = connection.getresponse()
+            body = response.read().decode("utf-8", errors="replace")
+            headers = {key.lower(): value for key, value in response.getheaders()}
+            return response.status, body, headers
+        finally:
+            connection.close()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "html_webserver.sem"
+        exe_path = Path(tmpdir) / ("html_webserver.exe" if os.name == "nt" else "html_webserver")
+        build_dir = Path(tmpdir) / "build"
+        src_path.write_text(source, encoding="utf-8", newline="\n")
+        compile_proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-exe", str(exe_path),
+             "--build-dir", str(build_dir), "--quiet"],
+            capture_output=True, text=True, timeout=300,
+        )
+        check("webserver HTML: fixture compiles",
+              compile_proc.returncode == 0 and exe_path.exists(),
+              f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+        if compile_proc.returncode != 0 or not exe_path.exists():
+            return
+
+        server_proc = subprocess.Popen(
+            [str(exe_path)], stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True)
+        try:
+            deadline = time.time() + 10
+            last_error = None
+            html_response = None
+            while time.time() < deadline:
+                if server_proc.poll() is not None:
+                    break
+                try:
+                    html_response = request("/html")
+                    break
+                except (OSError, http.client.HTTPException) as exc:
+                    last_error = exc
+                    time.sleep(0.1)
+            if html_response is None:
+                stdout, stderr = server_proc.communicate(timeout=1)
+                check("webserver HTML: fixture starts",
+                      False,
+                      f"rc={server_proc.returncode} stdout={stdout!r} stderr={stderr!r} last={last_error!r}")
+                return
+
+            status, body, headers = html_response
+            expected_body = (
+                "<p data-label=\"A &lt; B &amp; &quot;C&quot;\">"
+                "A &lt; B &amp; \"C\"</p>\n"
+            )
+            check("webserver HTML: hydrated response escapes text and attributes",
+                  status == 200 and body == expected_body,
+                  f"status={status} body={body!r}")
+            check("webserver HTML: responseHtml sends HTML content type",
+                  headers.get("content-type") == "text/html; charset=utf-8",
+                  headers)
+            check("webserver HTML: hydrated response content length is exact",
+                  headers.get("content-length") == str(len(body.encode("utf-8"))),
+                  headers)
+
+            fail_status, fail_body, fail_headers = request("/fail")
+            check("webserver HTML: failing route handler returns dispatcher 500",
+                  fail_status == 500 and fail_body == "handler failed\n",
+                  f"status={fail_status} body={fail_body!r}")
+            check("webserver HTML: failing handler content length is exact",
+                  fail_headers.get("content-length") == str(len(fail_body.encode("utf-8"))),
+                  fail_headers)
+        finally:
+            if server_proc.poll() is None:
+                server_proc.terminate()
+                try:
+                    server_proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    server_proc.kill()
+                    server_proc.wait(timeout=3)
+
+
+def test_webserver_module_state_persists_across_sequential_requests():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as port_socket:
+        port_socket.bind(("127.0.0.1", 0))
+        port = port_socket.getsockname()[1]
+
+    source = "\n".join([
+        "project HttpSharedStateCounter",
+        "target webServer",
+        "runtime native 1",
+        "webServer stateServer",
+        "serverHost stateServer \"127.0.0.1\"",
+        f"serverPort stateServer {port}",
+        "route stateServer GET \"/counter\" counterHandler",
+        "storage module immutable zeroCount I64 0",
+        "storage module immutable oneCount I64 1",
+        "storage module immutable twoCount I64 2",
+        "storage module immutable okStatus CSignedInt32 200",
+        "storage module immutable firstBody CNullTerminatedByteString \"1\\n\"",
+        "storage module immutable secondBody CNullTerminatedByteString \"2\\n\"",
+        "storage module immutable fallbackBody CNullTerminatedByteString \"other\\n\"",
+        "storage module mutable requestCounter I64 zeroCount",
+        "operation counterHandler",
+        "input operation counterHandler request HttpRequest",
+        "input operation counterHandler response HttpResponse",
+        "output operation counterHandler CSignedInt32",
+        "effect counterHandler write http.response",
+        "memory counterHandler arena request",
+        "async counterHandler no",
+        "call incrementCall math.addI64",
+        "argument incrementCall left I64 requestCounter",
+        "argument incrementCall right I64 oneCount",
+        "run incrementCall",
+        "bind value nextCounter I64 incrementCall",
+        "set storage requestCounter nextCounter",
+        "call isFirstCall math.equalI64",
+        "argument isFirstCall left I64 nextCounter",
+        "argument isFirstCall right I64 oneCount",
+        "run isFirstCall",
+        "bind value isFirst Bool isFirstCall",
+        "branch if condition isFirst target firstResponse",
+        "call isSecondCall math.equalI64",
+        "argument isSecondCall left I64 nextCounter",
+        "argument isSecondCall right I64 twoCount",
+        "run isSecondCall",
+        "bind value isSecond Bool isSecondCall",
+        "branch if condition isSecond target secondResponse",
+        "call fallbackWriteCall http.responseText",
+        "argument fallbackWriteCall response HttpResponse response",
+        "argument fallbackWriteCall status CSignedInt32 okStatus",
+        "argument fallbackWriteCall body CNullTerminatedByteString fallbackBody",
+        "run fallbackWriteCall",
+        "bind value fallbackStatus CSignedInt32 fallbackWriteCall",
+        "return value fallbackStatus",
+        "label firstResponse",
+        "call firstWriteCall http.responseText",
+        "argument firstWriteCall response HttpResponse response",
+        "argument firstWriteCall status CSignedInt32 okStatus",
+        "argument firstWriteCall body CNullTerminatedByteString firstBody",
+        "run firstWriteCall",
+        "bind value firstStatus CSignedInt32 firstWriteCall",
+        "return value firstStatus",
+        "label secondResponse",
+        "call secondWriteCall http.responseText",
+        "argument secondWriteCall response HttpResponse response",
+        "argument secondWriteCall status CSignedInt32 okStatus",
+        "argument secondWriteCall body CNullTerminatedByteString secondBody",
+        "run secondWriteCall",
+        "bind value secondStatus CSignedInt32 secondWriteCall",
+        "return value secondStatus",
+    ])
+
+    def request_counter():
+        connection = http.client.HTTPConnection(
+            "127.0.0.1", port, timeout=3)
+        try:
+            connection.request("GET", "/counter")
+            response = connection.getresponse()
+            body = response.read().decode("utf-8", errors="replace")
+            return response.status, body
+        finally:
+            connection.close()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "http_module_state.sem"
+        exe_path = Path(tmpdir) / ("http_module_state.exe" if os.name == "nt" else "http_module_state")
+        build_dir = Path(tmpdir) / "build"
+        src_path.write_text(source, encoding="utf-8", newline="\n")
+        compile_proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-exe", str(exe_path),
+             "--build-dir", str(build_dir), "--quiet"],
+            capture_output=True, text=True, timeout=300,
+        )
+        check("webserver module state: fixture compiles",
+              compile_proc.returncode == 0 and exe_path.exists(),
+              f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+        if compile_proc.returncode != 0 or not exe_path.exists():
+            return
+
+        server_proc = subprocess.Popen(
+            [str(exe_path)], stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True)
+        try:
+            deadline = time.time() + 10
+            first_response = None
+            last_error = None
+            while time.time() < deadline:
+                if server_proc.poll() is not None:
+                    break
+                try:
+                    first_response = request_counter()
+                    break
+                except (OSError, http.client.HTTPException) as exc:
+                    last_error = exc
+                    time.sleep(0.1)
+            if first_response is None:
+                stdout, stderr = server_proc.communicate(timeout=1)
+                check("webserver module state: fixture starts",
+                      False,
+                      f"rc={server_proc.returncode} stdout={stdout!r} stderr={stderr!r} last={last_error!r}")
+                return
+            second_response = request_counter()
+            check("webserver module state: first request observes initial increment",
+                  first_response == (200, "1\n"),
+                  repr(first_response))
+            check("webserver module state: second request observes persisted state",
+                  second_response == (200, "2\n"),
+                  repr(second_response))
+        finally:
+            if server_proc.poll() is None:
+                server_proc.terminate()
+                try:
+                    server_proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    server_proc.kill()
+                    server_proc.wait(timeout=3)
 
 
 def test_sqlite_codegen_emits_runtime_externs_and_calls():
@@ -5120,11 +5636,13 @@ def main():
     test_build_registry_qualified_import_call_lowers()
     test_build_registry_singular_import_call_lowers()
     test_build_registry_missing_source_is_error()
+    test_build_registry_rejects_duplicate_imported_operation_names()
     test_strict_rejects_missing_output_contract()
     test_strict_rejects_unknown_output_contract_type()
     test_strict_requires_effect_capability_or_authority()
     test_strict_web_contracts_reject_invalid_route_method()
     test_strict_web_contracts_accept_lowercase_route_method()
+    test_native_http_rejects_invalid_parameter_route_patterns_at_startup()
     test_strict_executable_mode_rejects_http_contracts_without_lint_flag()
     test_strict_web_contracts_reject_middleware_i32_output()
     test_strict_web_contracts_reject_handler_input_name_mismatch()
@@ -5199,6 +5717,9 @@ def main():
     test_sem_build_driver_discovers_build_tape()
     test_codegen_diagnostic_is_agent_readable()
     test_web_codegen_rejects_unsupported_http_target()
+    test_web_codegen_response_html_sets_fixed_content_type()
+    test_webserver_hydrated_html_response_headers_escaping_and_failure()
+    test_webserver_module_state_persists_across_sequential_requests()
     test_sqlite_codegen_emits_runtime_externs_and_calls()
     test_sqlite_codegen_rejects_unsupported_target()
     test_standard_net_fetch_lowers_and_reports_runtime_link_inputs()

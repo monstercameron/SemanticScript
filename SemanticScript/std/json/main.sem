@@ -92,6 +92,7 @@ typeInvariant JsonPath "Null-terminated path parsed as zero or more .fieldName o
 typeInvariant JsonStringValue "String value written by json.fieldString or json.elementString."
 typeInvariant JsonScratchBuffer "Caller-owned byte buffer used by json.findString, json.cursorString, json.cursorObjectFieldNameAt, and json.serializeDocument for unescaped or serialized output."
 typeInvariant JsonCapacityBytes "Capacity argument for JSON builder or scratch-buffer operations."
+invariant module standard.json "High-level json.stringify.String uses native JSON escaping with bounded caller scratch; high-level primitive json.parse targets reject malformed tokens and trailing junk with JsonDecodeError.UnexpectedToken."
 
 storage module immutable jsonModuleVersionText JsonText "standard.json 0.1"
 storage module immutable defaultJsonBuilderCapacityBytes JsonCapacityBytes 4096

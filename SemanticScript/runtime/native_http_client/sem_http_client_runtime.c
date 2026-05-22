@@ -782,6 +782,24 @@ int ss_http_client_fetch_text_start(
     size_t max_body_bytes,
     SSHttpFetchFuture **out_future
 ) {
+    return ss_http_client_fetch_text_request_start(
+        loop,
+        url,
+        timeout_ms,
+        max_body_bytes,
+        SS_HTTP_CLIENT_DEFAULT_REDIRECT_LIMIT,
+        out_future
+    );
+}
+
+int ss_http_client_fetch_text_request_start(
+    SSAsyncLoop *loop,
+    const char *url,
+    unsigned long long timeout_ms,
+    size_t max_body_bytes,
+    unsigned int redirect_limit,
+    SSHttpFetchFuture **out_future
+) {
     SSHttpFetchFuture *future;
     int status;
 
@@ -805,6 +823,9 @@ int ss_http_client_fetch_text_start(
     }
     if (status == SS_HTTP_CLIENT_OK) {
         status = ss_http_client_request_set_max_body_bytes(future->request, max_body_bytes);
+    }
+    if (status == SS_HTTP_CLIENT_OK) {
+        status = ss_http_client_request_set_redirect_limit(future->request, redirect_limit);
     }
     if (status != SS_HTTP_CLIENT_OK) {
         ss_http_client_fetch_free(future);
@@ -846,12 +867,34 @@ int ss_http_client_fetch_text_await(SSAsyncLoop *loop, SSHttpFetchFuture *future
     return future->error_code;
 }
 
+int ss_http_client_fetch_is_ready(const SSHttpFetchFuture *future) {
+    return future != NULL && future->ready;
+}
+
 long ss_http_client_fetch_status(const SSHttpFetchFuture *future) {
     return future == NULL ? 0 : ss_http_client_response_status(future->response);
 }
 
 const char *ss_http_client_fetch_body_text(const SSHttpFetchFuture *future) {
     return future == NULL ? NULL : ss_http_client_response_body_text(future->response);
+}
+
+int ss_http_client_fetch_body_text_copy(
+    const SSHttpFetchFuture *future,
+    char **out_body
+) {
+    const char *body;
+
+    if (future == NULL || out_body == NULL) {
+        return SS_HTTP_CLIENT_ERR_CONFIG;
+    }
+    *out_body = NULL;
+    body = ss_http_client_fetch_body_text(future);
+    if (body == NULL) {
+        body = "";
+    }
+    *out_body = copy_c_string(body);
+    return *out_body == NULL ? SS_HTTP_CLIENT_ERR_BACKEND : SS_HTTP_CLIENT_OK;
 }
 
 const void *ss_http_client_fetch_body_bytes(const SSHttpFetchFuture *future) {

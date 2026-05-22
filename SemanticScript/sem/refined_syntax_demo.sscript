@@ -15,8 +15,8 @@
 #   1            <- isLeapYear(2024) — true
 #   0            <- compareCString("hello", "hello") — strcmp equal
 #   5            <- stringByteLength("hello") — strlen
-#   150          <- retryPolicy.delayForAttempt(_, 2) = (2+1)*50
-#   15           <- metrics.computeIncrementI64(_, 10, 5) = 10+5
+#   150          <- retryPolicy.delayForAttempt(_, 2) implemented in .sem
+#   15           <- metrics.computeIncrementI64(_, 10, 5) implemented in .sem
 
 project RefinedSyntaxDemo
 target console
@@ -58,6 +58,18 @@ operationBody math.addI64 intrinsic
 purpose operation math.addI64 "Signed 64-bit integer addition"
 intrinsicName math.addI64 arithmetic.addI64
 
+operation math.multiplyI64
+input operation math.multiplyI64 left I64
+input operation math.multiplyI64 right I64
+output operation math.multiplyI64 I64
+effect math.multiplyI64 read left
+effect math.multiplyI64 read right
+memory math.multiplyI64 heap no
+async math.multiplyI64 no
+operationBody math.multiplyI64 intrinsic
+purpose operation math.multiplyI64 "Signed 64-bit integer multiplication"
+intrinsicName math.multiplyI64 arithmetic.multiplyI64
+
 # ----- libc-bodied string ops -----
 
 operation compareCString
@@ -82,7 +94,7 @@ operationBody stringByteLength runtimeBinding
 purpose operation stringByteLength "Return the byte length of a null-terminated string; wraps strlen."
 runtimeBinding stringByteLength runtime.cstring.byteLength
 
-# ----- inline-bodied calendar op -----
+# ----- SemanticScript-bodied calendar op -----
 
 operation isLeapYear
 input operation isLeapYear candidateYear CSignedInt64
@@ -90,11 +102,55 @@ output operation isLeapYear Result Bool TimePredicateError
 effect isLeapYear read candidateYear
 memory isLeapYear heap no
 async isLeapYear no
-operationBody isLeapYear runtimeBinding
 purpose operation isLeapYear "True iff candidateYear is a leap year under the proleptic Gregorian rule."
-runtimeBinding isLeapYear runtime.calendar.isLeapYearBool
+label startLeapYear
+storage module immutable leapFour CSignedInt64 4
+storage module immutable leapHundred CSignedInt64 100
+storage module immutable leapFourHundred CSignedInt64 400
+storage module immutable leapZero CSignedInt64 0
+storage module immutable leapTrueSeed CSignedInt64 1
+storage module immutable leapFalseSeed CSignedInt64 0
+call leapMod400Call math.moduloI64
+argument leapMod400Call left CSignedInt64 candidateYear
+argument leapMod400Call right CSignedInt64 leapFourHundred
+run leapMod400Call
+bind value leapMod400 CSignedInt64 leapMod400Call
+call leapEq400Call math.equalI64
+argument leapEq400Call left CSignedInt64 leapMod400
+argument leapEq400Call right CSignedInt64 leapZero
+run leapEq400Call
+bind value leapDivisibleBy400 Bool leapEq400Call
+branch if condition leapDivisibleBy400 target leapReturnTrue
+call leapMod100Call math.moduloI64
+argument leapMod100Call left CSignedInt64 candidateYear
+argument leapMod100Call right CSignedInt64 leapHundred
+run leapMod100Call
+bind value leapMod100 CSignedInt64 leapMod100Call
+call leapEq100Call math.equalI64
+argument leapEq100Call left CSignedInt64 leapMod100
+argument leapEq100Call right CSignedInt64 leapZero
+run leapEq100Call
+bind value leapDivisibleBy100 Bool leapEq100Call
+branch if condition leapDivisibleBy100 target leapReturnFalse
+call leapMod4Call math.moduloI64
+argument leapMod4Call left CSignedInt64 candidateYear
+argument leapMod4Call right CSignedInt64 leapFour
+run leapMod4Call
+bind value leapMod4 CSignedInt64 leapMod4Call
+call leapEq4Call math.equalI64
+argument leapEq4Call left CSignedInt64 leapMod4
+argument leapEq4Call right CSignedInt64 leapZero
+run leapEq4Call
+bind value leapDivisibleBy4 Bool leapEq4Call
+branch if condition leapDivisibleBy4 target leapReturnTrue
+label leapReturnFalse
+memory isLeapYear mutable leapFalse Bool leapFalseSeed
+return ok leapFalse
+label leapReturnTrue
+memory isLeapYear mutable leapTrue Bool leapTrueSeed
+return ok leapTrue
 
-# ----- inline-bodied retry-delay op -----
+# ----- SemanticScript-bodied retry-delay op -----
 
 operation retryPolicy.delayForAttempt
 input operation retryPolicy.delayForAttempt policy RetryPolicy
@@ -104,11 +160,23 @@ effect retryPolicy.delayForAttempt read policy
 effect retryPolicy.delayForAttempt read attemptIndex
 memory retryPolicy.delayForAttempt heap no
 async retryPolicy.delayForAttempt no
-operationBody retryPolicy.delayForAttempt runtimeBinding
-purpose operation retryPolicy.delayForAttempt "Compute the delay before retry attempt N. Lowers to a 50ms linear backoff stub."
-runtimeBinding retryPolicy.delayForAttempt retryPolicy.delayForAttempt
+purpose operation retryPolicy.delayForAttempt "Compute the delay before retry attempt N using the demo policy's 50ms linear backoff."
+label startDelayForAttempt
+storage module immutable retryDelayOne I64 1
+storage module immutable retryDelayStepMilliseconds I64 50
+call delayAttemptOrdinalCall math.addI64
+argument delayAttemptOrdinalCall left I64 attemptIndex
+argument delayAttemptOrdinalCall right I64 retryDelayOne
+run delayAttemptOrdinalCall
+bind value delayAttemptOrdinal I64 delayAttemptOrdinalCall
+call delayMillisecondsCall math.multiplyI64
+argument delayMillisecondsCall left I64 delayAttemptOrdinal
+argument delayMillisecondsCall right I64 retryDelayStepMilliseconds
+run delayMillisecondsCall
+bind value computedDelayMilliseconds DurationMilliseconds delayMillisecondsCall
+return ok computedDelayMilliseconds
 
-# ----- inline-bodied metrics-increment op -----
+# ----- SemanticScript-bodied metrics-increment op -----
 
 operation metrics.computeIncrementI64
 input operation metrics.computeIncrementI64 runtime MetricsRuntime
@@ -120,9 +188,14 @@ effect metrics.computeIncrementI64 read current
 effect metrics.computeIncrementI64 read step
 memory metrics.computeIncrementI64 heap no
 async metrics.computeIncrementI64 no
-operationBody metrics.computeIncrementI64 runtimeBinding
-purpose operation metrics.computeIncrementI64 "Compute (current + step) through a metrics-owned primitive."
-runtimeBinding metrics.computeIncrementI64 metrics.computeIncrementI64
+purpose operation metrics.computeIncrementI64 "Compute (current + step) through explicit SemanticScript arithmetic."
+label startComputeIncrement
+call metricsIncrementAddCall math.addI64
+argument metricsIncrementAddCall left I64 current
+argument metricsIncrementAddCall right I64 step
+run metricsIncrementAddCall
+bind value computedIncrement I64 metricsIncrementAddCall
+return ok computedIncrement
 
 # ----- driver -----
 

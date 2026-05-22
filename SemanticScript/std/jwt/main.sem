@@ -1,0 +1,121 @@
+# ============================================================
+# SEMANTICSCRIPT STANDARD LIBRARY: JWT namespace
+# ============================================================
+#
+# Import this module with:
+#
+#   import jwt standard.jwt
+#
+# This module owns the JWT call surface and the native adapter link
+# declaration. The compiler only understands generic runtimeBinding native
+# symbols; it does not special-case jwt.* call names.
+
+module standard.jwt
+purpose module standard.jwt "Standard-library namespace and contracts for HS256 JWT signing/verification and token-bearing auth envelope helpers."
+moduleOwns standard.jwt "The official import path `standard.jwt`, JWT access-token trust types, HS256 status codes, runtimeBinding operation wrappers, and the native adapter source declaration."
+moduleDoesNotOwn standard.jwt "Application session state, secret management, claim policy, refresh-token persistence, or route-specific response contracts."
+invariant module standard.jwt "Downstream modules import this module as alias `jwt` before calling exported JWT operations; the operation bodies delegate through generic native runtimeBinding rows."
+moduleSecurity standard.jwt "JWT secrets must come from deployment configuration before production. Source literals are acceptable only for local demos and tests."
+
+nativeRuntimeSource standard.jwt "SemanticScript/std/jwt/native/sem_jwt_runtime.c"
+nativeRuntimeLinkArg standard.jwt windows "-lbcrypt"
+
+capability jwtMemoryBufferRead memory.buffer read
+purpose operation jwtMemoryBufferRead "Authority to read JWT inputs and token strings from caller-owned buffers."
+capability jwtMemoryBufferWrite memory.buffer write
+purpose operation jwtMemoryBufferWrite "Authority to write JWT outputs and auth envelopes into caller-owned buffers."
+
+type JwtAccessToken CNullTerminatedByteString
+type JwtSecret CNullTerminatedByteString
+type JwtOutputBuffer COpaqueMemoryAddress
+type AuthEnvelopeBuffer COpaqueMemoryAddress
+
+exportType standard.jwt JwtAccessToken
+exportType standard.jwt JwtSecret
+exportType standard.jwt JwtOutputBuffer
+exportType standard.jwt AuthEnvelopeBuffer
+
+typeInvariant JwtAccessToken "Null-terminated compact JWT string in header.payload.signature form."
+typeTrust JwtAccessToken trusted
+typeInvariant JwtSecret "Server-side HMAC secret. Must not be logged or sent to clients."
+typeTrust JwtSecret secret
+typeInvariant JwtOutputBuffer "Caller-owned byte buffer for compact JWT output."
+typeInvariant AuthEnvelopeBuffer "Caller-owned byte buffer for JSON auth envelopes containing generated tokens."
+
+storage module immutable jwtModuleVersionText CNullTerminatedByteString "standard.jwt 0.1"
+storage module immutable jwtStatusOk CSignedInt32 0
+storage module immutable jwtStatusMatch CSignedInt32 1
+storage module immutable jwtStatusMismatch CSignedInt32 0
+storage module immutable jwtAccessTokenBufferRequiredBytes CSignedInt32 512
+storage module immutable jwtAuthEnvelopeBufferRequiredBytes CSignedInt32 2048
+
+exportConstant standard.jwt jwtModuleVersionText
+exportConstant standard.jwt jwtStatusOk
+exportConstant standard.jwt jwtStatusMatch
+exportConstant standard.jwt jwtStatusMismatch
+exportConstant standard.jwt jwtAccessTokenBufferRequiredBytes
+exportConstant standard.jwt jwtAuthEnvelopeBufferRequiredBytes
+
+exportOperation standard.jwt hs256SignDemoAccessToken
+exportOperation standard.jwt hs256VerifyToken
+exportOperation standard.jwt formatLoginEnvelope
+exportOperation standard.jwt formatRefreshEnvelope
+
+operation hs256SignDemoAccessToken
+input operation hs256SignDemoAccessToken secret JwtSecret
+input operation hs256SignDemoAccessToken outBuffer JwtOutputBuffer
+input operation hs256SignDemoAccessToken outCapacity CSignedInt32
+output operation hs256SignDemoAccessToken CSignedInt32
+effect hs256SignDemoAccessToken read memory.buffer
+effect hs256SignDemoAccessToken write memory.buffer
+memory hs256SignDemoAccessToken heap no
+async hs256SignDemoAccessToken no
+useCapability hs256SignDemoAccessToken jwtMemoryBufferRead
+useCapability hs256SignDemoAccessToken jwtMemoryBufferWrite
+operationBody hs256SignDemoAccessToken runtimeBinding
+purpose operation hs256SignDemoAccessToken "Write an HS256-signed local-demo access JWT with a random jti into caller-owned output memory."
+runtimeBinding hs256SignDemoAccessToken native.ss_jwt_hs256_sign_demo_access_token
+
+operation hs256VerifyToken
+input operation hs256VerifyToken token JwtAccessToken
+input operation hs256VerifyToken secret JwtSecret
+output operation hs256VerifyToken CSignedInt32
+effect hs256VerifyToken read memory.buffer
+memory hs256VerifyToken heap no
+async hs256VerifyToken no
+useCapability hs256VerifyToken jwtMemoryBufferRead
+operationBody hs256VerifyToken runtimeBinding
+purpose operation hs256VerifyToken "Return jwtStatusMatch only when the compact JWT's HS256 signature matches the supplied secret."
+runtimeBinding hs256VerifyToken native.ss_jwt_hs256_verify_token
+
+operation formatLoginEnvelope
+input operation formatLoginEnvelope accessToken JwtAccessToken
+input operation formatLoginEnvelope refreshToken CNullTerminatedByteString
+input operation formatLoginEnvelope outBuffer AuthEnvelopeBuffer
+input operation formatLoginEnvelope outCapacity CSignedInt32
+output operation formatLoginEnvelope CSignedInt32
+effect formatLoginEnvelope read memory.buffer
+effect formatLoginEnvelope write memory.buffer
+memory formatLoginEnvelope heap no
+async formatLoginEnvelope no
+useCapability formatLoginEnvelope jwtMemoryBufferRead
+useCapability formatLoginEnvelope jwtMemoryBufferWrite
+operationBody formatLoginEnvelope runtimeBinding
+purpose operation formatLoginEnvelope "Format the login success envelope containing generated access and refresh tokens into caller-owned output memory."
+runtimeBinding formatLoginEnvelope native.ss_auth_format_login_envelope
+
+operation formatRefreshEnvelope
+input operation formatRefreshEnvelope accessToken JwtAccessToken
+input operation formatRefreshEnvelope refreshToken CNullTerminatedByteString
+input operation formatRefreshEnvelope outBuffer AuthEnvelopeBuffer
+input operation formatRefreshEnvelope outCapacity CSignedInt32
+output operation formatRefreshEnvelope CSignedInt32
+effect formatRefreshEnvelope read memory.buffer
+effect formatRefreshEnvelope write memory.buffer
+memory formatRefreshEnvelope heap no
+async formatRefreshEnvelope no
+useCapability formatRefreshEnvelope jwtMemoryBufferRead
+useCapability formatRefreshEnvelope jwtMemoryBufferWrite
+operationBody formatRefreshEnvelope runtimeBinding
+purpose operation formatRefreshEnvelope "Format the refresh success envelope containing rotated access and refresh tokens into caller-owned output memory."
+runtimeBinding formatRefreshEnvelope native.ss_auth_format_refresh_envelope

@@ -691,6 +691,51 @@ return void
 """)
         self.assertNotIn("SS3520", _codes(diagnostics))
 
+    def test_request_data_cannot_be_hydrated_as_raw_html(self) -> None:
+        diagnostics = _lint_source("""project HtmlLint
+html template CardTemplate
+html body template CardTemplate
+  <section>{bodyHtml}</section>
+operation unsafeHandler
+input operation unsafeHandler request HttpRequest
+output operation unsafeHandler Void
+purpose operation unsafeHandler "request body must not become raw HTML"
+call bodyReadCall http.requestBodyText
+argument bodyReadCall request HttpRequest request
+run bodyReadCall
+bind value bodyValue CNullTerminatedByteString bodyReadCall
+call hydrateCardCall html.hydrate.CardTemplate
+argument hydrateCardCall bodyHtml HtmlFragment bodyValue
+run hydrateCardCall
+ignore value source hydrateCardCall type HtmlDocument
+return void
+""")
+        matching = _diagnostics_with_code(diagnostics, "SS3616")
+        self.assertEqual(1, len(matching))
+        self.assertEqual(matching[0].kind, "webserver.untrustedHtmlHydration")
+        self.assertEqual(matching[0].subjectName, "bodyValue")
+
+    def test_request_data_may_be_hydrated_as_escaped_string(self) -> None:
+        diagnostics = _lint_source("""project HtmlLint
+html template CardTemplate
+html body template CardTemplate
+  <section>{bodyText}</section>
+operation safeHandler
+input operation safeHandler request HttpRequest
+output operation safeHandler Void
+purpose operation safeHandler "request body enters an escaped String hole"
+call bodyReadCall http.requestBodyText
+argument bodyReadCall request HttpRequest request
+run bodyReadCall
+bind value bodyValue CNullTerminatedByteString bodyReadCall
+call hydrateCardCall html.hydrate.CardTemplate
+argument hydrateCardCall bodyText String bodyValue
+run hydrateCardCall
+ignore value source hydrateCardCall type HtmlDocument
+return void
+""")
+        self.assertNotIn("SS3616", _codes(diagnostics))
+
 
 class TestGuiRuntimeContracts(unittest.TestCase):
     def test_gui_declarative_handles_feed_builtin_signature_check(self) -> None:
@@ -858,6 +903,7 @@ docsOutput todoGui "docs"
         root: Path,
         *,
         targetRuntime: str = "nativeExe",
+        guiBackend: str = "win32",
         optLevel: int = 2,
     ) -> Path:
         (root / "main.sem").write_text("module app.todo\n", encoding="utf-8")
@@ -878,6 +924,7 @@ field BuildModule mainFile String
 field BuildModule mainOperation String
 record BuildTarget
 field BuildTarget runtime String
+field BuildTarget guiBackend String
 field BuildTarget profile String
 field BuildTarget optLevel I64
 field BuildTarget runtimeChecks String
@@ -907,6 +954,7 @@ jsonBody todoBuildPlan
     }},
     "target": {{
       "runtime": "{targetRuntime}",
+      "guiBackend": "{guiBackend}",
       "profile": "dev",
       "optLevel": {optLevel},
       "runtimeChecks": "panic",
@@ -940,6 +988,23 @@ jsonBody todoBuildPlan
         self.assertNotIn("SS2522", codes)
         self.assertNotIn("SS2525", codes)
 
+    def test_gui_backend_build_tape_choice_is_validated(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            buildPath = self._write_windows_gui_project(
+                Path(tempDir),
+                extraRows="guiBackend todoGui win32\n",
+            )
+            diagnostics = semlint.lint_path(buildPath)
+        self.assertNotIn("SS2525", _codes(diagnostics))
+
+        with TemporaryDirectory() as tempDir:
+            buildPath = self._write_windows_gui_project(
+                Path(tempDir),
+                extraRows="guiBackend todoGui qt\n",
+            )
+            diagnostics = semlint.lint_path(buildPath)
+        self.assertIn("SS2525", _codes(diagnostics))
+
     def test_regular_build_plan_schema_is_clean_and_registers_module(self) -> None:
         with TemporaryDirectory() as tempDir:
             buildPath = self._write_regular_build_plan_project(Path(tempDir))
@@ -958,6 +1023,16 @@ jsonBody todoBuildPlan
             buildPath = self._write_regular_build_plan_project(
                 Path(tempDir),
                 targetRuntime="desktopWizard",
+            )
+            diagnostics = semlint.lint_path(buildPath)
+        self.assertIn("SS2525", _codes(diagnostics))
+
+    def test_regular_build_plan_invalid_gui_backend_is_flagged(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            buildPath = self._write_regular_build_plan_project(
+                Path(tempDir),
+                targetRuntime="windowsGui",
+                guiBackend="qt",
             )
             diagnostics = semlint.lint_path(buildPath)
         self.assertIn("SS2525", _codes(diagnostics))

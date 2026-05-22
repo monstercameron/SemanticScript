@@ -13,7 +13,7 @@ add_library(sem_win32_gui_runtime STATIC sem_win32_gui_runtime.c)
 target_include_directories(sem_win32_gui_runtime PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 if(WIN32)
-    target_link_libraries(sem_win32_gui_runtime PUBLIC user32 gdi32)
+    target_link_libraries(sem_win32_gui_runtime PUBLIC user32 gdi32 comctl32)
 endif()
 
 add_executable(sem_win32_gui_health_demo health_demo.c)

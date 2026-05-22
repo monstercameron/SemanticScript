@@ -26,6 +26,7 @@ import http standard.http
 import inttypes standard.inttypes
 import iso646 standard.iso646
 import json standard.json
+import jwt standard.jwt
 import limits standard.limits
 import math standard.math
 import math_float standard.math_float

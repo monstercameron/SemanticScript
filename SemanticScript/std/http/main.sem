@@ -53,7 +53,7 @@ capability httpRequestReader http.request read
 purpose operation httpRequestReader "Authority to read fields off the incoming HttpRequest (method, path, headers, cookies, query params, body, multipart parts)."
 
 capability httpResponseWriter http.response write
-purpose operation httpResponseWriter "Authority to write headers and a body to the HttpResponse handed to the route handler (http.responseText/Bytes/SseEvent/File and http.responseHeader)."
+purpose operation httpResponseWriter "Authority to write headers and a body to the HttpResponse handed to the route handler (http.responseHtml/Text/Bytes/SseEvent/File and http.responseHeader)."
 
 storage module immutable httpModuleVersionText HttpTextBody "standard.http 0.1"
 storage module immutable plainTextContentType HttpContentType "text/plain; charset=utf-8"
