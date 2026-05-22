@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Browser client smoke</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; }
+      pre { padding: 1rem; background: #f1f3f5; border-radius: 8px; }
+      .pass { color: #087f5b; }
+      .fail { color: #c92a2a; }
+    </style>
+  </head>
+  <body>
+    <h1>Browser client smoke</h1>
+    <pre id="result">Running...</pre>
+    <script type="module">
+      import {
+        applyEvent,
+        applySnapshot,
+        createInitialState,
+        escapeHtml,
+        formatMoney,
+      } from "../src/state.js";
+
+      const checks = [];
+      const state = createInitialState();
+
+      applySnapshot(state, {
+        auction: {
+          auctionId: "A1",
+          status: "running",
+          item: { title: "Vintage Synth", description: "<b>hot</b>" },
+          policy: { minimumIncrement: 500 },
+          timing: { closesAt: Date.now() + 30000 },
+          startingBid: 10000,
+          currentBid: 15000,
+          currentWinner: "Cam",
+        },
+        lastEventSequence: 7,
+        serverTime: Date.now(),
+      });
+
+      applyEvent(state, {
+        eventId: "evt_8",
+        sequence: 8,
+        type: "bid.rejected",
+        payload: {
+          bidderDisplayName: "<script>alert(1)</script>",
+          amount: 15100,
+          reason: "below_current_bid",
+          minimumAcceptedBid: 15500,
+        },
+      });
+
+      applyEvent(state, {
+        eventId: "evt_9",
+        sequence: 9,
+        type: "chat.message.created",
+        payload: {
+          messageId: "m1",
+          user: "Alex",
+          text: "<img src=x onerror=alert(1)>",
+        },
+      });
+
+      checks.push(["snapshot normalized", state.auction.item.title === "Vintage Synth"]);
+      checks.push(["money formatted", formatMoney(15000).includes("150.00")]);
+      checks.push(["rejected bid stored", state.rejectedBids[0].reason === "below_current_bid"]);
+      checks.push(["chat stored as text", state.chat[0].text.includes("<img")]);
+      checks.push(["escape helper covers tags", escapeHtml("<x>").includes("&lt;x&gt;")]);
+      checks.push(["event id tracked", state.lastEventId === "evt_9"]);
+
+      const failed = checks.filter(([, ok]) => !ok);
+      const result = document.getElementById("result");
+      result.className = failed.length ? "fail" : "pass";
+      result.textContent = checks.map(([name, ok]) => `${ok ? "PASS" : "FAIL"} ${name}`).join("\n");
+    </script>
+  </body>
+</html>

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Realtime Auction Arena</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Bidder floor</p>
+          <h1>Realtime Auction Arena</h1>
+        </div>
+        <div class="connection-pill" id="connectionPill" data-status="offline">
+          <span class="pulse"></span>
+          <span id="connectionText">Offline</span>
+        </div>
+      </header>
+
+      <main class="floor-grid">
+        <section class="auction-stage" aria-labelledby="auctionTitle">
+          <div class="item-media">
+            <img id="itemImage" src="../assets/item-placeholder.svg" alt="">
+          </div>
+          <div class="stage-copy">
+            <div class="stage-meta">
+              <span id="auctionStatus" class="status-chip">Loading</span>
+              <span id="auctionIdLabel">Auction</span>
+            </div>
+            <h2 id="auctionTitle">Waiting for auction snapshot</h2>
+            <p id="auctionDescription" class="description">Connect to a server auction to begin.</p>
+            <div class="price-row">
+              <div>
+                <span class="metric-label">Current bid</span>
+                <strong id="currentBid">$0.00</strong>
+              </div>
+              <div>
+                <span class="metric-label">Winner</span>
+                <strong id="currentWinner">No bids yet</strong>
+              </div>
+            </div>
+            <div class="timer-block" id="timerBlock">
+              <span class="metric-label">Closes in</span>
+              <strong id="countdown">--:--</strong>
+              <span id="serverTimeLabel">Server time unknown</span>
+            </div>
+          </div>
+        </section>
+
+        <aside class="control-rail" aria-label="Bidder controls">
+          <section class="panel session-panel" aria-labelledby="sessionHeading">
+            <div class="panel-head">
+              <h2 id="sessionHeading">Session</h2>
+              <span id="sessionRole" class="mini-chip">viewer</span>
+            </div>
+            <form id="sessionForm" class="stack">
+              <label>
+                API origin
+                <input id="apiBaseUrl" type="url" placeholder="http://localhost:8080">
+              </label>
+              <label>
+                Auction ID
+                <input id="auctionIdInput" required value="A1" maxlength="80">
+              </label>
+              <label>
+                Display name
+                <input id="displayNameInput" autocomplete="name" value="Browser Bidder" maxlength="80">
+              </label>
+              <label>
+                Access token
+                <input id="accessTokenInput" type="password" autocomplete="off" placeholder="Optional">
+              </label>
+              <div class="button-row">
+                <button type="submit">Connect</button>
+                <button type="button" id="loginButton" class="secondary">Login</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel bid-panel" aria-labelledby="bidHeading">
+            <div class="panel-head">
+              <h2 id="bidHeading">Bid</h2>
+              <span id="minimumBidLabel" class="mini-chip">$0.00 min</span>
+            </div>
+            <form id="bidForm" class="stack">
+              <label>
+                Amount
+                <input id="bidAmountInput" type="number" min="0" step="0.01" inputmode="decimal" required>
+              </label>
+              <button id="bidButton" type="submit">Place bid</button>
+            </form>
+            <div id="lastRejectedBid" class="rejection-box" hidden></div>
+          </section>
+
+          <section class="panel chat-panel" aria-labelledby="chatHeading">
+            <div class="panel-head">
+              <h2 id="chatHeading">Chat</h2>
+              <span id="chatStatus" class="mini-chip">ready</span>
+            </div>
+            <div id="chatMessages" class="chat-log" aria-live="polite"></div>
+            <form id="chatForm" class="chat-form">
+              <input id="chatInput" maxlength="500" placeholder="Message the floor">
+              <button id="chatButton" type="submit">Send</button>
+            </form>
+          </section>
+        </aside>
+
+        <section class="panel feed-panel" aria-labelledby="feedHeading">
+          <div class="panel-head">
+            <h2 id="feedHeading">Event Feed</h2>
+            <div class="feed-actions">
+              <button type="button" id="pollButton" class="secondary">Poll</button>
+              <button type="button" id="replayButton" class="secondary">Replay</button>
+            </div>
+          </div>
+          <ol id="eventFeed" class="event-feed" aria-live="polite"></ol>
+        </section>
+      </main>
+    </div>
+
+    <template id="loginDialogTemplate">
+      <dialog class="login-dialog">
+        <form method="dialog" class="panel stack">
+          <div class="panel-head">
+            <h2>Login</h2>
+            <button value="cancel" class="icon-button" aria-label="Close">x</button>
+          </div>
+          <label>
+            Username
+            <input name="username" autocomplete="username" required>
+          </label>
+          <label>
+            Password
+            <input name="password" type="password" autocomplete="current-password" required>
+          </label>
+          <menu class="button-row">
+            <button value="cancel" class="secondary">Cancel</button>
+            <button id="confirmLoginButton" value="default">Login</button>
+          </menu>
+        </form>
+      </dialog>
+    </template>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

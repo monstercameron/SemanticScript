@@ -1,0 +1,14 @@
+module app.realtime_auction_arena.server.tests.auth_tests_coverage
+purpose module app.realtime_auction_arena.server.tests.auth_tests_coverage "Coverage marker for server/tests/auth_tests.sem."
+moduleOwns app.realtime_auction_arena.server.tests.auth_tests_coverage "Auth-test artifact coverage and naming."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.auth_tests_coverage "Auth implementation."
+invariant module app.realtime_auction_arena.server.tests.auth_tests_coverage "Auth hardening cases remain named until durable storage and typed JWT claim validation are wired."
+
+storage module immutable authTestsCoveragePlanSummary String "server/tests/auth_tests.sem coverage: invalid password, bcrypt 72-byte password limit, JWT claim model, durable refresh-token row model, disabled user, expired token, bad signature, wrong audience, and insufficient role."
+
+operation getAuthTestsCoveragePlan
+output operation getAuthTestsCoveragePlan String
+memory getAuthTestsCoveragePlan heap no
+async getAuthTestsCoveragePlan no
+purpose operation getAuthTestsCoveragePlan "Return the auth-test artifact coverage plan."
+return value authTestsCoveragePlanSummary

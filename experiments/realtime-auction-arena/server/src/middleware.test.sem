@@ -1,0 +1,14 @@
+module app.realtime_auction_arena.server.tests.middleware
+purpose module app.realtime_auction_arena.server.tests.middleware "Unit coverage contract for server/src/middleware.sem."
+moduleOwns app.realtime_auction_arena.server.tests.middleware "Envelope, limits, request log, audit, redaction, and observability contract coverage."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.middleware "Native structured logging implementation."
+invariant module app.realtime_auction_arena.server.tests.middleware "Security-sensitive fields must be named in redaction coverage."
+
+storage module immutable middlewareUnitTestPlanSummary String "server/src/middleware.sem coverage: envelope fields, request limits, route limits, log fields, audit fields, and redaction of auth/password secrets."
+
+operation getMiddlewareUnitTestPlan
+output operation getMiddlewareUnitTestPlan String
+memory getMiddlewareUnitTestPlan heap no
+async getMiddlewareUnitTestPlan no
+purpose operation getMiddlewareUnitTestPlan "Return the middleware unit coverage plan."
+return value middlewareUnitTestPlanSummary

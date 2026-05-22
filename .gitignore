@@ -53,6 +53,10 @@ SemanticScript/bench/results/
 .claude/
 
 apps/taskforge-tui/todos.json
+apps/taskforge-web/logs/
+apps/taskforge-web/*.db
+apps/taskforge-web/*.db-shm
+apps/taskforge-web/*.db-wal
 experiments/kilo-port/kilo.txt
 experiments/kilo-port/upstream-kilo/
 
@@ -73,3 +77,9 @@ experiments/*
 !experiments/kilo-port/**
 experiments/kilo-port/build/
 experiments/kilo-port/**/build/
+!experiments/realtime-auction-arena/
+!experiments/realtime-auction-arena/**
+experiments/realtime-auction-arena/**/__pycache__/
+experiments/realtime-auction-arena/**/*.pyc
+experiments/realtime-auction-arena/build/
+experiments/realtime-auction-arena/**/build/

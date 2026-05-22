@@ -1,0 +1,165 @@
+module experiment.realtime_auction_arena.win32_auctioneer.auction_api
+purpose module experiment.realtime_auction_arena.win32_auctioneer.auction_api "Versioned auction HTTP API contracts and command request records for the Win32 operator console."
+moduleOwns experiment.realtime_auction_arena.win32_auctioneer.auction_api "Client-side route constants, command payload shapes, response snapshot shape, and transport-gap documentation."
+moduleDoesNotOwn experiment.realtime_auction_arena.win32_auctioneer.auction_api "Server route implementation, auction rule validation, durable audit storage, or actual native HTTP client extensions."
+invariant module experiment.realtime_auction_arena.win32_auctioneer.auction_api "Every write command carries a bearer token and idempotency key in the typed shape even though standard.net cannot send those headers yet."
+moduleWarning experiment.realtime_auction_arena.win32_auctioneer.auction_api "Current standard.net supports GET only and no custom headers; authenticated POST commands are scaffold contracts until native HTTP client support exists."
+
+type AuctionId CNullTerminatedByteString
+type ItemName CNullTerminatedByteString
+type MoneyAmountMinor I64
+type DurationSeconds I64
+type IdempotencyKey CNullTerminatedByteString
+type AccessJwt CNullTerminatedByteString
+type ApiBaseUrl CNullTerminatedByteString
+type ApiRoute CNullTerminatedByteString
+type ApiStatusText CNullTerminatedByteString
+type ApiErrorCode CNullTerminatedByteString
+type UserId CNullTerminatedByteString
+type ChatMessageId CNullTerminatedByteString
+type AuditEventId CNullTerminatedByteString
+type AuctionStatus CNullTerminatedByteString
+
+record AuctionCommandContext
+field AuctionCommandContext baseUrl ApiBaseUrl
+field AuctionCommandContext auctionId AuctionId
+field AuctionCommandContext accessToken AccessJwt
+field AuctionCommandContext idempotencyKey IdempotencyKey
+
+record AuctionConfigRequest
+field AuctionConfigRequest auctionId AuctionId
+field AuctionConfigRequest itemName ItemName
+field AuctionConfigRequest startingBidMinor MoneyAmountMinor
+field AuctionConfigRequest minimumIncrementMinor MoneyAmountMinor
+field AuctionConfigRequest durationSeconds DurationSeconds
+
+record ExtendAuctionRequest
+field ExtendAuctionRequest auctionId AuctionId
+field ExtendAuctionRequest extendBySeconds DurationSeconds
+
+record ModerateChatRequest
+field ModerateChatRequest auctionId AuctionId
+field ModerateChatRequest messageId ChatMessageId
+field ModerateChatRequest action CNullTerminatedByteString
+
+record AuctionSnapshot
+field AuctionSnapshot auctionId AuctionId
+field AuctionSnapshot status AuctionStatus
+field AuctionSnapshot itemName ItemName
+field AuctionSnapshot currentBidMinor MoneyAmountMinor
+field AuctionSnapshot minimumIncrementMinor MoneyAmountMinor
+field AuctionSnapshot connectedClients I64
+field AuctionSnapshot currentWinnerUserId UserId
+field AuctionSnapshot endsAtMillis I64
+field AuctionSnapshot revision I64
+
+record AuctionApiResult
+field AuctionApiResult ok Bool
+field AuctionApiResult httpStatus I64
+field AuctionApiResult status ApiStatusText
+field AuctionApiResult errorCode ApiErrorCode
+
+storage module immutable apiVersionPrefix ApiRoute "/api/v1"
+storage module immutable authLoginRoute ApiRoute "/api/v1/auth/login"
+storage module immutable sessionRoute ApiRoute "/api/v1/session"
+storage module immutable auctionsRoute ApiRoute "/api/v1/auctions"
+storage module immutable startRouteSuffix ApiRoute "/start"
+storage module immutable extendRouteSuffix ApiRoute "/extend"
+storage module immutable closeRouteSuffix ApiRoute "/close"
+storage module immutable chatMessagesRouteSegment ApiRoute "/chat/messages/"
+storage module immutable chatHideAction CNullTerminatedByteString "hide"
+storage module immutable chatReviewedAction CNullTerminatedByteString "reviewed"
+storage module immutable notSentStatus ApiStatusText "Not sent; native HTTP client lacks authenticated POST JSON."
+storage module immutable notPolledStatus ApiStatusText "Not polled; UI-safe async GET scheduling is not available from standard.gui handlers yet."
+storage module immutable runtimeGapErrorCode ApiErrorCode "runtime_gap"
+storage module immutable okErrorCode ApiErrorCode ""
+
+operation makeCommandContext
+input operation makeCommandContext baseUrl ApiBaseUrl
+input operation makeCommandContext auctionId AuctionId
+input operation makeCommandContext accessToken AccessJwt
+input operation makeCommandContext idempotencyKey IdempotencyKey
+output operation makeCommandContext AuctionCommandContext
+memory makeCommandContext heap no
+async makeCommandContext no
+purpose operation makeCommandContext "Package base URL, auction id, bearer token, and idempotency key for a future authenticated command call."
+
+new context AuctionCommandContext
+fieldSet context baseUrl baseUrl
+fieldSet context auctionId auctionId
+fieldSet context accessToken accessToken
+fieldSet context idempotencyKey idempotencyKey
+return value context
+
+operation makeAuctionConfig
+input operation makeAuctionConfig auctionId AuctionId
+input operation makeAuctionConfig itemName ItemName
+input operation makeAuctionConfig startingBidMinor MoneyAmountMinor
+input operation makeAuctionConfig minimumIncrementMinor MoneyAmountMinor
+input operation makeAuctionConfig durationSeconds DurationSeconds
+output operation makeAuctionConfig AuctionConfigRequest
+memory makeAuctionConfig heap no
+async makeAuctionConfig no
+purpose operation makeAuctionConfig "Build the item configuration payload used by create/start flows."
+
+new request AuctionConfigRequest
+fieldSet request auctionId auctionId
+fieldSet request itemName itemName
+fieldSet request startingBidMinor startingBidMinor
+fieldSet request minimumIncrementMinor minimumIncrementMinor
+fieldSet request durationSeconds durationSeconds
+return value request
+
+operation makeExtendRequest
+input operation makeExtendRequest auctionId AuctionId
+input operation makeExtendRequest extendBySeconds DurationSeconds
+output operation makeExtendRequest ExtendAuctionRequest
+memory makeExtendRequest heap no
+async makeExtendRequest no
+purpose operation makeExtendRequest "Build the typed extend-auction payload."
+
+new request ExtendAuctionRequest
+fieldSet request auctionId auctionId
+fieldSet request extendBySeconds extendBySeconds
+return value request
+
+operation makeModerateChatRequest
+input operation makeModerateChatRequest auctionId AuctionId
+input operation makeModerateChatRequest messageId ChatMessageId
+input operation makeModerateChatRequest action CNullTerminatedByteString
+output operation makeModerateChatRequest ModerateChatRequest
+memory makeModerateChatRequest heap no
+async makeModerateChatRequest no
+purpose operation makeModerateChatRequest "Build the authenticated moderation command payload."
+
+new request ModerateChatRequest
+fieldSet request auctionId auctionId
+fieldSet request messageId messageId
+fieldSet request action action
+return value request
+
+operation unsupportedPostResult
+output operation unsupportedPostResult AuctionApiResult
+memory unsupportedPostResult heap no
+async unsupportedPostResult no
+purpose operation unsupportedPostResult "Return the deterministic scaffold result for write commands blocked by missing HTTP POST/header runtime support."
+
+new result AuctionApiResult
+fieldSet result ok false
+fieldSet result httpStatus 0
+fieldSet result status notSentStatus
+fieldSet result errorCode runtimeGapErrorCode
+return value result
+
+operation unsupportedPollResult
+output operation unsupportedPollResult AuctionApiResult
+memory unsupportedPollResult heap no
+async unsupportedPollResult no
+purpose operation unsupportedPollResult "Return the deterministic scaffold result for polling blocked by GUI-safe async scheduling gaps."
+
+new result AuctionApiResult
+fieldSet result ok false
+fieldSet result httpStatus 0
+fieldSet result status notPolledStatus
+fieldSet result errorCode runtimeGapErrorCode
+return value result

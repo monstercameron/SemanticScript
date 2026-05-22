@@ -1,0 +1,105 @@
+module app.realtime_auction_arena.server.persistence
+purpose module app.realtime_auction_arena.server.persistence "SQLite schema, migration, readiness, and transaction contract for Realtime Auction Arena persistence."
+moduleOwns app.realtime_auction_arena.server.persistence "Schema version, migration ledger, durable table list, indexes, idempotency contract, rate-limit storage, transaction boundaries, readiness probes, and executable schema text artifacts."
+moduleDoesNotOwn app.realtime_auction_arena.server.persistence "Auction validation, auth cryptography, request parsing, SSE broadcasting, or native SQLite runtime internals."
+invariant module app.realtime_auction_arena.server.persistence "Command writes must persist domain state, append replay events, store idempotency results, update rate-limit state when applicable, and write audit rows in one transaction before any broadcast occurs."
+invariant module app.realtime_auction_arena.server.persistence "Schema readiness is false until migrations are applied, foreign keys are enabled, required indexes exist, and the current schema version matches the server contract."
+moduleWarning app.realtime_auction_arena.server.persistence "TODO(runtime): replace this static SQL artifact with a startup migration runner once standard.sqlite exposes ordered migrations and transactional DDL helpers."
+
+record PersistencePlan
+field PersistencePlan schemaVersion I64
+field PersistencePlan databasePathEnv String
+field PersistencePlan migrationTables String
+field PersistencePlan identityTables String
+field PersistencePlan auctionTables String
+field PersistencePlan observabilityTables String
+field PersistencePlan uniqueness String
+field PersistencePlan indexes String
+field PersistencePlan transactionRule String
+field PersistencePlan readinessRule String
+field PersistencePlan cleanupRule String
+
+record PersistenceReadinessPlan
+field PersistenceReadinessPlan checks String
+field PersistenceReadinessPlan failureMode String
+field PersistenceReadinessPlan startupIntegration String
+
+record PersistenceTransactionPlan
+field PersistenceTransactionPlan beginMode String
+field PersistenceTransactionPlan commandWriteOrder String
+field PersistenceTransactionPlan idempotencyRule String
+field PersistenceTransactionPlan rollbackRule String
+field PersistenceTransactionPlan broadcastRule String
+
+storage module immutable persistencePlan PersistencePlan
+jsonBody persistencePlan
+  {
+      "schemaVersion": 1,
+      "databasePathEnv": "AUCTION_ARENA_DB",
+      "migrationTables": "schema_versions, schema_migrations",
+      "identityTables": "users, password_credentials, refresh_tokens, revoked_jwts",
+      "auctionTables": "auctions, bids, auction_events, chat_messages",
+      "observabilityTables": "audit_events, request_log, idempotency_keys, rate_limit_buckets",
+      "uniqueness": "users.username_norm, password_credentials.user_id, refresh_tokens.token_hash, refresh_tokens.replaced_by_refresh_token_id, revoked_jwts.jti, auctions.auction_id, bids.bid_id, auction_events(auction_id,sequence), chat_messages.message_id, audit_events.audit_event_id, request_log.request_id, idempotency_keys(scope,key), rate_limit_buckets(bucket_key,window_start)",
+      "indexes": "users(role,status), refresh_tokens(user_id,expires_at,revoked_at), revoked_jwts(expires_at), auctions(status,closes_at), auctions(seller_user_id,status), bids(auction_id,created_at), bids(bidder_user_id,created_at), auction_events(auction_id,sequence), auction_events(created_at,event_id), chat_messages(auction_id,created_at), audit_events(actor_user_id,created_at), audit_events(request_id), request_log(route_pattern,status,started_at), request_log(actor_user_id,started_at), idempotency_keys(expires_at), rate_limit_buckets(bucket_key,window_start)",
+      "transactionRule": "Every mutating API command runs BEGIN IMMEDIATE, checks idempotency by scope/key and request_hash, validates actor/rate-limit/domain state, writes state/event/audit/request/idempotency rows, commits, then broadcasts persisted events by sequence.",
+      "readinessRule": "Startup readiness opens AUCTION_ARENA_DB, enables foreign_keys, applies pending schema_migrations in order, verifies schema_versions.current_version == 1, checks all required tables/indexes, and prepares SELECT 1 against users, auctions, auction_events, idempotency_keys, and request_log.",
+      "cleanupRule": "A scheduled maintenance transaction deletes expired idempotency_keys/rate_limit_buckets, purges expired revoked_jwts after access-token TTL, and marks expired refresh_tokens unusable without deleting audit history."
+  }
+
+storage module immutable persistenceReadinessPlan PersistenceReadinessPlan
+jsonBody persistenceReadinessPlan
+  {
+      "checks": "database open, PRAGMA foreign_keys=ON, PRAGMA journal_mode=WAL, PRAGMA busy_timeout, schema version, migration ledger, table list, index list, read probes, write probe inside rolled-back transaction",
+      "failureMode": "Return /readyz ok=false with database=schema_not_ready and keep /healthz independent.",
+      "startupIntegration": "main.sem should call persistence startup before route registration reports ready; route handlers should read the cached readiness result."
+  }
+
+storage module immutable persistenceTransactionPlan PersistenceTransactionPlan
+jsonBody persistenceTransactionPlan
+  {
+      "beginMode": "BEGIN IMMEDIATE",
+      "commandWriteOrder": "request_log start, rate_limit_buckets upsert, idempotency_keys lookup, domain row writes, auction_events append, audit_events append, idempotency_keys response upsert, request_log finish",
+      "idempotencyRule": "Same scope/key/request_hash returns the stored response_json and response_status without reapplying writes; same scope/key with a different request_hash returns idempotency_conflict.",
+      "rollbackRule": "Any validation, constraint, serialization, or broadcast-preparation failure rolls back the transaction and writes only a best-effort request_log failure when the runtime can safely do so.",
+      "broadcastRule": "SSE and Win32 polling observe only committed auction_events ordered by auction_id and sequence."
+  }
+
+storage module immutable sqliteSchemaV1 CNullTerminatedByteString "PRAGMA foreign_keys = ON;\nPRAGMA journal_mode = WAL;\nCREATE TABLE IF NOT EXISTS schema_versions (singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1), current_version INTEGER NOT NULL, applied_at INTEGER NOT NULL);\nCREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, checksum TEXT NOT NULL, applied_at INTEGER NOT NULL);\nCREATE TABLE IF NOT EXISTS users (user_id TEXT PRIMARY KEY, username TEXT NOT NULL, username_norm TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, role INTEGER NOT NULL, status INTEGER NOT NULL, disabled INTEGER NOT NULL DEFAULT 0, locked_until INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, CHECK (status IN (1,2,3)), CHECK (role IN (10,20,30)));\nCREATE TABLE IF NOT EXISTS password_credentials (user_id TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE, password_hash TEXT NOT NULL, cost INTEGER NOT NULL, password_updated_at INTEGER NOT NULL, failed_login_count INTEGER NOT NULL DEFAULT 0, last_failed_login_at INTEGER NOT NULL DEFAULT 0, CHECK (cost >= 10));\nCREATE TABLE IF NOT EXISTS refresh_tokens (refresh_token_id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE, token_hash TEXT NOT NULL UNIQUE, issued_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, revoked_at INTEGER NOT NULL DEFAULT 0, replaced_by_refresh_token_id TEXT UNIQUE, created_by_request_id TEXT NOT NULL, revoked_by_request_id TEXT NOT NULL DEFAULT '', user_agent_hash TEXT NOT NULL, ip_address_hash TEXT NOT NULL, CHECK (expires_at > issued_at));\nCREATE TABLE IF NOT EXISTS revoked_jwts (jti TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE, expires_at INTEGER NOT NULL, revoked_at INTEGER NOT NULL, request_id TEXT NOT NULL);\nCREATE TABLE IF NOT EXISTS auctions (auction_id TEXT PRIMARY KEY, seller_user_id TEXT NOT NULL REFERENCES users(user_id), created_by_user_id TEXT NOT NULL REFERENCES users(user_id), status INTEGER NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, starting_bid_minor INTEGER NOT NULL, minimum_increment_minor INTEGER NOT NULL, max_bid_minor INTEGER NOT NULL, anti_sniping_window_ms INTEGER NOT NULL, anti_sniping_extension_ms INTEGER NOT NULL, current_bid_minor INTEGER NOT NULL, current_winner_user_id TEXT NOT NULL DEFAULT '', last_bid_id TEXT NOT NULL DEFAULT '', last_bidder_user_id TEXT NOT NULL DEFAULT '', accepted_bid_count INTEGER NOT NULL DEFAULT 0, rejected_bid_count INTEGER NOT NULL DEFAULT 0, revision INTEGER NOT NULL DEFAULT 0, event_sequence INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, starts_at INTEGER NOT NULL, closes_at INTEGER NOT NULL, closed_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL, CHECK (status IN (1,2,3,4)), CHECK (starting_bid_minor >= 0), CHECK (minimum_increment_minor > 0), CHECK (max_bid_minor > starting_bid_minor), CHECK (current_bid_minor >= starting_bid_minor), CHECK (revision >= 0), CHECK (event_sequence >= 0));\nCREATE TABLE IF NOT EXISTS bids (bid_id TEXT PRIMARY KEY, auction_id TEXT NOT NULL REFERENCES auctions(auction_id) ON DELETE CASCADE, bidder_user_id TEXT NOT NULL REFERENCES users(user_id), amount_minor INTEGER NOT NULL, status INTEGER NOT NULL, reject_reason INTEGER NOT NULL, expected_revision INTEGER NOT NULL DEFAULT 0, has_expected_revision INTEGER NOT NULL DEFAULT 0, request_id TEXT NOT NULL, idempotency_key TEXT NOT NULL, created_at INTEGER NOT NULL, CHECK (status IN (1,2)), CHECK (reject_reason BETWEEN 0 AND 7), CHECK (amount_minor >= 0));\nCREATE TABLE IF NOT EXISTS auction_events (event_id TEXT PRIMARY KEY, auction_id TEXT NOT NULL REFERENCES auctions(auction_id) ON DELETE CASCADE, sequence INTEGER NOT NULL, auction_revision INTEGER NOT NULL, schema_version INTEGER NOT NULL, event_type INTEGER NOT NULL, actor_user_id TEXT NOT NULL DEFAULT '', request_id TEXT NOT NULL, idempotency_key TEXT NOT NULL DEFAULT '', bid_id TEXT NOT NULL DEFAULT '', chat_message_id TEXT NOT NULL DEFAULT '', payload_json TEXT NOT NULL, created_at INTEGER NOT NULL, UNIQUE(auction_id, sequence), CHECK (sequence > 0), CHECK (schema_version = 1));\nCREATE TABLE IF NOT EXISTS chat_messages (message_id TEXT PRIMARY KEY, auction_id TEXT NOT NULL REFERENCES auctions(auction_id) ON DELETE CASCADE, author_user_id TEXT NOT NULL REFERENCES users(user_id), status INTEGER NOT NULL, body_text TEXT NOT NULL, request_id TEXT NOT NULL, deleted_at INTEGER NOT NULL DEFAULT 0, reported_at INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, CHECK (status IN (1,2,3)), CHECK (length(body_text) <= 1000));\nCREATE TABLE IF NOT EXISTS audit_events (audit_event_id TEXT PRIMARY KEY, schema_version INTEGER NOT NULL, actor_user_id TEXT NOT NULL DEFAULT '', actor_role INTEGER NOT NULL DEFAULT 0, request_id TEXT NOT NULL, idempotency_key TEXT NOT NULL DEFAULT '', action TEXT NOT NULL, command_kind INTEGER NOT NULL DEFAULT 0, auction_id TEXT NOT NULL DEFAULT '', bid_id TEXT NOT NULL DEFAULT '', outcome INTEGER NOT NULL, error_code TEXT NOT NULL DEFAULT '', payload_json TEXT NOT NULL, created_at INTEGER NOT NULL, CHECK (schema_version = 1), CHECK (outcome IN (1,2,3,4)));\nCREATE TABLE IF NOT EXISTS request_log (request_id TEXT PRIMARY KEY, method TEXT NOT NULL, path TEXT NOT NULL, route_pattern TEXT NOT NULL, status INTEGER NOT NULL, actor_user_id TEXT NOT NULL DEFAULT '', actor_role INTEGER NOT NULL DEFAULT 0, duration_ms INTEGER NOT NULL DEFAULT 0, ip_address_hash TEXT NOT NULL DEFAULT '', user_agent_hash TEXT NOT NULL DEFAULT '', request_bytes INTEGER NOT NULL DEFAULT 0, response_bytes INTEGER NOT NULL DEFAULT 0, error_code TEXT NOT NULL DEFAULT '', started_at INTEGER NOT NULL, finished_at INTEGER NOT NULL DEFAULT 0, CHECK (status >= 0), CHECK (duration_ms >= 0));\nCREATE TABLE IF NOT EXISTS idempotency_keys (scope TEXT NOT NULL, key TEXT NOT NULL, request_hash TEXT NOT NULL, actor_user_id TEXT NOT NULL DEFAULT '', response_status INTEGER NOT NULL, response_json TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY(scope, key), CHECK (expires_at > created_at));\nCREATE TABLE IF NOT EXISTS rate_limit_buckets (bucket_key TEXT NOT NULL, window_start INTEGER NOT NULL, window_ms INTEGER NOT NULL, count INTEGER NOT NULL, limit_count INTEGER NOT NULL, reset_at INTEGER NOT NULL, PRIMARY KEY(bucket_key, window_start), CHECK (window_ms > 0), CHECK (count >= 0), CHECK (limit_count > 0));\nCREATE INDEX IF NOT EXISTS idx_users_role_status ON users(role, status);\nCREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_expiry ON refresh_tokens(user_id, expires_at, revoked_at);\nCREATE INDEX IF NOT EXISTS idx_refresh_tokens_replaced_by ON refresh_tokens(replaced_by_refresh_token_id);\nCREATE INDEX IF NOT EXISTS idx_revoked_jwts_expiry ON revoked_jwts(expires_at);\nCREATE INDEX IF NOT EXISTS idx_auctions_status_closes ON auctions(status, closes_at);\nCREATE INDEX IF NOT EXISTS idx_auctions_seller_status ON auctions(seller_user_id, status);\nCREATE INDEX IF NOT EXISTS idx_bids_history ON bids(auction_id, created_at);\nCREATE INDEX IF NOT EXISTS idx_bids_bidder_time ON bids(bidder_user_id, created_at);\nCREATE INDEX IF NOT EXISTS idx_auction_events_replay ON auction_events(auction_id, sequence);\nCREATE INDEX IF NOT EXISTS idx_auction_events_time ON auction_events(created_at, event_id);\nCREATE INDEX IF NOT EXISTS idx_chat_messages_auction_time ON chat_messages(auction_id, created_at);\nCREATE INDEX IF NOT EXISTS idx_audit_actor_time ON audit_events(actor_user_id, created_at);\nCREATE INDEX IF NOT EXISTS idx_audit_request ON audit_events(request_id);\nCREATE INDEX IF NOT EXISTS idx_request_log_route_status_time ON request_log(route_pattern, status, started_at);\nCREATE INDEX IF NOT EXISTS idx_request_log_actor_time ON request_log(actor_user_id, started_at);\nCREATE INDEX IF NOT EXISTS idx_idempotency_expiry ON idempotency_keys(expires_at);\nCREATE INDEX IF NOT EXISTS idx_rate_limit_reset ON rate_limit_buckets(reset_at);\nINSERT OR IGNORE INTO schema_versions(singleton_id, current_version, applied_at) VALUES (1, 1, 0);\nINSERT OR IGNORE INTO schema_migrations(version, name, checksum, applied_at) VALUES (1, '001_enterprise_persistence_schema', 'static-sem-artifact-v1', 0);\n"
+
+storage module immutable sqliteReadinessProbeV1 CNullTerminatedByteString "PRAGMA foreign_keys;\nSELECT current_version FROM schema_versions WHERE singleton_id = 1;\nSELECT version FROM schema_migrations WHERE version = 1;\nSELECT 1 FROM users LIMIT 1;\nSELECT 1 FROM auctions LIMIT 1;\nSELECT 1 FROM auction_events LIMIT 1;\nSELECT 1 FROM idempotency_keys LIMIT 1;\nSELECT 1 FROM request_log LIMIT 1;\n"
+
+operation getPersistencePlan
+output operation getPersistencePlan PersistencePlan
+memory getPersistencePlan heap no
+async getPersistencePlan no
+purpose operation getPersistencePlan "Return the static persistence plan."
+return value persistencePlan
+
+operation getPersistenceReadinessPlan
+output operation getPersistenceReadinessPlan PersistenceReadinessPlan
+memory getPersistenceReadinessPlan heap no
+async getPersistenceReadinessPlan no
+purpose operation getPersistenceReadinessPlan "Return the database startup/readiness plan."
+return value persistenceReadinessPlan
+
+operation getPersistenceTransactionPlan
+output operation getPersistenceTransactionPlan PersistenceTransactionPlan
+memory getPersistenceTransactionPlan heap no
+async getPersistenceTransactionPlan no
+purpose operation getPersistenceTransactionPlan "Return the durable command transaction plan."
+return value persistenceTransactionPlan
+
+operation getSqliteSchemaV1
+output operation getSqliteSchemaV1 CNullTerminatedByteString
+memory getSqliteSchemaV1 heap no
+async getSqliteSchemaV1 no
+purpose operation getSqliteSchemaV1 "Return the schema initialization SQL as an executable artifact for the future migration runner."
+return value sqliteSchemaV1
+
+operation getSqliteReadinessProbeV1
+output operation getSqliteReadinessProbeV1 CNullTerminatedByteString
+memory getSqliteReadinessProbeV1 heap no
+async getSqliteReadinessProbeV1 no
+purpose operation getSqliteReadinessProbeV1 "Return the readiness probe SQL contract used by main.sem once startup SQLite wiring lands."
+return value sqliteReadinessProbeV1

@@ -1,0 +1,14 @@
+module app.realtime_auction_arena.server.tests.models
+purpose module app.realtime_auction_arena.server.tests.models "Unit coverage contract for server/src/models.sem."
+moduleOwns app.realtime_auction_arena.server.tests.models "Model shape coverage for ids, money/time aliases, enums, records, schema versioning, and absent-value sentinels."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.models "Persistence schema or route behavior."
+invariant module app.realtime_auction_arena.server.tests.models "Each durable model family must be named in the unit coverage plan."
+
+storage module immutable serverModelsUnitTestPlanSummary String "server/src/models.sem coverage: ids, money/time aliases, roles, statuses, auction policy/state, bid, auth/session, events, chat, audit, request log, and envelope records."
+
+operation getServerModelsUnitTestPlan
+output operation getServerModelsUnitTestPlan String
+memory getServerModelsUnitTestPlan heap no
+async getServerModelsUnitTestPlan no
+purpose operation getServerModelsUnitTestPlan "Return the server model unit coverage plan."
+return value serverModelsUnitTestPlanSummary

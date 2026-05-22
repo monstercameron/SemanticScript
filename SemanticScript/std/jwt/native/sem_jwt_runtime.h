@@ -35,6 +35,11 @@ int ss_jwt_hs256_verify_token(
     const char *secret
 );
 
+int ss_jwt_hs256_verify_arena_access_token(
+    const char *token,
+    const char *secret
+);
+
 int ss_auth_format_login_envelope(
     const char *access_token,
     const char *refresh_token,

@@ -1,0 +1,14 @@
+module app.realtime_auction_arena.server.tests.build
+purpose module app.realtime_auction_arena.server.tests.build "Unit coverage contract for server/build.sem."
+moduleOwns app.realtime_auction_arena.server.tests.build "Assertions that the server build plan remains discoverable by the *.test.sem harness."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.build "Native compiler implementation."
+invariant module app.realtime_auction_arena.server.tests.build "The build plan test must mention module registration, native target shape, and test discovery."
+
+storage module immutable serverBuildUnitTestPlanSummary String "server/build.sem coverage: module registration, native webServer target, port 18083, and *.test.sem discovery."
+
+operation getServerBuildUnitTestPlan
+output operation getServerBuildUnitTestPlan String
+memory getServerBuildUnitTestPlan heap no
+async getServerBuildUnitTestPlan no
+purpose operation getServerBuildUnitTestPlan "Return the server build unit coverage plan."
+return value serverBuildUnitTestPlanSummary

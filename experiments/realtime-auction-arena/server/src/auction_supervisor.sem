@@ -1,0 +1,43 @@
+module app.realtime_auction_arena.server.auction_supervisor
+purpose module app.realtime_auction_arena.server.auction_supervisor "Async auction supervisor contract and runtime-gap tracker."
+moduleOwns app.realtime_auction_arena.server.auction_supervisor "Command queue shape, state ownership decision, ordering rule, and blocked async primitives list."
+moduleDoesNotOwn app.realtime_auction_arena.server.auction_supervisor "Auction domain validation or HTTP route dispatch."
+invariant module app.realtime_auction_arena.server.auction_supervisor "Accepted commands are ordered deterministically before persistence and broadcast; queue overflow fails the caller instead of reordering."
+
+record SupervisorContract
+field SupervisorContract ownershipModel String
+field SupervisorContract commandTypes String
+field SupervisorContract commandQueueCapacity I64
+field SupervisorContract subscriberQueueCapacity I64
+field SupervisorContract replyRule String
+field SupervisorContract orderingRule String
+field SupervisorContract timerRule String
+field SupervisorContract shutdownRule String
+field SupervisorContract backpressureRule String
+field SupervisorContract blockedRuntimeFeatures String
+field SupervisorContract executableNow String
+field SupervisorContract requiredRuntimeApis String
+
+storage module immutable supervisorContract SupervisorContract
+jsonBody supervisorContract
+  {
+      "ownershipModel": "one supervisor actor owns mutable state for each live auction; HTTP handlers submit commands and receive typed replies",
+      "commandTypes": "create, start, bid, extend, close, timerExpired, subscribe, unsubscribe, shutdown",
+      "commandQueueCapacity": 1024,
+      "subscriberQueueCapacity": 256,
+      "replyRule": "each command carries requestId and an eventual command result channel/reply handle",
+      "orderingRule": "commands and timer expiry are sequenced by monotonic receive order; simultaneous bids compare accepted command order, not wall clock",
+      "timerRule": "close timer is cancelable and rescheduled on extension; timerExpired is enqueued as a normal command so it cannot race direct close or bid handling",
+      "shutdownRule": "shutdown rejects new commands, drains accepted commands through persistence/broadcast, closes subscriber queues, and resolves outstanding replies",
+      "backpressureRule": "full command queue returns queue_full to the caller; full subscriber queue drops that subscriber only and records sse_subscriber_backpressure",
+      "blockedRuntimeFeatures": "bounded channels, async select, cancelable timers, fake clock, shutdown cancellation, nonblocking subscriber sends",
+      "executableNow": "ownership model, command list, capacities, ordering, timer, shutdown, and backpressure rules are parseable contract data",
+      "requiredRuntimeApis": "async bounded channels with trySend, select over command/timer/shutdown, cancelable timers, fake clock for tests, task cancellation, async-safe fanout"
+  }
+
+operation getSupervisorContract
+output operation getSupervisorContract SupervisorContract
+memory getSupervisorContract heap no
+async getSupervisorContract no
+purpose operation getSupervisorContract "Return the static supervisor contract."
+return value supervisorContract

@@ -1,0 +1,14 @@
+module app.realtime_auction_arena.server.tests.chat_contract
+purpose module app.realtime_auction_arena.server.tests.chat_contract "Unit coverage contract for server/src/chat.sem."
+moduleOwns app.realtime_auction_arena.server.tests.chat_contract "Chat post, delete, report, moderation, rate limit, replay, and revision-isolation coverage."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.chat_contract "HTTP/2 or WebSocket transport."
+invariant module app.realtime_auction_arena.server.tests.chat_contract "Chat must use event replay ordering without mutating AuctionState.revision."
+
+storage module immutable chatContractUnitTestPlanSummary String "server/src/chat.sem coverage: post, delete, report, moderation roles, byte limit, rate limits, replay ordering, and revision isolation."
+
+operation getChatContractUnitTestPlan
+output operation getChatContractUnitTestPlan String
+memory getChatContractUnitTestPlan heap no
+async getChatContractUnitTestPlan no
+purpose operation getChatContractUnitTestPlan "Return the chat contract unit coverage plan."
+return value chatContractUnitTestPlanSummary

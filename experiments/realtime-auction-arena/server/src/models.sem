@@ -1,0 +1,384 @@
+# Realtime Auction Arena server model contracts.
+#
+# This file is intentionally contract-heavy and runtime-light. Current
+# SemanticScript supports aliases, enums, records, constants, and operation
+# metadata well; it does not yet expose first-class optionals, tagged unions,
+# or typed JSON derivation for these records.
+
+module app.realtime_auction_arena.server.models
+purpose module app.realtime_auction_arena.server.models "Versioned domain, command, event, chat, audit, and request-log contracts for the Realtime Auction Arena server."
+moduleOwns app.realtime_auction_arena.server.models "Stable server-side record shapes, enum vocabularies, id aliases, timestamp aliases, event schema versioning, and sentinel absent-value conventions."
+moduleDoesNotOwn app.realtime_auction_arena.server.models "HTTP routing, persistence schema, bcrypt/JWT implementation, SSE transport, browser rendering, or Win32 client view models."
+invariant module app.realtime_auction_arena.server.models "Every durable event record carries eventSchemaVersion and auctionEventSequence so replay consumers can process events deterministically."
+invariant module app.realtime_auction_arena.server.models "Empty ids are represented by the empty string; absent timestamps and durations are represented by zero until first-class optionals land."
+moduleWarning app.realtime_auction_arena.server.models "TODO(runtime): replace sentinel empty string and zero timestamp conventions with typed Option fields when SemanticScript supports nullable/optional record fields."
+moduleWarning app.realtime_auction_arena.server.models "TODO(runtime): replace flat event payload records with tagged/sealed variants when the language supports them."
+
+type AuctionId String
+type BidId String
+type EventId String
+type ChatMessageId String
+type UserId String
+type SessionId String
+type RefreshTokenId String
+type RequestId String
+type IdempotencyKey String
+type AuditEventId String
+
+type MoneyAmountMinor CSignedInt64
+type UtcMillis CSignedInt64
+type MonotonicMillis CSignedInt64
+type DurationMillis CSignedInt64
+type AuctionRevision CSignedInt64
+type AuctionEventSequence CSignedInt64
+type EventSchemaVersion CSignedInt32
+type ApiVersion String
+type ErrorCode String
+type JsonObjectText String
+type IpAddressHash String
+type UserAgentHash String
+
+typeInvariant AuctionId "Empty string means absent or unassigned until persistence allocates an id."
+typeInvariant BidId "Empty string means absent or unassigned until persistence allocates an id."
+typeInvariant EventId "Empty string means absent or unassigned until persistence allocates an id."
+typeInvariant ChatMessageId "Empty string means absent or unassigned until persistence allocates an id."
+typeInvariant UserId "Empty string means unauthenticated or absent actor."
+typeInvariant SessionId "Empty string means no active session."
+typeInvariant RefreshTokenId "Empty string means no refresh token row is associated."
+typeInvariant RequestId "Empty string is only valid before request-id extraction/generation."
+typeInvariant IdempotencyKey "Empty string is invalid for write commands once API validation runs."
+typeInvariant AuditEventId "Empty string means audit event has not been persisted."
+typeInvariant UtcMillis "Zero means unknown or not set; non-zero values are Unix epoch milliseconds in UTC."
+typeInvariant MonotonicMillis "Zero means unknown or not captured; non-zero values are runtime monotonic milliseconds."
+typeInvariant DurationMillis "Zero means no duration or not captured; negative durations are invalid."
+typeInvariant AuctionRevision "Starts at zero for draft creation and increases by one for each accepted state-changing auction command."
+typeInvariant AuctionEventSequence "Starts at one for the first event in an auction stream and increases by one for every replayable auction event."
+
+enum UserRole repr CSignedInt32
+enumCase UserRole anonymousUserRole 0
+enumCase UserRole bidderUserRole 10
+enumCase UserRole auctioneerUserRole 20
+enumCase UserRole adminUserRole 30
+
+enum UserStatus repr CSignedInt32
+enumCase UserStatus activeUserStatus 1
+enumCase UserStatus disabledUserStatus 2
+enumCase UserStatus lockedUserStatus 3
+
+enum AuctionStatus repr CSignedInt32
+enumCase AuctionStatus draftAuctionStatus 1
+enumCase AuctionStatus runningAuctionStatus 2
+enumCase AuctionStatus closedAuctionStatus 3
+enumCase AuctionStatus cancelledAuctionStatus 4
+
+enum BidStatus repr CSignedInt32
+enumCase BidStatus acceptedBidStatus 1
+enumCase BidStatus rejectedBidStatus 2
+
+enum BidRejectReason repr CSignedInt32
+enumCase BidRejectReason bidRejectNone 0
+enumCase BidRejectReason bidRejectAuctionMissing 1
+enumCase BidRejectReason bidRejectAuctionNotRunning 2
+enumCase BidRejectReason bidRejectActorNotBidder 3
+enumCase BidRejectReason bidRejectAmountTooLow 4
+enumCase BidRejectReason bidRejectAmountTooHigh 5
+enumCase BidRejectReason bidRejectSameBidderInARow 6
+enumCase BidRejectReason bidRejectStaleRevision 7
+
+enum AuctionPolicyRejectReason repr CSignedInt32
+enumCase AuctionPolicyRejectReason auctionPolicyRejectNone 0
+enumCase AuctionPolicyRejectReason auctionPolicyRejectMinimumIncrementNotPositive 1
+enumCase AuctionPolicyRejectReason auctionPolicyRejectMaxBidNotAboveStartingBid 2
+enumCase AuctionPolicyRejectReason auctionPolicyRejectAntiSnipingWindowOutOfBounds 3
+enumCase AuctionPolicyRejectReason auctionPolicyRejectAntiSnipingExtensionOutOfBounds 4
+enumCase AuctionPolicyRejectReason auctionPolicyRejectTitleTooLong 5
+enumCase AuctionPolicyRejectReason auctionPolicyRejectDescriptionTooLong 6
+
+enum LifecycleTransitionRejectReason repr CSignedInt32
+enumCase LifecycleTransitionRejectReason lifecycleRejectNone 0
+enumCase LifecycleTransitionRejectReason lifecycleRejectDraftOnlyStarts 1
+enumCase LifecycleTransitionRejectReason lifecycleRejectRunningOnlyClosesOrCancels 2
+enumCase LifecycleTransitionRejectReason lifecycleRejectTerminalState 3
+enumCase LifecycleTransitionRejectReason lifecycleRejectUnsupportedTransition 4
+
+enum CommandKind repr CSignedInt32
+enumCase CommandKind createAuctionCommandKind 1
+enumCase CommandKind startAuctionCommandKind 2
+enumCase CommandKind extendAuctionCommandKind 3
+enumCase CommandKind closeAuctionCommandKind 4
+enumCase CommandKind cancelAuctionCommandKind 5
+enumCase CommandKind placeBidCommandKind 6
+enumCase CommandKind postChatMessageCommandKind 7
+enumCase CommandKind deleteChatMessageCommandKind 8
+enumCase CommandKind reportChatMessageCommandKind 9
+
+enum AuctionEventKind repr CSignedInt32
+enumCase AuctionEventKind auctionCreatedEventKind 1
+enumCase AuctionEventKind auctionStartedEventKind 2
+enumCase AuctionEventKind auctionExtendedEventKind 3
+enumCase AuctionEventKind auctionClosedEventKind 4
+enumCase AuctionEventKind auctionCancelledEventKind 5
+enumCase AuctionEventKind bidAcceptedEventKind 6
+enumCase AuctionEventKind bidRejectedEventKind 7
+enumCase AuctionEventKind chatMessageCreatedEventKind 8
+enumCase AuctionEventKind chatMessageDeletedEventKind 9
+enumCase AuctionEventKind chatMessageReportedEventKind 10
+
+enum AuditOutcome repr CSignedInt32
+enumCase AuditOutcome acceptedAuditOutcome 1
+enumCase AuditOutcome rejectedAuditOutcome 2
+enumCase AuditOutcome deniedAuditOutcome 3
+enumCase AuditOutcome failedAuditOutcome 4
+
+enum ChatMessageStatus repr CSignedInt32
+enumCase ChatMessageStatus visibleChatMessageStatus 1
+enumCase ChatMessageStatus deletedChatMessageStatus 2
+enumCase ChatMessageStatus reportedChatMessageStatus 3
+
+record AuctionPolicy
+field AuctionPolicy minimumIncrement MoneyAmountMinor
+field AuctionPolicy startingBid MoneyAmountMinor
+field AuctionPolicy maxBidAmount MoneyAmountMinor
+field AuctionPolicy antiSnipingWindowMillis DurationMillis
+field AuctionPolicy antiSnipingExtensionMillis DurationMillis
+field AuctionPolicy minAuctionDurationMillis DurationMillis
+field AuctionPolicy maxAuctionDurationMillis DurationMillis
+field AuctionPolicy maxTitleBytes CSignedInt64
+field AuctionPolicy maxDescriptionBytes CSignedInt64
+field AuctionPolicy maxChatMessageBytes CSignedInt64
+field AuctionPolicy allowStaleExpectedRevision Bool
+
+record Auction
+field Auction id AuctionId
+field Auction title String
+field Auction description String
+field Auction status AuctionStatus
+field Auction sellerUserId UserId
+field Auction createdByUserId UserId
+field Auction createdAtUtcMillis UtcMillis
+field Auction startsAtUtcMillis UtcMillis
+field Auction closesAtUtcMillis UtcMillis
+field Auction closedAtUtcMillis UtcMillis
+field Auction currentBid MoneyAmountMinor
+field Auction currentWinnerUserId UserId
+field Auction lastBidId BidId
+field Auction lastBidderUserId UserId
+field Auction acceptedBidCount CSignedInt64
+field Auction rejectedBidCount CSignedInt64
+field Auction revision AuctionRevision
+field Auction eventSequence AuctionEventSequence
+field Auction policy AuctionPolicy
+
+record Bid
+field Bid id BidId
+field Bid auctionId AuctionId
+field Bid bidderUserId UserId
+field Bid amount MoneyAmountMinor
+field Bid status BidStatus
+field Bid rejectReason BidRejectReason
+field Bid expectedRevision AuctionRevision
+field Bid hasExpectedRevision Bool
+field Bid requestId RequestId
+field Bid idempotencyKey IdempotencyKey
+field Bid createdAtUtcMillis UtcMillis
+
+record User
+field User id UserId
+field User displayName String
+field User role UserRole
+field User status UserStatus
+field User createdAtUtcMillis UtcMillis
+field User updatedAtUtcMillis UtcMillis
+
+record Session
+field Session id SessionId
+field Session userId UserId
+field Session role UserRole
+field Session issuedAtUtcMillis UtcMillis
+field Session expiresAtUtcMillis UtcMillis
+field Session requestId RequestId
+
+record RefreshToken
+field RefreshToken id RefreshTokenId
+field RefreshToken userId UserId
+field RefreshToken tokenHash String
+field RefreshToken issuedAtUtcMillis UtcMillis
+field RefreshToken expiresAtUtcMillis UtcMillis
+field RefreshToken revokedAtUtcMillis UtcMillis
+field RefreshToken replacedByRefreshTokenId RefreshTokenId
+
+record AuctionCommand
+field AuctionCommand commandKind CommandKind
+field AuctionCommand auctionId AuctionId
+field AuctionCommand actorUserId UserId
+field AuctionCommand actorRole UserRole
+field AuctionCommand requestId RequestId
+field AuctionCommand idempotencyKey IdempotencyKey
+field AuctionCommand submittedAtUtcMillis UtcMillis
+field AuctionCommand expectedRevision AuctionRevision
+field AuctionCommand hasExpectedRevision Bool
+field AuctionCommand amount MoneyAmountMinor
+field AuctionCommand extendByMillis DurationMillis
+field AuctionCommand title String
+field AuctionCommand description String
+
+record CommandResult
+field CommandResult accepted Bool
+field CommandResult auctionId AuctionId
+field CommandResult bidId BidId
+field CommandResult eventId EventId
+field CommandResult auctionRevision AuctionRevision
+field CommandResult auctionEventSequence AuctionEventSequence
+field CommandResult bidRejectReason BidRejectReason
+field CommandResult lifecycleRejectReason LifecycleTransitionRejectReason
+field CommandResult policyRejectReason AuctionPolicyRejectReason
+field CommandResult errorCode ErrorCode
+
+record AuctionEvent
+field AuctionEvent id EventId
+field AuctionEvent eventSchemaVersion EventSchemaVersion
+field AuctionEvent eventKind AuctionEventKind
+field AuctionEvent auctionId AuctionId
+field AuctionEvent auctionEventSequence AuctionEventSequence
+field AuctionEvent auctionRevision AuctionRevision
+field AuctionEvent occurredAtUtcMillis UtcMillis
+field AuctionEvent actorUserId UserId
+field AuctionEvent requestId RequestId
+field AuctionEvent idempotencyKey IdempotencyKey
+field AuctionEvent bidId BidId
+field AuctionEvent bidderUserId UserId
+field AuctionEvent bidAmount MoneyAmountMinor
+field AuctionEvent bidRejectReason BidRejectReason
+field AuctionEvent chatMessageId ChatMessageId
+field AuctionEvent chatText String
+field AuctionEvent previousClosesAtUtcMillis UtcMillis
+field AuctionEvent newClosesAtUtcMillis UtcMillis
+field AuctionEvent winnerUserId UserId
+field AuctionEvent payloadJson JsonObjectText
+
+record ChatMessage
+field ChatMessage id ChatMessageId
+field ChatMessage auctionId AuctionId
+field ChatMessage authorUserId UserId
+field ChatMessage status ChatMessageStatus
+field ChatMessage text String
+field ChatMessage createdAtUtcMillis UtcMillis
+field ChatMessage deletedAtUtcMillis UtcMillis
+field ChatMessage reportedAtUtcMillis UtcMillis
+field ChatMessage requestId RequestId
+
+record AuditEvent
+field AuditEvent id AuditEventId
+field AuditEvent eventSchemaVersion EventSchemaVersion
+field AuditEvent occurredAtUtcMillis UtcMillis
+field AuditEvent actorUserId UserId
+field AuditEvent actorRole UserRole
+field AuditEvent outcome AuditOutcome
+field AuditEvent commandKind CommandKind
+field AuditEvent auctionId AuctionId
+field AuditEvent bidId BidId
+field AuditEvent requestId RequestId
+field AuditEvent idempotencyKey IdempotencyKey
+field AuditEvent errorCode ErrorCode
+field AuditEvent detailsJson JsonObjectText
+
+record RequestLog
+field RequestLog requestId RequestId
+field RequestLog method String
+field RequestLog routePattern String
+field RequestLog path String
+field RequestLog statusCode CSignedInt32
+field RequestLog actorUserId UserId
+field RequestLog actorRole UserRole
+field RequestLog startedAtUtcMillis UtcMillis
+field RequestLog durationMillis DurationMillis
+field RequestLog ipAddressHash IpAddressHash
+field RequestLog userAgentHash UserAgentHash
+field RequestLog errorCode ErrorCode
+field RequestLog requestBytes CByteCount
+field RequestLog responseBytes CByteCount
+
+record ApiError
+field ApiError code ErrorCode
+field ApiError message String
+field ApiError fieldName String
+
+record ApiEnvelope
+field ApiEnvelope apiVersion ApiVersion
+field ApiEnvelope requestId RequestId
+field ApiEnvelope ok Bool
+field ApiEnvelope error ApiError
+field ApiEnvelope dataJson JsonObjectText
+
+exportType app.realtime_auction_arena.server.models AuctionId
+exportType app.realtime_auction_arena.server.models BidId
+exportType app.realtime_auction_arena.server.models EventId
+exportType app.realtime_auction_arena.server.models ChatMessageId
+exportType app.realtime_auction_arena.server.models UserId
+exportType app.realtime_auction_arena.server.models SessionId
+exportType app.realtime_auction_arena.server.models RefreshTokenId
+exportType app.realtime_auction_arena.server.models RequestId
+exportType app.realtime_auction_arena.server.models IdempotencyKey
+exportType app.realtime_auction_arena.server.models AuditEventId
+exportType app.realtime_auction_arena.server.models MoneyAmountMinor
+exportType app.realtime_auction_arena.server.models UtcMillis
+exportType app.realtime_auction_arena.server.models MonotonicMillis
+exportType app.realtime_auction_arena.server.models DurationMillis
+exportType app.realtime_auction_arena.server.models AuctionRevision
+exportType app.realtime_auction_arena.server.models AuctionEventSequence
+exportType app.realtime_auction_arena.server.models EventSchemaVersion
+exportType app.realtime_auction_arena.server.models UserRole
+exportType app.realtime_auction_arena.server.models UserStatus
+exportType app.realtime_auction_arena.server.models AuctionStatus
+exportType app.realtime_auction_arena.server.models BidStatus
+exportType app.realtime_auction_arena.server.models BidRejectReason
+exportType app.realtime_auction_arena.server.models AuctionPolicyRejectReason
+exportType app.realtime_auction_arena.server.models LifecycleTransitionRejectReason
+exportType app.realtime_auction_arena.server.models CommandKind
+exportType app.realtime_auction_arena.server.models AuctionEventKind
+exportType app.realtime_auction_arena.server.models AuditOutcome
+exportType app.realtime_auction_arena.server.models ChatMessageStatus
+exportType app.realtime_auction_arena.server.models AuctionPolicy
+exportType app.realtime_auction_arena.server.models Auction
+exportType app.realtime_auction_arena.server.models Bid
+exportType app.realtime_auction_arena.server.models User
+exportType app.realtime_auction_arena.server.models Session
+exportType app.realtime_auction_arena.server.models RefreshToken
+exportType app.realtime_auction_arena.server.models AuctionCommand
+exportType app.realtime_auction_arena.server.models CommandResult
+exportType app.realtime_auction_arena.server.models AuctionEvent
+exportType app.realtime_auction_arena.server.models ChatMessage
+exportType app.realtime_auction_arena.server.models AuditEvent
+exportType app.realtime_auction_arena.server.models RequestLog
+exportType app.realtime_auction_arena.server.models ApiError
+exportType app.realtime_auction_arena.server.models ApiEnvelope
+
+exportConstant app.realtime_auction_arena.server.models currentAuctionEventSchemaVersion
+exportConstant app.realtime_auction_arena.server.models currentApiVersionText
+exportConstant app.realtime_auction_arena.server.models emptyAuctionId
+exportConstant app.realtime_auction_arena.server.models emptyBidId
+exportConstant app.realtime_auction_arena.server.models emptyEventId
+exportConstant app.realtime_auction_arena.server.models emptyChatMessageId
+exportConstant app.realtime_auction_arena.server.models emptyUserId
+exportConstant app.realtime_auction_arena.server.models emptySessionId
+exportConstant app.realtime_auction_arena.server.models emptyRefreshTokenId
+exportConstant app.realtime_auction_arena.server.models emptyRequestId
+exportConstant app.realtime_auction_arena.server.models emptyIdempotencyKey
+exportConstant app.realtime_auction_arena.server.models emptyAuditEventId
+exportConstant app.realtime_auction_arena.server.models zeroUtcMillis
+exportConstant app.realtime_auction_arena.server.models zeroDurationMillis
+
+storage module immutable currentAuctionEventSchemaVersion EventSchemaVersion 1
+storage module immutable currentApiVersionText ApiVersion "v1"
+storage module immutable emptyAuctionId AuctionId ""
+storage module immutable emptyBidId BidId ""
+storage module immutable emptyEventId EventId ""
+storage module immutable emptyChatMessageId ChatMessageId ""
+storage module immutable emptyUserId UserId ""
+storage module immutable emptySessionId SessionId ""
+storage module immutable emptyRefreshTokenId RefreshTokenId ""
+storage module immutable emptyRequestId RequestId ""
+storage module immutable emptyIdempotencyKey IdempotencyKey ""
+storage module immutable emptyAuditEventId AuditEventId ""
+storage module immutable zeroUtcMillis UtcMillis 0
+storage module immutable zeroDurationMillis DurationMillis 0

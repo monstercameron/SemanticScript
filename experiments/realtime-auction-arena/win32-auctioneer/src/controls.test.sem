@@ -1,0 +1,25 @@
+module experiment.realtime_auction_arena.win32_auctioneer.tests.controls
+purpose module experiment.realtime_auction_arena.win32_auctioneer.tests.controls "Unit coverage contract for win32-auctioneer/src/controls.sem."
+moduleOwns experiment.realtime_auction_arena.win32_auctioneer.tests.controls "Control ids, labels, placeholders, accessibility names, and layout group coverage."
+moduleDoesNotOwn experiment.realtime_auction_arena.win32_auctioneer.tests.controls "Native control rendering."
+invariant module experiment.realtime_auction_arena.win32_auctioneer.tests.controls "Every visible control group in the GUI README must have a stable id and coverage row."
+
+record Win32ControlsUnitTestPlan
+field Win32ControlsUnitTestPlan sourceFile String
+field Win32ControlsUnitTestPlan groups String
+field Win32ControlsUnitTestPlan accessibilityCoverage String
+
+storage module immutable win32ControlsUnitTestPlan Win32ControlsUnitTestPlan
+jsonBody win32ControlsUnitTestPlan
+  {
+      "sourceFile": "win32-auctioneer/src/controls.sem",
+      "groups": "auth, item config, auction commands, status, audit events, rejected bids, chat moderation",
+      "accessibilityCoverage": "labels, placeholder text, stable ids, and accessible names are defined as module constants"
+  }
+
+operation getWin32ControlsUnitTestPlan
+output operation getWin32ControlsUnitTestPlan Win32ControlsUnitTestPlan
+memory getWin32ControlsUnitTestPlan heap no
+async getWin32ControlsUnitTestPlan no
+purpose operation getWin32ControlsUnitTestPlan "Return the Win32 controls unit coverage plan."
+return value win32ControlsUnitTestPlan

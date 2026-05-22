@@ -1,0 +1,27 @@
+module experiment.realtime_auction_arena.win32_auctioneer.tests.event_polling
+purpose module experiment.realtime_auction_arena.win32_auctioneer.tests.event_polling "Unit coverage contract for win32-auctioneer/src/event_polling.sem."
+moduleOwns experiment.realtime_auction_arena.win32_auctioneer.tests.event_polling "Poll cursor, poll request, poll plan, polling enablement, and snapshot route coverage."
+moduleDoesNotOwn experiment.realtime_auction_arena.win32_auctioneer.tests.event_polling "Timer/background HTTP runtime."
+invariant module experiment.realtime_auction_arena.win32_auctioneer.tests.event_polling "Polling remains the first transport model until GUI-safe SSE is available."
+
+record Win32EventPollingUnitTestPlan
+field Win32EventPollingUnitTestPlan sourceFile String
+field Win32EventPollingUnitTestPlan cursorCoverage String
+field Win32EventPollingUnitTestPlan requestCoverage String
+field Win32EventPollingUnitTestPlan blockedRuntimeCases String
+
+storage module immutable win32EventPollingUnitTestPlan Win32EventPollingUnitTestPlan
+jsonBody win32EventPollingUnitTestPlan
+  {
+      "sourceFile": "win32-auctioneer/src/event_polling.sem",
+      "cursorCoverage": "initialPollCursor and enablePolling define sequence and running state",
+      "requestCoverage": "makePollRequest covers auctionId, apiBaseUrl, cursor, and auth requirement",
+      "blockedRuntimeCases": "one-second GUI timer, background HTTP, UI-thread dispatch, and SSE subscription"
+  }
+
+operation getWin32EventPollingUnitTestPlan
+output operation getWin32EventPollingUnitTestPlan Win32EventPollingUnitTestPlan
+memory getWin32EventPollingUnitTestPlan heap no
+async getWin32EventPollingUnitTestPlan no
+purpose operation getWin32EventPollingUnitTestPlan "Return the Win32 event-polling unit coverage plan."
+return value win32EventPollingUnitTestPlan

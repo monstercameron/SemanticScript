@@ -1,0 +1,69 @@
+module app.realtime_auction_arena.server.routes
+purpose module app.realtime_auction_arena.server.routes "Route catalog and API compatibility contract for Realtime Auction Arena."
+moduleOwns app.realtime_auction_arena.server.routes "Versioned route declarations, method/path metadata, authorization policy labels, idempotency requirements, executable route status, and future dynamic route notes."
+moduleDoesNotOwn app.realtime_auction_arena.server.routes "Native dispatcher implementation or route handler behavior."
+invariant module app.realtime_auction_arena.server.routes "Public JSON APIs are versioned under /api/v1; future /api/v2 routes must not change v1 response envelopes incompatibly."
+
+record RouteContract
+field RouteContract method String
+field RouteContract path String
+field RouteContract handler String
+field RouteContract authPolicy String
+field RouteContract requiredScopes String
+field RouteContract requiredPathParams String
+field RouteContract revisionRequirement String
+field RouteContract rejectionCodes String
+field RouteContract idempotencyRequired Bool
+field RouteContract runtimeStatus String
+
+record RouteCatalog
+field RouteCatalog health RouteContract
+field RouteCatalog ready RouteContract
+field RouteCatalog metrics RouteContract
+field RouteCatalog apiIndex RouteContract
+field RouteCatalog login RouteContract
+field RouteCatalog refresh RouteContract
+field RouteCatalog logout RouteContract
+field RouteCatalog session RouteContract
+field RouteCatalog auctionsList RouteContract
+field RouteCatalog auctionsCreate RouteContract
+field RouteCatalog auctionSnapshot RouteContract
+field RouteCatalog auctionStart RouteContract
+field RouteCatalog auctionExtend RouteContract
+field RouteCatalog auctionClose RouteContract
+field RouteCatalog auctionBid RouteContract
+field RouteCatalog auctionEvents RouteContract
+field RouteCatalog chatCreate RouteContract
+field RouteCatalog chatDelete RouteContract
+field RouteCatalog chatReport RouteContract
+
+storage module immutable routeCatalog RouteCatalog
+jsonBody routeCatalog
+  {
+      "health": { "method": "GET", "path": "/healthz", "handler": "healthHandler", "authPolicy": "public", "requiredScopes": "none", "requiredPathParams": "none", "revisionRequirement": "none", "rejectionCodes": "none", "idempotencyRequired": false, "runtimeStatus": "executable" },
+      "ready": { "method": "GET", "path": "/readyz", "handler": "readyHandler", "authPolicy": "public", "requiredScopes": "none", "requiredPathParams": "none", "revisionRequirement": "none", "rejectionCodes": "none", "idempotencyRequired": false, "runtimeStatus": "executable" },
+      "metrics": { "method": "GET", "path": "/metrics", "handler": "metricsHandler", "authPolicy": "operator_later", "requiredScopes": "metrics:read later", "requiredPathParams": "none", "revisionRequirement": "none", "rejectionCodes": "unauthorized_later, forbidden_later", "idempotencyRequired": false, "runtimeStatus": "executable currently public scaffold" },
+      "apiIndex": { "method": "GET", "path": "/api/v1", "handler": "apiIndexHandler", "authPolicy": "public", "requiredScopes": "none", "requiredPathParams": "none", "revisionRequirement": "none", "rejectionCodes": "none", "idempotencyRequired": false, "runtimeStatus": "executable" },
+      "login": { "method": "POST", "path": "/api/v1/auth/login", "handler": "authLoginHandler", "authPolicy": "anonymous", "requiredScopes": "none", "requiredPathParams": "none", "revisionRequirement": "none", "rejectionCodes": "invalid_credentials, payload_too_large, invalid_json", "idempotencyRequired": false, "runtimeStatus": "executable_demo_auth" },
+      "refresh": { "method": "POST", "path": "/api/v1/auth/refresh", "handler": "authRefreshHandler", "authPolicy": "refresh_token", "requiredScopes": "none", "requiredPathParams": "none", "revisionRequirement": "none", "rejectionCodes": "unauthorized, invalid_refresh_token", "idempotencyRequired": false, "runtimeStatus": "executable_demo_auth" },
+      "logout": { "method": "POST", "path": "/api/v1/auth/logout", "handler": "authLogoutHandler", "authPolicy": "authenticated", "requiredScopes": "none", "requiredPathParams": "none", "revisionRequirement": "none", "rejectionCodes": "unauthorized", "idempotencyRequired": false, "runtimeStatus": "executable_demo_auth" },
+      "session": { "method": "GET", "path": "/api/v1/session", "handler": "sessionHandler", "authPolicy": "authenticated", "requiredScopes": "none", "requiredPathParams": "none", "revisionRequirement": "none", "rejectionCodes": "unauthorized", "idempotencyRequired": false, "runtimeStatus": "executable_demo_auth" },
+      "auctionsList": { "method": "GET", "path": "/api/v1/auctions", "handler": "auctionsListHandler", "authPolicy": "viewer", "requiredScopes": "auctions:read", "requiredPathParams": "none", "revisionRequirement": "none", "rejectionCodes": "unauthorized, forbidden", "idempotencyRequired": false, "runtimeStatus": "executable_empty" },
+      "auctionsCreate": { "method": "POST", "path": "/api/v1/auctions", "handler": "auctionsCreateHandler", "authPolicy": "admin_or_auctioneer", "requiredScopes": "auctions:write", "requiredPathParams": "none", "revisionRequirement": "none; creates revision 0", "rejectionCodes": "unauthorized, forbidden, missing_idempotency_key, idempotency_conflict, validation_failed, auction_policy_rejected", "idempotencyRequired": true, "runtimeStatus": "executable_fail_closed until persistence transaction and create handler integration are wired" },
+      "auctionSnapshot": { "method": "GET", "path": "/api/v1/auctions/:auctionId", "handler": "auctionSnapshotHandler", "authPolicy": "viewer", "requiredScopes": "auctions:read or bids:read", "requiredPathParams": "auctionId", "revisionRequirement": "none; returns current revision", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, auction_not_found", "idempotencyRequired": false, "runtimeStatus": "blocked_persistence_handler; dynamic route params are available" },
+      "auctionStart": { "method": "POST", "path": "/api/v1/auctions/:auctionId/start", "handler": "auctionStartHandler", "authPolicy": "admin_or_auctioneer", "requiredScopes": "auctions:write", "requiredPathParams": "auctionId", "revisionRequirement": "expectedRevision required and must match current revision", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, missing_expected_revision, stale_revision, auction_not_found, lifecycle_rejected", "idempotencyRequired": true, "runtimeStatus": "blocked_persistence_handler; dynamic route params are available" },
+      "auctionExtend": { "method": "POST", "path": "/api/v1/auctions/:auctionId/extend", "handler": "auctionExtendHandler", "authPolicy": "admin_or_auctioneer", "requiredScopes": "auctions:write", "requiredPathParams": "auctionId", "revisionRequirement": "expectedRevision required and must match current revision", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, missing_expected_revision, stale_revision, auction_not_found, lifecycle_rejected, extension_out_of_bounds", "idempotencyRequired": true, "runtimeStatus": "blocked_persistence_handler; dynamic route params are available" },
+      "auctionClose": { "method": "POST", "path": "/api/v1/auctions/:auctionId/close", "handler": "auctionCloseHandler", "authPolicy": "admin_or_auctioneer", "requiredScopes": "auctions:write", "requiredPathParams": "auctionId", "revisionRequirement": "expectedRevision required and must match current revision", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, missing_expected_revision, stale_revision, auction_not_found, lifecycle_rejected", "idempotencyRequired": true, "runtimeStatus": "blocked_persistence_handler; dynamic route params are available" },
+      "auctionBid": { "method": "POST", "path": "/api/v1/auctions/:auctionId/bids", "handler": "auctionBidHandler", "authPolicy": "bidder", "requiredScopes": "bids:write", "requiredPathParams": "auctionId", "revisionRequirement": "expectedRevision required unless policy allows stale revisions", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, missing_expected_revision, stale_revision, auction_missing, auction_not_running, actor_not_bidder, amount_too_low, amount_too_high, same_bidder_in_a_row", "idempotencyRequired": true, "runtimeStatus": "blocked_persistence_handler; dynamic route params are available" },
+      "auctionEvents": { "method": "GET", "path": "/api/v1/auctions/:auctionId/events", "handler": "auctionEventsHandler", "authPolicy": "viewer", "requiredScopes": "auctions:read or bids:read", "requiredPathParams": "auctionId", "revisionRequirement": "none; uses event sequence cursor", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, auction_not_found, replay_cursor_invalid", "idempotencyRequired": false, "runtimeStatus": "blocked_long_lived_sse plus persistence replay handler; dynamic route params are available" },
+      "chatCreate": { "method": "POST", "path": "/api/v1/auctions/:auctionId/chat/messages", "handler": "chatCreateHandler", "authPolicy": "bidder", "requiredScopes": "chat:write", "requiredPathParams": "auctionId", "revisionRequirement": "none; chat does not change auction revision", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, chat_rejected", "idempotencyRequired": true, "runtimeStatus": "blocked_chat_persistence_handler; dynamic route params are available" },
+      "chatDelete": { "method": "DELETE", "path": "/api/v1/auctions/:auctionId/chat/messages/:messageId", "handler": "chatDeleteHandler", "authPolicy": "admin_or_auctioneer", "requiredScopes": "chat:moderate", "requiredPathParams": "auctionId,messageId", "revisionRequirement": "none; chat moderation does not change auction revision", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, message_not_found", "idempotencyRequired": true, "runtimeStatus": "blocked_chat_persistence_handler; dynamic route params are available" },
+      "chatReport": { "method": "POST", "path": "/api/v1/auctions/:auctionId/chat/messages/:messageId/report", "handler": "chatReportHandler", "authPolicy": "bidder", "requiredScopes": "chat:write", "requiredPathParams": "auctionId,messageId", "revisionRequirement": "none; chat report does not change auction revision", "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, message_not_found", "idempotencyRequired": true, "runtimeStatus": "blocked_chat_persistence_handler; dynamic route params are available" }
+  }
+
+operation getRouteCatalog
+output operation getRouteCatalog RouteCatalog
+memory getRouteCatalog heap no
+async getRouteCatalog no
+purpose operation getRouteCatalog "Return the static route catalog for docs/tests."
+return value routeCatalog

@@ -1,0 +1,14 @@
+module app.realtime_auction_arena.server.tests.routes
+purpose module app.realtime_auction_arena.server.tests.routes "Unit coverage contract for server/src/routes.sem."
+moduleOwns app.realtime_auction_arena.server.tests.routes "Route catalog coverage for methods, paths, handlers, auth policy, scopes, route params, revision requirements, idempotency, rejection codes, and runtime status."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.routes "Native dispatcher fallback behavior."
+invariant module app.realtime_auction_arena.server.tests.routes "Every public route in the README/API contract must appear in the route catalog."
+
+storage module immutable routesUnitTestPlanSummary String "server/src/routes.sem coverage: health, readiness, metrics, API index, auth, session, auctions, auction commands, SSE, chat, API versioning, auth policy, scopes, dynamic route params, revision requirements, idempotency, rejection codes, and honest runtime status."
+
+operation getRoutesUnitTestPlan
+output operation getRoutesUnitTestPlan String
+memory getRoutesUnitTestPlan heap no
+async getRoutesUnitTestPlan no
+purpose operation getRoutesUnitTestPlan "Return the route catalog unit coverage plan."
+return value routesUnitTestPlanSummary

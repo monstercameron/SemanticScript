@@ -1,0 +1,27 @@
+module experiment.realtime_auction_arena.win32_auctioneer.tests.main
+purpose module experiment.realtime_auction_arena.win32_auctioneer.tests.main "Unit coverage contract for win32-auctioneer/src/main.sem."
+moduleOwns experiment.realtime_auction_arena.win32_auctioneer.tests.main "Main GUI wiring, event dispatch, login, command, poll, and moderation handler coverage."
+moduleDoesNotOwn experiment.realtime_auction_arena.win32_auctioneer.tests.main "Win32 message pump implementation."
+invariant module experiment.realtime_auction_arena.win32_auctioneer.tests.main "Every operator command button must map to a named handler coverage row."
+
+record Win32MainUnitTestPlan
+field Win32MainUnitTestPlan sourceFile String
+field Win32MainUnitTestPlan windowCoverage String
+field Win32MainUnitTestPlan handlerCoverage String
+field Win32MainUnitTestPlan runtimeGaps String
+
+storage module immutable win32MainUnitTestPlan Win32MainUnitTestPlan
+jsonBody win32MainUnitTestPlan
+  {
+      "sourceFile": "win32-auctioneer/src/main.sem",
+      "windowCoverage": "login form, auction controls, status panel, event list, rejected bid list, chat moderation controls",
+      "handlerCoverage": "login, forget token, start, extend, close, poll now, moderate chat",
+      "runtimeGaps": "GUI timer/background HTTP and UI-thread dispatch still block live polling tests"
+  }
+
+operation getWin32MainUnitTestPlan
+output operation getWin32MainUnitTestPlan Win32MainUnitTestPlan
+memory getWin32MainUnitTestPlan heap no
+async getWin32MainUnitTestPlan no
+purpose operation getWin32MainUnitTestPlan "Return the Win32 main unit coverage plan."
+return value win32MainUnitTestPlan

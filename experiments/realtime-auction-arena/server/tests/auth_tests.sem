@@ -1,0 +1,36 @@
+module app.realtime_auction_arena.server.tests.auth
+purpose module app.realtime_auction_arena.server.tests.auth "Parse-oriented auth contract test markers for remaining auth hardening."
+moduleOwns app.realtime_auction_arena.server.tests.auth "Auth test plan cases that become executable once the SemanticScript test harness can import app modules and assert record fields."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.auth "Auth implementation."
+
+record AuthTestPlan
+field AuthTestPlan invalidPassword String
+field AuthTestPlan bcryptPasswordTooLong String
+field AuthTestPlan jwtClaimModel String
+field AuthTestPlan refreshTokenDurableRow String
+field AuthTestPlan disabledUser String
+field AuthTestPlan expiredToken String
+field AuthTestPlan badSignature String
+field AuthTestPlan wrongAudience String
+field AuthTestPlan insufficientRole String
+
+storage module immutable authTestPlan AuthTestPlan
+jsonBody authTestPlan
+  {
+      "invalidPassword": "POST /api/v1/auth/login returns invalid_credentials and appends auth.login.rejected",
+      "bcryptPasswordTooLong": "POST /api/v1/auth/login rejects passwords over 72 bytes before bcrypt.verify; response must not accept bcrypt-truncated equivalents",
+      "jwtClaimModel": "issued access JWT contains iss, aud, sub, role, scopes, exp, iat, nbf, and jti; session validation requires every claim",
+      "refreshTokenDurableRow": "refresh rotation uses refresh_tokens row shape with refresh_token_id, user_id, session_id, token_hash, issued_at, expires_at, last_used_at, revoked_at, and replacement reference",
+      "disabledUser": "POST /api/v1/auth/login returns invalid_credentials without leaking disabled state",
+      "expiredToken": "GET /api/v1/session returns unauthorized with expired_token detail",
+      "badSignature": "GET /api/v1/session returns unauthorized with bad_signature detail",
+      "wrongAudience": "GET /api/v1/session returns unauthorized with wrong_audience detail",
+      "insufficientRole": "admin_or_auctioneer or bidder route returns forbidden with insufficient_role detail when principal lacks required role or scope"
+  }
+
+operation getAuthTestPlan
+output operation getAuthTestPlan AuthTestPlan
+memory getAuthTestPlan heap no
+async getAuthTestPlan no
+purpose operation getAuthTestPlan "Return auth test cases as a parseable contract."
+return value authTestPlan

@@ -1,0 +1,16 @@
+module app.realtime_auction_arena.server.tests.persistence
+purpose module app.realtime_auction_arena.server.tests.persistence "Unit coverage contract for server/src/persistence.sem."
+moduleOwns app.realtime_auction_arena.server.tests.persistence "SQLite schema, migrations, indexing, transaction, readiness, idempotency, rate-limit, request-log, audit, chat, and replay persistence coverage."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.persistence "SQLite runtime internals."
+invariant module app.realtime_auction_arena.server.tests.persistence "Every durable table in the schema plan must be listed in persistence unit coverage."
+invariant module app.realtime_auction_arena.server.tests.persistence "Readiness coverage must check schema_versions.current_version, schema_migrations, required indexes, foreign-key mode, and a prepared read against core tables."
+invariant module app.realtime_auction_arena.server.tests.persistence "Command transaction coverage must check idempotency replay/conflict behavior, rollback before broadcast, and committed auction_events sequence ordering."
+
+storage module immutable persistenceUnitTestPlanSummary String "server/src/persistence.sem coverage: schema_versions, schema_migrations, users, password_credentials, refresh_tokens as durable refresh sessions, revoked_jwts, auctions, bids, auction_events, chat_messages, audit_events, request_log, idempotency_keys, rate_limit_buckets, uniqueness constraints, replay/history/expiry indexes, readiness probes, migration ledger, cleanup policy, and BEGIN IMMEDIATE command transactions."
+
+operation getPersistenceUnitTestPlan
+output operation getPersistenceUnitTestPlan String
+memory getPersistenceUnitTestPlan heap no
+async getPersistenceUnitTestPlan no
+purpose operation getPersistenceUnitTestPlan "Return the persistence unit coverage plan."
+return value persistenceUnitTestPlanSummary

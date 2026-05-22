@@ -1,0 +1,44 @@
+module app.realtime_auction_arena.server.tests.chat
+purpose module app.realtime_auction_arena.server.tests.chat "Parse-oriented chat contract test markers for runtime gaps."
+moduleOwns app.realtime_auction_arena.server.tests.chat "Chat test plan cases that become executable once dynamic routes, persistence, and SSE replay are wired."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.chat "Chat implementation."
+
+record ChatTestPlan
+field ChatTestPlan postRequiresBidder String
+field ChatTestPlan reportRequiresBidder String
+field ChatTestPlan moderationRequiresAuctioneer String
+field ChatTestPlan messageLengthLimit String
+field ChatTestPlan deleteIdempotency String
+field ChatTestPlan reportIdempotency String
+field ChatTestPlan auditCoverage String
+field ChatTestPlan replayOrdering String
+field ChatTestPlan sseReplayCursor String
+field ChatTestPlan subscriberBackpressure String
+field ChatTestPlan revisionInvariant String
+field ChatTestPlan executableNow String
+field ChatTestPlan requiredRuntimeApis String
+
+storage module immutable chatTestPlan ChatTestPlan
+jsonBody chatTestPlan
+  {
+      "postRequiresBidder": "POST chat message without bidder role returns forbidden",
+      "reportRequiresBidder": "POST chat report without bidder role returns forbidden",
+      "moderationRequiresAuctioneer": "DELETE chat message without admin_or_auctioneer returns forbidden",
+      "messageLengthLimit": "message body over 1000 bytes returns validation_error",
+      "deleteIdempotency": "DELETE chat message emits chat.message.deleted once and repeated delete returns existing deleted status",
+      "reportIdempotency": "same reporter can report a message once; repeated report does not duplicate chat.message.reported",
+      "auditCoverage": "delete and report persist audit_events before broadcast with actor, requestId, outcome, and messageId",
+      "replayOrdering": "created/deleted/reported chat events consume auction event sequence numbers",
+      "sseReplayCursor": "Last-Event-ID or ?after replays chat events after the cursor before live subscription",
+      "subscriberBackpressure": "full subscriber queue closes that subscriber without blocking chat persistence or other subscribers",
+      "revisionInvariant": "chat events do not increment AuctionState.revision",
+      "executableNow": "this file is parseable contract coverage only",
+      "requiredRuntimeApis": "executable tests require dynamic routes, JSON body parsing, persistence transactions, audit inserts, long-lived SSE, bounded queues, and disconnect detection"
+  }
+
+operation getChatTestPlan
+output operation getChatTestPlan ChatTestPlan
+memory getChatTestPlan heap no
+async getChatTestPlan no
+purpose operation getChatTestPlan "Return chat test cases as a parseable contract."
+return value chatTestPlan

@@ -1,0 +1,88 @@
+module experiment.realtime_auction_arena.win32_auctioneer.event_polling
+purpose module experiment.realtime_auction_arena.win32_auctioneer.event_polling "Polling-first event update model for the Win32 auctioneer console."
+moduleOwns experiment.realtime_auction_arena.win32_auctioneer.event_polling "Polling interval constants, cursor records, snapshot/event poll request shapes, and SSE-later runtime-gap notes."
+moduleDoesNotOwn experiment.realtime_auction_arena.win32_auctioneer.event_polling "Native timers, background worker dispatch, HTTP GET implementation, SSE subscription runtime, or server replay semantics."
+invariant module experiment.realtime_auction_arena.win32_auctioneer.event_polling "Polling is the first transport model; SSE is documented as a later replacement only after the Win32 runtime can safely coordinate long-lived responses with the message loop."
+moduleWarning experiment.realtime_auction_arena.win32_auctioneer.event_polling "Current standard.gui handlers are synchronous and standard.net async fetches are not integrated with UI-thread dispatch, so this module is parseable design scaffolding."
+
+type AuctionId CNullTerminatedByteString
+type AccessJwt CNullTerminatedByteString
+type ApiBaseUrl CNullTerminatedByteString
+type AuctionEventSequence I64
+type PollIntervalMillis I64
+type PollStatusText CNullTerminatedByteString
+
+record PollCursor
+field PollCursor auctionId AuctionId
+field PollCursor lastSequence AuctionEventSequence
+field PollCursor lastSnapshotRevision I64
+field PollCursor pollingEnabled Bool
+
+record PollRequest
+field PollRequest baseUrl ApiBaseUrl
+field PollRequest auctionId AuctionId
+field PollRequest accessToken AccessJwt
+field PollRequest afterSequence AuctionEventSequence
+
+record PollPlan
+field PollPlan cursor PollCursor
+field PollPlan intervalMillis PollIntervalMillis
+field PollPlan status PollStatusText
+
+storage module immutable defaultPollIntervalMillis PollIntervalMillis 1000
+storage module immutable disabledPollStatus PollStatusText "Polling disabled"
+storage module immutable enabledPollStatus PollStatusText "Polling enabled"
+storage module immutable runtimeGapPollStatus PollStatusText "Polling plan created; timer, cancellation, and UI-thread dispatch require runtime support."
+storage module immutable emptyAuctionId AuctionId ""
+storage module immutable emptyAccessJwt AccessJwt ""
+storage module immutable defaultBaseUrl ApiBaseUrl "http://127.0.0.1:18090"
+
+operation initialPollCursor
+output operation initialPollCursor PollCursor
+memory initialPollCursor heap no
+async initialPollCursor no
+purpose operation initialPollCursor "Return the initial disabled cursor before the operator selects an auction."
+
+new cursor PollCursor
+fieldSet cursor auctionId emptyAuctionId
+fieldSet cursor lastSequence 0
+fieldSet cursor lastSnapshotRevision 0
+fieldSet cursor pollingEnabled false
+return value cursor
+
+operation enablePolling
+input operation enablePolling auctionId AuctionId
+input operation enablePolling lastSequence AuctionEventSequence
+input operation enablePolling lastSnapshotRevision I64
+output operation enablePolling PollPlan
+memory enablePolling heap yes
+async enablePolling no
+purpose operation enablePolling "Build the one-second polling plan for GET /api/v1/auctions/:auctionId and event replay queries."
+
+new cursor PollCursor
+fieldSet cursor auctionId auctionId
+fieldSet cursor lastSequence lastSequence
+fieldSet cursor lastSnapshotRevision lastSnapshotRevision
+fieldSet cursor pollingEnabled true
+new plan PollPlan
+fieldSet plan cursor cursor
+fieldSet plan intervalMillis defaultPollIntervalMillis
+fieldSet plan status runtimeGapPollStatus
+return value plan
+
+operation makePollRequest
+input operation makePollRequest baseUrl ApiBaseUrl
+input operation makePollRequest auctionId AuctionId
+input operation makePollRequest accessToken AccessJwt
+input operation makePollRequest afterSequence AuctionEventSequence
+output operation makePollRequest PollRequest
+memory makePollRequest heap no
+async makePollRequest no
+purpose operation makePollRequest "Build a future authenticated GET request envelope for polling snapshot and events."
+
+new request PollRequest
+fieldSet request baseUrl baseUrl
+fieldSet request auctionId auctionId
+fieldSet request accessToken accessToken
+fieldSet request afterSequence afterSequence
+return value request

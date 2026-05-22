@@ -1,0 +1,14 @@
+module app.realtime_auction_arena.server.tests.chat_tests_coverage
+purpose module app.realtime_auction_arena.server.tests.chat_tests_coverage "Coverage marker for server/tests/chat_tests.sem."
+moduleOwns app.realtime_auction_arena.server.tests.chat_tests_coverage "Chat-test artifact coverage and naming."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.chat_tests_coverage "Chat implementation."
+invariant module app.realtime_auction_arena.server.tests.chat_tests_coverage "Chat replay and moderation cases remain named until routes and SSE replay are executable."
+
+storage module immutable chatTestsCoveragePlanSummary String "server/tests/chat_tests.sem coverage: post, delete, report, rate limit, byte limit, replay, and revision isolation."
+
+operation getChatTestsCoveragePlan
+output operation getChatTestsCoveragePlan String
+memory getChatTestsCoveragePlan heap no
+async getChatTestsCoveragePlan no
+purpose operation getChatTestsCoveragePlan "Return the chat-test artifact coverage plan."
+return value chatTestsCoveragePlanSummary

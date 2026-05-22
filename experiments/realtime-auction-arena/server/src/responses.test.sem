@@ -1,0 +1,14 @@
+module app.realtime_auction_arena.server.tests.responses
+purpose module app.realtime_auction_arena.server.tests.responses "Unit coverage contract for server/src/responses.sem."
+moduleOwns app.realtime_auction_arena.server.tests.responses "Static response envelope validation and getter coverage."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.responses "HTTP response writing."
+invariant module app.realtime_auction_arena.server.tests.responses "Every exported response body in responses.sem must be declared with jsonBody and listed in this coverage plan."
+
+storage module immutable serverResponsesUnitTestPlanSummary String "server/src/responses.sem coverage: health, ready, API index, auth success, payload too large, unsupported media type, idempotency guard failures, unauthorized, auctions list, create forbidden, not found, and getter mapping."
+
+operation getServerResponsesUnitTestPlan
+output operation getServerResponsesUnitTestPlan String
+memory getServerResponsesUnitTestPlan heap no
+async getServerResponsesUnitTestPlan no
+purpose operation getServerResponsesUnitTestPlan "Return the server response-envelope unit coverage plan."
+return value serverResponsesUnitTestPlanSummary

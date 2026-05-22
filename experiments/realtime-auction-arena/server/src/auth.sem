@@ -1,0 +1,199 @@
+module app.realtime_auction_arena.server.auth
+purpose module app.realtime_auction_arena.server.auth "Authentication, JWT, bcrypt, role, and session contract declarations for the server."
+moduleOwns app.realtime_auction_arena.server.auth "Auth API model shapes, algorithm decision, token lifetime constants, role policy labels, executable demo-auth status, and production runtime-gap markers."
+moduleDoesNotOwn app.realtime_auction_arena.server.auth "Native bcrypt/JWT implementation, secure secret storage, or database persistence."
+invariant module app.realtime_auction_arena.server.auth "Access tokens are short-lived JWTs, refresh tokens are opaque and stored only as hashes, and plaintext passwords are never persisted."
+
+type UserId String
+type SessionId String
+type RefreshTokenId String
+type JwtId String
+type JwtIssuer String
+type JwtAudience String
+type RoleName String
+type ScopeName String
+type ScopeList String
+type UtcSeconds I64
+type BcryptPasswordHash String
+type RefreshTokenHash String
+
+enum AuthRuntimeStatus repr CSignedInt32
+enumCase AuthRuntimeStatus authRuntimeBlocked 0
+enumCase AuthRuntimeStatus authRuntimeAdapterReady 1
+
+record JwtClaimModel
+field JwtClaimModel issuerClaim String
+field JwtClaimModel audienceClaim String
+field JwtClaimModel subjectClaim String
+field JwtClaimModel roleClaim String
+field JwtClaimModel scopesClaim String
+field JwtClaimModel expiresAtClaim String
+field JwtClaimModel issuedAtClaim String
+field JwtClaimModel notBeforeClaim String
+field JwtClaimModel jwtIdClaim String
+field JwtClaimModel clockSkewSeconds I64
+field JwtClaimModel validationRule String
+
+record JwtAccessClaims
+field JwtAccessClaims iss JwtIssuer
+field JwtAccessClaims aud JwtAudience
+field JwtAccessClaims sub UserId
+field JwtAccessClaims role RoleName
+field JwtAccessClaims scopes ScopeList
+field JwtAccessClaims exp UtcSeconds
+field JwtAccessClaims iat UtcSeconds
+field JwtAccessClaims nbf UtcSeconds
+field JwtAccessClaims jti JwtId
+
+record JwtContract
+field JwtContract algorithm String
+field JwtContract issuer String
+field JwtContract audience String
+field JwtContract accessTokenTtlSeconds I64
+field JwtContract signingSecretSource String
+field JwtContract futureAsymmetricAlgorithm String
+field JwtContract claimModel JwtClaimModel
+
+record BcryptLimitContract
+field BcryptLimitContract maxPlaintextBytes I64
+field BcryptLimitContract enforcementPoint String
+field BcryptLimitContract tooLongPublicError String
+field BcryptLimitContract reason String
+
+record PasswordContract
+field PasswordContract hashAlgorithm String
+field PasswordContract recommendedCost I64
+field PasswordContract maxPlaintextBytes I64
+field PasswordContract storedFields String
+field PasswordContract byteLimit BcryptLimitContract
+
+record RefreshTokenDurableRowContract
+field RefreshTokenDurableRowContract tableName String
+field RefreshTokenDurableRowContract primaryKey String
+field RefreshTokenDurableRowContract userReference String
+field RefreshTokenDurableRowContract sessionReference String
+field RefreshTokenDurableRowContract tokenHashField String
+field RefreshTokenDurableRowContract rotationFields String
+field RefreshTokenDurableRowContract uniquenessRule String
+field RefreshTokenDurableRowContract transactionRule String
+
+record AuthFailureMarkers
+field AuthFailureMarkers disabledUser String
+field AuthFailureMarkers expiredToken String
+field AuthFailureMarkers wrongAudience String
+field AuthFailureMarkers insufficientRole String
+field AuthFailureMarkers bcryptInputTooLong String
+
+record MainIntegrationPatch
+field MainIntegrationPatch value String
+
+record AuthEndpointContract
+field AuthEndpointContract path String
+field AuthEndpointContract requiredBody String
+field AuthEndpointContract publicErrors String
+field AuthEndpointContract auditEvent String
+field AuthEndpointContract runtimeStatus String
+
+record AuthContract
+field AuthContract jwt JwtContract
+field AuthContract password PasswordContract
+field AuthContract login AuthEndpointContract
+field AuthContract refresh AuthEndpointContract
+field AuthContract logout AuthEndpointContract
+field AuthContract session AuthEndpointContract
+field AuthContract refreshTokenRow RefreshTokenDurableRowContract
+field AuthContract failureMarkers AuthFailureMarkers
+field AuthContract mainIntegrationPatch MainIntegrationPatch
+
+storage module immutable authContract AuthContract
+jsonBody authContract
+  {
+      "jwt": {
+          "algorithm": "HS256",
+          "issuer": "realtime-auction-arena",
+          "audience": "realtime-auction-arena-api-v1",
+          "accessTokenTtlSeconds": 900,
+          "signingSecretSource": "environment:AUCTION_ARENA_JWT_SECRET",
+          "futureAsymmetricAlgorithm": "Ed25519 or RS256 once runtime signing primitives exist",
+          "claimModel": {
+              "issuerClaim": "iss",
+              "audienceClaim": "aud",
+              "subjectClaim": "sub",
+              "roleClaim": "role",
+              "scopesClaim": "scopes",
+              "expiresAtClaim": "exp",
+              "issuedAtClaim": "iat",
+              "notBeforeClaim": "nbf",
+              "jwtIdClaim": "jti",
+              "clockSkewSeconds": 30,
+              "validationRule": "verify signature first, then require iss and aud exact match, nbf <= now + skew, iat <= now + skew, exp > now - skew, non-empty sub, role, scopes, and jti, and reject revoked jti rows"
+          }
+      },
+      "password": {
+          "hashAlgorithm": "bcrypt $2b$",
+          "recommendedCost": 12,
+          "maxPlaintextBytes": 72,
+          "storedFields": "password_hash, cost, password_updated_at",
+          "byteLimit": {
+              "maxPlaintextBytes": 72,
+              "enforcementPoint": "login JSON parse path before bcrypt.verify and before hash generation",
+              "tooLongPublicError": "invalid_credentials or validation_error/password_too_long with identical timing policy",
+              "reason": "bcrypt ignores bytes beyond 72; accepting longer plaintext can make distinct passwords equivalent"
+          }
+      },
+      "login": {
+          "path": "POST /api/v1/auth/login",
+          "requiredBody": "username, password",
+          "publicErrors": "invalid_credentials, validation_error/password_too_long, rate_limited",
+          "auditEvent": "auth.login.accepted or auth.login.rejected",
+          "runtimeStatus": "executable demo: JSON body decode plus bcrypt verify against seeded auctioneer account; bcrypt 72-byte precheck, typed JWT claims, rate limiting, audit, disabled-user lookup, and SQLite writes pending in main.sem"
+      },
+      "refresh": {
+          "path": "POST /api/v1/auth/refresh",
+          "requiredBody": "refreshToken",
+          "publicErrors": "invalid_refresh_token, expired_refresh_token, revoked_refresh_token",
+          "auditEvent": "auth.refresh.accepted or auth.refresh.rejected",
+          "runtimeStatus": "executable demo: opaque refresh token verifies against a process-local bcrypt hash and rotates; durable SQLite refresh_tokens transaction pending in main.sem"
+      },
+      "logout": {
+          "path": "POST /api/v1/auth/logout",
+          "requiredBody": "refreshToken",
+          "publicErrors": "unauthorized",
+          "auditEvent": "auth.logout",
+          "runtimeStatus": "executable demo: valid refresh token hash revokes process-local session; durable refresh-token revocation and JWT denylist writes pending"
+      },
+      "session": {
+          "path": "GET /api/v1/session",
+          "requiredBody": "none",
+          "publicErrors": "unauthorized, expired_token, bad_signature, wrong_audience, insufficient_role",
+          "auditEvent": "auth.session.checked",
+          "runtimeStatus": "executable demo: Authorization bearer token is HS256-verified and matched against process-local session; typed claim validation middleware pending"
+      },
+      "refreshTokenRow": {
+          "tableName": "refresh_tokens",
+          "primaryKey": "refresh_token_id",
+          "userReference": "user_id references users(user_id) and users.disabled=0 during refresh",
+          "sessionReference": "session_id references sessions/session model when durable sessions are added; process-local demo uses active session sentinel",
+          "tokenHashField": "token_hash stores only a bcrypt or stronger slow hash of opaque refresh token material",
+          "rotationFields": "issued_at, expires_at, last_used_at, revoked_at, replaced_by_refresh_token_id",
+          "uniquenessRule": "token_hash unique; active token is one row where revoked_at=0 and expires_at is in the future",
+          "transactionRule": "refresh runs in one transaction: select active row, verify hash, revoke old row, insert replacement row, append audit event, commit"
+      },
+      "failureMarkers": {
+          "disabledUser": "login and refresh reject disabled users as invalid_credentials or invalid_refresh_token without leaking account status",
+          "expiredToken": "JWT validation rejects exp <= now and returns unauthorized with expired_token detail",
+          "wrongAudience": "JWT validation requires aud == realtime-auction-arena-api-v1 and returns unauthorized with wrong_audience detail",
+          "insufficientRole": "authorization middleware returns forbidden with insufficient_role for authenticated principals without required role/scope",
+          "bcryptInputTooLong": "login rejects password plaintext longer than 72 bytes before bcrypt.verify"
+      },
+      "mainIntegrationPatch": {
+          "value": "In src/main.sem login path, add password byte-length check after JSON field extraction and before bcrypt.verify; in JWT issue path, emit iss/aud/sub/role/scopes/exp/iat/nbf/jti; in session path, validate every claim and map expired_token/wrong_audience; in refresh path, replace process-local token state with refresh_tokens row transaction; in route auth, add role/scope guard for admin_or_auctioneer and bidder policies."
+      }
+  }
+
+operation getAuthContract
+output operation getAuthContract AuthContract
+memory getAuthContract heap no
+async getAuthContract no
+purpose operation getAuthContract "Return the static authentication contract."
+return value authContract

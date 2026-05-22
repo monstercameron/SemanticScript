@@ -1,0 +1,25 @@
+module experiment.realtime_auction_arena.win32_auctioneer.tests.view_model
+purpose module experiment.realtime_auction_arena.win32_auctioneer.tests.view_model "Unit coverage contract for win32-auctioneer/src/view_model.sem."
+moduleOwns experiment.realtime_auction_arena.win32_auctioneer.tests.view_model "Snapshot, audit row, rejected bid row, chat row, initial state, and runtime-gap state coverage."
+moduleDoesNotOwn experiment.realtime_auction_arena.win32_auctioneer.tests.view_model "GUI painting."
+invariant module experiment.realtime_auction_arena.win32_auctioneer.tests.view_model "Every visible status list must have a corresponding view-model record coverage row."
+
+record Win32ViewModelUnitTestPlan
+field Win32ViewModelUnitTestPlan sourceFile String
+field Win32ViewModelUnitTestPlan recordCoverage String
+field Win32ViewModelUnitTestPlan operationCoverage String
+
+storage module immutable win32ViewModelUnitTestPlan Win32ViewModelUnitTestPlan
+jsonBody win32ViewModelUnitTestPlan
+  {
+      "sourceFile": "win32-auctioneer/src/view_model.sem",
+      "recordCoverage": "AuctionSnapshotView, AuditEventRow, RejectedBidRow, ChatModerationRow, AuctioneerViewModel",
+      "operationCoverage": "emptySnapshotView, initialViewModel, runtimeGapViewModel"
+  }
+
+operation getWin32ViewModelUnitTestPlan
+output operation getWin32ViewModelUnitTestPlan Win32ViewModelUnitTestPlan
+memory getWin32ViewModelUnitTestPlan heap no
+async getWin32ViewModelUnitTestPlan no
+purpose operation getWin32ViewModelUnitTestPlan "Return the Win32 view-model unit coverage plan."
+return value win32ViewModelUnitTestPlan

@@ -58,6 +58,7 @@ exportConstant standard.jwt jwtAuthEnvelopeBufferRequiredBytes
 
 exportOperation standard.jwt hs256SignDemoAccessToken
 exportOperation standard.jwt hs256VerifyToken
+exportOperation standard.jwt hs256VerifyArenaAccessToken
 exportOperation standard.jwt formatLoginEnvelope
 exportOperation standard.jwt formatRefreshEnvelope
 
@@ -87,6 +88,18 @@ useCapability hs256VerifyToken jwtMemoryBufferRead
 operationBody hs256VerifyToken runtimeBinding
 purpose operation hs256VerifyToken "Return jwtStatusMatch only when the compact JWT's HS256 signature matches the supplied secret."
 runtimeBinding hs256VerifyToken native.ss_jwt_hs256_verify_token
+
+operation hs256VerifyArenaAccessToken
+input operation hs256VerifyArenaAccessToken token JwtAccessToken
+input operation hs256VerifyArenaAccessToken secret JwtSecret
+output operation hs256VerifyArenaAccessToken CSignedInt32
+effect hs256VerifyArenaAccessToken read memory.buffer
+memory hs256VerifyArenaAccessToken heap no
+async hs256VerifyArenaAccessToken no
+useCapability hs256VerifyArenaAccessToken jwtMemoryBufferRead
+operationBody hs256VerifyArenaAccessToken runtimeBinding
+purpose operation hs256VerifyArenaAccessToken "Return jwtStatusMatch only when the compact JWT signature and Realtime Auction Arena required claims match."
+runtimeBinding hs256VerifyArenaAccessToken native.ss_jwt_hs256_verify_arena_access_token
 
 operation formatLoginEnvelope
 input operation formatLoginEnvelope accessToken JwtAccessToken

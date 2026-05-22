@@ -1,0 +1,25 @@
+module experiment.realtime_auction_arena.win32_auctioneer.tests.build
+purpose module experiment.realtime_auction_arena.win32_auctioneer.tests.build "Unit coverage contract for win32-auctioneer/build.sem."
+moduleOwns experiment.realtime_auction_arena.win32_auctioneer.tests.build "Win32 build plan, test discovery, and native GUI target coverage."
+moduleDoesNotOwn experiment.realtime_auction_arena.win32_auctioneer.tests.build "Compiler GUI backend."
+invariant module experiment.realtime_auction_arena.win32_auctioneer.tests.build "The build plan test must name windowsGui target and *.test.sem discovery."
+
+record Win32BuildUnitTestPlan
+field Win32BuildUnitTestPlan sourceFile String
+field Win32BuildUnitTestPlan targetCoverage String
+field Win32BuildUnitTestPlan validation String
+
+storage module immutable win32BuildUnitTestPlan Win32BuildUnitTestPlan
+jsonBody win32BuildUnitTestPlan
+  {
+      "sourceFile": "win32-auctioneer/build.sem",
+      "targetCoverage": "windowsGui native 1 build plan, module registration, resource plan, and *.test.sem discovery",
+      "validation": "parse-lint plus semsc build --parse-only for the GUI scaffold"
+  }
+
+operation getWin32BuildUnitTestPlan
+output operation getWin32BuildUnitTestPlan Win32BuildUnitTestPlan
+memory getWin32BuildUnitTestPlan heap no
+async getWin32BuildUnitTestPlan no
+purpose operation getWin32BuildUnitTestPlan "Return the Win32 build unit coverage plan."
+return value win32BuildUnitTestPlan

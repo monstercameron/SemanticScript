@@ -269,6 +269,73 @@ static int base64url_encode(
     return SS_JWT_OK;
 }
 
+static int base64url_decode_value(char ch) {
+    if (ch >= 'A' && ch <= 'Z') {
+        return ch - 'A';
+    }
+    if (ch >= 'a' && ch <= 'z') {
+        return ch - 'a' + 26;
+    }
+    if (ch >= '0' && ch <= '9') {
+        return ch - '0' + 52;
+    }
+    if (ch == '-') {
+        return 62;
+    }
+    if (ch == '_') {
+        return 63;
+    }
+    return -1;
+}
+
+static int base64url_decode(
+    const char *input,
+    int input_len,
+    uint8_t *output,
+    int output_capacity,
+    int *output_len
+) {
+    if (input == NULL || output == NULL || output_len == NULL || input_len < 0) {
+        return SS_JWT_ERR_CONFIG;
+    }
+    if ((input_len % 4) == 1) {
+        return SS_JWT_ERR_MALFORMED;
+    }
+
+    int input_index = 0;
+    int output_index = 0;
+    while (input_index < input_len) {
+        int remaining = input_len - input_index;
+        int chunk = remaining >= 4 ? 4 : remaining;
+        int values[4] = {0, 0, 0, 0};
+        for (int index = 0; index < chunk; ++index) {
+            values[index] = base64url_decode_value(input[input_index + index]);
+            if (values[index] < 0) {
+                return SS_JWT_ERR_MALFORMED;
+            }
+        }
+
+        if (output_index + 3 > output_capacity) {
+            return SS_JWT_ERR_OUTPUT_TOO_SMALL;
+        }
+        uint32_t triple =
+            ((uint32_t)values[0] << 18) |
+            ((uint32_t)values[1] << 12) |
+            ((uint32_t)values[2] << 6) |
+            ((uint32_t)values[3]);
+        output[output_index++] = (uint8_t)((triple >> 16) & 0xffU);
+        if (chunk >= 3) {
+            output[output_index++] = (uint8_t)((triple >> 8) & 0xffU);
+        }
+        if (chunk == 4) {
+            output[output_index++] = (uint8_t)(triple & 0xffU);
+        }
+        input_index += chunk;
+    }
+    *output_len = output_index;
+    return SS_JWT_OK;
+}
+
 static int jwt_random_bytes(uint8_t *out, int byte_count) {
     if (out == NULL || byte_count <= 0) {
         return SS_JWT_ERR_CONFIG;
@@ -394,19 +461,20 @@ int ss_jwt_hs256_sign_demo_access_token(
         return jti_status;
     }
 
-    char payload_json[384];
+    char payload_json[512];
     int payload_written = snprintf(
         payload_json,
         sizeof(payload_json),
         "{\"iss\":\"realtime-auction-arena\",\"aud\":\"api-v1\","
         "\"sub\":\"user_auctioneer_001\",\"role\":\"auctioneer\","
-        "\"exp\":2000000000,\"jti\":\"%s\"}",
+        "\"scopes\":[\"auctions:write\",\"bids:read\",\"chat:moderate\"],"
+        "\"iat\":1700000000,\"nbf\":0,\"exp\":2000000000,\"jti\":\"%s\"}",
         jti);
     if (payload_written < 0 || payload_written >= (int)sizeof(payload_json)) {
         return SS_JWT_ERR_OUTPUT_TOO_SMALL;
     }
 
-    char encoded_payload[512];
+    char encoded_payload[768];
     int payload_status = base64url_encode(
         (const uint8_t *)payload_json,
         payload_written,
@@ -416,7 +484,7 @@ int ss_jwt_hs256_sign_demo_access_token(
         return payload_status;
     }
 
-    char header_payload[640];
+    char header_payload[900];
     int header_payload_written = snprintf(
         header_payload,
         sizeof(header_payload),
@@ -473,6 +541,58 @@ int ss_jwt_hs256_verify_token(
         return encode_status;
     }
     return constant_time_equal(signature, expected_signature, 43)
+        ? SS_JWT_MATCH
+        : SS_JWT_MISMATCH;
+}
+
+static int payload_contains_required_arena_claims(const char *payload_json) {
+    return strstr(payload_json, "\"iss\":\"realtime-auction-arena\"") != NULL
+        && strstr(payload_json, "\"aud\":\"api-v1\"") != NULL
+        && strstr(payload_json, "\"sub\":\"user_auctioneer_001\"") != NULL
+        && strstr(payload_json, "\"role\":\"auctioneer\"") != NULL
+        && strstr(
+            payload_json,
+            "\"scopes\":[\"auctions:write\",\"bids:read\",\"chat:moderate\"]"
+        ) != NULL
+        && strstr(payload_json, "\"iat\":") != NULL
+        && strstr(payload_json, "\"nbf\":") != NULL
+        && strstr(payload_json, "\"exp\":2000000000") != NULL
+        && strstr(payload_json, "\"jti\":\"") != NULL;
+}
+
+int ss_jwt_hs256_verify_arena_access_token(
+    const char *token,
+    const char *secret
+) {
+    int signature_status = ss_jwt_hs256_verify_token(token, secret);
+    if (signature_status != SS_JWT_MATCH) {
+        return signature_status;
+    }
+
+    const char *first_dot = strchr(token, '.');
+    const char *second_dot = first_dot != NULL ? strchr(first_dot + 1, '.') : NULL;
+    if (first_dot == NULL || second_dot == NULL) {
+        return SS_JWT_ERR_MALFORMED;
+    }
+    int payload_segment_len = (int)(second_dot - first_dot - 1);
+    if (payload_segment_len <= 0 || payload_segment_len >= 768) {
+        return SS_JWT_ERR_MALFORMED;
+    }
+
+    uint8_t decoded_payload[768];
+    int decoded_payload_len = 0;
+    int decode_status = base64url_decode(
+        first_dot + 1,
+        payload_segment_len,
+        decoded_payload,
+        (int)sizeof(decoded_payload) - 1,
+        &decoded_payload_len);
+    if (decode_status != SS_JWT_OK) {
+        return decode_status;
+    }
+    decoded_payload[decoded_payload_len] = '\0';
+
+    return payload_contains_required_arena_claims((const char *)decoded_payload)
         ? SS_JWT_MATCH
         : SS_JWT_MISMATCH;
 }

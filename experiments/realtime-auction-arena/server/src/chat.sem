@@ -1,0 +1,49 @@
+module app.realtime_auction_arena.server.chat
+purpose module app.realtime_auction_arena.server.chat "Auction floor chat API and replay contract declarations."
+moduleOwns app.realtime_auction_arena.server.chat "Chat route policies, moderation event names, body size limits, and replay ordering rule."
+moduleDoesNotOwn app.realtime_auction_arena.server.chat "Browser text rendering or native SSE transport implementation."
+invariant module app.realtime_auction_arena.server.chat "Chat events do not change AuctionState.revision but do consume auction event sequence numbers for replay ordering."
+
+record ChatContract
+field ChatContract postRoute String
+field ChatContract deleteRoute String
+field ChatContract reportRoute String
+field ChatContract maxMessageBytes I64
+field ChatContract postRole String
+field ChatContract reportRole String
+field ChatContract moderationRole String
+field ChatContract moderationRule String
+field ChatContract reportRule String
+field ChatContract replayRule String
+field ChatContract auditRule String
+field ChatContract eventTypes String
+field ChatContract runtimeStatus String
+field ChatContract executableNow String
+field ChatContract requiredRuntimeApis String
+
+storage module immutable chatContract ChatContract
+jsonBody chatContract
+  {
+      "postRoute": "POST /api/v1/auctions/:auctionId/chat/messages",
+      "deleteRoute": "DELETE /api/v1/auctions/:auctionId/chat/messages/:messageId",
+      "reportRoute": "POST /api/v1/auctions/:auctionId/chat/messages/:messageId/report",
+      "maxMessageBytes": 1000,
+      "postRole": "bidder",
+      "reportRole": "bidder",
+      "moderationRole": "admin_or_auctioneer",
+      "moderationRule": "delete is idempotent by messageId and emits chat.message.deleted exactly once for a visible message; repeated delete returns the existing deleted status",
+      "reportRule": "report records reporter userId, reason, and reportedAtUtcMillis; repeated report by the same user is idempotent and does not duplicate replay events",
+      "replayRule": "chat create, delete, and report events are persisted in auction_events and replay through the auction SSE stream using the same per-auction sequence",
+      "auditRule": "delete and report write audit_events with actor userId, requestId, outcome, and messageId before SSE broadcast",
+      "eventTypes": "chat.message.created, chat.message.deleted, chat.message.reported",
+      "runtimeStatus": "blocked until JSON body parsing, persistence transaction helper, audit insert, dynamic route params, and long-lived SSE replay are executable",
+      "executableNow": "route names, roles, byte limit, moderation/reporting/replay/audit contracts are parseable contract data",
+      "requiredRuntimeApis": "JSON body decode, UTF-8 byte length validation, transaction helper, dynamic path params, audit persistence, event persistence, SSE fanout"
+  }
+
+operation getChatContract
+output operation getChatContract ChatContract
+memory getChatContract heap no
+async getChatContract no
+purpose operation getChatContract "Return the static chat contract."
+return value chatContract
