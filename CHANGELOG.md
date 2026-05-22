@@ -2,6 +2,19 @@
 
 ## 2026-05-22
 
+- `0163d96c2a6eb85f9f49b5d30277d6e30b3e4556` - `docs+vscode: refresh syntax and release references`
+  - Refreshes README, release notes, syntax/reference docs, TODO status, and VS Code coverage for wait sets, `guiBackend`, async/runtime selectors, HTML/JSON/native HTTP surfaces, runtimeBinding policy boundaries, and local VSIX release posture.
+- `c364a8ef4127dc496fa2dff9be28988687add221` - `experiments: tighten auction auth contracts`
+  - Aligns the Realtime Auction Arena server docs and auth contract with executable HS256 claim checks, bcrypt's 72-byte guard, JSON write-route guardrails, idempotency-key enforcement, and remaining production-auth gaps.
+- `88949f3f9d28b696be3749f99bdb0b119eda2979` - `compiler: validate wait sets before lowering`
+  - Adds a pre-lowering wait-set validation pass so malformed `await`/`case`/`done` blocks, repeated case consumption, and labels declared before their structural row fail before any partial IR is emitted.
+- `384e835ace3379cf46925fa224fed0f5813f439a` - `experiments: add realtime auction arena scaffold`
+  - Adds the Realtime Auction Arena experiment with a SemanticScript native webserver scaffold, browser SSE client, Win32 auctioneer scaffold, API/runtime-gap docs, Python E2E harnesses, and JWT claim-bearing demo auth support.
+- `023137ce81610287ef8f3b28d00b768551e161df` - `app: update async client and GUI smoke`
+  - Updates the TaskForge async API client to print `/health`, `/api/version`, and `/api/todos` in completion order through `await nextTaskForgeFetch`, expands its generated-IR and real-backend harnesses, and refreshes the desktop GUI smoke sample naming/metadata.
+- `31741f041a8e56692edaba16530dbd6af2f2f93f` - `compiler+runtime: expand async and web surfaces`
+  - Adds `await WAIT_SET` / `case CALL LABEL` / `done LABEL` lowering over fetch and generic user-operation futures, plus focused compiler/linter/fuzz coverage and the manual timer completion-order demo.
+  - Extends native/runtime surfaces for fetch readiness/body-copy helpers, JSON primitive parse/stringify helpers, `http.responseHtml`, Win32 GUI polish, `guiBackend win32|winui3` selection, non-ABI runtimeBinding rejection, and the `standard.jwt` HS256 adapter.
 - `4a3a06843fdd094c7c90756a11489479aa370b91` - `app: add TaskForge async API client`
   - Adds the real SemanticScript app entry for `apps/taskforge-api-client`: `build.sem` plus `main.sem`, where `main.sem` starts three `standard.net` `net.fetchText` requests to the running `taskforge-web` server before awaiting any response.
   - Wires the outbound HTTP client surface through `standard.net`, compiler/linter lowering, native async/libuv and native HTTP client/libcurl runtime adapters, docs, tests, and a real-backend build harness.
