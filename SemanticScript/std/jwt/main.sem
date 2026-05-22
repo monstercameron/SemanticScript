@@ -11,11 +11,12 @@
 # symbols; it does not special-case jwt.* call names.
 
 module standard.jwt
-purpose module standard.jwt "Standard-library namespace and contracts for HS256 JWT signing/verification and token-bearing auth envelope helpers."
-moduleOwns standard.jwt "The official import path `standard.jwt`, JWT access-token trust types, HS256 status codes, runtimeBinding operation wrappers, and the native adapter source declaration."
+purpose module standard.jwt "Standard-library namespace and contracts for HS256 JWT signing/verification and token-bearing formatting helpers."
+moduleOwns standard.jwt "The official import path `standard.jwt`, JWT access-token trust types, generic claim payload signing, HS256 status codes, runtimeBinding operation wrappers, and the native adapter source declaration."
 moduleDoesNotOwn standard.jwt "Application session state, secret management, claim policy, refresh-token persistence, or route-specific response contracts."
 invariant module standard.jwt "Downstream modules import this module as alias `jwt` before calling exported JWT operations; the operation bodies delegate through generic native runtimeBinding rows."
 moduleSecurity standard.jwt "JWT secrets must come from deployment configuration before production. Source literals are acceptable only for local demos and tests."
+moduleSecurity standard.jwt "The native signer rejects payload templates unless they contain exactly one literal %s placeholder for jti and no other printf directives."
 
 nativeRuntimeSource standard.jwt "SemanticScript/std/jwt/native/sem_jwt_runtime.c"
 nativeRuntimeLinkArg standard.jwt windows "-lbcrypt"
@@ -27,11 +28,13 @@ purpose operation jwtMemoryBufferWrite "Authority to write JWT outputs and auth 
 
 type JwtAccessToken CNullTerminatedByteString
 type JwtSecret CNullTerminatedByteString
+type JwtPayloadTemplate CNullTerminatedByteString
 type JwtOutputBuffer COpaqueMemoryAddress
 type AuthEnvelopeBuffer COpaqueMemoryAddress
 
 exportType standard.jwt JwtAccessToken
 exportType standard.jwt JwtSecret
+exportType standard.jwt JwtPayloadTemplate
 exportType standard.jwt JwtOutputBuffer
 exportType standard.jwt AuthEnvelopeBuffer
 
@@ -39,6 +42,7 @@ typeInvariant JwtAccessToken "Null-terminated compact JWT string in header.paylo
 typeTrust JwtAccessToken trusted
 typeInvariant JwtSecret "Server-side HMAC secret. Must not be logged or sent to clients."
 typeTrust JwtSecret secret
+typeInvariant JwtPayloadTemplate "Caller-owned JSON claim payload template with exactly one literal %s placeholder for a generated jti and no other printf directives."
 typeInvariant JwtOutputBuffer "Caller-owned byte buffer for compact JWT output."
 typeInvariant AuthEnvelopeBuffer "Caller-owned byte buffer for JSON auth envelopes containing generated tokens."
 
@@ -46,6 +50,10 @@ storage module immutable jwtModuleVersionText CNullTerminatedByteString "standar
 storage module immutable jwtStatusOk CSignedInt32 0
 storage module immutable jwtStatusMatch CSignedInt32 1
 storage module immutable jwtStatusMismatch CSignedInt32 0
+storage module immutable jwtStatusConfigError CSignedInt32 -1
+storage module immutable jwtStatusRandomError CSignedInt32 -2
+storage module immutable jwtStatusMalformedError CSignedInt32 -3
+storage module immutable jwtStatusOutputTooSmallError CSignedInt32 -4
 storage module immutable jwtAccessTokenBufferRequiredBytes CSignedInt32 512
 storage module immutable jwtAuthEnvelopeBufferRequiredBytes CSignedInt32 2048
 
@@ -53,29 +61,35 @@ exportConstant standard.jwt jwtModuleVersionText
 exportConstant standard.jwt jwtStatusOk
 exportConstant standard.jwt jwtStatusMatch
 exportConstant standard.jwt jwtStatusMismatch
+exportConstant standard.jwt jwtStatusConfigError
+exportConstant standard.jwt jwtStatusRandomError
+exportConstant standard.jwt jwtStatusMalformedError
+exportConstant standard.jwt jwtStatusOutputTooSmallError
 exportConstant standard.jwt jwtAccessTokenBufferRequiredBytes
 exportConstant standard.jwt jwtAuthEnvelopeBufferRequiredBytes
 
-exportOperation standard.jwt hs256SignDemoAccessToken
+exportOperation standard.jwt hs256SignJsonPayloadWithRandomJti
 exportOperation standard.jwt hs256VerifyToken
-exportOperation standard.jwt hs256VerifyArenaAccessToken
-exportOperation standard.jwt formatLoginEnvelope
-exportOperation standard.jwt formatRefreshEnvelope
+exportOperation standard.jwt formatBearerLoginEnvelope
+exportOperation standard.jwt formatBearerRefreshEnvelope
 
-operation hs256SignDemoAccessToken
-input operation hs256SignDemoAccessToken secret JwtSecret
-input operation hs256SignDemoAccessToken outBuffer JwtOutputBuffer
-input operation hs256SignDemoAccessToken outCapacity CSignedInt32
-output operation hs256SignDemoAccessToken CSignedInt32
-effect hs256SignDemoAccessToken read memory.buffer
-effect hs256SignDemoAccessToken write memory.buffer
-memory hs256SignDemoAccessToken heap no
-async hs256SignDemoAccessToken no
-useCapability hs256SignDemoAccessToken jwtMemoryBufferRead
-useCapability hs256SignDemoAccessToken jwtMemoryBufferWrite
-operationBody hs256SignDemoAccessToken runtimeBinding
-purpose operation hs256SignDemoAccessToken "Write an HS256-signed local-demo access JWT with a random jti into caller-owned output memory."
-runtimeBinding hs256SignDemoAccessToken native.ss_jwt_hs256_sign_demo_access_token
+operation hs256SignJsonPayloadWithRandomJti
+input operation hs256SignJsonPayloadWithRandomJti secret JwtSecret
+input operation hs256SignJsonPayloadWithRandomJti payloadTemplate JwtPayloadTemplate
+input operation hs256SignJsonPayloadWithRandomJti outBuffer JwtOutputBuffer
+input operation hs256SignJsonPayloadWithRandomJti outCapacity CSignedInt32
+output operation hs256SignJsonPayloadWithRandomJti CSignedInt32
+effect hs256SignJsonPayloadWithRandomJti read memory.buffer
+effect hs256SignJsonPayloadWithRandomJti write memory.buffer
+memory hs256SignJsonPayloadWithRandomJti heap no
+async hs256SignJsonPayloadWithRandomJti no
+useCapability hs256SignJsonPayloadWithRandomJti jwtMemoryBufferRead
+useCapability hs256SignJsonPayloadWithRandomJti jwtMemoryBufferWrite
+operationBody hs256SignJsonPayloadWithRandomJti runtimeBinding
+purpose operation hs256SignJsonPayloadWithRandomJti "Write an HS256-signed JWT whose claim payload is supplied by the caller and receives a generated jti."
+invariant operation hs256SignJsonPayloadWithRandomJti "The native binding does not own application claim policy; callers provide the payload template."
+runtimeBindingPrecondition hs256SignJsonPayloadWithRandomJti "secret and payloadTemplate are null-terminated, outBuffer points to writable memory, outCapacity is positive, and payloadTemplate contains exactly one literal %s placeholder and no other printf directives."
+runtimeBinding hs256SignJsonPayloadWithRandomJti native.ss_jwt_hs256_sign_json_payload_with_random_jti
 
 operation hs256VerifyToken
 input operation hs256VerifyToken token JwtAccessToken
@@ -87,48 +101,47 @@ async hs256VerifyToken no
 useCapability hs256VerifyToken jwtMemoryBufferRead
 operationBody hs256VerifyToken runtimeBinding
 purpose operation hs256VerifyToken "Return jwtStatusMatch only when the compact JWT's HS256 signature matches the supplied secret."
+invariant operation hs256VerifyToken "This verifier checks compact-token shape and signature only; callers own claim validation."
+runtimeBindingPrecondition hs256VerifyToken "token and secret are null-terminated strings; token is expected to use compact JWT header.payload.signature shape."
 runtimeBinding hs256VerifyToken native.ss_jwt_hs256_verify_token
 
-operation hs256VerifyArenaAccessToken
-input operation hs256VerifyArenaAccessToken token JwtAccessToken
-input operation hs256VerifyArenaAccessToken secret JwtSecret
-output operation hs256VerifyArenaAccessToken CSignedInt32
-effect hs256VerifyArenaAccessToken read memory.buffer
-memory hs256VerifyArenaAccessToken heap no
-async hs256VerifyArenaAccessToken no
-useCapability hs256VerifyArenaAccessToken jwtMemoryBufferRead
-operationBody hs256VerifyArenaAccessToken runtimeBinding
-purpose operation hs256VerifyArenaAccessToken "Return jwtStatusMatch only when the compact JWT signature and Realtime Auction Arena required claims match."
-runtimeBinding hs256VerifyArenaAccessToken native.ss_jwt_hs256_verify_arena_access_token
+operation formatBearerLoginEnvelope
+input operation formatBearerLoginEnvelope accessToken JwtAccessToken
+input operation formatBearerLoginEnvelope refreshToken CNullTerminatedByteString
+input operation formatBearerLoginEnvelope userId CNullTerminatedByteString
+input operation formatBearerLoginEnvelope username CNullTerminatedByteString
+input operation formatBearerLoginEnvelope displayName CNullTerminatedByteString
+input operation formatBearerLoginEnvelope roleName CNullTerminatedByteString
+input operation formatBearerLoginEnvelope scopesJson CNullTerminatedByteString
+input operation formatBearerLoginEnvelope outBuffer AuthEnvelopeBuffer
+input operation formatBearerLoginEnvelope outCapacity CSignedInt32
+output operation formatBearerLoginEnvelope CSignedInt32
+effect formatBearerLoginEnvelope read memory.buffer
+effect formatBearerLoginEnvelope write memory.buffer
+memory formatBearerLoginEnvelope heap no
+async formatBearerLoginEnvelope no
+useCapability formatBearerLoginEnvelope jwtMemoryBufferRead
+useCapability formatBearerLoginEnvelope jwtMemoryBufferWrite
+operationBody formatBearerLoginEnvelope runtimeBinding
+purpose operation formatBearerLoginEnvelope "Format a bearer-token login envelope using caller-supplied user fields and scopes JSON."
+invariant operation formatBearerLoginEnvelope "The formatter must not hard-code application user ids, roles, scopes, issuer, or audience."
+runtimeBindingPrecondition formatBearerLoginEnvelope "All text inputs are null-terminated, scopesJson is caller-validated JSON text, outBuffer points to writable memory, and outCapacity is positive."
+runtimeBinding formatBearerLoginEnvelope native.ss_jwt_format_bearer_login_envelope
 
-operation formatLoginEnvelope
-input operation formatLoginEnvelope accessToken JwtAccessToken
-input operation formatLoginEnvelope refreshToken CNullTerminatedByteString
-input operation formatLoginEnvelope outBuffer AuthEnvelopeBuffer
-input operation formatLoginEnvelope outCapacity CSignedInt32
-output operation formatLoginEnvelope CSignedInt32
-effect formatLoginEnvelope read memory.buffer
-effect formatLoginEnvelope write memory.buffer
-memory formatLoginEnvelope heap no
-async formatLoginEnvelope no
-useCapability formatLoginEnvelope jwtMemoryBufferRead
-useCapability formatLoginEnvelope jwtMemoryBufferWrite
-operationBody formatLoginEnvelope runtimeBinding
-purpose operation formatLoginEnvelope "Format the login success envelope containing generated access and refresh tokens into caller-owned output memory."
-runtimeBinding formatLoginEnvelope native.ss_auth_format_login_envelope
-
-operation formatRefreshEnvelope
-input operation formatRefreshEnvelope accessToken JwtAccessToken
-input operation formatRefreshEnvelope refreshToken CNullTerminatedByteString
-input operation formatRefreshEnvelope outBuffer AuthEnvelopeBuffer
-input operation formatRefreshEnvelope outCapacity CSignedInt32
-output operation formatRefreshEnvelope CSignedInt32
-effect formatRefreshEnvelope read memory.buffer
-effect formatRefreshEnvelope write memory.buffer
-memory formatRefreshEnvelope heap no
-async formatRefreshEnvelope no
-useCapability formatRefreshEnvelope jwtMemoryBufferRead
-useCapability formatRefreshEnvelope jwtMemoryBufferWrite
-operationBody formatRefreshEnvelope runtimeBinding
-purpose operation formatRefreshEnvelope "Format the refresh success envelope containing rotated access and refresh tokens into caller-owned output memory."
-runtimeBinding formatRefreshEnvelope native.ss_auth_format_refresh_envelope
+operation formatBearerRefreshEnvelope
+input operation formatBearerRefreshEnvelope accessToken JwtAccessToken
+input operation formatBearerRefreshEnvelope refreshToken CNullTerminatedByteString
+input operation formatBearerRefreshEnvelope outBuffer AuthEnvelopeBuffer
+input operation formatBearerRefreshEnvelope outCapacity CSignedInt32
+output operation formatBearerRefreshEnvelope CSignedInt32
+effect formatBearerRefreshEnvelope read memory.buffer
+effect formatBearerRefreshEnvelope write memory.buffer
+memory formatBearerRefreshEnvelope heap no
+async formatBearerRefreshEnvelope no
+useCapability formatBearerRefreshEnvelope jwtMemoryBufferRead
+useCapability formatBearerRefreshEnvelope jwtMemoryBufferWrite
+operationBody formatBearerRefreshEnvelope runtimeBinding
+purpose operation formatBearerRefreshEnvelope "Format a bearer-token refresh envelope containing rotated access and refresh tokens."
+invariant operation formatBearerRefreshEnvelope "The formatter includes only the caller-supplied tokens and generic bearer envelope fields."
+runtimeBindingPrecondition formatBearerRefreshEnvelope "accessToken and refreshToken are null-terminated, outBuffer points to writable memory, and outCapacity is positive."
+runtimeBinding formatBearerRefreshEnvelope native.ss_jwt_format_bearer_refresh_envelope

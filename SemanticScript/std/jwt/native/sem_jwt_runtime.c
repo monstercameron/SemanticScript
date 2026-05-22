@@ -386,6 +386,40 @@ static int constant_time_equal(const char *left, const char *right, size_t len) 
     return diff == 0 ? 1 : 0;
 }
 
+static int payload_template_has_exactly_one_string_placeholder(
+    const char *template_text
+) {
+    int placeholder_count = 0;
+
+    if (template_text == NULL) {
+        return 0;
+    }
+
+    for (const char *cursor = template_text; *cursor != '\0'; ++cursor) {
+        if (*cursor != '%') {
+            continue;
+        }
+
+        ++cursor;
+        if (*cursor == '\0') {
+            return 0;
+        }
+        if (*cursor == '%') {
+            continue;
+        }
+        if (*cursor == 's') {
+            ++placeholder_count;
+            if (placeholder_count > 1) {
+                return 0;
+            }
+            continue;
+        }
+        return 0;
+    }
+
+    return placeholder_count == 1;
+}
+
 static int sign_header_payload(
     const char *header_payload,
     const char *secret,
@@ -428,17 +462,24 @@ static int sign_header_payload(
     return SS_JWT_OK;
 }
 
-int ss_jwt_hs256_sign_demo_access_token(
+int ss_jwt_hs256_sign_json_payload_with_random_jti(
     const char *secret,
+    const char *payload_template,
     char *out_token_buffer,
     int out_token_capacity
 ) {
-    if (secret == NULL || out_token_buffer == NULL) {
+    if (secret == NULL || payload_template == NULL || out_token_buffer == NULL) {
+        return SS_JWT_ERR_CONFIG;
+    }
+    if (out_token_capacity <= 0) {
+        return SS_JWT_ERR_OUTPUT_TOO_SMALL;
+    }
+    if (!payload_template_has_exactly_one_string_placeholder(payload_template)) {
         return SS_JWT_ERR_CONFIG;
     }
 
     static const char header_json[] =
-        "{\"alg\":\"HS256\",\"typ\":\"JWT\",\"kid\":\"demo\"}";
+        "{\"alg\":\"HS256\",\"typ\":\"JWT\"}";
     char encoded_header[96];
     int header_status = base64url_encode(
         (const uint8_t *)header_json,
@@ -465,10 +506,7 @@ int ss_jwt_hs256_sign_demo_access_token(
     int payload_written = snprintf(
         payload_json,
         sizeof(payload_json),
-        "{\"iss\":\"realtime-auction-arena\",\"aud\":\"api-v1\","
-        "\"sub\":\"user_auctioneer_001\",\"role\":\"auctioneer\","
-        "\"scopes\":[\"auctions:write\",\"bids:read\",\"chat:moderate\"],"
-        "\"iat\":1700000000,\"nbf\":0,\"exp\":2000000000,\"jti\":\"%s\"}",
+        payload_template,
         jti);
     if (payload_written < 0 || payload_written >= (int)sizeof(payload_json)) {
         return SS_JWT_ERR_OUTPUT_TOO_SMALL;
@@ -545,66 +583,29 @@ int ss_jwt_hs256_verify_token(
         : SS_JWT_MISMATCH;
 }
 
-static int payload_contains_required_arena_claims(const char *payload_json) {
-    return strstr(payload_json, "\"iss\":\"realtime-auction-arena\"") != NULL
-        && strstr(payload_json, "\"aud\":\"api-v1\"") != NULL
-        && strstr(payload_json, "\"sub\":\"user_auctioneer_001\"") != NULL
-        && strstr(payload_json, "\"role\":\"auctioneer\"") != NULL
-        && strstr(
-            payload_json,
-            "\"scopes\":[\"auctions:write\",\"bids:read\",\"chat:moderate\"]"
-        ) != NULL
-        && strstr(payload_json, "\"iat\":") != NULL
-        && strstr(payload_json, "\"nbf\":") != NULL
-        && strstr(payload_json, "\"exp\":2000000000") != NULL
-        && strstr(payload_json, "\"jti\":\"") != NULL;
-}
-
-int ss_jwt_hs256_verify_arena_access_token(
-    const char *token,
-    const char *secret
-) {
-    int signature_status = ss_jwt_hs256_verify_token(token, secret);
-    if (signature_status != SS_JWT_MATCH) {
-        return signature_status;
-    }
-
-    const char *first_dot = strchr(token, '.');
-    const char *second_dot = first_dot != NULL ? strchr(first_dot + 1, '.') : NULL;
-    if (first_dot == NULL || second_dot == NULL) {
-        return SS_JWT_ERR_MALFORMED;
-    }
-    int payload_segment_len = (int)(second_dot - first_dot - 1);
-    if (payload_segment_len <= 0 || payload_segment_len >= 768) {
-        return SS_JWT_ERR_MALFORMED;
-    }
-
-    uint8_t decoded_payload[768];
-    int decoded_payload_len = 0;
-    int decode_status = base64url_decode(
-        first_dot + 1,
-        payload_segment_len,
-        decoded_payload,
-        (int)sizeof(decoded_payload) - 1,
-        &decoded_payload_len);
-    if (decode_status != SS_JWT_OK) {
-        return decode_status;
-    }
-    decoded_payload[decoded_payload_len] = '\0';
-
-    return payload_contains_required_arena_claims((const char *)decoded_payload)
-        ? SS_JWT_MATCH
-        : SS_JWT_MISMATCH;
-}
-
-int ss_auth_format_login_envelope(
+int ss_jwt_format_bearer_login_envelope(
     const char *access_token,
     const char *refresh_token,
+    const char *user_id,
+    const char *username,
+    const char *display_name,
+    const char *role_name,
+    const char *scopes_json,
     char *out_body_buffer,
     int out_body_capacity
 ) {
-    if (access_token == NULL || refresh_token == NULL || out_body_buffer == NULL) {
+    if (access_token == NULL
+        || refresh_token == NULL
+        || user_id == NULL
+        || username == NULL
+        || display_name == NULL
+        || role_name == NULL
+        || scopes_json == NULL
+        || out_body_buffer == NULL) {
         return SS_JWT_ERR_CONFIG;
+    }
+    if (out_body_capacity <= 0) {
+        return SS_JWT_ERR_OUTPUT_TOO_SMALL;
     }
     int written = snprintf(
         out_body_buffer,
@@ -613,19 +614,24 @@ int ss_auth_format_login_envelope(
         "\"ok\":true,\"data\":{\"tokenType\":\"Bearer\","
         "\"accessToken\":\"%s\",\"expiresInSeconds\":900,"
         "\"refreshToken\":\"%s\","
-        "\"user\":{\"id\":\"user_auctioneer_001\",\"username\":\"auctioneer\","
-        "\"displayName\":\"Demo Auctioneer\",\"role\":\"auctioneer\","
-        "\"scopes\":[\"auctions:write\",\"bids:read\",\"chat:moderate\"]},"
+        "\"user\":{\"id\":\"%s\",\"username\":\"%s\","
+        "\"displayName\":\"%s\",\"role\":\"%s\","
+        "\"scopes\":%s},"
         "\"crypto\":\"HS256\"},\"error\":null}\n",
         access_token,
-        refresh_token);
+        refresh_token,
+        user_id,
+        username,
+        display_name,
+        role_name,
+        scopes_json);
     if (written < 0 || written >= out_body_capacity) {
         return SS_JWT_ERR_OUTPUT_TOO_SMALL;
     }
     return SS_JWT_OK;
 }
 
-int ss_auth_format_refresh_envelope(
+int ss_jwt_format_bearer_refresh_envelope(
     const char *access_token,
     const char *refresh_token,
     char *out_body_buffer,
@@ -633,6 +639,9 @@ int ss_auth_format_refresh_envelope(
 ) {
     if (access_token == NULL || refresh_token == NULL || out_body_buffer == NULL) {
         return SS_JWT_ERR_CONFIG;
+    }
+    if (out_body_capacity <= 0) {
+        return SS_JWT_ERR_OUTPUT_TOO_SMALL;
     }
     int written = snprintf(
         out_body_buffer,

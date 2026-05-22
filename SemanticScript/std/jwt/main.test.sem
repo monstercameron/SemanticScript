@@ -1,0 +1,250 @@
+project StdJwtModuleTest
+target console
+runtime native 1
+entry console main
+
+import jwt standard.jwt
+
+importConstant importedJwtModuleVersionText jwt jwtModuleVersionText
+importConstant importedJwtStatusOk jwt jwtStatusOk
+importConstant importedJwtStatusMatch jwt jwtStatusMatch
+importConstant importedJwtStatusMismatch jwt jwtStatusMismatch
+importConstant importedJwtStatusConfigError jwt jwtStatusConfigError
+importConstant importedJwtAccessTokenBufferRequiredBytes jwt jwtAccessTokenBufferRequiredBytes
+importConstant importedJwtAuthEnvelopeBufferRequiredBytes jwt jwtAuthEnvelopeBufferRequiredBytes
+
+error MainError
+errorCase MainError SignFailed CSignedInt32
+errorCase MainError VerifyShouldMatchButDidNot CSignedInt32
+errorCase MainError VerifyShouldRejectButMatched CSignedInt32
+errorCase MainError InvalidTemplateWasAccepted CSignedInt32
+errorCase MainError LoginEnvelopeFailed CSignedInt32
+errorCase MainError RefreshEnvelopeFailed CSignedInt32
+errorCase MainError AllocationFailed COpaqueMemoryAddress
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+
+capability stdJwtSmokeStdoutWrite console.stdout write
+purpose operation stdJwtSmokeStdoutWrite "Authority to write the JWT smoke marker to stdout."
+capability stdJwtSmokeHeapAlloc heap allocate
+purpose operation stdJwtSmokeHeapAlloc "Authority to allocate JWT output scratch buffers."
+capability stdJwtSmokeHeapFree heap free
+purpose operation stdJwtSmokeHeapFree "Authority to free JWT output scratch buffers at defer time."
+
+storage module immutable successCode ExitCode 0
+storage module immutable tokenBufferCapacity CByteCount 512
+storage module immutable envelopeBufferCapacity CByteCount 2048
+storage module immutable zeroOffset CByteCount 0
+storage module immutable jwtStatusOkValue CSignedInt32 0
+storage module immutable jwtStatusMatchValue CSignedInt32 1
+storage module immutable jwtStatusMismatchValue CSignedInt32 0
+storage module immutable jwtStatusConfigErrorValue CSignedInt32 -1
+storage module immutable jwtAccessTokenBufferRequiredBytesValue CSignedInt32 512
+storage module immutable jwtAuthEnvelopeBufferRequiredBytesValue CSignedInt32 2048
+storage module immutable jwtSecret JwtSecret "generic-jwt-test-secret"
+storage module immutable wrongJwtSecret JwtSecret "generic-jwt-test-wrong-secret"
+storage module immutable payloadTemplate JwtPayloadTemplate "{\"iss\":\"issuer.example\",\"sub\":\"subject.example\",\"jti\":\"%s\"}"
+storage module immutable invalidPayloadTemplate JwtPayloadTemplate "{\"iss\":\"issuer.example\",\"sub\":\"subject.example\",\"jti\":\"%s\",\"bad\":\"%n\"}"
+storage module immutable refreshToken CNullTerminatedByteString "refresh-token-value"
+storage module immutable subjectId CNullTerminatedByteString "subject-001"
+storage module immutable principalName CNullTerminatedByteString "principal"
+storage module immutable principalDisplayName CNullTerminatedByteString "Principal"
+storage module immutable roleName CNullTerminatedByteString "reader"
+storage module immutable scopesJson CNullTerminatedByteString "[\"read\"]"
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+effect main write console.stdout
+effect main allocate heap
+effect main free heap
+memory main heap auto
+async main no
+useCapability main stdJwtSmokeStdoutWrite
+useCapability main stdJwtSmokeHeapAlloc
+useCapability main stdJwtSmokeHeapFree
+purpose operation main "Runtime-smoke standard.jwt signing, signature verification, template rejection, and bearer-envelope formatting without application-specific claim policy."
+invariant operation main "Claim strings remain generic test data; standard.jwt receives caller-owned payload templates and never owns route or domain authorization policy."
+
+call allocateTokenBufferCall c.malloc
+argument allocateTokenBufferCall size CByteCount tokenBufferCapacity
+run allocateTokenBufferCall
+bind ok tokenMemory COpaqueMemoryAddress allocateTokenBufferCall
+bind error tokenAllocationError COpaqueMemoryAddress allocateTokenBufferCall
+branch error source allocateTokenBufferCall target tokenAllocationFailed
+defer releaseTokenMemoryDefer c.free tokenMemory
+
+call tokenOutputBufferCall pointer.offset
+argument tokenOutputBufferCall base COpaqueMemoryAddress tokenMemory
+argument tokenOutputBufferCall offset CByteCount zeroOffset
+run tokenOutputBufferCall
+bind value tokenOutputBuffer JwtOutputBuffer tokenOutputBufferCall
+
+call signTokenCall jwt.hs256SignJsonPayloadWithRandomJti
+argument signTokenCall secret JwtSecret jwtSecret
+argument signTokenCall payloadTemplate JwtPayloadTemplate payloadTemplate
+argument signTokenCall outBuffer JwtOutputBuffer tokenOutputBuffer
+argument signTokenCall outCapacity CSignedInt32 jwtAccessTokenBufferRequiredBytesValue
+run signTokenCall
+bind value signStatus CSignedInt32 signTokenCall
+
+call signStatusOkCheckCall math.equalCSignedInt32
+argument signStatusOkCheckCall left CSignedInt32 signStatus
+argument signStatusOkCheckCall right CSignedInt32 jwtStatusOkValue
+run signStatusOkCheckCall
+bind value signStatusOk Bool signStatusOkCheckCall
+branch if condition signStatusOk target tokenSigned
+branch else target tokenSignFailed
+label tokenSigned
+
+call tokenTextCall pointer.offset
+argument tokenTextCall base COpaqueMemoryAddress tokenMemory
+argument tokenTextCall offset CByteCount zeroOffset
+run tokenTextCall
+bind value tokenText JwtAccessToken tokenTextCall
+
+call verifyMatchingCall jwt.hs256VerifyToken
+argument verifyMatchingCall token JwtAccessToken tokenText
+argument verifyMatchingCall secret JwtSecret jwtSecret
+run verifyMatchingCall
+bind value verifyMatchingStatus CSignedInt32 verifyMatchingCall
+
+call verifyMatchingCheckCall math.equalCSignedInt32
+argument verifyMatchingCheckCall left CSignedInt32 verifyMatchingStatus
+argument verifyMatchingCheckCall right CSignedInt32 jwtStatusMatchValue
+run verifyMatchingCheckCall
+bind value verifyMatchingOk Bool verifyMatchingCheckCall
+branch if condition verifyMatchingOk target matchingVerified
+branch else target verifyShouldHaveMatchedFailed
+label matchingVerified
+
+call verifyWrongSecretCall jwt.hs256VerifyToken
+argument verifyWrongSecretCall token JwtAccessToken tokenText
+argument verifyWrongSecretCall secret JwtSecret wrongJwtSecret
+run verifyWrongSecretCall
+bind value verifyWrongSecretStatus CSignedInt32 verifyWrongSecretCall
+
+call verifyWrongSecretCheckCall math.equalCSignedInt32
+argument verifyWrongSecretCheckCall left CSignedInt32 verifyWrongSecretStatus
+argument verifyWrongSecretCheckCall right CSignedInt32 jwtStatusMismatchValue
+run verifyWrongSecretCheckCall
+bind value verifyWrongSecretRejected Bool verifyWrongSecretCheckCall
+branch if condition verifyWrongSecretRejected target wrongSecretRejected
+branch else target verifyShouldHaveRejectedFailed
+label wrongSecretRejected
+
+call invalidTemplateSignCall jwt.hs256SignJsonPayloadWithRandomJti
+argument invalidTemplateSignCall secret JwtSecret jwtSecret
+argument invalidTemplateSignCall payloadTemplate JwtPayloadTemplate invalidPayloadTemplate
+argument invalidTemplateSignCall outBuffer JwtOutputBuffer tokenOutputBuffer
+argument invalidTemplateSignCall outCapacity CSignedInt32 jwtAccessTokenBufferRequiredBytesValue
+run invalidTemplateSignCall
+bind value invalidTemplateStatus CSignedInt32 invalidTemplateSignCall
+
+call invalidTemplateCheckCall math.equalCSignedInt32
+argument invalidTemplateCheckCall left CSignedInt32 invalidTemplateStatus
+argument invalidTemplateCheckCall right CSignedInt32 jwtStatusConfigErrorValue
+run invalidTemplateCheckCall
+bind value invalidTemplateRejected Bool invalidTemplateCheckCall
+branch if condition invalidTemplateRejected target invalidTemplateRejectedLabel
+branch else target invalidTemplateAcceptedFailed
+label invalidTemplateRejectedLabel
+
+call allocateEnvelopeBufferCall c.malloc
+argument allocateEnvelopeBufferCall size CByteCount envelopeBufferCapacity
+run allocateEnvelopeBufferCall
+bind ok envelopeMemory COpaqueMemoryAddress allocateEnvelopeBufferCall
+bind error envelopeAllocationError COpaqueMemoryAddress allocateEnvelopeBufferCall
+branch error source allocateEnvelopeBufferCall target envelopeAllocationFailed
+defer releaseEnvelopeMemoryDefer c.free envelopeMemory
+
+call envelopeOutputBufferCall pointer.offset
+argument envelopeOutputBufferCall base COpaqueMemoryAddress envelopeMemory
+argument envelopeOutputBufferCall offset CByteCount zeroOffset
+run envelopeOutputBufferCall
+bind value envelopeOutputBuffer AuthEnvelopeBuffer envelopeOutputBufferCall
+
+call formatLoginCall jwt.formatBearerLoginEnvelope
+argument formatLoginCall accessToken JwtAccessToken tokenText
+argument formatLoginCall refreshToken CNullTerminatedByteString refreshToken
+argument formatLoginCall userId CNullTerminatedByteString subjectId
+argument formatLoginCall username CNullTerminatedByteString principalName
+argument formatLoginCall displayName CNullTerminatedByteString principalDisplayName
+argument formatLoginCall roleName CNullTerminatedByteString roleName
+argument formatLoginCall scopesJson CNullTerminatedByteString scopesJson
+argument formatLoginCall outBuffer AuthEnvelopeBuffer envelopeOutputBuffer
+argument formatLoginCall outCapacity CSignedInt32 jwtAuthEnvelopeBufferRequiredBytesValue
+run formatLoginCall
+bind value loginEnvelopeStatus CSignedInt32 formatLoginCall
+
+call loginEnvelopeStatusCheckCall math.equalCSignedInt32
+argument loginEnvelopeStatusCheckCall left CSignedInt32 loginEnvelopeStatus
+argument loginEnvelopeStatusCheckCall right CSignedInt32 jwtStatusOkValue
+run loginEnvelopeStatusCheckCall
+bind value loginEnvelopeOk Bool loginEnvelopeStatusCheckCall
+branch if condition loginEnvelopeOk target loginEnvelopeFormatted
+branch else target loginEnvelopeFailed
+label loginEnvelopeFormatted
+
+call formatRefreshCall jwt.formatBearerRefreshEnvelope
+argument formatRefreshCall accessToken JwtAccessToken tokenText
+argument formatRefreshCall refreshToken CNullTerminatedByteString refreshToken
+argument formatRefreshCall outBuffer AuthEnvelopeBuffer envelopeOutputBuffer
+argument formatRefreshCall outCapacity CSignedInt32 jwtAuthEnvelopeBufferRequiredBytesValue
+run formatRefreshCall
+bind value refreshEnvelopeStatus CSignedInt32 formatRefreshCall
+
+call refreshEnvelopeStatusCheckCall math.equalCSignedInt32
+argument refreshEnvelopeStatusCheckCall left CSignedInt32 refreshEnvelopeStatus
+argument refreshEnvelopeStatusCheckCall right CSignedInt32 jwtStatusOkValue
+run refreshEnvelopeStatusCheckCall
+bind value refreshEnvelopeOk Bool refreshEnvelopeStatusCheckCall
+branch if condition refreshEnvelopeOk target refreshEnvelopeFormatted
+branch else target refreshEnvelopeFailed
+label refreshEnvelopeFormatted
+
+storage local immutable successMarker CNullTerminatedByteString "stdJwtRuntimeSmokeOk"
+call writeMarkerCall console.writeLine
+argument writeMarkerCall console Console console
+argument writeMarkerCall text CNullTerminatedByteString successMarker
+run writeMarkerCall
+ignore void source writeMarkerCall
+bind error consoleWriteError ConsoleWriteError writeMarkerCall
+branch error source writeMarkerCall target consoleSmokeWriteFailed
+
+return ok successCode
+
+label tokenSignFailed
+makeError signFailedFailure MainError.SignFailed signStatus
+return error signFailedFailure
+
+label tokenAllocationFailed
+makeError tokenAllocationFailure MainError.AllocationFailed tokenAllocationError
+return error tokenAllocationFailure
+
+label verifyShouldHaveMatchedFailed
+makeError verifyShouldMatchFailure MainError.VerifyShouldMatchButDidNot verifyMatchingStatus
+return error verifyShouldMatchFailure
+
+label verifyShouldHaveRejectedFailed
+makeError verifyShouldRejectFailure MainError.VerifyShouldRejectButMatched verifyWrongSecretStatus
+return error verifyShouldRejectFailure
+
+label invalidTemplateAcceptedFailed
+makeError invalidTemplateFailure MainError.InvalidTemplateWasAccepted invalidTemplateStatus
+return error invalidTemplateFailure
+
+label loginEnvelopeFailed
+makeError loginEnvelopeFailure MainError.LoginEnvelopeFailed loginEnvelopeStatus
+return error loginEnvelopeFailure
+
+label refreshEnvelopeFailed
+makeError refreshEnvelopeFailure MainError.RefreshEnvelopeFailed refreshEnvelopeStatus
+return error refreshEnvelopeFailure
+
+label envelopeAllocationFailed
+makeError envelopeAllocationFailure MainError.AllocationFailed envelopeAllocationError
+return error envelopeAllocationFailure
+
+label consoleSmokeWriteFailed
+makeError consoleWriteFailure MainError.ConsoleWriteFailed consoleWriteError
+return error consoleWriteFailure
