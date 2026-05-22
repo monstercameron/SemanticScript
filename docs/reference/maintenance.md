@@ -54,10 +54,10 @@ Good:
 
 ```semanticscript
 call sumCall math.addI64
-arg sumCall left leftValue
-arg sumCall right rightValue
+argument sumCall left TYPE leftValue
+argument sumCall right TYPE rightValue
 run sumCall
-bind sumValue I64 sumCall
+bind value sumValue I64 sumCall
 ```
 
 Bad:

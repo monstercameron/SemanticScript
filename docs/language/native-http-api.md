@@ -137,15 +137,15 @@ capabilities when a handler should only inspect one request edge.
 The first runtime calls should be direct and small:
 
 ```semanticscript
-const healthBody CNullTerminatedByteString "ok\n"
+storage local immutable healthBody CNullTerminatedByteString "ok\n"
 
 call writeHealthResponse http.responseText
-arg writeHealthResponse response response
-arg writeHealthResponse status HttpStatus.Ok
-arg writeHealthResponse body healthBody
+argument writeHealthResponse response HttpResponse response
+argument writeHealthResponse status HttpStatus HttpStatus.Ok
+argument writeHealthResponse body CNullTerminatedByteString healthBody
 run writeHealthResponse
-bind writeStatus CSignedInt32 writeHealthResponse
-returnValue writeStatus
+bind value writeStatus CSignedInt32 writeHealthResponse
+return value writeStatus
 ```
 
 Initial call targets:
@@ -156,9 +156,12 @@ Initial call targets:
 | `http.responseBytes` | `response HttpResponse`, `status HttpStatus`, `body COpaqueMemoryAddress`, `bodyLength CByteCount`, optional `contentType CNullTerminatedByteString` | `CSignedInt32` | `ss_http_response_bytes` |
 | `http.responseSseEvent` | `response HttpResponse`, `status HttpStatus`, `event CNullTerminatedByteString`, `data CNullTerminatedByteString` | `CSignedInt32` | `ss_http_response_sse_event` |
 | `http.responseHeader` | `response HttpResponse`, `name CNullTerminatedByteString`, `value CNullTerminatedByteString` | `CSignedInt32` | `ss_http_response_header` |
+| `http.responseFile` | `response HttpResponse`, `status HttpStatus`, `path CNullTerminatedByteString`, optional `contentType CNullTerminatedByteString` | `CSignedInt32` | `ss_http_response_file` |
 | `http.requestMethod` | `request HttpRequest` | `CNullTerminatedByteString` | `ss_http_request_method` |
 | `http.requestPath` | `request HttpRequest` | `CNullTerminatedByteString` | `ss_http_request_path` |
+| `http.requestPathParam` | `request HttpRequest`, `name CNullTerminatedByteString` | `CNullTerminatedByteString` | `ss_http_request_path_param` |
 | `http.requestHeader` | `request HttpRequest`, `name CNullTerminatedByteString` | `CNullTerminatedByteString` | `ss_http_request_header` |
+| `http.requestCookie` | `request HttpRequest`, `name CNullTerminatedByteString` | `CNullTerminatedByteString` | `ss_http_request_cookie` |
 | `http.requestQueryParam` | `request HttpRequest`, `name CNullTerminatedByteString` | `CNullTerminatedByteString` | `ss_http_request_query_param` |
 | `http.requestBodyText` | `request HttpRequest` | `CNullTerminatedByteString` | `ss_http_request_body_text` |
 | `http.requestBodyBytes` | `request HttpRequest` | `COpaqueMemoryAddress` | `ss_http_request_body_bytes` |
@@ -201,14 +204,11 @@ lookup returns the first matching duplicate key today. Percent decoding,
 structured form parsing, and a language-level duplicate-key policy are future
 APIs.
 
-Second-wave targets:
+Future targets:
 
 | Target | Purpose |
 |---|---|
-| `http.responseJson` | Set status, `application/json`, and body. |
 | `http.responseStreamStart` / `http.responseStreamWrite` / `http.responseStreamEnd` | Long-lived streaming responses for SSE and large downloads. |
-| `http.pathParam` | Read a value captured by a route pattern such as `/todos/:todoId`. |
-| `http.staticFile` | Serve a file through a safe static-file helper. |
 | `http.requestShutdown` | Coordinate graceful server shutdown. |
 
 ## Minimal Example
@@ -241,23 +241,23 @@ useCapability healthHandler httpResponseWriter
 purpose healthHandler "Return a plain health-check response"
 
 call methodReadCall http.requestMethod
-arg methodReadCall request request
+argument methodReadCall request HttpRequest request
 run methodReadCall
-bind requestMethod CNullTerminatedByteString methodReadCall
+bind value requestMethod CNullTerminatedByteString methodReadCall
 
 call pathReadCall http.requestPath
-arg pathReadCall request request
+argument pathReadCall request HttpRequest request
 run pathReadCall
-bind requestPath CNullTerminatedByteString pathReadCall
+bind value requestPath CNullTerminatedByteString pathReadCall
 
-const healthBody CNullTerminatedByteString "ok\n"
+storage local immutable healthBody CNullTerminatedByteString "ok\n"
 call responseWriteCall http.responseText
-arg responseWriteCall response response
-arg responseWriteCall status HttpStatus.Ok
-arg responseWriteCall body healthBody
+argument responseWriteCall response HttpResponse response
+argument responseWriteCall status HttpStatus HttpStatus.Ok
+argument responseWriteCall body CNullTerminatedByteString healthBody
 run responseWriteCall
-bind responseWriteStatus CSignedInt32 responseWriteCall
-returnValue responseWriteStatus
+bind value responseWriteStatus CSignedInt32 responseWriteCall
+return value responseWriteStatus
 ```
 
 The `requestMethod` and `requestPath` reads are intentionally shown even though

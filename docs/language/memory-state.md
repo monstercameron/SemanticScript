@@ -25,9 +25,9 @@ storage SCOPE MUTABILITY NAME TYPE [VALUE]
 
 Current compiler behavior:
 
-- `storage module immutable` registers a module const.
-- `storage module mutable` registers a module const and emits an LLVM global.
-- `storage local immutable` registers an operation-local const.
+- `storage module immutable` registers a module-scope stable value.
+- `storage module mutable` registers a module-scope mutable value and emits an LLVM global.
+- `storage local immutable` registers an operation-local stable value.
 - `storage local mutable` allocates an operation-local mutable slot.
 
 ## Mutation
@@ -94,8 +94,8 @@ not "the generated code validates the token".
 access without `protectedBy`, and `protectedBy` tokens that do not declare a
 matching `guardTokenProtects TOKEN RESOURCE` edge.
 
-Strict ownership rows are not committed syntax yet. Until `bindOwned` /
-`bindOkOwned` and the shared ownership table are implemented, heap, SQLite, and
+Strict ownership rows are not committed syntax yet. Until owned-bind rows and
+the shared ownership table are implemented, heap, SQLite, and
 JSON handles should use the existing explicit call, bind, error branch, and
 `defer` cleanup patterns. Treat guard-token and ownership metadata as review and
 lint contracts, not runtime authority enforcement.
@@ -119,17 +119,17 @@ stack-limit overruns based on primitive size estimates.
 
 ```semanticscript
 call loadByteCall pointer.loadByte
-arg loadByteCall buffer sourceBuffer
-arg loadByteCall offset currentOffset
+argument loadByteCall buffer TYPE sourceBuffer
+argument loadByteCall offset TYPE currentOffset
 run loadByteCall
-bind loadedByte CSignedByte loadByteCall
+bind value loadedByte CSignedByte loadByteCall
 
 call storeByteCall pointer.storeByte
-arg storeByteCall buffer destinationBuffer
-arg storeByteCall offset currentOffset
-arg storeByteCall value loadedByte
+argument storeByteCall buffer TYPE destinationBuffer
+argument storeByteCall offset TYPE currentOffset
+argument storeByteCall value TYPE loadedByte
 run storeByteCall
-ignoreValue storeByteCall Void
+ignore value source storeByteCall type Void
 ```
 
 Supported pointer targets:

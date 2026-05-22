@@ -8,16 +8,13 @@ is explicitly announced.
 ## Reporting a Vulnerability
 
 Do not open a public issue for an active vulnerability. Use the repository's
-private security advisory flow when available. If private advisories are not
-enabled, contact the maintainers through the existing project coordination
-channel and include:
+private security advisory flow. If private advisories are not enabled, contact
+the maintainers through the existing project coordination channel and include:
 
 - affected file, tool, or release candidate
 - steps to reproduce
 - expected impact
 - whether generated artifacts or package outputs are affected
-
-TODO: add a dedicated security contact before the first public release.
 
 ## Dependency Handling
 

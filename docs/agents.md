@@ -15,10 +15,10 @@ single-thread lowering; partial = mixed; refined = future/tooling surface.
 
 Good:
   call totalCall math.addI64
-  arg totalCall left subtotalAmount
-  arg totalCall right taxAmount
+  argument totalCall left I64 subtotalAmount
+  argument totalCall right I64 taxAmount
   run totalCall
-  bind totalAmount I64 totalCall
+  bind value totalAmount I64 totalCall
 
 Bad:
   total = subtotal + tax
@@ -49,25 +49,25 @@ Prefer: accountLookupCall validatedTaskTitle consoleStdoutWriter.
   capability stdoutWriter console.stdout write
 
   operation main
-  output main ExitCode
+  output operation main ExitCode
   effect main write console.stdout
   memory main noHeapAllocation
   async main no
   purpose main "Do the thing exactly"
   useCapability main stdoutWriter
-  const outputText CNullTerminatedByteString "hello world"
+  storage local immutable outputText CNullTerminatedByteString "hello world"
   call outputWriteCall console.writeLine
-  arg outputWriteCall text outputText
+  argument outputWriteCall text CNullTerminatedByteString outputText
   run outputWriteCall
-  ignoreOk outputWriteCall Void
-  bindError outputWriteError ConsoleWriteError outputWriteCall
-  branchIfError outputWriteCall outputWriteFailed
-  const successExitCode ExitCode 0
-  returnValue successExitCode
+  ignore ok source outputWriteCall type Void
+  bind error outputWriteError ConsoleWriteError outputWriteCall
+  branch error source outputWriteCall target outputWriteFailed
+  storage local immutable successExitCode ExitCode 0
+  return value successExitCode
   label outputWriteFailed
   makeError outputWriteFailure ConsoleWriteError.ConsoleWriteFailed outputWriteError
-  const writeFailedExitCode ExitCode 1
-  returnValue writeFailedExitCode
+  storage local immutable writeFailedExitCode ExitCode 1
+  return value writeFailedExitCode
 
 No entry => library mode: compile all ops + stub main returns 0, except routed
 `target webServer` programs, which emit a native HTTP entrypoint. Reserved
@@ -124,9 +124,9 @@ Standard GUI source shape:
   entry console main
   operation main
   call createApp gui.applicationCreate
-  arg createApp title titleText
+  argument createApp title GuiText titleText
   run createApp
-  bind app GuiApplication createApp
+  bind value app GuiApplication createApp
   call createWindow gui.windowCreate
   ...
   call runApp gui.applicationRun
@@ -147,9 +147,9 @@ Reserved gui.* targets live under standard.gui contracts:
 
 == operation ==
   operation OP
-  input OP NAME TYPE
-  output OP TYPE...
-  output OP Result OK_TYPE ERR_TYPE
+  input operation OP NAME TYPE
+  output operation OP TYPE...
+  output operation OP Result OK_TYPE ERR_TYPE
   effect OP ACTION PATH
   memory OP POLICY...
   async OP yes|no
@@ -162,10 +162,10 @@ Reserved gui.* targets live under standard.gui contracts:
   timing OP "text"
   observability OP "text"
 
-Owner arg must match current op. Opaque inputs are context, not LLVM params:
+Owner argument must match current op. Opaque inputs are context, not LLVM params:
 console environment process httpRequest databaseClient clock. Do not add
-`arg callName console console` to built-in console.writeLine; it only needs
-`arg callName text valueName`.
+`argument callName console Console console` to built-in console.writeLine; it
+only needs `argument callName text String valueName`.
 
 Minimum useful metadata:
   purpose opName "specific intent"
@@ -201,10 +201,10 @@ score`. Any declared effect needs useCapability or authority.
   typeLiteralEncoding AccountId utf8
   typeLiteralTerminator AccountId nullByte
 
-  const retryLimit I64 3
-  const greetingText String "hello"
-  const strictMode Bool true
-  var runningTotal I64 0
+  storage local immutable retryLimit I64 3
+  storage local immutable greetingText String "hello"
+  storage local immutable strictMode Bool true
+  storage local mutable runningTotal I64 0
 Bool tokens: true false yes no 1 0.
 
   domainLiteral signalKillNumber CSignedInt32 9
@@ -248,91 +248,93 @@ Pointer:
 == calls ==
 Infallible:
   call totalCall math.addI64
-  arg totalCall left subtotalAmount
-  arg totalCall right taxAmount
+  argument totalCall left I64 subtotalAmount
+  argument totalCall right I64 taxAmount
   run totalCall
-  bind totalAmount I64 totalCall
+  bind value totalAmount I64 totalCall
 
 Fallible:
   call writeCall console.writeLine
-  arg writeCall text outputText
+  argument writeCall text CNullTerminatedByteString outputText
   run writeCall
-  ignoreOk writeCall Void
-  bindError writeError ConsoleWriteError writeCall
-  branchIfError writeCall writeFailed
-  const successExitCode ExitCode 0
-  returnValue successExitCode
+  ignore ok source writeCall type Void
+  bind error writeError ConsoleWriteError writeCall
+  branch error source writeCall target writeFailed
+  storage local immutable successExitCode ExitCode 0
+  return value successExitCode
   label writeFailed
   makeError writeFailure ConsoleWriteError.ConsoleWriteFailed writeError
-  const writeFailedExitCode ExitCode 1
-  returnValue writeFailedExitCode
+  storage local immutable writeFailedExitCode ExitCode 1
+  return value writeFailedExitCode
 
 Async/sync-fallback:
   start fetchCall
   await fetchCall
-  bindOk fetchedValue ValueType fetchCall
-  bindError fetchError FetchError fetchCall
+  bind ok fetchedValue ValueType fetchCall
+  bind error fetchError FetchError fetchCall
 
 Attach/discard:
   timeout CALL BUDGET
   cancelOn CALL TOKEN
   useRetry CALL POLICY
-  ignoreOk CALL TYPE
-  ignoreValue CALL TYPE
+  ignore ok source CALL type TYPE
+  ignore value source CALL type TYPE
 
 User op:
   operation addTwoValues
-  input addTwoValues leftValue I64
-  input addTwoValues rightValue I64
-  output addTwoValues I64
+  input operation addTwoValues leftValue I64
+  input operation addTwoValues rightValue I64
+  output operation addTwoValues I64
   call sumCall math.addI64
-  arg sumCall left leftValue
-  arg sumCall right rightValue
+  argument sumCall left I64 leftValue
+  argument sumCall right I64 rightValue
   run sumCall
-  bind sumValue I64 sumCall
-  returnValue sumValue
+  bind value sumValue I64 sumCall
+  return value sumValue
 
   operation main
-  output main ExitCode
-  const leftInput I64 40
-  const rightInput I64 2
+  output operation main ExitCode
+  storage local immutable leftInput I64 40
+  storage local immutable rightInput I64 2
   call answerCall addTwoValues
-  arg answerCall leftValue leftInput
-  arg answerCall rightValue rightInput
+  argument answerCall leftValue I64 leftInput
+  argument answerCall rightValue I64 rightInput
   run answerCall
-  bind answerValue I64 answerCall
-  returnValue answerValue
+  bind value answerValue I64 answerCall
+  return value answerValue
 
-Arg names should match callee inputs. Dispatch by callee input order after
+Argument names should match callee inputs. Dispatch by callee input order after
 dropping opaque inputs.
 
 == control ==
   label NAME
-  branch LABEL
-  branchIf CONDITION LABEL
-  branchIfError CALL LABEL
-  returnOk VALUE
-  returnError VALUE
-  returnValue VALUE
+  jump target LABEL
+  branch if condition CONDITION target LABEL
+  branch error source CALL target LABEL
+  branch else target LABEL
+  return ok VALUE
+  return error VALUE
+  return value VALUE
+  return void
 
 Loop:
-  var currentIndex I64 0
-  const finalIndex I64 10
-  const indexStep I64 1
+  storage local mutable currentIndex I64 0
+  storage local immutable finalIndex I64 10
+  storage local immutable indexStep I64 1
   label loopStart
   call doneCall math.greaterThanOrEqualI64
-  arg doneCall left currentIndex
-  arg doneCall right finalIndex
+  argument doneCall left I64 currentIndex
+  argument doneCall right I64 finalIndex
   run doneCall
-  bind loopDone Bool doneCall
-  branchIf loopDone loopEnd
+  bind value loopDone Bool doneCall
+  branch if condition loopDone target loopEnd
   call nextIndexCall math.addI64
-  arg nextIndexCall left currentIndex
-  arg nextIndexCall right indexStep
+  argument nextIndexCall left I64 currentIndex
+  argument nextIndexCall right I64 indexStep
   run nextIndexCall
-  bind nextIndex I64 nextIndexCall
+  bind value nextIndex I64 nextIndexCall
   set local currentIndex nextIndex
-  branch loopStart
+  jump target loopStart
   label loopEnd
 
 == error/effect/auth/deps ==
@@ -356,9 +358,9 @@ Loop:
 
 == targets ==
 Console:
-  console.writeLine arg text only; no arg console console
-  console.writeIntegerLine arg value
-  console.writeFloatLine arg value
+  console.writeLine argument text only; no argument console console
+  console.writeIntegerLine argument value
+  console.writeFloatLine argument value
 
 I64:
   math.addI64 subtractI64 multiplyI64 divideI64 moduloI64
@@ -373,9 +375,9 @@ F64:
 
 c.*:
   call allocateCall c.malloc
-  arg allocateCall size requestedByteCount
+  argument allocateCall size CByteCount requestedByteCount
   run allocateCall
-  bind allocatedBuffer COpaqueMemoryAddress allocateCall
+  bind value allocatedBuffer COpaqueMemoryAddress allocateCall
 
 c.* signatures: compiler/libc_registry.py. Prefer SemanticScript camelCase aliases for C
 names with underscores.
@@ -383,7 +385,7 @@ names with underscores.
 Heap edge: avoid c.malloc/c.free in demo apps unless the user asks for heap.
 If used, declare effect allocate heap, effect free heap, memoryHeap OP yes,
 memoryAllocationSource OP ALLOC_CALL, capabilities for heap allocate/free, and
-handle c.malloc as fallible with bindError + branchIfError. For executable code,
+handle c.malloc as fallible with `bind error` + `branch error`. For executable code,
 emit an explicit `call ... c.free` cleanup on every ownership path. A
 `defer NAME c.free allocatedPointer` row is useful cleanup metadata, but current
 compiler lowering treats non-user-op defer targets as metadata, so do not claim
@@ -399,10 +401,10 @@ stdlib examples still use c.free / defer NAME c.free POINTER.
 Domain method:
   type CountdownValue I64
   call nextCall CountdownValue.subtractPositiveStep
-  arg nextCall left currentCountdownValue
-  arg nextCall right decrementStep
+  argument nextCall left CountdownValue currentCountdownValue
+  argument nextCall right CountdownValue decrementStep
   run nextCall
-  bind nextCountdownValue CountdownValue nextCall
+  bind value nextCountdownValue CountdownValue nextCall
 
 == records/codecs/bounds ==
 Edge rule: record/json/trust lines are safe as schema/metadata context. Do not
@@ -417,8 +419,8 @@ the scalar values; use record/json/trust as adjacent metadata only.
   field Task title ValidatedText
   field Task completed Bool
   # metadata/schema above; scalar runtime values below are still the print path
-  const taskId TaskId 1001
-  const taskTitle ValidatedText "demo task"
+  storage local immutable taskId TaskId 1001
+  storage local immutable taskTitle ValidatedText "demo task"
 
 Record field ops are edge/runtime-specific:
   new taskValue Task
@@ -514,7 +516,7 @@ Selected names lower directly. Unknown runtime binding => normal body.
 
 == linter ==
 semlint checks and guardrails: unknown verbs; vague names; missing op metadata; hidden
-failures; effects without capability; unresolved refs; arg arity/type; dead
+failures; effects without capability; unresolved refs; argument arity/type; dead
 stores; unused calls/labels/consts/inputs/binds/caps/error cases/storage;
 allocation in loop; heap contradiction; missing allocation source; unpaired
 alloc/free; unclosed file; guard source without release; partial retry/trust/

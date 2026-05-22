@@ -15,7 +15,7 @@ For each physical line:
 Quoted strings use double quotes:
 
 ```semanticscript
-const greetingText String "hello world"
+storage local immutable greetingText String "hello world"
 purpose main "Print a greeting with one exact line"
 ```
 
@@ -33,8 +33,8 @@ Supported escapes inside strings:
 The tokenizer does not parse expressions. Every unquoted token is an atom:
 
 ```semanticscript
-arg addCall left leftValue
-arg addCall right rightValue
+argument addCall left I64 leftValue
+argument addCall right I64 rightValue
 ```
 
 There is no `add(leftValue, rightValue)` form.
@@ -101,7 +101,7 @@ Group anchors are also preserved:
 ```semanticscript
 # group consoleOutput
 call writeGreetingCall console.writeLine
-arg writeGreetingCall text greetingText
+argument writeGreetingCall text TYPE greetingText
 run writeGreetingCall
 # endGroup consoleOutput
 ```
@@ -144,8 +144,8 @@ Use explicit line records instead:
 
 ```semanticscript
 call sumCall math.addI64
-arg sumCall left invoiceSubtotal
-arg sumCall right taxAmount
+argument sumCall left TYPE invoiceSubtotal
+argument sumCall right TYPE taxAmount
 run sumCall
-bind invoiceTotal I64 sumCall
+bind value invoiceTotal I64 sumCall
 ```

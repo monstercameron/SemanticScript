@@ -22,11 +22,11 @@ or rationale line that says the current lowering is synchronous.
 
 ```semanticscript
 call fetchAccountCall fetchAccount
-arg fetchAccountCall accountId requestedAccountId
+argument fetchAccountCall accountId AccountId requestedAccountId
 start fetchAccountCall
 await fetchAccountCall
-bindOk accountBalance AccountBalance fetchAccountCall
-bindError accountLookupError AccountLookupError fetchAccountCall
+bind ok accountBalance AccountBalance fetchAccountCall
+bind error accountLookupError AccountLookupError fetchAccountCall
 ```
 
 Current lowering: `start CALL` executes like `run CALL`; `await CALL` is a
@@ -70,8 +70,8 @@ deferWhenExitLog NAME GUARD TARGET ARGS...
 ```
 
 Current lowering collects defers at parse/codegen time and emits user-operation
-cleanup calls in reverse registration order before each `returnOk`,
-`returnError`, `returnValue`, and fall-through return. Non-user-operation
+cleanup calls in reverse registration order before each `return ok`,
+`return error`, `return value`, `return void`, and fall-through return. Non-user-operation
 targets are accepted as metadata.
 
 ## Task Groups

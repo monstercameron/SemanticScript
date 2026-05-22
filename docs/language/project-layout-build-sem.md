@@ -344,27 +344,27 @@ authority main gui.application allocate
 authority main gui.window allocate
 authority main gui.window write
 call createApp gui.applicationCreate
-arg createApp title title
+argument createApp title GuiText title
 run createApp
-bind app GuiApplication createApp
+bind value app GuiApplication createApp
 call createWindow gui.windowCreate
-arg createWindow title title
-arg createWindow width width
-arg createWindow height height
-arg createWindow layout verticalStackGuiWindowLayout
-arg createWindow resizable resizable
+argument createWindow title GuiText title
+argument createWindow width GuiPixels width
+argument createWindow height GuiPixels height
+argument createWindow layout GuiWindowLayout verticalStackGuiWindowLayout
+argument createWindow resizable Bool resizable
 run createWindow
-bind window GuiWindow createWindow
+bind value window GuiWindow createWindow
 call setMainWindow gui.applicationSetMainWindow
-arg setMainWindow application app
-arg setMainWindow window window
+argument setMainWindow application GuiApplication app
+argument setMainWindow window GuiWindow window
 run setMainWindow
-ignoreValue setMainWindow CSignedInt32
+ignore value source setMainWindow type CSignedInt32
 call runApp gui.applicationRun
-arg runApp application app
+argument runApp application GuiApplication app
 run runApp
-bind status ExitCode runApp
-returnValue status
+bind value status ExitCode runApp
+return value status
 ```
 
 Rules:
@@ -459,7 +459,7 @@ Rules:
 - Public names are private by default. Importers may only rely on symbols that
   appear in the provider's export rows, even while the current compiler bridge
   still inlines registered module sources.
-- `exportConstant` is for stable value contracts: `const`, `literal`,
+- `exportConstant` is for stable value contracts: `storage module immutable`, `literal`,
   `domainLiteral`, or `storage module immutable`. Mutable module storage,
   local storage, and `sharedState` must cross module boundaries through
   exported operations with declared effects.
@@ -569,7 +569,7 @@ importModule persistence app.todo.persistence
 call loadCall persistence.loadTodos
 input saveHandler todo persistence.TodoItem
 useCapability saveHandler persistence.todoStoreReader
-arg limitCall max persistence.maxTodoCount
+argument limitCall max CSignedInt64 persistence.maxTodoCount
 ```
 
 Rules:
@@ -643,7 +643,7 @@ useCapability syncIssues githubApiReader
 
 call fetchIssueCall github.fetchIssue
 run fetchIssueCall
-returnVoid
+return void
 ```
 
 This keeps network, filesystem, database, and observability authority from

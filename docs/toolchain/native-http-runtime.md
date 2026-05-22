@@ -67,7 +67,7 @@ lowers them as pointer parameters.
 
 ## Runtime Adapter Responsibilities
 
-The current adapter should:
+The current adapter does:
 
 - own socket initialization and shutdown;
 - map `webServer`, `serverHost`, `serverPort`, and `route` metadata into an
@@ -75,8 +75,9 @@ The current adapter should:
 - translate the native request into `SSHttpRequest`;
 - translate `SSHttpResponse` into HTTP status and body bytes;
 - expose C functions for SemanticScript call targets such as
-  `http.responseText`, `http.responseJson`, `http.requestPath`, and
-  `http.requestMethod`;
+  `http.responseText`, `http.responseBytes`, `http.responseSseEvent`,
+  `http.responseHeader`, `http.responseFile`, `http.requestPath`,
+  `http.requestPathParam`, and `http.requestMethod`;
 - start with synchronous handlers and add async continuation support later.
 
 The current adapter is blocking and single-threaded. It accepts and dispatches
@@ -84,9 +85,9 @@ one request path through the server loop at a time, so handlers and middleware
 must not assume parallel request execution or preemptive route timeouts.
 
 The future H2O adapter should additionally map generated route metadata into
-H2O host/path registrations, translate `h2o_req_t`, keep request-scoped
-allocations inside H2O request pools where possible, and expose response header
-support such as `http.responseHeader`.
+H2O host/path registrations, translate `h2o_req_t`, and keep request-scoped
+allocations inside H2O request pools where possible while preserving the same
+SemanticScript `http.*` call surface.
 
 ## Compiler Work Items
 
@@ -98,8 +99,10 @@ Done for the current native adapter:
 4. `--emit-exe` links the SemanticScript-owned adapter library.
 5. `semlint.py` reports unsupported routed handler ABI and malformed native
    response calls.
-6. The blocking adapter exposes request method, path, header, raw query
-   parameter, bounded body text, response text, and response header calls.
+6. The blocking adapter exposes request method, path, path-param, header,
+   cookie, raw query parameter, bounded body text/body bytes, multipart part
+   readers, response text/bytes/SSE-event/header/file calls, and small HTTP
+   utility calls.
 7. One path-scoped `routeMiddleware` callback can run before each matching
    route handler.
 
@@ -107,12 +110,11 @@ Remaining work:
 
 1. Add `--runtime-backend h2o` or `--target-runtime h2o`.
 2. Teach `--emit-exe` to link H2O outputs behind that backend flag.
-3. Add path parameter APIs and a route-pattern matcher.
-4. Add structured request body decoders and binary/streaming body APIs.
-5. Enforce `routeTimeout` metadata without unsafe handler preemption.
-6. Add a static-file helper with path traversal protection.
-7. Add graceful shutdown hooks.
-8. Add HTTP/2 over TLS once certificate and ALPN setup are wired.
+3. Add structured request body decoders and long-lived streaming body APIs.
+4. Enforce `routeTimeout` metadata without unsafe handler preemption.
+5. Add graceful shutdown hooks.
+6. Add method-scoped middleware and richer persistent server state.
+7. Add HTTP/2 over TLS once certificate and ALPN setup are wired.
 
 ## Build Plan
 

@@ -34,24 +34,24 @@ source.
 
 ```semanticscript
 call writeLineCall console.writeLine
-arg writeLineCall text outputText
+argument writeLineCall text String outputText
 run writeLineCall
-ignoreOk writeLineCall Void
-bindError writeLineError ConsoleWriteError writeLineCall
-branchIfError writeLineCall writeLineFailed
+ignore ok source writeLineCall type Void
+bind error writeLineError ConsoleWriteError writeLineCall
+branch error source writeLineCall target writeLineFailed
 
-const successExitCode ExitCode 0
-returnOk successExitCode
+storage local immutable successExitCode ExitCode 0
+return ok successExitCode
 
 label writeLineFailed
-returnError writeLineError
+return error writeLineError
 ```
 
 The call name is the bridge between execution, error binding, and branch:
 
 ```text
-bindError ERROR_VALUE ERROR_TYPE CALL
-branchIfError CALL LABEL
+bind error ERROR_VALUE ERROR_TYPE CALL
+branch error source CALL target LABEL
 ```
 
 `semlint.py` checks hidden-failure patterns for known fallible targets such as
@@ -68,7 +68,7 @@ migration tests all exist.
 
 ```semanticscript
 makeError validationFailure RequestError.InvalidJson rawDecodeError
-returnError validationFailure
+return error validationFailure
 ```
 
 Schemas:

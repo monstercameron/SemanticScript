@@ -7,6 +7,9 @@ Primary language implementation workspace.
 - `bench/` contains benchmark programs and runners.
 - `compiler/` contains the Python reference compiler and C ABI registry.
 - `linter/` contains standalone source linters and linter tests.
+- `formatter/` contains the canonical formatter for revised `.sem` syntax.
+- `runtime/` contains native adapter libraries for HTTP, SQLite, JSON, bcrypt,
+  logging, terminal I/O, and desktop GUI work.
 - `sem/` contains runnable SemanticScript sample programs and feature tests.
 - `shared/` contains small source-of-truth modules used by multiple tools.
 - `std/` contains executable SemanticScript standard-library modules.
@@ -52,7 +55,7 @@ APIs and low-level runtime implementation details.
 | Python reference compiler | Supported 1.0 compiler for `.sscript` and `.sem`, console entry, parse/lint, LLVM IR, JIT run, and clang-linked executables. |
 | VS Code extension | Supported editor tooling in `../vscode-semanticscript/`; highlighting refined syntax does not imply runtime support. |
 | Refined and partial syntax | Parseable or lowered only where documented in `../SYNTAX.md` and `../docs/toolchain/compiler.md`. Use `--parse-only` for metadata-heavy forms. |
-| Web / HTTP runtime | Route metadata and handler functions can compile, but no 1.0 HTTP listener/runtime is shipped. |
+| Web / HTTP runtime | Preview native HTTP/1.1 listener for routed `target webServer` programs with path params, middleware, request readers, response writers, file responses, and curated app coverage. HTTP/2/H2O remains future work. |
 | Runtime flags | `--build-profile`, `--runtime-checks`, `--persist-llvm-ir`, `--diagnostics-format`, and `--opt-level` are supported compiler flags. |
 
 ## Maintenance

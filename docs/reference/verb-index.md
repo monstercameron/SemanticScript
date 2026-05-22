@@ -107,14 +107,12 @@ Module export rows are module-local metadata: `exportType`, `exportError`,
 
 | Verb | Schema | Status |
 |---|---|---|
-| `const` | `const NAME TYPE VALUE` | lowered |
-| `var` | `var NAME TYPE VALUE` | lowered |
 | `storage` | `storage SCOPE MUTABILITY NAME TYPE [VALUE]` | lowered |
 | `sharedState` | `sharedState SCOPE MUTABILITY NAME TYPE [INITIAL]` | lowered |
 | `set` | `set SCOPE NAME VALUE ...` | lowered |
 | `read` | `read sharedState OUT TYPE BACKING ...` | lowered |
-| `domainLiteral` | `domainLiteral NAME TYPE VALUE` | lowered as const |
-| `literal` | `literal NAME TYPE` | lowered as external const stub |
+| `domainLiteral` | `domainLiteral NAME TYPE VALUE` | lowered as immutable domain value |
+| `literal` | `literal NAME TYPE` | lowered as external immutable literal stub |
 
 Metadata families:
 
@@ -128,11 +126,11 @@ literalBytes literalDigest literalPreview literalSource literalTrust
 
 | Family | Verbs |
 |---|---|
-| Calls | `call`, `arg`, `timeout`, `cancelOn`, `run`, `start`, `await` |
-| Binding | `bind`, `bindOk`, `bindError`, `ignoreOk`, `ignoreValue` |
+| Calls | `call`, `argument`, `timeout`, `cancelOn`, `run`, `start`, `await` |
+| Binding | `bind value`, `bind ok`, `bind error`, `ignore ok`, `ignore value`, `ignore void` |
 | Errors | `makeError`, `declareFailure`, `error`, `errorCase` |
-| Labels | `label`, `branch`, `branchIf`, `branchIfError` |
-| Returns | `returnOk`, `returnError`, `returnValue` |
+| Labels | `label`, `jump`, `branch if`, `branch error`, `branch else` |
+| Returns | `return ok`, `return error`, `return value`, `return void` |
 
 ## Effects, Capabilities, Resources
 
@@ -229,7 +227,7 @@ positions where raw markup is intentional.
 
 `target windowsGui` and `targetRuntime PROJECT windowsGui` are the
 compiler/build bridge. GUI source uses normal `entry console OPERATION`,
-`operation`, `call`, `arg`, and `run` rows. The larger GUI vocabulary belongs
+`operation`, `call`, `argument`, and `run` rows. The larger GUI vocabulary belongs
 to `standard.gui` as function targets, contracts, capabilities, and validation
 rules. The compiler should only lower explicit `gui.*` calls and link/start the
 native GUI runtime. There is no `entry windowsGui` row. The preferred
@@ -309,8 +307,8 @@ a kind-specific handle such as `textBox GuiTextBox`, `listBox GuiListBox`, or
 | Cleanup | `defer`, `deferLog`, `deferAwaitLog`, `deferWhenExitLog` | partial |
 | Cleanup metadata | `deferLogSink`, `deferRunOn`, `deferOrder`, `deferFailurePolicy`, `deferConsumes`, `deferAwaitLogSink`, `deferAwaitTimeout`, `deferWhenExitLogSink` | metadata |
 | Guard tokens | `guardTokenSource`, `guardTokenOwner`, `guardTokenProtects`, `guardTokenRelease` | metadata |
-| Task groups | `taskGroup`, `startInGroup`, `awaitGroup`, `bindGroupError`, `branchIfGroupError` | sync-fallback |
-| Channels | `send`, `receive`, `branchIfChannelClosed` | sync-fallback |
+| Task groups | `taskGroup`, `startInGroup`, `awaitGroup`, `bindGroupError`, `branchIfGroupError` compatibility rows | sync-fallback |
+| Channels | `send`, `receive`, `branchIfChannelClosed` compatibility row | sync-fallback |
 | Locks | `mutex`, `lock`, `unlock` | sync-fallback |
 | Select | `select`, `selectCase`, `runSelect`, `branchSelected` | sync-fallback |
 | Intervals | `interval`, `startInterval`, `awaitIntervalTick` | sync-fallback |

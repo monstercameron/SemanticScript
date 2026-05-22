@@ -31,7 +31,7 @@ be read.
 | `semlint` | `0.3.0` | `SemanticScript/linter/semlint.py` |
 | `semfmt` | `0.1.0` | `SemanticScript/formatter/semfmt.py` |
 | `sem` | `0.1.0` | `SemanticScript/tools/sem.py` |
-| `semanticscript-vscode` | `1.0.3` | `vscode-semanticscript/package.json` |
+| `semanticscript-vscode` | `1.0.5` | `vscode-semanticscript/package.json` |
 
 ```powershell
 python SemanticScript\tools\release_versions.py
@@ -71,6 +71,8 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 python -m compileall -q SemanticScript python
 python SemanticScript/tools/release_versions.py
+python -m unittest SemanticScript/formatter/test_semfmt.py -v
+python SemanticScript/formatter/semfmt.py --check SemanticScript/tests/tiny.sem
 python -m unittest SemanticScript/linter/test_semlint.py -v
 python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sscript --parse-only
 python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sem --parse-only
@@ -108,8 +110,6 @@ release artifacts.
 Before tagging, confirm the release hygiene policies:
 
 - `python/` is the canonical Python comparison-sample tree.
-- top-level `python/` remains a 1.0 compatibility mirror and must stay aligned
-  when mirrored files change.
 - `.sem` files directly under `SemanticScript/sem/` are intentionally tracked
   alias fixtures, not generated outputs.
 - `python SemanticScript/tools/release_versions.py` prints the component matrix

@@ -84,7 +84,7 @@ The current compiler has three strictness layers:
 
 - Always-on compiler checks. These are part of parsing or codegen and do not
   require `--lint`: build-tape schema validation, unsupported hard runtime
-  verbs refusing codegen, exact math operand widths, `returnVoid` only on
+  verbs refusing codegen, exact math operand widths, `return void` only on
   Void/CVoid outputs, and routed webserver handler ABI validation.
 - Source-level `languageMode strictExecutable`. This opt-in row closes the
   executable grammar from that point in the resolved source stream: unknown
@@ -95,9 +95,9 @@ The current compiler has three strictness layers:
 - The `--strict` flag. This runs the compiler's built-in lint pass and promotes
   its diagnostics to fatal exit code `2`. It also activates the current
   strict fallible-call disposition checks. Result-shaped targets such as
-  `sqlite.prepareStatement` must use the legacy checked pattern (`run`,
-  `bindOk` or `ignoreOk`, `bindError`, and `branchIfError`) until
-  `runChecked` syntax exists. Explicit-disposition targets such as heap
+  `sqlite.prepareStatement` must use the checked pattern (`run`,
+  `bind ok` or `ignore ok`, `bind error`, and `branch error`) until
+  a compact checked-run syntax exists. Explicit-disposition targets such as heap
   allocation and native HTTP response writers are still tracked as hardening
   work unless the local compiler tests prove otherwise.
 
@@ -111,9 +111,9 @@ Strictness is source-stream scoped, not package-version scoped. Imported modules
 should declare their own `languageMode` when they need a stable strict or refined
 parse contract; `languageVersion PROJECT "1.0"` does not imply strict mode.
 
-`runChecked`, `bindOwned`, `bindOkOwned`, and `requireNonNull` remain research
-syntax only. Do not document them as current syntax until parser/compiler tests
-exist for them.
+Compact checked-run rows, owned binding rows, and `requireNonNull` remain
+research syntax only. Do not document them as current syntax until
+parser/compiler tests exist for them.
 
 Use these commands when checking whether a rule is compiler-enforced or still a
 linter migration rule:
@@ -247,7 +247,7 @@ embedded.
 | Python reference compiler | Supported | `SemanticScript/compiler/semsc.py` is the release compiler. It accepts `.sscript` and `.sem`, resolves `importModule`, emits LLVM IR, JIT-runs `entry console`, and can link native executables through clang. | It is not a general web server host, and the repository no longer includes a maintained SemanticScript-written compiler path. |
 | VS Code extension | Supported editor tooling | `vscode-semanticscript/` registers `.sscript` and `.sem`, provides highlighting, hovers, semantic roles, and optional `semlint` / `semlint` diagnostics. | Highlighted or hovered syntax is not automatically executable compiler support. The compiler and `SYNTAX.md` decide runtime support. |
 | Refined syntax | Partial, inspectable | The parser accepts many refined declarative lines for AST, linter, and editor inspection. Pure metadata is preserved or skipped safely. Some concurrency and dataflow forms lower to documented synchronous fallbacks. | Refined syntax is not uniformly runtime-complete. Use `--parse-only` for forms whose backend is intentionally absent. |
-| Web / HTTP runtime | Preview, release-tested | Routed `target webServer` programs emit a native HTTP/1.1 listener with exact method/path dispatch. Handlers use `input request HttpRequest`, `input response HttpResponse`, and `output CSignedInt32`. The native adapter supports request method/path/header/query/body text/body bytes reads, bounded multipart part reads, response text/bytes/SSE-event/header writes, and one path-scoped middleware callback. | HTTP/2/H2O, path params, route timeout enforcement, static-file serving, graceful shutdown hooks, structured body decoders, long-lived streaming bodies, method-scoped middleware, and persistent state are not 1.0 guarantees. Unrouted webserver files still compile as library/stub programs. |
+| Web / HTTP runtime | Preview, release-tested | Routed `target webServer` programs emit a native HTTP/1.1 listener with exact method/path dispatch and `:name` path-parameter matching. Handlers use `input request HttpRequest`, `input response HttpResponse`, and `output CSignedInt32`. The native adapter supports request method/path/path-param/header/query/cookie/body text/body bytes reads, bounded multipart part reads, response text/bytes/SSE-event/header/file writes, and one path-scoped middleware callback. | HTTP/2/H2O, route timeout enforcement, structured body decoders, long-lived streaming bodies, method-scoped middleware, graceful shutdown hooks, and persistent state are not 1.0 guarantees. Unrouted webserver files still compile as library/stub programs. |
 | Windows GUI runtime | Reserved / partial | The committed compiler-owned surface should stay to `target windowsGui`, `targetRuntime PROJECT windowsGui`, native runtime linking, handler ABI preservation for `GuiSession` / `GuiEvent`, and a small metadata hook for the normalized `standard.gui` application/main-window descriptor. | `standard.gui` owns the GUI vocabulary, declaration contracts, capabilities, and validation semantics. There is no `entry windowsGui` row, and the current reference compiler does not yet provide a complete GUI bridge/runtime path. |
 | Partial syntax rows | Explicitly partial | Rows marked partial in `SYNTAX.md` may parse, lint, lower synchronously, or emit structural stubs exactly as documented there. | A partial row must not be treated as full application-runtime support. Unsupported runtime semantics should fail rather than silently disappear. |
 | Runtime and diagnostics flags | Supported compiler interface | `--build-profile dev\|prod`, `--runtime-checks off\|traps\|panic`, `--persist-llvm-ir auto\|yes\|no`, `--diagnostics-format agent\|json\|raw`, and `--opt-level 0..3` are the 1.0 flag surface. | These flags do not change language support. `prod` hides panic source context; `off` removes runtime checks and should be chosen deliberately. |
@@ -327,7 +327,7 @@ apps\desktop-window-smoke\build\desktop_window_smoke.exe
 
 Expected behavior: a top-level window titled `Desktop Window Smoke` appears. Closing the
 window exits the process with status `0`. The source should keep using ordinary
-`operation` / `call` / `arg` / `run` rows with `importModule gui standard.gui`;
+`operation` / `call` / `argument` / `run` rows with `importModule gui standard.gui`;
 do not add `entry windowsGui`.
 
 The stub mode supports stdlib files and refined syntax showcases that need

@@ -8,27 +8,30 @@ writes the IR to a .ll file.
 
 Top-level verbs:
   project, target, runtime, entry, module
-  type            type alias                (`type CountdownValue I64`)
-  error           error category            (`error MainError`)
-  errorCase       error variant             (`errorCase MainError ConsoleWriteFailed ConsoleWriteError`)
-  dependency      dependency declaration   (parsed, ignored by codegen)
+  type            type alias
+  error           error category
+  errorCase       error variant
+  storage         scoped storage declaration
+  operation       operation declaration
 
-Operation header verbs (parsed, ignored by codegen):
-  input, output, effect, memory, async,
-  purpose, invariant, warning
+Operation header verbs include:
+  input operation, output operation, effect, memory, async,
+  authority, purpose operation, invariant operation, warning
 
-Body verbs:
-  Decls:     const, var
-  Calls:     call, arg, timeout, cancelOn, run, start, await
-  Bind:      bind, bindOk, bindError
+Body rows include:
+  Decls:     storage local/module
+  Calls:     call, argument, timeout, cancelOn, run, runChecked, start, await
+  Bind:      bind value, bind ok, bind error
+  Ignore:    ignore value, ignore ok, ignore error, ignore void
   Errors:    makeError
-  Mutation:  set
-  Control:   label, branch, branchIf, branchIfError
-  Returns:   returnOk, returnError, returnValue
+  Mutation:  set memory, set storage
+  Control:   label, branch if, branch error, branch else, jump
+  Returns:   return value, return ok, return error, return void
 
-`bind` is for infallible calls; `bindOk`+`bindError`+`branchIfError` is for
-fallible calls. `branchIf cond label` jumps to `label` on true and falls
-through on false (per spec §4: one semantic thing per line).
+bind value is for infallible values; fallible calls use explicit success/error
+disposition (bind ok or ignore ok, plus bind error and branch error) or the
+compact runChecked row. branch if condition X target L jumps to L on true and
+falls through on false unless followed by branch else target ... .
 
 External call targets:
   console.writeLine          -> puts(i8*)                 -> i32 (negative on failure)

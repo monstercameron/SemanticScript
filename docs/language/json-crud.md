@@ -82,12 +82,12 @@ Document lifecycle calls use ordinary call rows:
 
 ```semanticscript
 call createDocCall json.createDocument
-arg createDocCall jsonText requestBody
-arg createDocCall capacityBytes maxJsonBytes
+argument createDocCall jsonText JsonText requestBody
+argument createDocCall capacityBytes JsonCapacityBytes maxJsonBytes
 run createDocCall
-bindOk document JsonDocument createDocCall
-bindError accessError JsonAccessError createDocCall
-branchIfError createDocCall badJson
+bind ok document JsonDocument createDocCall
+bind error accessError JsonAccessError createDocCall
+branch error source createDocCall target badJson
 defer releaseDoc json.destroyDocument document
 ```
 
@@ -147,8 +147,8 @@ Delete and clear calls are:
 - `json.clearObject`
 - `json.clearArray`
 
-Mutators return a status compatible with `ignoreOk`, `bindError`, and
-`branchIfError`. Structural mutators must follow the cursor invalidation
+Mutators return a status compatible with `ignore ok`, `bind error`, and
+`branch error`. Structural mutators must follow the cursor invalidation
 contract above.
 
 ## jsonBody

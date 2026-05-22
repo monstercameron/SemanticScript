@@ -1,8 +1,9 @@
 # Native HTTP Runtime Adapter
 
 This adapter is the SemanticScript-owned boundary between generated route
-handlers and the selected native HTTP engine. The first engine target is
-`third_party/h2o`.
+handlers and the selected native HTTP engine. The current default engine is a
+small blocking HTTP/1.1 socket server used for exact-route development and
+tests; `third_party/h2o` is reserved for the future HTTP/2-capable backend.
 
 Current status:
 

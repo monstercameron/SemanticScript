@@ -132,7 +132,7 @@ Application shape, controls, events, accessibility, effects, and capabilities
 belong in `standard.gui`, the GUI runtime, and lint/tooling where possible.
 Do not use top-level GUI declaration rows such as `guiApplication`,
 `guiWindow`, or `guiButton` in executable source; the committed shape is
-ordinary operation/call/arg/run syntax.
+ordinary operation/call/argument/run syntax.
 
 A renderable Windows GUI source imports `standard.gui`, creates an application,
 creates a window and controls, attaches controls to the window, marks the main
@@ -163,27 +163,27 @@ authority main gui.application allocate
 authority main gui.window allocate
 authority main gui.window write
 call createApp gui.applicationCreate
-arg createApp title title
+argument createApp title GuiText title
 run createApp
-bind app GuiApplication createApp
+bind value app GuiApplication createApp
 call createWindow gui.windowCreate
-arg createWindow title title
-arg createWindow width width
-arg createWindow height height
-arg createWindow layout verticalStackGuiWindowLayout
-arg createWindow resizable resizable
+argument createWindow title GuiText title
+argument createWindow width GuiPixels width
+argument createWindow height GuiPixels height
+argument createWindow layout GuiWindowLayout verticalStackGuiWindowLayout
+argument createWindow resizable Bool resizable
 run createWindow
-bind window GuiWindow createWindow
+bind value window GuiWindow createWindow
 call setMainWindow gui.applicationSetMainWindow
-arg setMainWindow application app
-arg setMainWindow window window
+argument setMainWindow application GuiApplication app
+argument setMainWindow window GuiWindow window
 run setMainWindow
-ignoreValue setMainWindow CSignedInt32
+ignore value source setMainWindow type CSignedInt32
 call runApp gui.applicationRun
-arg runApp application app
+argument runApp application GuiApplication app
 run runApp
-bind status ExitCode runApp
-returnValue status
+bind value status ExitCode runApp
+return value status
 ```
 
 `importModule standard.gui as gui` remains accepted for compatibility, but new
@@ -283,7 +283,7 @@ operation main
 input main console Console
 output main Result ExitCode MainError
 ...
-returnOk exitOkCode
+return ok exitOkCode
 ```
 
 Rules:
@@ -308,9 +308,9 @@ Rules:
 - Capabilities used by implementation operations stay in `main.sem`.
 - Module-level `error` domains referenced in operation signatures stay in
   `main.sem`.
-- The `bind X Ordering ...` form, or any type alias declared in `main.sem`, is
+- The `bind value X Ordering ...` form, or any type alias declared in `main.sem`, is
   not resolvable through the linter's per-file view of the test. Bind the
-  underlying primitive instead, for example `bind X CSignedInt32 ...`, when a
+  underlying primitive instead, for example `bind value X CSignedInt32 ...`, when a
   test file consumes a typed alias from its imported module.
 
 The harness `tests/test_stdlib.py` runs `std/<module>/main.test.sem` for every

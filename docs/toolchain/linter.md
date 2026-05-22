@@ -173,7 +173,7 @@ guard tokens without release
 circular type aliases
 incomplete JSON codecs
 argument arity and type mismatch
-arg rows that reference undeclared values
+argument rows that reference undeclared values
 enum outputs returning enum cases rather than raw repr values
 math operand width drift across I64, CSignedInt32, and F64 targets
 unresolved references

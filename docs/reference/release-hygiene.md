@@ -36,7 +36,7 @@ documented in the matrix; a missing or unreadable version blocks release.
 | `semlint` | `0.3.0` | `SemanticScript/linter/semlint.py` |
 | `semfmt` | `0.1.0` | `SemanticScript/formatter/semfmt.py` |
 | `sem` | `0.1.0` | `SemanticScript/tools/sem.py` |
-| `semanticscript-vscode` | `1.0.3` | `vscode-semanticscript/package.json` |
+| `semanticscript-vscode` | `1.0.5` | `vscode-semanticscript/package.json` |
 
 Print the matrix before tagging:
 
@@ -52,7 +52,7 @@ publishing outside the repository.
 
 ## VS Code Extension Metadata
 
-`vscode-semanticscript/package.json` uses version `1.0.3` for the current
+`vscode-semanticscript/package.json` uses version `1.0.5` for the current
 SemanticScript local VSIX build.
 
 The publisher remains `semanticscript-local`. That value is for local packaging

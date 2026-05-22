@@ -76,7 +76,7 @@ review. A task is only done when the linked command or artifact is clean.
 - [x] Test native executable emission.
 - [x] Test server startup from the native executable.
 - [x] Test `GET /` returns HTTP 200.
-- [x] Test `GET /` returns `hello from todo web`.
+- [x] Test `GET /` returns the TaskForge Web HTML shell.
 - [x] Test `GET /?sample=1` still routes to `/`.
 - [x] Test `GET /missing` returns HTTP 404.
 - [x] Test 404 body is `not found`.
@@ -116,8 +116,8 @@ review. A task is only done when the linked command or artifact is clean.
 
 ## P1 - Strict Syntax Hardening
 
-This section turns the strict-syntax research in
-`docs/language/strict-syntax-research.md` into implementation-sized tasks. The
+This section turns the syntax research summarized under `research/` into
+implementation-sized tasks. The
 goal is to make recurring bug classes fail in the compiler itself, without
 requiring a separate linter invocation.
 
@@ -180,7 +180,7 @@ requiring a separate linter invocation.
   - [ ] Mark checked arithmetic calls as fallible.
   - [ ] Mark infallible math calls as infallible.
   - [ ] Mark explicit status-return calls whose failures are status values,
-        not `Result`, so they can require `bind` or `ignoreValue`.
+        not `Result`, so they can require `bind value` or `ignore value`.
 - [ ] Add a shared ownership table.
   - [ ] Mark `c.malloc`, `c.calloc`, and successful `c.realloc` outputs as
         owned heap buffers.
@@ -201,10 +201,10 @@ requiring a separate linter invocation.
         is the preferred shape.
   - [ ] Decide whether `runChecked` should create the ok/error binds itself.
   - [ ] Decide whether `runChecked` replaces or coexists with `run`,
-        `bindOk`, `bindError`, and `branchIfError`.
+        `bind ok`, `bind error`, and `branch error`.
   - [ ] Decide whether `runChecked` may target calls with no success value.
   - [ ] Decide whether `runChecked` may target status-return calls.
-  - [ ] Decide whether `ignoreOk` is still legal for checked calls.
+  - [ ] Decide whether `ignore ok` is still legal for checked calls.
 - [x] Add parser support for `runChecked`.
   - [x] Add `runChecked` to body verb tables.
   - [x] Validate minimum arity.
@@ -213,13 +213,13 @@ requiring a separate linter invocation.
 - [ ] Add compiler validation for fallible targets in strict mode.
   - [x] Reject plain `run` for known fallible targets in strict mode.
   - [x] Reject plain `run` for Result-shaped SQLite prepare in strict mode.
-  - [x] Require `runChecked` or an explicitly accepted legacy checked pattern
+  - [x] Require `runChecked` or an explicitly accepted checked pattern
         for every known fallible target.
-  - [x] Accept the legacy checked pattern for Result-shaped fallible calls.
+  - [x] Accept the checked pattern for Result-shaped fallible calls.
   - [x] Reject unchecked explicit-disposition targets such as heap allocation
         and native HTTP response writers.
-  - [ ] Reject `bindError` without a corresponding branch in strict mode.
-  - [ ] Reject `branchIfError` on targets that the shared table marks
+  - [ ] Reject `bind error` without a corresponding branch in strict mode.
+  - [ ] Reject `branch error` on targets that the shared table marks
         infallible.
   - [ ] Reject fallible calls whose success value is used before the error
         branch is established.
@@ -249,9 +249,9 @@ requiring a separate linter invocation.
 ### Owned Resources And Cleanup
 
 - [ ] Design owned binding syntax.
-  - [ ] Confirm `bindOwned VALUE TYPE CALL cleanup TARGET` for infallible
+  - [ ] Confirm `bind owned VALUE TYPE CALL cleanup TARGET` for infallible
         owned producers.
-  - [ ] Confirm `bindOkOwned VALUE TYPE CALL cleanup TARGET` for fallible
+  - [ ] Confirm `bind ok owned VALUE TYPE CALL cleanup TARGET` for fallible
         owned producers.
   - [ ] Decide whether cleanup args are implicit from the owned value or
         explicitly listed.
@@ -259,8 +259,8 @@ requiring a separate linter invocation.
   - [ ] Decide whether `returnOwned` or `transferOwned` is needed.
   - [ ] Decide how owned values interact with `defer`.
 - [ ] Add parser support for owned binding rows.
-  - [ ] Add `bindOwned`.
-  - [ ] Add `bindOkOwned`.
+  - [ ] Add `bind owned`.
+  - [ ] Add `bind ok owned`.
   - [ ] Validate `cleanup TARGET` arity.
   - [ ] Validate that the call target is in the ownership table.
   - [ ] Validate that the cleanup target matches the owned resource kind.
@@ -349,7 +349,7 @@ requiring a separate linter invocation.
 - [ ] Add parser support for the final forwarding contract.
   - [ ] Validate that the owning operation exists.
   - [ ] Validate that the input exists.
-  - [ ] Validate that the target call arg is a known response-body slot.
+  - [ ] Validate that the target call argument is a known response-body slot.
   - [ ] Store forwarding facts on the operation contract.
 - [ ] Add compiler validation for response wrappers.
   - [ ] Detect operations that pass an input directly to `http.responseText`
@@ -385,7 +385,7 @@ requiring a separate linter invocation.
         cursor movement.
   - [ ] Require dirty-state mutation only on the applied branch.
   - [ ] Require cursor movement only on the applied branch.
-- [ ] Migrate `app/kilo-port`.
+- [ ] Migrate `experiments/kilo-port`.
   - [ ] Convert `insertEmptyRowAt` to the selected strict result shape.
   - [ ] Convert `splitRowAt` to the selected strict result shape.
   - [ ] Update caller branches to use the new result/status.
@@ -456,7 +456,7 @@ requiring a separate linter invocation.
   - [ ] Negative test: `snprintf` byte count added to i64 cursor without
         widening fails.
   - [ ] Positive test: widened `snprintf` byte count compiles.
-  - [ ] Negative test: GUI i64 dimension passed to i32 arg fails in strict
+  - [ ] Negative test: GUI i64 dimension passed to i32 argument fails in strict
         mode.
   - [ ] Positive test: explicit narrowing compiles when allowed.
   - [ ] Negative test: pointer/int crossing fails without explicit conversion.
@@ -524,7 +524,7 @@ requiring a separate linter invocation.
 - [ ] Update VS Code tooling.
   - [x] Add highlighting for `languageMode`.
   - [x] Add highlighting for `runChecked`.
-  - [x] Add highlighting for `bindOwned` and `bindOkOwned`.
+  - [x] Add highlighting for owned-binding candidate rows.
   - [x] Add highlighting for `requireNonNull`.
   - [ ] Add highlighting for the final response-forwarding syntax.
   - [x] Add hover docs for each new strict syntax row.
@@ -564,7 +564,7 @@ surface is now `entry console main` plus `standard.gui` function calls.
       validation.
 - [x] Kept `entry windowsGui` out of the first committed executable surface.
 - [x] Converted `apps/desktop-window-smoke` to `entry console main` plus standard
-      `operation` / `call` / `arg` / `run` syntax.
+      `operation` / `call` / `argument` / `run` syntax.
 - [x] Added `standard.gui` as the canonical contract module.
 - [x] Added GUI type aliases, enums, capabilities, token constants, and runtime
       target constants to `std/gui/main.sem`.
@@ -610,7 +610,7 @@ surface is now `entry console main` plus `standard.gui` function calls.
       `gui.textLabelCreate`, `gui.textBoxCreate`, `gui.buttonCreate`,
       `gui.listBoxCreate`, `gui.windowAddControl`,
       `gui.applicationSetMainWindow`, and `gui.applicationRun`.
-- [x] Keep GUI source on normal `operation` / `call` / `arg` / `run` syntax.
+- [x] Keep GUI source on normal `operation` / `call` / `argument` / `run` syntax.
 - [x] Remove compiler code that discovers and lowers `guiApplication` /
       `guiWindow` metadata graphs.
 - [x] Treat GUI keyword rows as non-standard in semlint.
@@ -868,7 +868,7 @@ is the preferred source shape.
 - [ ] Require `session GuiSession` on every GUI runtime call that touches
       live GUI state.
 - [ ] Define whether declarative handles are passed as `control`, `button`,
-      `textBox`, `listBox`, or kind-specific arg names.
+      `textBox`, `listBox`, or kind-specific argument names.
 - [ ] Reject passing a `GuiButton` handle to `gui.textBoxText`.
 - [ ] Reject passing a `GuiTextBox` handle to `gui.listBoxAppendItem`.
 - [ ] Lower declarative GUI handle symbols to runtime control IDs or handles.
@@ -1062,8 +1062,8 @@ is the preferred source shape.
 - [ ] Add compiler IR tests proving GUI config tables are emitted.
 - [ ] Add linker tests proving Windows GUI builds include subsystem flags.
 - [ ] Add linker tests proving `user32` and `gdi32` link args are added.
-- [ ] Add a smoke sample under `apps/desktop-window-smoke`.
-- [ ] Add a TaskForge GUI sample under `apps/taskforge-gui` only after the hello sample
+- [x] Add a smoke sample under `apps/desktop-window-smoke`.
+- [ ] Add a future TaskForge GUI sample only after the hello sample
       proves the base runtime.
 - [ ] Add a runtime health test that opens and closes a window on Windows CI
       if the runner supports desktop interaction.
@@ -1158,18 +1158,19 @@ product".
   - [ ] Define safe mutable process state for request handlers.
   - [ ] Add tests for sequential request state changes.
 - [ ] Add first-class HTML/SSX server template syntax.
-  - [x] Add `htmlTemplate NAME` declarations for named server-rendered HTML
+  - [x] Add `html template NAME` declarations for named server-rendered HTML
         values.
-  - [x] Add `htmlArg TEMPLATE ARG_NAME TYPE` declarations for explicit,
-        typed template input edges.
-  - [x] Add `htmlBody TEMPLATE` syntax islands that parse following indented
+  - [x] Infer template holes from bare names and dotted record-field paths in
+        the template body; hydrate calls provide those root names with normal
+        `argument` rows.
+  - [x] Add `html body template TEMPLATE` syntax islands that parse following indented
         HTML/SSX lines until the next column-0 SemanticScript line.
-  - [x] Keep `htmlBody` as the only indentation-sensitive syntax exception;
+  - [x] Keep `html body template` as the only indentation-sensitive syntax exception;
         normal SemanticScript remains flat and line-oriented.
   - [x] Allow JSX-like tags, attributes, fragments, and dynamic holes inside
-        `htmlBody` only.
-  - [x] Restrict dynamic holes to declared `htmlArg` values, using
-        `htmlArg.name` references instead of a generic `props` object.
+        `html body template` only.
+  - [x] Restrict dynamic holes to hydrate-call values inferred from the
+        template body.
   - [x] Reject arbitrary calls, mutation, request reads, and hidden state reads
         inside HTML dynamic holes.
   - [x] Type-check dynamic holes by core HTML sink context: text nodes, quoted
@@ -1194,15 +1195,15 @@ product".
   - [ ] Add `http.responseHtml` as the explicit HTML response writer with
         `text/html; charset=utf-8` content type behavior.
   - [x] Add compiler diagnostics for malformed HTML islands, unknown
-        `htmlArg` references, and mismatched component/template arguments.
+        unknown HTML holes, and mismatched component/template arguments.
   - [x] Add compiler diagnostics for unsafe dynamic HTML sinks covered by the
         core context checker.
   - [ ] Add compiler diagnostics for remaining unsafe dynamic HTML sinks once
         the complete HTML parser exists.
   - [ ] Add semlint checks proving untrusted request/query/header/body data
         cannot flow into HTML without an explicit escape or trust conversion.
-  - [ ] Add formatter and VS Code grammar support for `htmlTemplate`,
-        `htmlArg`, `htmlBody`, and embedded SSX syntax.
+  - [ ] Add formatter and VS Code grammar support for `html template`,
+        `html body template`, inferred holes, and embedded SSX syntax.
   - [x] Add docs explaining why HTML symbols are a narrow grammar-island
         exception to the normal no-brace/no-angle/no-indentation rules.
   - [ ] Add webserver tests proving hydrated HTML responses preserve escaping,
@@ -1417,7 +1418,7 @@ would fail under a no-op lowering.
   - [x] Stash the slot on `call["handle_slot"]` so the matching
         `defer json.destroyDocument` re-loads the handle at every exit.
   - [x] Populate `call["result"]` / `call["error_value"]` /
-        `call["error_cond"]` so `bindOk` / `bindError` / `branchIfError`
+        `call["error_cond"]` so `bind ok` / `bind error` / `branch error`
         fall through unchanged.
 - [x] Register `json.createEmptyDocument` with the same handle-slot
       machinery.
@@ -1441,8 +1442,8 @@ would fail under a no-op lowering.
 - [x] Register the mutator calls (`setObjectField*`, `appendArrayElement*`,
       `insertArrayElement*`, `replaceArrayElement*`, `removeObjectField`,
       `removeArrayElementAt`, `clearObject`, `clearArray`) returning
-      `CSignedInt32` status with `ignoreOk` + `bindError CSignedInt32` +
-      `branchIfError`, matching the existing `json.field*` shape.
+      `CSignedInt32` status with `ignore ok` + `bind error CSignedInt32` +
+      `branch error`, matching the existing `json.field*` shape.
 - [x] Add `json.document.tree` to the effect-axis validator so
       `effect OP read json.document.tree` and
       `effect OP write json.document.tree` parse and route through semlint
@@ -1458,7 +1459,7 @@ would fail under a no-op lowering.
       `SemanticScript/compiler/semsc.py`.
   - [x] Recognize indented lines that follow as one raw-text island,
         terminated at the next non-empty column-0 SemanticScript line — the
-        same termination rule used by `htmlBody` (SYNTAX.md:307).
+        same termination rule used by `html body template` (SYNTAX.md).
   - [x] Capture the island bytes verbatim, preserving inner whitespace
         inside JSON string literals.
   - [x] Bind the island to the most recently declared
@@ -1501,7 +1502,7 @@ would fail under a no-op lowering.
       treat `jsonBody NAME` as a value-producing declaration that resolves
       to the prior storage row.
 - [x] Add a semfmt pass for `jsonBody` islands so formatting preserves
-      indentation, mirroring the `htmlBody` exception flagged in
+      indentation, mirroring the `html body template` exception flagged in
       `feedback_semfmt_strips_htmlbody`.
   - [x] Add a regression test that runs semfmt on a file containing
         `jsonBody` and asserts the JSON island still parses afterward.
@@ -1518,11 +1519,11 @@ would fail under a no-op lowering.
         and emits native document mutator calls; promotes the SYNTAX.md:430
         Partial row toward `Impl'd`.
   - [x] Map native document statuses from record stringify onto the
-        `JsonEncodeError` case ordinals before exposing `bindError`.
+        `JsonEncodeError` case ordinals before exposing `bind error`.
   - [x] For `JsonText` perform an identity copy through scratch with a
         length check so pre-built bodies can flow through a typed
         pipeline without escaping twice.
-  - [x] Surface `bindOk JsonText` / `bindError JsonEncodeError` at the
+  - [x] Surface `bind ok JsonText` / `bind error JsonEncodeError` at the
         call site.
 - [x] Add `json.parse.<TypeName>` dispatch in `semsc.py`.
   - [x] Primitive: reuse `json.decode.<Primitive>` at SYNTAX.md:429.
@@ -1531,7 +1532,7 @@ would fail under a no-op lowering.
   - [x] Record: generate a field-by-field decoder that validates required
         fields, type-checks each field, and applies `omit-when` defaults.
   - [x] Map missing/wrong-field record parse failures onto the
-        `JsonDecodeError` case ordinals before exposing `bindError`.
+        `JsonDecodeError` case ordinals before exposing `bind error`.
   - [x] `JsonText`: validate JSON syntax and pass bytes through unchanged.
 - [x] Add `recordFieldJsonOmitWhen` parser support if not already present;
       accept `empty`, `null`, `false`, `zero` policies.
@@ -1542,8 +1543,8 @@ would fail under a no-op lowering.
 #### semlint Rules
 
 - [x] Add `SS3620 unguardedJsonAccess` to `SemanticScript/linter/semlint.py`.
-  - [x] Flag any operation that consumes a `bindOk JsonCursor` from a
-        fallible navigator without a `branchIfError` between the `run`
+  - [x] Flag any operation that consumes a `bind ok JsonCursor` from a
+        fallible navigator without a `branch error` between the `run`
         and the first use of the cursor.
   - [x] Treat `json.documentRoot` as exempt (cannot fail).
   - [x] Add unit coverage in
@@ -1588,7 +1589,7 @@ would fail under a no-op lowering.
 - [x] Add a row grouping the delete calls.
 - [x] Add a row for `jsonBody NAME` describing the indented-island contract,
       noting it as the second indentation-sensitive exception after
-      `htmlBody`.
+      `html body template`.
 - [x] Add a row for `json.stringify.<TypeName>` and `json.parse.<TypeName>`
       as the high-level typed entry points.
 - [ ] Promote SYNTAX.md:430 from `Partial` to `Impl'd` once the record
@@ -1616,7 +1617,7 @@ would fail under a no-op lowering.
       preservation and zero length post-clear.
 - [ ] Add a feature test for `JsonAccessError.CapacityExceeded` that
       intentionally undersizes the document and asserts the typed error
-      reaches a `returnError`.
+      reaches a `return error`.
 - [ ] Add an adversarial test parallel to
       `json_runtime_adversarial.sscript` covering deep nesting up to the
       documented bound, control bytes in strings, full RFC 8259 escape
@@ -1642,7 +1643,7 @@ would fail under a no-op lowering.
   - [x] `json.parse.Bool` feature coverage parses literal `true` and
         `false` tokens and drives observable control flow.
   - [x] Add a regression feature test for parsing a negative integer through
-        `json.parse.I64` so `branchIfError` cannot mistake the decoded value
+        `json.parse.I64` so `branch error` cannot mistake the decoded value
         for an error status.
 - [x] Confirm JSON compiler feature cases are covered by the maintained
       reference-compiler tests with zero expected-failure metadata.
@@ -1774,7 +1775,7 @@ behavior regressions.
         `element(Int64|Double|Bool|String|Null)|`
         `findString|findInt64|findDouble|findBool|hasField|`
         `encode\.|decode\.)` and migrate every match to the new surface.
-  - [ ] Confirm the grep returns zero hits in `app/`,
+  - [ ] Confirm the grep returns zero hits in `apps/`,
         `SemanticScript/tests/`, `SemanticScript/std/`, `docs/`, and
         `vscode-semanticscript/` before marking removal complete.
 - [ ] Audit the rest of this file.
@@ -2005,7 +2006,7 @@ the maintained reference-compiler test path before marking a batch complete.
 - [x] Add semlint rule edge case tests in
       `SemanticScript/linter/test_semlint.py`.
   - [x] `SS3620 unguardedJsonAccess` fires when a cursor is used
-        before `branchIfError`.
+        before `branch error`.
   - [x] `SS3620` is silent when the cursor comes from
         `json.documentRoot` (exempt path).
   - [x] `SS3621 staleJsonCursor` fires once per structural mutator
@@ -2059,6 +2060,58 @@ the maintained reference-compiler test path before marking a batch complete.
   - [ ] If yes, implement scheduler-backed `start`, `await`, groups, and worker
         pools.
   - [x] If no, keep synchronous lowering documented and tested.
+- [ ] Plan and prototype the post-1.0 libuv async runtime experiment.
+  - [x] Record the experiment direction: use libuv as the portable event loop,
+        timer, async DNS, and worker-pool backend.
+  - [ ] Keep 1.0 synchronous lowering unchanged while the libuv runtime is
+        developed behind an opt-in build/runtime flag.
+  - [ ] Name the opt-in surface, such as `runtimeBackend PROJECT libuv` or
+        `asyncRuntime PROJECT libuv`.
+  - [ ] Decide whether the flag belongs in `build.sem`, CLI flags, or both.
+  - [ ] Add a feature gate so generated code never assumes libuv symbols unless
+        the async runtime backend is selected.
+  - [ ] Define the first supported program classes: console program first,
+        native webserver handler later.
+  - [ ] Define the unsupported cases for the experiment, including GUI message
+        loops, long-lived streaming responses, and nested event-loop runs.
+  - [ ] Document that `await` pauses the current operation and yields to the
+        runtime; it does not keep the same C stack frame executing.
+  - [ ] Document the lowering model as continuation frames plus a resume
+        function per async operation.
+  - [ ] Define a runtime-owned `SSAsyncLoop` wrapper around `uv_loop_t`.
+  - [ ] Define a runtime-owned `SSFuture` or `SSAsyncTask` handle with status,
+        result pointer, error code, cancellation flag, and continuation list.
+  - [ ] Define an operation frame ABI for generated async functions.
+  - [ ] Define frame allocation and cleanup ownership.
+  - [ ] Define how ordinary local variables are spilled from the C stack into
+        the async frame before an `await`.
+  - [ ] Define how `defer`, `deferLog`, and `deferAwaitLog` run when an async
+        frame returns normally, returns an error, or is cancelled.
+  - [ ] Define how `timeout CALL DURATION` attaches a libuv timer to a future.
+  - [ ] Define how `cancelOn CALL TOKEN` maps to future cancellation.
+  - [ ] Define how `select` waits on multiple futures or timer tokens.
+  - [ ] Define how `taskGroup`, `startInGroup`, and `awaitGroup` aggregate
+        child futures.
+  - [ ] Define how worker-pool work maps to `uv_queue_work`.
+  - [ ] Decide whether CPU work and blocking I/O share the libuv default thread
+        pool or use a SemanticScript-owned worker pool.
+  - [ ] Define an environment variable or build setting for worker-pool size.
+  - [ ] Add runtime initialization and shutdown functions:
+        `ss_async_loop_init`, `ss_async_loop_run`, `ss_async_loop_stop`, and
+        `ss_async_loop_destroy`.
+  - [ ] Add a small native health demo under
+        `SemanticScript/runtime/native_async/health_demo.c`.
+  - [ ] Prove a libuv timer can resume a suspended SemanticScript frame.
+  - [ ] Prove two started timers can complete out of order and resume the
+        correct frames.
+  - [ ] Prove cancellation closes timer/work handles without leaking memory.
+  - [ ] Add diagnostics when an async operation is lowered without selecting an
+        async runtime backend.
+  - [ ] Add diagnostics when an `await` target was never started.
+  - [ ] Add diagnostics when a started future is neither awaited, cancelled, nor
+        explicitly detached.
+  - [ ] Add docs explaining why nested `uv_run` inside route handlers is not the
+        production model.
 - [x] Replace single-thread mutex no-op semantics with runtime locking, or keep
       them documented as single-thread fallback only.
 - [x] Implement cross-process shared state, or explicitly scope `sharedState`
@@ -3000,6 +3053,45 @@ workstreams.
 
 ### Runtime HTTP Client And Fetch API
 
+- [ ] Add a libuv-backed HTTP fetcher experiment path.
+  - [x] Record the working architecture: libuv owns scheduling, timers,
+        cancellation wakeups, and worker dispatch; libcurl owns HTTP, HTTPS,
+        redirects, DNS/TLS behavior for the MVP fetcher.
+  - [ ] Keep the source-level public API backend-neutral, preferring
+        `net.fetchText` / `net.fetchBytes` or `http.client*` names over any
+        libuv/libcurl-specific names.
+  - [ ] Add a `standard.net` module or extend `standard.http` with a clearly
+        client-side namespace that cannot collide with server-side
+        `http.request*` and `http.response*`.
+  - [ ] Define the minimal source sample that the experiment must compile:
+        `start fetchCall`, do local work, `await fetchCall`, then bind the
+        response body.
+  - [ ] Define the expected runtime trace for that sample: fetch starts, local
+        work runs, operation yields at `await`, event loop runs other ready
+        work, fetch completion resumes the operation after `await`.
+  - [ ] Add an experiment app under `experiments/libuv-fetcher/`.
+  - [ ] Add `experiments/libuv-fetcher/main.sem` with a single
+        `GET https://example.com/` text fetch.
+  - [ ] Add `experiments/libuv-fetcher/two_fetches.sem` that starts two
+        fetches before awaiting either one.
+  - [ ] Add `experiments/libuv-fetcher/timeout.sem` that proves timeout
+        metadata reaches the runtime.
+  - [ ] Add `experiments/libuv-fetcher/cancel.sem` once cancellation is wired.
+  - [ ] Add a generated-C sketch or checked-in fixture that shows the expected
+        continuation-frame shape for `start` / `await`.
+  - [ ] Add docs in the experiment README explaining that the current compiler
+        still lowers `start` synchronously unless the libuv backend flag is
+        selected.
+  - [ ] Add a tiny local test HTTP server for deterministic fetch tests.
+  - [ ] Avoid external network dependency in CI by default; use
+        `https://example.com/` only for a manual smoke command.
+  - [ ] Add a test mode that fetches from `127.0.0.1` over plain HTTP for local
+        deterministic behavior.
+  - [ ] Add an HTTPS fixture or controlled local TLS server before requiring
+        HTTPS CI coverage.
+  - [ ] Track manual smoke commands in the experiment README.
+  - [ ] Add a cleanup checklist for temporary files, sockets, loop handles,
+        futures, response bodies, and libcurl easy handles.
 - [x] Define the runtime fetcher scope separately from build-time dependency
       fetching.
   - [x] Keep `dependencyFetch` as build-time source acquisition.
@@ -3063,13 +3155,42 @@ workstreams.
 - [ ] Choose the native runtime backend.
   - [ ] Compare a small custom HTTP/1.1 client against libcurl.
   - [ ] Compare OS TLS APIs against OpenSSL/LibreSSL/BoringSSL.
-  - [ ] Decide whether MVP uses libcurl for DNS, TLS, redirects, and HTTP
-        parsing.
+  - [x] Decide that the async scheduler experiment uses libuv rather than
+        custom epoll/kqueue/IOCP code.
+  - [x] Decide that the HTTP fetcher experiment starts with libcurl rather than
+        hand-rolled HTTP parsing and TLS.
+  - [ ] Decide whether the production MVP uses libcurl for DNS, TLS,
+        redirects, and HTTP parsing.
+  - [ ] Decide whether to vendor libcurl under `third_party/curl`, require a
+        system/package-manager libcurl, or support both.
+  - [ ] Decide whether to vendor libuv under `third_party/libuv`, require a
+        system/package-manager libuv, or support both.
   - [ ] If libcurl is used, define minimum supported version.
+  - [ ] If libuv is used, define minimum supported version.
   - [ ] If a custom client is used, define DNS, socket, TLS, parser, redirect,
         and proxy boundaries explicitly.
   - [ ] Keep the SemanticScript ABI small even if the backend library is large.
   - [ ] Avoid exposing backend-library structs in generated SemanticScript ABI.
+- [ ] Add third-party dependency integration for libuv and libcurl.
+  - [ ] Add `third_party/libuv` as a pinned submodule or documented external
+        dependency.
+  - [ ] Add libuv upstream URL, license, pin, and release-review row to
+        `third_party/README.md`.
+  - [ ] Add `third_party/curl` as a pinned submodule or documented external
+        dependency if production builds should not rely on system libcurl.
+  - [ ] Add libcurl upstream URL, license, pin, and release-review row to
+        `third_party/README.md` if vendored.
+  - [ ] Add CMake discovery for libuv.
+  - [ ] Add CMake discovery for libcurl.
+  - [ ] Add Windows dependency notes for libuv, libcurl, TLS backend, and DLL
+        discovery.
+  - [ ] Add Linux dependency notes for libuv, libcurl, OpenSSL/CA bundle, and
+        pkg-config.
+  - [ ] Add macOS dependency notes for libuv, libcurl, Secure Transport or
+        OpenSSL, and Homebrew/system-library behavior.
+  - [ ] Add `sem doctor` checks for selected libuv/libcurl backend availability.
+  - [ ] Add an explicit no-network build mode so CI can compile the runtime
+        without performing fetches.
 - [ ] Implement native runtime client ABI.
   - [ ] Add `sem_http_client_*` declarations to the runtime header.
   - [ ] Add request allocation/init function.
@@ -3086,6 +3207,45 @@ workstreams.
   - [ ] Return structured status codes from every runtime function.
   - [ ] Keep all runtime-owned pointers valid until explicit cleanup or until
         the documented operation lifetime ends.
+- [ ] Implement native async fetch ABI over libuv.
+  - [ ] Add `SemanticScript/runtime/native_async/sem_async_runtime.h`.
+  - [ ] Add `SemanticScript/runtime/native_async/sem_async_runtime.c`.
+  - [ ] Add `SemanticScript/runtime/native_async/CMakeLists.txt`.
+  - [ ] Add `SemanticScript/runtime/native_http_client/sem_http_client_runtime.h`
+        or a backend-neutral client header name.
+  - [ ] Add `SemanticScript/runtime/native_http_client/sem_http_client_runtime.c`.
+  - [ ] Add a future handle type such as `SSHttpFetchFuture`.
+  - [ ] Add `ss_http_client_fetch_text_start` that schedules work and returns a
+        future handle.
+  - [ ] Add `ss_http_client_fetch_text_await` only for console/program-loop MVP
+        experiments, with a note that production lowering should resume
+        continuations instead of nested-running the loop.
+  - [ ] Add `ss_http_client_fetch_status` to read the HTTP status code after
+        completion.
+  - [ ] Add `ss_http_client_fetch_body_text` to read the buffered body after
+        completion.
+  - [ ] Add `ss_http_client_fetch_error_code` for transport/runtime failures.
+  - [ ] Add `ss_http_client_fetch_free` to release future, response body, and
+        backend handles.
+  - [ ] Use `uv_queue_work` plus libcurl easy API for the first experiment.
+  - [ ] Ensure the worker callback never touches generated SemanticScript frame
+        state directly.
+  - [ ] Ensure the after-work callback runs on the libuv loop thread and marks
+        the future ready.
+  - [ ] Add timeout support with `uv_timer_t`.
+  - [ ] Add cancellation bookkeeping before attempting hard cancellation of
+        in-flight libcurl easy transfers.
+  - [ ] Add body-size enforcement in the write callback before reallocating.
+  - [ ] Add redirect-count enforcement through libcurl options.
+  - [ ] Add TLS verification enabled by default.
+  - [ ] Add a compile-time diagnostic when libcurl was built without HTTPS
+        support.
+  - [ ] Add a future migration note for replacing the worker-pool MVP with
+        libcurl `multi_socket` integration.
+  - [ ] Add a second-stage prototype that drives libcurl `multi_socket` through
+        `uv_poll_t` instead of blocking a worker thread per fetch.
+  - [ ] Compare worker-pool MVP behavior against `multi_socket` behavior for
+        concurrent fetch count, cancellation latency, and memory ownership.
 - [ ] Add compiler lowering for runtime fetch calls.
   - [ ] Register runtime fetch call signatures in the compiler builtin surface.
   - [ ] Register runtime fetch call signatures in semlint builtin signature
@@ -3096,6 +3256,18 @@ workstreams.
   - [ ] Lower execute/fetch calls to the native runtime function.
   - [ ] Lower response readers to native runtime functions.
   - [ ] Lower response cleanup/free calls to native runtime functions.
+  - [ ] Lower async `start fetchCall` to a future-start native call when the
+        selected runtime backend is libuv.
+  - [ ] Lower `await fetchCall` to a continuation yield/resume point instead of
+        a no-op when the selected runtime backend is libuv.
+  - [ ] Spill live locals into an async operation frame before the generated
+        yield point.
+  - [ ] Generate a resume switch state for each `await`.
+  - [ ] Generate cleanup blocks that free completed fetch futures on all return
+        paths.
+  - [ ] Keep existing synchronous `start` / `await` lowering as the default
+        backend until the libuv experiment is explicitly selected.
+  - [ ] Add provenance entries for generated async runtime symbols.
   - [ ] Add agent-readable compiler diagnostics for unsupported runtime fetch
         call targets.
   - [ ] Keep runtime fetch target names synchronized across `semsc.py`,
@@ -3723,7 +3895,7 @@ order.
   - [x] Numeric loop.
   - [x] String scanning.
   - [ ] JSON encode/decode once implemented.
-  - [ ] Todo web hello route.
+  - [ ] TaskForge Web HTML shell route.
   - [ ] HTTP Runtime Gauntlet route matrix.
 - [ ] Add benchmark guardrails.
   - [x] Store baselines outside normal source unless intentionally committed.

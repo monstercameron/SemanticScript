@@ -93,9 +93,9 @@ should be named:
 
 ```semanticscript
 operation createTodoHandler
-input createTodoHandler request HttpRequest
-input createTodoHandler response HttpResponse
-output createTodoHandler CSignedInt32
+input operation createTodoHandler request HttpRequest
+input operation createTodoHandler response HttpResponse
+output operation createTodoHandler CSignedInt32
 effect createTodoHandler read http.request.body
 effect createTodoHandler readWrite database
 effect createTodoHandler write http.response
@@ -151,6 +151,7 @@ python apps\taskforge-web\scripts\test_taskforge_web.py
 `apps/` keeps the maintained demo set:
 
 - `apps/taskforge-tui/`: console todo app with JSON persistence.
+- `apps/desktop-window-smoke/`: minimal Windows GUI smoke fixture.
 - `apps/html-template-lab/`: first-class HTML/template syntax demo.
 - `apps/http-runtime-gauntlet/`: native HTTP conformance harness.
 - `apps/taskforge-web/`: flagship web app.
@@ -267,19 +268,19 @@ storage module immutable rowCapacity CSignedInt64 4096
 storage module immutable successExitCode ExitCode 0
 
 operation moveCursorRight
-input moveCursorRight currentColumn CSignedInt64
-output moveCursorRight CSignedInt64
+input operation moveCursorRight currentColumn CSignedInt64
+output operation moveCursorRight CSignedInt64
 memory moveCursorRight noHeapAllocation
 async moveCursorRight no
 purpose moveCursorRight "Return the next cursor column."
 
 storage local immutable oneColumn CSignedInt64 1
 call nextColumnCall math.addI64
-arg nextColumnCall left currentColumn
-arg nextColumnCall right oneColumn
+argument nextColumnCall left CSignedInt64 currentColumn
+argument nextColumnCall right CSignedInt64 oneColumn
 run nextColumnCall
-bind nextColumn CSignedInt64 nextColumnCall
-returnValue nextColumn
+bind value nextColumn CSignedInt64 nextColumnCall
+return value nextColumn
 ```
 
 Mutable storage is equally explicit:
@@ -300,12 +301,12 @@ stable identity, names each argument edge, runs it, and binds the result.
 
 ```semanticscript
 call renderedCursorColumnCall renderedColumnForFileColumn
-arg renderedCursorColumnCall rowPointer cursorRowPointer
-arg renderedCursorColumnCall rowLength cursorRowLength
-arg renderedCursorColumnCall leftVisibleColumn leftVisibleColumn
-arg renderedCursorColumnCall fileColumn cursorFileColumn
+argument renderedCursorColumnCall rowPointer EditorRowPointer cursorRowPointer
+argument renderedCursorColumnCall rowLength CSignedInt64 cursorRowLength
+argument renderedCursorColumnCall leftVisibleColumn CSignedInt64 leftVisibleColumn
+argument renderedCursorColumnCall fileColumn CSignedInt64 cursorFileColumn
 run renderedCursorColumnCall
-bind cursorRenderedColumn CSignedInt64 renderedCursorColumnCall
+bind value cursorRenderedColumn CSignedInt64 renderedCursorColumnCall
 ```
 
 That shape is verbose, but it gives tools a precise patch target. A formatter,
@@ -318,12 +319,12 @@ Fallible calls expose both the success and error edge.
 
 ```semanticscript
 call openDatabaseCall sqlite.openDatabase
-arg openDatabaseCall path databasePath
-arg openDatabaseCall mode readWriteCreateSqliteOpenMode
+argument openDatabaseCall path CNullTerminatedByteString databasePath
+argument openDatabaseCall mode SqliteOpenMode readWriteCreateSqliteOpenMode
 run openDatabaseCall
-bindOk openedDatabase SqliteDatabase openDatabaseCall
-bindError openDatabaseError SqliteOpenFailure openDatabaseCall
-branchIfError openDatabaseCall openDatabaseFailed
+bind ok openedDatabase SqliteDatabase openDatabaseCall
+bind error openDatabaseError SqliteOpenFailure openDatabaseCall
+branch error source openDatabaseCall target openDatabaseFailed
 
 defer closeDatabaseDefer sqlite.closeDatabase openedDatabase
 ```
@@ -337,15 +338,23 @@ Routes are not hidden inside a framework registration callback.
 
 ```semanticscript
 webServer taskForgeWebServer
-purpose taskForgeWebServer "Host the TaskForge Web JSON REST API on localhost:18090."
+purpose operation taskForgeWebServer "Host the TaskForge Web JSON REST API on localhost:18090."
 serverHost taskForgeWebServer "127.0.0.1"
 serverPort taskForgeWebServer 18090
 
 route taskForgeWebServer GET "/" homePageHandler
 route taskForgeWebServer GET "/dashboard" dashboardPageHandler
+route taskForgeWebServer GET "/assets/:filename" staticAssetHandler
+route taskForgeWebServer GET "/health" healthHandler
+route taskForgeWebServer GET "/api/version" versionHandler
+route taskForgeWebServer POST "/api/auth/register" registerHandler
 route taskForgeWebServer POST "/api/auth/login" loginHandler
+route taskForgeWebServer POST "/api/auth/logout" logoutHandler
+route taskForgeWebServer GET "/api/auth/me" meHandler
 route taskForgeWebServer GET "/api/todos" listTodosHandler
 route taskForgeWebServer POST "/api/todos" createTodoHandler
+route taskForgeWebServer GET "/api/todos/:id" showTodoHandler
+route taskForgeWebServer DELETE "/api/todos/:id" deleteTodoHandler
 route taskForgeWebServer POST "/api/todos/:id/complete" completeTodoHandler
 route taskForgeWebServer POST "/api/todos/:id/uncomplete" uncompleteTodoHandler
 route taskForgeWebServer GET "*" notFoundPageHandler
@@ -394,11 +403,11 @@ links generic runtime surfaces.
 ```semanticscript
 call rawModeCall c.terminalEnableRaw
 run rawModeCall
-bind rawModeStatus CSignedInt32 rawModeCall
+bind value rawModeStatus CSignedInt32 rawModeCall
 
 call keyCall c.terminalReadKey
 run keyCall
-bind keyCode KiloKeyCode keyCall
+bind value keyCode KiloKeyCode keyCall
 ```
 
 The Kilo editor behavior is not embedded in the compiler. The compiler sees

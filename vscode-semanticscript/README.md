@@ -53,7 +53,7 @@ builds after accepting the publisher metadata constraint for the target release.
 - Context-aware hovers that explain the concrete line being hovered, including
   actual constant names, types, values, call targets, argument flow, control
   edges, cleanup edges, worker items, and same-file operation metadata.
-- Identifier hovers resolve same-file symbols such as constants, variables,
+- Identifier hovers resolve same-file symbols such as constants, storage slots,
   inputs, storage slots, call objects, labels, bindings, failures, fields,
   groups, collection declarations, and work items.
 - Go to Definition for same-file SemanticScript symbols.
@@ -85,7 +85,7 @@ The extension recognizes the recent syntax families from the refined example:
   `operationBody`, `runtimeBinding`, `runtimeBindingPrecondition`,
   `runtimeBindingFailure`, `intrinsicName`, `dependencyPath`,
   `dependencyFailure`, `precondition`, `pinsNullBodyFailurePath`,
-  `responseBodyForwarder`, `rationale`, and explicit `returnVoid` control flow.
+  `responseBodyForwarder`, `rationale`, and explicit `return void` control flow.
 - Native web server declarations:
   `webServer`, `serverHost`, `serverPort`, `route`, `routeTimeout`,
   `routeMiddleware`, `routeTimeoutOptOut`, and `routeMiddlewareOptOut`.
@@ -105,9 +105,9 @@ The extension recognizes the recent syntax families from the refined example:
   `gui.applicationRun`, `gui.textBoxText`, `gui.textLabelSetText`, and
   `gui.windowClose`.
 - First-class HTML templates:
-  `html template`, optional `html parameter template`, `html body template`,
-  `String`, `HtmlFragment`, `HtmlTrustedFragment`, `HtmlDocument`, embedded
-  HTML/SSX highlighting, bare or dotted hole hovers such as `{titleText}` and
+  `html template`, `html body template`, `String`, `HtmlFragment`,
+  `HtmlTrustedFragment`, `HtmlDocument`, embedded HTML/SSX highlighting,
+  inferred bare or dotted hole hovers such as `{titleText}` and
   `{profile.title}`, and generated hydration targets such as
   `html.hydrate.TodoDashboardPageTemplate`.
 - Module/dependency build tape:
@@ -159,7 +159,7 @@ rawPointerToValidatedCString rawUtf8ToValidatedText
 row immutableUpdate borrowedView
 zeroBasedChecked zeroBasedCheckedRange contiguousUniqueAscending
 arena.request arena.process arena.static
-returnOk returnError reverseRegistration logAndSuppress
+return value ok error void reverseRegistration logAndSuppress
 protectedBy ownedBy
 continueMiddlewareControl shortCircuitMiddlewareControl
 inMemorySqliteOpenMode readWriteCreateSqliteOpenMode
@@ -167,7 +167,7 @@ inMemorySqliteOpenMode readWriteCreateSqliteOpenMode
 
 Role suffix highlighting is intentionally limited to real user symbols. Fixed
 schema values and opaque dependency names are kept atomic, so words like
-`sharedState`, `returnError`, and `metricsLock` are not split into misleading
+`sharedState`, `return error`, and `metricsLock` are not split into misleading
 suffix fragments.
 
 ## Linting

@@ -1,9 +1,20 @@
 # Changelog
 
+## 2026-05-22
+
+- `136f37e6c6f94ecb90be395f300ed3ad522dcc98` - `chore: cut over project layout and syntax cleanup`
+  - Renames the retained demo set from `app/` into the polished `apps/` tree: `desktop-window-smoke`, `html-template-lab`, `http-runtime-gauntlet`, `taskforge-tui`, and `taskforge-web`. Parks the Kilo port under `experiments/kilo-port`, removes retired todo/web/demo folders, deletes the old raw `samples/` mirrors and syntax fixture `.sem` files, and moves the durable language notes into `docs/`.
+  - Removes the stale SemanticScript bootstrap/compiler-parity tree and old feature-coverage scripts from the active release surface, while keeping the Python reference compiler as the supported implementation path. Moves shared call-contract data under `SemanticScript/shared/`, refreshes repo docs around release hygiene and current folders, and updates CI/tests for the new app paths.
+  - Renames the VS Code TextMate grammar file to `syntaxes/semanticscript.tm-language.json`, expands generated-artifact ignores, and keeps the curated app/runtime smoke tests aligned with the revised `apps/` layout.
+- `4fb343e06b39f37af02600640ae186cf6b39e2c1` - `Port SemanticScript to revised syntax`
+  - Cuts the language corpus over to the revised row shapes: `argument CALL ARG TYPE VALUE`, `bind value/ok/error`, `ignore value/ok`, `branch if/error/else`, `jump target`, `return value/ok/error/void`, and `storage local/module` in place of the older `arg`, camelCase bind/branch/return, and `const` / `var` spellings.
+  - Updates the Python compiler, formatter, linter, VS Code extension, standard library, feature corpus, benchmarks, runtime smokes, and app sources to parse, format, lint, migrate, and execute the revised syntax. Adds `SemanticScript/tools/syntax_migration.py` plus compiler/linter/CLI/app-runtime tests so the cutover is repeatable and guarded.
+  - Adds the `research/` documentation set that distills the four syntax experiments into durable findings, then uses those findings to justify the agent-oriented syntax changes and preserve the evidence after raw experiment data is removed.
+
 ## 2026-05-19
 
 - `a346f208dcf5e6c9e0e9bd0ce3952965aae2e22a` - `experiments: add syntax design comparison fixtures`
-  - Adds `experiments/syntax-baseline.sem`, `experiments/syntax-refinement.sem`, and `experiments/syntax-hybrid.sem` so the production syntax, maximal controlled-English proposal, and refined agent-oriented hybrid can be reviewed side by side.
+  - Adds syntax comparison fixtures so the production syntax, maximal controlled-English proposal, and refined agent-oriented hybrid can be reviewed side by side. Those raw fixtures were later retired; the durable findings now live under `research/`.
 - `dd336e28fbed10dc401964ade1e63e4df907c51d` - `vscode: refresh strict and JSON syntax support`
   - Updates VS Code highlighting and hovers for `runChecked`, reserved ownership/non-null rows, and the public `json.parse.*` / `json.stringify.*` target spellings.
 - `93b1319b2ca87b1966ff74bffc576c57cf8994cd` - `docs: define compatibility and release policies`
@@ -74,7 +85,7 @@
 - `43d24ca8780bfe85404db506c122986849a9779d` - `app: expand todo web dashboard flow`
   - Adds the TaskForge Web dashboard shell, reusable HTML component module, dashboard JavaScript, login flow, logout/session validation coverage, todo create/list/complete/uncomplete/delete flows, seeded demo data under `sql/schema.sql`, and expanded end-to-end route tests.
 - `aebc47b52b5d4966d8b0d1923d0e2cd0bed02809` - `app: add SemanticScript kilo port`
-  - Adds a native-executable SemanticScript port of antirez/kilo with editor row storage, file load/save, rendering, navigation, search, tab handling, JavaScript highlighting, parity notes, and executable smoke coverage under `app/kilo-port/`.
+  - Adds a native-executable SemanticScript port of antirez/kilo with editor row storage, file load/save, rendering, navigation, search, tab handling, JavaScript highlighting, parity notes, and executable smoke coverage. The retired demo now lives under `experiments/kilo-port/`.
 - `fccfbcb2213240f586356558fd7880cc7372e96b` - `runtime: extend native app support surfaces`
   - Adds generic native terminal runtime support and compiler/linter registration for terminal calls, extends native HTTP with form-field parsing and not-found fallback handlers, adds a native log runtime adapter, improves backend error excerpts, and introduces `buildConstant` build-tape values for shared app configuration.
 - `3d0541d8e0bd6c9aa318f008a29d5c6e7b9ba0b8` - `app: seed todo web demo data`

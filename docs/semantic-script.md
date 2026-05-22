@@ -84,13 +84,13 @@ dot.path dependency or namespace
 Example:
 
 ```text
-bindError accountBalanceLookupError AccountLookupError accountBalanceLookupCall
+bind error accountBalanceLookupError AccountLookupError accountBalanceLookupCall
 ```
 
 This line carries three layers at once:
 
 ```text
-bindError says what semantic action is happening
+bind error says what semantic action is happening
 accountBalanceLookupError says what local meaning the value has
 AccountLookupError says what typed category the compiler checks
 accountBalanceLookupCall says which call produced the value
@@ -395,12 +395,12 @@ Then the call site still remains explicit:
 
 ```text
 call invalidJsonResponseBuildCall buildStandardJsonErrorResponse
-arg invalidJsonResponseBuildCall status HttpStatus.BadRequest
-arg invalidJsonResponseBuildCall errorCode ErrorCode.InvalidJson
-arg invalidJsonResponseBuildCall publicMessage PublicErrorMessage.InvalidJsonBody
+argument invalidJsonResponseBuildCall status TYPE HttpStatus.BadRequest
+argument invalidJsonResponseBuildCall errorCode TYPE ErrorCode.InvalidJson
+argument invalidJsonResponseBuildCall publicMessage TYPE PublicErrorMessage.InvalidJsonBody
 run invalidJsonResponseBuildCall
-bind invalidJsonResponse HttpResponse invalidJsonResponseBuildCall
-returnValue invalidJsonResponse
+bind value invalidJsonResponse HttpResponse invalidJsonResponseBuildCall
+return value invalidJsonResponse
 ```
 
 This abstraction is acceptable because it adds:
@@ -597,9 +597,9 @@ Good:
 
 ```text
 run customerLookupCall
-bindOk existingCustomer Customer customerLookupCall
-branchIfError customerLookupCall customerLookupFailed
-returnError customerLookupFailure
+bind ok existingCustomer Customer customerLookupCall
+branch error source customerLookupCall target customerLookupFailed
+return error customerLookupFailure
 ```
 
 No line should rely on pronouns, unnamed previous results, implicit current state, or a reader remembering a hidden expression tree.
@@ -623,25 +623,25 @@ Examples:
 
 ```text
 call callName targetPath
-arg callName argumentName valueName
+argument callName argumentName TYPE valueName
 run callName
 start callName
 await callName
-bindOk valueName TypeName callName
-bindError errorName ErrorTypeName callName
-branchIfError callName labelName
-returnValue valueName
-returnError errorName
+bind ok valueName TypeName callName
+bind error errorName ErrorTypeName callName
+branch error source callName target labelName
+return value valueName
+return error errorName
 ```
 
 The goal is that a single retrieved line remains semantically useful even when an agent sees it outside the full operation.
 
 ```text
 call accountBalanceLookupCall database.accounts.findBalance
-arg accountBalanceLookupCall accountId accountId
+argument accountBalanceLookupCall accountId TYPE accountId
 timeout accountBalanceLookupCall accountLookupTimeout
 cancelOn accountBalanceLookupCall requestCancellationToken
-branchIfError accountBalanceLookupCall accountBalanceLookupFailed
+branch error source accountBalanceLookupCall target accountBalanceLookupFailed
 ```
 
 Each line repeats the call identity because the line is an attention unit, not just a token-saving instruction inside a human-readable block.
@@ -739,10 +739,10 @@ Good:
 
 ```text
 call customerLookupCall database.customers.findByEmail
-arg customerLookupCall email normalizedEmail
+argument customerLookupCall email TYPE normalizedEmail
 run customerLookupCall
-bindError customerLookupError DatabaseReadError customerLookupCall
-branchIfError customerLookupCall customerLookupFailed
+bind error customerLookupError DatabaseReadError customerLookupCall
+branch error source customerLookupCall target customerLookupFailed
 ```
 
 Instead of:
@@ -949,12 +949,12 @@ For multiple lines:
 # rationale: Customer lookup uses normalizedEmail so duplicate checks are stable across input formats.
 # failure: customerLookupError maps to CreateCustomerError.CustomerLookupFailed.
 call customerLookupCall database.customers.findByEmail
-arg customerLookupCall connection databaseConnection
-arg customerLookupCall email normalizedEmail
+argument customerLookupCall connection TYPE databaseConnection
+argument customerLookupCall email TYPE normalizedEmail
 run customerLookupCall
-bindOk existingCustomerOption OptionalCustomer customerLookupCall
-bindError customerLookupError DatabaseReadError customerLookupCall
-branchIfError customerLookupCall customerLookupFailed
+bind ok existingCustomerOption OptionalCustomer customerLookupCall
+bind error customerLookupError DatabaseReadError customerLookupCall
+branch error source customerLookupCall target customerLookupFailed
 # endGroup customerLookup
 ```
 
@@ -1075,12 +1075,12 @@ The call object exists so the agent can inspect and patch each part of the opera
 
 ```text
 call customerLookupCall database.customers.findByEmail
-arg customerLookupCall connection databaseConnection
-arg customerLookupCall email normalizedEmail
+argument customerLookupCall connection TYPE databaseConnection
+argument customerLookupCall email TYPE normalizedEmail
 run customerLookupCall
-bindOk existingCustomerOption OptionalCustomer customerLookupCall
-bindError customerLookupError DatabaseReadError customerLookupCall
-branchIfError customerLookupCall customerLookupFailed
+bind ok existingCustomerOption OptionalCustomer customerLookupCall
+bind error customerLookupError DatabaseReadError customerLookupCall
+branch error source customerLookupCall target customerLookupFailed
 ```
 
 This is longer than:
@@ -1123,14 +1123,14 @@ The call object is a semantic node. Tools can inspect it, trace it, patch it, an
 For result-returning operations:
 
 ```text
-returnOk savedCustomer
-returnError databaseWriteFailure
+return ok savedCustomer
+return error databaseWriteFailure
 ```
 
 For plain-return operations:
 
 ```text
-returnValue httpResponse
+return value httpResponse
 ```
 
 No `ret_err`.
@@ -1146,7 +1146,7 @@ ret_err err_db_read
 Good:
 
 ```text
-returnError databaseReadFailure
+return error databaseReadFailure
 ```
 
 ---
@@ -1162,8 +1162,8 @@ No hidden throws.
 Every fallible call must bind and branch.
 
 ```text
-bindError customerLookupError DatabaseReadError customerLookupCall
-branchIfError customerLookupCall customerLookupFailed
+bind error customerLookupError DatabaseReadError customerLookupCall
+branch error source customerLookupCall target customerLookupFailed
 ```
 
 Then later:
@@ -1171,7 +1171,7 @@ Then later:
 ```text
 label customerLookupFailed
 makeError customerLookupFailure CreateCustomerError.CustomerLookupFailed customerLookupError
-returnError customerLookupFailure
+return error customerLookupFailure
 ```
 
 Use three different concepts:
@@ -1196,11 +1196,11 @@ Every resource acquisition should be followed by an explicit cleanup line unless
 
 ```text
 call databaseOpenCall database.openConnection
-arg databaseOpenCall database databaseClient
+argument databaseOpenCall database TYPE databaseClient
 run databaseOpenCall
-bindOk databaseConnection DatabaseConnection databaseOpenCall
-bindError databaseOpenError DatabaseOpenError databaseOpenCall
-branchIfError databaseOpenCall databaseOpenFailed
+bind ok databaseConnection DatabaseConnection databaseOpenCall
+bind error databaseOpenError DatabaseOpenError databaseOpenCall
+branch error source databaseOpenCall target databaseOpenFailed
 
 deferLog databaseConnectionCloseDefer database.closeConnection databaseConnection
 ```
@@ -1222,7 +1222,7 @@ deferWhenExitLog  run cleanup only when exit-time Bool is true and log cleanup f
 For transactions:
 
 ```text
-var transactionShouldRollback Bool true
+storage local mutable transactionShouldRollback Bool true
 deferWhenExitLog transactionRollbackDefer transactionShouldRollback database.rollbackTransaction invoiceTransaction
 
 # later, after commit succeeds
@@ -1238,7 +1238,7 @@ deferWhenExitLog reads the Bool variable at operation exit time
 So this is correct:
 
 ```text
-var transactionShouldRollback Bool true
+storage local mutable transactionShouldRollback Bool true
 deferWhenExitLog transactionRollbackDefer transactionShouldRollback database.rollbackTransaction invoiceTransaction
 set transactionShouldRollback false
 ```
@@ -1401,20 +1401,20 @@ Reading arguments:
 
 ```text
 call commandLineReadCall process.arguments
-arg commandLineReadCall process process
+argument commandLineReadCall process TYPE process
 run commandLineReadCall
-bind commandLineArguments CommandLineArguments commandLineReadCall
+bind value commandLineArguments CommandLineArguments commandLineReadCall
 ```
 
 Writing output:
 
 ```text
 call outputWriteCall console.writeLine
-arg outputWriteCall console console
-arg outputWriteCall text successMessage
+argument outputWriteCall console TYPE console
+argument outputWriteCall text TYPE successMessage
 run outputWriteCall
-bindError outputWriteError ConsoleWriteError outputWriteCall
-branchIfError outputWriteCall consoleWriteFailed
+bind error outputWriteError ConsoleWriteError outputWriteCall
+branch error source outputWriteCall target consoleWriteFailed
 ```
 
 Even console I/O is explicit.
@@ -1471,15 +1471,15 @@ Example:
 
 ```text
 call accountLookupCall database.accounts.findBalance
-arg accountLookupCall database databaseClient
-arg accountLookupCall accountId accountId
+argument accountLookupCall database TYPE databaseClient
+argument accountLookupCall accountId TYPE accountId
 timeout accountLookupCall accountLookupTimeout
 cancelOn accountLookupCall requestCancellationToken
 start accountLookupCall
 await accountLookupCall
-bindOk accountBalance AccountBalance accountLookupCall
-bindError accountLookupError AccountLookupError accountLookupCall
-branchIfError accountLookupCall accountLookupFailed
+bind ok accountBalance AccountBalance accountLookupCall
+bind error accountLookupError AccountLookupError accountLookupCall
+branch error source accountLookupCall target accountLookupFailed
 ```
 
 Rules:
@@ -1504,15 +1504,15 @@ Cancellation is a value, not magic.
 
 ```text
 call requestCancellationTokenReadCall http.requestCancellationToken
-arg requestCancellationTokenReadCall request httpRequest
+argument requestCancellationTokenReadCall request TYPE httpRequest
 run requestCancellationTokenReadCall
-bind requestCancellationToken CancellationToken requestCancellationTokenReadCall
+bind value requestCancellationToken CancellationToken requestCancellationTokenReadCall
 ```
 
 Timeouts are explicit values:
 
 ```text
-const accountLookupTimeout DurationMilliseconds 2000
+storage local immutable accountLookupTimeout DurationMilliseconds 2000
 timeout accountLookupCall accountLookupTimeout
 cancelOn accountLookupCall requestCancellationToken
 ```
@@ -1613,9 +1613,9 @@ work jsonEncodingWork encodeLargeBalanceResponse
 workArg jsonEncodingWork balanceResponse balanceResponse move
 submitWork jsonEncodingWork jsonEncodingWorkerPool
 awaitWork jsonEncodingWork
-bindOk encodedResponseBody JsonBytes jsonEncodingWork
-bindError jsonEncodingError JsonEncodingError jsonEncodingWork
-branchIfError jsonEncodingWork jsonEncodingFailed
+bind ok encodedResponseBody JsonBytes jsonEncodingWork
+bind error jsonEncodingError JsonEncodingError jsonEncodingWork
+branch error source jsonEncodingWork target jsonEncodingFailed
 ```
 
 Rules:
@@ -1639,11 +1639,11 @@ Locking:
 
 ```text
 call accountCacheLockCall mutex.lock
-arg accountCacheLockCall mutex accountCacheMutex
+argument accountCacheLockCall mutex TYPE accountCacheMutex
 run accountCacheLockCall
-bindOk accountCacheGuard MutexGuard accountCacheLockCall
-bindError accountCacheLockError MutexLockError accountCacheLockCall
-branchIfError accountCacheLockCall accountCacheLockFailed
+bind ok accountCacheGuard MutexGuard accountCacheLockCall
+bind error accountCacheLockError MutexLockError accountCacheLockCall
+branch error source accountCacheLockCall target accountCacheLockFailed
 
 defer accountCacheUnlockDefer mutex.unlock accountCacheGuard
 ```
@@ -1668,8 +1668,8 @@ Time should be explicit everywhere.
 Retries:
 
 ```text
-const databaseRetryInitialDelay DurationMilliseconds 50
-const databaseRetryMaximumDelay DurationMilliseconds 500
+storage local immutable databaseRetryInitialDelay DurationMilliseconds 50
+storage local immutable databaseRetryMaximumDelay DurationMilliseconds 500
 
 retryPolicy databaseReadRetryPolicy maxAttempts 3 initialDelay databaseRetryInitialDelay maximumDelay databaseRetryMaximumDelay jitter yes
 useRetry accountLookupCall databaseReadRetryPolicy
@@ -1679,12 +1679,12 @@ Sleep:
 
 ```text
 call retrySleepCall time.sleep
-arg retrySleepCall duration databaseRetryInitialDelay
-arg retrySleepCall cancellation requestCancellationToken
+argument retrySleepCall duration TYPE databaseRetryInitialDelay
+argument retrySleepCall cancellation TYPE requestCancellationToken
 start retrySleepCall
 await retrySleepCall
-bindError retrySleepError SleepError retrySleepCall
-branchIfError retrySleepCall retrySleepFailed
+bind error retrySleepError SleepError retrySleepCall
+branch error source retrySleepCall target retrySleepFailed
 ```
 
 Intervals:
@@ -1772,47 +1772,47 @@ label startGetAccountBalanceHandler
 
 # rationale: Read request cancellation first so every later async call can be tied to client disconnects.
 call requestCancellationTokenReadCall http.requestCancellationToken
-arg requestCancellationTokenReadCall request httpRequest
+argument requestCancellationTokenReadCall request TYPE httpRequest
 run requestCancellationTokenReadCall
-bind requestCancellationToken CancellationToken requestCancellationTokenReadCall
+bind value requestCancellationToken CancellationToken requestCancellationTokenReadCall
 
 # rationale: Parse accountId from the route path before any database work.
-call accountIdParseCall http.pathParameterAsAccountId
-arg accountIdParseCall request httpRequest
-arg accountIdParseCall name "accountId"
+call accountIdParseCall parseAccountIdPathParam
+argument accountIdParseCall request TYPE httpRequest
+argument accountIdParseCall name TYPE "accountId"
 run accountIdParseCall
-bindOk accountId AccountId accountIdParseCall
-bindError accountIdParseError AccountIdParseError accountIdParseCall
-branchIfError accountIdParseCall accountIdParseFailed
+bind ok accountId AccountId accountIdParseCall
+bind error accountIdParseError AccountIdParseError accountIdParseCall
+branch error source accountIdParseCall target accountIdParseFailed
 
 # rationale: Database open is async and must respect request cancellation.
-const databaseOpenTimeout DurationMilliseconds 1000
+storage local immutable databaseOpenTimeout DurationMilliseconds 1000
 call databaseOpenCall database.openConnection
-arg databaseOpenCall database databaseClient
+argument databaseOpenCall database TYPE databaseClient
 timeout databaseOpenCall databaseOpenTimeout
 cancelOn databaseOpenCall requestCancellationToken
 start databaseOpenCall
 await databaseOpenCall
-bindOk databaseConnection DatabaseConnection databaseOpenCall
-bindError databaseOpenError DatabaseOpenError databaseOpenCall
-branchIfError databaseOpenCall databaseOpenFailed
+bind ok databaseConnection DatabaseConnection databaseOpenCall
+bind error databaseOpenError DatabaseOpenError databaseOpenCall
+branch error source databaseOpenCall target databaseOpenFailed
 
 deferAwaitLog databaseConnectionCloseDefer database.closeConnection databaseConnection
 
 # group accountBalanceLookup
 # rationale: Balance lookup is bounded by timeout so one slow database query cannot pin the request forever.
 # timing: accountLookupTimeout should stay below the route-level timeout budget.
-const accountLookupTimeout DurationMilliseconds 2000
+storage local immutable accountLookupTimeout DurationMilliseconds 2000
 call accountBalanceLookupCall database.accounts.findBalance
-arg accountBalanceLookupCall connection databaseConnection
-arg accountBalanceLookupCall accountId accountId
+argument accountBalanceLookupCall connection TYPE databaseConnection
+argument accountBalanceLookupCall accountId TYPE accountId
 timeout accountBalanceLookupCall accountLookupTimeout
 cancelOn accountBalanceLookupCall requestCancellationToken
 start accountBalanceLookupCall
 await accountBalanceLookupCall
-bindOk accountBalance AccountBalance accountBalanceLookupCall
-bindError accountBalanceLookupError AccountLookupError accountBalanceLookupCall
-branchIfError accountBalanceLookupCall accountBalanceLookupFailed
+bind ok accountBalance AccountBalance accountBalanceLookupCall
+bind error accountBalanceLookupError AccountLookupError accountBalanceLookupCall
+branch error source accountBalanceLookupCall target accountBalanceLookupFailed
 # endGroup accountBalanceLookup
 
 # rationale: Build an explicit response record before JSON encoding so schema changes are localized.
@@ -1825,51 +1825,51 @@ fieldSet accountBalanceResponse availableCents availableCents
 fieldSet accountBalanceResponse pendingCents pendingCents
 
 call jsonEncodingCall json.encodeAccountBalanceResponse
-arg jsonEncodingCall value accountBalanceResponse
+argument jsonEncodingCall value TYPE accountBalanceResponse
 run jsonEncodingCall
-bindOk responseBody JsonBytes jsonEncodingCall
-bindError jsonEncodingError JsonEncodingError jsonEncodingCall
-branchIfError jsonEncodingCall jsonEncodingFailed
+bind ok responseBody JsonBytes jsonEncodingCall
+bind error jsonEncodingError JsonEncodingError jsonEncodingCall
+branch error source jsonEncodingCall target jsonEncodingFailed
 
-call successResponseBuildCall http.responseJson
-arg successResponseBuildCall status HttpStatus.Ok
-arg successResponseBuildCall body responseBody
+call successResponseBuildCall buildJsonResponse
+argument successResponseBuildCall status TYPE HttpStatus.Ok
+argument successResponseBuildCall body TYPE responseBody
 run successResponseBuildCall
-bind successResponse HttpResponse successResponseBuildCall
+bind value successResponse HttpResponse successResponseBuildCall
 
-returnValue successResponse
+return value successResponse
 
 label accountIdParseFailed
 call badRequestResponseBuildCall http.responseText
-arg badRequestResponseBuildCall status HttpStatus.BadRequest
-arg badRequestResponseBuildCall body "invalid account id"
+argument badRequestResponseBuildCall status TYPE HttpStatus.BadRequest
+argument badRequestResponseBuildCall body TYPE "invalid account id"
 run badRequestResponseBuildCall
-bind badRequestResponse HttpResponse badRequestResponseBuildCall
-returnValue badRequestResponse
+bind value badRequestResponse HttpResponse badRequestResponseBuildCall
+return value badRequestResponse
 
 label databaseOpenFailed
 call serviceUnavailableResponseBuildCall http.responseText
-arg serviceUnavailableResponseBuildCall status HttpStatus.ServiceUnavailable
-arg serviceUnavailableResponseBuildCall body "database unavailable"
+argument serviceUnavailableResponseBuildCall status TYPE HttpStatus.ServiceUnavailable
+argument serviceUnavailableResponseBuildCall body TYPE "database unavailable"
 run serviceUnavailableResponseBuildCall
-bind serviceUnavailableResponse HttpResponse serviceUnavailableResponseBuildCall
-returnValue serviceUnavailableResponse
+bind value serviceUnavailableResponse HttpResponse serviceUnavailableResponseBuildCall
+return value serviceUnavailableResponse
 
 label accountBalanceLookupFailed
 call accountLookupFailureResponseBuildCall http.responseText
-arg accountLookupFailureResponseBuildCall status HttpStatus.InternalServerError
-arg accountLookupFailureResponseBuildCall body "account balance lookup failed"
+argument accountLookupFailureResponseBuildCall status TYPE HttpStatus.InternalServerError
+argument accountLookupFailureResponseBuildCall body TYPE "account balance lookup failed"
 run accountLookupFailureResponseBuildCall
-bind accountLookupFailureResponse HttpResponse accountLookupFailureResponseBuildCall
-returnValue accountLookupFailureResponse
+bind value accountLookupFailureResponse HttpResponse accountLookupFailureResponseBuildCall
+return value accountLookupFailureResponse
 
 label jsonEncodingFailed
 call jsonEncodingFailureResponseBuildCall http.responseText
-arg jsonEncodingFailureResponseBuildCall status HttpStatus.InternalServerError
-arg jsonEncodingFailureResponseBuildCall body "response encoding failed"
+argument jsonEncodingFailureResponseBuildCall status TYPE HttpStatus.InternalServerError
+argument jsonEncodingFailureResponseBuildCall body TYPE "response encoding failed"
 run jsonEncodingFailureResponseBuildCall
-bind jsonEncodingFailureResponse HttpResponse jsonEncodingFailureResponseBuildCall
-returnValue jsonEncodingFailureResponse
+bind value jsonEncodingFailureResponse HttpResponse jsonEncodingFailureResponseBuildCall
+return value jsonEncodingFailureResponse
 ```
 
 This is longer than JavaScript, but it has radically more local context.

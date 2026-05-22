@@ -14,11 +14,11 @@ generated targets, domain methods, and `c.*` C standard-library functions.
 Example:
 
 ```semanticscript
-const greetingText String "hello"
+storage local immutable greetingText String "hello"
 call writeGreetingCall console.writeLine
-arg writeGreetingCall text greetingText
+argument writeGreetingCall text String greetingText
 run writeGreetingCall
-ignoreOk writeGreetingCall Void
+ignore ok source writeGreetingCall type Void
 ```
 
 Declare the effect:
@@ -65,12 +65,12 @@ internally. Handle it like a fallible call:
 
 ```semanticscript
 call multiplyCall math.checkedMultiplyI64
-arg multiplyCall left leftValue
-arg multiplyCall right rightValue
+argument multiplyCall left I64 leftValue
+argument multiplyCall right I64 rightValue
 run multiplyCall
-bindOk productValue I64 multiplyCall
-bindError multiplyOverflow ArithmeticError multiplyCall
-branchIfError multiplyCall overflowLabel
+bind ok productValue I64 multiplyCall
+bind error multiplyOverflow ArithmeticError multiplyCall
+branch error source multiplyCall target overflowLabel
 ```
 
 ## Floating-Point Math
@@ -147,10 +147,10 @@ when `TypeName` aliases an integer or floating type.
 type CountdownValue I64
 
 call decrementCall CountdownValue.subtractPositiveStep
-arg decrementCall left currentCountdownValue
-arg decrementCall right decrementStep
+argument decrementCall left CountdownValue currentCountdownValue
+argument decrementCall right CountdownValue decrementStep
 run decrementCall
-bind nextCountdownValue CountdownValue decrementCall
+bind value nextCountdownValue CountdownValue decrementCall
 ```
 
 Common integer domain methods include:
@@ -171,13 +171,13 @@ emits a direct LLVM call.
 
 ```semanticscript
 call helperCall writeStandardOutputLine
-arg helperCall text outputText
+argument helperCall text CNullTerminatedByteString outputText
 run helperCall
-bindError helperError ConsoleWriteError helperCall
-branchIfError helperCall helperFailed
+bind error helperError ConsoleWriteError helperCall
+branch error source helperCall target helperFailed
 ```
 
-The argument names in `arg` lines must match the callee's input names for
+The argument names in `argument` lines must match the callee's input names for
 maintainable source. The current compiler dispatches by callee input order.
 
 ## C Standard Library
@@ -185,11 +185,11 @@ maintainable source. The current compiler dispatches by callee input order.
 `c.<function>` routes through `SemanticScript/compiler/libc_registry.py`.
 
 ```semanticscript
-const byteCount CByteCount 64
+storage local immutable byteCount CByteCount 64
 call allocateBufferCall c.malloc
-arg allocateBufferCall size byteCount
+argument allocateBufferCall size CByteCount byteCount
 run allocateBufferCall
-bind allocatedBuffer COpaqueMemoryAddress allocateBufferCall
+bind value allocatedBuffer COpaqueMemoryAddress allocateBufferCall
 ```
 
 The registry covers hosted C library functions across headers such as

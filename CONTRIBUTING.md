@@ -26,6 +26,8 @@ Run these before sending a narrow tooling or docs change:
 
 ```powershell
 python -m compileall -q SemanticScript python
+python -m unittest SemanticScript/formatter/test_semfmt.py -v
+python SemanticScript/formatter/semfmt.py --check SemanticScript/tests/tiny.sem
 python -m unittest SemanticScript/linter/test_semlint.py -v
 python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sscript --parse-only
 python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sem --parse-only

@@ -31,13 +31,14 @@ fallback behavior.
 Hovers need to answer "what does this token mean here?", not "what grammar tag
 matched?"
 
-Useful hover for a const declaration:
+Useful hover for an immutable storage declaration:
 
 ```text
-Constant: zeroValue
+Storage: zeroValue
 Type: CSignedInt32
 Initial value: 0
-Scope: current operation
+Scope: local
+Mutability: immutable
 ```
 
 Useful hover for a call target:
@@ -54,14 +55,15 @@ Result binding:
 Useful hover for a symbol use:
 
 ```text
-Variable: currentOffset
+Storage: currentOffset
 Declared: line 42
 Type: I64
-Mutable: local var
+Scope: local
+Mutability: mutable
 Current use: argument value passed to scanByteCall.offset
 ```
 
-Avoid generic wording like "SemanticScript verb: const" when the line schema gives
+Avoid generic wording like "SemanticScript verb: storage" when the line schema gives
 the actual semantic object.
 
 ## Settings

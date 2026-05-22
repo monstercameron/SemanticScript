@@ -23,18 +23,18 @@ enumCase SaveStatus SaveSucceeded 0
 enumCase SaveStatus SaveFailed 1
 
 call writeJsonCall c.fprintf
-arg writeJsonCall stream saveFileHandle
-arg writeJsonCall format saveFormat
+argument writeJsonCall stream TYPE saveFileHandle
+argument writeJsonCall format TYPE saveFormat
 run writeJsonCall
-ignoreValue writeJsonCall CSignedInt32
-returnValue SaveSucceeded
+ignore value source writeJsonCall type CSignedInt32
+return value SaveSucceeded
 ```
 
 Avoid this shape:
 
 ```semanticscript
-bind writeJsonResult CSignedInt32 writeJsonCall
-returnValue writeJsonResult
+bind value writeJsonResult CSignedInt32 writeJsonCall
+return value writeJsonResult
 ```
 
 That leaks a libc byte count into the operation boundary. A caller or backend may later interpret a nonzero scalar as failure-like control flow.
@@ -55,7 +55,7 @@ The intended fix is one of:
 - Rename/retype the operation so the raw byte/count value is honestly the public result.
 
 Do not declare `Result SomeValue Void` for helpers that cannot actually
-`returnError`. That shape makes callers use fallible syntax for an infallible
+`return error`. That shape makes callers use fallible syntax for an infallible
 operation and can interact badly with the current user-operation ABI, where the
 success payload is the concrete return slot. Use a plain output instead:
 
@@ -64,7 +64,7 @@ output copyStringBuffer CSignedInt64
 ```
 
 `semlint.py` reports `resultVoidErrorWithoutFailurePath` when an operation
-declares `Result A Void` without any `returnError` path.
+declares `Result A Void` without any `return error` path.
 
 ## App Boundary Rule
 
@@ -219,9 +219,9 @@ Avoid this shape for user-editable content:
 ```semanticscript
 storage local immutable itemFormat CNullTerminatedByteString "{\"title\":\"%s\"}\n"
 call writeItemCall c.fprintf
-arg writeItemCall stream fileHandle
-arg writeItemCall format itemFormat
-arg writeItemCall title titleBuffer
+argument writeItemCall stream TYPE fileHandle
+argument writeItemCall format TYPE itemFormat
+argument writeItemCall title TYPE titleBuffer
 run writeItemCall
 ```
 
@@ -262,16 +262,16 @@ Prefer a cursor-based builder:
 ```semanticscript
 storage local mutable writeOffset CSignedInt64 zeroIndex
 call copyChunkCall memory.copy
-arg copyChunkCall destination outputBuffer
-arg copyChunkCall destinationOffset writeOffset
-arg copyChunkCall source chunkBuffer
-arg copyChunkCall byteCount chunkLength
+argument copyChunkCall destination TYPE outputBuffer
+argument copyChunkCall destinationOffset TYPE writeOffset
+argument copyChunkCall source TYPE chunkBuffer
+argument copyChunkCall byteCount TYPE chunkLength
 run copyChunkCall
 call nextOffsetCall math.addI64
-arg nextOffsetCall left writeOffset
-arg nextOffsetCall right chunkLength
+argument nextOffsetCall left TYPE writeOffset
+argument nextOffsetCall right TYPE chunkLength
 run nextOffsetCall
-bind nextOffset CSignedInt64 nextOffsetCall
+bind value nextOffset CSignedInt64 nextOffsetCall
 set local writeOffset nextOffset
 ```
 
@@ -298,10 +298,10 @@ under-allocating or over-allocating:
 storage local immutable todoCapacity CSignedInt64 128
 storage local immutable doneFlagByteWidth CSignedInt64 1
 call todoArrayBytesCall math.multiplyI64
-arg todoArrayBytesCall left todoCapacity
-arg todoArrayBytesCall right doneFlagByteWidth
+argument todoArrayBytesCall left TYPE todoCapacity
+argument todoArrayBytesCall right TYPE doneFlagByteWidth
 run todoArrayBytesCall
-bind todoArrayBytes CByteCount todoArrayBytesCall
+bind value todoArrayBytes CByteCount todoArrayBytesCall
 ```
 
 For scalar state, keep widths consistent across direct assignment. `semlint.py`
@@ -320,7 +320,7 @@ passed as the corresponding semantic argument.
 
 For C-style APIs that report failure through a returned sentinel or status,
 bind the return value and check it, or explicitly discard it with
-`ignoreValue`. Do not add `bindError`/`branchIfError` to calls that are not
+`ignore value`. Do not add `bind error`/`branch error` to calls that are not
 Result-shaped.
 
 For owned resources, executable code needs executable cleanup. Use explicit
@@ -338,7 +338,7 @@ valid failure contract.
 
 For C heap allocators, `semlint.py` reports SS3305
 `memoryDiscipline.uncheckedHeapAllocation` unless each `c.malloc`, `c.calloc`,
-or `c.realloc` call has both `bindError` and `branchIfError`.
+or `c.realloc` call has both `bind error` and `branch error`.
 
 Partial setup failures must close any handles already opened. For SQLite,
 that means a successful `sqlite3_open` followed by a failed schema creation,
@@ -421,10 +421,10 @@ When an operation returns an enum-typed status, return enum cases at the
 operation boundary:
 
 ```semanticscript
-returnValue SaveWriteFailed
+return value SaveWriteFailed
 ```
 
-Do not return raw repr values such as `returnValue 2`. `semlint.py` reports
+Do not return raw repr values such as `return value 2`. `semlint.py` reports
 `enumReturnUsesRawValue` for that shape because it erases the closed status
 domain that the enum was introduced to provide.
 
@@ -444,7 +444,7 @@ For intentional integer width changes, call the conversion target directly:
 
 ```semanticscript
 call widenCall math.signExtendCSignedInt32ToCSignedInt64
-arg widenCall inputValue statusCode
+argument widenCall inputValue TYPE statusCode
 ```
 
 Keep byte and flag helpers byte-shaped. A parser that reads a JSON `0`/`1`
@@ -639,13 +639,13 @@ the source-level call expresses the enum, not the integer width.
 ```semanticscript
 # Prefer:
 call sameStatusCall SaveTodosStatus.equal
-arg sameStatusCall left titleWriteStatus
-arg sameStatusCall right SaveSucceeded
+argument sameStatusCall left TYPE titleWriteStatus
+argument sameStatusCall right TYPE SaveSucceeded
 
 # Avoid:
 call sameStatusCall math.equalCSignedInt32
-arg sameStatusCall left titleWriteStatus
-arg sameStatusCall right SaveSucceeded
+argument sameStatusCall left TYPE titleWriteStatus
+argument sameStatusCall right TYPE SaveSucceeded
 ```
 
 `semlint.py` reports `SS4405 styleDiscipline.enumReprComparison` (T4 style,
@@ -655,22 +655,22 @@ The fix candidate carries the exact `call <name> <EnumName>.<method>` line
 to paste.
 
 **2. Discarding enum returns.** An enum-typed return advertises a closed set
-of distinct outcomes. `ignoreValue` claims all cases are interchangeable;
+of distinct outcomes. `ignore value` claims all cases are interchangeable;
 that claim must be load-bearing, not accidental.
 
 ```semanticscript
 # Prefer one of:
-bind saveStatus SaveTodosStatus saveCall
+bind value saveStatus SaveTodosStatus saveCall
 # rationale: every SaveTodosStatus case is acceptable here because the
 # render frame already shows save state from the previous tick.
-ignoreValue saveCall SaveTodosStatus
+ignore value source saveCall type SaveTodosStatus
 
 # Avoid bare:
-ignoreValue saveCall SaveTodosStatus
+ignore value source saveCall type SaveTodosStatus
 ```
 
 `semlint.py` reports `SS4406 styleDiscipline.enumResultDiscarded` (T4
-style, info severity) when an `ignoreValue` row discards a value typed as
+style, info severity) when an `ignore value` row discards a value typed as
 a declared enum. The diagnostic suggests either binding the result and
 branching on the cases, or adding a `# rationale:` line justifying why all
 cases are acceptable at the discard site.
@@ -842,7 +842,7 @@ Before optimizing a sequence, identify the semantic boundary:
 5. Repeated `storage local immutable` across operations is a hoist signal, not a convenience.
 6. State-bearing integer storage that takes a small named set of values is an enum waiting to be declared.
 7. Enum comparisons use `EnumName.equal` (and the comparison family), not `math.equal*` directly.
-8. Discarded enum returns require a `# rationale:` or a bind site, not silent `ignoreValue`.
+8. Discarded enum returns require a `# rationale:` or a bind site, not silent `ignore value`.
 
 This keeps optimized code patchable by agents and predictable for compiler lowering.
 
@@ -913,16 +913,16 @@ The guard pattern:
 
 ```semanticscript
 call queryReadCall http.requestQueryParam
-arg queryReadCall request request
-arg queryReadCall name nameQueryName
+argument queryReadCall request TYPE request
+argument queryReadCall name TYPE nameQueryName
 run queryReadCall
-bind queryValue CNullTerminatedByteString queryReadCall
+bind value queryValue CNullTerminatedByteString queryReadCall
 
 call queryMissingCheckCall pointer.isNull
-arg queryMissingCheckCall pointer queryValue
+argument queryMissingCheckCall pointer TYPE queryValue
 run queryMissingCheckCall
-bind queryMissing Bool queryMissingCheckCall
-branchIf queryMissing queryMissingPath
+bind value queryMissing Bool queryMissingCheckCall
+branch if condition queryMissing target queryMissingPath
 
 # happy path: queryValue is non-null and safe to pass to a response body
 ```
@@ -963,14 +963,14 @@ writer returns:
 
 ```semanticscript
 call responseCall http.responseText
-arg responseCall response response
-arg responseCall status okStatus
-arg responseCall body scratchBody
+argument responseCall response TYPE response
+argument responseCall status TYPE okStatus
+argument responseCall body TYPE scratchBody
 run responseCall
 call scratchFreeCall c.free
-arg scratchFreeCall pointer scratchBody
+argument scratchFreeCall pointer TYPE scratchBody
 run scratchFreeCall
-returnValue okStatus
+return value okStatus
 ```
 
 That shape is safe only if the response writer has already copied `scratchBody`
@@ -1087,7 +1087,7 @@ this compiler.
 
 ## Storage Form Hygiene
 
-`const NAME TYPE VALUE` and `var NAME TYPE VALUE` are legacy
+`const NAME TYPE VALUE` and `var NAME TYPE VALUE` are removed
 shorthands; new code should use the explicit storage forms (`storage
 module immutable`, `storage local immutable`, `storage local mutable`,
 `storage module mutable`, `sharedState process mutable`). The explicit
@@ -1107,7 +1107,7 @@ CSignedInt32]`) so a handler with `req`/`resp` *compiles and runs*,
 but every other name-based lookup in the toolchain breaks silently:
 
 - `semlint`'s SS3603 transitive-body walk resolves the response slot
-  by looking for `arg <call> body <slot>` against the `body` input
+  by looking for `argument <call> body <type> <slot>` against the `body` input
   name.
 - `narrative_citations_for_operation` walks per-input narrative edges
   by input name.
@@ -1160,7 +1160,7 @@ Middleware ops bound through `routeMiddleware` declare:
 ```semanticscript
 output gauntletMiddleware MiddlewareControl
 ...
-returnValue continueMiddlewareControl
+return value continueMiddlewareControl
 ```
 
 `MiddlewareControl` is a compiler-registered enum backed by `CSignedInt32`.
@@ -1223,18 +1223,18 @@ When you add a new `http.*` target to the runtime, update all three
 sites in lockstep. The drift test will tell you if you missed one;
 don't silence the test, fix the drift.
 
-## Void Output Operations Use `returnVoid`
+## Void Output Operations Use `return void`
 
 The user-op ABI returns i32 even for operations declared
 `output OP Void` / `output OP CVoid` — the type system maps Void to
 i32 at the return slot, and codegen tolerates any sentinel value.
-That tolerance has a cost: a Void op that ends with `returnValue
+That tolerance has a cost: a Void op that ends with `return value
 someI32Zero` says one thing at the output line ("no caller-actionable
 value") and another at the return site ("here is an integer
 sentinel"), and a future agent reading either half in isolation has
 to recognise the ABI quirk to reconcile them.
 
-`returnVoid` is the explicit form:
+`return void` is the explicit form:
 
 ```semanticscript
 operation addCommonHeaders
@@ -1248,19 +1248,19 @@ purpose addCommonHeaders "stamp diagnostic headers; no caller-actionable status"
 invariant addCommonHeaders "Void output means the op never reports a recoverable error"
 label startAddCommonHeaders
 # ... header writes ...
-returnVoid
+return void
 ```
 
 Codegen still emits the i32-zero sentinel under the hood, but the
 source matches the semantic contract. The compiler rejects
-`returnVoid` on non-Void outputs so the verb cannot become a backdoor
+`return void` on non-Void outputs so the verb cannot become a backdoor
 around the result-contract checker.
 
 `semlint` SS3612 `voidReturnValueShouldBeReturnVoid` flags Void-output
-ops that still use `returnValue NAME`. The fix candidate is
+ops that still use `return value NAME`. The fix candidate is
 auto-applicable: drop the `storage local immutable zeroSentinel
-CSignedInt32 0` line and rewrite `returnValue zeroSentinel` →
-`returnVoid`. SS3612 is WARNING by default (the legacy form compiles
+CSignedInt32 0` line and rewrite `return value zeroSentinel` →
+`return void`. SS3612 is WARNING by default (the older form may still compile
 correctly); `--strict` promotes it to fatal for CI pipelines that
 want source-level honesty enforced.
 
@@ -1316,9 +1316,9 @@ safe — the native runtime defaults a NULL `contentType` to
 `"application/octet-stream"`. So this pattern is well-defined:
 
 ```semanticscript
-bind uploadFileContentType CNullTerminatedByteString uploadFileContentTypeReadCall
+bind value uploadFileContentType CNullTerminatedByteString uploadFileContentTypeReadCall
 # safe to pass straight to http.responseBytes — runtime defaults NULL → octet-stream
-arg uploadFileBytesResponseCall contentType uploadFileContentType
+argument uploadFileBytesResponseCall contentType TYPE uploadFileContentType
 ```
 
 What is NOT safe is using `uploadFileContentType` for anything OTHER

@@ -55,7 +55,7 @@ toward SemanticScript API operations as they become available.
 
 ## Coverage
 
-The current tree has 33 standard modules plus the top-level `standard` relay.
+The current tree has 35 standard modules plus the top-level `standard` relay.
 
 | file | category | operation blocks |
 | --- | --- | ---: |
@@ -92,7 +92,7 @@ surface:
   operations with those names without colliding with libc glue;
 - typed user-operation returns derived from `output` lines, including pointer,
   integer, and float success values;
-- typed `returnOk`, `returnError`, and `returnValue` coercion;
+- typed `return ok`, `return error`, and `return value` coercion;
 - user-operation error predicates that match the return shape (`0`, null, or
   `0.0` as the success sentinel);
 - `math.intToFloat` and `math.floatToInt` lowering for pure-SemanticScript float helpers.

@@ -35,21 +35,22 @@ parameters for tools.
 C role types keep ABI intent visible at the call site:
 
 ```semanticscript
-const bufferByteCount CByteCount 4096
-const fileOffset CFileByteOffset 0
-const monotonicDelay DurationMilliseconds 50
+storage local immutable bufferByteCount CByteCount 4096
+storage local immutable fileOffset CFileByteOffset 0
+storage local immutable monotonicDelay DurationMilliseconds 50
 ```
 
-## Constants
+## Immutable Storage Values
 
 ```semanticscript
-const retryLimit I64 3
-const newlineText String "\n"
-const useStrictJson Bool true
+storage module immutable retryLimit I64 3
+storage local immutable newlineText String "\n"
+storage local immutable useStrictJson Bool true
 ```
 
-`const` can appear at top level or inside an operation. Operation-local consts
-take precedence over module consts in that operation.
+`storage module immutable` declares a module-level value. `storage local
+immutable` declares an operation-local value. Local values take precedence over
+module values in that operation.
 
 Boolean tokens accepted for `Bool` values:
 
@@ -67,8 +68,8 @@ domainLiteralSource signalKillNumber posix.SIGKILL
 domainLiteralTrust signalKillNumber trustedStaticLiteral
 ```
 
-The compiler registers `domainLiteral NAME TYPE VALUE` as a module-scope const.
-The metadata lines are preserved for tooling.
+The compiler registers `domainLiteral NAME TYPE VALUE` as an immutable
+module-scope value. The metadata lines are preserved for tooling.
 
 ## External Literals
 
@@ -134,4 +135,3 @@ typeLiteralTerminator AccountId nullByte
 
 Only some of this metadata affects current codegen. It should still be kept
 accurate because linters, hovers, and downstream tooling use it as hard context.
-

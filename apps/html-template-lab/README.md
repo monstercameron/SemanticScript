@@ -1,6 +1,6 @@
 # HTML Template Lab
 
-First-class HTML syntax demo that renders a complete HTML document to stdout. This is the small, readable showcase for `html template`, `html hole`, `html body`, and module-split HTML fragments.
+First-class HTML syntax demo that renders a complete HTML document to stdout. This is the small, readable showcase for `html template`, inferred bare/dotted holes, `html body template`, and module-split HTML fragments.
 
 ## Source Layout
 
@@ -30,5 +30,5 @@ Expected output starts with `<!doctype html>` and includes the `TaskForge TUI HT
 ## Why This Stays
 
 - It is compact enough to read end to end.
-- It shows the revised HTML hole model without the removed `html parameter` layer.
+- It shows the revised inferred-hole model without a separate declared-parameter layer.
 - It exercises multi-module build registration without the noise of HTTP, sqlite, or auth.

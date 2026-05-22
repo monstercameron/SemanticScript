@@ -30,19 +30,20 @@ Every call is a named object.
 
 ```semanticscript
 call invoiceTotalCall math.addI64
-arg invoiceTotalCall left invoiceSubtotal
-arg invoiceTotalCall right taxAmount
+argument invoiceTotalCall left I64 invoiceSubtotal
+argument invoiceTotalCall right I64 taxAmount
 run invoiceTotalCall
-bind invoiceTotal I64 invoiceTotalCall
+bind value invoiceTotal I64 invoiceTotalCall
 ```
 
 Lifecycle:
 
 1. `call CALL TARGET` creates the call object.
-2. `arg CALL ARG_NAME VALUE` attaches named argument edges.
+2. `argument CALL ARG_NAME TYPE VALUE` attaches named argument edges.
 3. `timeout`, `cancelOn`, or `useRetry` attach policies when needed.
 4. `run CALL`, `start CALL`, or `submitWork WORK POOL` executes.
-5. `bind`, `bindOk`, `bindError`, `ignoreOk`, or `ignoreValue` accounts for
+5. `bind value`, `bind ok`, `bind error`, `ignore ok`, `ignore value`, or
+   `ignore void` accounts for
    the result.
 
 The compiler records call result SSA by call name so later lines can bind or
@@ -52,28 +53,28 @@ branch on it.
 
 ```semanticscript
 operation addTwoValues
-input addTwoValues leftValue I64
-input addTwoValues rightValue I64
-output addTwoValues I64
+input operation addTwoValues leftValue I64
+input operation addTwoValues rightValue I64
+output operation addTwoValues I64
 
 call sumCall math.addI64
-arg sumCall left leftValue
-arg sumCall right rightValue
+argument sumCall left I64 leftValue
+argument sumCall right I64 rightValue
 run sumCall
-bind sumValue I64 sumCall
-returnValue sumValue
+bind value sumValue I64 sumCall
+return value sumValue
 
 operation main
-output main ExitCode
+output operation main ExitCode
 
-const leftInput I64 40
-const rightInput I64 2
+storage local immutable leftInput I64 40
+storage local immutable rightInput I64 2
 call answerCall addTwoValues
-arg answerCall leftValue leftInput
-arg answerCall rightValue rightInput
+argument answerCall leftValue I64 leftInput
+argument answerCall rightValue I64 rightInput
 run answerCall
-bind answerValue I64 answerCall
-returnValue answerValue
+bind value answerValue I64 answerCall
+return value answerValue
 ```
 
 For a same-file user operation call:
@@ -85,23 +86,24 @@ For a same-file user operation call:
 - `Void` currently uses an `i32` zero sentinel in ABI positions that need a
   concrete value.
 
-## Variables
+## Mutable Storage
 
 ```semanticscript
-var runningTotal I64 0
+storage local mutable runningTotal I64 0
 
 call nextTotalCall math.addI64
-arg nextTotalCall left runningTotal
-arg nextTotalCall right stepAmount
+argument nextTotalCall left I64 runningTotal
+argument nextTotalCall right I64 stepAmount
 run nextTotalCall
-bind nextTotal I64 nextTotalCall
+bind value nextTotal I64 nextTotalCall
 set local runningTotal nextTotal
 ```
 
-`var NAME TYPE VALUE` allocates a mutable local slot. Reading the variable loads
-its current value. `set local NAME VALUE` stores into that local slot.
+`storage local mutable NAME TYPE VALUE` allocates a mutable local slot. Reading
+the name loads its current value. `set local NAME VALUE` stores into that local
+slot.
 
-Prefer `const` unless mutation is the real behavior being expressed.
+Prefer immutable storage unless mutation is the real behavior being expressed.
 
 ## Control Flow
 
@@ -111,40 +113,42 @@ Labels are named basic blocks.
 label loopStart
 
 call doneCheckCall math.greaterThanI64
-arg doneCheckCall left currentIndex
-arg doneCheckCall right finalIndex
+argument doneCheckCall left I64 currentIndex
+argument doneCheckCall right I64 finalIndex
 run doneCheckCall
-bind isDone Bool doneCheckCall
-branchIf isDone loopDone
+bind value isDone Bool doneCheckCall
+branch if condition isDone target loopDone
 
 # body...
-branch loopStart
+jump target loopStart
 
 label loopDone
-returnValue currentIndex
+return value currentIndex
 ```
 
 Schemas:
 
 ```text
 label NAME
-branch LABEL
-branchIf CONDITION LABEL
-branchIfError CALL LABEL
-returnOk VALUE
-returnError VALUE
-returnValue VALUE
-returnVoid
+jump target LABEL
+branch if condition CONDITION target LABEL
+branch error source CALL target LABEL
+branch else target LABEL
+return ok VALUE
+return error VALUE
+return value VALUE
+return void
 ```
 
-`branchIf` jumps when the condition is true and falls through otherwise.
-Two-target branch syntax is legacy and should not be used.
+`branch if` jumps when the condition is true. Use `branch else` for the
+explicit alternate target when a chain should not fall through.
 
-Use `returnVoid` for operations declared `output OP Void` or `output OP CVoid`.
+Use `return void` for operations declared `output operation OP Void` or
+`output operation OP CVoid`.
 The user-operation ABI still lowers that path to the internal zero sentinel, but
 the source no longer has to carry a fake `CSignedInt32` value just to satisfy the
-ABI. `returnVoid` is rejected on non-Void outputs; non-Void operations should
-continue to use `returnValue`, `returnOk`, or `returnError` as appropriate.
+ABI. `return void` is rejected on non-Void outputs; non-Void operations should
+use `return value`, `return ok`, or `return error` as appropriate.
 
 ## JSON CRUD Dataflow
 
@@ -161,74 +165,74 @@ output renameFirstTodoHandler Result JsonText JsonAccessError
 effect renameFirstTodoHandler read json.document.tree
 effect renameFirstTodoHandler write json.document.tree
 
-const documentCapacity JsonCapacityBytes 4096
-const scratchCapacity JsonCapacityBytes 4096
-const todosPath JsonPath ".todos"
-const firstTodoIndex I64 0
-const titleField JsonFieldName "title"
-const replacementTitle JsonStringValue "ship json"
+storage local immutable documentCapacity JsonCapacityBytes 4096
+storage local immutable scratchCapacity JsonCapacityBytes 4096
+storage local immutable todosPath JsonPath ".todos"
+storage local immutable firstTodoIndex I64 0
+storage local immutable titleField JsonFieldName "title"
+storage local immutable replacementTitle JsonStringValue "ship json"
 
 call parseBodyCall json.createDocument
-arg parseBodyCall jsonText requestBody
-arg parseBodyCall capacityBytes documentCapacity
+argument parseBodyCall jsonText JsonText requestBody
+argument parseBodyCall capacityBytes JsonCapacityBytes documentCapacity
 run parseBodyCall
-bindOk document JsonDocument parseBodyCall
-bindError parseError JsonAccessError parseBodyCall
-branchIfError parseBodyCall parseFailed
+bind ok document JsonDocument parseBodyCall
+bind error parseError JsonAccessError parseBodyCall
+branch error source parseBodyCall target parseFailed
 defer destroyDocumentDefer json.destroyDocument document
 
 call todosCursorCall json.cursorAtPath
-arg todosCursorCall document document
-arg todosCursorCall path todosPath
+argument todosCursorCall document JsonDocument document
+argument todosCursorCall path JsonPath todosPath
 run todosCursorCall
-bindOk todosCursor JsonCursor todosCursorCall
-bindError todosCursorError JsonAccessError todosCursorCall
-branchIfError todosCursorCall todosCursorFailed
+bind ok todosCursor JsonCursor todosCursorCall
+bind error todosCursorError JsonAccessError todosCursorCall
+branch error source todosCursorCall target todosCursorFailed
 
 call firstTodoCall json.arrayElementAt
-arg firstTodoCall document document
-arg firstTodoCall cursor todosCursor
-arg firstTodoCall index firstTodoIndex
+argument firstTodoCall document JsonDocument document
+argument firstTodoCall cursor JsonCursor todosCursor
+argument firstTodoCall index I64 firstTodoIndex
 run firstTodoCall
-bindOk firstTodoCursor JsonCursor firstTodoCall
-bindError firstTodoError JsonAccessError firstTodoCall
-branchIfError firstTodoCall firstTodoFailed
+bind ok firstTodoCursor JsonCursor firstTodoCall
+bind error firstTodoError JsonAccessError firstTodoCall
+branch error source firstTodoCall target firstTodoFailed
 
 call setTitleCall json.setObjectFieldString
-arg setTitleCall document document
-arg setTitleCall cursor firstTodoCursor
-arg setTitleCall fieldName titleField
-arg setTitleCall value replacementTitle
+argument setTitleCall document JsonDocument document
+argument setTitleCall cursor JsonCursor firstTodoCursor
+argument setTitleCall fieldName JsonFieldName titleField
+argument setTitleCall value JsonStringValue replacementTitle
 run setTitleCall
-ignoreOk setTitleCall CSignedInt32
-bindError setTitleError JsonAccessError setTitleCall
-branchIfError setTitleCall setTitleFailed
+ignore ok source setTitleCall type CSignedInt32
+bind error setTitleError JsonAccessError setTitleCall
+branch error source setTitleCall target setTitleFailed
 
 call serializeCall json.serializeDocument
-arg serializeCall document document
-arg serializeCall scratch scratch
-arg serializeCall scratchCapacity scratchCapacity
+argument serializeCall document JsonDocument document
+argument serializeCall scratch JsonScratchBuffer scratch
+argument serializeCall scratchCapacity JsonCapacityBytes scratchCapacity
 run serializeCall
-bindOk responseJson JsonText serializeCall
-bindError serializeError JsonAccessError serializeCall
-branchIfError serializeCall serializeFailed
+bind ok serializedJsonText JsonText serializeCall
+bind error serializeError JsonAccessError serializeCall
+branch error source serializeCall target serializeFailed
 
-returnOk responseJson
+return ok serializedJsonText
 
 label parseFailed
-returnError parseError
+return error parseError
 
 label todosCursorFailed
-returnError todosCursorError
+return error todosCursorError
 
 label firstTodoFailed
-returnError firstTodoError
+return error firstTodoError
 
 label setTitleFailed
-returnError setTitleError
+return error setTitleError
 
 label serializeFailed
-returnError serializeError
+return error serializeError
 ```
 
 The important dataflow property is that every cursor produced by a fallible
@@ -242,8 +246,8 @@ both patterns with `SS3620` and `SS3621`.
 Ignoring a value is explicit:
 
 ```semanticscript
-ignoreOk writeGreetingCall Void
-ignoreValue metricsFlushCall I64
+ignore ok source writeGreetingCall type Void
+ignore value source metricsFlushCall type I64
 ```
 
 Use these only when the discard is a real part of the contract. Fallible calls
