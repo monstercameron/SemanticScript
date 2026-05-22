@@ -6546,7 +6546,10 @@ class Codegen:
                 wait_error,
                 name=f"{block_prefix}_{case_index}_{call_name}_selectable")
 
-        def emit_await_select(wait_name, cases, done_label, done_lineno, lineno):
+        def validate_await_select_source(
+            wait_name, cases, done_label, done_lineno, lineno,
+            seen_wait_set_case_calls=None,
+        ):
             if not cases:
                 raise ValueError(
                     f"line {lineno}: await {wait_name} requires at least one "
@@ -6564,7 +6567,7 @@ class Codegen:
                     f"line {lineno}: await {wait_name} done label "
                     f"`{done_label}` is not declared")
             done_label_line = declared_label_lines.get(done_label)
-            if done_label_line is not None and done_label_line <= lineno:
+            if done_label_line is not None and done_label_line <= done_lineno:
                 raise ValueError(
                     f"line {lineno}: await {wait_name} done label "
                     f"`{done_label}` must be declared after its done row")
@@ -6575,6 +6578,16 @@ class Codegen:
                     raise ValueError(
                         f"line {case_lineno}: duplicate await case `{call_name}` "
                         f"for wait set `{wait_name}`")
+                if seen_wait_set_case_calls is not None:
+                    previous_case = seen_wait_set_case_calls.get(call_name)
+                    if previous_case is not None:
+                        previous_wait_name, previous_case_lineno = previous_case
+                        raise ValueError(
+                            f"line {case_lineno}: await {wait_name} case "
+                            f"`{call_name}` was already awaited or consumed "
+                            "by an earlier wait-set case "
+                            f"`await {previous_wait_name}` on line "
+                            f"{previous_case_lineno}")
                 if call_name not in declared_call_names:
                     raise ValueError(
                         f"await {wait_name}: case references unknown call "
@@ -6639,6 +6652,9 @@ class Codegen:
                         f"multiple cases; first used on line "
                         f"{previous_target_lineno}")
                 seen_case_calls.add(call_name)
+                if seen_wait_set_case_calls is not None:
+                    seen_wait_set_case_calls[call_name] = (
+                        wait_name, case_lineno)
                 seen_case_target_labels[target_label] = case_lineno
             for target_label, case_lineno in seen_case_target_labels.items():
                 for row_verb, row_args, row_ln in op.lines:
@@ -6680,6 +6696,36 @@ class Codegen:
                     f"`{done_label}` may only be reached from that done row; "
                     f"also referenced by `{row_verb}` on line {row_ln}")
 
+        def validate_await_wait_sets_before_lowering():
+            seen_wait_set_case_calls = {}
+            index = 0
+            while index < len(op.lines):
+                row_verb, row_args, row_ln = op.lines[index]
+                index += 1
+                if row_verb == "await":
+                    await_cases, done_label, done_lineno, next_index = collect_await_cases(index)
+                    if await_cases or done_label is not None:
+                        if len(row_args) != 1:
+                            raise ValueError(
+                                f"line {row_ln}: await wait set requires: await NAME")
+                        validate_await_select_source(
+                            row_args[0],
+                            await_cases,
+                            done_label,
+                            done_lineno,
+                            row_ln,
+                            seen_wait_set_case_calls,
+                        )
+                        index = next_index
+                    continue
+                if row_verb in {"case", "done"}:
+                    raise ValueError(
+                        f"line {row_ln}: `{row_verb}` must immediately follow "
+                        "an `await NAME` wait-set row")
+
+        def emit_await_select(wait_name, cases, done_label, done_lineno, lineno):
+            validate_await_select_source(
+                wait_name, cases, done_label, done_lineno, lineno)
             wait_name_use_count = await_select_name_counts.get(wait_name, 0)
             await_select_name_counts[wait_name] = wait_name_use_count + 1
             block_prefix = (
@@ -6791,6 +6837,8 @@ class Codegen:
             dead_block = fn.append_basic_block(f"after_{block_prefix}_await_select")
             builder.position_at_end(dead_block)
             builder.unreachable()
+
+        validate_await_wait_sets_before_lowering()
 
         line_index = 0
         while line_index < len(op.lines):
