@@ -19,11 +19,16 @@ HTTP/runtime surface.
   fields, audit redaction rules, metrics label rules, and `/api/v1` versioning.
 - Middleware reads `X-Request-Id` and reflects it as a response header, falling
   back to `req_runtime_header_unavailable`.
-- Body-size check in the login handler using `http.requestBodyLength`.
+- Body-size checks on registered JSON write routes using
+  `http.requestBodyLength`.
+- Content-type checks on registered JSON write routes.
+- `POST /api/v1/auctions` requires `Idempotency-Key` before returning the
+  fail-closed authorization envelope.
 - Demo auth flow: JSON login body parsing, bcrypt verification for the seeded
-  `auctioneer` account, HS256 access-token signing/verification, process-local
-  bcrypt-hashed refresh-token rotation, bearer session success/failure, logout,
-  and post-logout revocation.
+  `auctioneer` account, bcrypt 72-byte input precheck, HS256 access-token
+  signing with required arena claims, required-claim verification,
+  process-local bcrypt-hashed refresh-token rotation, bearer session
+  success/failure, logout, and post-logout revocation.
 - Oversized login bodies are rejected by route code with `413
   payload_too_large` and the normal API headers/envelope.
 - `standard.jwt` owns the HS256 runtimeBinding wrappers and declares the native
@@ -36,8 +41,9 @@ HTTP/runtime surface.
   `src/routes.sem`, but this app has not registered the auction/chat handlers
   or backed them with persistence yet.
 - Production JWT hardening still needs environment/config secret loading,
-  typed claim validation, expiration checks, and an asymmetric-key upgrade path.
-  The current executable access token is HS256-signed and verified.
+  runtime-clock expiration checks, denylist persistence, and an asymmetric-key
+  upgrade path. The current executable access token is HS256-signed and checked
+  for required issuer/audience/subject/role/scope claim presence.
 - The executable auth path uses native bcrypt for password verification and
   refresh-token hashing, but still needs SQLite user/session lookup, dummy
   verify timing equalization for unknown users, durable refresh-token rows, rate
@@ -53,9 +59,7 @@ HTTP/runtime surface.
   wired.
 - Request duration measurement requires a monotonic clock API that can be read at
   middleware start and route finish.
-- Strict JSON write-route content-type validation needs reliable nullable header
-  comparison helpers and route-level middleware branching.
-- Command-route idempotency needs canonical request hashing plus SQLite
+- Command-route idempotency still needs canonical request hashing plus SQLite
   `idempotency_keys` reads/writes in the same transaction as state changes.
 - Audit writes need the SQLite transaction helper and route-level actor context;
   the contract names required fields and redaction rules, but no durable insert
@@ -105,20 +109,19 @@ Not safe to mark fully complete yet:
   middleware.
 - Method-not-allowed/not-found for arbitrary paths. The native dispatcher owns
   unmatched route behavior; `apiNotFoundHandler` exists only as an explicit route.
-- Body-size enforcement for all write routes. Only the login handler checks
-  length today.
-- Content-type validation. Contract is declared, but executable validation is not
-  composed.
-- Idempotency enforcement. Contract and error envelopes are declared, but
-  request hashing, replay lookup, conflict detection, and transactional writes
-  are not executable yet.
-- Route param extraction for `:auctionId`. Blocked on dynamic dispatcher support.
+- Body-size enforcement for future dynamic write routes. Registered write routes
+  check length today.
+- Full idempotency enforcement. Registered command writes require the header,
+  but request hashing, replay lookup, conflict detection, and transactional
+  writes are not executable yet.
+- Auction/chat dynamic handlers. Route-param extraction exists, but handlers and
+  persistence integration are not registered yet.
 - Request duration measurement and structured per-route logs. Contract fields
   are declared, but executable logging is blocked on clock and structured
   logging composition.
 - Production auth hardening. Demo auth endpoints execute with HS256 JWT
   verification and process-local hashed refresh-token rotation, but durable
-  user/session storage, secret loading, typed claim validation, rate limiting,
-  and auth audit rows remain open.
+  user/session storage, secret loading, runtime-clock claim validation, rate
+  limiting, and auth audit rows remain open.
 - Transaction helper, rollback behavior, and startup schema readiness check.
   Schema text exists, but the runner is not wired.

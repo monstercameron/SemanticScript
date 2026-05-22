@@ -39,8 +39,10 @@ Request ids:
 
 - clients should send `X-Request-Id`
 - accepted request ids are bounded to 128 bytes by contract
-- the same request id must be echoed in `X-Request-Id` and the JSON envelope
-- missing ids currently fall back to `req_runtime_header_unavailable`
+- the same request id is echoed in `X-Request-Id`
+- JSON envelope bodies currently use `req_runtime_header_unavailable` until
+  dynamic envelope formatting is wired across all handlers
+- missing request ids fall back to `req_runtime_header_unavailable`
 
 JSON write routes must require:
 

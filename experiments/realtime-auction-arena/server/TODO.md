@@ -8,14 +8,16 @@ task explicitly says "contract".
 Current server status: the native API shell builds and runs, health/readiness,
 metrics, API index, empty auction listing, stable envelopes, request-id echo,
 common runtime headers, 404 envelope, bcrypt-backed demo login, HS256 bearer
-session success, bad-signature rejection, stale-token rejection after refresh,
-refresh-token rotation, refresh replay rejection, logout revocation,
-post-logout unauthorized session response, oversized-body `413` responses,
+session success with required static claim checks, bad-signature rejection,
+stale-token rejection after refresh, refresh-token rotation, refresh replay
+rejection, logout revocation, post-logout unauthorized session response,
+bcrypt's 72-byte password guard, unsupported media-type `415` responses,
+oversized-body `413` responses, idempotency-key presence on command writes,
 fail-closed auction writes, and bootstrap/runtime-gap metrics are verified by
 the Python API harnesses. Production secret loading, durable hashed
-refresh-token persistence, SQLite persistence, dynamic auction routes, SSE
-replay, chat routes, request logging, audit writes, and runtime-backed metrics
-are not working yet.
+refresh-token persistence, SQLite runtime integration, auction mutation
+handlers, SSE replay, chat routes, request logging, audit writes, and
+runtime-backed metrics are not working yet.
 
 ## Verified Working Runtime
 
@@ -40,9 +42,14 @@ are not working yet.
 - [x] Serve `GET /api/v1/session` as status `200` with seeded auctioneer
       principal data when the active bearer token is supplied.
 - [x] Serve `POST /api/v1/auctions` as status `403` with stable error code
-      `forbidden` until roles and transactional writes are implemented.
+      `forbidden` after the required `Idempotency-Key` header is present,
+      until roles and transactional writes are implemented.
+- [x] Serve command writes missing `Idempotency-Key` as status `400` with
+      stable error code `missing_idempotency_key`.
 - [x] Serve `POST /api/v1/auth/login` as status `401` with stable error code
       `invalid_credentials` for bad credentials.
+- [x] Serve JSON write routes with non-JSON `Content-Type` as status `415`
+      with stable error code `unsupported_media_type`.
 - [x] Serve `POST /api/v1/auth/login` as status `200` for the seeded
       `auctioneer` account after bcrypt verification.
 - [x] Serve `POST /api/v1/auth/refresh` as status `200` for the current
@@ -53,6 +60,9 @@ are not working yet.
       `python experiments/realtime-auction-arena/server/tests/e2e_api_smoke.py`.
 - [x] Serve oversized `POST /api/v1/auth/login` bodies as status `413` with
       stable error code `payload_too_large`.
+- [x] Reject login passwords longer than bcrypt's 72-byte input boundary.
+- [x] Assert issued access JWTs include issuer, audience, subject, role,
+      scopes, expiration, issued-at, not-before, and token id claims.
 
 ## Verified Server Contracts
 
@@ -78,7 +88,7 @@ are not working yet.
 ## P0 - Make Auth Actually Work
 
 - [x] Add a real bcrypt adapter or stdlib binding used by the server runtime.
-- [ ] Enforce bcrypt's 72-byte password input limit in the live login path.
+- [x] Enforce bcrypt's 72-byte password input limit in the live login path.
 - [x] Add base64url encode support for token material.
 - [x] Add HMAC-SHA256 JWT signing/verification support.
 - [x] Add secure random bytes for JWT `jti` values and refresh tokens.
@@ -88,8 +98,10 @@ are not working yet.
 - [x] Parse and validate login JSON for the seeded executable path.
 - [x] Verify bcrypt password hashes.
 - [ ] Rate-limit login attempts.
-- [ ] Issue short-lived access JWTs with issuer, audience, subject, role,
-      scopes, expiration, issued-at, and token id claims.
+- [x] Issue access JWTs with issuer, audience, subject, role, scopes,
+      expiration, issued-at, not-before, and token id claims.
+- [ ] Replace the fixed demo expiration with `now + 900s` and validate `exp`,
+      `iat`, and `nbf` against runtime time.
 - [x] Issue opaque refresh tokens and store only hashed refresh-token material
       in process-local demo state.
 - [ ] Append durable login success/failure audit events.
@@ -145,7 +157,8 @@ are not working yet.
 - [ ] Implement `POST /api/v1/auctions/:auctionId/extend`.
 - [ ] Implement `POST /api/v1/auctions/:auctionId/close`.
 - [ ] Implement `POST /api/v1/auctions/:auctionId/bids`.
-- [ ] Require idempotency keys for all write commands.
+- [x] Require idempotency keys for currently registered command write routes.
+- [ ] Require idempotency keys for all future auction/chat command routes.
 - [ ] Return cached command response for repeated idempotency keys.
 - [ ] Return stable rule-failure error codes for bid and lifecycle rejects.
 - [ ] Add API integration tests for successful auction lifecycle, unauthorized

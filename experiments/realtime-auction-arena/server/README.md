@@ -20,16 +20,21 @@ and the E2E harness verifies:
 - stable `v1` envelopes, `X-Request-Id` echo, `X-Api-Version`,
   `X-Max-Body-Bytes`, `X-Route-Path`, and API 404 responses;
 - bcrypt-verified login for the seeded `auctioneer` demo account;
-- HS256 bearer-token session lookup, refresh-token rotation, logout revocation,
-  bad-signature rejection, stale-token rejection after refresh, refresh replay
-  rejection, and post-logout `401` behavior;
-- protected write routes still fail closed with `403`;
+- HS256 bearer-token session lookup with required issuer/audience/subject/role/
+  scope claims, refresh-token rotation, logout revocation, bad-signature
+  rejection, stale-token rejection after refresh, refresh replay rejection, and
+  post-logout `401` behavior;
+- bcrypt's 72-byte password boundary before verify;
+- JSON write-route guardrails for unsupported media type and body size;
+- command-route idempotency-key presence checks before fail-closed writes;
+- protected write routes fail closed with `403` once required guards pass;
 - oversized login bodies return a clean `413 payload_too_large` JSON envelope.
 
-Production secret loading, SQLite-backed refresh-token persistence, dynamic
-auction routes, SSE replay, chat routes, structured request logging, and audit
-writes are still open work tracked in `TODO.md`. HS256 access-token signing and
-process-local bcrypt-hashed refresh-token rotation are executable.
+Production secret loading, SQLite-backed refresh-token persistence, auction
+mutation handlers, SSE replay, chat routes, structured request logging, and
+audit writes are still open work tracked in `TODO.md`. HS256 access-token
+signing/claim checks and process-local bcrypt-hashed refresh-token rotation are
+executable.
 
 The executable API harness intentionally does not assert persistence, SSE replay,
 auction lifecycle mutations, chat behavior, durable audit rows, or runtime-backed

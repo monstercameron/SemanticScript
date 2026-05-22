@@ -111,7 +111,7 @@ jsonBody authContract
       "jwt": {
           "algorithm": "HS256",
           "issuer": "realtime-auction-arena",
-          "audience": "realtime-auction-arena-api-v1",
+          "audience": "api-v1",
           "accessTokenTtlSeconds": 900,
           "signingSecretSource": "environment:AUCTION_ARENA_JWT_SECRET",
           "futureAsymmetricAlgorithm": "Ed25519 or RS256 once runtime signing primitives exist",
@@ -144,9 +144,9 @@ jsonBody authContract
       "login": {
           "path": "POST /api/v1/auth/login",
           "requiredBody": "username, password",
-          "publicErrors": "invalid_credentials, validation_error/password_too_long, rate_limited",
+          "publicErrors": "invalid_credentials, rate_limited",
           "auditEvent": "auth.login.accepted or auth.login.rejected",
-          "runtimeStatus": "executable demo: JSON body decode plus bcrypt verify against seeded auctioneer account; bcrypt 72-byte precheck, typed JWT claims, rate limiting, audit, disabled-user lookup, and SQLite writes pending in main.sem"
+          "runtimeStatus": "executable demo: JSON body decode, content-type/body-size guards, bcrypt 72-byte precheck, bcrypt verify against seeded auctioneer account, and claim-bearing HS256 access token issue; rate limiting, audit, disabled-user lookup, and SQLite writes pending"
       },
       "refresh": {
           "path": "POST /api/v1/auth/refresh",
@@ -167,7 +167,7 @@ jsonBody authContract
           "requiredBody": "none",
           "publicErrors": "unauthorized, expired_token, bad_signature, wrong_audience, insufficient_role",
           "auditEvent": "auth.session.checked",
-          "runtimeStatus": "executable demo: Authorization bearer token is HS256-verified and matched against process-local session; typed claim validation middleware pending"
+          "runtimeStatus": "executable demo: Authorization bearer token is HS256-verified, checked for required arena claims, and matched against process-local session; runtime-clock expiration and durable denylist checks pending"
       },
       "refreshTokenRow": {
           "tableName": "refresh_tokens",
@@ -182,12 +182,12 @@ jsonBody authContract
       "failureMarkers": {
           "disabledUser": "login and refresh reject disabled users as invalid_credentials or invalid_refresh_token without leaking account status",
           "expiredToken": "JWT validation rejects exp <= now and returns unauthorized with expired_token detail",
-          "wrongAudience": "JWT validation requires aud == realtime-auction-arena-api-v1 and returns unauthorized with wrong_audience detail",
+          "wrongAudience": "JWT validation requires aud == api-v1 and returns unauthorized with wrong_audience detail",
           "insufficientRole": "authorization middleware returns forbidden with insufficient_role for authenticated principals without required role/scope",
           "bcryptInputTooLong": "login rejects password plaintext longer than 72 bytes before bcrypt.verify"
       },
       "mainIntegrationPatch": {
-          "value": "In src/main.sem login path, add password byte-length check after JSON field extraction and before bcrypt.verify; in JWT issue path, emit iss/aud/sub/role/scopes/exp/iat/nbf/jti; in session path, validate every claim and map expired_token/wrong_audience; in refresh path, replace process-local token state with refresh_tokens row transaction; in route auth, add role/scope guard for admin_or_auctioneer and bidder policies."
+          "value": "Remaining main.sem integration: replace process-local refresh state with a refresh_tokens row transaction; load JWT secret from environment/config; validate exp/iat/nbf against runtime time; add durable revoked_jwts checks; wire role/scope guards for admin_or_auctioneer and bidder policies."
       }
   }
 
