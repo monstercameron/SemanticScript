@@ -541,6 +541,7 @@ class Program:
         self.icon_groups = {}             # group_name -> dict(role, purpose, line)
         self.icon_images = {}             # image_name -> dict(group, path, format, width, height, scale, depth, platform, purpose, line)
         self.consts = {}              # name -> (type, value)
+        self.worker_pools = {}        # module-scope workerPool name -> line
         # Module-scope mutable storage (`storage module mutable` and
         # `sharedState <scope> mutable`). Tracked separately from consts so
         # codegen can emit a real LLVM global with load/store semantics
@@ -2777,6 +2778,11 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
                     f"`{existing_mode}`")
         prog.language_modes.append(language_mode)
         return
+    if verb == "workerPool" and prog.current_op is None:
+        if not args:
+            raise SyntaxError("workerPool requires: workerPool NAME")
+        prog.worker_pools[args[0]] = lineno
+        return
     if verb == "entry":
         prog.entry = (args[0], args[1])
         return
@@ -3353,6 +3359,18 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
         # an external asset (see literalBytes/literalDigest/literalSource).
         # Stub it as an empty-string const so name references resolve.
         prog.consts[args[0]] = (args[1], "")
+        return
+    if verb in {
+        "literalSource",
+        "literalBytes",
+        "literalDigest",
+        "literalTrust",
+        "literalPreview",
+    } and args:
+        # Literal metadata is module-scoped even when it appears after an
+        # imported operation body in a flattened build tape.
+        prog.hard_metadata.setdefault(args[0], {}).setdefault(
+            verb, []).append([_unwrap(t) for t in args[1:]])
         return
 
     # Catch-all for any other lowercase-leading verb that looks like a
@@ -6479,6 +6497,7 @@ class Codegen:
             if not d["run_on"]:
                 d["run_on"] = {"all"}
         active_defers = []
+        current_block_reachable = True
         label_defer_snapshots = {}
 
         def _merge_defer_snapshots(existing, incoming):
@@ -6511,24 +6530,11 @@ class Codegen:
         # lowering). The bind for `awaitWork WORK` reads the call's result
         # SSA if any. We register each work item under a synthetic call
         # name so _emit_run can dispatch through the standard pipeline.
-        work_items = {}
+        worker_pools = set(self.prog.worker_pools)
         for verb, args, _ln in op.lines:
-            if verb == "work" and len(args) >= 3 and args[1] == "target":
-                work_name, target_op = args[0], args[2]
-                work_items[work_name] = {
-                    "target": target_op,
-                    "args": {},
-                    "declared": True,
-                }
-            elif verb == "workArg" and len(args) >= 3:
-                work_name, arg_name, value_name = args[0], args[1], args[2]
-                work_items.setdefault(work_name,
-                                      {
-                                          "target": None,
-                                          "args": {},
-                                          "declared": False,
-                                      })
-                work_items[work_name]["args"][arg_name] = value_name
+            if verb == "workerPool" and args:
+                worker_pools.add(args[0])
+        work_items = {}
 
         # ---- channel slots ----
         # `send CHANNEL VALUE` / `receive OUT TYPE CHANNEL` in single-thread
@@ -7494,8 +7500,6 @@ class Codegen:
                         symbol_name, wait_name, target_label,
                         case_lineno, definition_lineno, "value"))
                 for symbol_name, wait_name, target_label, case_lineno, definition_lineno, value_kind in referenced_private_symbols:
-                    if row_ln <= definition_lineno:
-                        continue
                     if current_label == target_label:
                         continue
                     raise ValueError(
@@ -7727,11 +7731,15 @@ class Codegen:
                 label_name = args[0]
                 target_bb = labels[label_name]
                 if not builder.block.is_terminated:
-                    record_label_defers(label_name, active_defers)
+                    if current_block_reachable:
+                        record_label_defers(label_name, active_defers)
                     builder.branch(target_bb)
                 builder.position_at_end(target_bb)
-                active_defers = list(
-                    label_defer_snapshots.get(label_name, active_defers))
+                if label_name in label_defer_snapshots:
+                    active_defers = list(label_defer_snapshots[label_name])
+                elif not current_block_reachable:
+                    active_defers = []
+                current_block_reachable = True
                 continue
 
             if verb == "const":
@@ -8001,6 +8009,10 @@ class Codegen:
                 (call_name, _ok_keyword, ok_name, _ok_type,
                  _error_keyword, error_name, _error_type,
                  _else_keyword, fail_label) = args
+                if call_name not in calls:
+                    raise ValueError(
+                        f"line {_ln}: runChecked references unknown call "
+                        f"`{call_name}`")
                 if call_name in retry_attachments:
                     raise ValueError(
                         f"runChecked: call `{call_name}` has useRetry policy "
@@ -8130,6 +8142,25 @@ class Codegen:
             # standalone effect — the retry loop is emitted at `run CALL`.
             if verb == "useRetry":
                 continue
+            if verb == "work" and len(args) >= 3 and args[1] == "target":
+                work_name, target_op = args[0], args[2]
+                work_item = work_items.setdefault(work_name, {
+                    "target": None,
+                    "args": {},
+                    "declared": False,
+                })
+                work_item["target"] = target_op
+                work_item["declared"] = True
+                continue
+            if verb == "workArg" and len(args) >= 3:
+                work_name, arg_name, value_name = args[0], args[1], args[2]
+                work_items.setdefault(work_name, {
+                    "target": None,
+                    "args": {},
+                    "declared": False,
+                })
+                work_items[work_name]["args"][arg_name] = value_name
+                continue
             if verb == "startInGroup" and args:
                 # `startInGroup CALL GROUP` — under synchronous taskGroup
                 # lowering, this is equivalent to `run CALL`. The work
@@ -8151,6 +8182,11 @@ class Codegen:
                     raise ValueError(
                         f"line {_ln}: submitWork: work `{work_name}` is "
                         "not declared")
+                pool_name = args[1] if len(args) >= 2 else ""
+                if pool_name not in worker_pools:
+                    raise ValueError(
+                        f"line {_ln}: submitWork: worker pool `{pool_name}` "
+                        "is not declared")
                 target_op = work_def.get("target")
                 if target_op not in self._user_ops:
                     raise ValueError(
@@ -8372,6 +8408,7 @@ class Codegen:
                     dead = builder.function.append_basic_block(f"after_branch_error_{call_name}")
                     builder.position_at_end(dead)
                     active_defers = []
+                    current_block_reachable = False
                 continue
 
             if verb == "branch" and args[0] == "if":
@@ -8394,6 +8431,7 @@ class Codegen:
                     dead = builder.function.append_basic_block(f"after_branch_if_{cond_name}")
                     builder.position_at_end(dead)
                     active_defers = []
+                    current_block_reachable = False
                 continue
 
             if verb == "branch" and args[0] == "else":
@@ -8414,6 +8452,7 @@ class Codegen:
                 dead = builder.function.append_basic_block(f"after_jump_{target_label}")
                 builder.position_at_end(dead)
                 active_defers = []
+                current_block_reachable = False
                 continue
 
             if verb == "return" and args[0] == "void":
@@ -13830,6 +13869,26 @@ def lint(prog: Program, strict: bool = False):
     _check_duplicated_domain_literals(prog, diags)
 
     for op_name, op in prog.operations.items():
+        wait_set_case_calls = set()
+        wait_set_handler_labels = set()
+        label_before_line = {}
+        current_label = None
+        for verb, args, lineno in op.lines:
+            label_before_line[lineno] = current_label
+            if verb == "label" and args:
+                current_label = args[0]
+            elif verb == "case" and len(args) >= 2:
+                wait_set_case_calls.add(args[0])
+                wait_set_handler_labels.add(args[1])
+
+        def call_in_wait_set_completion_context(call_name, info):
+            if call_name in wait_set_case_calls:
+                return True
+            return any(
+                label_before_line.get(line) in wait_set_handler_labels
+                for line in info.get("run_lines", [])
+            )
+
         # ---- per-operation: group/endGroup balance ----
         op_anchors = [entry for verb, entry, _ln in op.lines
                       if verb == "__groupAnchor__"]
@@ -13876,16 +13935,23 @@ def lint(prog: Program, strict: bool = False):
                         _TARGET_ALIASES.get(target, target)),
                     "has_bindError": False,
                     "has_branchIfError": False,
+                    "run_lines": [],
+                    "related_lines": [],
                 }
                 if not call_name.endswith("Call"):
                     diags.append((lineno,
                         f"vagueCallName: `{call_name}` should end with the Call role suffix"))
                 if target in ("console.writeLine", "console.writeIntegerLine"):
                     operation_uses_console_write = True
+            elif verb == "run" and args:
+                call_name = args[0]
+                if call_name in calls:
+                    calls[call_name]["run_lines"].append(lineno)
             elif verb == "bindError" and len(args) >= 3:
                 call_name = args[2]
                 if call_name in calls:
                     calls[call_name]["has_bindError"] = True
+                    calls[call_name]["related_lines"].append(lineno)
                 err_name = args[0]
                 if not err_name.endswith("Error"):
                     diags.append((lineno,
@@ -13894,6 +13960,7 @@ def lint(prog: Program, strict: bool = False):
                 call_name = args[3]
                 if call_name in calls:
                     calls[call_name]["has_bindError"] = True
+                    calls[call_name]["related_lines"].append(lineno)
                 err_name = args[1]
                 if not err_name.endswith("Error"):
                     diags.append((lineno,
@@ -13902,6 +13969,7 @@ def lint(prog: Program, strict: bool = False):
                 call_name = args[0]
                 if call_name in calls:
                     calls[call_name]["has_branchIfError"] = True
+                    calls[call_name]["related_lines"].append(lineno)
                 if len(args) >= 2:
                     lbl = args[1]
                     label_references.append((lbl, lineno, "branchIfError"))
@@ -13922,6 +13990,7 @@ def lint(prog: Program, strict: bool = False):
                 call_name = args[2]
                 if call_name in calls:
                     calls[call_name]["has_branchIfError"] = True
+                    calls[call_name]["related_lines"].append(lineno)
                 label_references.append((args[4], lineno, "branch error"))
                 branchIfError_targets.setdefault(args[4], []).append((call_name, lineno))
                 if not (args[4].endswith("Failed") or args[4].endswith("ed")):
@@ -13960,7 +14029,8 @@ def lint(prog: Program, strict: bool = False):
 
         # unbranchedFailure check
         for call_name, info in calls.items():
-            if info["has_bindError"] and not info["has_branchIfError"]:
+            if (info["has_bindError"] and not info["has_branchIfError"]
+                    and not call_in_wait_set_completion_context(call_name, info)):
                 diags.append((info["lineno"],
                     f"unbranchedFailure: `{call_name}` has a bindError but no branchIfError"))
 
@@ -14809,19 +14879,98 @@ def _check_strict_checked_fallible_calls(prog: Program, diags):
     `branch error`.
     """
     for op_name, op in prog.operations.items():
+        wait_set_case_calls = set()
+        wait_set_handler_labels = set()
+        label_before_line = {}
+        current_label = None
+        for verb, args, lineno in op.lines:
+            label_before_line[lineno] = current_label
+            if verb == "label" and args:
+                current_label = args[0]
+            elif verb == "case" and len(args) >= 2:
+                wait_set_case_calls.add(args[0])
+                wait_set_handler_labels.add(args[1])
+
+        def in_wait_set_completion_context(info):
+            if info["name"] in wait_set_case_calls:
+                return True
+            return any(
+                label_before_line.get(line) in wait_set_handler_labels
+                for line in info["execution_lines"]
+            )
+
+        def is_wait_set_handler_line(line):
+            return label_before_line.get(line) in wait_set_handler_labels
+
+        def after_last_execution(line, info):
+            if not info["execution_lines"]:
+                return True
+            return line > max(info["execution_lines"])
+
+        def ordered_success_disposition_lines(info, wait_set_completion_context):
+            return [
+                line
+                for line in info["success_disposition_lines"]
+                if after_last_execution(line, info)
+                and (
+                    not wait_set_completion_context
+                    or is_wait_set_handler_line(line)
+                )
+            ]
+
+        def ordered_bind_error_lines(info, wait_set_completion_context):
+            return [
+                line
+                for line in info["bind_error_lines"]
+                if after_last_execution(line, info)
+                and (
+                    not wait_set_completion_context
+                    or is_wait_set_handler_line(line)
+                )
+            ]
+
+        def ordered_handler_ignore_error_lines(info):
+            return [
+                line
+                for line in info["ignore_error_lines"]
+                if after_last_execution(line, info)
+                and is_wait_set_handler_line(line)
+            ]
+
+        def ordered_branch_error_lines(info):
+            return [
+                line
+                for line in info["branch_error_lines"]
+                if after_last_execution(line, info)
+            ]
+
+        def has_ordered_value_disposition(info):
+            return any(
+                after_last_execution(line, info)
+                for line in info["value_disposition_lines"]
+            )
+
         calls = {}
         for verb, args, lineno in op.lines:
             if verb == "call" and len(args) >= 2:
                 target = _strict_normalized_call_target(prog, args[1])
                 calls[args[0]] = {
+                    "name": args[0],
                     "target": target,
                     "source_target": args[1],
                     "call_lineno": lineno,
-                    "run_lineno": None,
+                    "execution_lineno": None,
+                    "execution_lines": [],
+                    "success_disposition_lines": [],
+                    "value_disposition_lines": [],
+                    "bind_error_lines": [],
+                    "ignore_error_lines": [],
+                    "branch_error_lines": [],
                     "has_run_checked": False,
                     "has_success_disposition": False,
                     "has_value_disposition": False,
                     "has_bind_error": False,
+                    "has_ignore_error": False,
                     "has_branch_if_error": False,
                 }
                 continue
@@ -14830,7 +14979,16 @@ def _check_strict_checked_fallible_calls(prog: Program, diags):
             if verb == "run":
                 info = calls.get(args[0])
                 if info is not None:
-                    info["run_lineno"] = lineno
+                    if info["execution_lineno"] is None:
+                        info["execution_lineno"] = lineno
+                    info["execution_lines"].append(lineno)
+                continue
+            if verb in ("start", "startInGroup", "await"):
+                info = calls.get(args[0])
+                if info is not None:
+                    if info["execution_lineno"] is None:
+                        info["execution_lineno"] = lineno
+                    info["execution_lines"].append(lineno)
                 continue
             if verb == "runChecked":
                 info = calls.get(args[0])
@@ -14842,8 +15000,10 @@ def _check_strict_checked_fallible_calls(prog: Program, diags):
                 info = calls.get(call_name)
                 if info is not None:
                     info["has_value_disposition"] = True
+                    info["value_disposition_lines"].append(lineno)
                     if args[0] == "ok":
                         info["has_success_disposition"] = True
+                        info["success_disposition_lines"].append(lineno)
                 continue
             if verb == "ignore" and len(args) >= 3:
                 call_name = args[2]
@@ -14851,37 +15011,65 @@ def _check_strict_checked_fallible_calls(prog: Program, diags):
                 if info is not None:
                     if args[0] in ("value", "ok", "void"):
                         info["has_value_disposition"] = True
+                        info["value_disposition_lines"].append(lineno)
                     if args[0] in ("ok", "void"):
                         info["has_success_disposition"] = True
+                        info["success_disposition_lines"].append(lineno)
+                    if args[0] == "error":
+                        info["has_ignore_error"] = True
+                        info["ignore_error_lines"].append(lineno)
                 continue
             if verb == "bind" and len(args) >= 4 and args[0] == "error":
                 info = calls.get(args[3])
                 if info is not None:
                     info["has_bind_error"] = True
+                    info["bind_error_lines"].append(lineno)
                 continue
             if verb == "branch" and len(args) >= 5 and args[0] == "error":
                 info = calls.get(args[2])
                 if info is not None:
                     info["has_branch_if_error"] = True
+                    info["branch_error_lines"].append(lineno)
 
         for call_name, info in calls.items():
             kind = fallibility_kind(info["target"])
             if kind is None:
                 continue
+            if info["has_run_checked"] and info["execution_lines"]:
+                diags.append((info["execution_lines"][0],
+                    f"uncheckedFallibleCall: strict mode rejects mixing "
+                    f"unchecked execution with `runChecked` for known fallible target "
+                    f"`{info['source_target']}` in operation `{op_name}`; "
+                    f"call `{call_name}` was declared on line "
+                    f"{info['call_lineno']}. Use `runChecked` for every "
+                    "execution or remove it and use the explicit checked "
+                    "`run`/`start` + disposition shape."))
+                continue
             if info["has_run_checked"]:
                 continue
-            if info["run_lineno"] is None:
+            if info["execution_lineno"] is None:
                 continue
             missing = []
             if kind == "result":
-                if not info["has_success_disposition"]:
+                wait_set_completion_context = in_wait_set_completion_context(info)
+                handler_ignore_error = ordered_handler_ignore_error_lines(info)
+                if not ordered_success_disposition_lines(
+                        info,
+                        wait_set_completion_context):
                     missing.append("bind ok|ignore ok|ignore void")
-                if not info["has_bind_error"]:
-                    missing.append("bind error")
-                if not info["has_branch_if_error"]:
+                if (not ordered_bind_error_lines(
+                            info,
+                            wait_set_completion_context)
+                        and not (wait_set_completion_context
+                                 and handler_ignore_error)):
+                    missing.append(
+                        "bind error|ignore error"
+                        if wait_set_completion_context else "bind error")
+                if (not wait_set_completion_context
+                        and not ordered_branch_error_lines(info)):
                     missing.append("branch error")
             else:
-                if not info["has_value_disposition"]:
+                if not has_ordered_value_disposition(info):
                     missing.append("bind value|ignore value")
             if not missing:
                 continue
@@ -14897,8 +15085,9 @@ def _check_strict_checked_fallible_calls(prog: Program, diags):
                     "with `ignore value` after documenting why the failure is "
                     "non-actionable."
                 )
-            diags.append((info["run_lineno"],
-                f"uncheckedFallibleCall: strict mode rejects plain `run` "
+            diags.append((info["execution_lineno"],
+                f"uncheckedFallibleCall: strict mode rejects unchecked "
+                f"execution "
                 f"for known fallible target `{info['source_target']}` in "
                 f"operation `{op_name}`; call `{call_name}` was declared on "
                 f"line {info['call_lineno']} and is missing "
@@ -16412,10 +16601,26 @@ def _resolve_imports(source: str, source_path: str, explicit_std_paths=None,
 def _load_external_literals(prog: Program, source_path: str) -> None:
     """For every `literal NAME TYPE` whose `literalSource NAME "path"`
     resolves on disk, read the file's bytes and store them as the const's
-    value. Paths are tried absolute first, then relative to the source
-    file's directory. Files that fail to load leave the stub in place so
-    the program still compiles."""
+    value. Paths are tried absolute first, then relative to the row's original
+    source file directory, then relative to the root source file directory.
+    Files that fail to load leave the stub in place so the program still
+    compiles."""
     src_dir = os.path.dirname(os.path.abspath(source_path)) if source_path else ""
+    source_dirs_by_literal = {}
+    for line_number, raw_line in prog.source_lines.items():
+        tokens = tokenize_line(raw_line)
+        if len(tokens) < 3 or tokens[0] != "literalSource":
+            continue
+        literal_name = tokens[1]
+        origin = prog.source_origins.get(line_number, {})
+        origin_path = origin.get("path") if isinstance(origin, dict) else None
+        if not origin_path:
+            continue
+        origin_dir = os.path.dirname(os.path.abspath(origin_path))
+        if origin_dir:
+            source_dirs_by_literal.setdefault(literal_name, [])
+            if origin_dir not in source_dirs_by_literal[literal_name]:
+                source_dirs_by_literal[literal_name].append(origin_dir)
     for name, meta in list(prog.hard_metadata.items()):
         sources = meta.get("literalSource") or []
         if not sources or name not in prog.consts:
@@ -16430,6 +16635,8 @@ def _load_external_literals(prog: Program, source_path: str) -> None:
             if os.path.isabs(raw_path):
                 candidates.append(raw_path)
             else:
+                for row_dir in source_dirs_by_literal.get(name, []):
+                    candidates.append(os.path.join(row_dir, raw_path))
                 if src_dir:
                     candidates.append(os.path.join(src_dir, raw_path))
                 candidates.append(raw_path)

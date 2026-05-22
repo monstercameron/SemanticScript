@@ -638,7 +638,7 @@ def assert_real_async_overlap(runs: int) -> list[float]:
                 "delayed async client",
             )
         slowest = max(elapsed_runs)
-        if slowest >= 2.2:
+        if slowest >= 1.5:
             formatted = ", ".join(f"{value:.3f}s" for value in elapsed_runs)
             raise AssertionError(
                 "expected 1.0s, 0.6s, and 0.2s delayed endpoints to overlap; "
@@ -699,7 +699,7 @@ def assert_generic_user_op_overlap(runs: int) -> list[float]:
                 "generic async client",
             )
         slowest = max(elapsed_runs)
-        if slowest >= 2.2:
+        if slowest >= 1.5:
             formatted = ", ".join(f"{value:.3f}s" for value in elapsed_runs)
             raise AssertionError(
                 "expected 1.0s, 0.6s, and 0.2s user-operation fetches to overlap; "

@@ -1962,6 +1962,229 @@ returnError writeLineError
 """)
         self.assertNotIn("SS3106", _codes(diagnostics))
 
+    def test_mixed_run_and_run_checked_same_fallible_call_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+error MainError
+errorCase MainError WriteFailure
+operation main
+output main Result Void MainError
+purpose main "smoke"
+effect main write console.stdout
+call writeLineCall console.writeLine
+arg writeLineCall console console
+arg writeLineCall text someMessageText
+run writeLineCall
+runChecked writeLineCall ok writeLineStatus CSignedInt32 error writeLineError MainError else writeFailed
+returnOk noResult
+label writeFailed
+returnError writeLineError
+""")
+        matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3106")
+        self.assertTrue(
+            any(
+                diagnostic.subjectName == "writeLineCall"
+                and diagnostic.gapEdge == "runOrRunChecked"
+                for diagnostic in matchingDiagnostics
+            ),
+            diagnostics,
+        )
+
+    def test_mixed_start_and_run_checked_same_fallible_call_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+error MainError
+errorCase MainError WriteFailure
+operation main
+output main Result Void MainError
+purpose main "smoke"
+effect main write console.stdout
+call writeLineCall console.writeLine
+arg writeLineCall console console
+arg writeLineCall text someMessageText
+start writeLineCall
+runChecked writeLineCall ok writeLineStatus CSignedInt32 error writeLineError MainError else writeFailed
+returnOk noResult
+label writeFailed
+returnError writeLineError
+""")
+        matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3106")
+        self.assertTrue(
+            any(
+                diagnostic.subjectName == "writeLineCall"
+                and diagnostic.gapEdge == "runOrRunChecked"
+                for diagnostic in matchingDiagnostics
+            ),
+            diagnostics,
+        )
+
+    def test_mixed_start_in_group_and_run_checked_same_fallible_call_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+error MainError
+errorCase MainError WriteFailure
+operation main
+output main Result Void MainError
+purpose main "smoke"
+effect main write console.stdout
+taskGroup writeGroup
+call writeLineCall console.writeLine
+arg writeLineCall console console
+arg writeLineCall text someMessageText
+startInGroup writeLineCall writeGroup
+runChecked writeLineCall ok writeLineStatus CSignedInt32 error writeLineError MainError else writeFailed
+awaitGroup writeGroup
+returnOk noResult
+label writeFailed
+returnError writeLineError
+""")
+        matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3106")
+        self.assertTrue(
+            any(
+                diagnostic.subjectName == "writeLineCall"
+                and diagnostic.gapEdge == "runOrRunChecked"
+                for diagnostic in matchingDiagnostics
+            ),
+            diagnostics,
+        )
+
+    def test_non_wait_set_ignore_error_does_not_hide_missing_branch(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+call firstFetchCall net.fetchText
+start firstFetchCall
+await firstFetchCall
+ignoreError firstFetchCall
+""")
+        matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3106")
+        self.assertTrue(
+            any(
+                diagnostic.subjectName == "firstFetchCall"
+                and "bind/ignore ok" in diagnostic.gapEdge
+                and "bind error" in diagnostic.gapEdge
+                and "branch error" in diagnostic.gapEdge
+                for diagnostic in matchingDiagnostics
+            ),
+            diagnostics,
+        )
+
+    def test_result_call_bind_value_is_not_success_disposition(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+call firstFetchCall net.fetchText
+start firstFetchCall
+label waitNextResult
+await nextResult
+case firstFetchCall fetchReady
+done allDone
+label fetchReady
+bind value firstFetchCallResponse HttpTextResponse firstFetchCall
+ignore error source firstFetchCall
+jump target waitNextResult
+label allDone
+return void
+""")
+        matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3106")
+        self.assertTrue(
+            any(
+                diagnostic.subjectName == "firstFetchCall"
+                and "bind/ignore ok" in diagnostic.gapEdge
+                for diagnostic in matchingDiagnostics
+            ),
+            diagnostics,
+        )
+
+    def test_pre_run_fallible_dispositions_do_not_count(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+effect main write console.stdout
+call writeLineCall console.writeLine
+arg writeLineCall console console
+arg writeLineCall text someMessageText
+ignore ok source writeLineCall type CSignedInt32
+bind error writeLineCallError MainError writeLineCall
+branch error source writeLineCall target writeFailed
+run writeLineCall
+return void
+label writeFailed
+return void
+""")
+        matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3106")
+        self.assertTrue(
+            any(
+                diagnostic.subjectName == "writeLineCall"
+                and "bind/ignore ok" in diagnostic.gapEdge
+                and "bind error" in diagnostic.gapEdge
+                and "branch error" in diagnostic.gapEdge
+                for diagnostic in matchingDiagnostics
+            ),
+            diagnostics,
+        )
+
+    def test_wait_set_pre_wait_ignore_error_does_not_count_as_handler_disposition(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+call firstFetchCall net.fetchText
+start firstFetchCall
+ignore error source firstFetchCall
+label waitNextResult
+await nextResult
+case firstFetchCall fetchReady
+done allDone
+label fetchReady
+bind ok firstFetchCallResponse HttpTextResponse firstFetchCall
+jump target waitNextResult
+label allDone
+return void
+""")
+        matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3106")
+        self.assertTrue(
+            any(
+                diagnostic.subjectName == "firstFetchCall"
+                and "bind error" in diagnostic.gapEdge
+                for diagnostic in matchingDiagnostics
+            ),
+            diagnostics,
+        )
+
+    def test_pre_wait_call_ignore_error_inside_wait_handler_is_still_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+effect main write console.stdout
+call writeLineCall console.writeLine
+arg writeLineCall console console
+arg writeLineCall text someMessageText
+run writeLineCall
+ignoreOk writeLineCall Void
+call asyncCall math.addI64
+start asyncCall
+label waitNextResult
+await nextResult
+case asyncCall asyncReady
+done allDone
+label asyncReady
+ignoreError writeLineCall
+jump target waitNextResult
+label allDone
+returnValue noResult
+""")
+        matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3106")
+        self.assertTrue(
+            any(
+                diagnostic.subjectName == "writeLineCall"
+                and "branch error" in diagnostic.gapEdge
+                for diagnostic in matchingDiagnostics
+            ),
+            diagnostics,
+        )
+
     def test_c_status_call_with_ignore_value_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
@@ -3048,6 +3271,159 @@ submitWork renderTaskWork backgroundPool
 awaitWork renderTaskWork
 """)
         self.assertIn("SS3514", _codes(diagnostics))
+
+    def test_submit_work_with_unknown_pool_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+workerPool backgroundPool
+operation renderTask
+output renderTask Void
+purpose renderTask "render"
+operation main
+output main Void
+purpose main "smoke"
+work renderTaskWork target renderTask
+submitWork renderTaskWork missingPool
+awaitWork renderTaskWork
+""")
+        matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3514")
+        self.assertTrue(
+            any(diagnostic.gapEdge == "workerPool" for diagnostic in matchingDiagnostics),
+            diagnostics,
+        )
+
+    def test_submit_work_missing_target_input_arg_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+workerPool backgroundPool
+operation renderTask
+input renderTask renderInput I64
+output renderTask Void
+purpose renderTask "render"
+operation main
+output main Void
+purpose main "smoke"
+work renderTaskWork target renderTask
+submitWork renderTaskWork backgroundPool
+awaitWork renderTaskWork
+""")
+        matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3514")
+        self.assertTrue(
+            any(diagnostic.gapEdge == "workArg" for diagnostic in matchingDiagnostics),
+            diagnostics,
+        )
+
+    def test_submit_work_late_target_input_arg_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+workerPool backgroundPool
+operation renderTask
+input renderTask renderInput I64
+output renderTask Void
+purpose renderTask "render"
+operation main
+output main Void
+purpose main "smoke"
+work renderTaskWork target renderTask
+submitWork renderTaskWork backgroundPool
+workArg renderTaskWork renderInput inputValue
+awaitWork renderTaskWork
+""")
+        matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3514")
+        self.assertTrue(
+            any(diagnostic.gapEdge == "workArg" for diagnostic in matchingDiagnostics),
+            diagnostics,
+        )
+
+    def test_submit_work_late_work_declaration_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+workerPool backgroundPool
+operation renderTask
+input renderTask renderInput I64
+output renderTask Void
+purpose renderTask "render"
+operation main
+output main Void
+purpose main "smoke"
+workArg renderTaskWork renderInput inputValue
+submitWork renderTaskWork backgroundPool
+work renderTaskWork target renderTask
+awaitWork renderTaskWork
+""")
+        matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3514")
+        self.assertTrue(
+            any(diagnostic.gapEdge == "workDeclaration" for diagnostic in matchingDiagnostics),
+            diagnostics,
+        )
+
+    def test_submit_work_late_duplicate_work_after_valid_declaration_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+workerPool backgroundPool
+operation renderTask
+input renderTask renderInput I64
+output renderTask Void
+purpose renderTask "render"
+operation main
+output main Void
+purpose main "smoke"
+work renderTaskWork target renderTask
+workArg renderTaskWork renderInput inputValue
+submitWork renderTaskWork backgroundPool
+work renderTaskWork target renderTask
+awaitWork renderTaskWork
+""")
+        self.assertFalse(
+            [
+                diagnostic for diagnostic in _diagnostics_with_code(diagnostics, "SS3514")
+                if diagnostic.subjectName == "renderTaskWork"
+            ],
+            diagnostics,
+        )
+
+    def test_submit_work_late_duplicate_arg_after_valid_arg_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+workerPool backgroundPool
+operation renderTask
+input renderTask renderInput I64
+output renderTask Void
+purpose renderTask "render"
+operation main
+output main Void
+purpose main "smoke"
+work renderTaskWork target renderTask
+workArg renderTaskWork renderInput inputValue
+submitWork renderTaskWork backgroundPool
+workArg renderTaskWork renderInput replacementInputValue
+awaitWork renderTaskWork
+""")
+        self.assertFalse(
+            [
+                diagnostic for diagnostic in _diagnostics_with_code(diagnostics, "SS3514")
+                if diagnostic.subjectName == "renderTaskWork"
+            ],
+            diagnostics,
+        )
+
+    def test_submit_work_non_target_duplicate_before_submit_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+workerPool backgroundPool
+operation renderTask
+input renderTask renderInput I64
+output renderTask Void
+purpose renderTask "render"
+operation main
+output main Void
+purpose main "smoke"
+work renderTaskWork target renderTask
+workArg renderTaskWork renderInput inputValue
+work renderTaskWork
+submitWork renderTaskWork backgroundPool
+awaitWork renderTaskWork
+""")
+        self.assertFalse(
+            [
+                diagnostic for diagnostic in _diagnostics_with_code(diagnostics, "SS3514")
+                if diagnostic.subjectName == "renderTaskWork"
+            ],
+            diagnostics,
+        )
 
 
 class TestSelectWithoutCases(unittest.TestCase):

@@ -639,6 +639,82 @@ def test_build_registry_imports_registered_module():
           f"rc={proc.returncode} stderr={proc.stderr!r}")
 
 
+def test_imported_module_external_literal_uses_origin_path():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        asset_dir = root / "assets"
+        asset_dir.mkdir()
+        (asset_dir / "message.txt").write_text(
+            "schema from imported module\n", encoding="utf-8", newline="\n")
+        build_path = root / "build.sem"
+        consumer_path = root / "consumer.sem"
+        provider_path = root / "provider.sem"
+        build_path.write_text("\n".join([
+            "buildProject importedLiteral",
+            "project ImportedLiteral",
+            "modulePath importedLiteral github.com/example/imported-literal",
+            "languageVersion importedLiteral \"1.0\"",
+            "projectVersion importedLiteral \"1.0.0\"",
+            "projectLicense importedLiteral MIT",
+            "sourceRoot importedLiteral \".\"",
+            "targetRuntime importedLiteral nativeExe",
+            "buildProfile importedLiteral dev",
+            "optLevel importedLiteral 2",
+            "runtimeChecks importedLiteral panic",
+            "persistLlvmIr importedLiteral auto",
+            "target console",
+            "runtime native 1",
+            "entry console main",
+            "registerModule importedLiteral app.consumer \"consumer.sem\"",
+            "registerModule importedLiteral app.provider \"provider.sem\"",
+            "mainFile importedLiteral \"consumer.sem\"",
+            "mainOperation importedLiteral main",
+            "import consumer app.consumer",
+        ]), encoding="utf-8", newline="\n")
+        provider_path.write_text("\n".join([
+            "module app.provider",
+            "operation warmup",
+            "output operation warmup ExitCode",
+            "purpose operation warmup \"keeps current_op non-empty before literal metadata\"",
+            "return value 0",
+            "literal providerAsset CNullTerminatedByteString",
+            "literalSource providerAsset \"assets/message.txt\"",
+            "literalBytes providerAsset 28",
+            "literalDigest providerAsset sha256 unused",
+            "literalTrust providerAsset trustedStaticAsset",
+            "exportOperation app.provider consumeProviderAsset",
+            "operation consumeProviderAsset",
+            "output operation consumeProviderAsset ExitCode",
+            "purpose operation consumeProviderAsset \"reference imported external literal\"",
+            "call lenCall c.strlen",
+            "argument lenCall s CNullTerminatedByteString providerAsset",
+            "run lenCall",
+            "ignore value source lenCall type CSignedInt64",
+            "return value 0",
+        ]), encoding="utf-8", newline="\n")
+        consumer_path.write_text("\n".join([
+            "module app.consumer",
+            "import provider app.provider",
+            "operation main",
+            "output operation main ExitCode",
+            "purpose operation main \"consumer\"",
+            "call consumeCall provider.consumeProviderAsset",
+            "run consumeCall",
+            "bind value status ExitCode consumeCall",
+            "return value status",
+        ]), encoding="utf-8", newline="\n")
+        ir_path = root / "imported_literal.ll"
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(build_path), "--emit-ir", str(ir_path), "--quiet"],
+            capture_output=True, text=True,
+        )
+        ir_text = ir_path.read_text(encoding="utf-8") if ir_path.exists() else ""
+    check("build registry: imported literalSource resolves from origin path",
+          proc.returncode == 0 and "schema from imported module" in ir_text,
+          f"rc={proc.returncode} stderr={proc.stderr!r} ir={ir_text!r}")
+
+
 def test_build_registry_qualified_import_call_lowers():
     with tempfile.TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
@@ -5716,6 +5792,7 @@ def main():
     test_parser_module_namespace_contract()
     test_parser_language_mode_strict_executable()
     test_build_registry_imports_registered_module()
+    test_imported_module_external_literal_uses_origin_path()
     test_build_registry_qualified_import_call_lowers()
     test_build_registry_singular_import_call_lowers()
     test_build_registry_missing_source_is_error()

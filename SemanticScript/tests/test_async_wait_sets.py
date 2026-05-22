@@ -19,7 +19,7 @@ if str(LINTER_DIR) not in sys.path:
 import semlint  # noqa: E402
 
 
-def _emit_ir(source: str) -> str:
+def _emit_ir(source: str, extra_args: list[str] | None = None) -> str:
     with tempfile.TemporaryDirectory() as tmpdir:
         source_path = Path(tmpdir) / "main.sem"
         ir_path = Path(tmpdir) / "main.ll"
@@ -29,6 +29,7 @@ def _emit_ir(source: str) -> str:
                 sys.executable,
                 str(COMPILER),
                 str(source_path),
+                *(extra_args or []),
                 "--emit-ir",
                 str(ir_path),
                 "--quiet",
@@ -70,6 +71,30 @@ def _assert_fails_with(test: unittest.TestCase, source: str, expected: str) -> N
                 sys.executable,
                 str(COMPILER),
                 str(source_path),
+                "--emit-ir",
+                str(ir_path),
+            ],
+            cwd=REPO_ROOT,
+            text=True,
+            capture_output=True,
+            timeout=60,
+        )
+    output = proc.stdout + proc.stderr
+    test.assertNotEqual(proc.returncode, 0, output)
+    test.assertIn(expected, output)
+
+
+def _assert_strict_fails_with(test: unittest.TestCase, source: str, expected: str) -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        source_path = Path(tmpdir) / "main.sem"
+        ir_path = Path(tmpdir) / "main.ll"
+        source_path.write_text(source, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(COMPILER),
+                str(source_path),
+                "--strict",
                 "--emit-ir",
                 str(ir_path),
             ],
@@ -430,8 +455,305 @@ class TestAsyncWaitSetCompilerPositive(unittest.TestCase):
         self.assertIn('call i32 @"ss_async_future_is_ready"', ir)
         self.assertIn('%"nextResult_firstAddCall_consumed"', ir)
 
+    def test_pre_wait_defer_survives_case_handler_reentry(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall", "secondAddCall"]).replace(
+            "label waitNextResult",
+            "defer cleanupText net.freeTextBody cancellationToken\nlabel waitNextResult",
+        )
+        ir = _emit_ir(source)
+
+        self.assertIn("ss_http_client_free_string", ir)
+
+    def test_work_arg_before_work_declaration_is_preserved(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "output operation main ExitCode",
+            "output operation main I64",
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "workerPool resultPool maxWorkers 4",
+                "workArg sumWork left one",
+                "workArg sumWork right two",
+                "work sumWork target addPair",
+                "submitWork sumWork resultPool",
+                "awaitWork sumWork",
+                "return value sumWork",
+            ]),
+        )
+        ir = _emit_ir(source)
+
+        self.assertIn('_workSubmit__sumWork', ir)
+
+    def test_non_target_duplicate_work_before_submit_uses_prior_target(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "output operation main ExitCode",
+            "output operation main I64",
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "workerPool resultPool maxWorkers 4",
+                "work sumWork target addPair",
+                "workArg sumWork left one",
+                "workArg sumWork right two",
+                "work sumWork",
+                "submitWork sumWork resultPool",
+                "awaitWork sumWork",
+                "return value sumWork",
+            ]),
+        )
+        ir = _emit_ir(source)
+
+        self.assertIn('_workSubmit__sumWork', ir)
+
+    def test_module_worker_pool_can_back_submit_work(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "entry console main\nimport math standard.math",
+            "entry console main\nworkerPool resultPool maxWorkers 4\nimport math standard.math",
+        ).replace(
+            "output operation main ExitCode",
+            "output operation main I64",
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "work sumWork target addPair",
+                "workArg sumWork left one",
+                "workArg sumWork right two",
+                "submitWork sumWork resultPool",
+                "awaitWork sumWork",
+                "return value sumWork",
+            ]),
+        )
+        ir = _emit_ir(source)
+
+        self.assertIn('_workSubmit__sumWork', ir)
+
+    def test_strict_wait_set_handler_fallible_call_can_bind_error_without_branch(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "import math standard.math\n",
+            "",
+        ).replace(
+            "storage module immutable cancellationToken COpaqueMemoryAddress 0",
+            "\n".join([
+                "storage module immutable cancellationToken COpaqueMemoryAddress 0",
+                'storage module immutable handlerMessage CNullTerminatedByteString "handler"',
+            ]),
+        ).replace(
+            'purpose operation main "Exercise await wait-set lowering."',
+            "\n".join([
+                'purpose operation main "Exercise await wait-set lowering."',
+                'invariant operation main "Handler fallible writes stay local and re-enter the wait set."',
+                "effect main write console.stdout",
+                "authority main write console.stdout",
+            ]),
+        ).replace(
+            "label waitNextResult",
+            "\n".join([
+                "call handlerWriteCall console.writeLine",
+                "argument handlerWriteCall console Console console",
+                "argument handlerWriteCall text CNullTerminatedByteString handlerMessage",
+                "label waitNextResult",
+            ]),
+        ).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "run handlerWriteCall",
+                "ignore ok source handlerWriteCall type CSignedInt32",
+                "bind error handlerWriteError CSignedInt32 handlerWriteCall",
+                "jump target waitNextResult",
+            ]),
+        )
+        ir = _emit_ir(source, ["--strict"])
+
+        self.assertIn("handlerWriteCall", ir)
+
 
 class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
+    def test_strict_pre_wait_fallible_call_error_ignore_in_handler_still_requires_branch(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "storage module immutable cancellationToken COpaqueMemoryAddress 0",
+            "\n".join([
+                "storage module immutable cancellationToken COpaqueMemoryAddress 0",
+                'storage module immutable handlerMessage CNullTerminatedByteString "handler"',
+            ]),
+        ).replace(
+            'purpose operation main "Exercise await wait-set lowering."',
+            "\n".join([
+                'purpose operation main "Exercise await wait-set lowering."',
+                'invariant operation main "Pre-wait fallible writes must keep a local error branch."',
+                "effect main write console.stdout",
+                "authority main write console.stdout",
+            ]),
+        ).replace(
+            "label waitNextResult",
+            "\n".join([
+                "call handlerWriteCall console.writeLine",
+                "argument handlerWriteCall console Console console",
+                "argument handlerWriteCall text CNullTerminatedByteString handlerMessage",
+                "run handlerWriteCall",
+                "ignore ok source handlerWriteCall type CSignedInt32",
+                "label waitNextResult",
+            ]),
+        ).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "ignore error source handlerWriteCall",
+                "jump target waitNextResult",
+            ]),
+        )
+        _assert_strict_fails_with(self, source, "branch error")
+
+    def test_strict_mixed_run_and_run_checked_same_fallible_call_fails(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "storage module immutable cancellationToken COpaqueMemoryAddress 0",
+            "\n".join([
+                "storage module immutable cancellationToken COpaqueMemoryAddress 0",
+                'storage module immutable handlerMessage CNullTerminatedByteString "handler"',
+            ]),
+        ).replace(
+            'purpose operation main "Exercise await wait-set lowering."',
+            "\n".join([
+                'purpose operation main "Exercise await wait-set lowering."',
+                'invariant operation main "Fallible writes must use one execution shape."',
+                "effect main write console.stdout",
+                "authority main write console.stdout",
+            ]),
+        ).replace(
+            "label waitNextResult",
+            "\n".join([
+                "call handlerWriteCall console.writeLine",
+                "argument handlerWriteCall console Console console",
+                "argument handlerWriteCall text CNullTerminatedByteString handlerMessage",
+                "run handlerWriteCall",
+                "runChecked handlerWriteCall ok handlerWriteStatus CSignedInt32 error handlerWriteError CSignedInt32 else handlerWriteFailed",
+                "label waitNextResult",
+            ]),
+        ).replace(
+            "label failed\nreturn value failedExitCode",
+            "\n".join([
+                "label failed",
+                "return value failedExitCode",
+                "label handlerWriteFailed",
+                "return value failedExitCode",
+            ]),
+        )
+        _assert_strict_fails_with(self, source, "mixing unchecked execution with `runChecked`")
+
+    def test_strict_mixed_start_and_run_checked_same_fallible_call_fails(self) -> None:
+        source = _fetch_wait_set_source(1).replace(
+            "label waitNextFetch",
+            "\n".join([
+                "runChecked firstFetchCall ok checkedResponse HttpTextResponse error checkedError HttpFetchError else checkedFetchFailed",
+                "label waitNextFetch",
+            ]),
+        ).replace(
+            "label failed\nreturn value failedExitCode",
+            "\n".join([
+                "label failed",
+                "return value failedExitCode",
+                "label checkedFetchFailed",
+                "return value failedExitCode",
+            ]),
+        )
+        _assert_strict_fails_with(self, source, "mixing unchecked execution with `runChecked`")
+
+    def test_strict_mixed_start_in_group_and_run_checked_same_fallible_call_fails(self) -> None:
+        source = "\n".join([
+            "project StrictStartInGroupRunChecked",
+            "target console",
+            "runtime AgentRuntime 1.0",
+            "entry console main",
+            "operation main",
+            "input operation main console Console",
+            "output operation main ExitCode",
+            "effect main write console.stdout",
+            "authority main write console.stdout",
+            'purpose operation main "Reject mixed checked and grouped execution."',
+            'invariant operation main "Fallible grouped calls use one execution shape."',
+            "memory main heap no",
+            "async main no",
+            'storage module immutable message CNullTerminatedByteString "hello"',
+            "storage module immutable successfulExitCode ExitCode 0",
+            "storage module immutable failedExitCode ExitCode 1",
+            "label startMain",
+            "taskGroup writeGroup",
+            "call writeLineCall console.writeLine",
+            "argument writeLineCall console Console console",
+            "argument writeLineCall text CNullTerminatedByteString message",
+            "startInGroup writeLineCall writeGroup",
+            "runChecked writeLineCall ok writeStatus CSignedInt32 error writeError CSignedInt32 else writeFailed",
+            "awaitGroup writeGroup",
+            "return value successfulExitCode",
+            "label writeFailed",
+            "return value failedExitCode",
+            "",
+        ])
+        _assert_strict_fails_with(self, source, "mixing unchecked execution with `runChecked`")
+
+    def test_strict_fallible_dispositions_must_follow_execution(self) -> None:
+        source = "\n".join([
+            "project StrictPreRunDisposition",
+            "target console",
+            "runtime AgentRuntime 1.0",
+            "entry console main",
+            "error MainError",
+            "errorCase MainError WriteFailure",
+            "operation main",
+            "input operation main console Console",
+            "output operation main Result Void MainError",
+            "effect main write console.stdout",
+            "authority main write console.stdout",
+            'purpose operation main "Reject pre-run fallible dispositions."',
+            'invariant operation main "Fallible dispositions follow execution."',
+            "memory main heap no",
+            "async main no",
+            'storage module immutable message CNullTerminatedByteString "hello"',
+            "label startMain",
+            "call writeLineCall console.writeLine",
+            "argument writeLineCall console Console console",
+            "argument writeLineCall text CNullTerminatedByteString message",
+            "ignore ok source writeLineCall type CSignedInt32",
+            "bind error writeError MainError writeLineCall",
+            "branch error source writeLineCall target writeFailed",
+            "run writeLineCall",
+            "return ok noResult",
+            "label writeFailed",
+            "return error writeError",
+            "",
+        ])
+        _assert_strict_fails_with(self, source, "bind ok|ignore ok|ignore void")
+
+    def test_strict_wait_set_fallible_case_requires_success_disposition(self) -> None:
+        source = _fetch_wait_set_source(1).replace(
+            "bind ok firstFetchCallResponse HttpTextResponse firstFetchCall\njump target waitNextFetch",
+            "ignore error source firstFetchCall\njump target waitNextFetch",
+        )
+        _assert_strict_fails_with(self, source, "bind ok|ignore ok|ignore void")
+
+    def test_strict_wait_set_fallible_case_ignores_only_handler_error_disposition(self) -> None:
+        source = _fetch_wait_set_source(1).replace(
+            "label waitNextFetch",
+            "ignore error source firstFetchCall\nlabel waitNextFetch",
+        )
+        _assert_strict_fails_with(self, source, "bind error|ignore error")
+
+    def test_strict_wait_set_fallible_case_requires_error_disposition(self) -> None:
+        source = _fetch_wait_set_source(1).replace(
+            "bind ok firstFetchCallResponse HttpTextResponse firstFetchCall\njump target waitNextFetch",
+            "bind ok firstFetchCallResponse HttpTextResponse firstFetchCall\njump target waitNextFetch",
+        )
+        _assert_strict_fails_with(self, source, "bind error|ignore error")
+
     def test_done_without_case_after_await_fails_with_specific_error(self) -> None:
         source = _user_operation_wait_set_source(["firstAddCall"], done_without_case=True)
         _assert_fails_with(self, source, "requires at least one following case row")
@@ -450,6 +772,23 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
     def test_unknown_case_call_fails(self) -> None:
         source = _user_operation_wait_set_source(["firstAddCall"], unknown_case=True)
         _assert_fails_with(self, source, "case references unknown call `missingCall`")
+
+    def test_run_checked_unknown_call_fails_with_source_message(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "runChecked missingCall ok missingValue I64 error missingError I64 else checkedFailed",
+                "return value missingValue",
+                "label checkedFailed",
+                "return value failedExitCode",
+            ]),
+        )
+        _assert_fails_with(
+            self,
+            source,
+            "runChecked references unknown call `missingCall`",
+        )
 
     def test_case_call_must_have_been_started_as_future(self) -> None:
         source = _user_operation_wait_set_source(["firstAddCall"], start_all=False)
@@ -913,6 +1252,34 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
         )
         _assert_fails_with(self, source, "secondAddCall` value may only be read inside handler label `secondAddCallReady`")
 
+    def test_pre_wait_defer_cannot_capture_future_case_bind(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label waitNextResult",
+            "defer cleanupFuture addPair secondAddCallResult one\nlabel waitNextResult",
+        )
+        _assert_fails_with(
+            self,
+            source,
+            "secondAddCallResult` value may only be read inside handler label `secondAddCallReady`",
+        )
+
+    def test_pre_wait_defer_cannot_capture_future_case_call(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label waitNextResult",
+            "defer cleanupFuture addPair secondAddCall one\nlabel waitNextResult",
+        )
+        _assert_fails_with(
+            self,
+            source,
+            "secondAddCall` value may only be read inside handler label `secondAddCallReady`",
+        )
+
     def test_case_handler_defer_must_not_cross_wait_set_reentry(self) -> None:
         source = _user_operation_wait_set_source([
             "firstAddCall",
@@ -1008,6 +1375,41 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             self,
             source,
             "submitWork: work `missingTargetWork` target `missingOp` is not a user operation",
+        )
+
+    def test_submit_work_requires_prior_work_args(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "workerPool resultPool maxWorkers 4",
+                "work sumWork target addPair",
+                "submitWork sumWork resultPool",
+                "workArg sumWork left one",
+                "workArg sumWork right two",
+                "awaitWork sumWork",
+                "return value sumWork",
+            ]),
+        )
+        _assert_fails_with(self, source, "_workSubmit__sumWork: missing arg `left`")
+
+    def test_submit_work_requires_declared_worker_pool(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "work sumWork target addPair",
+                "workArg sumWork left one",
+                "workArg sumWork right two",
+                "submitWork sumWork missingPool",
+                "awaitWork sumWork",
+                "return value sumWork",
+            ]),
+        )
+        _assert_fails_with(
+            self,
+            source,
+            "submitWork: worker pool `missingPool` is not declared",
         )
 
     def test_case_handler_run_checked_cannot_branch_out_before_reentry(self) -> None:
@@ -1329,6 +1731,79 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             diagnostics,
         )
 
+    def test_fallible_handler_call_with_only_ignored_error_is_linted(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label waitNextResult",
+            "\n".join([
+                "call handlerWriteCall console.writeLine",
+                "argument handlerWriteCall console Console console",
+                "argument handlerWriteCall text CNullTerminatedByteString one",
+                "label waitNextResult",
+            ]),
+        ).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "run handlerWriteCall",
+                "ignore error source handlerWriteCall",
+                "jump target waitNextResult",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3106"
+                and diagnostic.subjectName == "handlerWriteCall"
+                and "bind/ignore ok" in diagnostic.gapEdge
+                for diagnostic in diagnostics
+            ),
+            diagnostics,
+        )
+
+    def test_pre_wait_fallible_call_error_ignore_inside_handler_is_linted(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "storage module immutable cancellationToken COpaqueMemoryAddress 0",
+            "\n".join([
+                "storage module immutable cancellationToken COpaqueMemoryAddress 0",
+                'storage module immutable handlerMessage CNullTerminatedByteString "handler"',
+            ]),
+        ).replace(
+            "label waitNextResult",
+            "\n".join([
+                "call handlerWriteCall console.writeLine",
+                "argument handlerWriteCall console Console console",
+                "argument handlerWriteCall text CNullTerminatedByteString handlerMessage",
+                "run handlerWriteCall",
+                "ignore ok source handlerWriteCall type CSignedInt32",
+                "label waitNextResult",
+            ]),
+        ).replace(
+            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "\n".join([
+                "bind ok secondAddCallResult I64 secondAddCall",
+                "ignore error source handlerWriteCall",
+                "jump target waitNextResult",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3106"
+                and diagnostic.subjectName == "handlerWriteCall"
+                and "branch error" in diagnostic.gapEdge
+                for diagnostic in diagnostics
+            ),
+            diagnostics,
+        )
+
     def test_restart_after_wait_set_case_is_linted(self) -> None:
         source = _user_operation_wait_set_source(["firstAddCall"]).replace(
             "bind ok firstAddCallResult I64 firstAddCall\njump target waitNextResult",
@@ -1347,6 +1822,39 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
                 and diagnostic.blocksCompile
                 for diagnostic in diagnostics
             )
+        )
+
+    def test_run_checked_known_call_is_not_unknown_verb_or_unused_label(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "call checkedTotalCall math.addI64",
+                "argument checkedTotalCall left I64 one",
+                "argument checkedTotalCall right I64 two",
+                "runChecked checkedTotalCall ok checkedTotal I64 error checkedError I64 else checkedFailed",
+                "return value checkedTotal",
+                "label checkedFailed",
+                "return value failedExitCode",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertFalse(
+            [
+                diagnostic for diagnostic in diagnostics
+                if diagnostic.code == "SS0001"
+                and diagnostic.subjectName == "runChecked"
+            ],
+            diagnostics,
+        )
+        self.assertFalse(
+            [
+                diagnostic for diagnostic in diagnostics
+                if diagnostic.code == "SS0102"
+                and diagnostic.subjectName == "checkedFailed"
+            ],
+            diagnostics,
         )
 
     def test_same_call_in_multiple_wait_sets_is_linted(self) -> None:
@@ -2068,6 +2576,44 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             )
         )
 
+    def test_pre_wait_defer_future_case_bind_is_linted(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label waitNextResult",
+            "defer cleanupFuture addPair secondAddCallResult one\nlabel waitNextResult",
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "caseResultPrivateEntry"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_pre_wait_defer_future_case_call_is_linted(self) -> None:
+        source = _user_operation_wait_set_source([
+            "firstAddCall",
+            "secondAddCall",
+        ]).replace(
+            "label waitNextResult",
+            "defer cleanupFuture addPair secondAddCall one\nlabel waitNextResult",
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3509"
+                and diagnostic.gapEdge == "caseResultPrivateEntry"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
     def test_case_handler_defer_before_reentry_is_linted(self) -> None:
         source = _user_operation_wait_set_source([
             "firstAddCall",
@@ -2165,6 +2711,191 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
                 and diagnostic.blocksCompile
                 for diagnostic in diagnostics
             )
+        )
+
+    def test_submit_work_missing_worker_pool_is_linted(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "work sumWork target addPair",
+                "workArg sumWork left one",
+                "workArg sumWork right two",
+                "submitWork sumWork missingPool",
+                "awaitWork sumWork",
+                "return value sumWork",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3514"
+                and diagnostic.gapEdge == "workerPool"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_submit_work_missing_required_work_arg_is_linted(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "workerPool resultPool maxWorkers 4",
+                "work sumWork target addPair",
+                "workArg sumWork left one",
+                "submitWork sumWork resultPool",
+                "awaitWork sumWork",
+                "return value sumWork",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3514"
+                and diagnostic.gapEdge == "workArg"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_submit_work_requires_work_args_before_submit(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "workerPool resultPool maxWorkers 4",
+                "work sumWork target addPair",
+                "submitWork sumWork resultPool",
+                "workArg sumWork left one",
+                "workArg sumWork right two",
+                "awaitWork sumWork",
+                "return value sumWork",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3514"
+                and diagnostic.gapEdge == "workArg"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_submit_work_requires_work_before_submit(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "workerPool resultPool maxWorkers 4",
+                "workArg sumWork left one",
+                "workArg sumWork right two",
+                "submitWork sumWork resultPool",
+                "work sumWork target addPair",
+                "awaitWork sumWork",
+                "return value sumWork",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "SS3514"
+                and diagnostic.gapEdge == "workDeclaration"
+                and diagnostic.blocksCompile
+                for diagnostic in diagnostics
+            )
+        )
+
+    def test_submit_work_late_duplicate_work_after_valid_declaration_is_not_linted(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "output operation main ExitCode",
+            "output operation main I64",
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "workerPool resultPool maxWorkers 4",
+                "work sumWork target addPair",
+                "workArg sumWork left one",
+                "workArg sumWork right two",
+                "submitWork sumWork resultPool",
+                "work sumWork target addPair",
+                "awaitWork sumWork",
+                "return value sumWork",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertFalse(
+            [
+                diagnostic for diagnostic in diagnostics
+                if diagnostic.code == "SS3514"
+                and diagnostic.subjectName == "sumWork"
+            ],
+            diagnostics,
+        )
+
+    def test_submit_work_late_duplicate_arg_after_valid_arg_is_not_linted(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "output operation main ExitCode",
+            "output operation main I64",
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "workerPool resultPool maxWorkers 4",
+                "work sumWork target addPair",
+                "workArg sumWork left one",
+                "workArg sumWork right two",
+                "submitWork sumWork resultPool",
+                "workArg sumWork left three",
+                "awaitWork sumWork",
+                "return value sumWork",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertFalse(
+            [
+                diagnostic for diagnostic in diagnostics
+                if diagnostic.code == "SS3514"
+                and diagnostic.subjectName == "sumWork"
+            ],
+            diagnostics,
+        )
+
+    def test_submit_work_non_target_duplicate_before_submit_is_not_linted(self) -> None:
+        source = _user_operation_wait_set_source(["firstAddCall"]).replace(
+            "output operation main ExitCode",
+            "output operation main I64",
+        ).replace(
+            "label allDone\nreturn value successfulExitCode",
+            "\n".join([
+                "label allDone",
+                "workerPool resultPool maxWorkers 4",
+                "work sumWork target addPair",
+                "workArg sumWork left one",
+                "workArg sumWork right two",
+                "work sumWork",
+                "submitWork sumWork resultPool",
+                "awaitWork sumWork",
+                "return value sumWork",
+            ]),
+        )
+        diagnostics = _lint_source(source)
+
+        self.assertFalse(
+            [
+                diagnostic for diagnostic in diagnostics
+                if diagnostic.code == "SS3514"
+                and diagnostic.subjectName == "sumWork"
+            ],
+            diagnostics,
         )
 
     def test_case_handler_bind_work_arg_submit_is_linted(self) -> None:

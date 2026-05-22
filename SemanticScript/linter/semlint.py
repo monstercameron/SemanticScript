@@ -1748,7 +1748,8 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "literal", "literalBytes", "literalDigest", "literalPreview",
     "literalSource", "literalTrust",
     # Calls
-    "call", "argument", "arg", "timeout", "cancelOn", "run", "start", "await",
+    "call", "argument", "arg", "timeout", "cancelOn", "run", "runChecked",
+    "start", "await",
     "case", "done",
     "bind", "bindOk", "bindError", "ignore", "ignoreOk", "ignoreValue", "ignoreError",
     "makeError", "declareFailure",
@@ -2123,8 +2124,11 @@ class ExtendedFacts:
     operationLockSites: Dict[str, List[Tuple[SourceLine, str]]] = field(default_factory=dict)
     operationUnlockedMutexes: Dict[str, Set[str]] = field(default_factory=dict)
     operationDeferUnlockedMutexes: Dict[str, Set[str]] = field(default_factory=dict)
-    operationWorkTargets: Dict[str, Dict[str, Tuple[SourceLine, Optional[str]]]] = field(default_factory=dict)
-    operationSubmittedWork: Dict[str, List[Tuple[SourceLine, str]]] = field(default_factory=dict)
+    moduleWorkerPools: Dict[str, SourceLine] = field(default_factory=dict)
+    operationWorkerPools: Dict[str, Dict[str, SourceLine]] = field(default_factory=dict)
+    operationWorkTargets: Dict[str, Dict[str, List[Tuple[SourceLine, Optional[str]]]]] = field(default_factory=dict)
+    operationWorkArgs: Dict[str, Dict[str, Dict[str, List[SourceLine]]]] = field(default_factory=dict)
+    operationSubmittedWork: Dict[str, List[Tuple[SourceLine, str, str]]] = field(default_factory=dict)
     operationAwaitedWork: Dict[str, Set[str]] = field(default_factory=dict)
     # Module-scope select / case tracking
     selectDeclarations: Dict[str, SourceLine] = field(default_factory=dict)
@@ -2217,7 +2221,11 @@ def gather_extended(baseFacts: ProgramFacts) -> ExtendedFacts:
             facts.operationAuthority.setdefault(args[0], []).append(sourceLine)
         elif verb == "label" and args and currentOperation:
             facts.labels[args[0]] = LabelFact(args[0], sourceLine, currentOperation)
-        elif verb in {"branch", "jump", "branchIf", "branchIfError", "branchIfGroupError", "branchIfChannelClosed", "branchSelected", "case", "done"}:
+        elif verb in {
+            "branch", "jump", "branchIf", "branchIfError",
+            "branchIfGroupError", "branchIfChannelClosed",
+            "branchSelected", "runChecked", "case", "done",
+        }:
             facts.labelReferences.update(branch_target_names_from_row(sourceLine))
         elif verb == "errorCase" and len(args) >= 2:
             facts.errorCases[(args[0], args[1])] = ErrorCaseFact(args[0], args[1], sourceLine)
@@ -2382,16 +2390,29 @@ def gather_extended(baseFacts: ProgramFacts) -> ExtendedFacts:
             )
         elif verb == "unlock" and args and currentOperation:
             facts.operationUnlockedMutexes.setdefault(currentOperation, set()).add(args[0])
+        elif verb == "workerPool" and args:
+            if currentOperation:
+                facts.operationWorkerPools.setdefault(currentOperation, {})[args[0]] = sourceLine
+            else:
+                facts.moduleWorkerPools[args[0]] = sourceLine
         elif verb == "work" and args and currentOperation:
             targetOperation = args[2] if len(args) >= 3 and args[1] == "target" else None
-            facts.operationWorkTargets.setdefault(currentOperation, {})[args[0]] = (
+            facts.operationWorkTargets.setdefault(currentOperation, {}).setdefault(
+                args[0],
+                [],
+            ).append((
                 sourceLine,
                 targetOperation,
-            )
+            ))
+        elif verb == "workArg" and len(args) >= 3 and currentOperation:
+            facts.operationWorkArgs.setdefault(currentOperation, {}).setdefault(
+                args[0],
+                {},
+            ).setdefault(args[1], []).append(sourceLine)
         elif verb == "submitWork" and len(args) >= 2 and currentOperation:
             # `submitWork WORK POOL` — first arg is the work item name
             facts.operationSubmittedWork.setdefault(currentOperation, []).append(
-                (sourceLine, args[0])
+                (sourceLine, args[0], args[1])
             )
         elif verb == "awaitWork" and args and currentOperation:
             facts.operationAwaitedWork.setdefault(currentOperation, set()).add(args[0])
@@ -2806,6 +2827,11 @@ def call_has_value_disposition(callFact: CallFact) -> bool:
         or callFact.ignore_ok_lines
         or callFact.ignore_void_lines
     )
+
+
+def call_result_success_disposition_lines(callFact: CallFact) -> List[SourceLine]:
+    """Rows that explicitly dispose the success side of a Result-shaped call."""
+    return callFact.bind_ok_lines + callFact.ignore_ok_lines + callFact.ignore_void_lines
 
 
 def call_consumes_any_value(callFact: CallFact, valueNames: Set[str]) -> bool:
@@ -4529,32 +4555,141 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
         def in_wait_set_completion_context(callFact: CallFact) -> bool:
             if callFact.name in waitSetCaseCalls:
                 return True
-            if labelBeforeLine.get(callFact.line.number) in waitSetHandlerLabels:
-                return True
-            relatedLines = (
+            executionLines = (
                 callFact.run_lines
                 + callFact.run_checked_lines
-                + callFact.bind_lines
-                + callFact.bind_ok_lines
-                + callFact.bind_error_lines
-                + callFact.ignore_ok_lines
-                + callFact.ignore_value_lines
-                + callFact.ignore_error_lines
-                + callFact.ignore_void_lines
-                + callFact.branch_error_lines
+                + callFact.start_lines
+                + callFact.group_start_lines
+                + callFact.await_lines
             )
             return any(
                 labelBeforeLine.get(line.number) in waitSetHandlerLabels
-                for line in relatedLines
+                for line in executionLines
+            )
+
+        def is_wait_set_handler_line(line: SourceLine) -> bool:
+            return labelBeforeLine.get(line.number) in waitSetHandlerLabels
+
+        def unchecked_execution_lines(callFact: CallFact) -> List[SourceLine]:
+            return (
+                callFact.run_lines
+                + callFact.start_lines
+                + callFact.group_start_lines
+                + callFact.await_lines
+            )
+
+        def after_last_execution(line: SourceLine, executionLines: List[SourceLine]) -> bool:
+            if not executionLines:
+                return True
+            return line.number > max(executionLine.number for executionLine in executionLines)
+
+        def has_ordered_result_success(
+            callFact: CallFact,
+            executionLines: List[SourceLine],
+            waitSetCompletionContext: bool,
+        ) -> bool:
+            return any(
+                after_last_execution(line, executionLines)
+                and (
+                    not waitSetCompletionContext
+                    or is_wait_set_handler_line(line)
+                )
+                for line in call_result_success_disposition_lines(callFact)
+            )
+
+        def has_ordered_bind_error(
+            callFact: CallFact,
+            executionLines: List[SourceLine],
+            waitSetCompletionContext: bool,
+        ) -> bool:
+            return any(
+                after_last_execution(line, executionLines)
+                and (
+                    not waitSetCompletionContext
+                    or is_wait_set_handler_line(line)
+                )
+                for line in callFact.bind_error_lines
+            )
+
+        def has_ordered_branch_error(
+            callFact: CallFact,
+            executionLines: List[SourceLine],
+        ) -> bool:
+            return any(
+                after_last_execution(line, executionLines)
+                for line in callFact.branch_error_lines
+            )
+
+        def has_ordered_value_disposition(
+            callFact: CallFact,
+            executionLines: List[SourceLine],
+        ) -> bool:
+            return any(
+                after_last_execution(line, executionLines)
+                for line in (
+                    callFact.bind_lines
+                    + callFact.bind_ok_lines
+                    + callFact.ignore_value_lines
+                    + callFact.ignore_ok_lines
+                    + callFact.ignore_void_lines
+                )
             )
 
         for callFact in operationCalls.values():
             if callFact.target not in KNOWN_FALLIBLE_CALL_TARGETS:
                 continue
+            uncheckedExecutionLines = unchecked_execution_lines(callFact)
+            if callFact.run_checked_lines and uncheckedExecutionLines:
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS3106",
+                    kind="errorPathCoverage.hiddenFailure",
+                    severity=Severity.WARNING,
+                    subjectName=callFact.name,
+                    subjectKind="call",
+                    gapEdge="runOrRunChecked",
+                    intentSlogan="fallible call mixes checked and unchecked execution",
+                    primary=span_of_line(uncheckedExecutionLines[0], "uncheckedExecutionSite"),
+                    related=[
+                        span_of_line(callFact.line, "callDeclaration"),
+                        *[
+                            span_of_line(runCheckedLine, "checkedRunSite")
+                            for runCheckedLine in callFact.run_checked_lines
+                        ],
+                    ],
+                    invariantRule=(
+                        f"known-fallible target `{callFact.target}` must use either "
+                        "`runChecked` for every execution or the explicit unchecked "
+                        "execution + success/error/branch disposition shape; do not "
+                        "mix both on the same call name"
+                    ),
+                    specAnchor="SYNTAX.md#runchecked",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="useOneExecutionShape",
+                            shape=(
+                                f"runChecked {callFact.name} ok <okName> <OkType> "
+                                "error <errorName> <ErrorType> else <failureLabel>\n"
+                                "# or remove runChecked and add bind/ignore + branch "
+                                "disposition for the unchecked execution"
+                            ),
+                            evidence=[span_of_line(uncheckedExecutionLines[0])],
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_hidden_failure",
+                    agentHint=(
+                        "`runChecked` only checks its own execution row; a sibling "
+                        "`run`/`start`/`await` path would still execute unchecked"
+                    ),
+                ))
+                continue
             if callFact.run_checked_lines:
                 continue
             if callFact.target in C_SENTINEL_FALLIBLE_CALL_TARGETS:
-                if call_has_value_disposition(callFact):
+                if has_ordered_value_disposition(callFact, uncheckedExecutionLines):
                     continue
                 diagnostics.append(Diagnostic(
                     tier=Tier.T3_REFINEMENT,
@@ -4594,13 +4729,30 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
                     ),
                 ))
                 continue
-            missingDisposition: List[str] = []
-            if callFact.ignore_error_lines:
-                continue
             waitSetCompletionContext = in_wait_set_completion_context(callFact)
-            if not callFact.bind_error_lines:
+            relevantIgnoreError = any(
+                after_last_execution(line, uncheckedExecutionLines)
+                and is_wait_set_handler_line(line)
+                for line in callFact.ignore_error_lines
+            ) if waitSetCompletionContext else False
+            hasBindError = has_ordered_bind_error(
+                callFact,
+                uncheckedExecutionLines,
+                waitSetCompletionContext,
+            )
+            missingDisposition: List[str] = []
+            if not has_ordered_result_success(
+                callFact,
+                uncheckedExecutionLines,
+                waitSetCompletionContext,
+            ):
+                missingDisposition.append("bind/ignore ok")
+            if not hasBindError and not relevantIgnoreError:
                 missingDisposition.append("bind error")
-            if not waitSetCompletionContext and not callFact.branch_error_lines:
+            if (
+                not waitSetCompletionContext
+                and not has_ordered_branch_error(callFact, uncheckedExecutionLines)
+            ):
                 missingDisposition.append("branch error")
             if not missingDisposition:
                 continue
@@ -4608,10 +4760,11 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
                 invariantRule = (
                     f"calls to known-fallible target `{callFact.target}` inside "
                     "an await wait-set completion path must bind or explicitly "
-                    "ignore the error; branching from a case handler can abandon "
-                    "sibling futures"
+                    "ignore both the success and error sides; branching from a "
+                    "case handler can abandon sibling futures"
                 )
                 fixShape = (
+                    f"ignore ok source {callFact.name} type <OkType>\n"
                     f"bind error {callFact.name}Error <ErrorType> {callFact.name}\n"
                     f"# or: ignore error source {callFact.name}"
                 )
@@ -7075,7 +7228,7 @@ def check_unawaited_submit_work(facts: ExtendedFacts) -> List[Diagnostic]:
         submittedWork = facts.operationSubmittedWork.get(operation.name, [])
         awaitedWork = facts.operationAwaitedWork.get(operation.name, set())
         flaggedWork: Set[str] = set()
-        for submitLine, workName in submittedWork:
+        for submitLine, workName, _poolName in submittedWork:
             if workName in awaitedWork:
                 continue
             if workName in flaggedWork:
@@ -7124,6 +7277,9 @@ def check_invalid_submit_work(facts: ExtendedFacts) -> List[Diagnostic]:
         operationCitations = narrative_citations_for_operation(facts, operation.name)
         submittedWork = facts.operationSubmittedWork.get(operation.name, [])
         workTargets = facts.operationWorkTargets.get(operation.name, {})
+        workArgs = facts.operationWorkArgs.get(operation.name, {})
+        workerPools = set(facts.moduleWorkerPools)
+        workerPools.update(facts.operationWorkerPools.get(operation.name, {}))
         flaggedWork: Set[Tuple[str, str]] = set()
 
         def add_invalid_submit_work_diagnostic(
@@ -7174,9 +7330,19 @@ def check_invalid_submit_work(facts: ExtendedFacts) -> List[Diagnostic]:
                 ),
             ))
 
-        for submitLine, workName in submittedWork:
-            workInfo = workTargets.get(workName)
-            if workInfo is None:
+        for submitLine, workName, poolName in submittedWork:
+            if poolName not in workerPools:
+                add_invalid_submit_work_diagnostic(
+                    submitLine,
+                    workName,
+                    "workerPool",
+                    (
+                        f"`submitWork {workName} {poolName}` requires a "
+                        f"declared `workerPool {poolName}` row"
+                    ),
+                )
+            workInfos = workTargets.get(workName, [])
+            if not workInfos:
                 add_invalid_submit_work_diagnostic(
                     submitLine,
                     workName,
@@ -7188,7 +7354,49 @@ def check_invalid_submit_work(facts: ExtendedFacts) -> List[Diagnostic]:
                     ),
                 )
                 continue
-            workLine, targetOperation = workInfo
+            priorWorkInfos = [
+                workInfo
+                for workInfo in workInfos
+                if workInfo[0].number < submitLine.number
+            ]
+            if not priorWorkInfos:
+                add_invalid_submit_work_diagnostic(
+                    submitLine,
+                    workName,
+                    "workDeclaration",
+                    (
+                        f"`submitWork {workName}` requires `work {workName} "
+                        "target <userOperation>` to appear before the "
+                        "submit row"
+                    ),
+                    workInfos[0][0],
+                )
+                continue
+            priorTargetWorkInfos = [
+                workInfo
+                for workInfo in priorWorkInfos
+                if workInfo[1]
+            ]
+            if not priorTargetWorkInfos:
+                workLine, _targetOperation = max(
+                    priorWorkInfos,
+                    key=lambda workInfo: workInfo[0].number,
+                )
+                add_invalid_submit_work_diagnostic(
+                    submitLine,
+                    workName,
+                    "workTarget",
+                    (
+                        f"`work {workName}` must name a target user operation "
+                        "before it can be submitted"
+                    ),
+                    workLine,
+                )
+                continue
+            workLine, targetOperation = max(
+                priorTargetWorkInfos,
+                key=lambda workInfo: workInfo[0].number,
+            )
             if not targetOperation:
                 add_invalid_submit_work_diagnostic(
                     submitLine,
@@ -7209,6 +7417,31 @@ def check_invalid_submit_work(facts: ExtendedFacts) -> List[Diagnostic]:
                     (
                         f"`work {workName} target {targetOperation}` must "
                         "target a declared user operation"
+                    ),
+                    workLine,
+                )
+                continue
+            requiredInputs = {
+                parsedInput[1]
+                for inputLine in facts.base.operations[targetOperation].lines
+                for parsedInput in [input_parts(inputLine)]
+                if parsedInput is not None and parsedInput[0] == targetOperation
+            }
+            providedArgs = {
+                argName
+                for argName, argLines in workArgs.get(workName, {}).items()
+                if any(argLine.number < submitLine.number for argLine in argLines)
+            }
+            missingInputs = sorted(requiredInputs - providedArgs)
+            for missingInput in missingInputs:
+                add_invalid_submit_work_diagnostic(
+                    submitLine,
+                    workName,
+                    "workArg",
+                    (
+                        f"`work {workName} target {targetOperation}` is "
+                        f"submitted without required `workArg {workName} "
+                        f"{missingInput} <value>`"
                     ),
                     workLine,
                 )
@@ -8674,8 +8907,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                 if privateOwner is None:
                     continue
                 waitSetName, targetLabel, caseLine, _definitionLine = privateOwner
-                if (sourceLine.number > _definitionLine.number
-                        and label_before_line(sourceLine.number) != targetLabel):
+                if label_before_line(sourceLine.number) != targetLabel:
                     add_case_result_ownership_diagnostic(
                         sourceLine, referencedSymbol, waitSetName,
                         targetLabel, caseLine)
