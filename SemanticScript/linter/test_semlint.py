@@ -1944,6 +1944,24 @@ returnError writeLineFailure
 """)
         self.assertNotIn("SS3106", _codes(diagnostics))
 
+    def test_run_checked_counts_as_fallible_disposition(self) -> None:
+        diagnostics = _lint_source("""project Test
+error MainError
+errorCase MainError WriteFailure
+operation main
+output main Result Void MainError
+purpose main "smoke"
+effect main write console.stdout
+call writeLineCall console.writeLine
+arg writeLineCall console console
+arg writeLineCall text someMessageText
+runChecked writeLineCall ok writeLineStatus CSignedInt32 error writeLineError MainError else writeFailed
+returnOk noResult
+label writeFailed
+returnError writeLineError
+""")
+        self.assertNotIn("SS3106", _codes(diagnostics))
+
     def test_c_status_call_with_ignore_value_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
@@ -2694,6 +2712,30 @@ returnError allocationCallError""",
         ))
         self.assertNotIn("SS3305", _codes(diagnostics))
 
+    def test_heap_allocator_with_run_checked_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+error MainError
+errorCase MainError OutOfMemory
+operation main
+output main Result Void MainError
+purpose main "smoke"
+effect main allocate heap
+authority main heap allocate
+memoryHeap main yes
+memoryAllocationSource main allocationCall
+storage local immutable allocationSize CByteCount 8
+call allocationCall c.malloc
+arg allocationCall size allocationSize
+runChecked allocationCall ok allocatedBuffer COpaqueMemoryAddress error allocationError MainError else allocationFailed
+defer releaseAllocationCall c.free allocatedBuffer
+returnOk noResult
+label allocationFailed
+returnError allocationError
+""")
+        codes = _codes(diagnostics)
+        self.assertNotIn("SS3305", codes)
+        self.assertNotIn("SS3106", codes)
+
     def test_heap_allocator_with_bind_error_only_is_flagged(self) -> None:
         diagnostics = _lint_source(self._allocation_source(
             "c.calloc",
@@ -2958,10 +3000,13 @@ class TestUnawaitedSubmitWork(unittest.TestCase):
     def test_submit_without_await_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 workerPool backgroundPool
+operation renderTask
+output renderTask Void
+purpose renderTask "render"
 operation main
 output main Void
 purpose main "smoke"
-work renderTaskWork
+work renderTaskWork target renderTask
 submitWork renderTaskWork backgroundPool
 """)
         self.assertIn("SS3506", _codes(diagnostics))
@@ -2969,14 +3014,40 @@ submitWork renderTaskWork backgroundPool
     def test_submit_with_await_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 workerPool backgroundPool
+operation renderTask
+output renderTask Void
+purpose renderTask "render"
 operation main
 output main Void
 purpose main "smoke"
-work renderTaskWork
+work renderTaskWork target renderTask
 submitWork renderTaskWork backgroundPool
 awaitWork renderTaskWork
 """)
         self.assertNotIn("SS3506", _codes(diagnostics))
+
+    def test_submit_missing_work_declaration_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+workerPool backgroundPool
+operation main
+output main Void
+purpose main "smoke"
+submitWork renderTaskWork backgroundPool
+awaitWork renderTaskWork
+""")
+        self.assertIn("SS3514", _codes(diagnostics))
+
+    def test_submit_work_with_unknown_target_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+workerPool backgroundPool
+operation main
+output main Void
+purpose main "smoke"
+work renderTaskWork target missingRenderTask
+submitWork renderTaskWork backgroundPool
+awaitWork renderTaskWork
+""")
+        self.assertIn("SS3514", _codes(diagnostics))
 
 
 class TestSelectWithoutCases(unittest.TestCase):
