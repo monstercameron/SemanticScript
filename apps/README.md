@@ -8,7 +8,7 @@ Runnable SemanticScript demos and smoke fixtures.
 - `html-template-lab/`: first-class HTML template demo with module-split fragments and bare string holes.
 - `http-runtime-gauntlet/`: native HTTP conformance harness covering routing, request reads, response writes, multipart, SSE, middleware, and failure paths.
 - `taskforge-web/`: multi-user web app with HTML pages, static assets, bcrypt authentication, sqlite persistence, JSON APIs, sessions, and cookie flow.
-- `taskforge-api-client/`: standalone browser todo client that consumes the `taskforge-web` JSON API through a local same-origin proxy.
+- `taskforge-api-client/`: SemanticScript outbound HTTP client that starts/awaits `standard.net` calls against the running `taskforge-web` server; also includes an optional browser/proxy harness for authenticated todo flows.
 
 ## Smoke Fixtures
 

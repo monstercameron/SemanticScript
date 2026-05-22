@@ -72,6 +72,20 @@ def compile_and_run_semsc_source(source, *, timeout=300, suffix=".sscript"):
         return compile_proc, run_proc
 
 
+def parse_semsc_source_with_imports(source, *, suffix=".sscript"):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / f"sample{suffix}"
+        src_path.write_text(source, encoding="utf-8", newline="\n")
+        resolved = semsc._resolve_imports(source, str(src_path))
+        return semsc.parse(resolved)
+
+
+def parse_semsc_file_with_imports(path):
+    source = path.read_text(encoding="utf-8")
+    resolved = semsc._resolve_imports(source, str(path))
+    return semsc.parse(resolved)
+
+
 def _gui_support_pending_message(message):
     """Return true for the current pre-GUI compiler diagnostics.
 
@@ -261,6 +275,116 @@ def test_parser_syntax_cutover_rows():
     check("parser cutover: forbidden punctuation/role shapes rejected",
           len(rejected) == len(forbidden_rows),
           f"accepted = {sorted(set(forbidden_rows) - set(rejected))!r}")
+
+
+def test_parser_stdlib_surfaces_require_explicit_imports():
+    bare = semsc.parse("project BareStdlibSurface\n")
+    hidden_names = (
+        "JsonText",
+        "JsonValueKind",
+        "objectJsonValueKind",
+        "SqliteOpenMode",
+        "inMemorySqliteOpenMode",
+    )
+    leaked = [
+        name for name in hidden_names
+        if name in bare.type_aliases or name in bare.enums or name in bare.consts
+    ]
+    check("parser: json/sqlite surfaces are not hidden preloads",
+          not leaked,
+          f"leaked={leaked!r}")
+
+    imported = parse_semsc_source_with_imports("\n".join([
+        "project ImportedStdlibSurface",
+        "import json standard.json",
+        "import sqlite standard.sqlite",
+    ]))
+    check("parser: explicit standard imports expose json/sqlite surfaces",
+          imported.type_aliases.get("JsonText") == ["CNullTerminatedByteString"]
+          and "JsonValueKind" in imported.enums
+          and ("objectJsonValueKind", "0") in imported.enums["JsonValueKind"].cases
+          and "SqliteOpenMode" in imported.enums
+          and ("inMemorySqliteOpenMode", "14") in imported.enums["SqliteOpenMode"].cases,
+          f"aliases={imported.type_aliases!r} enums={list(imported.enums)} consts={imported.consts!r}")
+
+
+def _enum_cases_as_ints(enum_obj):
+    return {name: int(str(value), 0) for name, value in enum_obj.cases}
+
+
+def _const_value_as_int(prog, name):
+    _type_name, value = prog.consts[name]
+    return int(str(value), 0)
+
+
+def _c_integer_symbol(header_text, symbol):
+    match = re.search(
+        rf"(?:\b{re.escape(symbol)}\s*=\s*|#define\s+{re.escape(symbol)}\s+)"
+        rf"(0x[0-9A-Fa-f]+|[0-9]+)",
+        header_text)
+    if not match:
+        raise AssertionError(f"missing C integer symbol {symbol}")
+    return int(match.group(1), 0)
+
+
+def test_stdlib_json_contract_matches_native_runtime_constants():
+    prog = parse_semsc_file_with_imports(ROOT / "std" / "json" / "main.sem")
+    header = (ROOT / "runtime" / "native_json" / "sem_json_runtime.h").read_text(
+        encoding="utf-8")
+    cases = _enum_cases_as_ints(prog.enums["JsonValueKind"])
+    expected_cases = {
+        "objectJsonValueKind": _c_integer_symbol(header, "SS_JSON_NODE_OBJECT"),
+        "arrayJsonValueKind": _c_integer_symbol(header, "SS_JSON_NODE_ARRAY"),
+        "stringJsonValueKind": _c_integer_symbol(header, "SS_JSON_NODE_STRING"),
+        "integerJsonValueKind": _c_integer_symbol(header, "SS_JSON_NODE_INTEGER"),
+        "doubleJsonValueKind": _c_integer_symbol(header, "SS_JSON_NODE_DOUBLE"),
+        "booleanJsonValueKind": _c_integer_symbol(header, "SS_JSON_NODE_BOOLEAN"),
+        "nullJsonValueKind": _c_integer_symbol(header, "SS_JSON_NODE_NULL"),
+    }
+    check("stdlib/native_json drift: JsonValueKind values match",
+          all(cases.get(name) == value for name, value in expected_cases.items()),
+          f"cases={cases!r} expected={expected_cases!r}")
+    check("stdlib/native_json drift: default builder capacity matches",
+          _const_value_as_int(prog, "defaultJsonBuilderCapacityBytes")
+          == _c_integer_symbol(header, "SS_JSON_DEFAULT_BUILDER_CAPACITY"),
+          f"consts={prog.consts!r}")
+
+
+def test_stdlib_sqlite_contract_matches_native_runtime_constants():
+    prog = parse_semsc_file_with_imports(ROOT / "std" / "sqlite" / "main.sem")
+    header = (ROOT / "runtime" / "native_sqlite" / "sem_sqlite_runtime.h").read_text(
+        encoding="utf-8")
+    open_cases = _enum_cases_as_ints(prog.enums["SqliteOpenMode"])
+    step_cases = _enum_cases_as_ints(prog.enums["SqliteStepResult"])
+    column_cases = _enum_cases_as_ints(prog.enums["SqliteColumnType"])
+    read_only = _c_integer_symbol(header, "SS_SQLITE_OPEN_READONLY")
+    read_write = _c_integer_symbol(header, "SS_SQLITE_OPEN_READWRITE")
+    create = _c_integer_symbol(header, "SS_SQLITE_OPEN_CREATE")
+    memory = _c_integer_symbol(header, "SS_SQLITE_OPEN_MEMORY")
+    check("stdlib/native_sqlite drift: open modes match",
+          open_cases.get("readOnlySqliteOpenMode") == read_only
+          and open_cases.get("readWriteSqliteOpenMode") == read_write
+          and open_cases.get("readWriteCreateSqliteOpenMode") == (read_write | create)
+          and open_cases.get("inMemorySqliteOpenMode") == (read_write | create | memory),
+          f"open_cases={open_cases!r}")
+    check("stdlib/native_sqlite drift: step result values match",
+          step_cases.get("rowSqliteStepResult")
+          == _c_integer_symbol(header, "SS_SQLITE_STEP_ROW")
+          and step_cases.get("doneSqliteStepResult")
+          == _c_integer_symbol(header, "SS_SQLITE_STEP_DONE"),
+          f"step_cases={step_cases!r}")
+    check("stdlib/native_sqlite drift: column type values match",
+          column_cases.get("integerSqliteColumnType")
+          == _c_integer_symbol(header, "SS_SQLITE_COLUMN_INTEGER")
+          and column_cases.get("floatSqliteColumnType")
+          == _c_integer_symbol(header, "SS_SQLITE_COLUMN_FLOAT")
+          and column_cases.get("textSqliteColumnType")
+          == _c_integer_symbol(header, "SS_SQLITE_COLUMN_TEXT")
+          and column_cases.get("blobSqliteColumnType")
+          == _c_integer_symbol(header, "SS_SQLITE_COLUMN_BLOB")
+          and column_cases.get("nullSqliteColumnType")
+          == _c_integer_symbol(header, "SS_SQLITE_COLUMN_NULL"),
+          f"column_cases={column_cases!r}")
 
 
 def test_compile_new_syntax_rows_to_ir():
@@ -899,6 +1023,56 @@ def test_strict_web_contracts_reject_wrong_response_forwarder():
           f"rc={proc.returncode} stderr={proc.stderr!r}")
 
 
+def test_strict_web_contracts_reject_app_specific_response_helper_without_forwarder():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictHttpAppHelperBoundary",
+        "target webServer",
+        "runtime native 1",
+        "webServer strictServer",
+        "purpose module strictServer \"strict HTTP fixture server\"",
+        "serverHost strictServer \"127.0.0.1\"",
+        "serverPort strictServer 18083",
+        "route strictServer GET \"/health\" healthHandler",
+        "authority healthHandler write http.response",
+        "",
+        "operation writeJsonOkResponse",
+        "input operation writeJsonOkResponse response HttpResponse",
+        "input operation writeJsonOkResponse status CSignedInt32",
+        "input operation writeJsonOkResponse jsonBody CNullTerminatedByteString",
+        "output operation writeJsonOkResponse CSignedInt32",
+        "effect writeJsonOkResponse write http.response",
+        "purpose operation writeJsonOkResponse \"app helper name fixture\"",
+        "memory writeJsonOkResponse arena request",
+        "async writeJsonOkResponse no",
+        "label startWriteJsonOkResponse",
+        "return value status",
+        "",
+        "operation healthHandler",
+        "input operation healthHandler request HttpRequest",
+        "input operation healthHandler response HttpResponse",
+        "output operation healthHandler CSignedInt32",
+        "effect healthHandler write http.response",
+        "purpose operation healthHandler \"route handler fixture\"",
+        "memory healthHandler arena request",
+        "async healthHandler no",
+        "label startHealthHandler",
+        "storage module immutable okStatus CSignedInt32 200",
+        "storage module immutable okBody CNullTerminatedByteString \"ok\\n\"",
+        "call helperCall writeJsonOkResponse",
+        "argument helperCall response HttpResponse response",
+        "argument helperCall status CSignedInt32 okStatus",
+        "argument helperCall jsonBody CNullTerminatedByteString okBody",
+        "run helperCall",
+        "bind value helperStatus CSignedInt32 helperCall",
+        "return value helperStatus",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strict HTTP: app-specific helper name is not an implicit writer",
+          proc.returncode == 3 and "SS3614" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
 def test_strict_web_contracts_reject_nullable_header_response_body():
     handler_body = [
         "storage module immutable okStatus CSignedInt32 200",
@@ -1040,6 +1214,7 @@ def test_strict_executable_run_checked_heap_allocation_lowers():
 def test_strict_rejects_plain_run_for_fallible_sqlite_prepare():
     src = "\n".join([
         "project StrictUncheckedSqlitePrepare",
+        "import sqlite standard.sqlite",
         "entry console main",
         "error MainError",
         "errorCase MainError PrepareFailed",
@@ -1237,6 +1412,7 @@ def test_strict_executable_rejects_sqlite_open_setup_failure_without_close():
     src = "\n".join([
         "languageMode strictExecutable",
         "project StrictSqliteOpenCleanupMissing",
+        "import sqlite standard.sqlite",
         "entry console main",
         "error MainError",
         "errorCase MainError OpenFailed",
@@ -1281,6 +1457,7 @@ def test_strict_executable_accepts_sqlite_open_setup_failure_close():
     src = "\n".join([
         "languageMode strictExecutable",
         "project StrictSqliteOpenCleanup",
+        "import sqlite standard.sqlite",
         "entry console main",
         "error MainError",
         "errorCase MainError OpenFailed",
@@ -1331,6 +1508,7 @@ def test_strict_executable_rejects_sqlite_prepare_without_finalize():
     src = "\n".join([
         "languageMode strictExecutable",
         "project StrictSqlitePrepareMissingFinalize",
+        "import sqlite standard.sqlite",
         "entry console main",
         "error MainError",
         "errorCase MainError PrepareFailed",
@@ -1365,6 +1543,7 @@ def test_strict_executable_accepts_sqlite_prepare_finalize_defer():
     src = "\n".join([
         "languageMode strictExecutable",
         "project StrictSqlitePrepareFinalize",
+        "import sqlite standard.sqlite",
         "entry console main",
         "error MainError",
         "errorCase MainError PrepareFailed",
@@ -1618,6 +1797,7 @@ def test_html_template_parser_records_body_and_rejects_bad_edges():
 def test_json_body_parser_records_text_and_record_metadata():
     source = "\n".join([
         "project JsonBodyParser",
+        "import json standard.json",
         "record Payload",
         "field Payload title JsonText",
         "field Payload count I64",
@@ -1631,7 +1811,7 @@ def test_json_body_parser_records_text_and_record_metadata():
         "purpose operation main \"parser-only JSON island smoke\"",
         "return value 0",
     ])
-    prog = semsc.parse(source)
+    prog = parse_semsc_source_with_imports(source)
     check("jsonBody parser: JsonText literal recorded",
           len(prog.json_bodies) == 1
           and prog.json_bodies[0].canonical_text == "{\"display_title\":\"ok\",\"count\":1}",
@@ -1648,6 +1828,7 @@ def test_json_body_parser_records_text_and_record_metadata():
 
     bad_source = "\n".join([
         "project BadJsonBody",
+        "import json standard.json",
         "storage module immutable payload JsonText",
         "jsonBody payload",
         "  {\"title\":}",
@@ -1655,7 +1836,7 @@ def test_json_body_parser_records_text_and_record_metadata():
     raised = False
     msg = ""
     try:
-        semsc.parse(bad_source)
+        parse_semsc_source_with_imports(bad_source)
     except SyntaxError as exc:
         raised = True
         msg = str(exc)
@@ -1667,6 +1848,7 @@ def test_json_body_parser_records_text_and_record_metadata():
 def test_json_body_record_literal_type_checks_and_records_constant():
     source = "\n".join([
         "project JsonBodyRecordParser",
+        "import json standard.json",
         "record Address",
         "field Address zip I64",
         "record Payload",
@@ -1680,7 +1862,7 @@ def test_json_body_record_literal_type_checks_and_records_constant():
         "jsonBody payload",
         "  {\"display_title\":\"ok\",\"count\":1,\"address\":{\"zip\":90210}}",
     ])
-    prog = semsc.parse(source)
+    prog = parse_semsc_source_with_imports(source)
     record_const = prog.record_json_constants.get("payload")
     fields = record_const["fields"] if record_const else {}
     check("jsonBody record: typed constant recorded",
@@ -1712,6 +1894,7 @@ def test_json_body_record_literal_type_checks_and_records_constant():
     for label, body, expected in bad_cases:
         bad_source = "\n".join([
             "project BadJsonBodyRecord",
+            "import json standard.json",
             "record Address",
             "field Address zip I64",
             "record Payload",
@@ -1727,7 +1910,7 @@ def test_json_body_record_literal_type_checks_and_records_constant():
         raised = False
         msg = ""
         try:
-            semsc.parse(bad_source)
+            parse_semsc_source_with_imports(bad_source)
         except SyntaxError as exc:
             raised = True
             msg = str(exc)
@@ -3888,8 +4071,7 @@ def test_sqlite_codegen_emits_runtime_externs_and_calls():
     compiles — see the project memory `feedback_verify_impld_claims`
     for why we require failure under no-op lowering."""
     sample_path = ROOT / "sem" / "syntax_sample_sqlite.sscript"
-    source = sample_path.read_text(encoding="utf-8")
-    prog = semsc.parse(source)
+    prog = parse_semsc_file_with_imports(sample_path)
     cg = semsc.Codegen(prog)
     mod = cg.compile()
     ir_text = str(mod)
@@ -3969,6 +4151,155 @@ def test_sqlite_codegen_rejects_unsupported_target():
           "unsupported native sqlite call target" in proc.stderr
           and "sqlite.notARealEntryPoint" in proc.stderr,
           proc.stderr)
+
+
+def test_standard_net_fetch_lowers_and_reports_runtime_link_inputs():
+    src = "\n".join([
+        "project StandardNetFetchRuntime",
+        "import net standard.net",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main write network.http.client",
+        "memory main heap no",
+        "async main yes",
+        "useCapability main networkHttpClient",
+        "purpose operation main \"exercise prototype standard.net fetch lowering\"",
+        "label start",
+        "storage module immutable exampleUrl Url \"https://example.invalid/\"",
+        "storage module immutable timeoutMillis NetworkTimeoutMilliseconds 3000",
+        "storage module immutable maxBodyBytes ResponseBodyLimitBytes 4096",
+        "storage module immutable redirectLimit HttpRedirectLimit 5",
+        "new fetchRequest HttpGetRequest",
+        "fieldSet fetchRequest url exampleUrl",
+        "fieldSet fetchRequest policy.timeoutMillis timeoutMillis",
+        "fieldSet fetchRequest policy.maxBodyBytes maxBodyBytes",
+        "fieldSet fetchRequest policy.redirectLimit redirectLimit",
+        "call fetchCall net.fetchText",
+        "argument fetchCall request HttpGetRequest fetchRequest",
+        "run fetchCall",
+        "bind ok fetchResponse HttpTextResponse fetchCall",
+        "bind error fetchError HttpClientErrorCode fetchCall",
+        "branch error source fetchCall target fetchFailed",
+        "fieldGet fetchStatus HttpClientStatusCode fetchResponse status",
+        "return value fetchStatus",
+        "label fetchFailed",
+        "return value fetchError",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "net_fetch_runtime.sscript"
+        ir_path = Path(tmpdir) / "net_fetch_runtime.ll"
+        inspect_path = Path(tmpdir) / "net_fetch_runtime.inspect.json"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-ir", str(ir_path),
+             "--inspect-ir", str(inspect_path)],
+            capture_output=True, text=True,
+        )
+        ir_text = ir_path.read_text(encoding="utf-8") if ir_path.exists() else ""
+        try:
+            inspect_payload = json.loads(inspect_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            inspect_payload = {}
+    components = {
+        item.get("component"): item
+        for item in inspect_payload.get("runtimeLink", {}).get("components", [])
+    }
+    http_client = components.get("native_http_client", {})
+    source_names = {Path(source).name for source in http_client.get("sources", [])}
+    check("standard.net: fetchText codegen succeeds",
+          proc.returncode == 0 and bool(ir_text),
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+    check("standard.net: fetchText lowers to native HTTP client ABI",
+          "ss_http_client_fetch_text_request_copy" in ir_text,
+          ir_text[:1000])
+    check("standard.net: fetchText reports native_async/http_client link inputs",
+          source_names == {"sem_async_runtime.c", "sem_http_client_runtime.c"}
+          and http_client.get("owner") == "standard.net/runtime",
+          f"component={http_client!r}")
+
+
+def test_native_runtime_link_registry_is_unique_and_owned():
+    registry = getattr(semsc, "_NATIVE_RUNTIME_LINK_REGISTRY", ())
+    components = [entry.get("component") for entry in registry]
+    expected = {
+        "native_http",
+        "native_sqlite",
+        "native_json",
+        "native_terminal",
+        "native_bcrypt",
+        "native_gui",
+        "native_http_client",
+    }
+    check("native runtime registry: components are unique",
+          len(components) == len(set(components)),
+          f"components={components!r}")
+    check("native runtime registry: expected components are registered",
+          expected.issubset(set(components)),
+          f"components={components!r}")
+    check("native runtime registry: every executable entry has owner and collector",
+          all(entry.get("owner") and callable(entry.get("collector"))
+              for entry in registry),
+          f"registry={registry!r}")
+
+    source = (COMPILER_DIR / "semsc.py").read_text(encoding="utf-8")
+    duplicate_sensitive_defs = (
+        "_program_uses_bcrypt_runtime",
+        "_native_bcrypt_link_inputs",
+        "_native_runtime_link_inputs",
+    )
+    def_counts = {
+        name: len(re.findall(rf"^def {name}\(", source, re.MULTILINE))
+        for name in duplicate_sensitive_defs
+    }
+    check("native runtime registry: collector definitions are not duplicated",
+          all(count == 1 for count in def_counts.values()),
+          f"duplicate-sensitive defs are {def_counts!r}")
+
+
+def test_stdlib_intrinsic_contracts_have_runtime_status_coverage():
+    registry_components = {
+        entry.get("component")
+        for entry in getattr(semsc, "_NATIVE_RUNTIME_LINK_REGISTRY", ())
+    }
+    expected = {
+        "bcrypt": ("bcrypt.*", "native_bcrypt"),
+        "gui": ("gui.*", "native_gui"),
+        "html": ("html.hydrate.*", None),
+        "http": ("http.*", "native_http"),
+        "json": ("json.*", "native_json"),
+        "net": ("net.fetch*", "native_http_client"),
+        "sqlite": ("sqlite.*", "native_sqlite"),
+    }
+    advertised = set()
+    for main_file in (ROOT / "std").glob("*/main.sem"):
+        text = main_file.read_text(encoding="utf-8")
+        if "compiler-owned" in text or "compiler/runtime-owned" in text:
+            advertised.add(main_file.parent.name)
+    check("stdlib intrinsic status: advertised modules are expected",
+          advertised.issubset(set(expected)),
+          f"advertised={advertised!r}")
+    missing = [
+        module_name for module_name, (_target_family, component) in expected.items()
+        if module_name in advertised
+        and component is not None
+        and component not in registry_components
+    ]
+    check("stdlib intrinsic status: advertised modules have runtime registry rows",
+          not missing,
+          f"missing={missing!r} registry={registry_components!r}")
+    target_mentions = []
+    for module_name, (target_family, _component) in expected.items():
+        if module_name not in advertised:
+            continue
+        text = (ROOT / "std" / module_name / "main.sem").read_text(
+            encoding="utf-8")
+        if target_family not in text:
+            target_mentions.append((module_name, target_family))
+    check("stdlib intrinsic status: modules name their target family",
+          not target_mentions,
+          f"missing target family mentions={target_mentions!r}")
 
 
 def test_sqlite_syntax_sample_runs_end_to_end():
@@ -4074,8 +4405,7 @@ def test_json_codegen_emits_runtime_externs_and_calls():
     would still produce IR that compiles (returning zero everywhere)
     and the AS smoke would silently start asserting against junk."""
     fixture = ROOT / "tests" / "json_runtime_smoke.sscript"
-    source = fixture.read_text(encoding="utf-8")
-    prog = semsc.parse(source)
+    prog = parse_semsc_file_with_imports(fixture)
     cg = semsc.Codegen(prog)
     mod = cg.compile()
     ir_text = str(mod)
@@ -4168,6 +4498,7 @@ def test_json_adversarial_smoke_runs_end_to_end():
 def test_json_body_record_literal_runs_from_constant():
     source = "\n".join([
         "project JsonBodyRecordConstant",
+        "import json standard.json",
         "target console",
         "runtime native 1",
         "entry console main",
@@ -4209,6 +4540,7 @@ def test_json_body_record_literal_runs_from_constant():
 def test_json_record_stringify_parse_round_trip_runs_end_to_end():
     source = "\n".join([
         "project JsonRecordCodecRoundTrip",
+        "import json standard.json",
         "target console",
         "runtime native 1",
         "entry console main",
@@ -4282,6 +4614,7 @@ def test_json_record_stringify_parse_round_trip_runs_end_to_end():
 def test_json_record_parse_errors_on_wrong_field_type():
     source = "\n".join([
         "project JsonRecordParseWrongType",
+        "import json standard.json",
         "target console",
         "runtime native 1",
         "entry console main",
@@ -4316,6 +4649,7 @@ def test_json_record_parse_errors_on_wrong_field_type():
 def test_json_record_parse_missing_required_maps_error_domain():
     source = "\n".join([
         "project JsonRecordParseMissingRequired",
+        "import json standard.json",
         "target console",
         "runtime native 1",
         "entry console main",
@@ -4350,6 +4684,7 @@ def test_json_record_parse_missing_required_maps_error_domain():
 def test_json_text_parse_validates_syntax():
     source = "\n".join([
         "project JsonTextParseValidation",
+        "import json standard.json",
         "target console",
         "runtime native 1",
         "entry console main",
@@ -4382,6 +4717,7 @@ def test_json_text_stringify_oversize_maps_encode_error_domain():
     oversized_json_text = "a" * 70000
     source = "\n".join([
         "project JsonTextStringifyOversize",
+        "import json standard.json",
         "target console",
         "runtime native 1",
         "entry console main",
@@ -4409,6 +4745,201 @@ def test_json_text_stringify_oversize_maps_encode_error_domain():
     check("json text stringify oversize: bindError is OutputBufferTooSmall",
           run_proc.returncode == 3,
           f"rc={run_proc.returncode} stdout={run_proc.stdout!r} stderr={run_proc.stderr!r}")
+
+
+def test_json_string_stringify_escapes_in_native_runtime():
+    source = "\n".join([
+        "project JsonStringStringifyEscapes",
+        "import json standard.json",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "storage module immutable payload CNullTerminatedByteString \"quote\\\"slash\\\\tab\\t\"",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main write console.stdout",
+        "authority main write console.stdout",
+        "memory main heap no",
+        "async main no",
+        "call stringifyCall json.stringify.String",
+        "argument stringifyCall value CNullTerminatedByteString payload",
+        "run stringifyCall",
+        "bind ok encoded JsonText stringifyCall",
+        "call writeEncoded console.writeLine",
+        "argument writeEncoded text JsonText encoded",
+        "run writeEncoded",
+        "ignore value source writeEncoded type CSignedInt32",
+        "return value 0",
+        "",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(source)
+    check("json stringify string escapes: compile-and-link succeeds",
+          compile_proc.returncode == 0,
+          f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+    if run_proc is None:
+        return
+    check("json stringify string escapes: runtime emits escaped JSON string",
+          run_proc.returncode == 0
+          and run_proc.stdout == "\"quote\\\"slash\\\\tab\\t\"\n",
+          f"rc={run_proc.returncode} stdout={run_proc.stdout!r} stderr={run_proc.stderr!r}")
+
+
+def test_json_numeric_bool_stringify_uses_native_runtime_helpers():
+    source = "\n".join([
+        "project JsonPrimitiveStringifyRuntime",
+        "import json standard.json",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "storage module immutable answer I64 42",
+        "storage module immutable enabled Bool 1",
+        "storage module immutable ratio CFloat64 1.25",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main write console.stdout",
+        "authority main write console.stdout",
+        "memory main heap no",
+        "async main no",
+        "call stringifyIntCall json.stringify.I64",
+        "argument stringifyIntCall value I64 answer",
+        "run stringifyIntCall",
+        "bind ok encodedInt JsonText stringifyIntCall",
+        "call writeInt console.writeLine",
+        "argument writeInt text JsonText encodedInt",
+        "run writeInt",
+        "ignore value source writeInt type CSignedInt32",
+        "call stringifyBoolCall json.stringify.Bool",
+        "argument stringifyBoolCall value Bool enabled",
+        "run stringifyBoolCall",
+        "bind ok encodedBool JsonText stringifyBoolCall",
+        "call writeBool console.writeLine",
+        "argument writeBool text JsonText encodedBool",
+        "run writeBool",
+        "ignore value source writeBool type CSignedInt32",
+        "call stringifyFloatCall json.stringify.CFloat64",
+        "argument stringifyFloatCall value CFloat64 ratio",
+        "run stringifyFloatCall",
+        "bind ok encodedFloat JsonText stringifyFloatCall",
+        "call writeFloat console.writeLine",
+        "argument writeFloat text JsonText encodedFloat",
+        "run writeFloat",
+        "ignore value source writeFloat type CSignedInt32",
+        "return value 0",
+        "",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(source)
+    check("json primitive stringify runtime helpers: compile-and-link succeeds",
+          compile_proc.returncode == 0,
+          f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+    if run_proc is None:
+        return
+    check("json primitive stringify runtime helpers: runtime output is JSON",
+          run_proc.returncode == 0
+          and run_proc.stdout == "42\ntrue\n1.25\n",
+          f"rc={run_proc.returncode} stdout={run_proc.stdout!r} stderr={run_proc.stderr!r}")
+
+
+def test_json_parse_primitive_rejects_malformed_and_trailing_junk():
+    source = "\n".join([
+        "project JsonPrimitiveParseRejectsMalformed",
+        "import json standard.json",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "storage module immutable badInt CNullTerminatedByteString \"12x\"",
+        "storage module immutable badBool CNullTerminatedByteString \"true false\"",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "call parseIntCall json.parse.I64",
+        "argument parseIntCall jsonText CNullTerminatedByteString badInt",
+        "run parseIntCall",
+        "bind error intError JsonDecodeError parseIntCall",
+        "branch error source parseIntCall target intFailed",
+        "return value 90",
+        "label intFailed",
+        "call parseBoolCall json.parse.Bool",
+        "argument parseBoolCall jsonText CNullTerminatedByteString badBool",
+        "run parseBoolCall",
+        "bind error boolError JsonDecodeError parseBoolCall",
+        "branch error source parseBoolCall target boolFailed",
+        "return value 91",
+        "label boolFailed",
+        "return value boolError",
+        "",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(source)
+    check("json parse primitive rejects malformed: compile-and-link succeeds",
+          compile_proc.returncode == 0,
+          f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+    if run_proc is None:
+        return
+    check("json parse primitive rejects malformed: bindError is UnexpectedToken",
+          run_proc.returncode == 1,
+          f"rc={run_proc.returncode} stdout={run_proc.stdout!r} stderr={run_proc.stderr!r}")
+
+
+def test_json_parse_primitive_rejects_documented_negative_cases():
+    def _quoted_sem_string(text):
+        return (text
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t"))
+
+    cases = [
+        ("I64", ""),
+        ("I64", "abc"),
+        ("I64", "1x"),
+        ("I64", "1.5"),
+        ("I64", "true"),
+        ("I64", "null"),
+        ("I64", "92233720368547758070"),
+        ("Bool", "falsex"),
+        ("Bool", "0"),
+        ("Bool", "TRUE"),
+        ("Bool", "null"),
+        ("Bool", ""),
+        ("F64", ""),
+        ("F64", "abc"),
+        ("F64", "1x"),
+        ("F64", "1.2.3"),
+        ("F64", "null"),
+    ]
+    for type_name, json_text in cases:
+        safe_name = re.sub(r"[^A-Za-z0-9]", "_", json_text) or "empty"
+        source = "\n".join([
+            f"project JsonParseRejects_{type_name}_{safe_name}",
+            "import json standard.json",
+            "target console",
+            "runtime native 1",
+            "entry console main",
+            f"storage module immutable sample CNullTerminatedByteString \"{_quoted_sem_string(json_text)}\"",
+            "operation main",
+            "output operation main ExitCode",
+            "memory main heap no",
+            "async main no",
+            f"call parseCall json.parse.{type_name}",
+            "argument parseCall jsonText CNullTerminatedByteString sample",
+            "run parseCall",
+            "bind error parseError JsonDecodeError parseCall",
+            "branch error source parseCall target failed",
+            "return value 90",
+            "label failed",
+            "return value parseError",
+            "",
+        ])
+        compile_proc, run_proc = compile_and_run_semsc_source(source)
+        check(f"json parse {type_name} rejects {json_text!r}: compile-and-link succeeds",
+              compile_proc.returncode == 0,
+              f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+        if run_proc is None:
+            continue
+        check(f"json parse {type_name} rejects {json_text!r}: UnexpectedToken",
+              run_proc.returncode == 1,
+              f"rc={run_proc.returncode} stdout={run_proc.stdout!r} stderr={run_proc.stderr!r}")
 
 
 def test_backend_diagnostic_maps_symbol_to_source_call():
@@ -4443,6 +4974,33 @@ def test_backend_diagnostic_maps_symbol_to_source_call():
           and diag.primary.line == 8
           and "call loadJsonCall c.fscanf" in rendered,
           rendered)
+
+
+def test_policy_runtime_binding_is_compile_blocking():
+    src = "\n".join([
+        "project RuntimeBindingPolicyBoundary",
+        "entry console main",
+        "operation delayForAttempt",
+        "input operation delayForAttempt policy RetryPolicy",
+        "input operation delayForAttempt attemptIndex I64",
+        "output operation delayForAttempt Result DurationMilliseconds Void",
+        "memory delayForAttempt heap no",
+        "async delayForAttempt no",
+        "operationBody delayForAttempt runtimeBinding",
+        "runtimeBinding delayForAttempt retryPolicy.delayForAttempt",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "return value 0",
+    ])
+    proc = run_semsc_source(src, "--emit-ir")
+    output = proc.stdout + proc.stderr
+    check("runtimeBinding policy target is compile-blocking",
+          proc.returncode != 0
+          and "unsupported non-ABI runtimeBinding `retryPolicy.delayForAttempt`" in output
+          and "operation `delayForAttempt`" in output,
+          output)
 
 
 def test_runtime_check_resolution_profiles():
@@ -4551,6 +5109,9 @@ def main():
     test_tokenizer()
     test_parser_minimal()
     test_parser_syntax_cutover_rows()
+    test_parser_stdlib_surfaces_require_explicit_imports()
+    test_stdlib_json_contract_matches_native_runtime_constants()
+    test_stdlib_sqlite_contract_matches_native_runtime_constants()
     test_compile_new_syntax_rows_to_ir()
     test_parser_syntax_error_has_line()
     test_parser_module_namespace_contract()
@@ -4569,6 +5130,7 @@ def main():
     test_strict_web_contracts_reject_handler_input_name_mismatch()
     test_strict_web_contracts_reject_missing_response_forwarder()
     test_strict_web_contracts_reject_wrong_response_forwarder()
+    test_strict_web_contracts_reject_app_specific_response_helper_without_forwarder()
     test_strict_web_contracts_reject_nullable_header_response_body()
     test_strict_web_contracts_accept_valid_route_middleware_and_forwarder()
     test_strict_rejects_plain_run_for_fallible_heap_allocation()
@@ -4639,6 +5201,9 @@ def main():
     test_web_codegen_rejects_unsupported_http_target()
     test_sqlite_codegen_emits_runtime_externs_and_calls()
     test_sqlite_codegen_rejects_unsupported_target()
+    test_standard_net_fetch_lowers_and_reports_runtime_link_inputs()
+    test_native_runtime_link_registry_is_unique_and_owned()
+    test_stdlib_intrinsic_contracts_have_runtime_status_coverage()
     test_sqlite_syntax_sample_runs_end_to_end()
     test_json_runtime_health_demo_runs_clean()
     test_json_codegen_emits_runtime_externs_and_calls()
@@ -4650,7 +5215,12 @@ def main():
     test_json_record_parse_missing_required_maps_error_domain()
     test_json_text_parse_validates_syntax()
     test_json_text_stringify_oversize_maps_encode_error_domain()
+    test_json_string_stringify_escapes_in_native_runtime()
+    test_json_numeric_bool_stringify_uses_native_runtime_helpers()
+    test_json_parse_primitive_rejects_malformed_and_trailing_junk()
+    test_json_parse_primitive_rejects_documented_negative_cases()
     test_backend_diagnostic_maps_symbol_to_source_call()
+    test_policy_runtime_binding_is_compile_blocking()
     test_runtime_check_resolution_profiles()
     test_runtime_profiles_control_panic_context()
 

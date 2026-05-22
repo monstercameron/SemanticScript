@@ -22,11 +22,12 @@ the official `standard.html` import path for first-class HTML template syntax;
 `gui/main.sem` owns the official metadata module for declarative Windows GUI
 row vocabulary, handler types, handles, closed token sets, runtime target
 names, status constants, and `gui.*` capability contracts; `http/main.sem`,
-`json/main.sem`, and `sqlite/main.sem` own the official metadata modules for
-compiler-owned `http.*`, `json.*`, and `sqlite.*` intrinsic namespaces.
-App modules import them with rows such as `importModule html standard.html`,
-`importModule gui standard.gui`, `importModule http standard.http`, and
-`importModule json standard.json`.
+`json/main.sem`, `net/main.sem`, and `sqlite/main.sem` own the official
+metadata modules for compiler-owned `http.*`, `json.*`, `net.fetch*`, and
+`sqlite.*` intrinsic namespaces.
+App modules import them with rows such as `import html standard.html`,
+`import gui standard.gui`, `import http standard.http`,
+`import json standard.json`, and `import net standard.net`.
 The compiler resolves `standard.<module>` directly to `std/<module>/main.sem`.
 
 `standard.json` currently exports the implemented builder/finder aliases
@@ -39,6 +40,14 @@ CRUD, `jsonBody`, and typed `json.stringify.<TypeName>` /
 `docs/language/json-crud.md`; check `SYNTAX.md` for the current lowering
 status before using a surface in executable code.
 
+`standard.net` currently owns the prototype outbound client contract. It
+reserves `net.fetchText`, `net.fetchBytes`, request/response records such as
+`HttpGetRequest` and `HttpTextResponse`, role types, and the
+`networkHttpClient` capability so source can be modeled without exposing libuv
+or libcurl. The current compiler lowers `net.fetch*` through
+`native_http_client` and links `native_async` as the adapter dependency; real
+network behavior still depends on the opt-in libcurl/libuv runtime build.
+
 This library tree intentionally has no `build.sem`. Add standard modules under
 `std/<module>/main.sem` and relay them from `std/module.sem`.
 
@@ -46,6 +55,11 @@ For GUI specifically, `standard.gui` is intended to keep the compiler small:
 parser, linter, and codegen may mirror the row names and numeric IDs for fast
 validation and lowering, but the user-facing vocabulary and semantic contracts
 belong in `std/gui/main.sem`.
+
+Stdlib/runtime ownership rule: when a compiler target branch adds or changes a
+native adapter, the branch must name the owning standard module or compiler
+runtime surface in the compiler link registry, update the module contract here,
+and add an executable or intentional-unsupported test for that target.
 
 ## Current Status
 
@@ -55,7 +69,7 @@ toward SemanticScript API operations as they become available.
 
 ## Coverage
 
-The current tree has 35 standard modules plus the top-level `standard` relay.
+The current tree has 36 standard modules plus the top-level `standard` relay.
 
 | file | category | operation blocks |
 | --- | --- | ---: |

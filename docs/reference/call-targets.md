@@ -138,6 +138,39 @@ pointer.storeByte  write memory.buffer
 `pointer.offset`, `pointer.difference`, and `pointer.isNull` are pure pointer
 arithmetic/check operations.
 
+## Outbound Network Targets
+
+The future runtime HTTP client surface is reserved under `standard.net` and
+`net.fetch*` so it cannot collide with server-side `http.request*` and
+`http.response*` APIs.
+
+```text
+net.fetchText
+net.fetchBytes
+```
+
+`net.fetchText` is expected to take:
+
+```text
+request HttpGetRequest
+```
+
+and expose:
+
+```text
+Result HttpTextResponse HttpClientErrorCode
+```
+
+`HttpGetRequest` contains `url` and nested `policy.timeoutMillis`,
+`policy.maxBodyBytes`, and `policy.redirectLimit` fields. `HttpTextResponse`
+contains `status` and caller-owned `body`; release that body with
+`net.freeTextBody` or an equivalent heap free after use.
+
+The native prototype lives in `SemanticScript/runtime/native_http_client/` and
+uses `SemanticScript/runtime/native_async/` when libuv is enabled. Application
+source must declare `effect OP write network.http.client` for outbound fetch
+work.
+
 ## Domain Methods
 
 A target of the shape `TypeName.methodName` can lower to a primitive operation

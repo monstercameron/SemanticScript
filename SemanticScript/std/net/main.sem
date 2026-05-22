@@ -1,0 +1,88 @@
+# ============================================================
+# SEMANTICSCRIPT STANDARD LIBRARY: outbound network namespace
+# ============================================================
+#
+# Import this module with:
+#
+#   import net standard.net
+#
+# The `net.fetch*` call targets are compiler/runtime-owned intrinsics. The
+# current compiler has prototype lowering for `net.fetchText` / `net.fetchBytes`
+# through native_http_client and links native_async as that adapter's scheduling
+# dependency. Real network behavior still requires the optional libcurl/libuv
+# runtime build. This module owns the public names, semantic type aliases, and
+# capability contract for outbound HTTP client work. The source API is
+# intentionally backend-neutral: source code must not mention libuv or libcurl.
+
+module standard.net
+purpose module standard.net "Standard-library namespace and prototype contracts for outbound network client intrinsics."
+moduleOwns standard.net "The official import path `standard.net`, client-side network type aliases, reusable capabilities, and the compiler-owned `net.fetch*` intrinsic namespace contract."
+moduleDoesNotOwn standard.net "Build-time dependency fetching, server-side `http.request*` / `http.response*` APIs, native event-loop implementation details, backend library structs, or the libuv/libcurl C ABI."
+invariant module standard.net "`net.fetch*` lowering belongs to the compiler/native_http_client/native_async boundary; runtime outbound HTTP must stay separate from build-time `dependencyFetch` source acquisition."
+
+type Url CNullTerminatedByteString
+type NetworkTimeoutMilliseconds CUnsignedInt64
+type ResponseBodyLimitBytes CByteCount
+type HttpRedirectLimit CUnsignedInt32
+type HttpClientStatusCode CSignedInt32
+type HttpClientResponse COpaqueMemoryAddress
+type HttpClientBodyText CNullTerminatedByteString
+type HttpClientBodyBytes COpaqueMemoryAddress
+type HttpClientBodyLength CByteCount
+type HttpClientErrorCode CSignedInt32
+
+record HttpFetchPolicy
+field HttpFetchPolicy timeoutMillis NetworkTimeoutMilliseconds
+field HttpFetchPolicy maxBodyBytes ResponseBodyLimitBytes
+field HttpFetchPolicy redirectLimit HttpRedirectLimit
+
+record HttpGetRequest
+field HttpGetRequest url Url
+field HttpGetRequest policy HttpFetchPolicy
+
+record HttpTextResponse
+field HttpTextResponse status HttpClientStatusCode
+field HttpTextResponse body HttpClientBodyText
+
+exportType standard.net Url
+exportType standard.net NetworkTimeoutMilliseconds
+exportType standard.net ResponseBodyLimitBytes
+exportType standard.net HttpRedirectLimit
+exportType standard.net HttpClientStatusCode
+exportType standard.net HttpClientResponse
+exportType standard.net HttpClientBodyText
+exportType standard.net HttpClientBodyBytes
+exportType standard.net HttpClientBodyLength
+exportType standard.net HttpClientErrorCode
+exportType standard.net HttpFetchPolicy
+exportType standard.net HttpGetRequest
+exportType standard.net HttpTextResponse
+exportCapability standard.net networkHttpClient
+exportConstant standard.net netModuleVersionText
+exportConstant standard.net defaultFetchTimeoutMilliseconds
+exportConstant standard.net defaultFetchBodyLimitBytes
+exportConstant standard.net defaultFetchRedirectLimit
+exportOperation standard.net fetchText
+exportOperation standard.net freeTextBody
+
+typeInvariant Url "Null-terminated URL passed to outbound runtime fetch calls. The runtime rejects unsupported schemes before network access."
+typeInvariant NetworkTimeoutMilliseconds "Aggregate timeout in milliseconds for DNS, connect, TLS, write, and response-read work."
+typeInvariant ResponseBodyLimitBytes "Maximum buffered response body size accepted by text/bytes fetch helpers."
+typeInvariant HttpRedirectLimit "Maximum redirect count allowed for a request. Zero disables redirect following."
+typeInvariant HttpClientStatusCode "HTTP status code from a completed transport response."
+typeInvariant HttpClientResponse "Opaque runtime-owned response handle returned by lower-level client calls."
+typeInvariant HttpClientBodyText "Null-terminated text body pointer returned by net.fetchText. The caller owns this copy and must release it with net.freeTextBody or an equivalent heap free."
+typeInvariant HttpClientBodyBytes "Opaque byte body pointer owned by a completed runtime response/future."
+typeInvariant HttpClientBodyLength "Byte count paired with HttpClientBodyBytes."
+typeInvariant HttpClientErrorCode "Runtime transport/client error code for DNS, connect, timeout, TLS, redirect, body-size, and backend failures."
+typeInvariant HttpFetchPolicy "Per-request transport policy. Fetch calls must carry explicit timeout, body limit, and redirect limit values instead of relying on hidden runtime defaults."
+typeInvariant HttpGetRequest "Outbound GET request record passed to net.fetchText. This keeps source-level request policy structured and backend-neutral."
+typeInvariant HttpTextResponse "Successful text fetch response. HTTP non-2xx statuses are represented in the status field, not as transport errors."
+
+capability networkHttpClient network.http.client write
+purpose operation networkHttpClient "Authority to perform outbound HTTP client work from compiled SemanticScript programs."
+
+storage module immutable netModuleVersionText CNullTerminatedByteString "standard.net 0.2"
+storage module immutable defaultFetchTimeoutMilliseconds NetworkTimeoutMilliseconds 3000
+storage module immutable defaultFetchBodyLimitBytes ResponseBodyLimitBytes 1048576
+storage module immutable defaultFetchRedirectLimit HttpRedirectLimit 5

@@ -345,13 +345,72 @@ def _version_command(command: list[str]) -> tuple[bool, str]:
     return proc.returncode == 0, detail
 
 
-def _doctor_check(name: str, ok: bool, detail: str, fix: str = "") -> dict:
+def _doctor_check(name: str, ok: bool, detail: str, fix: str = "", optional: bool = False) -> dict:
     return {
         "name": name,
         "ok": bool(ok),
         "detail": detail,
         "fix": fix,
+        "optional": bool(optional),
     }
+
+
+def _pkg_config_exists(package_name: str) -> tuple[bool, str]:
+    pkg_config = shutil.which("pkg-config")
+    if not pkg_config:
+        return False, "pkg-config missing"
+    try:
+        proc = subprocess.run(
+            [pkg_config, "--modversion", package_name],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, str(exc)
+    detail = (proc.stdout or proc.stderr).strip() or f"exit {proc.returncode}"
+    return proc.returncode == 0, detail
+
+
+def _env_file_exists(var_name: str) -> tuple[bool, str]:
+    value = os.environ.get(var_name, "")
+    if not value:
+        return False, f"{var_name} unset"
+    path = Path(value)
+    return path.exists(), str(path)
+
+
+def _env_any_file_exists(var_names: list[str]) -> tuple[bool, str]:
+    details = []
+    for var_name in var_names:
+        ok, detail = _env_file_exists(var_name)
+        if ok:
+            return True, f"{var_name}={detail}"
+        details.append(detail)
+    return False, "; ".join(details)
+
+
+def _env_header_exists(
+    header_path: str,
+    *,
+    root_var: str,
+    include_var: str,
+) -> tuple[bool, str]:
+    candidates = []
+    include_value = os.environ.get(include_var, "")
+    if include_value:
+        candidates.append(Path(include_value))
+    root_value = os.environ.get(root_var, "")
+    if root_value:
+        candidates.append(Path(root_value) / "include")
+    if not candidates:
+        return False, f"{include_var}/{root_var} unset"
+    for directory in candidates:
+        candidate = directory / header_path
+        if candidate.exists():
+            return True, str(candidate)
+    return False, "; ".join(str(directory / header_path) for directory in candidates)
 
 
 def _doctor_payload() -> dict:
@@ -403,6 +462,8 @@ def _doctor_payload() -> dict:
         ok, detail = _version_command(["cmake", "--version"])
         cmake_ok = ok
         cmake_detail = detail
+    git_path = shutil.which("git")
+    git_ok = bool(git_path)
     checks.append(_doctor_check(
         "native-http-runtime",
         cmake_ok and clang_ok,
@@ -410,11 +471,65 @@ def _doctor_payload() -> dict:
         "Install CMake and LLVM/clang before building SemanticScript/runtime/native_http.",
     ))
 
+    libuv_pkg_ok, libuv_pkg_detail = _pkg_config_exists("libuv")
+    libuv_lib_ok, libuv_lib_detail = _env_any_file_exists(
+        ["SEM_LIBUV_LIB", "SEM_LIBUV_LIBRARY"])
+    libuv_header_ok, libuv_header_detail = _env_header_exists(
+        "uv.h",
+        root_var="SEM_LIBUV_ROOT",
+        include_var="SEM_LIBUV_INCLUDE_DIR",
+    )
+    libuv_env_ok = libuv_lib_ok and libuv_header_ok
+    libuv_fetch_ok = cmake_ok and git_ok
+    libuv_fetch_detail = (
+        "system libuv missing; CMake FetchContent fallback available"
+        if libuv_fetch_ok else
+        "system libuv missing; install git+CMake or set SEM_LIBUV_*"
+    )
+    checks.append(_doctor_check(
+        "native-async-libuv",
+        libuv_pkg_ok or libuv_env_ok or libuv_fetch_ok,
+        (
+            libuv_pkg_detail if libuv_pkg_ok
+            else f"{libuv_lib_detail}; {libuv_header_detail}" if libuv_env_ok
+            else libuv_fetch_detail
+        ),
+        "Install libuv 1.x, set SEM_LIBUV_ROOT/SEM_LIBUV_INCLUDE_DIR/SEM_LIBUV_LIB, or allow CMake FetchContent.",
+        optional=True,
+    ))
+
+    curl_pkg_ok, curl_pkg_detail = _pkg_config_exists("libcurl")
+    curl_lib_ok, curl_lib_detail = _env_any_file_exists(
+        ["SEM_CURL_LIB", "SEM_CURL_LIBRARY"])
+    curl_header_ok, curl_header_detail = _env_header_exists(
+        "curl/curl.h",
+        root_var="SEM_CURL_ROOT",
+        include_var="SEM_CURL_INCLUDE_DIR",
+    )
+    curl_env_ok = curl_lib_ok and curl_header_ok
+    curl_fetch_ok = cmake_ok and git_ok
+    curl_fetch_detail = (
+        "system libcurl missing; CMake FetchContent fallback available"
+        if curl_fetch_ok else
+        "system libcurl missing; install git+CMake or set SEM_CURL_*"
+    )
+    checks.append(_doctor_check(
+        "native-http-client-libcurl",
+        curl_pkg_ok or curl_env_ok or curl_fetch_ok,
+        (
+            curl_pkg_detail if curl_pkg_ok
+            else f"{curl_lib_detail}; {curl_header_detail}" if curl_env_ok
+            else curl_fetch_detail
+        ),
+        "Install libcurl, set SEM_CURL_ROOT/SEM_CURL_INCLUDE_DIR/SEM_CURL_LIB, or allow CMake FetchContent.",
+        optional=True,
+    ))
+
     return {
         "schemaVersion": "sem.doctor.v0",
         "tool": {"name": "sem", "version": VERSION},
         "checks": checks,
-        "ok": all(check["ok"] for check in checks),
+        "ok": all(check["ok"] or check.get("optional", False) for check in checks),
     }
 
 
@@ -515,6 +630,7 @@ def _build_context_payload(path: Path) -> dict:
         "mainFile": _row_value(facts, "mainFile", 1) if facts else "",
         "mainOperation": _row_value(facts, "mainOperation", 1) if facts else "",
         "targetRuntime": _row_value(facts, "targetRuntime", 1) if facts else "",
+        "asyncRuntime": _row_value(facts, "asyncRuntime", 1) if facts else "",
         "targets": _row_values(facts, "target") if facts else [],
         "nativeOutput": _row_value(facts, "nativeOutput", 1) if facts else "",
     }

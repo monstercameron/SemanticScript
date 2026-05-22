@@ -44,6 +44,12 @@ SUPPORTED_HTTP_ROUTE_METHODS: frozenset[str] = frozenset({
     "OPTIONS",
 })
 
+MIDDLEWARE_CONTROL_TYPE = "MiddlewareControl"
+MIDDLEWARE_CONTROL_CASES: tuple[tuple[str, int], ...] = (
+    ("continueMiddlewareControl", 0),
+    ("shortCircuitMiddlewareControl", 1),
+)
+
 
 RESULT_FALLIBLE_CALL_TARGETS: frozenset[str] = frozenset({
     "console.writeLine",
@@ -111,6 +117,10 @@ RESULT_FALLIBLE_CALL_TARGETS: frozenset[str] = frozenset({
     "json.removeArrayElementAt",
     "json.clearObject",
     "json.clearArray",
+    "net.fetchText",
+    "net.fetchBytes",
+    "fetchText",
+    "fetchBytes",
 })
 
 

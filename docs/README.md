@@ -68,6 +68,7 @@ matrix. The release-level boundary is:
 | [language/records-codecs-boundaries.md](language/records-codecs-boundaries.md) | Records, builders, JSON codecs, trust boundaries. |
 | [language/concurrency-time-cleanup.md](language/concurrency-time-cleanup.md) | Cleanup, retry, async, groups, channels, locks, worker pools. |
 | [language/native-http-api.md](language/native-http-api.md) | Current native HTTP server API, route metadata, request readers, response writers, and route-handler ABI. |
+| [language/native-http-client-api.md](language/native-http-client-api.md) | Future outbound HTTP client API, `standard.net`, `net.fetch*`, effects, and libuv/libcurl prototype shape. |
 | [reference/call-targets.md](reference/call-targets.md) | Built-in call targets, domain methods, c.* calls. |
 | [reference/install-policy.md](reference/install-policy.md) | Initial archive install shape and future version-manager plan. |
 | [reference/verb-index.md](reference/verb-index.md) | Verb families and schema index. |
@@ -75,6 +76,7 @@ matrix. The release-level boundary is:
 | [reference/package-management.md](reference/package-management.md) | Package layout, dependency syntax, and registry deferral policy. |
 | [toolchain/compiler.md](toolchain/compiler.md) | semsc.py CLI, parsing, import resolution, codegen modes. |
 | [toolchain/linter.md](toolchain/linter.md) | semlint.py commands, diagnostics, tiers. |
+| [toolchain/native-async-runtime.md](toolchain/native-async-runtime.md) | Optional libuv async runtime experiment, build flags, timer/work/future ABI, and await model. |
 | [toolchain/vscode-extension.md](toolchain/vscode-extension.md) | Extension behavior, hover expectations, packaging. |
 | [reference/maintenance.md](reference/maintenance.md) | How to keep language, compiler, linter, docs, and extension in sync. |
 

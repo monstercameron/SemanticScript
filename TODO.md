@@ -114,6 +114,154 @@ review. A task is only done when the linked command or artifact is clean.
   - [x] Refined syntax support.
   - [x] Web/HTTP runtime support.
 
+## P1 - Compiler / Stdlib Boundary Hardening
+
+This section tracks the 2026-05-22 review concern that too much semantic,
+business, or library behavior has moved into `SemanticScript/compiler/semsc.py`
+instead of living in `SemanticScript/std/**` or `SemanticScript/runtime/**`.
+The compiler may parse, validate, lower documented primitives, and select link
+inputs. Public API contracts, domain policy, and reusable behavior should live
+in standard-library modules or native runtime adapters.
+
+- [x] Classify every compiler-owned intrinsic surface by ownership.
+  - [x] Inventory all dotted call-target branches in `semsc.py`:
+        `json.*`, `html.hydrate.*`, `http.*`, `sqlite.*`, `gui.*`,
+        `bcrypt.*`, `pointer.*`, `math.*`, `console.*`, and `c.*`.
+  - [x] For each target family, mark the owning layer:
+        compiler syntax, standard-library contract, native runtime ABI,
+        app-level helper, or temporary bootstrap shim.
+  - [x] Add the ownership table to `docs/toolchain/compiler.md`.
+  - [x] Add a short "do not add business logic here" note to
+        `SemanticScript/compiler/README.md`.
+  - [x] Confirm `SemanticScript/std/README.md` matches the ownership table.
+  - [x] Add a review checklist item requiring new compiler target branches to
+        name their stdlib/runtime owner and tests.
+
+- [x] Move high-level JSON codec behavior out of ad hoc compiler lowering.
+  - [x] Treat `json.stringify.<TypeName>` and `json.parse.<TypeName>` as
+        `standard.json` / native JSON runtime behavior, not Python-side codec
+        logic in `semsc.py`.
+  - [x] Replace the current `json.encode.String` lowering that emits
+        `snprintf("\"%s\"")`; it does not escape quotes, backslashes,
+        newlines, tabs, carriage returns, or control bytes.
+  - [x] Replace the current primitive parse lowerings that use `atoll`,
+        `atof`, and `strcmp("true")`; malformed JSON must produce a
+        `JsonDecodeError`, not a successful `0`, `0.0`, or `false`.
+  - [x] Remove or quarantine `mark_high_level_json_success()` for parse paths
+        until the lowering has a real runtime status value.
+  - [x] Route primitive stringification through the native JSON builder or a
+        dedicated runtime function with byte-exact escaping.
+  - [x] Route primitive parsing through the native JSON document parser or a
+        dedicated runtime function with strict token validation and trailing
+        junk rejection.
+  - [x] Keep record stringify/parse as generated glue only: field walking may
+        be compiler-generated, but escaping, parsing, capacity enforcement, and
+        status mapping must come from the JSON runtime.
+  - [x] Add negative compiler/runtime tests for `json.stringify.String` with
+        `"`, `\`, `\n`, `\r`, `\t`, and byte `0x01`.
+  - [x] Add negative tests for `json.parse.I64` on `""`, `"abc"`, `"1x"`,
+        `"1.5"`, `true`, `null`, and overflow-sized integers.
+  - [x] Add negative tests for `json.parse.Bool` on `"falsex"`, `"0"`,
+        `"TRUE"`, `null`, and empty input.
+  - [x] Add negative tests for `json.parse.F64` on malformed and trailing-junk
+        numbers.
+  - [x] Keep the native JSON health demo as the byte-for-byte escaping oracle,
+        and add a SemanticScript executable smoke that reaches the same paths
+        through `json.stringify.<TypeName>`.
+  - [x] Update `docs/language/json-crud.md`, `SYNTAX.md`, and
+        `docs/reference/compatibility.md` after the runtime-backed behavior is
+        in place.
+
+- [x] Remove app-specific response-helper names from compiler strictness.
+  - [x] Delete `writeJsonOkResponse`, `writeErrorJsonResponse`, and
+        `writeJsonResponse` from `_STRICT_RESPONSE_WRITER_TARGETS`.
+  - [x] Make `http.responseText`, `http.responseBytes`,
+        `http.responseSseEvent`, `http.responseFile`, and declared
+        `responseBodyForwarder` rows the only recognized response-body writer
+        sources.
+  - [x] Confirm `apps/taskforge-web/main.sem` keeps explicit
+        `responseBodyForwarder` rows for its JSON response wrappers.
+  - [x] Add a strict negative test proving an operation named
+        `writeJsonOkResponse` is not trusted unless it actually forwards the
+        declared body argument.
+  - [x] Add a strict positive test proving a differently named wrapper works
+        when it declares and honors `responseBodyForwarder`.
+  - [x] Update SS3614 / SS3603 diagnostics so examples mention declared
+        forwarders instead of app-specific helper names.
+
+- [x] Split runtime-binding ABI shims from domain behavior.
+  - [x] Audit `_RUNTIME_BINDING_MAP` and separate pure ABI bindings
+        (`runtime.cstring.compare`, `runtime.cstring.byteLength`,
+        `runtime.memory.copyBytes`) from policy-bearing behaviors.
+  - [x] Move `retryPolicy.delayForAttempt` behavior out of `semsc.py`; the
+        fixed `50 * (attempt + 1)` rule belongs in a standard retry module or
+        runtime adapter that can read policy fields.
+  - [x] Move `metrics.computeIncrementI64` out of compiler special cases unless
+        it is just a normal `math.addI64` stdlib wrapper.
+  - [x] Replace `metricsLock.acquire` / `metricsLock.release` sentinel returns
+        with real stdlib/runtime behavior, or reject executable lowering until
+        a lock runtime exists.
+  - [x] Replace `scheduler.sleep` returning zero with a real runtime sleep
+        path, or reject executable lowering and keep the row parse-only.
+  - [x] Decide whether `runtime.calendar.isLeapYear*` is a stdlib operation
+        implemented in SemanticScript, a native runtime function, or a true
+        compiler intrinsic; document the decision.
+  - [x] Add tests that refined-syntax demo behavior does not depend on hidden
+        compiler constants after the move.
+  - [x] Update `docs/optimization-guide.md` so synchronous fallbacks are
+        described as temporary compatibility behavior, not hidden semantics.
+
+- [x] Stop duplicating stdlib type/enum surfaces in parser startup.
+  - [x] Remove unconditional `_register_builtin_sqlite_surface(prog)` from
+        `parse()` once callers import `standard.sqlite` explicitly.
+  - [x] Remove unconditional `_register_builtin_json_surface(prog)` from
+        `parse()` once callers import `standard.json` explicitly.
+  - [x] Decide whether `MiddlewareControl` is a language/runtime ABI enum or a
+        `standard.http` export, then place its source of truth accordingly.
+  - [x] Update standalone compiler smoke tests so they import the needed
+        standard modules rather than relying on hidden parser preloads.
+  - [x] Add drift tests that compare `std/json/main.sem` enum/type constants
+        against native JSON ABI constants.
+  - [x] Add drift tests that compare `std/sqlite/main.sem` enum/type constants
+        against `sem_sqlite_runtime.h`.
+  - [x] If a small built-in bootstrap surface remains, generate it from the
+        standard module files or a shared contract table rather than duplicating
+        literals by hand in `semsc.py`.
+
+- [x] Make native runtime link policy data-driven.
+  - [x] Remove the duplicate `_program_uses_bcrypt_runtime` and
+        `_native_bcrypt_link_inputs` definitions from `semsc.py`.
+  - [x] Create one native-runtime registry table for target family, call-target
+        set or predicate, source files, include paths, libraries, and platform
+        flags.
+  - [x] Make `_native_runtime_link_inputs()` consume the registry instead of a
+        hand-maintained list of collector functions.
+  - [x] Include `native_http`, `native_sqlite`, `native_json`,
+        `native_terminal`, `native_bcrypt`, `native_gui`, and the
+        `standard.net` native HTTP client entry that links `native_async`.
+  - [x] Add a regression test that fails on duplicate runtime collector
+        definitions.
+  - [x] Add a regression test that every `standard.<module>` advertising a
+        compiler/runtime-owned intrinsic namespace has either executable
+        lowering, explicit parse-only status, or an unsupported-target
+        diagnostic.
+
+- [x] Align the new `standard.net` / `native_async` surface with compiler
+      support before advertising it as executable.
+  - [x] Decide whether `net.fetch*` is proposed, parse-only, partial, or
+        lowered in the current release scope.
+  - [x] If parse-only, change `std/net/main.sem`, `std/README.md`, and
+        `SYNTAX.md` wording so it does not imply executable compiler support.
+        Not selected: the current branch has prototype lowering.
+  - [x] If lowered, add `net.fetch*` call-target dispatch in `semsc.py` and
+        link `SemanticScript/runtime/native_async/sem_async_runtime.c`.
+  - [x] Add feature tests for unsupported `net.fetch*` targets so failures are
+        intentional diagnostics, not generic `unsupported call target`.
+        Not applicable while `net.fetch*` is lowered; current coverage checks
+        IR lowering and runtime link inputs instead.
+  - [x] Add native async runtime CMake / health-demo coverage to release
+        validation if the runtime enters the release scope.
+
 ## P1 - Strict Syntax Hardening
 
 This section turns the syntax research summarized under `research/` into
@@ -196,15 +344,22 @@ requiring a separate linter invocation.
 
 ### Checked Fallible Calls
 
-- [ ] Design the checked call syntax.
-  - [ ] Confirm `runChecked CALL ok VALUE TYPE error ERROR TYPE else LABEL`
+- [x] Design the checked call syntax.
+  - [x] Confirm `runChecked CALL ok VALUE TYPE error ERROR TYPE else LABEL`
         is the preferred shape.
-  - [ ] Decide whether `runChecked` should create the ok/error binds itself.
-  - [ ] Decide whether `runChecked` replaces or coexists with `run`,
+  - [x] Decide whether `runChecked` should create the ok/error binds itself.
+        Current lowering creates both bindings from the call result/error value.
+  - [x] Decide whether `runChecked` replaces or coexists with `run`,
         `bind ok`, `bind error`, and `branch error`.
-  - [ ] Decide whether `runChecked` may target calls with no success value.
-  - [ ] Decide whether `runChecked` may target status-return calls.
-  - [ ] Decide whether `ignore ok` is still legal for checked calls.
+        Decision: it coexists with the explicit checked pattern.
+  - [x] Decide whether `runChecked` may target calls with no success value.
+        Decision for this shape: use the explicit checked pattern with
+        `ignore void`; a compact void-success form remains future syntax.
+  - [x] Decide whether `runChecked` may target status-return calls.
+        Current compiler accepts it for explicit-disposition fallible targets;
+        response-writer coverage is tracked below.
+  - [x] Decide whether `ignore ok` is still legal for checked calls.
+        Decision: yes, for the explicit checked pattern.
 - [x] Add parser support for `runChecked`.
   - [x] Add `runChecked` to body verb tables.
   - [x] Validate minimum arity.
@@ -223,7 +378,7 @@ requiring a separate linter invocation.
         infallible.
   - [ ] Reject fallible calls whose success value is used before the error
         branch is established.
-  - [ ] Ensure diagnostics point at the `run` line and the original `call`
+  - [x] Ensure diagnostics point at the `run` line and the original `call`
         line.
 - [x] Lower `runChecked`.
   - [x] Emit the same call lowering as `run`.
@@ -240,7 +395,7 @@ requiring a separate linter invocation.
 - [ ] Add compiler tests for checked calls.
   - [x] Negative test: `c.malloc` with plain `run` fails in strict mode.
   - [x] Negative test: SQLite prepare with plain `run` fails in strict mode.
-  - [ ] Negative test: HTTP response write with ignored status fails in strict
+  - [x] Negative test: HTTP response write with ignored status fails in strict
         mode.
   - [x] Positive test: `runChecked` heap allocation compiles.
   - [ ] Positive test: `runChecked` SQLite prepare compiles.
@@ -2060,57 +2215,59 @@ the maintained reference-compiler test path before marking a batch complete.
   - [ ] If yes, implement scheduler-backed `start`, `await`, groups, and worker
         pools.
   - [x] If no, keep synchronous lowering documented and tested.
-- [ ] Plan and prototype the post-1.0 libuv async runtime experiment.
+- [x] Plan and prototype the post-1.0 libuv async runtime experiment.
   - [x] Record the experiment direction: use libuv as the portable event loop,
         timer, async DNS, and worker-pool backend.
-  - [ ] Keep 1.0 synchronous lowering unchanged while the libuv runtime is
+  - [x] Keep 1.0 synchronous lowering unchanged while the libuv runtime is
         developed behind an opt-in build/runtime flag.
-  - [ ] Name the opt-in surface, such as `runtimeBackend PROJECT libuv` or
+  - [x] Name the opt-in surface, such as `runtimeBackend PROJECT libuv` or
         `asyncRuntime PROJECT libuv`.
-  - [ ] Decide whether the flag belongs in `build.sem`, CLI flags, or both.
-  - [ ] Add a feature gate so generated code never assumes libuv symbols unless
+  - [x] Decide whether the flag belongs in `build.sem`, CLI flags, or both.
+        Current prototype uses `asyncRuntime PROJECT libuv` in build tape.
+  - [x] Add a feature gate so generated code never assumes libuv symbols unless
         the async runtime backend is selected.
-  - [ ] Define the first supported program classes: console program first,
+  - [x] Define the first supported program classes: console program first,
         native webserver handler later.
-  - [ ] Define the unsupported cases for the experiment, including GUI message
+  - [x] Define the unsupported cases for the experiment, including GUI message
         loops, long-lived streaming responses, and nested event-loop runs.
-  - [ ] Document that `await` pauses the current operation and yields to the
+  - [x] Document that `await` pauses the current operation and yields to the
         runtime; it does not keep the same C stack frame executing.
-  - [ ] Document the lowering model as continuation frames plus a resume
+  - [x] Document the lowering model as continuation frames plus a resume
         function per async operation.
-  - [ ] Define a runtime-owned `SSAsyncLoop` wrapper around `uv_loop_t`.
-  - [ ] Define a runtime-owned `SSFuture` or `SSAsyncTask` handle with status,
+  - [x] Define a runtime-owned `SSAsyncLoop` wrapper around `uv_loop_t`.
+  - [x] Define a runtime-owned `SSFuture` or `SSAsyncTask` handle with status,
         result pointer, error code, cancellation flag, and continuation list.
-  - [ ] Define an operation frame ABI for generated async functions.
-  - [ ] Define frame allocation and cleanup ownership.
-  - [ ] Define how ordinary local variables are spilled from the C stack into
+  - [x] Define an operation frame ABI for generated async functions.
+  - [x] Define frame allocation and cleanup ownership.
+  - [x] Define how ordinary local variables are spilled from the C stack into
         the async frame before an `await`.
-  - [ ] Define how `defer`, `deferLog`, and `deferAwaitLog` run when an async
+  - [x] Define how `defer`, `deferLog`, and `deferAwaitLog` run when an async
         frame returns normally, returns an error, or is cancelled.
-  - [ ] Define how `timeout CALL DURATION` attaches a libuv timer to a future.
-  - [ ] Define how `cancelOn CALL TOKEN` maps to future cancellation.
-  - [ ] Define how `select` waits on multiple futures or timer tokens.
-  - [ ] Define how `taskGroup`, `startInGroup`, and `awaitGroup` aggregate
+  - [x] Define how `timeout CALL DURATION` attaches a libuv timer to a future.
+  - [x] Define how `cancelOn CALL TOKEN` maps to future cancellation.
+  - [x] Define how `select` waits on multiple futures or timer tokens.
+  - [x] Define how `taskGroup`, `startInGroup`, and `awaitGroup` aggregate
         child futures.
-  - [ ] Define how worker-pool work maps to `uv_queue_work`.
-  - [ ] Decide whether CPU work and blocking I/O share the libuv default thread
+  - [x] Define how worker-pool work maps to `uv_queue_work`.
+  - [x] Decide whether CPU work and blocking I/O share the libuv default thread
         pool or use a SemanticScript-owned worker pool.
-  - [ ] Define an environment variable or build setting for worker-pool size.
-  - [ ] Add runtime initialization and shutdown functions:
+  - [x] Define an environment variable or build setting for worker-pool size.
+        Current prototype uses libuv's `UV_THREADPOOL_SIZE`.
+  - [x] Add runtime initialization and shutdown functions:
         `ss_async_loop_init`, `ss_async_loop_run`, `ss_async_loop_stop`, and
         `ss_async_loop_destroy`.
-  - [ ] Add a small native health demo under
+  - [x] Add a small native health demo under
         `SemanticScript/runtime/native_async/health_demo.c`.
-  - [ ] Prove a libuv timer can resume a suspended SemanticScript frame.
-  - [ ] Prove two started timers can complete out of order and resume the
+  - [x] Prove a libuv timer can resume a suspended SemanticScript frame.
+  - [x] Prove two started timers can complete out of order and resume the
         correct frames.
   - [ ] Prove cancellation closes timer/work handles without leaking memory.
   - [ ] Add diagnostics when an async operation is lowered without selecting an
         async runtime backend.
-  - [ ] Add diagnostics when an `await` target was never started.
-  - [ ] Add diagnostics when a started future is neither awaited, cancelled, nor
+  - [x] Add diagnostics when an `await` target was never started.
+  - [x] Add diagnostics when a started future is neither awaited, cancelled, nor
         explicitly detached.
-  - [ ] Add docs explaining why nested `uv_run` inside route handlers is not the
+  - [x] Add docs explaining why nested `uv_run` inside route handlers is not the
         production model.
 - [x] Replace single-thread mutex no-op semantics with runtime locking, or keep
       them documented as single-thread fallback only.
@@ -2360,7 +2517,7 @@ dependency contract loading, and cross-module effect/capability propagation.
         must remain validation/compile-only.
   - [x] Define the source-level fetch API names: keep build-time dependency
         fetch as `dependencyFetch`; reserve runtime HTTP client calls for a
-        separate `http.client*` or `net.fetch*` surface.
+        separate `standard.net` / `net.fetch*` surface.
   - [x] Support GitHub module paths first.
   - [x] Define GitHub archive URL construction from `OWNER/REPO REF`.
   - [x] Define GitHub API calls needed to resolve a tag or branch to an exact
@@ -2945,8 +3102,8 @@ workstreams.
   - [ ] Reject floating branches in release builds unless explicitly allowed.
 - [x] Define build-time fetch API boundaries.
   - [x] Treat `dependencyFetch` as the build-time dependency API.
-  - [x] Reserve runtime outbound HTTP calls for a separate future API such as
-        `http.clientRequest`, `http.clientResponseText`, or `net.fetchText`.
+  - [x] Reserve runtime outbound HTTP calls for the separate `standard.net`
+        API, currently `net.fetchText` / `net.fetchBytes`.
   - [x] Do not let runtime HTTP client naming collide with server-side
         `http.request*` and `http.response*` APIs.
   - [x] Define capability paths for future runtime fetch calls, such as
@@ -3053,44 +3210,46 @@ workstreams.
 
 ### Runtime HTTP Client And Fetch API
 
-- [ ] Add a libuv-backed HTTP fetcher experiment path.
+- [x] Add a libuv-backed HTTP fetcher experiment path.
   - [x] Record the working architecture: libuv owns scheduling, timers,
         cancellation wakeups, and worker dispatch; libcurl owns HTTP, HTTPS,
         redirects, DNS/TLS behavior for the MVP fetcher.
-  - [ ] Keep the source-level public API backend-neutral, preferring
-        `net.fetchText` / `net.fetchBytes` or `http.client*` names over any
+  - [x] Keep the source-level public API backend-neutral, using
+        `standard.net` / `net.fetchText` / `net.fetchBytes` over any
         libuv/libcurl-specific names.
-  - [ ] Add a `standard.net` module or extend `standard.http` with a clearly
+  - [x] Add a `standard.net` module or extend `standard.http` with a clearly
         client-side namespace that cannot collide with server-side
         `http.request*` and `http.response*`.
-  - [ ] Define the minimal source sample that the experiment must compile:
+  - [x] Define the minimal source sample that the experiment must compile:
         `start fetchCall`, do local work, `await fetchCall`, then bind the
         response body.
-  - [ ] Define the expected runtime trace for that sample: fetch starts, local
+  - [x] Define the expected runtime trace for that sample: fetch starts, local
         work runs, operation yields at `await`, event loop runs other ready
         work, fetch completion resumes the operation after `await`.
-  - [ ] Add an experiment app under `experiments/libuv-fetcher/`.
-  - [ ] Add `experiments/libuv-fetcher/main.sem` with a single
+  - [x] Add an experiment app under `experiments/libuv-fetcher/`.
+  - [x] Add `experiments/libuv-fetcher/main.sem` with a single
         `GET https://example.com/` text fetch.
-  - [ ] Add `experiments/libuv-fetcher/two_fetches.sem` that starts two
+  - [x] Add `experiments/libuv-fetcher/two_fetches.sem` that starts two
         fetches before awaiting either one.
-  - [ ] Add `experiments/libuv-fetcher/timeout.sem` that proves timeout
+  - [x] Add `experiments/libuv-fetcher/timeout.sem` that proves timeout
         metadata reaches the runtime.
-  - [ ] Add `experiments/libuv-fetcher/cancel.sem` once cancellation is wired.
-  - [ ] Add a generated-C sketch or checked-in fixture that shows the expected
+  - [x] Add `experiments/libuv-fetcher/cancel.sem` once cancellation is wired.
+        Current source carries cancellation metadata; hard backend interruption
+        remains runtime-specific follow-up work.
+  - [x] Add a generated-C sketch or checked-in fixture that shows the expected
         continuation-frame shape for `start` / `await`.
-  - [ ] Add docs in the experiment README explaining that the current compiler
+  - [x] Add docs in the experiment README explaining that the current compiler
         still lowers `start` synchronously unless the libuv backend flag is
         selected.
-  - [ ] Add a tiny local test HTTP server for deterministic fetch tests.
-  - [ ] Avoid external network dependency in CI by default; use
+  - [x] Add a tiny local test HTTP server for deterministic fetch tests.
+  - [x] Avoid external network dependency in CI by default; use
         `https://example.com/` only for a manual smoke command.
-  - [ ] Add a test mode that fetches from `127.0.0.1` over plain HTTP for local
+  - [x] Add a test mode that fetches from `127.0.0.1` over plain HTTP for local
         deterministic behavior.
   - [ ] Add an HTTPS fixture or controlled local TLS server before requiring
         HTTPS CI coverage.
-  - [ ] Track manual smoke commands in the experiment README.
-  - [ ] Add a cleanup checklist for temporary files, sockets, loop handles,
+  - [x] Track manual smoke commands in the experiment README.
+  - [x] Add a cleanup checklist for temporary files, sockets, loop handles,
         futures, response bodies, and libcurl easy handles.
 - [x] Define the runtime fetcher scope separately from build-time dependency
       fetching.
@@ -3099,56 +3258,63 @@ workstreams.
         runtime calls.
   - [x] Require runtime fetch calls to work without Python tooling at program
         execution time.
-  - [x] Decide the public namespace: `http.client*`, `net.fetch*`, or another
-        name that cannot be confused with server-side `http.request*` and
+  - [x] Decide the public namespace: use `standard.net` / `net.fetch*`, which
+        cannot be confused with server-side `http.request*` and
         `http.response*`.
   - [x] Define MVP target as blocking HTTP/1.1 plus HTTPS, not HTTP/2.
   - [x] Defer HTTP/2 client support until TLS/ALPN and backend-library choices
         are settled.
 - [ ] Design runtime fetch call targets.
-  - [ ] Add `http.clientRequest` or equivalent request-construction call.
-  - [ ] Add `http.clientFetchText` for simple text responses.
-  - [ ] Add `http.clientFetchBytes` for binary responses.
-  - [ ] Add `http.clientSetHeader` or equivalent request-header API.
-  - [ ] Add request method support for GET.
+  - [x] Add source-level request construction.
+        Implemented as a backend-neutral `HttpGetRequest` record built with
+        `new` / `fieldSet`, not as a public `http.clientRequest` handle.
+  - [x] Add simple text fetch target.
+        Implemented as backend-neutral `net.fetchText`.
+  - [x] Add binary fetch target.
+        Implemented as backend-neutral `net.fetchBytes`.
+  - [ ] Add request-header syntax to `HttpGetRequest` or a future request
+        builder API.
+  - [x] Add request method support for GET.
   - [ ] Add request method support for POST.
   - [ ] Add request method support for PUT/PATCH/DELETE later.
   - [ ] Add request body text support.
   - [ ] Add request body bytes support.
-  - [ ] Add per-request timeout argument.
-  - [ ] Add max response body size argument.
-  - [ ] Add optional redirect policy argument.
-  - [ ] Add response status reader.
-  - [ ] Add response header reader.
-  - [ ] Add response body text reader.
-  - [ ] Add response body bytes reader.
-  - [ ] Add response body length reader.
-  - [ ] Add explicit response cleanup/free call if response memory is owned by
+  - [x] Add per-request timeout argument.
+  - [x] Add max response body size argument.
+  - [x] Add optional redirect policy argument.
+        Implemented as `HttpGetRequest.policy.redirectLimit`.
+  - [x] Add response status reader.
+  - [x] Add response header reader.
+  - [x] Add response body text reader.
+  - [x] Add response body bytes reader.
+  - [x] Add response body length reader.
+  - [x] Add explicit response cleanup/free call if response memory is owned by
         the caller.
 - [ ] Define source-level types for runtime fetch.
-  - [ ] Add or document `HttpClientRequest`.
-  - [ ] Add or document `HttpClientResponse`.
-  - [ ] Add or document `HttpMethod`.
-  - [ ] Add or document `HttpStatus`.
-  - [ ] Add or document `HttpHeaderName`.
-  - [ ] Add or document `HttpHeaderValue`.
-  - [ ] Add or document `Url`.
-  - [ ] Add or document `NetworkTimeout`.
-  - [ ] Add or document `ResponseBodyLimit`.
-  - [ ] Decide whether URLs are plain `CNullTerminatedByteString` in MVP or a
+  - [x] Add or document `HttpGetRequest`.
+  - [x] Add or document `HttpClientResponse` / `HttpTextResponse`.
+  - [ ] Add or document generic `HttpMethod`.
+        Current MVP encodes GET through the `HttpGetRequest` record.
+  - [x] Add or document `HttpClientStatusCode`.
+  - [ ] Add or document client-side `HttpHeaderName`.
+  - [ ] Add or document client-side `HttpHeaderValue`.
+  - [x] Add or document `Url`.
+  - [x] Add or document `NetworkTimeoutMilliseconds`.
+  - [x] Add or document `ResponseBodyLimitBytes`.
+  - [x] Decide whether URLs are plain `CNullTerminatedByteString` in MVP or a
         trusted/sanitized domain type.
 - [ ] Define runtime fetch effects and capabilities.
-  - [ ] Add canonical capability path `network.http.client`.
-  - [ ] Decide whether outbound request effects use `read`, `write`, or both.
-  - [ ] Require operations that perform outbound fetch to declare
+  - [x] Add canonical capability path `network.http.client`.
+  - [x] Decide whether outbound request effects use `read`, `write`, or both.
+  - [x] Require operations that perform outbound fetch to declare
         `effect OP write network.http.client` or the chosen equivalent.
   - [ ] Require operations that read response data to declare the matching
         response read effect if fetch and response inspection are separated.
-  - [ ] Add linter checks so runtime fetch wrappers cannot hide network
+  - [x] Add linter checks so runtime fetch wrappers cannot hide network
         effects.
-  - [ ] Ensure exported runtime-fetch wrappers carry effect edges in their
+  - [x] Ensure exported runtime-fetch wrappers carry effect edges in their
         public contract tape.
-  - [ ] Ensure imported runtime-fetch wrappers trigger `SS2542`-style caller
+  - [x] Ensure imported runtime-fetch wrappers trigger `SS2542`-style caller
         effect propagation.
   - [ ] Add diagnostics that suggest reusable capabilities for
         `network.http.client`.
@@ -3161,101 +3327,108 @@ workstreams.
         hand-rolled HTTP parsing and TLS.
   - [ ] Decide whether the production MVP uses libcurl for DNS, TLS,
         redirects, and HTTP parsing.
-  - [ ] Decide whether to vendor libcurl under `third_party/curl`, require a
+  - [x] Decide whether to vendor libcurl under `third_party/curl`, require a
         system/package-manager libcurl, or support both.
-  - [ ] Decide whether to vendor libuv under `third_party/libuv`, require a
+  - [x] Decide whether to vendor libuv under `third_party/libuv`, require a
         system/package-manager libuv, or support both.
-  - [ ] If libcurl is used, define minimum supported version.
-  - [ ] If libuv is used, define minimum supported version.
+  - [x] If libcurl is used, define minimum supported version.
+  - [x] If libuv is used, define minimum supported version.
   - [ ] If a custom client is used, define DNS, socket, TLS, parser, redirect,
         and proxy boundaries explicitly.
-  - [ ] Keep the SemanticScript ABI small even if the backend library is large.
-  - [ ] Avoid exposing backend-library structs in generated SemanticScript ABI.
-- [ ] Add third-party dependency integration for libuv and libcurl.
-  - [ ] Add `third_party/libuv` as a pinned submodule or documented external
+  - [x] Keep the SemanticScript ABI small even if the backend library is large.
+  - [x] Avoid exposing backend-library structs in generated SemanticScript ABI.
+- [x] Add third-party dependency integration for libuv and libcurl.
+  - [x] Add `third_party/libuv` as a pinned submodule or documented external
         dependency.
-  - [ ] Add libuv upstream URL, license, pin, and release-review row to
+  - [x] Add libuv upstream URL, license, pin, and release-review row to
         `third_party/README.md`.
-  - [ ] Add `third_party/curl` as a pinned submodule or documented external
+  - [x] Add `third_party/curl` as a pinned submodule or documented external
         dependency if production builds should not rely on system libcurl.
-  - [ ] Add libcurl upstream URL, license, pin, and release-review row to
+  - [x] Add libcurl upstream URL, license, pin, and release-review row to
         `third_party/README.md` if vendored.
-  - [ ] Add CMake discovery for libuv.
-  - [ ] Add CMake discovery for libcurl.
-  - [ ] Add Windows dependency notes for libuv, libcurl, TLS backend, and DLL
+  - [x] Add CMake discovery for libuv.
+  - [x] Add CMake `FetchContent` fallback for pinned libuv when no system
+        package is installed.
+  - [x] Add CMake discovery for libcurl.
+  - [x] Add CMake `FetchContent` fallback for pinned libcurl when no system
+        package is installed.
+  - [x] Add Windows dependency notes for libuv, libcurl, TLS backend, and DLL
         discovery.
-  - [ ] Add Linux dependency notes for libuv, libcurl, OpenSSL/CA bundle, and
+  - [x] Add Linux dependency notes for libuv, libcurl, OpenSSL/CA bundle, and
         pkg-config.
-  - [ ] Add macOS dependency notes for libuv, libcurl, Secure Transport or
+  - [x] Add macOS dependency notes for libuv, libcurl, Secure Transport or
         OpenSSL, and Homebrew/system-library behavior.
-  - [ ] Add `sem doctor` checks for selected libuv/libcurl backend availability.
-  - [ ] Add an explicit no-network build mode so CI can compile the runtime
+  - [x] Add `sem doctor` checks for selected libuv/libcurl backend availability.
+  - [x] Add an explicit no-network build mode so CI can compile the runtime
         without performing fetches.
-- [ ] Implement native runtime client ABI.
-  - [ ] Add `sem_http_client_*` declarations to the runtime header.
-  - [ ] Add request allocation/init function.
-  - [ ] Add request header setter.
-  - [ ] Add request body setter for text.
-  - [ ] Add request body setter for bytes.
-  - [ ] Add blocking execute/fetch function.
-  - [ ] Add response status getter.
-  - [ ] Add response header getter.
-  - [ ] Add response body text getter.
-  - [ ] Add response body bytes getter.
-  - [ ] Add response body length getter.
-  - [ ] Add response cleanup/free function.
-  - [ ] Return structured status codes from every runtime function.
-  - [ ] Keep all runtime-owned pointers valid until explicit cleanup or until
+- [x] Implement native runtime client ABI.
+  - [x] Add `sem_http_client_*` declarations to the runtime header.
+  - [x] Add request allocation/init function.
+  - [x] Add request header setter.
+  - [x] Add request body setter for text.
+  - [x] Add request body setter for bytes.
+  - [x] Add blocking execute/fetch function.
+  - [x] Add response status getter.
+  - [x] Add response header getter.
+  - [x] Add response body text getter.
+  - [x] Add response body bytes getter.
+  - [x] Add response body length getter.
+  - [x] Add response cleanup/free function.
+  - [x] Return structured status codes from every runtime function.
+  - [x] Keep all runtime-owned pointers valid until explicit cleanup or until
         the documented operation lifetime ends.
-- [ ] Implement native async fetch ABI over libuv.
-  - [ ] Add `SemanticScript/runtime/native_async/sem_async_runtime.h`.
-  - [ ] Add `SemanticScript/runtime/native_async/sem_async_runtime.c`.
-  - [ ] Add `SemanticScript/runtime/native_async/CMakeLists.txt`.
-  - [ ] Add `SemanticScript/runtime/native_http_client/sem_http_client_runtime.h`
+- [x] Implement native async fetch ABI over libuv.
+  - [x] Add `SemanticScript/runtime/native_async/sem_async_runtime.h`.
+  - [x] Add `SemanticScript/runtime/native_async/sem_async_runtime.c`.
+  - [x] Add `SemanticScript/runtime/native_async/CMakeLists.txt`.
+  - [x] Add `SemanticScript/runtime/native_http_client/sem_http_client_runtime.h`
         or a backend-neutral client header name.
-  - [ ] Add `SemanticScript/runtime/native_http_client/sem_http_client_runtime.c`.
-  - [ ] Add a future handle type such as `SSHttpFetchFuture`.
-  - [ ] Add `ss_http_client_fetch_text_start` that schedules work and returns a
+  - [x] Add `SemanticScript/runtime/native_http_client/sem_http_client_runtime.c`.
+  - [x] Add a future handle type such as `SSHttpFetchFuture`.
+  - [x] Add `ss_http_client_fetch_text_start` that schedules work and returns a
         future handle.
-  - [ ] Add `ss_http_client_fetch_text_await` only for console/program-loop MVP
+  - [x] Add `ss_http_client_fetch_text_await` only for console/program-loop MVP
         experiments, with a note that production lowering should resume
         continuations instead of nested-running the loop.
-  - [ ] Add `ss_http_client_fetch_status` to read the HTTP status code after
+  - [x] Add `ss_http_client_fetch_status` to read the HTTP status code after
         completion.
-  - [ ] Add `ss_http_client_fetch_body_text` to read the buffered body after
+  - [x] Add `ss_http_client_fetch_body_text` to read the buffered body after
         completion.
-  - [ ] Add `ss_http_client_fetch_error_code` for transport/runtime failures.
-  - [ ] Add `ss_http_client_fetch_free` to release future, response body, and
+  - [x] Add `ss_http_client_fetch_error_code` for transport/runtime failures.
+  - [x] Add `ss_http_client_fetch_free` to release future, response body, and
         backend handles.
-  - [ ] Use `uv_queue_work` plus libcurl easy API for the first experiment.
-  - [ ] Ensure the worker callback never touches generated SemanticScript frame
+  - [x] Use `uv_queue_work` plus libcurl easy API for the first experiment.
+  - [x] Ensure the worker callback never touches generated SemanticScript frame
         state directly.
-  - [ ] Ensure the after-work callback runs on the libuv loop thread and marks
+  - [x] Ensure the after-work callback runs on the libuv loop thread and marks
         the future ready.
-  - [ ] Add timeout support with `uv_timer_t`.
-  - [ ] Add cancellation bookkeeping before attempting hard cancellation of
+  - [x] Add timeout support with `uv_timer_t`.
+  - [x] Add cancellation bookkeeping before attempting hard cancellation of
         in-flight libcurl easy transfers.
-  - [ ] Add body-size enforcement in the write callback before reallocating.
-  - [ ] Add redirect-count enforcement through libcurl options.
-  - [ ] Add TLS verification enabled by default.
+  - [x] Add body-size enforcement in the write callback before reallocating.
+  - [x] Add redirect-count enforcement through libcurl options.
+  - [x] Add TLS verification enabled by default.
   - [ ] Add a compile-time diagnostic when libcurl was built without HTTPS
         support.
-  - [ ] Add a future migration note for replacing the worker-pool MVP with
+  - [x] Add a future migration note for replacing the worker-pool MVP with
         libcurl `multi_socket` integration.
   - [ ] Add a second-stage prototype that drives libcurl `multi_socket` through
         `uv_poll_t` instead of blocking a worker thread per fetch.
   - [ ] Compare worker-pool MVP behavior against `multi_socket` behavior for
         concurrent fetch count, cancellation latency, and memory ownership.
 - [ ] Add compiler lowering for runtime fetch calls.
-  - [ ] Register runtime fetch call signatures in the compiler builtin surface.
-  - [ ] Register runtime fetch call signatures in semlint builtin signature
+  - [x] Register runtime fetch call signatures in the compiler builtin surface.
+  - [x] Register runtime fetch call signatures in semlint builtin signature
         tables.
-  - [ ] Lower request creation to the native runtime function.
+  - [x] Lower typed `HttpGetRequest` record arguments to the native runtime
+        fetch helper.
   - [ ] Lower header setters to the native runtime function.
   - [ ] Lower body setters to the native runtime function.
-  - [ ] Lower execute/fetch calls to the native runtime function.
-  - [ ] Lower response readers to native runtime functions.
-  - [ ] Lower response cleanup/free calls to native runtime functions.
+  - [x] Lower execute/fetch calls to the native runtime function.
+  - [x] Lower typed `HttpTextResponse` record construction so `fieldGet`
+        exposes response status and body from `net.fetchText`.
+  - [x] Lower response cleanup/free calls to native runtime functions.
+        Implemented as `net.freeTextBody` -> `ss_http_client_free_string`.
   - [ ] Lower async `start fetchCall` to a future-start native call when the
         selected runtime backend is libuv.
   - [ ] Lower `await fetchCall` to a continuation yield/resume point instead of
@@ -3265,12 +3438,12 @@ workstreams.
   - [ ] Generate a resume switch state for each `await`.
   - [ ] Generate cleanup blocks that free completed fetch futures on all return
         paths.
-  - [ ] Keep existing synchronous `start` / `await` lowering as the default
+  - [x] Keep existing synchronous `start` / `await` lowering as the default
         backend until the libuv experiment is explicitly selected.
-  - [ ] Add provenance entries for generated async runtime symbols.
+  - [x] Add provenance entries for generated async runtime symbols.
   - [ ] Add agent-readable compiler diagnostics for unsupported runtime fetch
         call targets.
-  - [ ] Keep runtime fetch target names synchronized across `semsc.py`,
+  - [x] Keep runtime fetch target names synchronized across `semsc.py`,
         `semlint.py`, `SYNTAX.md`, and docs.
 - [ ] Define TLS behavior.
   - [ ] Require HTTPS support for the runtime fetch MVP.
@@ -3278,23 +3451,23 @@ workstreams.
   - [ ] Decide certificate trust-store behavior on Windows.
   - [ ] Decide certificate trust-store behavior on macOS.
   - [ ] Decide certificate trust-store behavior on Linux.
-  - [ ] Add diagnostic for TLS backend not available at link/runtime.
-  - [ ] Add option to reject insecure TLS by default.
+  - [x] Add diagnostic for TLS backend not available at link/runtime.
+  - [x] Add option to reject insecure TLS by default.
   - [ ] Decide whether development builds can opt into insecure TLS for local
         test servers.
   - [ ] Ensure TLS errors map to typed SemanticScript errors.
 - [ ] Define URL, redirect, and protocol rules.
-  - [ ] Reject unsupported schemes before network access.
-  - [ ] Support `https://` in MVP.
+  - [x] Reject unsupported schemes before network access.
+  - [x] Support `https://` in MVP.
   - [ ] Decide whether `http://` is allowed for localhost/dev only or allowed
         generally with warning.
-  - [ ] Define max redirect count.
+  - [x] Define max redirect count.
   - [ ] Define whether POST redirects preserve method/body.
   - [ ] Reject redirects from HTTPS to HTTP by default.
   - [ ] Define header-size limit.
   - [ ] Define status-line parsing limit.
-  - [ ] Define response body-size limit.
-  - [ ] Define timeout behavior for DNS, connect, TLS handshake, write, and
+  - [x] Define response body-size limit.
+  - [x] Define timeout behavior for DNS, connect, TLS handshake, write, and
         response read.
 - [ ] Define runtime fetch error model.
   - [ ] Add `HttpClientError` error domain.
@@ -3312,35 +3485,35 @@ workstreams.
   - [ ] Decide whether non-2xx HTTP status is a transport success or typed
         application-level failure.
 - [ ] Define memory ownership for runtime fetch.
-  - [ ] Decide whether simple `fetchText` copies body into runtime-owned memory
+  - [x] Decide whether simple `fetchText` copies body into runtime-owned memory
         or caller-owned heap memory.
-  - [ ] Add explicit cleanup rule for response bodies.
+  - [x] Add explicit cleanup rule for response bodies.
   - [ ] Add linter diagnostic for missing cleanup if cleanup is explicit.
-  - [ ] Ensure response header values have documented lifetime.
-  - [ ] Ensure response body bytes have documented lifetime.
+  - [x] Ensure response header values have documented lifetime.
+  - [x] Ensure response body bytes have documented lifetime.
   - [ ] Prevent use-after-free of response-owned pointers where the linter can
         prove it.
-  - [ ] Add max allocation guard before reading response body.
+  - [x] Add max allocation guard before reading response body.
 - [ ] Define blocking, async, and webserver interaction.
-  - [ ] Allow blocking runtime fetch in console programs for MVP.
-  - [ ] State explicitly that async plumbing is not required for the first
+  - [x] Allow blocking runtime fetch in console programs for MVP.
+  - [x] State explicitly that async plumbing is not required for the first
         runtime fetch MVP.
-  - [ ] Define blocking fetch as a synchronous native runtime call that owns the
+  - [x] Define blocking fetch as a synchronous native runtime call that owns the
         socket/TLS operation until it returns a response or error.
-  - [ ] Require every blocking fetch call to carry an explicit timeout value.
+  - [x] Require every blocking fetch call to carry an explicit timeout value.
   - [ ] Reject or warn on blocking fetch calls that rely on an infinite/default
         timeout.
   - [ ] Define per-phase timeout defaults when the user supplies one aggregate
         timeout.
-  - [ ] Define max response body size as mandatory for blocking fetch helpers.
-  - [ ] Decide whether blocking fetch may be used in `main` and ordinary console
+  - [x] Define max response body size as mandatory for blocking fetch helpers.
+  - [x] Decide whether blocking fetch may be used in `main` and ordinary console
         operations with only an effect/capability proof.
   - [ ] Define warning when a native webserver handler performs blocking
         runtime fetch without timeout.
   - [ ] Require timeout/cancellation metadata for runtime fetch inside
         webserver handlers.
-  - [ ] Add a linter rule that detects `http.client*` calls inside operations
-        bound by `route` or `routeMiddleware`.
+  - [ ] Add a linter rule that detects `net.fetch*` / future HTTP-client calls
+        inside operations bound by `route` or `routeMiddleware`.
   - [ ] Add a linter rule that webserver-bound operations using blocking fetch
         must have a timeout row or a timeout argument on the fetch call.
   - [ ] Add a linter rule that webserver-bound operations using blocking fetch
@@ -3362,13 +3535,13 @@ workstreams.
         single-threaded server loop until timeout/response.
   - [x] Add docs warning that current native webserver adapter is blocking and
         single-threaded.
-  - [ ] Defer async/event-loop integration until the native server adapter has
+  - [x] Defer async/event-loop integration until the native server adapter has
         an async story.
-  - [ ] Define future async fetch shape with `start`, `await`, `timeout`, and
+  - [x] Define future async fetch shape with `start`, `await`, `timeout`, and
         `cancelOn`.
-  - [ ] Define future async fetch as nonblocking runtime work, not just a
+  - [x] Define future async fetch as nonblocking runtime work, not just a
         blocking call hidden behind `start`.
-  - [ ] Define whether async fetch uses a worker-thread pool, nonblocking
+  - [x] Define whether async fetch uses a worker-thread pool, nonblocking
         sockets, or platform event loops.
   - [ ] Define the MVP async backend options: select/poll, epoll/kqueue, IOCP,
         or a portable library.
@@ -3393,34 +3566,46 @@ workstreams.
   - [ ] Add Windows linker flags and DLL discovery rules.
   - [ ] Add macOS linker flags and framework/library rules.
   - [ ] Add Linux linker flags and package dependency notes.
-  - [ ] Add `sem doctor` checks for runtime fetch prerequisites.
+  - [x] Add `sem doctor` checks for runtime fetch prerequisites.
   - [ ] Add build-profile behavior for statically linked versus dynamically
         linked HTTP client runtime.
   - [ ] Document how generated executables discover runtime client libraries.
 - [ ] Add runtime fetch documentation and examples.
-  - [ ] Add `docs/language/native-http-client-api.md`.
-  - [ ] Add `SYNTAX.md` rows for runtime fetch call targets.
-  - [ ] Add `docs/toolchain/compiler.md` linker/runtime notes.
+  - [x] Add `docs/language/native-http-client-api.md`.
+  - [x] Add `SYNTAX.md` rows for runtime fetch call targets.
+  - [x] Add `docs/toolchain/compiler.md` linker/runtime notes.
   - [ ] Add optimization-guide notes for agent-readable fetch errors.
-  - [ ] Add a minimal console `GET https://example.com` sample.
+  - [x] Add a minimal console `GET https://example.com` sample.
   - [ ] Add a JSON API fetch sample.
   - [ ] Add a POST body sample.
   - [ ] Add a timeout failure sample.
   - [ ] Add a TLS failure documentation example.
 - [ ] Add runtime fetch tests.
   - [ ] Unit-test compiler lowering for every fetch call target.
+    - [x] `net.fetchText` typed `HttpGetRequest` -> `HttpTextResponse`
+          lowering.
+    - [ ] `net.fetchBytes` lowering.
+    - [ ] `net.freeTextBody` cleanup lowering.
   - [ ] Unit-test semlint builtin signature coverage.
   - [ ] Unit-test missing network capability diagnostic.
   - [ ] Unit-test imported fetch-wrapper effect propagation.
-  - [ ] Integration-test HTTP GET against a local test server.
+  - [x] Integration-test HTTP GET against a local test server.
   - [ ] Integration-test HTTPS GET against a controlled test server or fixture.
   - [ ] Integration-test request headers.
-  - [ ] Integration-test response headers.
+  - [x] Integration-test response headers.
   - [ ] Integration-test POST text body.
   - [ ] Integration-test binary response body.
-  - [ ] Integration-test timeout behavior.
+  - [x] Integration-test timeout behavior.
   - [ ] Integration-test redirect policy.
-  - [ ] Integration-test max body-size failure.
+  - [x] Integration-test max body-size failure.
+  - [x] Repeat the real libuv/libcurl local fetch health demo enough times to
+        catch obvious event-loop, timer, and cleanup flakiness.
+  - [x] Add a native benchmark harness for the real libuv/libcurl async fetch
+        path.
+  - [x] Benchmark sustained local async fetch throughput with every response
+        status, body, and length verified.
+  - [x] Refine the public `standard.net` text-fetch API around typed
+        request/response records instead of raw timeout/body-limit arguments.
   - [ ] Integration-test response cleanup under sanitizer or leak-check mode
         when available.
 

@@ -248,9 +248,31 @@ embedded.
 | VS Code extension | Supported editor tooling | `vscode-semanticscript/` registers `.sscript` and `.sem`, provides highlighting, hovers, semantic roles, and optional `semlint` / `semlint` diagnostics. | Highlighted or hovered syntax is not automatically executable compiler support. The compiler and `SYNTAX.md` decide runtime support. |
 | Refined syntax | Partial, inspectable | The parser accepts many refined declarative lines for AST, linter, and editor inspection. Pure metadata is preserved or skipped safely. Some concurrency and dataflow forms lower to documented synchronous fallbacks. | Refined syntax is not uniformly runtime-complete. Use `--parse-only` for forms whose backend is intentionally absent. |
 | Web / HTTP runtime | Preview, release-tested | Routed `target webServer` programs emit a native HTTP/1.1 listener with exact method/path dispatch and `:name` path-parameter matching. Handlers use `input request HttpRequest`, `input response HttpResponse`, and `output CSignedInt32`. The native adapter supports request method/path/path-param/header/query/cookie/body text/body bytes reads, bounded multipart part reads, response text/bytes/SSE-event/header/file writes, and one path-scoped middleware callback. | HTTP/2/H2O, route timeout enforcement, structured body decoders, long-lived streaming bodies, method-scoped middleware, graceful shutdown hooks, and persistent state are not 1.0 guarantees. Unrouted webserver files still compile as library/stub programs. |
+| Outbound `standard.net` client | Experimental prototype | `import net standard.net`, role types, `HttpGetRequest`, `HttpTextResponse`, `networkHttpClient`, and `net.fetchText` / `net.fetchBytes` call tapes are accepted. Canonical `net.fetchText` source passes a request record and receives a response record, while lowering still targets the native HTTP client ABI. The runtime link registry pulls in `native_http_client` plus `native_async` sources when these targets are used. Real network behavior requires building the optional libcurl/libuv runtime path. | The prototype is not a 1.0 guarantee. Continuation-frame `await` lowering, production async handler integration, and libcurl `multi_socket` support remain future work. |
 | Windows GUI runtime | Reserved / partial | The committed compiler-owned surface should stay to `target windowsGui`, `targetRuntime PROJECT windowsGui`, native runtime linking, handler ABI preservation for `GuiSession` / `GuiEvent`, and a small metadata hook for the normalized `standard.gui` application/main-window descriptor. | `standard.gui` owns the GUI vocabulary, declaration contracts, capabilities, and validation semantics. There is no `entry windowsGui` row, and the current reference compiler does not yet provide a complete GUI bridge/runtime path. |
 | Partial syntax rows | Explicitly partial | Rows marked partial in `SYNTAX.md` may parse, lint, lower synchronously, or emit structural stubs exactly as documented there. | A partial row must not be treated as full application-runtime support. Unsupported runtime semantics should fail rather than silently disappear. |
 | Runtime and diagnostics flags | Supported compiler interface | `--build-profile dev\|prod`, `--runtime-checks off\|traps\|panic`, `--persist-llvm-ir auto\|yes\|no`, `--diagnostics-format agent\|json\|raw`, and `--opt-level 0..3` are the 1.0 flag surface. | These flags do not change language support. `prod` hides panic source context; `off` removes runtime checks and should be chosen deliberately. |
+
+Native runtime ownership: `semsc.py` collects executable adapter sources through
+`_NATIVE_RUNTIME_LINK_REGISTRY`. Each registry row must name the owning stdlib
+module or compiler runtime surface. Reserved parse-only rows belong in docs and
+tests, not in link inputs, until a branch also lands lowering and runtime ABI
+coverage.
+
+Compiler-owned call-target boundary:
+
+| target family | owning layer | compiler responsibility |
+| --- | --- | --- |
+| `c.*` | temporary backend interop / libc registry | Validate signatures and lower ABI calls while stdlib replacements mature. No app policy belongs here. |
+| `console.*` | compiler runtime surface | Lower process stdout/stderr helpers and keep effects explicit. |
+| `math.*` / `pointer.*` | compiler primitive operations | Emit arithmetic, conversion, and pointer IR only. Domain rules should call these from `.sem` bodies. |
+| `html.hydrate.*` / `jsonBody` | compiler syntax island plus `standard.html` / `standard.json` contracts | Generate structural glue and enforce source syntax; escaping/parsing belongs to the HTML/JSON helpers. |
+| `http.*` | `standard.http` plus native HTTP runtime | Lower request/response ABI calls and route dispatch. App response wrappers must declare `responseBodyForwarder`. |
+| `json.*` | `standard.json` plus native JSON runtime | Generate record field walking only; string escaping, primitive formatting, strict parsing, capacity, and status mapping live in `native_json`. |
+| `sqlite.*` | `standard.sqlite` plus native SQLite runtime | Lower adapter calls and resource lifetimes; schemas, migrations, and query policy stay in `.sem` source. |
+| `bcrypt.*` | `standard.bcrypt` plus native bcrypt runtime | Lower hashing/random/base64 adapter calls and link vendored sources only when used. |
+| `gui.*` | `standard.gui` plus native GUI runtime | Preserve GUI handler ABI and link platform runtime; UI vocabulary and validation stay in the std module. |
+| `net.fetch*` | `standard.net` plus `native_http_client` / `native_async` | Experimental prototype lowering and link selection. Request/response records, retry, caching, auth, and scheduling policy stay in `.sem` source and stdlib contracts; backend handles stay out of source. |
 
 ## Parse Pipeline
 

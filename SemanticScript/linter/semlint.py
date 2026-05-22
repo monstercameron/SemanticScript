@@ -44,6 +44,8 @@ if str(_SEMANTICSCRIPT_ROOT) not in sys.path:
 from shared.call_contracts import (
     EXPLICIT_DISPOSITION_FALLIBLE_CALL_TARGETS as SHARED_EXPLICIT_DISPOSITION_FALLIBLE_CALL_TARGETS,
     KNOWN_FALLIBLE_CALL_TARGETS as SHARED_KNOWN_FALLIBLE_CALL_TARGETS,
+    MIDDLEWARE_CONTROL_CASES as SHARED_MIDDLEWARE_CONTROL_CASES,
+    MIDDLEWARE_CONTROL_TYPE as SHARED_MIDDLEWARE_CONTROL_TYPE,
     RESULT_FALLIBLE_CALL_TARGETS as SHARED_RESULT_FALLIBLE_CALL_TARGETS,
     SUPPORTED_HTTP_ROUTE_METHODS as SHARED_SUPPORTED_HTTP_ROUTE_METHODS,
     is_supported_route_method,
@@ -221,8 +223,6 @@ class ProgramFacts:
 
 
 BUILTIN_VALUE_TYPES: Dict[str, str] = {
-    "continueMiddlewareControl": "MiddlewareControl",
-    "shortCircuitMiddlewareControl": "MiddlewareControl",
     "readOnlySqliteOpenMode": "SqliteOpenMode",
     "readWriteSqliteOpenMode": "SqliteOpenMode",
     "readWriteCreateSqliteOpenMode": "SqliteOpenMode",
@@ -275,8 +275,6 @@ BUILTIN_VALUE_TYPES: Dict[str, str] = {
 }
 
 BUILTIN_VALUE_LITERALS: Dict[str, str] = {
-    "continueMiddlewareControl": "0",
-    "shortCircuitMiddlewareControl": "1",
     "readOnlySqliteOpenMode": "1",
     "readWriteSqliteOpenMode": "2",
     "readWriteCreateSqliteOpenMode": "6",
@@ -327,6 +325,10 @@ BUILTIN_VALUE_LITERALS: Dict[str, str] = {
     "unsupportedGuiRuntimeStatus": "8",
     "threadGuiRuntimeStatus": "9",
 }
+
+for _middleware_case_name, _middleware_case_value in SHARED_MIDDLEWARE_CONTROL_CASES:
+    BUILTIN_VALUE_TYPES[_middleware_case_name] = SHARED_MIDDLEWARE_CONTROL_TYPE
+    BUILTIN_VALUE_LITERALS[_middleware_case_name] = str(_middleware_case_value)
 
 BUILTIN_TYPE_ALIASES: Dict[str, str] = {
     "SqliteDatabase": "COpaqueMemoryAddress",
@@ -1110,6 +1112,10 @@ CALL_TARGET_IMPLIED_EFFECTS: Dict[str, Tuple[str, str]] = {
     # Process lifecycle
     "c.exit":                    ("write", "process.lifecycle"),
     "c.abort":                   ("write", "process.lifecycle"),
+    # Outbound network client
+    "net.fetchText":             ("write", "network.http.client"),
+    "net.fetchBytes":            ("write", "network.http.client"),
+    "net.freeTextBody":          ("free", "heap"),
     # File I/O
     "c.fopen":                   ("open",  "file"),
     "c.fclose":                  ("close", "file"),
@@ -1240,6 +1246,10 @@ BUILTIN_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
     "pointer.offset":             [("buffer", "COpaqueMemoryAddress"), ("offset", "CByteCount")],
     "pointer.difference":         [("left", "COpaqueMemoryAddress"), ("right", "COpaqueMemoryAddress")],
     "pointer.isNull":             [("pointer", "COpaqueMemoryAddress")],
+    # Outbound network
+    "net.fetchText":              [("request", "HttpGetRequest")],
+    "net.fetchBytes":             [("url", "Url"), ("timeoutMillis", "NetworkTimeoutMilliseconds"), ("maxBodyBytes", "ResponseBodyLimitBytes")],
+    "net.freeTextBody":           [("body", "HttpClientBodyText")],
     # C lib
     "c.malloc":                   [("size", "CByteCount")],
     "c.calloc":                   [("count", "CByteCount"), ("size", "CByteCount")],
@@ -1480,7 +1490,7 @@ VERB_MINIMUM_ARITY: Dict[str, int] = {
     "sourceRoot": 2, "mainFile": 2, "mainOperation": 2,
     "testPattern": 2, "dependencySource": 3, "dependencyFetch": 4,
     "dependencyCache": 2, "dependencyLock": 2, "dependencyIntegrity": 3,
-    "buildProfile": 2, "runtimeChecks": 2, "persistLlvmIr": 2,
+    "buildProfile": 2, "runtimeChecks": 2, "asyncRuntime": 2, "persistLlvmIr": 2,
     "nativeOutput": 2, "targetRuntime": 2, "comptimeOperation": 2,
     "projectVersion": 2, "projectLicense": 2, "testRoot": 2,
     "nativeHttpHost": 2, "nativeHttpPort": 2,
@@ -1626,7 +1636,7 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "buildProject", "modulePath", "languageVersion", "sourceRoot",
     "mainFile", "mainOperation", "testPattern", "dependency", "dependencySource",
     "dependencyFetch", "dependencyCache", "dependencyLock", "dependencyIntegrity",
-    "buildProfile", "runtimeChecks", "persistLlvmIr",
+    "buildProfile", "runtimeChecks", "asyncRuntime", "persistLlvmIr",
     "nativeOutput", "targetRuntime", "comptimeOperation", "registerModule",
     "buildConstant",
     "projectVersion", "projectLicense", "testRoot", "nativeHttpHost",
@@ -6913,6 +6923,104 @@ def check_async_call_missing_boundary(facts: ExtendedFacts) -> List[Diagnostic]:
     return diagnostics
 
 
+def check_await_without_start(facts: ExtendedFacts) -> List[Diagnostic]:
+    """`await CALL` only has scheduler meaning when the same operation starts
+    the call first. The 1.0 synchronous fallback can still execute in order, but
+    the libuv continuation backend needs this edge to allocate/register the
+    future before suspension."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        for callFact in collect_operation_calls(operation).values():
+            if not callFact.await_lines or callFact.start_lines:
+                continue
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3511",
+                kind="concurrencyDiscipline.awaitWithoutStart",
+                severity=Severity.WARNING,
+                subjectName=callFact.name,
+                subjectKind="call",
+                gapEdge="start",
+                intentSlogan="await without matching start",
+                primary=span_of_line(callFact.await_lines[0], "awaitSite"),
+                related=[
+                    span_of_line(callFact.line, "callDeclaration"),
+                    span_of_line(operation.line, "enclosingOperation"),
+                ],
+                invariantRule=(
+                    f"`await {callFact.name}` must be paired with "
+                    f"`start {callFact.name}` in the same operation"
+                ),
+                specAnchor="SYNTAX.md#await",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="addStartBeforeAwait",
+                        shape=f"start {callFact.name}",
+                        evidence=[span_of_line(callFact.line)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                effort=Effort.LOCAL,
+                passProvenance="check_await_without_start",
+                agentHint=(
+                    "the future libuv backend needs the start edge to create "
+                    "the future that await will suspend on"
+                ),
+            ))
+    return diagnostics
+
+
+def check_started_call_without_await(facts: ExtendedFacts) -> List[Diagnostic]:
+    """A started call should be awaited until SemanticScript grows an explicit
+    detach/cancel completion verb. `cancelOn` declares the cancellation token
+    for an await, but it is not itself a completion edge."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        for callFact in collect_operation_calls(operation).values():
+            if not callFact.start_lines or callFact.await_lines:
+                continue
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3512",
+                kind="concurrencyDiscipline.startedCallWithoutAwait",
+                severity=Severity.WARNING,
+                subjectName=callFact.name,
+                subjectKind="call",
+                gapEdge="await",
+                intentSlogan="started call without completion edge",
+                primary=span_of_line(callFact.start_lines[0], "startSite"),
+                related=[
+                    span_of_line(callFact.line, "callDeclaration"),
+                    span_of_line(operation.line, "enclosingOperation"),
+                ],
+                invariantRule=(
+                    f"`start {callFact.name}` must be paired with "
+                    f"`await {callFact.name}` until an explicit detach/cancel "
+                    f"verb exists"
+                ),
+                specAnchor="SYNTAX.md#start",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="addAwaitAfterStart",
+                        shape=f"await {callFact.name}",
+                        evidence=[span_of_line(callFact.line)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                effort=Effort.LOCAL,
+                passProvenance="check_started_call_without_await",
+                agentHint=(
+                    "without await or a future detach/cancel edge, generated "
+                    "async state would not have a defined ownership handoff"
+                ),
+            ))
+    return diagnostics
+
+
 def check_file_handle_not_closed(facts: ExtendedFacts) -> List[Diagnostic]:
     """`c.fopen` / `c.open` body call without a matching `c.fclose` /
     `c.close` defer in the same op. Same shape as SS3303 but for file
@@ -7665,6 +7773,10 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
                 declaredValueNames.add(parsedMemory[2][0])
             elif parsedBind is not None:
                 declaredValueNames.add(parsedBind[1])
+            elif declarationVerb == "new" and len(declarationArgs) >= 2:
+                declaredValueNames.add(declarationArgs[0])
+            elif declarationVerb == "fieldGet" and len(declarationArgs) >= 2:
+                declaredValueNames.add(declarationArgs[0])
             elif declarationVerb == "read" and len(declarationArgs) >= 2:
                 declaredValueNames.add(declarationArgs[1])
             elif declarationVerb == "receive" and declarationArgs:
@@ -7958,6 +8070,10 @@ def _operation_value_types(facts: ExtendedFacts, operation: OperationFact) -> Di
             valueTypes[sourceLine.args[0]] = sourceLine.args[1]
         elif sourceLine.verb == "storage" and len(sourceLine.args) >= 5:
             valueTypes[sourceLine.args[2]] = sourceLine.args[3]
+        elif sourceLine.verb == "new" and len(sourceLine.args) >= 2:
+            valueTypes[sourceLine.args[0]] = sourceLine.args[1]
+        elif sourceLine.verb == "fieldGet" and len(sourceLine.args) >= 2:
+            valueTypes[sourceLine.args[0]] = sourceLine.args[1]
     return valueTypes
 
 
@@ -11330,8 +11446,8 @@ EXPORT_VERB_DECLARATION_KIND: Dict[str, str] = {
 BUILD_TAPE_PROJECT_VERBS: Set[str] = {
     "modulePath", "languageVersion", "projectVersion", "projectLicense",
     "sourceRoot", "mainFile", "mainOperation", "testPattern", "testRoot",
-    "targetRuntime", "buildProfile", "runtimeChecks", "persistLlvmIr",
-    "nativeOutput", "keepResources", "resourcesDir",
+    "targetRuntime", "buildProfile", "runtimeChecks", "asyncRuntime",
+    "persistLlvmIr", "nativeOutput", "keepResources", "resourcesDir",
     "nativeHttpHost", "nativeHttpPort",
     "formatterSetting", "linterSetting", "docsOutput",
     "optLevel", "emitLlvmIr", "llvmIrOutput",
@@ -11348,7 +11464,7 @@ BUILD_TAPE_PROJECT_VERBS: Set[str] = {
 BUILD_TAPE_SINGLETON_VERBS: Set[str] = {
     "modulePath", "languageVersion", "projectVersion", "projectLicense",
     "sourceRoot", "mainFile", "mainOperation", "targetRuntime",
-    "buildProfile", "runtimeChecks", "persistLlvmIr", "nativeOutput",
+    "buildProfile", "runtimeChecks", "asyncRuntime", "persistLlvmIr", "nativeOutput",
     "keepResources", "resourcesDir", "nativeHttpHost", "nativeHttpPort",
     "docsOutput", "optLevel", "emitLlvmIr", "llvmIrOutput",
     "emitOptimizedLlvmIr", "optimizedLlvmIrOutput",
@@ -11367,6 +11483,7 @@ BUILD_TAPE_CHOICES: Dict[str, Set[str]] = {
     "targetRuntime": {"nativeExe", "webServer", "library", "windowsGui"},
     "buildProfile": {"dev", "prod"},
     "runtimeChecks": {"off", "traps", "panic"},
+    "asyncRuntime": {"none", "libuv"},
     "persistLlvmIr": {"auto", "yes", "no"},
     "keepResources": {"yes", "no", "true", "false", "on", "off", "1", "0"},
     "emitLlvmIr": {"auto", "yes", "no"},
@@ -14097,6 +14214,8 @@ CHECKERS = [
     check_select_without_cases,
     check_select_case_references_unknown_select,
     check_async_call_missing_boundary,
+    check_await_without_start,
+    check_started_call_without_await,
     check_file_handle_not_closed,
     check_sqlite_database_failure_cleanup_missing,
     check_sqlite_statement_finalize_missing,

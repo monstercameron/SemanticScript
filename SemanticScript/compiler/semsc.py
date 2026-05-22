@@ -69,6 +69,8 @@ for _import_path in (_COMPILER_DIR, _SEMANTICSCRIPT_ROOT):
 import libc_registry
 from shared.call_contracts import (
     KNOWN_FALLIBLE_CALL_TARGETS,
+    MIDDLEWARE_CONTROL_CASES,
+    MIDDLEWARE_CONTROL_TYPE,
     SUPPORTED_HTTP_ROUTE_METHODS,
     fallibility_kind,
     is_supported_route_method,
@@ -974,6 +976,7 @@ _BUILD_TAPE_PROJECT_VERBS = frozenset({
     "modulePath", "languageVersion", "projectVersion", "projectLicense",
     "sourceRoot", "mainFile", "mainOperation", "testPattern", "testRoot",
     "targetRuntime", "buildProfile", "runtimeChecks", "persistLlvmIr",
+    "asyncRuntime",
     "nativeOutput", "keepResources", "resourcesDir",
     "nativeHttpHost", "nativeHttpPort",
     "formatterSetting", "linterSetting", "docsOutput",
@@ -1000,6 +1003,7 @@ _BUILD_TAPE_SINGLETON_VERBS = frozenset({
     "modulePath", "languageVersion", "projectVersion", "projectLicense",
     "sourceRoot", "mainFile", "mainOperation", "targetRuntime",
     "buildProfile", "runtimeChecks", "persistLlvmIr", "nativeOutput",
+    "asyncRuntime",
     "keepResources", "resourcesDir", "nativeHttpHost", "nativeHttpPort",
     "docsOutput", "optLevel", "emitLlvmIr", "llvmIrOutput",
     "emitOptimizedLlvmIr", "optimizedLlvmIrOutput",
@@ -1039,6 +1043,7 @@ _BUILD_TAPE_CHOICES = {
     "targetRuntime": {"nativeExe", "webServer", "windowsGui", "library"},
     "buildProfile": {"dev", "prod"},
     "runtimeChecks": {"off", "traps", "panic"},
+    "asyncRuntime": {"none", "libuv"},
     "persistLlvmIr": {"auto", "yes", "no"},
     "keepResources": {"yes", "no", "true", "false", "on", "off", "1", "0"},
     "emitLlvmIr": {"auto", "yes", "no"},
@@ -1181,11 +1186,10 @@ def _register_builtin_middleware_control_enum(prog: Program) -> None:
     instead of bare `continue` / `shortCircuit` which would collide
     with future control-flow verbs.
     """
-    en = Enum("MiddlewareControl")
+    en = Enum(MIDDLEWARE_CONTROL_TYPE)
     en.repr = "CSignedInt32"
-    en.cases.append(("continueMiddlewareControl", 0))
-    en.cases.append(("shortCircuitMiddlewareControl", 1))
-    prog.enums["MiddlewareControl"] = en
+    en.cases.extend(MIDDLEWARE_CONTROL_CASES)
+    prog.enums[MIDDLEWARE_CONTROL_TYPE] = en
     # Register the two case names as integer consts so `returnValue
     # continueMiddlewareControl` (and the shortCircuit counterpart)
     # resolve through the normal const-name path used by every other
@@ -1195,124 +1199,8 @@ def _register_builtin_middleware_control_enum(prog: Program) -> None:
     # resolves `MiddlewareControl` → `CSignedInt32` → i32 via
     # `llvm_type_for`'s enum-repr unwrap, so the i32 user-op return
     # slot still accepts the value without a cast.
-    prog.consts["continueMiddlewareControl"] = ("MiddlewareControl", 0)
-    prog.consts["shortCircuitMiddlewareControl"] = ("MiddlewareControl", 1)
-
-
-def _register_builtin_sqlite_surface(prog: Program) -> None:
-    """Pre-register the `standard.sqlite` built-in enum / type surface so
-    callers can reference `inMemorySqliteOpenMode`, `rowSqliteStepResult`,
-    etc., without redeclaring them. The case values are hand-aligned with
-    the `SS_SQLITE_*` constants in `sem_sqlite_runtime.h`; mismatched
-    values would surface as a wrong-flag handed to sqlite3_open_v2() or a
-    misclassified step result, so any change here MUST be paired with a
-    matching change to the C ABI header.
-
-    Verbose case names (`inMemorySqliteOpenMode` instead of bare
-    `inMemory`) follow the existing MiddlewareControl convention: the
-    suffix carries the enum role so reading a use site does not require
-    looking up which enum the bare token belongs to.
-
-    `SqliteRowId` is registered as a type alias to `CSignedInt64` so
-    `lastInsertRowId` results bind to a descriptive role-typed value
-    instead of a generic integer.
-    """
-    open_mode_enum = Enum("SqliteOpenMode")
-    open_mode_enum.repr = "CSignedInt32"
-    # Values are the OR'd combinations of SS_SQLITE_OPEN_READONLY (1),
-    # READWRITE (2), CREATE (4), MEMORY (8) from sem_sqlite_runtime.h.
-    open_mode_enum.cases.append(("readOnlySqliteOpenMode", 1))
-    open_mode_enum.cases.append(("readWriteSqliteOpenMode", 2))
-    open_mode_enum.cases.append(("readWriteCreateSqliteOpenMode", 6))
-    open_mode_enum.cases.append(("inMemorySqliteOpenMode", 14))
-    prog.enums["SqliteOpenMode"] = open_mode_enum
-    prog.consts["readOnlySqliteOpenMode"] = ("SqliteOpenMode", 1)
-    prog.consts["readWriteSqliteOpenMode"] = ("SqliteOpenMode", 2)
-    prog.consts["readWriteCreateSqliteOpenMode"] = ("SqliteOpenMode", 6)
-    prog.consts["inMemorySqliteOpenMode"] = ("SqliteOpenMode", 14)
-
-    step_result_enum = Enum("SqliteStepResult")
-    step_result_enum.repr = "CSignedInt32"
-    step_result_enum.cases.append(("rowSqliteStepResult", 100))
-    step_result_enum.cases.append(("doneSqliteStepResult", 101))
-    prog.enums["SqliteStepResult"] = step_result_enum
-    prog.consts["rowSqliteStepResult"] = ("SqliteStepResult", 100)
-    prog.consts["doneSqliteStepResult"] = ("SqliteStepResult", 101)
-
-    column_type_enum = Enum("SqliteColumnType")
-    column_type_enum.repr = "CSignedInt32"
-    column_type_enum.cases.append(("integerSqliteColumnType", 1))
-    column_type_enum.cases.append(("floatSqliteColumnType", 2))
-    column_type_enum.cases.append(("textSqliteColumnType", 3))
-    column_type_enum.cases.append(("blobSqliteColumnType", 4))
-    column_type_enum.cases.append(("nullSqliteColumnType", 5))
-    prog.enums["SqliteColumnType"] = column_type_enum
-    prog.consts["integerSqliteColumnType"] = ("SqliteColumnType", 1)
-    prog.consts["floatSqliteColumnType"] = ("SqliteColumnType", 2)
-    prog.consts["textSqliteColumnType"] = ("SqliteColumnType", 3)
-    prog.consts["blobSqliteColumnType"] = ("SqliteColumnType", 4)
-    prog.consts["nullSqliteColumnType"] = ("SqliteColumnType", 5)
-
-    # Descriptive alias for the i64 rowid the native ABI returns from
-    # ss_sqlite_database_last_insert_rowid. Keeps role information on
-    # the binding instead of leaving a bare CSignedInt64.
-    prog.type_aliases["SqliteRowId"] = "CSignedInt64"
-
-    # Each Result-returning sqlite.* call surfaces its failure leg as a
-    # role-typed alias over the i32 status code the C ABI actually returns
-    # (SS_SQLITE_ERR_* from sem_sqlite_runtime.h). Aliasing to
-    # CSignedInt32 lets bindError consume the value with no extra
-    # conversion, while still keeping a distinct AS-level name per phase
-    # so error domains in user code stay legible. The eight names match
-    # the eight Result-returning entry points in the runtime header.
-    for failure_alias in (
-        "SqliteDatabaseOpenFailure",
-        "SqliteDatabaseCloseFailure",
-        "SqliteDatabaseExecFailure",
-        "SqliteStatementPrepareFailure",
-        "SqliteStatementBindFailure",
-        "SqliteStatementStepFailure",
-        "SqliteStatementResetFailure",
-        "SqliteStatementFinalizeFailure",
-    ):
-        prog.type_aliases[failure_alias] = "CSignedInt32"
-
-
-def _register_builtin_json_surface(prog: Program) -> None:
-    """Pre-register the compiler-owned `standard.json` type surface.
-
-    The stdlib module also declares these rows for source-level imports, but
-    built-in registration lets standalone compiler smoke tests reference the
-    native JSON document enum and role aliases without restating the standard
-    module. Values must stay aligned with the native_json C ABI.
-    """
-    json_value_kind = Enum("JsonValueKind")
-    json_value_kind.repr = "CSignedInt32"
-    json_value_kind.cases.append(("objectJsonValueKind", 0))
-    json_value_kind.cases.append(("arrayJsonValueKind", 1))
-    json_value_kind.cases.append(("stringJsonValueKind", 2))
-    json_value_kind.cases.append(("integerJsonValueKind", 3))
-    json_value_kind.cases.append(("doubleJsonValueKind", 4))
-    json_value_kind.cases.append(("booleanJsonValueKind", 5))
-    json_value_kind.cases.append(("nullJsonValueKind", 6))
-    prog.enums["JsonValueKind"] = json_value_kind
-    prog.consts["objectJsonValueKind"] = ("JsonValueKind", 0)
-    prog.consts["arrayJsonValueKind"] = ("JsonValueKind", 1)
-    prog.consts["stringJsonValueKind"] = ("JsonValueKind", 2)
-    prog.consts["integerJsonValueKind"] = ("JsonValueKind", 3)
-    prog.consts["doubleJsonValueKind"] = ("JsonValueKind", 4)
-    prog.consts["booleanJsonValueKind"] = ("JsonValueKind", 5)
-    prog.consts["nullJsonValueKind"] = ("JsonValueKind", 6)
-
-    prog.type_aliases.setdefault("JsonBuilder", "COpaqueMemoryAddress")
-    prog.type_aliases.setdefault("JsonDocument", "COpaqueMemoryAddress")
-    prog.type_aliases.setdefault("JsonCursor", "CSignedInt64")
-    prog.type_aliases.setdefault("JsonText", "CNullTerminatedByteString")
-    prog.type_aliases.setdefault("JsonFieldName", "CNullTerminatedByteString")
-    prog.type_aliases.setdefault("JsonPath", "CNullTerminatedByteString")
-    prog.type_aliases.setdefault("JsonStringValue", "CNullTerminatedByteString")
-    prog.type_aliases.setdefault("JsonScratchBuffer", "COpaqueMemoryAddress")
-    prog.type_aliases.setdefault("JsonCapacityBytes", "CByteCount")
+    for case_name, case_value in MIDDLEWARE_CONTROL_CASES:
+        prog.consts[case_name] = (MIDDLEWARE_CONTROL_TYPE, case_value)
 
 
 def _parse_import_module_args(args):
@@ -1716,8 +1604,6 @@ def _finish_json_body_literal(prog: Program, active_json_body: dict) -> None:
 def parse(source: str) -> Program:
     prog = Program()
     _register_builtin_middleware_control_enum(prog)
-    _register_builtin_sqlite_surface(prog)
-    _register_builtin_json_surface(prog)
     active_html_template = None
     active_html_base_indent = None
     active_json_body = None
@@ -2130,6 +2016,7 @@ def _regular_build_plan_compat_source(source: str, source_path: str) -> str:
         ("cpuBaseline", "cpuBaseline"),
         ("cpuTune", "cpuTune"),
         ("cpuFeatureCheck", "cpuFeatureCheck"),
+        ("asyncRuntime", "asyncRuntime"),
         ("nativeHttpHost", "nativeHttpHost"),
         ("resourcesDir", "resourcesDir"),
         ("buildDir", "buildDir"),
@@ -3080,12 +2967,12 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
         if scope == "module":
             # `storage module immutable` defers to a value already
             # registered by an earlier `buildConstant` (or a prior
-            # storage row). Without setdefault, a project's
-            # `buildConstant taskForgeWeb X CNullTerminatedByteString
-            # "yes"` row in build.sem would be silently clobbered by
-            # a fallback `storage module immutable X
-            # CNullTerminatedByteString "no"` in the imported main.sem
-            # — the build-tape value MUST win.
+            # storage row). Without setdefault, a build-tape
+            # `buildConstant project featureFlag CNullTerminatedByteString
+            # "yes"` row would be silently clobbered by a fallback
+            # `storage module immutable featureFlag
+            # CNullTerminatedByteString "no"` in an imported module:
+            # the build-tape value MUST win.
             if mutability == "mutable":
                 # Mutable storage is always re-declared (rebind to
                 # the latest declaration's value as the initial).
@@ -3601,9 +3488,6 @@ _STRICT_SQL_STRING_TARGETS = frozenset({
 _STRICT_SQL_ARG_SLOTS = frozenset({"sql"})
 
 _STRICT_RESPONSE_WRITER_TARGETS = frozenset({
-    "writeJsonOkResponse",
-    "writeErrorJsonResponse",
-    "writeJsonResponse",
     "http.responseText",
     "http.responseBytes",
     "http.responseSseEvent",
@@ -3642,8 +3526,6 @@ _STRICT_OVERFLOW_SENSITIVE_NAME_RE = re.compile(
 _STRICT_MUTEX_CAPABILITY_SUBSTRINGS = (
     "Mutex", "Lock", "mutex", "lock", "Semaphore", "semaphore",
 )
-
-_STRICT_MINIMUM_BCRYPT_COST = 10
 
 _BINOP_TO_LLVM = {
     "math.addI64":      "add",
@@ -4876,35 +4758,25 @@ class Codegen:
         }
 
     # Refined-syntax operations marked `operationBody NAME runtimeBinding`
-    # delegate to a libc/runtime primitive named on the `runtimeBinding`
-    # line. Mapping the spec-shaped binding name to the actual libc symbol
-    # gives those operations real semantics — `compareCString` runs strcmp,
-    # `stringByteLength` runs strlen, etc. — instead of returning zero.
+    # delegate to a pure ABI shim named on the `runtimeBinding` line.
+    # Mapping the spec-shaped binding name to the actual libc symbol gives
+    # those operations real ABI semantics instead of returning zero.
     _RUNTIME_BINDING_MAP = {
         "runtime.cstring.compare":         ("strcmp",  "i32_from_two_i8p"),
         "runtime.cstring.byteLength":      ("strlen",  "i64_from_i8p"),
         "runtime.cstring.validateNullTerminated":
                                             ("strlen",  "i64_from_i8p"),
         "runtime.memory.copyBytes":        ("memcpy",  "i8p_from_dst_src_n"),
-        "runtime.text.validateUtf8":       ("strlen",  "i64_from_i8p"),
-        "runtime.calendar.isLeapYearAsCInt": (None, "leap_year_i32"),
-        "runtime.calendar.isLeapYearBool":   (None, "leap_year_i1"),
-        # Metrics counter increment: signature is (runtime, current, step) →
-        # current + step. The runtime arg is opaque; the real work is i64
-        # arithmetic over the remaining two operands.
-        "metrics.computeIncrementI64":       (None, "add_arg1_arg2_i64"),
-        # Retry-policy delay calculator: signature is (policy, attemptIndex)
-        # → DurationMilliseconds. Without policy-field introspection in this
-        # compiler, lower to a simple linear-backoff stub: 50 * (attempt+1)
-        # milliseconds. Gives the program well-typed, sensible-shape values
-        # rather than always-zero.
-        "retryPolicy.delayForAttempt":       (None, "linear_backoff_50ms"),
-        # Metrics lock acquire/release: opaque guard tokens. Acquire returns
-        # 1 (a non-null token); release returns 0 (success). Both are i64.
-        "metricsLock.acquire":               (None, "const_one_i64"),
-        "metricsLock.release":               (None, "const_zero"),
-        # Scheduler sleep: synchronous no-op returning 0.
-        "scheduler.sleep":                   (None, "const_zero"),
+    }
+    _UNSUPPORTED_DOMAIN_RUNTIME_BINDINGS = {
+        "metrics.computeIncrementI64",
+        "metricsLock.acquire",
+        "metricsLock.release",
+        "retryPolicy.delayForAttempt",
+        "runtime.calendar.isLeapYearAsCInt",
+        "runtime.calendar.isLeapYearBool",
+        "runtime.text.validateUtf8",
+        "scheduler.sleep",
     }
 
     # Refined-syntax operations marked `operationBody NAME intrinsic` lower
@@ -4984,12 +4856,20 @@ class Codegen:
 
     def _try_emit_runtime_binding(self, op: Operation, fn, builder) -> bool:
         target = None
-        for verb, args, _ln in op.lines:
+        target_line = op.decl_line
+        for verb, args, ln in op.lines:
             if verb == "runtimeBinding" and len(args) >= 2:
                 target = args[1]
+                target_line = ln
                 break
         mapping = self._RUNTIME_BINDING_MAP.get(target)
         if mapping is None:
+            if target in self._UNSUPPORTED_DOMAIN_RUNTIME_BINDINGS:
+                raise ValueError(
+                    f"line {target_line}: unsupported non-ABI runtimeBinding "
+                    f"`{target}` for operation `{op.name}`; implement this "
+                    "behavior as a SemanticScript operation body or bind an "
+                    "explicit native runtime instead")
             return False
         libc_name, shape = mapping
         rty = fn.function_type.return_type
@@ -5023,89 +4903,6 @@ class Codegen:
                     builder.ret(builder.sext(res, rty))
             else:
                 builder.ret(ir.Constant(rty, 0))
-            return True
-        if shape == "linear_backoff_50ms":
-            # 50 * (attempt + 1). The opaque policy input is dropped, so
-            # attemptIndex is the last param.
-            attempt = params[-1]
-            if isinstance(attempt.type, ir.IntType) and attempt.type.width != 64:
-                attempt = (builder.sext if attempt.type.width < 64
-                           else builder.trunc)(attempt, I64)
-            plus_one = builder.add(attempt, ir.Constant(I64, 1))
-            res = builder.mul(plus_one, ir.Constant(I64, 50))
-            if isinstance(rty, ir.IntType):
-                if rty.width != 64:
-                    res = (builder.trunc if rty.width < 64
-                           else builder.sext)(res, rty)
-                builder.ret(res)
-            else:
-                builder.ret(ir.Constant(rty, 0))
-            return True
-        if shape == "const_one_i64":
-            if isinstance(rty, ir.IntType):
-                builder.ret(ir.Constant(rty, 1))
-            elif isinstance(rty, ir.PointerType):
-                # Materialize a non-null sentinel pointer (inttoptr 1).
-                ptr = builder.inttoptr(ir.Constant(I64, 1), rty)
-                builder.ret(ptr)
-            else:
-                builder.ret(ir.Constant(rty, 0))
-            return True
-        if shape == "const_zero":
-            if isinstance(rty, ir.PointerType):
-                builder.ret(ir.Constant(rty, None))
-            elif isinstance(rty, (ir.FloatType, ir.DoubleType)):
-                builder.ret(ir.Constant(rty, 0.0))
-            else:
-                builder.ret(ir.Constant(rty, 0))
-            return True
-        if shape == "add_arg1_arg2_i64" and len(params) >= 2:
-            # The MetricsRuntime opaque input is dropped at the ABI by
-            # _declare_user_op, so the LLVM signature exposes (current, step).
-            left, right = params[-2], params[-1]
-            for v in (left, right):
-                if isinstance(v.type, ir.IntType) and v.type.width != 64:
-                    pass  # caller-side coercion already done; trust types
-            res = builder.add(left, right)
-            if isinstance(rty, ir.IntType):
-                if rty.width != res.type.width:
-                    res = (builder.sext if rty.width > res.type.width
-                           else builder.trunc)(res, rty)
-                builder.ret(res)
-            else:
-                builder.ret(ir.Constant(rty, 0))
-            return True
-        if shape in ("leap_year_i32", "leap_year_i1") and len(params) >= 1:
-            # is_leap = (y%4 == 0 && y%100 != 0) || (y%400 == 0)
-            year = params[0]
-            mod4 = builder.srem(year, ir.Constant(I64, 4))
-            mod100 = builder.srem(year, ir.Constant(I64, 100))
-            mod400 = builder.srem(year, ir.Constant(I64, 400))
-            zero = ir.Constant(I64, 0)
-            div4 = builder.icmp_signed("==", mod4, zero)
-            div100 = builder.icmp_signed("!=", mod100, zero)
-            div400 = builder.icmp_signed("==", mod400, zero)
-            ordinary = builder.and_(div4, div100)
-            is_leap = builder.or_(ordinary, div400)
-            if shape == "leap_year_i1":
-                if rty == I1:
-                    builder.ret(is_leap)
-                elif isinstance(rty, ir.IntType):
-                    builder.ret(builder.zext(is_leap, rty))
-                else:
-                    builder.ret(ir.Constant(rty, 0))
-            else:
-                # i32 form: leap → 1, else 0
-                res = builder.zext(is_leap, I32)
-                if rty == I32:
-                    builder.ret(res)
-                elif isinstance(rty, ir.IntType):
-                    if rty.width > 32:
-                        builder.ret(builder.sext(res, rty))
-                    else:
-                        builder.ret(builder.trunc(res, rty))
-                else:
-                    builder.ret(ir.Constant(rty, 0))
             return True
         if shape == "i8p_from_dst_src_n" and len(params) >= 3:
             fty = ir.FunctionType(I8P, [I8P, I8P, I64])
@@ -5674,6 +5471,10 @@ class Codegen:
                 "ss_json_builder_destroy", VOID, [I8P]),
             "json.destroyDocument": (
                 "ss_json_document_destroy", VOID, [I8P]),
+            "net.freeTextBody": (
+                "ss_http_client_free_string", VOID, [I8P]),
+            "freeTextBody": (
+                "ss_http_client_free_string", VOID, [I8P]),
         }
 
         def emit_defers(exit_path, active=None):
@@ -6857,6 +6658,12 @@ class Codegen:
         def mark_high_level_json_success():
             call["error_value"] = ir.Constant(I32, 0)
             call["error_cond"] = ir.Constant(I1, 0)
+
+        def mark_high_level_json_status(status, error_code=1):
+            call["error_value"] = ir.Constant(I32, error_code)
+            call["error_cond"] = builder.icmp_signed(
+                "!=", status, ir.Constant(I32, 0),
+                name=f"{call_name}_isJsonError")
 
         def target_type_is_json_text(name: str) -> bool:
             seen = set()
@@ -8335,6 +8142,26 @@ class Codegen:
                       "json.encode.MonotonicMilliseconds",
                       "json.encode.UtcMilliseconds"):
             n = coerce_i64_for_non_math_abi(arg_val_named("value"))
+            if high_level_json_alias:
+                buf_size = 64
+                with builder.goto_entry_block():
+                    buf = builder.alloca(
+                        ir.ArrayType(I8, buf_size),
+                        name=f"{call_name}_jsonbuf")
+                    out_slot = builder.alloca(I8P, name=f"{call_name}_jsonOut")
+                buf_ptr = builder.gep(
+                    buf, [ir.Constant(I32, 0), ir.Constant(I32, 0)], inbounds=True)
+                stringify_fn = self._runtime_func(
+                    "ss_json_stringify_int64", I32,
+                    [I64, I8P, I64, I8P.as_pointer()])
+                self.provenance.record_external("ss_json_stringify_int64", call)
+                status = builder.call(
+                    stringify_fn,
+                    [n, buf_ptr, ir.Constant(I64, buf_size), out_slot],
+                    name=f"{call_name}_jsonStatus")
+                call["result"] = builder.load(out_slot, name=f"{call_name}_encoded")
+                mark_high_level_json_status(status, 3)
+                return
             buf_size = 32
             with builder.goto_entry_block():
                 buf = builder.alloca(
@@ -8354,6 +8181,27 @@ class Codegen:
             v = arg_val_named("value")
             if isinstance(v.type, ir.IntType) and v.type.width > 1:
                 v = builder.icmp_signed("!=", v, ir.Constant(v.type, 0))
+            if high_level_json_alias:
+                bool_i32 = builder.zext(v, I32, name=f"{call_name}_boolI32")
+                buf_size = 8
+                with builder.goto_entry_block():
+                    buf = builder.alloca(
+                        ir.ArrayType(I8, buf_size),
+                        name=f"{call_name}_jsonbuf")
+                    out_slot = builder.alloca(I8P, name=f"{call_name}_jsonOut")
+                buf_ptr = builder.gep(
+                    buf, [ir.Constant(I32, 0), ir.Constant(I32, 0)], inbounds=True)
+                stringify_fn = self._runtime_func(
+                    "ss_json_stringify_bool", I32,
+                    [I32, I8P, I64, I8P.as_pointer()])
+                self.provenance.record_external("ss_json_stringify_bool", call)
+                status = builder.call(
+                    stringify_fn,
+                    [bool_i32, buf_ptr, ir.Constant(I64, buf_size), out_slot],
+                    name=f"{call_name}_jsonStatus")
+                call["result"] = builder.load(out_slot, name=f"{call_name}_encoded")
+                mark_high_level_json_status(status, 3)
+                return
             true_str = self._i8p(builder, "true")
             false_str = self._i8p(builder, "false")
             call["result"] = builder.select(
@@ -8368,6 +8216,26 @@ class Codegen:
                 v = builder.sitofp(v, F64)
             elif isinstance(v.type, ir.FloatType):
                 v = builder.fpext(v, F64)
+            if high_level_json_alias:
+                buf_size = 64
+                with builder.goto_entry_block():
+                    buf = builder.alloca(
+                        ir.ArrayType(I8, buf_size),
+                        name=f"{call_name}_jsonbuf")
+                    out_slot = builder.alloca(I8P, name=f"{call_name}_jsonOut")
+                buf_ptr = builder.gep(
+                    buf, [ir.Constant(I32, 0), ir.Constant(I32, 0)], inbounds=True)
+                stringify_fn = self._runtime_func(
+                    "ss_json_stringify_double", I32,
+                    [F64, I8P, I64, I8P.as_pointer()])
+                self.provenance.record_external("ss_json_stringify_double", call)
+                status = builder.call(
+                    stringify_fn,
+                    [v, buf_ptr, ir.Constant(I64, buf_size), out_slot],
+                    name=f"{call_name}_jsonStatus")
+                call["result"] = builder.load(out_slot, name=f"{call_name}_encoded")
+                mark_high_level_json_status(status, 3)
+                return
             buf_size = 32
             with builder.goto_entry_block():
                 buf = builder.alloca(
@@ -8390,6 +8258,21 @@ class Codegen:
                       "json.decode.DurationMilliseconds",
                       "json.decode.MonotonicMilliseconds",
                       "json.decode.UtcMilliseconds"):
+            if high_level_json_alias:
+                v = arg_val_named("value")
+                if isinstance(v.type, ir.IntType):
+                    v = builder.inttoptr(v, I8P)
+                with builder.goto_entry_block():
+                    out_slot = builder.alloca(I64, name=f"{call_name}_decodedSlot")
+                parse_fn = self._runtime_func(
+                    "ss_json_parse_int64", I32, [I8P, I64.as_pointer()])
+                self.provenance.record_external("ss_json_parse_int64", call)
+                status = builder.call(
+                    parse_fn, [v, out_slot], name=f"{call_name}_jsonStatus")
+                decoded = builder.load(out_slot, name=f"{call_name}_decoded")
+                call["result"] = decoded
+                mark_high_level_json_status(status, 1)
+                return
             # Decode a JSON integer literal via libc atoll. The input is a
             # null-terminated byte string holding the decimal text; atoll
             # returns 0 on malformed input (matching JSON-leniency for the
@@ -8404,6 +8287,22 @@ class Codegen:
                 mark_high_level_json_success()
             return
         if target == "json.decode.Bool":
+            if high_level_json_alias:
+                v = arg_val_named("value")
+                if isinstance(v.type, ir.IntType):
+                    v = builder.inttoptr(v, I8P)
+                with builder.goto_entry_block():
+                    out_slot = builder.alloca(I32, name=f"{call_name}_decodedSlot")
+                parse_fn = self._runtime_func(
+                    "ss_json_parse_bool", I32, [I8P, I32.as_pointer()])
+                self.provenance.record_external("ss_json_parse_bool", call)
+                status = builder.call(
+                    parse_fn, [v, out_slot], name=f"{call_name}_jsonStatus")
+                decoded_i32 = builder.load(out_slot, name=f"{call_name}_decodedI32")
+                call["result"] = builder.sext(
+                    decoded_i32, I64, name=f"{call_name}_decoded")
+                mark_high_level_json_status(status, 1)
+                return
             # Compare the input string against the literal "true" via
             # libc strcmp; result is 1 when strings are equal (i.e.
             # the JSON token was "true"), 0 otherwise.
@@ -8422,6 +8321,20 @@ class Codegen:
             return
         if target in ("json.decode.F64", "json.decode.CFloat64",
                       "json.decode.CFloat32"):
+            if high_level_json_alias:
+                v = arg_val_named("value")
+                if isinstance(v.type, ir.IntType):
+                    v = builder.inttoptr(v, I8P)
+                with builder.goto_entry_block():
+                    out_slot = builder.alloca(F64, name=f"{call_name}_decodedSlot")
+                parse_fn = self._runtime_func(
+                    "ss_json_parse_double", I32, [I8P, F64.as_pointer()])
+                self.provenance.record_external("ss_json_parse_double", call)
+                status = builder.call(
+                    parse_fn, [v, out_slot], name=f"{call_name}_jsonStatus")
+                call["result"] = builder.load(out_slot, name=f"{call_name}_decoded")
+                mark_high_level_json_status(status, 1)
+                return
             # Use libc atof to parse the JSON number; returns double 0.0
             # on malformed input.
             v = arg_val_named("value")
@@ -8435,6 +8348,29 @@ class Codegen:
             return
         if target in ("json.encode.String",
                       "json.encode.CNullTerminatedByteString"):
+            if high_level_json_alias:
+                v = arg_val_named("value")
+                if isinstance(v.type, ir.IntType):
+                    v = builder.inttoptr(v, I8P)
+                buf_size = 4096
+                with builder.goto_entry_block():
+                    buf = builder.alloca(
+                        ir.ArrayType(I8, buf_size),
+                        name=f"{call_name}_jsonbuf")
+                    out_slot = builder.alloca(I8P, name=f"{call_name}_jsonOut")
+                buf_ptr = builder.gep(
+                    buf, [ir.Constant(I32, 0), ir.Constant(I32, 0)], inbounds=True)
+                stringify_fn = self._runtime_func(
+                    "ss_json_stringify_string", I32,
+                    [I8P, I8P, I64, I8P.as_pointer()])
+                self.provenance.record_external("ss_json_stringify_string", call)
+                status = builder.call(
+                    stringify_fn,
+                    [v, buf_ptr, ir.Constant(I64, buf_size), out_slot],
+                    name=f"{call_name}_jsonStatus")
+                call["result"] = builder.load(out_slot, name=f"{call_name}_encoded")
+                mark_high_level_json_status(status, 3)
+                return
             # JSON-encoding a string requires quoting + escape handling
             # (\\, \", \n, \r, \t, \uXXXX for control bytes). For now, we
             # produce the string surrounded by ASCII quotes — correct for
@@ -10012,6 +9948,173 @@ class Codegen:
                 f"unsupported native sqlite call target: {target!r}; "
                 "add an explicit compiler lowering before using it")
 
+        def net_i8p(value):
+            if isinstance(value.type, ir.IntType):
+                return builder.inttoptr(value, I8P)
+            if isinstance(value.type, ir.PointerType) and value.type != I8P:
+                return builder.bitcast(value, I8P)
+            return value
+
+        def net_i64(value):
+            if isinstance(value.type, ir.IntType) and value.type.width != 64:
+                return (builder.zext(value, I64)
+                        if value.type.width < 64
+                        else builder.trunc(value, I64))
+            return value
+
+        def net_i32(value):
+            if isinstance(value.type, ir.IntType) and value.type.width != 32:
+                return (builder.zext(value, I32)
+                        if value.type.width < 32
+                        else builder.trunc(value, I32))
+            return value
+
+        def net_record_field(record_symbol, field_path):
+            source = record_values.get(record_symbol)
+            if source is None:
+                raise ValueError(
+                    f"{call_name}: `{record_symbol}` is not a materialized record")
+            slot = source["slots"].get(field_path)
+            if slot is None:
+                raise ValueError(
+                    f"{call_name}: `{record_symbol}` has no field `{field_path}`")
+            return builder.load(
+                slot,
+                name=f"{call_name}_{field_path.replace('.', '_')}")
+
+        def net_emit_text_copy(url, timeout_ms, max_body_bytes, redirect_limit=None):
+            url = net_i8p(url)
+            timeout_ms = net_i64(timeout_ms)
+            max_body_bytes = net_i64(max_body_bytes)
+            with builder.goto_entry_block():
+                body_out = builder.alloca(I8P, name=f"{call_name}_body_out")
+                status_out = builder.alloca(I64, name=f"{call_name}_status_out")
+            builder.store(ir.Constant(I8P, None), body_out)
+            builder.store(ir.Constant(I64, 0), status_out)
+            if redirect_limit is None:
+                symbol = "ss_http_client_fetch_text_copy"
+                fn = self._runtime_func(
+                    symbol,
+                    I32,
+                    [I8P, I64, I64, I8P.as_pointer(), I64.as_pointer()])
+                args = [url, timeout_ms, max_body_bytes, body_out, status_out]
+            else:
+                redirect_limit = net_i32(redirect_limit)
+                symbol = "ss_http_client_fetch_text_request_copy"
+                fn = self._runtime_func(
+                    symbol,
+                    I32,
+                    [I8P, I64, I64, I32, I8P.as_pointer(), I64.as_pointer()])
+                args = [
+                    url,
+                    timeout_ms,
+                    max_body_bytes,
+                    redirect_limit,
+                    body_out,
+                    status_out,
+                ]
+            self.provenance.record_external(symbol, call)
+            status = builder.call(fn, args, name=f"{call_name}_status")
+            body = builder.load(body_out, name=f"{call_name}_body")
+            return status, body, status_out
+
+        if target in {"net.fetchText", "fetchText"}:
+            if "request" in call["args"]:
+                request_symbol = call["args"]["request"]
+                url = net_record_field(request_symbol, "url")
+                timeout_ms = net_record_field(request_symbol, "policy.timeoutMillis")
+                max_body_bytes = net_record_field(request_symbol, "policy.maxBodyBytes")
+                redirect_limit = net_record_field(request_symbol, "policy.redirectLimit")
+                status, body, status_out = net_emit_text_copy(
+                    url, timeout_ms, max_body_bytes, redirect_limit)
+                with builder.goto_entry_block():
+                    response_status = builder.alloca(
+                        I32, name=f"{call_name}_response_status")
+                    response_body = builder.alloca(
+                        I8P, name=f"{call_name}_response_body")
+                builder.store(
+                    net_i32(builder.load(status_out, name=f"{call_name}_http_status")),
+                    response_status)
+                builder.store(body, response_body)
+                call["record_result"] = {
+                    "type": "HttpTextResponse",
+                    "slots": {
+                        "status": response_status,
+                        "body": response_body,
+                    },
+                    "field_types": {
+                        "status": "HttpClientStatusCode",
+                        "body": "HttpClientBodyText",
+                    },
+                }
+                call["result"] = body
+                call["error_value"] = status
+                call["error_cond"] = builder.icmp_unsigned(
+                    "!=", status, ir.Constant(I32, 0),
+                    name=f"{call_name}_is_error")
+                return
+
+            url = arg_val_named("url")
+            timeout_ms = arg_val_named("timeoutMillis")
+            max_body_bytes = arg_val_named("maxBodyBytes")
+            status, body, _status_out = net_emit_text_copy(
+                url, timeout_ms, max_body_bytes)
+            call["result"] = body
+            call["error_value"] = status
+            call["error_cond"] = builder.icmp_unsigned(
+                "!=", status, ir.Constant(I32, 0),
+                name=f"{call_name}_is_error")
+            return
+
+        if target in {"net.freeTextBody", "freeTextBody"}:
+            body = net_i8p(arg_val_named("body"))
+            fn = self._runtime_func("ss_http_client_free_string", VOID, [I8P])
+            self.provenance.record_external("ss_http_client_free_string", call)
+            builder.call(fn, [body])
+            call["result"] = ir.Constant(I32, 0)
+            return
+
+        if target == "net.fetchBytes":
+            # MVP bytes lowering shares the text fetch buffer. The native ABI
+            # returns a byte pointer plus a null terminator; callers that need
+            # exact binary length should use the lower-level response API once
+            # it is surfaced in source.
+            url = arg_val_named("url")
+            timeout_ms = arg_val_named("timeoutMillis")
+            max_body_bytes = arg_val_named("maxBodyBytes")
+            if isinstance(url.type, ir.IntType):
+                url = builder.inttoptr(url, I8P)
+            if isinstance(timeout_ms.type, ir.IntType) and timeout_ms.type.width != 64:
+                timeout_ms = (builder.zext(timeout_ms, I64)
+                              if timeout_ms.type.width < 64
+                              else builder.trunc(timeout_ms, I64))
+            if isinstance(max_body_bytes.type, ir.IntType) and max_body_bytes.type.width != 64:
+                max_body_bytes = (builder.zext(max_body_bytes, I64)
+                                  if max_body_bytes.type.width < 64
+                                  else builder.trunc(max_body_bytes, I64))
+            with builder.goto_entry_block():
+                body_out = builder.alloca(I8P, name=f"{call_name}_body_out")
+                status_out = builder.alloca(I64, name=f"{call_name}_status_out")
+            builder.store(ir.Constant(I8P, None), body_out)
+            builder.store(ir.Constant(I64, 0), status_out)
+            fn = self._runtime_func(
+                "ss_http_client_fetch_text_copy",
+                I32,
+                [I8P, I64, I64, I8P.as_pointer(), I64.as_pointer()])
+            self.provenance.record_external(
+                "ss_http_client_fetch_text_copy", call)
+            status = builder.call(
+                fn,
+                [url, timeout_ms, max_body_bytes, body_out, status_out],
+                name=f"{call_name}_status")
+            body = builder.load(body_out, name=f"{call_name}_body")
+            call["result"] = body
+            call["error_value"] = status
+            call["error_cond"] = builder.icmp_unsigned(
+                "!=", status, ir.Constant(I32, 0),
+                name=f"{call_name}_is_error")
+            return
+
         # External-module fallback: targets that look like a method on an
         # imported module (`http.requestCancellationToken`,
         # `database.openConnection`, `AccountBalanceResponseJsonCodec.encode`,
@@ -11062,56 +11165,6 @@ def _strict_raise_first_step_disposition(prog: Program, diags) -> None:
     )
 
 
-def _check_strict_bcrypt_cost_minimum(prog: Program, diags) -> None:
-    """SS3615 — bcrypt.hashPassword cost arg must be a compile-time
-    constant integer >= _STRICT_MINIMUM_BCRYPT_COST. Keeps work-factor
-    decisions out of runtime configuration and visible to source
-    review."""
-    for op_name, op in prog.operations.items():
-        bcrypt_calls = {}
-        for verb, args, lineno in op.lines:
-            if (verb == "call" and len(args) >= 2
-                    and _strict_target(prog, args[1]) == "bcrypt.hashPassword"):
-                bcrypt_calls[args[0]] = lineno
-        if not bcrypt_calls:
-            continue
-        for verb, args, lineno in op.lines:
-            if verb != "arg" or len(args) < 3:
-                continue
-            call_name, arg_name, value_name = args[0], args[1], args[2]
-            if call_name not in bcrypt_calls:
-                continue
-            if arg_name != "cost":
-                continue
-            const = prog.consts.get(value_name)
-            if const is None or value_name in prog.mutable_globals:
-                diags.append((lineno,
-                    f"SS3615 bcryptCostMustBeConstant: in operation "
-                    f"`{op_name}`, call `{call_name}` uses "
-                    f"`{value_name}` as bcrypt cost; the cost arg must "
-                    f"reference a `storage * immutable` integer row"))
-                continue
-            try:
-                cost = int(const[1])
-            except (TypeError, ValueError):
-                continue
-            if cost < _STRICT_MINIMUM_BCRYPT_COST:
-                diags.append((lineno,
-                    f"SS3615 bcryptCostTooLow: in operation `{op_name}`, "
-                    f"call `{call_name}` uses cost `{cost}` (via "
-                    f"`{value_name}`); minimum acceptable bcrypt cost is "
-                    f"{_STRICT_MINIMUM_BCRYPT_COST} (12 recommended)"))
-
-
-def _strict_raise_first_bcrypt_cost(prog: Program, diags) -> None:
-    _strict_raise_first_simple(
-        prog, diags, "SS3615",
-        "strictExecutable bcrypt cost validation",
-        "Strict executable requires bcrypt cost to be a compile-time "
-        f"constant >= {_STRICT_MINIMUM_BCRYPT_COST}.",
-    )
-
-
 def _check_strict_handler_writes_response(prog: Program, diags) -> None:
     """SS3614 — every route/middleware handler must call at least one
     response-body writer somewhere in its body, with one exception for
@@ -11160,8 +11213,7 @@ def _check_strict_handler_writes_response(prog: Program, diags) -> None:
         diags.append((primary_line,
             f"SS3614 handlerReturnsWithoutResponse: handler "
             f"`{op_name}` never calls a response body writer "
-            f"(writeJsonOkResponse / writeErrorJsonResponse / "
-            f"http.responseText|Bytes|SseEvent|File or a declared "
+            f"(http.responseText|Bytes|SseEvent|File or a declared "
             f"responseBodyForwarder); every route handler must produce "
             f"an HTTP response. Middleware that delegates must return "
             f"`continueMiddlewareControl`"))
@@ -11338,13 +11390,10 @@ def _strict_validate_use_after_free(prog: Program, op: Operation,
 
 
 _STRICT_SECRET_NAME_RE = re.compile(
-    # Heap-owned bindings that hold cryptographic / authentication material.
-    # Anything matching this pattern must be wiped via `c.memset` before
-    # the matching `c.free` so a freed-but-not-yet-reused page does not
-    # carry the plaintext into the next allocation that reuses it.
-    # Hash buffers are included because user-supplied plaintext may
-    # briefly live in the hash buffer's input slot for some bcrypt ABIs;
-    # being conservative here is cheap.
+    # Heap-owned bindings that appear to hold sensitive material. Anything
+    # matching this pattern must be wiped via `c.memset` before the matching
+    # `c.free` so a freed-but-not-yet-reused page does not carry the bytes into
+    # the next allocation that reuses it.
     r"(?i)(password|secret|plaintext|privatekey|passphrase|credential)"
 )
 
@@ -11353,8 +11402,8 @@ _STRICT_MEMSET_TARGETS = frozenset({"c.memset"})
 
 def _strict_validate_secret_zeroing(prog: Program, op: Operation,
                                     calls: dict) -> None:
-    """SS3320 — heap buffers whose binding names indicate they hold a
-    secret (password, plaintext, credential, etc.) must be wiped with
+    """SS3320 — heap buffers whose binding names indicate sensitive
+    material must be wiped with
     `c.memset(buffer, 0, capacity)` before the matching `c.free` (or
     `defer c.free`) fires. Without the wipe, `c.free` leaves the
     plaintext on a freed-but-not-yet-reused heap page where a separate
@@ -11430,55 +11479,6 @@ def _strict_validate_secret_zeroing(prog: Program, op: Operation,
         )
 
 
-_STRICT_BCRYPT_VERIFY_TARGETS = frozenset({"bcrypt.verifyPassword"})
-
-
-def _strict_validate_bcrypt_verify_timing(prog: Program, op: Operation,
-                                          calls: dict) -> None:
-    """SS3403 — when an operation calls bcrypt.verifyPassword, it MUST
-    call it at least twice. The second call is the timing-equalization
-    dummy verify on the user-not-found path: without it, an attacker
-    measuring response latency can distinguish "no such user" (cheap)
-    from "user exists, wrong password" (~250 ms cost-12 work), giving
-    them an account-enumeration oracle.
-
-    The check counts verify calls in the operation; a single call is
-    the classic bug shape and gets flagged. Two-or-more callers may
-    still have subtle holes (e.g. both calls reached only on the
-    happy path) but at least the timing-equalize pattern is present.
-    Per-path verification is the next refinement.
-    """
-    verify_calls = [
-        call_info for call_info in calls.values()
-        if call_info["target"] in _STRICT_BCRYPT_VERIFY_TARGETS
-    ]
-    if len(verify_calls) == 0:
-        return
-    if len(verify_calls) >= 2:
-        return
-    only = verify_calls[0]
-    _strict_raise(
-        prog,
-        "SS3403",
-        f"SS3403 bcryptVerifyTimingOracle: operation `{op.name}` calls "
-        f"`bcrypt.verifyPassword` only once (`{only['name']}`). The "
-        f"user-not-found path returns without running the bcrypt key "
-        f"schedule, so an attacker can enumerate valid usernames by "
-        f"measuring response latency. Add a second bcrypt.verifyPassword "
-        f"call against a known dummy hash on the not-found branch to "
-        f"equalize timing",
-        op,
-        only["line"],
-        call_name=only["name"],
-        call_target=only["target"],
-        note=(
-            "Standard mitigation: a module-scope dummy `$2b$12$...` "
-            "hash + a bcrypt.verifyPassword call on the user-not-found "
-            "path whose result is `ignoreValue`'d"
-        ),
-    )
-
-
 def validate_strict_executable(prog: Program) -> None:
     if not _strict_executable_is_active(prog):
         return
@@ -11498,9 +11498,6 @@ def validate_strict_executable(prog: Program) -> None:
     step_disposition_diags = []
     _check_strict_step_result_disposition(prog, step_disposition_diags)
     _strict_raise_first_step_disposition(prog, step_disposition_diags)
-    bcrypt_cost_diags = []
-    _check_strict_bcrypt_cost_minimum(prog, bcrypt_cost_diags)
-    _strict_raise_first_bcrypt_cost(prog, bcrypt_cost_diags)
     handler_response_diags = []
     _check_strict_handler_writes_response(prog, handler_response_diags)
     _strict_raise_first_handler_response(prog, handler_response_diags)
@@ -11518,7 +11515,6 @@ def validate_strict_executable(prog: Program) -> None:
         _strict_validate_sqlite_statement_cleanup(prog, op, calls, defers)
         _strict_validate_use_after_free(prog, op, calls)
         _strict_validate_secret_zeroing(prog, op, calls)
-        _strict_validate_bcrypt_verify_timing(prog, op, calls)
 
 
 def lint(prog: Program, strict: bool = False):
@@ -11765,13 +11761,12 @@ def lint(prog: Program, strict: bool = False):
     _check_many_small_mallocs_in_op(prog, diags)
     _check_repeated_prepare_statement_same_sql(prog, diags)
 
-    # ---- security advisories: secret-buffer wipe + bcrypt timing oracle ----
+    # ---- security advisories: secret-buffer wipe ----
     # These ARE correctness bugs (security ones); they advise here so
     # `sem check` surfaces them, and `validate_strict_executable` upgrades
     # them to compile errors when the file declares
     # `languageMode strictExecutable`.
     _check_lint_secret_buffer_not_zeroed(prog, diags)
-    _check_lint_bcrypt_verify_timing_oracle(prog, diags)
     _check_multiple_writes_without_transaction(prog, diags)
     _check_dead_sql_constant(prog, diags)
 
@@ -12189,8 +12184,7 @@ def _check_repeated_prepare_statement_same_sql(prog: Program, diags):
     in more than one operation (or more than once in any single
     operation), recommend a prepared-statement cache. Every prepare/
     finalize pair re-runs the SQLite parser + planner; for hot lookups
-    like `sqlSelectSessionByToken` that runs on every authenticated
-    request, this is the dominant per-request cost.
+    that run on every request or event, this can dominate latency.
     """
     sql_usage = {}  # sql_const_name -> list[(op_name, call_name, lineno)]
     for op_name, op in prog.operations.items():
@@ -12306,37 +12300,12 @@ def _check_lint_secret_buffer_not_zeroed(prog: Program, diags):
                 f"a secret"))
 
 
-def _check_lint_bcrypt_verify_timing_oracle(prog: Program, diags):
-    """SS3403 advisory — when an op calls bcrypt.verifyPassword exactly
-    once, the user-not-found path returns without running bcrypt,
-    creating a username-enumeration timing oracle. Mirrors the
-    strict-mode check."""
-    for op_name, op in prog.operations.items():
-        calls = _strict_collect_calls(prog, op)
-        verifies = [
-            call_info for call_info in calls.values()
-            if call_info["target"] in _STRICT_BCRYPT_VERIFY_TARGETS
-        ]
-        if len(verifies) != 1:
-            continue
-        only = verifies[0]
-        diags.append((only["line"],
-            f"SS3403 bcryptVerifyTimingOracle: operation `{op_name}` "
-            f"calls `bcrypt.verifyPassword` only once (`{only['name']}`). "
-            f"The user-not-found path returns without running the bcrypt "
-            f"key schedule, so response latency leaks valid usernames. "
-            f"Add a second `bcrypt.verifyPassword` call against a "
-            f"module-scope dummy `$2b$...$` hash on the not-found "
-            f"branch to equalize timing"))
-
-
 def _check_multiple_writes_without_transaction(prog: Program, diags):
     """SS3411 advisory — if an op executes 2+ INSERT/UPDATE/DELETE
     statements (each via prepareStatement + step), AND the op does
     not exec a BEGIN/COMMIT pair, warn about the atomicity gap.
-    Without the transaction, a step failure on the second write
-    leaves the first write committed: classic register-with-session
-    consistency bug."""
+    Without the transaction, a step failure on the second write leaves the
+    first write committed, producing partial state."""
     for op_name, op in prog.operations.items():
         write_step_count = 0
         opened_transaction = False
@@ -13249,6 +13218,13 @@ def _diagnostic_from_codegen_error(prog: Program, error: Exception) -> CompilerD
             "libc_registry.py. Add a signature/alias there or replace the "
             "call with a supported runtime primitive."
         )
+    elif "unsupported non-ABI runtimeBinding" in message:
+        direction = (
+            "This runtimeBinding target used to hide domain behavior in the "
+            "compiler. Move the behavior into a normal SemanticScript "
+            "operation body, or bind an explicit native runtime that owns the "
+            "policy."
+        )
 
     return CompilerDiagnostic(
         code="SSCG001",
@@ -14114,32 +14090,6 @@ def _native_gui_link_inputs(prog: Program):
     return [runtime_source], link_args
 
 
-def _program_uses_bcrypt_runtime(prog: Program) -> bool:
-    for op in prog.operations.values():
-        for verb, args, _lineno in op.lines:
-            if verb == "call" and len(args) >= 2 and args[1].startswith("bcrypt."):
-                return True
-    return False
-
-
-def _native_bcrypt_link_inputs(prog: Program):
-    if not _program_uses_bcrypt_runtime(prog):
-        return [], []
-
-    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    runtime_dir = os.path.join(repo_root, "SemanticScript", "runtime", "native_bcrypt")
-    bcrypt_dir = os.path.join(repo_root, "third_party", "bcrypt")
-    extra_sources = [
-        os.path.join(runtime_dir, "sem_bcrypt_runtime.c"),
-        os.path.join(bcrypt_dir, "crypt_blowfish.c"),
-        os.path.join(bcrypt_dir, "crypt_gensalt.c"),
-    ]
-    link_args = [f"-I{bcrypt_dir}"]
-    if os.name == "nt":
-        link_args.append("-lbcrypt")
-    return extra_sources, link_args
-
-
 def _program_uses_sqlite_runtime(prog: Program) -> bool:
     """True if any operation contains a `sqlite.*` call. We trigger on
     real call sites rather than the dependency declaration because a
@@ -14202,10 +14152,10 @@ def _native_sqlite_link_inputs(prog: Program):
 
 # Set of json.* call targets owned by the native_json runtime adapter
 # (sem_json_runtime.h). Membership-only check — used by the linker
-# trigger and intentionally excludes primitive json.encode.X /
-# json.decode.X and json.stringify/parse primitive aliases, which are
-# inlined as libc snprintf/atoll/strcmp/atof stubs and need no native
-# runtime. The document CRUD names are listed even while the C adapter
+# trigger and intentionally excludes legacy primitive json.encode.X /
+# json.decode.X stubs. High-level json.stringify/parse primitive aliases
+# link native_json for runtime-owned formatting, escaping, and strict parse
+# status. The document CRUD names are listed even while the C adapter
 # implementation is landing so any executable use links the native_json
 # translation unit rather than silently compiling a dangling extern.
 _NATIVE_JSON_TARGETS = frozenset({
@@ -14278,6 +14228,16 @@ def _program_uses_json_runtime(prog: Program) -> bool:
                 if target.startswith("json.stringify.") or target.startswith("json.parse."):
                     type_name = target.split(".", 2)[2]
                     resolved_type = resolve_alias(prog, type_name)
+                    if target.startswith("json.parse.") and (
+                        type_name in _JSON_PARSE_PRIMITIVE_TARGETS
+                        or resolved_type in _JSON_PARSE_PRIMITIVE_TARGETS
+                    ):
+                        return True
+                    if target.startswith("json.stringify.") and (
+                        type_name in _JSON_STRINGIFY_PRIMITIVE_TARGETS
+                        or resolved_type in _JSON_STRINGIFY_PRIMITIVE_TARGETS
+                    ):
+                        return True
                     if target.startswith("json.parse.") and target_is_json_text(type_name):
                         return True
                     if type_name in prog.records or resolved_type in prog.records:
@@ -14397,24 +14357,90 @@ def _native_bcrypt_link_inputs(prog: Program):
     return extra_sources, extra_link_args
 
 
+_NATIVE_HTTP_CLIENT_TARGETS = frozenset({
+    "net.fetchText",
+    "net.fetchBytes",
+    "net.freeTextBody",
+    "fetchText",
+    "fetchBytes",
+    "freeTextBody",
+})
+
+
+def _program_uses_http_client_runtime(prog: Program) -> bool:
+    for op in prog.operations.values():
+        for verb, args, _lineno in op.lines:
+            if verb == "call" and len(args) >= 2 and args[1] in _NATIVE_HTTP_CLIENT_TARGETS:
+                return True
+    return False
+
+
+def _native_http_client_link_inputs(prog: Program):
+    if not _program_uses_http_client_runtime(prog):
+        return [], []
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    async_dir = os.path.join(repo_root, "SemanticScript", "runtime", "native_async")
+    client_dir = os.path.join(repo_root, "SemanticScript", "runtime", "native_http_client")
+    return [
+        os.path.join(async_dir, "sem_async_runtime.c"),
+        os.path.join(client_dir, "sem_http_client_runtime.c"),
+    ], []
+
+
+_NATIVE_RUNTIME_LINK_REGISTRY = (
+    {
+        "component": "native_http",
+        "owner": "compiler/runtime",
+        "collector": _native_http_link_inputs,
+    },
+    {
+        "component": "native_sqlite",
+        "owner": "standard.sqlite/runtime",
+        "collector": _native_sqlite_link_inputs,
+    },
+    {
+        "component": "native_json",
+        "owner": "standard.json/runtime",
+        "collector": _native_json_link_inputs,
+    },
+    {
+        "component": "native_terminal",
+        "owner": "compiler/runtime",
+        "collector": _native_terminal_link_inputs,
+    },
+    {
+        "component": "native_bcrypt",
+        "owner": "standard.bcrypt/runtime",
+        "collector": _native_bcrypt_link_inputs,
+    },
+    {
+        "component": "native_gui",
+        "owner": "standard.gui/runtime",
+        "collector": _native_gui_link_inputs,
+    },
+    {
+        "component": "native_http_client",
+        "owner": "standard.net/runtime",
+        "collector": _native_http_client_link_inputs,
+    },
+)
+
+
 def _native_runtime_link_inputs(prog: Program):
     """Return aggregate native runtime link inputs plus per-runtime details.
 
     Keeping this as one collector matters for agent tooling: `sem inspect-ir`
     and `--emit-exe` must describe and use the same native runtime surface.
+    Add new stdlib/runtime owned adapters to `_NATIVE_RUNTIME_LINK_REGISTRY`
+    rather than branching here.
     """
     components = []
     aggregate_sources = []
     aggregate_args = []
-    collectors = [
-        ("native_http", _native_http_link_inputs),
-        ("native_sqlite", _native_sqlite_link_inputs),
-        ("native_json", _native_json_link_inputs),
-        ("native_terminal", _native_terminal_link_inputs),
-        ("native_bcrypt", _native_bcrypt_link_inputs),
-        ("native_gui", _native_gui_link_inputs),
-    ]
-    for component_name, collector in collectors:
+    for entry in _NATIVE_RUNTIME_LINK_REGISTRY:
+        collector = entry.get("collector")
+        if collector is None:
+            continue
         sources, link_args = collector(prog)
         sources = list(sources or [])
         link_args = list(link_args or [])
@@ -14423,7 +14449,8 @@ def _native_runtime_link_inputs(prog: Program):
         aggregate_sources.extend(sources)
         aggregate_args.extend(link_args)
         components.append({
-            "component": component_name,
+            "component": entry["component"],
+            "owner": entry.get("owner", ""),
             "sources": sources,
             "linkArgs": link_args,
         })

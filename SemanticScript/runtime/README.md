@@ -6,8 +6,13 @@ layers, not vendored third-party source.
 - `native_http/` contains the first HTTP runtime bridge. It presents a stable
   C ABI for generated SemanticScript route handlers and hides the selected HTTP
   engine behind that ABI.
+- `native_async/` contains the opt-in post-1.0 async runtime experiment. It
+  hides libuv loop/timer/work handles behind `SSAsyncLoop`, `SSFuture`, and
+  `SSAsyncTimer`.
 - `native_bcrypt/` contains password-hashing helpers used by application
   runtimes.
+- `native_http_client/` contains the outbound HTTP client experiment. It hides
+  libcurl and libuv worker-dispatch details behind a backend-neutral fetch ABI.
 - `native_json/` contains the JSON document/builder runtime backing the
   `standard.json` surface.
 - `native_log/` contains small logging adapters for generated programs.
