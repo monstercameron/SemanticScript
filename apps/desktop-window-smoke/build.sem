@@ -27,6 +27,7 @@ field BuildModule testRoot String
 
 record BuildTarget
 field BuildTarget runtime String
+field BuildTarget guiBackend String
 field BuildTarget nativeRuntime String
 field BuildTarget nativeRuntimeVersion I64
 field BuildTarget profile String
@@ -87,6 +88,7 @@ jsonBody desktopWindowSmokeBuildPlan
     },
     "target": {
       "runtime": "windowsGui",
+      "guiBackend": "win32",
       "nativeRuntime": "native",
       "nativeRuntimeVersion": 1,
       "profile": "dev",

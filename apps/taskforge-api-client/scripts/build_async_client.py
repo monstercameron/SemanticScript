@@ -80,7 +80,11 @@ def real_exe_path(cmake_build_dir: Path, config: str) -> Path:
     return cmake_build_dir / "taskforge_api_client_real"
 
 
-def build_real_client(build_root: Path, config: str) -> Path:
+def build_real_client(
+    build_root: Path,
+    config: str,
+    source_path: Path | None = None,
+) -> Path:
     build_root.mkdir(parents=True, exist_ok=True)
     source_dir = build_root / "cmake-src"
     cmake_build_dir = build_root / "cmake-build"
@@ -89,11 +93,13 @@ def build_real_client(build_root: Path, config: str) -> Path:
     cmake = shutil.which("cmake")
     if not cmake:
         raise SystemExit("could not find cmake on PATH")
+    if source_path is None:
+        source_path = APP_ROOT / "main.sem"
 
     run_command([
         sys.executable,
         str(REPO_ROOT / "SemanticScript" / "compiler" / "semsc.py"),
-        str(APP_ROOT / "main.sem"),
+        str(source_path),
         "--emit-ir",
         str(ir_path),
         "--quiet",
@@ -133,10 +139,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--build-root", default=str(DEFAULT_BUILD_ROOT))
     parser.add_argument("--config", default="Release")
     parser.add_argument("--api-origin", default=DEFAULT_API_ORIGIN)
+    parser.add_argument(
+        "--source",
+        default=str(APP_ROOT / "main.sem"),
+        help="SemanticScript source file to compile; defaults to this app's main.sem",
+    )
     parser.add_argument("--run", action="store_true")
     args = parser.parse_args(argv)
 
-    exe = build_real_client(Path(args.build_root), args.config)
+    exe = build_real_client(Path(args.build_root), args.config, Path(args.source))
     print(f"built real async client: {exe}")
 
     if args.run:

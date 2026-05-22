@@ -6,26 +6,27 @@ invariant module app.desktop_window_smoke "GUI construction uses operation/call/
 
 import gui standard.gui
 
+entry console main
 exportOperation app.desktop_window_smoke main
 
-storage module immutable desktopWindowSmokeTitle GuiText "Desktop Window Smoke"
-storage module immutable titleText GuiText "SemanticScript native controls"
-storage module immutable newTaskPlaceholder GuiText "New task"
-storage module immutable addTaskText GuiText "Add task"
-storage module immutable completeSelectedText GuiText "Complete selected"
-storage module immutable clearCompletedText GuiText "Clear completed"
+storage module immutable helloGuiTitle GuiText "Hello GUI"
+storage module immutable headingText GuiText "Hello from SemanticScript"
+storage module immutable greetingPlaceholder GuiText "Type a greeting"
+storage module immutable sayHelloText GuiText "Say hello"
+storage module immutable inspectSelectedText GuiText "Inspect selected"
+storage module immutable clearGreetingsText GuiText "Clear greetings"
 storage module immutable statusReadyText GuiText "Ready"
 storage module immutable emptyGuiText GuiText ""
-storage module immutable addedStatusText GuiText "Added task"
-storage module immutable completedStatusText GuiText "Marked selected task"
-storage module immutable clearedStatusText GuiText "Cleared tasks"
+storage module immutable greetingAddedStatusText GuiText "Greeting added"
+storage module immutable selectedGreetingStatusText GuiText "Selected greeting inspected"
+storage module immutable greetingsClearedStatusText GuiText "Greeting list cleared"
 storage module immutable windowWidth GuiPixels 640
-storage module immutable windowHeight GuiPixels 440
-storage module immutable maxTaskTitleLength CSignedInt32 200
+storage module immutable windowHeight GuiPixels 400
+storage module immutable maxGreetingLength CSignedInt32 200
 storage module immutable yesGuiFlag CSignedInt32 1
 storage module immutable noGuiFlag CSignedInt32 0
-storage module mutable taskInputHandle GuiTextBox 0
-storage module mutable taskListHandle GuiListBox 0
+storage module mutable greetingInputHandle GuiTextBox 0
+storage module mutable greetingListHandle GuiListBox 0
 storage module mutable statusLabelHandle GuiTextLabel 0
 
 operation main
@@ -47,12 +48,12 @@ purpose operation main "Compose one native GUI window using standard.gui functio
 invariant operation main "GUI handles are created through standard.gui calls, attached to one main window, and event handlers are registered before applicationRun."
 
 call createApplicationCall gui.applicationCreate
-argument createApplicationCall title GuiText desktopWindowSmokeTitle
+argument createApplicationCall title GuiText helloGuiTitle
 run createApplicationCall
 bind value application GuiApplication createApplicationCall
 
 call createWindowCall gui.windowCreate
-argument createWindowCall title GuiText desktopWindowSmokeTitle
+argument createWindowCall title GuiText helloGuiTitle
 argument createWindowCall width GuiPixels windowWidth
 argument createWindowCall height GuiPixels windowHeight
 argument createWindowCall layout GuiWindowLayout verticalStackGuiWindowLayout
@@ -61,7 +62,7 @@ run createWindowCall
 bind value mainWindow GuiWindow createWindowCall
 
 call createTitleLabelCall gui.textLabelCreate
-argument createTitleLabelCall text GuiText titleText
+argument createTitleLabelCall text GuiText headingText
 run createTitleLabelCall
 bind value titleLabel GuiTextLabel createTitleLabelCall
 
@@ -72,8 +73,8 @@ run addTitleLabelCall
 ignore value source addTitleLabelCall type CSignedInt32
 
 call createTaskInputCall gui.textBoxCreate
-argument createTaskInputCall placeholder GuiText newTaskPlaceholder
-argument createTaskInputCall maxLength CSignedInt32 maxTaskTitleLength
+argument createTaskInputCall placeholder GuiText greetingPlaceholder
+argument createTaskInputCall maxLength CSignedInt32 maxGreetingLength
 run createTaskInputCall
 bind value taskInput GuiTextBox createTaskInputCall
 
@@ -82,10 +83,10 @@ argument addTaskInputCall window GuiWindow mainWindow
 argument addTaskInputCall control GuiControl taskInput
 run addTaskInputCall
 ignore value source addTaskInputCall type CSignedInt32
-set storage taskInputHandle taskInput
+set storage greetingInputHandle taskInput
 
 call createAddButtonCall gui.buttonCreate
-argument createAddButtonCall text GuiText addTaskText
+argument createAddButtonCall text GuiText sayHelloText
 argument createAddButtonCall isDefault CSignedInt32 yesGuiFlag
 run createAddButtonCall
 bind value addButton GuiButton createAddButtonCall
@@ -106,10 +107,10 @@ argument addTaskListCall window GuiWindow mainWindow
 argument addTaskListCall control GuiControl taskList
 run addTaskListCall
 ignore value source addTaskListCall type CSignedInt32
-set storage taskListHandle taskList
+set storage greetingListHandle taskList
 
 call createCompleteButtonCall gui.buttonCreate
-argument createCompleteButtonCall text GuiText completeSelectedText
+argument createCompleteButtonCall text GuiText inspectSelectedText
 argument createCompleteButtonCall isDefault CSignedInt32 noGuiFlag
 run createCompleteButtonCall
 bind value completeButton GuiButton createCompleteButtonCall
@@ -121,7 +122,7 @@ run addCompleteButtonCall
 ignore value source addCompleteButtonCall type CSignedInt32
 
 call createClearButtonCall gui.buttonCreate
-argument createClearButtonCall text GuiText clearCompletedText
+argument createClearButtonCall text GuiText clearGreetingsText
 argument createClearButtonCall isDefault CSignedInt32 noGuiFlag
 run createClearButtonCall
 bind value clearButton GuiButton createClearButtonCall
@@ -147,28 +148,28 @@ set storage statusLabelHandle statusLabel
 call registerAddButtonClickCall gui.controlOnEvent
 argument registerAddButtonClickCall control GuiControl addButton
 argument registerAddButtonClickCall eventKind GuiEventKind clickGuiEventKind
-argument registerAddButtonClickCall handler GuiEventHandler addTaskFromInput
+argument registerAddButtonClickCall handler GuiEventHandler appendGreetingFromInput
 run registerAddButtonClickCall
 ignore value source registerAddButtonClickCall type CSignedInt32
 
 call registerTaskInputEnterCall gui.controlOnEvent
 argument registerTaskInputEnterCall control GuiControl taskInput
 argument registerTaskInputEnterCall eventKind GuiEventKind enterPressedGuiEventKind
-argument registerTaskInputEnterCall handler GuiEventHandler addTaskFromInput
+argument registerTaskInputEnterCall handler GuiEventHandler appendGreetingFromInput
 run registerTaskInputEnterCall
 ignore value source registerTaskInputEnterCall type CSignedInt32
 
 call registerCompleteButtonClickCall gui.controlOnEvent
 argument registerCompleteButtonClickCall control GuiControl completeButton
 argument registerCompleteButtonClickCall eventKind GuiEventKind clickGuiEventKind
-argument registerCompleteButtonClickCall handler GuiEventHandler markSelectedTask
+argument registerCompleteButtonClickCall handler GuiEventHandler inspectSelectedGreeting
 run registerCompleteButtonClickCall
 ignore value source registerCompleteButtonClickCall type CSignedInt32
 
 call registerClearButtonClickCall gui.controlOnEvent
 argument registerClearButtonClickCall control GuiControl clearButton
 argument registerClearButtonClickCall eventKind GuiEventKind clickGuiEventKind
-argument registerClearButtonClickCall handler GuiEventHandler clearTasks
+argument registerClearButtonClickCall handler GuiEventHandler clearGreetings
 run registerClearButtonClickCall
 ignore value source registerClearButtonClickCall type CSignedInt32
 
@@ -184,39 +185,39 @@ run runApplicationCall
 bind value guiExitCode ExitCode runApplicationCall
 return value guiExitCode
 
-operation addTaskFromInput
-input operation addTaskFromInput session GuiSession
-input operation addTaskFromInput event GuiEvent
-output operation addTaskFromInput CSignedInt32
-effect addTaskFromInput read gui.control.textBox.text
-effect addTaskFromInput write gui.control.textBox.text
-effect addTaskFromInput write gui.control.listBox.items
-effect addTaskFromInput write gui.control.textLabel.text
-authority addTaskFromInput read gui.control.textBox.text
-authority addTaskFromInput write gui.control.textBox.text
-authority addTaskFromInput write gui.control.listBox.items
-authority addTaskFromInput write gui.control.textLabel.text
-memory addTaskFromInput heap no
-async addTaskFromInput no
-purpose operation addTaskFromInput "Append the current text box value to the visible task list and clear the input."
-invariant operation addTaskFromInput "The handler reads the current input once, appends one list item, clears the input box, and reports the append status as the event result."
+operation appendGreetingFromInput
+input operation appendGreetingFromInput session GuiSession
+input operation appendGreetingFromInput event GuiEvent
+output operation appendGreetingFromInput CSignedInt32
+effect appendGreetingFromInput read gui.control.textBox.text
+effect appendGreetingFromInput write gui.control.textBox.text
+effect appendGreetingFromInput write gui.control.listBox.items
+effect appendGreetingFromInput write gui.control.textLabel.text
+authority appendGreetingFromInput read gui.control.textBox.text
+authority appendGreetingFromInput write gui.control.textBox.text
+authority appendGreetingFromInput write gui.control.listBox.items
+authority appendGreetingFromInput write gui.control.textLabel.text
+memory appendGreetingFromInput heap no
+async appendGreetingFromInput no
+purpose operation appendGreetingFromInput "Append the current greeting text to the visible greeting list and clear the input."
+invariant operation appendGreetingFromInput "The handler reads the current input once, appends one list item, clears the input box, and reports the append status as the event result."
 
 call readTitleCall gui.textBoxText
 argument readTitleCall session GuiSession session
-argument readTitleCall textBox GuiTextBox taskInputHandle
+argument readTitleCall textBox GuiTextBox greetingInputHandle
 run readTitleCall
-bind value taskTitle GuiText readTitleCall
+bind value greetingText GuiText readTitleCall
 
 call appendTaskCall gui.listBoxAppendItem
 argument appendTaskCall session GuiSession session
-argument appendTaskCall listBox GuiListBox taskListHandle
-argument appendTaskCall text CNullTerminatedByteString taskTitle
+argument appendTaskCall listBox GuiListBox greetingListHandle
+argument appendTaskCall text CNullTerminatedByteString greetingText
 run appendTaskCall
 bind value appendTaskStatus CSignedInt32 appendTaskCall
 
 call clearTaskInputCall gui.textBoxSetText
 argument clearTaskInputCall session GuiSession session
-argument clearTaskInputCall textBox GuiTextBox taskInputHandle
+argument clearTaskInputCall textBox GuiTextBox greetingInputHandle
 argument clearTaskInputCall text CNullTerminatedByteString emptyGuiText
 run clearTaskInputCall
 ignore value source clearTaskInputCall type CSignedInt32
@@ -224,28 +225,28 @@ ignore value source clearTaskInputCall type CSignedInt32
 call setAddedStatusCall gui.textLabelSetText
 argument setAddedStatusCall session GuiSession session
 argument setAddedStatusCall textLabel GuiTextLabel statusLabelHandle
-argument setAddedStatusCall text GuiText addedStatusText
+argument setAddedStatusCall text GuiText greetingAddedStatusText
 run setAddedStatusCall
 ignore value source setAddedStatusCall type CSignedInt32
 
 return value appendTaskStatus
 
-operation markSelectedTask
-input operation markSelectedTask session GuiSession
-input operation markSelectedTask event GuiEvent
-output operation markSelectedTask CSignedInt32
-effect markSelectedTask read gui.control.listBox.selection
-effect markSelectedTask write gui.control.textLabel.text
-authority markSelectedTask read gui.control.listBox.selection
-authority markSelectedTask write gui.control.textLabel.text
-memory markSelectedTask heap no
-async markSelectedTask no
-purpose operation markSelectedTask "Confirm that the complete button click reached the GUI event handler without appending another list item."
-invariant operation markSelectedTask "The handler observes the selected row and updates only the status label; it never mutates the list item collection."
+operation inspectSelectedGreeting
+input operation inspectSelectedGreeting session GuiSession
+input operation inspectSelectedGreeting event GuiEvent
+output operation inspectSelectedGreeting CSignedInt32
+effect inspectSelectedGreeting read gui.control.listBox.selection
+effect inspectSelectedGreeting write gui.control.textLabel.text
+authority inspectSelectedGreeting read gui.control.listBox.selection
+authority inspectSelectedGreeting write gui.control.textLabel.text
+memory inspectSelectedGreeting heap no
+async inspectSelectedGreeting no
+purpose operation inspectSelectedGreeting "Confirm that the inspect button click reached the GUI event handler without appending another list item."
+invariant operation inspectSelectedGreeting "The handler observes the selected row and updates only the status label; it never mutates the list item collection."
 
 call selectedIndexCall gui.listBoxSelectedIndex
 argument selectedIndexCall session GuiSession session
-argument selectedIndexCall listBox GuiListBox taskListHandle
+argument selectedIndexCall listBox GuiListBox greetingListHandle
 run selectedIndexCall
 bind value selectedTaskIndex CSignedInt32 selectedIndexCall
 
@@ -258,35 +259,35 @@ ignore value source observeSelectedTaskIndexCall type Bool
 call setCompletedStatusCall gui.textLabelSetText
 argument setCompletedStatusCall session GuiSession session
 argument setCompletedStatusCall textLabel GuiTextLabel statusLabelHandle
-argument setCompletedStatusCall text GuiText completedStatusText
+argument setCompletedStatusCall text GuiText selectedGreetingStatusText
 run setCompletedStatusCall
 bind value completeStatusUpdate CSignedInt32 setCompletedStatusCall
 
 return value completeStatusUpdate
 
-operation clearTasks
-input operation clearTasks session GuiSession
-input operation clearTasks event GuiEvent
-output operation clearTasks CSignedInt32
-effect clearTasks write gui.control.listBox.items
-effect clearTasks write gui.control.textLabel.text
-authority clearTasks write gui.control.listBox.items
-authority clearTasks write gui.control.textLabel.text
-memory clearTasks heap no
-async clearTasks no
-purpose operation clearTasks "Clear visible tasks and update the status label."
-invariant operation clearTasks "The handler clears the list once, updates the status label, and reports the list clear status as the event result."
+operation clearGreetings
+input operation clearGreetings session GuiSession
+input operation clearGreetings event GuiEvent
+output operation clearGreetings CSignedInt32
+effect clearGreetings write gui.control.listBox.items
+effect clearGreetings write gui.control.textLabel.text
+authority clearGreetings write gui.control.listBox.items
+authority clearGreetings write gui.control.textLabel.text
+memory clearGreetings heap no
+async clearGreetings no
+purpose operation clearGreetings "Clear visible greetings and update the status label."
+invariant operation clearGreetings "The handler clears the list once, updates the status label, and reports the list clear status as the event result."
 
 call clearTaskListCall gui.listBoxClear
 argument clearTaskListCall session GuiSession session
-argument clearTaskListCall listBox GuiListBox taskListHandle
+argument clearTaskListCall listBox GuiListBox greetingListHandle
 run clearTaskListCall
 bind value clearTaskListStatus CSignedInt32 clearTaskListCall
 
 call setClearedStatusCall gui.textLabelSetText
 argument setClearedStatusCall session GuiSession session
 argument setClearedStatusCall textLabel GuiTextLabel statusLabelHandle
-argument setClearedStatusCall text GuiText clearedStatusText
+argument setClearedStatusCall text GuiText greetingsClearedStatusText
 run setClearedStatusCall
 ignore value source setClearedStatusCall type CSignedInt32
 

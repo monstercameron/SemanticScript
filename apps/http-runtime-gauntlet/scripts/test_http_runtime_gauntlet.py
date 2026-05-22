@@ -279,6 +279,8 @@ def main():
                 headers={"X-Gauntlet-Token": "token-123"},
                 common_path="/reflect/header",
             )
+            # The source reads lowercase `x-gauntlet-token`; this mixed-case
+            # request header pins case-insensitive native header lookup.
             # /reflect/header now guards with pointer.isNull and returns 400 on
             # missing X-Gauntlet-Token (pinned by semlint SS3603). The legacy
             # null-body 500 contract still lives on /reflect/required-header-or-fail

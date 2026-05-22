@@ -5,7 +5,7 @@ entry console main
 
 module app.taskforge_api_client
 purpose module app.taskforge_api_client "SemanticScript console client that calls the separately running TaskForge Web server through standard.net."
-moduleOwns app.taskforge_api_client "Outbound fetch request construction, async start/await ordering, response body cleanup, and console reporting for TaskForge API probes."
+moduleOwns app.taskforge_api_client "Outbound fetch request construction, async start/await/case/done ordering, response body cleanup, and console reporting for TaskForge API probes."
 moduleDoesNotOwn app.taskforge_api_client "TaskForge Web server behavior, authenticated session cookie flow, libuv/libcurl backend implementation, or native HTTP server routing."
 invariant module app.taskforge_api_client "The app must start every outbound fetch before awaiting any one response so the source demonstrates the intended async client shape."
 moduleWarning app.taskforge_api_client "The current standard.net prototype only exposes GET without custom request headers or POST bodies. /api/todos is probed unauthenticated and will report the server's 401 JSON until login/cookie support lands in standard.net."
@@ -52,8 +52,8 @@ useCapability main consoleStdoutWriteCapability
 useCapability main fetchBodyHeapRelease
 memory main heap yes
 async main yes
-purpose operation main "Start three outbound GET calls against the TaskForge Web server, perform local console work, then await and print the responses."
-invariant operation main "All three fetch calls are started before the first await, which is the source-level async pattern this client is meant to demonstrate."
+purpose operation main "Start three outbound GET calls against the TaskForge Web server, perform local console work, then print responses in wait-set completion order."
+invariant operation main "All three fetch calls are started before the first wait-set await, which is the source-level async pattern this client is meant to demonstrate."
 warning main "With the current compiler/runtime prototype, real overlap depends on selecting the optional libuv/libcurl backend; the source shape is already the future continuation-friendly API."
 
 label startMain
@@ -102,26 +102,20 @@ ignore void source startedLineCall
 bind error startedLineError CSignedInt32 startedLineCall
 branch error source startedLineCall target startedLineWriteFailed
 
-await healthFetchCall
+label waitNextFetch
+
+await nextTaskForgeFetch
+case healthFetchCall printHealthResponse
+case versionFetchCall printVersionResponse
+case todosFetchCall printTodosResponse
+done allFetchesPrinted
+
+label printHealthResponse
+
 bind ok healthResponse HttpTextResponse healthFetchCall
 bind error healthFetchError HttpClientErrorCode healthFetchCall
 branch error source healthFetchCall target healthFetchFailed
 fieldGet healthBody HttpClientBodyText healthResponse body
-defer releaseHealthBody net.freeTextBody healthBody
-
-await versionFetchCall
-bind ok versionResponse HttpTextResponse versionFetchCall
-bind error versionFetchError HttpClientErrorCode versionFetchCall
-branch error source versionFetchCall target versionFetchFailed
-fieldGet versionBody HttpClientBodyText versionResponse body
-defer releaseVersionBody net.freeTextBody versionBody
-
-await todosFetchCall
-bind ok todosResponse HttpTextResponse todosFetchCall
-bind error todosFetchError HttpClientErrorCode todosFetchCall
-branch error source todosFetchCall target todosFetchFailed
-fieldGet todosBody HttpClientBodyText todosResponse body
-defer releaseTodosBody net.freeTextBody todosBody
 
 call printHealthLabelCall console.writeLine
 argument printHealthLabelCall console Console console
@@ -129,7 +123,6 @@ argument printHealthLabelCall text CNullTerminatedByteString healthLabelText
 run printHealthLabelCall
 ignore void source printHealthLabelCall
 bind error printHealthLabelError CSignedInt32 printHealthLabelCall
-branch error source printHealthLabelCall target printHealthLabelFailed
 
 call printHealthBodyCall console.writeLine
 argument printHealthBodyCall console Console console
@@ -137,7 +130,23 @@ argument printHealthBodyCall text CNullTerminatedByteString healthBody
 run printHealthBodyCall
 ignore void source printHealthBodyCall
 bind error printHealthBodyError CSignedInt32 printHealthBodyCall
+
+call releaseHealthBodyCall net.freeTextBody
+argument releaseHealthBodyCall body HttpClientBodyText healthBody
+run releaseHealthBodyCall
+ignore void source releaseHealthBodyCall
+
+branch error source printHealthLabelCall target printHealthLabelFailed
 branch error source printHealthBodyCall target printHealthBodyFailed
+
+jump target waitNextFetch
+
+label printVersionResponse
+
+bind ok versionResponse HttpTextResponse versionFetchCall
+bind error versionFetchError HttpClientErrorCode versionFetchCall
+branch error source versionFetchCall target versionFetchFailed
+fieldGet versionBody HttpClientBodyText versionResponse body
 
 call printVersionLabelCall console.writeLine
 argument printVersionLabelCall console Console console
@@ -145,7 +154,6 @@ argument printVersionLabelCall text CNullTerminatedByteString versionLabelText
 run printVersionLabelCall
 ignore void source printVersionLabelCall
 bind error printVersionLabelError CSignedInt32 printVersionLabelCall
-branch error source printVersionLabelCall target printVersionLabelFailed
 
 call printVersionBodyCall console.writeLine
 argument printVersionBodyCall console Console console
@@ -153,7 +161,23 @@ argument printVersionBodyCall text CNullTerminatedByteString versionBody
 run printVersionBodyCall
 ignore void source printVersionBodyCall
 bind error printVersionBodyError CSignedInt32 printVersionBodyCall
+
+call releaseVersionBodyCall net.freeTextBody
+argument releaseVersionBodyCall body HttpClientBodyText versionBody
+run releaseVersionBodyCall
+ignore void source releaseVersionBodyCall
+
+branch error source printVersionLabelCall target printVersionLabelFailed
 branch error source printVersionBodyCall target printVersionBodyFailed
+
+jump target waitNextFetch
+
+label printTodosResponse
+
+bind ok todosResponse HttpTextResponse todosFetchCall
+bind error todosFetchError HttpClientErrorCode todosFetchCall
+branch error source todosFetchCall target todosFetchFailed
+fieldGet todosBody HttpClientBodyText todosResponse body
 
 call printTodosLabelCall console.writeLine
 argument printTodosLabelCall console Console console
@@ -161,7 +185,6 @@ argument printTodosLabelCall text CNullTerminatedByteString todosLabelText
 run printTodosLabelCall
 ignore void source printTodosLabelCall
 bind error printTodosLabelError CSignedInt32 printTodosLabelCall
-branch error source printTodosLabelCall target printTodosLabelFailed
 
 call printTodosBodyCall console.writeLine
 argument printTodosBodyCall console Console console
@@ -169,7 +192,18 @@ argument printTodosBodyCall text CNullTerminatedByteString todosBody
 run printTodosBodyCall
 ignore void source printTodosBodyCall
 bind error printTodosBodyError CSignedInt32 printTodosBodyCall
+
+call releaseTodosBodyCall net.freeTextBody
+argument releaseTodosBodyCall body HttpClientBodyText todosBody
+run releaseTodosBodyCall
+ignore void source releaseTodosBodyCall
+
+branch error source printTodosLabelCall target printTodosLabelFailed
 branch error source printTodosBodyCall target printTodosBodyFailed
+
+jump target waitNextFetch
+
+label allFetchesPrinted
 
 return ok successfulExitCode
 

@@ -172,6 +172,7 @@ def main():
         assert_equal(status, 200, "/assets/home.js status")
         assert_in("registerForm", body, "/assets/home.js body")
         assert_in("text/javascript", headers.get("content-type", ""), "/assets/home.js content-type")
+        assert_equal(headers.get("content-length"), str(len(body.encode("utf-8"))), "/assets/home.js content-length")
         print("[OK]  GET /assets/home.js -> 200 script")
 
         # ---- /health ----

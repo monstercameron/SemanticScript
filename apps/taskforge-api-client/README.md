@@ -34,6 +34,12 @@ That script emits LLVM IR from `main.sem`, builds the native HTTP client runtime
 - `GET http://127.0.0.1:18090/api/version`
 - `GET http://127.0.0.1:18090/api/todos`
 
+It then uses an `await nextTaskForgeFetch` wait set with `case` rows for each
+fetch. The selected case materializes that response before the handler runs, so
+the client prints whichever response resolves next, jumps back to the same wait
+set, and exits through `done allFetchesPrinted` after all three futures have
+been consumed.
+
 `/api/todos` is intentionally unauthenticated in this source demo. The current `standard.net` prototype supports GET request records but does not yet expose POST login, request bodies, custom Cookie headers, or response Set-Cookie capture. Until those land, this client demonstrates the async call pattern and prints TaskForge's `401` JSON for the protected route.
 
 ## Source Layout
@@ -101,4 +107,6 @@ python apps/taskforge-api-client/scripts/test_taskforge_async_client.py --real-b
 
 `test_taskforge_api_client.py` starts a fake TaskForge API and the optional browser proxy, then verifies auth cookies, todo fetch, create, complete, and delete through the same relative API paths the browser app uses.
 
-`test_taskforge_async_client.py` checks the SemanticScript app shape. With `--real-backend`, it also builds the generated client against real libuv/libcurl and verifies the response bodies from the running TaskForge server.
+`test_taskforge_async_client.py` checks the SemanticScript app shape and generated IR. It asserts that `main.sem` lowers to three `ss_http_client_fetch_text_request_start` calls before local console work, three readiness probes inside the wait set, three `ss_http_client_fetch_text_await` calls when cases are selected, and no blocking `ss_http_client_fetch_text_request_copy` calls in the generated client IR.
+
+With `--real-backend`, the test also builds the generated client against real libuv/libcurl, runs a delayed local HTTP server, and verifies that 0.2s, 0.6s, and 1.0s endpoints complete in roughly one second and print in readiness order. It then builds a second generated client where `start` targets a user-defined SemanticScript operation (`fetchTaskForgeBody`) that internally performs a blocking fetch; that IR must contain `ss_async_queue_work`, `ss_async_future_is_ready`, and the generated `__sem_async_work_fetchTaskForgeBody` callback rather than the fetch-specific start helper. The same delayed-server benchmark must still complete in roughly one second and print in readiness order, proving the async surface is programmable for user operations. Finally, it runs the real TaskForge server path and checks the printed response bodies.

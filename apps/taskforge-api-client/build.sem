@@ -131,7 +131,7 @@ jsonBody taskForgeApiClientBuildPlan
               "buildSource": "apps/taskforge-api-client/build.sem",
               "runtimeContract": "native 1",
               "apiOrigin": "http://127.0.0.1:18090",
-              "asyncSurface": "standard.net net.fetchText"
+              "asyncSurface": "standard.net net.fetchText plus user-operation start/await/case/done"
           }
       },
       "constants": {},
