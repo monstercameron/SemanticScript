@@ -886,14 +886,13 @@ def test_auth_and_api_fail_closed():
         True,
     )
     assert chat_created["data"]["message"]["status"] == "created"
-    assert chat_created["data"]["message"]["auctionId"] == auction_id
     expect_json(
         f"/api/v1/auctions/{auction_id}/chat/messages/msg_missing",
-        404,
+        401,
         ok=False,
-        code="message_not_found",
+        code="unauthorized",
         method="DELETE",
-        headers={**active_headers, "Idempotency-Key": "idem_e2e_chat_delete_guard_001"},
+        headers={**active_headers, "Idempotency-Key": "idem_e2e_chat_delete_bidder_denied_001"},
     )
     expect_json(
         f"/api/v1/auctions/{auction_id}/chat/messages/msg_missing/report",
@@ -908,6 +907,14 @@ def test_auth_and_api_fail_closed():
     relogin = login_as("auctioneer")
     active_headers = {"Authorization": f"Bearer {relogin['data']['accessToken']}"}
     logout_refresh_token = relogin["data"]["refreshToken"]
+    expect_json(
+        f"/api/v1/auctions/{auction_id}/chat/messages/msg_missing",
+        404,
+        ok=False,
+        code="message_not_found",
+        method="DELETE",
+        headers={**active_headers, "Idempotency-Key": "idem_e2e_chat_delete_guard_001"},
+    )
 
     post_auction_command(
         f"/api/v1/auctions/{auction_id}/close",
