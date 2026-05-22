@@ -77,11 +77,19 @@ the loop. `cancelOn CALL TOKEN` records the cancellation token watched by the
 future; hard interruption depends on the backend, but the future must publish a
 cancelled status before generated code resumes after `await`.
 
-`select` should become a wait set over futures and timer tokens. The selected
-case stores its branch in the frame before resume. `taskGroup`, `startInGroup`,
-and `awaitGroup` should aggregate child futures, cancel siblings when requested
-by group policy, and resume the parent only when the group is complete or its
-error policy fires.
+`await WAIT_SET` with following `case CALL LABEL` rows and a `done LABEL` row is
+the source-level wait set. Current console lowering polls the futures, runs one
+libuv loop tick when none are ready, awaits/materializes the selected future,
+marks the selected case consumed, and branches to that case label. Fetch futures
+use `ss_http_client_fetch_is_ready`; generic user-operation futures use
+`ss_async_future_is_ready`. Consumed-case slots are initialized once per
+operation invocation, so the MVP shape drains one current batch; a later fresh
+batch should use a fresh wait-set block. The future continuation-frame backend
+should keep the same source shape but store selected case state in the frame
+before resuming. `taskGroup`, `startInGroup`, and
+`awaitGroup` should aggregate child futures, cancel siblings when requested by
+group policy, and resume the parent only when the group is complete or its error
+policy fires.
 
 ## Worker Pool
 

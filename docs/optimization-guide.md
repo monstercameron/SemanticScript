@@ -996,7 +996,11 @@ overhead" is wasted work — the cost model is:
 | `lock` / `unlock`               | No-op (no contention possible)                                 |
 | `select` + `selectCase`         | Ordinary branches, runtime dispatch deferred                   |
 | `interval` + `awaitIntervalTick`| No-op (no timer runtime bound)                                 |
-| `scheduler.sleep`               | Returns `i64 0` — no time passes                               |
+| `scheduler.sleep` runtimeBinding| Unsupported until an explicit scheduler runtime is bound        |
+
+Note: declaring `scheduler.sleep` as a runtimeBinding is now compile-blocking
+unless an explicit scheduler runtime owns that behavior; the old compiler
+no-op was removed from the runtimeBinding fast path.
 
 These will become real concurrency when a scheduler runtime is bound;
 until then, attempting to win throughput by parallelizing across them is
@@ -1067,12 +1071,20 @@ SS4303 (`mathOperandWidthDrift`) flag the wrong width directly.
 
 ## Intrinsic / Runtime-Binding Fast Paths vs. Zero-Stub Fallback
 
-`runtimeBinding OP TARGET` is real lowering for 12 targets in
-`_RUNTIME_BINDING_MAP`. `intrinsicName OP NAME` is real LLVM lowering for
-13 `arithmetic.*` targets in `_INTRINSIC_MAP`. Any other target falls
+`runtimeBinding OP TARGET` is real lowering only for pure ABI shims in
+`_RUNTIME_BINDING_MAP` such as cstring length/compare and memory copy.
+`intrinsicName OP NAME` is real LLVM lowering for 13 `arithmetic.*`
+targets in `_INTRINSIC_MAP`. Any other target falls
 back to the dotted-target external-module **zero-stub** lowering — the
 call compiles but returns 0 (or a null pointer), regardless of what the
 op claims to do.
+
+Policy or domain runtimeBinding targets are intentionally not compiler
+semantics. Retry-delay calculation, metrics increment behavior, lock token
+sentinels, scheduler sleeps, calendar predicates, and UTF-8 validation should
+be normal SemanticScript operation bodies or explicit native runtime calls.
+Known legacy policy targets fail at executable codegen instead of silently
+returning a compiler stub.
 
 When optimizing a hot path, verify the call lowers to real code:
 

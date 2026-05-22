@@ -1545,17 +1545,26 @@ await auditFlushCall
 
 ---
 
-# 20. Select and racing async work
+# 20. Awaiting the next async completion
 
 For waiting on multiple things:
 
 ```text
-select accountLookupRace
-selectCase accountLookupRace accountLookupCall accountLookupCompleted
-selectCase accountLookupRace requestCancellationToken requestWasCancelled
-runSelect accountLookupRace
-branchSelected accountLookupRace accountLookupCompleted accountLookupFinished
-branchSelected accountLookupRace requestWasCancelled requestCancelled
+label waitNextAccountEvent
+
+await accountLookupRace
+case accountLookupCall accountLookupCompleted
+case requestCancellationCall requestWasCancelled
+done accountLookupRaceFinished
+
+label accountLookupCompleted
+bind ok accountBalance AccountBalance accountLookupCall
+jump target waitNextAccountEvent
+
+label requestWasCancelled
+return error requestCancelledFailure
+
+label accountLookupRaceFinished
 ```
 
 No hidden race behavior.
@@ -1563,6 +1572,14 @@ No hidden race behavior.
 No callback soup.
 
 Every possible completion path has a named branch.
+
+The name after `await` is a local wait-set name, not a call. Each `case`
+references a started call and a label. The runtime selects whichever case is
+ready next, materializes that call result, and then branches to the case label.
+The handler binds the selected call directly; it does not `await` the same call
+again. When all cases have been consumed, the wait set branches to `done`. The
+current lowering drains one batch per wait-set block; use a fresh wait-set block
+for a fresh batch of started calls.
 
 ---
 

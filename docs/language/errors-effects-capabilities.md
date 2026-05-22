@@ -125,6 +125,12 @@ authorizes narrower reads such as `http.request.method`, `http.request.path`,
 and `http.request.cancellationToken`. Use a narrower capability when the
 operation should only inspect one request edge.
 
+For the scoped 1.0 runtime, capabilities and inline `authority` rows are
+compile-time and linter contracts only. Codegen does not emit capability token
+values into binaries, and missing authority is reported as a compiler or linter
+diagnostic rather than a runtime trap or typed runtime error. Runtime authority
+tokens remain a future runtime feature.
+
 ## Dependency Contracts
 
 ```semanticscript

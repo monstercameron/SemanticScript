@@ -224,6 +224,16 @@
           "default": "",
           "description": "Optional semsc.py --build-folder-name override. Must be one folder name."
         },
+        "semanticScript.compiler.keepResources": {
+          "type": "boolean",
+          "default": false,
+          "description": "Pass --keep-resources to retain intermediate Windows resource files during VS Code builds."
+        },
+        "semanticScript.compiler.resourceDir": {
+          "type": "string",
+          "default": "",
+          "description": "Optional semsc.py --resource-dir path for intermediate Windows resource files. Implies --keep-resources."
+        },
         "semanticScript.compiler.cpuBaseline": {
           "type": "string",
           "default": "default",

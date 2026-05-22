@@ -9,8 +9,8 @@ lives in `docs/reference/compatibility.md`.
 
 - Confirm the root `LICENSE` remains MIT and package metadata that declares a
   license also uses `MIT`.
-- Confirm the VS Code publisher target. `semanticscript-local` is valid only for
-  local VSIX packaging.
+- Confirm the VS Code publisher target. The initial release is local VSIX only;
+  `semanticscript-local` is valid only for local VSIX packaging.
 - CI must pass on the release commit.
 - Generated files must not be committed unless they are intentionally tracked
   source artifacts.
@@ -92,8 +92,8 @@ python SemanticScript/tests/compare.py
 python SemanticScript/tests/sem_alias_parity.py
 ```
 
-Package the VS Code extension only after validation passes and the release owner
-accepts the current extension metadata:
+Package the VS Code extension for local VSIX distribution only after validation
+passes and the release owner accepts the current extension metadata:
 
 ```powershell
 npm --prefix vscode-semanticscript run check
@@ -118,8 +118,9 @@ Before tagging, confirm the release hygiene policies:
   licenses, and packaging notice policy for artifacts that include third-party
   code.
 - `vscode-semanticscript/package.json` license remains `MIT`.
-- `vscode-semanticscript/package.json` publisher is changed away from
-  `semanticscript-local` before any Marketplace publish.
+- `vscode-semanticscript/package.json` publisher remains `semanticscript-local`
+  for local VSIX releases only. Change it away from `semanticscript-local`
+  before any Marketplace publish.
 
 Run the alias mirror check when `.sscript` / `.sem` examples change:
 

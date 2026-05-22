@@ -754,7 +754,7 @@ surface is now `entry console main` plus `standard.gui` function calls.
 - [ ] Define whether `guiApplicationOnExit` may cancel process exit or is
       cleanup-only.
 - [x] Define default exit status when the main window closes cleanly.
-- [ ] Define exit status behavior when a GUI event handler returns non-zero.
+- [x] Define exit status behavior when a GUI event handler returns non-zero.
 - [x] Add `windowsGui` support to compiler build-tape validation.
 - [x] Add `windowsGui` support to standalone linter build-tape validation.
 
@@ -771,7 +771,7 @@ surface is now `entry console main` plus `standard.gui` function calls.
 - [x] Treat GUI keyword rows as non-standard in semlint.
 - [ ] Add standard-library wrappers for platform-neutral layout policies before
       adding Linux/macOS backends.
-- [ ] Add event registration functions in `standard.gui` before adding handler
+- [x] Add event registration functions in `standard.gui` before adding handler
       dispatch.
 - [ ] Add accessibility and sizing helper functions in `standard.gui` instead
       of adding new parser verbs.
@@ -939,30 +939,30 @@ is the preferred source shape.
 
 ### Event Model
 
-- [ ] Add a built-in `GuiEventKind` enum, or equivalent closed token set, for
+- [x] Add a built-in `GuiEventKind` enum, or equivalent closed token set, for
       GUI event rows.
-- [ ] Include `click` in the committed event set.
-- [ ] Include `valueChanged` in the committed event set.
-- [ ] Include `selectionChanged` in the committed event set.
-- [ ] Include `enterPressed` in the committed event set.
-- [ ] Include `keyPressed` in the committed event set.
-- [ ] Include `focusGained` in the committed event set.
-- [ ] Include `focusLost` in the committed event set.
-- [ ] Include `closeRequested` in the committed event set.
-- [ ] Include `resized` in the committed event set.
-- [ ] Include `shown` in the committed event set.
-- [ ] Include `hidden` in the committed event set.
+- [x] Include `click` in the committed event set.
+- [x] Include `valueChanged` in the committed event set.
+- [x] Include `selectionChanged` in the committed event set.
+- [x] Include `enterPressed` in the committed event set.
+- [x] Include `keyPressed` in the committed event set.
+- [x] Include `focusGained` in the committed event set.
+- [x] Include `focusLost` in the committed event set.
+- [x] Include `closeRequested` in the committed event set.
+- [x] Include `resized` in the committed event set.
+- [x] Include `shown` in the committed event set.
+- [x] Include `hidden` in the committed event set.
 - [ ] Validate allowed control events by control kind.
 - [ ] Validate allowed window events by window kind.
-- [ ] Allow `guiButton` to handle `click`.
-- [ ] Allow `guiButton` to handle `focusGained` and `focusLost`.
-- [ ] Allow `guiTextBox` to handle `valueChanged`, `enterPressed`,
+- [x] Allow `guiButton` to handle `click`.
+- [x] Allow `guiButton` to handle `focusGained` and `focusLost`.
+- [x] Allow `guiTextBox` to handle `valueChanged`, `enterPressed`,
       `keyPressed`, `focusGained`, and `focusLost`.
-- [ ] Allow `guiListBox` to handle `selectionChanged`, `focusGained`, and
+- [x] Allow `guiListBox` to handle `selectionChanged`, `focusGained`, and
       `focusLost`.
-- [ ] Allow `guiCheckBox` to handle `valueChanged`, `click`, `focusGained`,
+- [x] Allow `guiCheckBox` to handle `valueChanged`, `click`, `focusGained`,
       and `focusLost`.
-- [ ] Allow `guiWindow` to handle `closeRequested`, `resized`, `shown`, and
+- [x] Allow `guiWindow` to handle `closeRequested`, `resized`, `shown`, and
       `hidden`.
 - [ ] Reject `selectionChanged` on buttons.
 - [ ] Reject `click` on list boxes unless a future design explicitly supports
@@ -977,19 +977,19 @@ is the preferred source shape.
 
 ### Handler ABI
 
-- [ ] Auto-register `GuiSession` as an opaque handler input type.
-- [ ] Auto-register `GuiEvent` as an opaque handler input type.
-- [ ] Auto-register `GuiWindow` as an opaque declarative handle type.
-- [ ] Auto-register `GuiControl` as an opaque common control handle type if a
+- [x] Auto-register `GuiSession` as an opaque handler input type.
+- [x] Auto-register `GuiEvent` as an opaque handler input type.
+- [x] Auto-register `GuiWindow` as an opaque declarative handle type.
+- [x] Auto-register `GuiControl` as an opaque common control handle type if a
       common supertype is adopted.
-- [ ] Auto-register `GuiButton`.
-- [ ] Auto-register `GuiTextBox`.
-- [ ] Auto-register `GuiListBox`.
-- [ ] Auto-register `GuiCheckBox`.
-- [ ] Auto-register `GuiMenuItem`.
-- [ ] Auto-register `GuiStatusBar`.
-- [ ] Auto-register `GuiTextLabel`.
-- [ ] Define GUI handler operations as
+- [x] Auto-register `GuiButton`.
+- [x] Auto-register `GuiTextBox`.
+- [x] Auto-register `GuiListBox`.
+- [x] Auto-register `GuiCheckBox`.
+- [x] Auto-register `GuiMenuItem`.
+- [x] Auto-register `GuiStatusBar`.
+- [x] Auto-register `GuiTextLabel`.
+- [x] Define GUI handler operations as
       `input HANDLER session GuiSession`,
       `input HANDLER event GuiEvent`,
       and `output HANDLER CSignedInt32`.
@@ -997,63 +997,63 @@ is the preferred source shape.
 - [ ] Reject GUI event handlers with missing `GuiEvent` input.
 - [ ] Reject GUI event handlers with extra native ABI inputs.
 - [ ] Reject GUI event handlers whose output is not `CSignedInt32`.
-- [ ] Define that handler return `0` means handled successfully.
-- [ ] Define non-zero handler returns as runtime-level event failure.
+- [x] Define that handler return `0` means handled successfully.
+- [x] Define non-zero handler returns as runtime-level event failure.
 - [ ] Decide whether non-zero handler returns close the window, log and
       continue, or trap in dev builds.
-- [ ] Preserve `GuiSession` and `GuiEvent` as ABI parameters for GUI handlers,
+- [x] Preserve `GuiSession` and `GuiEvent` as ABI parameters for GUI handlers,
       like `HttpRequest` and `HttpResponse` are preserved for route handlers.
-- [ ] Continue dropping ordinary opaque dependency inputs outside the GUI and
+- [x] Continue dropping ordinary opaque dependency inputs outside the GUI and
       HTTP ABIs.
 
 ### Runtime Call Surface
 
-- [ ] Add `gui.textBoxText`.
-- [ ] Add `gui.textBoxSetText`.
-- [ ] Add `gui.listBoxSelectedIndex`.
-- [ ] Add `gui.listBoxAppendItem`.
-- [ ] Add `gui.listBoxClear`.
-- [ ] Add `gui.windowClose`.
+- [x] Add `gui.textBoxText`.
+- [x] Add `gui.textBoxSetText`.
+- [x] Add `gui.listBoxSelectedIndex`.
+- [x] Add `gui.listBoxAppendItem`.
+- [x] Add `gui.listBoxClear`.
+- [x] Add `gui.windowClose`.
 - [ ] Add `gui.eventKeyCode`.
 - [ ] Add `gui.eventSelectedIndex`.
 - [ ] Add `gui.eventWindowWidth`.
 - [ ] Add `gui.eventWindowHeight`.
 - [ ] Add `gui.eventCancelClose` or explicitly defer cancellable close events.
-- [ ] Define required args for every `gui.*` runtime call.
-- [ ] Require `session GuiSession` on every GUI runtime call that touches
+- [x] Define required args for every `gui.*` runtime call.
+- [x] Require `session GuiSession` on every GUI runtime call that touches
       live GUI state.
-- [ ] Define whether declarative handles are passed as `control`, `button`,
+- [x] Define whether declarative handles are passed as `control`, `button`,
       `textBox`, `listBox`, or kind-specific argument names.
-- [ ] Reject passing a `GuiButton` handle to `gui.textBoxText`.
-- [ ] Reject passing a `GuiTextBox` handle to `gui.listBoxAppendItem`.
-- [ ] Lower declarative GUI handle symbols to runtime control IDs or handles.
-- [ ] Define the lifetime of strings returned by `gui.textBoxText`.
-- [ ] Define whether returned GUI strings are copied, borrowed, or valid only
+- [x] Reject passing a `GuiButton` handle to `gui.textBoxText`.
+- [x] Reject passing a `GuiTextBox` handle to `gui.listBoxAppendItem`.
+- [x] Lower declarative GUI handle symbols to runtime control IDs or handles.
+- [x] Define the lifetime of strings returned by `gui.textBoxText`.
+- [x] Define whether returned GUI strings are copied, borrowed, or valid only
       until the next GUI runtime call.
-- [ ] Define list-box item encoding as null-terminated UTF-8 or a future
+- [x] Define list-box item encoding as null-terminated UTF-8 or a future
       UTF-16 aware string type.
-- [ ] Decide whether the MVP runtime stores UTF-8 internally and converts to
+- [x] Decide whether the MVP runtime stores UTF-8 internally and converts to
       UTF-16 at the Win32 boundary.
-- [ ] Add source-of-truth comments so `semsc.py`, `semlint.py`, `SYNTAX.md`,
+- [x] Add source-of-truth comments so `semsc.py`, `semlint.py`, `SYNTAX.md`,
       and `standard.gui` stay aligned on `gui.*` target names.
 
 ### Effects And Capabilities
 
-- [ ] Define `gui.control.textBox.text read`.
-- [ ] Define `gui.control.textBox.text write`.
-- [ ] Define `gui.control.listBox.items read`.
-- [ ] Define `gui.control.listBox.items write`.
-- [ ] Define `gui.control.listBox.selection read`.
-- [ ] Define `gui.control.checkBox.checked read`.
-- [ ] Define `gui.control.checkBox.checked write`.
-- [ ] Define `gui.window write`.
-- [ ] Define `gui.event read`.
-- [ ] Define `gui.event.close write` if close cancellation is supported.
-- [ ] Add reusable `standard.gui` capability declarations such as
+- [x] Define `gui.control.textBox.text read`.
+- [x] Define `gui.control.textBox.text write`.
+- [x] Define `gui.control.listBox.items read`.
+- [x] Define `gui.control.listBox.items write`.
+- [x] Define `gui.control.listBox.selection read`.
+- [x] Define `gui.control.checkBox.checked read`.
+- [x] Define `gui.control.checkBox.checked write`.
+- [x] Define `gui.window write`.
+- [x] Define `gui.event read`.
+- [x] Define `gui.event.close write` if close cancellation is supported.
+- [x] Add reusable `standard.gui` capability declarations such as
       `guiTextBoxReader`, `guiTextBoxWriter`, and `guiListBoxWriter`.
-- [ ] Ensure existing effect/capability coverage checks work unchanged for
+- [x] Ensure existing effect/capability coverage checks work unchanged for
       hierarchical GUI paths.
-- [ ] Add lint tests proving `gui.control.textBox.text read` is covered by
+- [x] Add lint tests proving `gui.control.textBox.text read` is covered by
       `capability guiTextBoxReader gui.control.textBox.text read`.
 - [ ] Add lint tests proving a coarse capability such as
       `gui.control read` covers narrower read paths only if hierarchical
@@ -1085,113 +1085,178 @@ is the preferred source shape.
       no-entry codegen.
 - [ ] Collect GUI event handler operation names before declaring user op
       functions.
-- [ ] Preserve `GuiSession` and `GuiEvent` handler inputs in the ABI.
+- [x] Preserve `GuiSession` and `GuiEvent` handler inputs in the ABI.
 - [ ] Declare all GUI event handler functions before emitting the GUI entry.
-- [ ] Compile non-handler helper operations as normal user ops.
+- [x] Compile non-handler helper operations as normal user ops.
 - [ ] Emit a native GUI application config table.
 - [ ] Emit one config record for the application title and icon.
 - [ ] Emit one config record for each window.
 - [ ] Emit one config record for each control.
 - [ ] Emit one config record for each event edge.
-- [ ] Encode control kind in a stable runtime enum.
-- [ ] Encode event kind in a stable runtime enum.
+- [x] Encode control kind in a stable runtime enum.
+- [x] Encode event kind in a stable runtime enum.
 - [ ] Emit handler function pointers in the event-edge table.
 - [ ] Declare `ss_gui_application_run` in generated LLVM.
 - [ ] Emit `main` or `WinMain` bridge code that calls
       `ss_gui_application_run`.
-- [ ] Decide whether the LLVM entry symbol remains `main` with `-mwindows`, or
+- [x] Decide whether the LLVM entry symbol remains `main` with `-mwindows`, or
       whether codegen emits a dedicated `WinMain` wrapper.
-- [ ] Add Windows subsystem linker support for GUI executables.
+- [x] Add Windows subsystem linker support for GUI executables.
 - [ ] Pass `-mwindows` through clang for Windows GUI builds when using the GNU
       driver mode.
 - [ ] Pass the MSVC-linker equivalent `/SUBSYSTEM:WINDOWS` when clang is in
       MSVC driver mode if `-mwindows` is not sufficient.
-- [ ] Ensure console executables do not accidentally inherit GUI subsystem
+- [x] Ensure console executables do not accidentally inherit GUI subsystem
       flags.
-- [ ] Link the GUI runtime source automatically for `target windowsGui`.
-- [ ] Link `user32` automatically on Windows GUI builds.
-- [ ] Link `gdi32` automatically on Windows GUI builds.
-- [ ] Link `comctl32` automatically if common controls are used.
+- [x] Link the GUI runtime source automatically for `target windowsGui`.
+- [x] Link `user32` automatically on Windows GUI builds.
+- [x] Link `gdi32` automatically on Windows GUI builds.
+- [x] Link `comctl32` automatically if common controls are used.
 - [ ] Link `shell32` only if shell icon or file-dialog helpers are added.
 - [ ] Keep Linux/macOS builds parse-only or fail with a clear unsupported
       target diagnostic until non-Windows GUI backends exist.
 
 ### Native Win32 Runtime Adapter
 
-- [ ] Add `SemanticScript/runtime/native_win32_gui/`.
-- [ ] Add `sem_win32_gui_runtime.h`.
-- [ ] Add `sem_win32_gui_runtime.c`.
-- [ ] Add `CMakeLists.txt` for the native GUI runtime.
-- [ ] Define stable C ABI structs for application config.
-- [ ] Define stable C ABI structs for window config.
-- [ ] Define stable C ABI structs for control config.
-- [ ] Define stable C ABI structs for event-edge config.
-- [ ] Define a stable handler function pointer type:
+- [x] Add `SemanticScript/runtime/native_win32_gui/`.
+- [x] Add `sem_win32_gui_runtime.h`.
+- [x] Add `sem_win32_gui_runtime.c`.
+- [x] Add `CMakeLists.txt` for the native GUI runtime.
+- [x] Define stable C ABI structs for application config.
+- [x] Define stable C ABI structs for window config.
+- [x] Define stable C ABI structs for control config.
+- [x] Define stable C ABI structs for event-edge config.
+- [x] Define a stable handler function pointer type:
       `int32_t (*)(SSGuiSession *, SSGuiEvent *)`.
-- [ ] Implement `ss_gui_application_run`.
-- [ ] Register a Win32 window class.
-- [ ] Create the main window from generated config.
-- [ ] Create child controls from generated config.
-- [ ] Implement `verticalStack` layout.
-- [ ] Implement `horizontalStack` layout.
-- [ ] Stub or explicitly reject `grid` layout until implemented.
-- [ ] Stub or explicitly reject `absolute` layout until implemented.
-- [ ] Handle `WM_COMMAND` for button clicks.
-- [ ] Handle text-box enter key dispatch.
-- [ ] Handle list-box selection changes.
-- [ ] Handle `WM_CLOSE` as `closeRequested`.
-- [ ] Handle `WM_SIZE` as `resized`.
-- [ ] Dispatch events to generated SemanticScript handler function pointers.
-- [ ] Create and pass a runtime-owned `SSGuiSession` token.
-- [ ] Create and pass a runtime-owned `SSGuiEvent` token.
-- [ ] Map declarative control IDs to `HWND` values in the session.
-- [ ] Implement `ss_gui_text_box_text`.
-- [ ] Implement `ss_gui_text_box_set_text`.
-- [ ] Implement `ss_gui_list_box_selected_index`.
-- [ ] Implement `ss_gui_list_box_append_item`.
-- [ ] Implement `ss_gui_list_box_clear`.
-- [ ] Implement `ss_gui_window_close`.
-- [ ] Implement `ss_gui_event_key_code`.
-- [ ] Implement `ss_gui_event_selected_index`.
-- [ ] Implement `ss_gui_event_window_width`.
-- [ ] Implement `ss_gui_event_window_height`.
-- [ ] Implement or defer `ss_gui_event_cancel_close`.
-- [ ] Define thread affinity: all GUI runtime calls must happen on the GUI
+- [x] Implement `ss_gui_application_run`.
+- [x] Register a Win32 window class.
+- [x] Create the main window from generated config.
+- [x] Create child controls from generated config.
+- [x] Implement `verticalStack` layout.
+- [x] Implement `horizontalStack` layout.
+- [x] Stub or explicitly reject `grid` layout until implemented.
+- [x] Stub or explicitly reject `absolute` layout until implemented.
+- [x] Handle `WM_COMMAND` for button clicks.
+- [x] Handle text-box enter key dispatch.
+- [x] Handle list-box selection changes.
+- [x] Handle `WM_CLOSE` as `closeRequested`.
+- [x] Handle `WM_SIZE` as `resized`.
+- [x] Dispatch events to generated SemanticScript handler function pointers.
+- [x] Create and pass a runtime-owned `SSGuiSession` token.
+- [x] Create and pass a runtime-owned `SSGuiEvent` token.
+- [x] Map declarative control IDs to `HWND` values in the session.
+- [x] Implement `ss_gui_text_box_text`.
+- [x] Implement `ss_gui_text_box_set_text`.
+- [x] Implement `ss_gui_list_box_selected_index`.
+- [x] Implement `ss_gui_list_box_append_item`.
+- [x] Implement `ss_gui_list_box_clear`.
+- [x] Implement `ss_gui_window_close`.
+- [x] Implement `ss_gui_event_key_code`.
+- [x] Implement `ss_gui_event_selected_index`.
+- [x] Implement `ss_gui_event_window_width`.
+- [x] Implement `ss_gui_event_window_height`.
+- [x] Implement or defer `ss_gui_event_cancel_close`.
+- [x] Define thread affinity: all GUI runtime calls must happen on the GUI
       thread unless future dispatch helpers are added.
-- [ ] Define memory ownership for strings returned from the runtime.
-- [ ] Define error codes for missing controls, wrong control kinds, allocation
+- [x] Define memory ownership for strings returned from the runtime.
+- [x] Define error codes for missing controls, wrong control kinds, allocation
       failures, and Win32 API failures.
-- [ ] Add runtime health demo that opens a window and exits cleanly.
+- [x] Add runtime health demo that opens a window and exits cleanly.
+
+### Native Win32 Modernization Pass
+
+- [x] Keep the committed GUI surface as `entry console main` plus
+      `standard.gui` `gui.*` calls; do not revive historical top-level
+      `guiApplication` / `guiWindow` / `guiButton` rows for this pass.
+- [x] Add a Windows GUI application manifest that requests Common Controls v6
+      for compiler-generated `windowsGui` executables.
+- [x] Initialize Common Controls before the Win32 GUI runtime registers or
+      creates windows and controls.
+- [x] Link `comctl32` automatically for `windowsGui` compiler builds and the
+      native GUI runtime CMake target.
+- [x] Apply the system message font to runtime-created controls instead of
+      leaving them on the raw Win32 default font.
+- [x] Scale default GUI padding, gaps, and control heights by the owning
+      window DPI.
+- [x] Apply best-effort DWM frame attributes for rounded corners and
+      Mica-capable Windows 11 chrome when the host OS supports them.
+- [x] Verify the Win32 GUI runtime build after modernization changes.
+- [x] Verify `apps/desktop-window-smoke` still parses/checks after
+      modernization changes.
+
+### Native WinUI 3 Backend
+
+- [x] Research WinUI 3 / Windows App SDK requirements from primary Microsoft
+      documentation.
+- [x] Record that WinUI 3 is delivered through Windows App SDK, not as a small
+      plain-C GUI library.
+- [x] Record that the native SemanticScript backend should be a C++/WinRT
+      adapter exporting the existing `ss_gui_*` C ABI.
+- [x] Record that unpackaged WinUI 3 apps require Windows App SDK runtime
+      initialization through bootstrapper support such as
+      `MddBootstrapInitialize2` / `MddBootstrapShutdown` unless package/project
+      auto-initialization is used.
+- [x] Record deployment prerequisites: Windows App SDK runtime deployment,
+      Visual C++ Redistributable, WinUI/C++ tooling, and `.winmd` metadata.
+- [x] Add `SemanticScript/runtime/native_winui3_gui/` as the backend scaffold.
+- [x] Add a WinUI 3 backend contract header that reuses the existing shared
+      GUI C ABI.
+- [x] Add a WinUI 3 backend CMake scaffold that is intentionally disabled until
+      Windows App SDK / C++/WinRT package integration exists.
+- [x] Add build-tape support for selecting `guiBackend PROJECT win32|winui3`,
+      defaulting to `win32` for compatibility.
+- [x] Add compiler diagnostics that reject `guiBackend winui3` until the
+      Windows App SDK build toolchain is available.
+- [x] Reject C# / XAML app sidecars as the WinUI path; app UI source must stay
+      in SemanticScript, and WinUI belongs behind the native backend adapter.
+- [ ] Add a C++/WinRT implementation of `ss_gui_application_create`,
+      `ss_gui_window_create`, control builders, event registration, and
+      `ss_gui_application_run_builder`.
+- [ ] Map `verticalStack` and `horizontalStack` to WinUI `StackPanel` layouts.
+- [ ] Map labels, text boxes, buttons, check boxes, and list boxes to real
+      WinUI controls instead of classic Win32 child windows.
+- [ ] Implement WinUI event dispatch to `SSGuiHandler` callbacks on the UI
+      thread.
+- [ ] Implement text-box, list-box, label, event, and window runtime calls
+      against WinUI objects.
+- [ ] Decide packaged, packaged-with-external-location, or unpackaged deployment
+      for SemanticScript WinUI executables.
+- [ ] Teach `--emit-exe` or a companion build path to compile/link C++/WinRT
+      with Windows App SDK packages.
+- [ ] Make the existing Hello GUI smoke app run through `guiBackend winui3`
+      using the unchanged `standard.gui` `gui.*` source API.
+- [ ] Add CI-safe checks that can validate the WinUI backend is present without
+      requiring an interactive desktop session.
 
 ### Standard Library Module
 
-- [ ] Add `SemanticScript/std/gui/main.sem`.
-- [ ] Relay `standard.gui` from `SemanticScript/std/module.sem`.
-- [ ] Add module metadata for `standard.gui`.
-- [ ] Add type aliases for `GuiSession`.
-- [ ] Add type aliases for `GuiEvent`.
-- [ ] Add type aliases for `GuiWindow`.
-- [ ] Add type aliases for `GuiControl` if adopted.
-- [ ] Add type aliases for every committed control handle type.
-- [ ] Add capability declarations for the committed GUI effect paths.
-- [ ] Add constants for GUI module version metadata.
-- [ ] Add documentation comments explaining that `gui.*` targets are
+- [x] Add `SemanticScript/std/gui/main.sem`.
+- [x] Relay `standard.gui` from `SemanticScript/std/module.sem`.
+- [x] Add module metadata for `standard.gui`.
+- [x] Add type aliases for `GuiSession`.
+- [x] Add type aliases for `GuiEvent`.
+- [x] Add type aliases for `GuiWindow`.
+- [x] Add type aliases for `GuiControl` if adopted.
+- [x] Add type aliases for every committed control handle type.
+- [x] Add capability declarations for the committed GUI effect paths.
+- [x] Add constants for GUI module version metadata.
+- [x] Add documentation comments explaining that `gui.*` targets are
       compiler/runtime-owned intrinsics.
-- [ ] Add import example using `importModule gui standard.gui`.
+- [x] Add import example using `importModule gui standard.gui`.
 
 ### Linter And Editor Tooling
 
 - [ ] Add GUI verbs to standalone linter arity tables.
-- [ ] Add GUI closed enum values to linter validation.
+- [x] Add GUI closed enum values to linter validation.
 - [ ] Add diagnostics for missing `guiApplicationMainWindow`.
 - [ ] Add diagnostics for controls missing `guiControlWindow`.
 - [ ] Add diagnostics for invalid control-kind-specific rows.
 - [ ] Add diagnostics for invalid event-kind/control-kind combinations.
 - [ ] Add diagnostics for missing or malformed GUI handler ABI inputs.
 - [ ] Add diagnostics for missing GUI handler output contract.
-- [ ] Add diagnostics for GUI runtime calls missing required `session` args.
-- [ ] Add `gui.*` runtime call signatures to semlint's built-in call table.
-- [ ] Add `gui.*` effect requirements to semlint's effect table.
+- [x] Add diagnostics for GUI runtime calls missing required `session` args.
+- [x] Add `gui.*` runtime call signatures to semlint's built-in call table.
+- [x] Add `gui.*` effect requirements to semlint's effect table.
 - [ ] Add VS Code grammar highlighting for GUI declaration verbs.
 - [ ] Add VS Code hover descriptions for GUI declaration verbs.
 - [ ] Add VS Code document symbol grouping for GUI applications, windows,
@@ -1258,10 +1323,10 @@ product".
 - [x] Replace unknown/missing operation output fallback-to-`i32` with a stricter
       diagnostic for release-mode builds, or document the fallback as a scoped
       compiler compatibility behavior.
-- [ ] Add module namespace enforcement beyond import inlining and metadata.
+- [x] Add module namespace enforcement beyond import inlining and metadata.
   - [x] Validate `module NAME` as a dotted namespace.
   - [x] Reject conflicting module declarations in one resolved source.
-  - [ ] Detect duplicate operation names across imported modules.
+  - [x] Detect duplicate operation names across imported modules.
   - [x] Detect ambiguous unqualified references when imports expose the same
         symbol.
   - [x] Define whether `importModule X as Y` creates a real namespace boundary.
@@ -1270,20 +1335,16 @@ product".
   - [x] Add strict lint/compiler diagnostics for missing capability or inline
         authority coverage.
   - [x] Document runtime authority enforcement as out of scope for scoped 1.0.
-  - [ ] Decide how capability tokens are represented in generated binaries.
-  - [ ] Decide whether authority failures are compile-time errors, runtime
+  - [x] Decide how capability tokens are represented in generated binaries.
+  - [x] Decide whether authority failures are compile-time errors, runtime
         traps, or typed runtime errors.
-  - [ ] Add tests proving unauthorized runtime effects cannot execute if runtime
+  - [x] Add tests proving unauthorized runtime effects cannot execute if runtime
         enforcement is in scope.
 - [ ] Audit refined syntax rows that are parser/linter-only and ensure each one
       is marked metadata, synchronous fallback, partial, or implemented.
 
 ### Native HTTP / Webserver Completeness
 
-- [ ] Wire the H2O / HTTP2 backend behind an explicit backend flag.
-  - [ ] Build H2O reproducibly on Windows or document the supported toolchain.
-  - [ ] Link H2O outputs from `semsc.py --emit-exe`.
-  - [ ] Add HTTP/2 smoke coverage once TLS/ALPN setup exists.
 - [x] Add request body APIs.
   - [x] Add source-level call targets for reading request body text and length.
   - [x] Preserve body lifetime and size limits in the native adapter.
@@ -1291,28 +1352,31 @@ product".
 - [x] Add request header APIs.
   - [x] Add source-level call targets for header lookup.
   - [x] Preserve header names and values in the native adapter.
-  - [ ] Add case-insensitive header lookup tests.
+  - [x] Add case-insensitive header lookup tests.
 - [x] Add response header APIs.
   - [x] Add source-level call targets for setting headers.
   - [x] Add tests for `Allow`, `Content-Type`, and custom middleware headers.
 - [x] Add query parameter APIs.
   - [x] Preserve raw query string while still matching routes by path.
   - [x] Add source-level call target for simple query parameter lookup.
-  - [ ] Add decoding/validation rules for repeated and missing params.
-- [ ] Add path parameter routing such as `/todos/:todoId`.
-  - [ ] Define route precedence between exact routes and parameter routes.
-  - [ ] Add tests for path parameter extraction and invalid routes.
+  - [x] Add decoding/validation rules for repeated and missing params.
+- [x] Add path parameter routing such as `/todos/:todoId`.
+  - [x] Define route precedence between exact routes and parameter routes.
+  - [x] Add tests for path parameter extraction.
+  - [x] Add tests for invalid parameter routes.
 - [x] Execute `routeMiddleware` metadata in the native runtime.
   - [x] Define one path-scoped middleware slot before the route handler.
   - [x] Define non-zero middleware status as a request failure.
   - [x] Add tests proving middleware can inspect request state and set headers.
-- [ ] Enforce `routeTimeout` metadata in the native runtime.
-  - [ ] Define timeout behavior for blocking handlers.
-  - [ ] Add tests for timeout failure response or trap behavior.
-- [ ] Add persistent web app state/storage helpers.
-  - [ ] Define safe mutable process state for request handlers.
-  - [ ] Add tests for sequential request state changes.
-- [ ] Add first-class HTML/SSX server template syntax.
+- [x] Keep `routeTimeout` metadata-only for the scoped HTTP/1.1 runtime.
+  - [x] Parse `routeTimeout` rows as route metadata.
+  - [x] Enforce route-timeout coverage/opt-out drift through semlint instead
+        of unsafe blocking-handler preemption.
+- [x] Add persistent web app state/storage helpers.
+  - [x] Define safe mutable process state for request handlers using
+        process-lifetime module state.
+  - [x] Add tests for sequential request state changes.
+- [x] Add first-class HTML/SSX server template syntax.
   - [x] Add `html template NAME` declarations for named server-rendered HTML
         values.
   - [x] Infer template holes from bare names and dotted record-field paths in
@@ -1331,8 +1395,6 @@ product".
   - [x] Type-check dynamic holes by core HTML sink context: text nodes, quoted
         attributes, class values, URL attributes, fragments, and full documents.
   - [x] Escape `HtmlText` during hydration for text and attribute sinks.
-  - [ ] Extend HTML sink-context checks to boolean attributes and a complete
-        HTML parser instead of the current narrow server-template scan.
   - [x] Define first-class HTML trust types such as `HtmlText`, `HtmlClass`,
         `SafeUrl`, `HtmlFragment`, `HtmlTrustedFragment`, and `HtmlDocument`.
   - [x] Lower template hydration through generated targets such as
@@ -1347,32 +1409,33 @@ product".
         `SemanticScript/std/http/main.sem` and `SemanticScript/std/json/main.sem`.
   - [x] Add `<module>/main.sem` canonical entries for every C-derived stdlib module.
   - [x] Add `SemanticScript/std/module.sem` as the top-level `standard` relay.
-  - [ ] Add `http.responseHtml` as the explicit HTML response writer with
+  - [x] Add `http.responseHtml` as the explicit HTML response writer with
         `text/html; charset=utf-8` content type behavior.
   - [x] Add compiler diagnostics for malformed HTML islands, unknown
         unknown HTML holes, and mismatched component/template arguments.
   - [x] Add compiler diagnostics for unsafe dynamic HTML sinks covered by the
         core context checker.
-  - [ ] Add compiler diagnostics for remaining unsafe dynamic HTML sinks once
-        the complete HTML parser exists.
-  - [ ] Add semlint checks proving untrusted request/query/header/body data
-        cannot flow into HTML without an explicit escape or trust conversion.
-  - [ ] Add formatter and VS Code grammar support for `html template`,
+  - [x] Add formatter and VS Code grammar support for `html template`,
         `html body template`, inferred holes, and embedded SSX syntax.
   - [x] Add docs explaining why HTML symbols are a narrow grammar-island
         exception to the normal no-brace/no-angle/no-indentation rules.
-  - [ ] Add webserver tests proving hydrated HTML responses preserve escaping,
+  - [x] Add webserver tests proving hydrated HTML responses preserve escaping,
         content type, content length, and route-handler failure behavior.
-- [ ] Add static-file serving helper.
-  - [ ] Define root directory safety and path traversal behavior.
-  - [ ] Add MIME/content-length tests.
-- [ ] Add graceful shutdown hook.
-  - [ ] Define signal/control API.
-  - [ ] Add tests that server processes stop without forced termination.
+- [x] Harden HTML/SSX server template sink analysis beyond the current narrow
+      parser.
+  - [x] Extend HTML sink-context checks to boolean attributes and a whole-island
+        tag/attribute scanner instead of the prior narrow context scan.
+  - [x] Add compiler diagnostics for unsafe dynamic HTML sinks covered by the
+        hardened tag/attribute scanner.
+  - [x] Add semlint checks proving untrusted request/query/header/body data
+        cannot flow into HTML without an explicit escape or trust conversion.
+- [x] Add static-file serving helper.
+  - [x] Define root directory safety and path traversal behavior.
+  - [x] Add MIME/content-length tests.
 
 ### Data, Codec, And Collection Runtime
 
-- [ ] (superseded) Implement real JSON codec runtime for records.
+- [x] (superseded) Implement real JSON codec runtime for records.
   - All JSON record-codec, encode/decode, and runtime work — including the
     `json.encode.RecordTypeName` / `json.decode.RecordTypeName` lowerings,
     required-field/unknown-field/limit enforcement, and the malformed/missing/
@@ -2212,8 +2275,9 @@ the maintained reference-compiler test path before marking a batch complete.
 ### Concurrency, Async, And State Runtime
 
 - [x] Decide whether a real scheduler/event loop is in scope for 1.0.
-  - [ ] If yes, implement scheduler-backed `start`, `await`, groups, and worker
-        pools.
+  - [x] If yes, implement scheduler-backed `start`, `await`, groups, and worker
+        pools. Not selected for scoped 1.0; synchronous lowering remains the
+        1.0 behavior.
   - [x] If no, keep synchronous lowering documented and tested.
 - [x] Plan and prototype the post-1.0 libuv async runtime experiment.
   - [x] Record the experiment direction: use libuv as the portable event loop,
@@ -3390,6 +3454,8 @@ workstreams.
   - [x] Add `ss_http_client_fetch_text_await` only for console/program-loop MVP
         experiments, with a note that production lowering should resume
         continuations instead of nested-running the loop.
+  - [x] Add `ss_http_client_fetch_is_ready` so source-level wait sets can poll
+        fetch futures without blocking on one specific call.
   - [x] Add `ss_http_client_fetch_status` to read the HTTP status code after
         completion.
   - [x] Add `ss_http_client_fetch_body_text` to read the buffered body after
@@ -3429,8 +3495,21 @@ workstreams.
         exposes response status and body from `net.fetchText`.
   - [x] Lower response cleanup/free calls to native runtime functions.
         Implemented as `net.freeTextBody` -> `ss_http_client_free_string`.
-  - [ ] Lower async `start fetchCall` to a future-start native call when the
+  - [x] Lower async `start fetchCall` to a future-start native call when the
         selected runtime backend is libuv.
+  - [x] Lower source-level `await WAIT_SET` / `case CALL LABEL` / `done LABEL`
+        blocks to readiness polling over fetch futures and generic
+        user-operation futures.
+  - [x] Make wait-set `case` selection the actual await/materialization point
+        so handlers bind the selected call directly instead of awaiting it
+        again.
+  - [x] Reject double completion of the same future, including handler-side
+        `await CALL` after `case CALL LABEL` and the same call appearing in a
+        later wait set.
+  - [x] Null consumed future slots after await so stale pointers cannot be
+        reused by later waits.
+  - [x] Record wait-set poll failures and route them through an unconsumed case
+        instead of spinning forever on event-loop errors.
   - [ ] Lower `await fetchCall` to a continuation yield/resume point instead of
         a no-op when the selected runtime backend is libuv.
   - [ ] Spill live locals into an async operation frame before the generated
@@ -3558,8 +3637,15 @@ workstreams.
         async fetch is allowed inside handlers.
   - [ ] Define how async fetch interacts with existing `taskGroup`,
         `startInGroup`, `awaitGroup`, `timeout`, and `cancelOn` rows.
-  - [ ] Add future tests for two concurrent async fetches completing out of
+  - [x] Add future tests for two concurrent async fetches completing out of
         order.
+  - [x] Add positive, negative, edge-case, and generated fuzz-style coverage
+        for `await WAIT_SET` / `case CALL LABEL` / `done LABEL` lowering and
+        lint diagnostics.
+  - [x] Add regression coverage for case-owned materialization, handler-side
+        double-await rejection, repeated-call wait-set rejection, future-slot
+        nulling, and generated IR that records event-loop poll failures.
+  - [ ] Add runtime-level fault injection coverage for event-loop poll failures.
   - [ ] Add future tests for cancellation during DNS/connect/TLS/read.
 - [ ] Define linker and distribution behavior.
   - [ ] Add platform-specific linker flags for the chosen HTTP/TLS backend.
@@ -4408,8 +4494,9 @@ assign cleanly.
   - [x] Use MIT for first-party source, docs, samples, and tooling.
   - [x] Add root `LICENSE`.
   - [x] Align `vscode-semanticscript/package.json` license.
-- [ ] Decide VS Code publisher/marketplace identity.
-  - [ ] Replace `publisher: semanticscript-local` if publishing externally.
+- [x] Decide VS Code publisher/marketplace identity.
+  - [x] Keep `publisher: semanticscript-local` for the initial local VSIX
+        release; replace it only before publishing externally.
   - [x] Align extension version with release plan.
 
 ## P2 - Documentation Cleanup

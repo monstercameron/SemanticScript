@@ -1,8 +1,8 @@
 # Release Hygiene Policy
 
 Release hygiene covers repository state, generated artifacts, local package
-metadata, component versions, and intentionally duplicated fixtures. It records
-the chosen project license but does not choose a public marketplace identity.
+metadata, component versions, intentionally duplicated fixtures, and the initial
+VS Code extension publishing posture.
 
 ## License Posture
 
@@ -55,9 +55,10 @@ publishing outside the repository.
 `vscode-semanticscript/package.json` uses version `1.0.5` for the current
 SemanticScript local VSIX build.
 
-The publisher remains `semanticscript-local`. That value is for local packaging
-and development-host installs only. Do not publish to the VS Code Marketplace
-until a real publisher account is selected and the `publisher` field is changed.
+The initial 1.0 release is local VSIX only. The publisher remains
+`semanticscript-local`; that value is for local packaging and development-host
+installs only. Do not publish to the VS Code Marketplace until a real publisher
+account is selected and the `publisher` field is changed.
 
 Generated `.vsix` files are ignored and should be attached outside the repo or
 rebuilt from the release tag.

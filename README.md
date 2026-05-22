@@ -605,5 +605,6 @@ The public 1.0 compatibility contract lives in
 - `python/` is the canonical home for Python comparison programs.
 - `.sem` files directly under `SemanticScript/sem/` are tracked alias fixtures
   and should stay aligned with their `.sscript` counterparts.
-- `vscode-semanticscript/package.json` uses `semanticscript-local` for local
-  VSIX builds; choose a real Marketplace publisher before public publishing.
+- The initial VS Code extension release is local VSIX only.
+  `vscode-semanticscript/package.json` uses `semanticscript-local` for local
+  builds; choose a real Marketplace publisher before public publishing.

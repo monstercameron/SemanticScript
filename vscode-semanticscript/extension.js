@@ -13,18 +13,20 @@ const declarationVerbs = new Set([
   'buildProject', 'modulePath', 'languageVersion', 'sourceRoot', 'registerModule',
   'projectVersion', 'projectLicense', 'mainFile', 'mainOperation', 'testPattern', 'testRoot',
   'dependencySource', 'dependencyFetch', 'dependencyCache', 'dependencyLock', 'dependencyIntegrity',
-  'targetRuntime', 'buildProfile', 'runtimeChecks', 'optLevel', 'persistLlvmIr',
+  'targetRuntime', 'guiBackend', 'buildProfile', 'runtimeChecks', 'asyncRuntime', 'optLevel', 'persistLlvmIr',
   'emitLlvmIr', 'llvmIrOutput', 'emitOptimizedLlvmIr', 'optimizedLlvmIrOutput',
   'buildDir', 'buildRoot', 'buildFolderName',
   'cpuBaseline', 'cpuTune', 'cpuFeature', 'cpuFeatureCheck', 'nativeOutput',
-  'nativeHttpHost', 'nativeHttpPort', 'formatterSetting', 'linterSetting', 'docsOutput',
+  'keepResources', 'resourcesDir', 'nativeHttpHost', 'nativeHttpPort',
+  'formatterSetting', 'linterSetting', 'docsOutput', 'buildConstant',
   'iconRoleDefinition', 'icon', 'iconRole', 'iconPurpose',
   'iconImage', 'iconImageGroup', 'iconImagePath', 'iconImageFormat',
   'iconImageWidth', 'iconImageHeight', 'iconImageScale',
   'iconImageDepth', 'iconImagePlatform', 'iconImagePurpose',
   'comptimeOperation', 'moduleFolder', 'modulePurpose', 'moduleOwns',
   'moduleDoesNotOwn', 'moduleDependency', 'moduleWarning', 'moduleInvariant',
-  'moduleSecurity', 'moduleObservability', 'exportType', 'exportError',
+  'moduleSecurity', 'moduleObservability', 'nativeRuntimeSource',
+  'nativeRuntimeLinkArg', 'exportType', 'exportError',
   'exportOperation', 'exportCapability', 'exportConstant',
   'version', 'publisher', 'description', 'copyright', 'productName',
   'internalName', 'originalFilename', 'trademark', 'comments', 'metadata',
@@ -33,6 +35,7 @@ const declarationVerbs = new Set([
   'type', 'typeParameter', 'typeInvariant', 'typeRepresentation', 'typeTrust',
   'typeMemory', 'typeLayout', 'typeLiteralEncoding', 'typeLiteralTerminator',
   'record', 'recordLayout', 'recordAlign', 'field', 'fieldDefault', 'fieldInvariant',
+  'recordFieldJsonName', 'recordFieldJsonOmitWhen',
   'enum', 'enumCase', 'error',
   'errorCase', 'operation', 'webServer', 'serverHost', 'serverPort', 'route',
   'routeTimeout', 'routeMiddleware', 'routeTimeoutOptOut', 'routeMiddlewareOptOut',
@@ -43,7 +46,7 @@ const declarationVerbs = new Set([
   'timeoutBudget', 'capability', 'authority', 'mutex', 'shared', 'channel',
   'listType', 'arrayType', 'sliceType', 'smallListType', 'mapType',
   'interval', 'workerPool', 'work',
-  'const', 'var', 'testCovers',
+  'const', 'var', 'let', 'testCovers',
 ]);
 
 const contextVerbs = new Set([
@@ -83,7 +86,7 @@ const contextVerbs = new Set([
 ]);
 
 const actionVerbs = new Set([
-  'set', 'call', 'arg', 'argument', 'run', 'runChecked', 'start', 'await', 'bind', 'bindOk',
+  'set', 'call', 'arg', 'argument', 'run', 'runChecked', 'start', 'await', 'case', 'done', 'bind', 'bindOk',
   'bindError', 'bindOwned', 'bindOkOwned', 'ignore', 'ignoreOk', 'ignoreValue', 'ignoreError',
   'declareFailure', 'makeError', 'requireNonNull',
   'new', 'fieldGet', 'fieldSet', 'recordBuilder', 'recordSet', 'recordCopy',
@@ -152,6 +155,10 @@ const primitiveTargets = new Map([
   ['scheduler.sleep', 'Async typed-duration sleep target. Use cancelOn, start, await, bind error, and branch error.'],
   ['retryPolicy.delayForAttempt', 'Retry-policy delay calculation target. Fallible when policy or attempt state is invalid.'],
   ['metrics.computeIncrementI64', 'Metrics-owned counter increment calculation. Fallible target; bind success and error explicitly.'],
+  ['net.fetchText', 'Native HTTP client text fetch. Accepts either request HttpGetRequest or url/timeoutMillis/maxBodyBytes args and returns borrowed response text that must be freed with net.freeTextBody.'],
+  ['net.fetchBytes', 'Native HTTP client byte fetch MVP. Shares the text-fetch buffer and should be paired with net.freeTextBody.'],
+  ['net.freeTextBody', 'Native HTTP client cleanup target for bodies returned by net.fetchText/net.fetchBytes.'],
+  ['http.responseHtml', 'Native HTTP HTML writer: response, status, body -> CSignedInt32. Uses fixed text/html; charset=utf-8 and rejects null body pointers.'],
   ['http.responseText', 'Native HTTP writer: response, status, body, optional contentType -> CSignedInt32. Body must be non-null.'],
   ['http.responseBytes', 'Native HTTP binary writer: response, status, body, bodyLength, optional contentType -> CSignedInt32. Preserves embedded NUL bytes.'],
   ['http.responseSseEvent', 'Native one-shot SSE writer: response, status, event, data -> CSignedInt32. Emits text/event-stream and closes the response.'],
@@ -210,49 +217,159 @@ const primitiveTargets = new Map([
   ['bcrypt.base64UrlEncode', 'Native base64url encoder target from standard.bcrypt.'],
   ['sqlite.openDatabase', 'Native sqlite database open target.'],
   ['sqlite.closeDatabase', 'Native sqlite database close target.'],
+  ['sqlite.errorMessage', 'Native sqlite database error-message reader. Returns SQLite-owned text.'],
+  ['sqlite.lastInsertRowId', 'Native sqlite last insert rowid target.'],
+  ['sqlite.changedRowCount', 'Native sqlite changed-row-count reader target.'],
   ['sqlite.exec', 'Native sqlite statement execution target.'],
   ['sqlite.prepareStatement', 'Native sqlite prepared statement target.'],
+  ['sqlite.finalizeStatement', 'Native sqlite prepared-statement finalizer target.'],
+  ['sqlite.resetStatement', 'Native sqlite statement reset target.'],
+  ['sqlite.stepStatement', 'Native sqlite statement step target returning SqliteStepResult on success.'],
   ['sqlite.bindInt64', 'Native sqlite int64 binding target.'],
+  ['sqlite.bindDouble', 'Native sqlite floating-point binding target.'],
   ['sqlite.bindText', 'Native sqlite text binding target.'],
-  ['sqlite.stepStatement', 'Native sqlite statement step target.'],
+  ['sqlite.bindBlob', 'Native sqlite blob binding target.'],
+  ['sqlite.bindNull', 'Native sqlite null binding target.'],
+  ['sqlite.columnCount', 'Native sqlite column-count reader target.'],
+  ['sqlite.columnType', 'Native sqlite column-type reader target.'],
+  ['sqlite.columnName', 'Native sqlite column-name reader target. Returns SQLite-owned text.'],
   ['sqlite.columnInt64', 'Native sqlite int64 column reader target.'],
+  ['sqlite.columnDouble', 'Native sqlite floating-point column reader target.'],
   ['sqlite.columnText', 'Native sqlite text column reader target.'],
-  ['sqlite.lastInsertRowId', 'Native sqlite last insert rowid target.'],
+  ['sqlite.columnBlob', 'Native sqlite blob column reader target. Returns SQLite-owned bytes.'],
+  ['sqlite.columnByteCount', 'Native sqlite column byte-count reader target.'],
+  ['sqlite.libraryVersion', 'Native sqlite library version reader target.'],
+  ['json.createBuilder', 'Native JSON builder creation target. Deprecated in favor of the document CRUD API for new code.'],
+  ['json.destroyBuilder', 'Native JSON builder cleanup target.'],
+  ['json.objectOpen', 'Native JSON builder object-open target.'],
+  ['json.objectClose', 'Native JSON builder object-close target.'],
+  ['json.arrayOpen', 'Native JSON builder array-open target.'],
+  ['json.arrayClose', 'Native JSON builder array-close target.'],
+  ['json.fieldInt64', 'Native JSON builder object int64 field writer.'],
+  ['json.fieldDouble', 'Native JSON builder object double field writer.'],
+  ['json.fieldBool', 'Native JSON builder object bool field writer.'],
+  ['json.fieldString', 'Native JSON builder object string field writer.'],
+  ['json.fieldNull', 'Native JSON builder object null field writer.'],
+  ['json.elementInt64', 'Native JSON builder array int64 element writer.'],
+  ['json.elementDouble', 'Native JSON builder array double element writer.'],
+  ['json.elementBool', 'Native JSON builder array bool element writer.'],
+  ['json.elementString', 'Native JSON builder array string element writer.'],
+  ['json.elementNull', 'Native JSON builder array null element writer.'],
+  ['json.finishBuilder', 'Native JSON builder finish target returning serialized text.'],
+  ['json.builderLength', 'Native JSON builder serialized-length reader.'],
+  ['json.hasField', 'Deprecated flat JSON field-presence finder. Prefer document cursors for nested JSON.'],
+  ['json.findString', 'Deprecated flat JSON string-field finder. Prefer document cursors for nested JSON.'],
+  ['json.findInt64', 'Deprecated flat JSON int64-field finder. Prefer document cursors for nested JSON.'],
+  ['json.findDouble', 'Deprecated flat JSON double-field finder. Prefer document cursors for nested JSON.'],
+  ['json.findBool', 'Deprecated flat JSON bool-field finder. Prefer document cursors for nested JSON.'],
   ['json.createDocument', 'Native JSON document creation target.'],
   ['json.createEmptyDocument', 'Native empty JSON document creation target.'],
+  ['json.destroyDocument', 'Native JSON document cleanup target.'],
   ['json.documentRoot', 'Native JSON document root cursor target.'],
   ['json.serializeDocument', 'Native JSON document serialization target.'],
+  ['json.documentLength', 'Native JSON document serialized-length target.'],
   ['json.objectFieldAt', 'Native JSON object field cursor target.'],
+  ['json.arrayElementAt', 'Native JSON array element cursor target.'],
+  ['json.cursorParent', 'Native JSON parent cursor target.'],
+  ['json.cursorAtPath', 'Native JSON path cursor target using .field and [index] syntax.'],
+  ['json.cursorKind', 'Native JSON cursor kind reader target.'],
+  ['json.cursorIsNull', 'Native JSON cursor null-check target.'],
   ['json.cursorString', 'Native JSON cursor string reader target.'],
   ['json.cursorInt64', 'Native JSON cursor int64 reader target.'],
+  ['json.cursorDouble', 'Native JSON cursor double reader target.'],
+  ['json.cursorBool', 'Native JSON cursor bool reader target.'],
+  ['json.cursorArrayLength', 'Native JSON cursor array-length reader target.'],
+  ['json.cursorObjectFieldCount', 'Native JSON cursor object-field-count reader target.'],
+  ['json.cursorObjectFieldNameAt', 'Native JSON cursor object-field-name reader target.'],
+  ['json.cursorObjectFieldValueAt', 'Native JSON cursor object-field-value reader target.'],
   ['json.setObjectFieldString', 'Native JSON object string setter target.'],
   ['json.setObjectFieldInt64', 'Native JSON object int64 setter target.'],
+  ['json.setObjectFieldDouble', 'Native JSON object double setter target.'],
   ['json.setObjectFieldBool', 'Native JSON object bool setter target.'],
+  ['json.setObjectFieldNull', 'Native JSON object null setter target.'],
   ['json.setObjectFieldObject', 'Native JSON object child-object setter target.'],
   ['json.setObjectFieldArray', 'Native JSON object child-array setter target.'],
+  ['json.setObjectFieldJsonText', 'Native JSON object raw JsonText setter target.'],
+  ['json.appendArrayElementString', 'Native JSON array string append target.'],
+  ['json.appendArrayElementInt64', 'Native JSON array int64 append target.'],
+  ['json.appendArrayElementDouble', 'Native JSON array double append target.'],
+  ['json.appendArrayElementBool', 'Native JSON array bool append target.'],
+  ['json.appendArrayElementNull', 'Native JSON array null append target.'],
   ['json.appendArrayElementObject', 'Native JSON array object append target.'],
+  ['json.appendArrayElementArray', 'Native JSON array child-array append target.'],
+  ['json.appendArrayElementJsonText', 'Native JSON array raw JsonText append target.'],
+  ['json.insertArrayElementString', 'Native JSON array string insert target.'],
+  ['json.insertArrayElementInt64', 'Native JSON array int64 insert target.'],
+  ['json.insertArrayElementDouble', 'Native JSON array double insert target.'],
+  ['json.insertArrayElementBool', 'Native JSON array bool insert target.'],
+  ['json.insertArrayElementNull', 'Native JSON array null insert target.'],
+  ['json.insertArrayElementObject', 'Native JSON array object insert target.'],
+  ['json.insertArrayElementArray', 'Native JSON array child-array insert target.'],
+  ['json.insertArrayElementJsonText', 'Native JSON array raw JsonText insert target.'],
+  ['json.replaceArrayElementString', 'Native JSON array string replace target.'],
+  ['json.replaceArrayElementInt64', 'Native JSON array int64 replace target.'],
+  ['json.replaceArrayElementDouble', 'Native JSON array double replace target.'],
+  ['json.replaceArrayElementBool', 'Native JSON array bool replace target.'],
+  ['json.replaceArrayElementNull', 'Native JSON array null replace target.'],
+  ['json.replaceArrayElementObject', 'Native JSON array object replace target.'],
+  ['json.replaceArrayElementArray', 'Native JSON array child-array replace target.'],
+  ['json.replaceArrayElementJsonText', 'Native JSON array raw JsonText replace target.'],
+  ['json.removeObjectField', 'Native JSON object-field removal target.'],
+  ['json.removeArrayElementAt', 'Native JSON array element removal target.'],
+  ['json.clearObject', 'Native JSON object clear target.'],
+  ['json.clearArray', 'Native JSON array clear target.'],
 ]);
 
-const generatedTargetPattern = /^(?:json\.(?:parse|stringify)\.[A-Z][A-Za-z0-9_]*|html\.hydrate\.[A-Z][A-Za-z0-9_]*)$/;
+const generatedTargetPattern = /^(?:json\.(?:encode|decode|parse|stringify)\.[A-Z][A-Za-z0-9_]*|html\.hydrate\.[A-Z][A-Za-z0-9_]*)$/;
 const cRuntimeTargetPattern = /^c\.[A-Za-z_][A-Za-z0-9_]*$/;
-const jsonPrimitiveTargetTypes = new Set([
+const jsonDecodePrimitiveTargetTypes = new Set([
   'I64', 'CSignedInt64', 'CSignedInt32', 'CUnsignedInt32',
   'CSignedInt16', 'CUnsignedInt16', 'CSignedByte', 'CUnsignedByte',
   'DurationMilliseconds', 'MonotonicMilliseconds', 'UtcMilliseconds',
-  'Bool', 'F64', 'CFloat64', 'CFloat32', 'String', 'CNullTerminatedByteString',
+  'Bool', 'F64', 'CFloat64', 'CFloat32',
+]);
+const jsonEncodePrimitiveTargetTypes = new Set([
+  ...jsonDecodePrimitiveTargetTypes,
+  'String', 'CNullTerminatedByteString',
+]);
+const jsonParsePrimitiveTargetTypes = new Set([
+  ...jsonDecodePrimitiveTargetTypes,
+  'JsonText',
+]);
+const jsonStringifyPrimitiveTargetTypes = new Set([
+  ...jsonEncodePrimitiveTargetTypes,
+  'JsonText',
 ]);
 
 const generatedTargetHoverText = (text) => {
   const targetType = text.split('.').pop();
 
-  if (jsonPrimitiveTargetTypes.has(targetType)) {
-    if (text.startsWith('json.parse.')) {
-      return 'Reference compiler primitive JSON parse target. Numeric values use libc parsing, Bool compares against true, and malformed inputs return the libc default.';
-    }
+  if (text.startsWith('json.decode.') && jsonDecodePrimitiveTargetTypes.has(targetType)) {
+    return 'Legacy primitive JSON decode target. Numeric values use libc parsing, Bool compares against true, and malformed inputs return the libc default.';
+  }
 
-    if (text.startsWith('json.stringify.')) {
-      return 'Reference compiler primitive JSON stringify target. Numerics and Bool use direct formatting; strings are quoted with full escaping deferred to the codec runtime.';
+  if (text.startsWith('json.encode.') && jsonEncodePrimitiveTargetTypes.has(targetType)) {
+    return 'Legacy primitive JSON encode target. Numerics and Bool use direct formatting; strings are quoted with full escaping deferred to the codec runtime.';
+  }
+
+  if (jsonParsePrimitiveTargetTypes.has(targetType)) {
+    if (text.startsWith('json.parse.')) {
+      return 'High-level primitive JSON parse target. It lowers through native_json strict token parsing for primitives and validates JsonText syntax.';
     }
+  }
+
+  if (jsonStringifyPrimitiveTargetTypes.has(targetType)) {
+    if (text.startsWith('json.stringify.')) {
+      return 'High-level primitive JSON stringify target. Strings and JsonText lower through native_json escaping/copy paths; numeric and Bool values use bounded formatting.';
+    }
+  }
+
+  if (text.startsWith('json.decode.')) {
+    return 'Legacy generated JSON decode target for record metadata. It remains partial while json.parse.* is the preferred high-level surface.';
+  }
+
+  if (text.startsWith('json.encode.')) {
+    return 'Legacy generated JSON encode target for record metadata. It remains partial while json.stringify.* is the preferred high-level surface.';
   }
 
   if (text.startsWith('json.parse.')) {
@@ -408,6 +525,74 @@ const schemaValues = new Map([
   ['logAndSuppress', 'Defer failure policy: log cleanup failure and preserve the original return.'],
   ['protectedBy', 'Authority marker: following token is the guard token protecting the operation.'],
   ['ownedBy', 'Authority marker: following token owns the module mutation.'],
+  ['permissiveExecutable', 'Language mode that explicitly opts out of the strict executable wall.'],
+  ['library', 'Project target runtime for library-style builds.'],
+  ['none', 'Explicit no-failure marker or asyncRuntime value that preserves synchronous start/await lowering.'],
+  ['libuv', 'Experimental asyncRuntime backend selector for the native async runtime.'],
+  ['on', 'Boolean-ish build option value, commonly used by cpuFeature.'],
+  ['off', 'Boolean-ish build option value, runtime-check mode, or CPU feature-check opt-out.'],
+  ['path', 'Dependency source kind for a local filesystem dependency path.'],
+  ['x86_64_v1', 'Portable x86-64 baseline CPU feature level.'],
+  ['win32', 'Native Windows GUI backend selector.'],
+  ['winui3', 'Recognized but currently blocked Windows App SDK GUI backend selector.'],
+  ['cursor', 'Icon role token for cursor assets.'],
+  ['notification', 'Icon role token for notification assets.'],
+  ['splash', 'Icon role token for splash-screen assets.'],
+  ['empty', 'recordFieldJsonOmitWhen policy for omitted or empty string fields.'],
+  ['null', 'JSON null literal or recordFieldJsonOmitWhen policy for explicit null values.'],
+  ['zero', 'recordFieldJsonOmitWhen policy for absent numeric zero defaults.'],
+  ['rowSqliteStepResult', 'SqliteStepResult enum value for a row being available.'],
+  ['doneSqliteStepResult', 'SqliteStepResult enum value for statement completion.'],
+  ['integerSqliteColumnType', 'SqliteColumnType enum value for integer columns.'],
+  ['floatSqliteColumnType', 'SqliteColumnType enum value for floating-point columns.'],
+  ['textSqliteColumnType', 'SqliteColumnType enum value for text columns.'],
+  ['blobSqliteColumnType', 'SqliteColumnType enum value for blob columns.'],
+  ['nullSqliteColumnType', 'SqliteColumnType enum value for null columns.'],
+  ['objectJsonValueKind', 'JsonValueKind enum value for object cursors.'],
+  ['arrayJsonValueKind', 'JsonValueKind enum value for array cursors.'],
+  ['stringJsonValueKind', 'JsonValueKind enum value for string cursors.'],
+  ['integerJsonValueKind', 'JsonValueKind enum value for integer cursors.'],
+  ['doubleJsonValueKind', 'JsonValueKind enum value for double cursors.'],
+  ['booleanJsonValueKind', 'JsonValueKind enum value for boolean cursors.'],
+  ['nullJsonValueKind', 'JsonValueKind enum value for null cursors.'],
+  ['windowGuiTargetKind', 'GuiTargetKind enum value for windows.'],
+  ['controlGuiTargetKind', 'GuiTargetKind enum value for controls.'],
+  ['defaultGuiWindowLayout', 'GuiWindowLayout enum default value.'],
+  ['verticalStackGuiWindowLayout', 'GuiWindowLayout enum value for vertical stacks.'],
+  ['horizontalStackGuiWindowLayout', 'GuiWindowLayout enum value for horizontal stacks.'],
+  ['gridGuiWindowLayout', 'GuiWindowLayout enum value for grid layout.'],
+  ['absoluteGuiWindowLayout', 'GuiWindowLayout enum value for absolute positioning.'],
+  ['buttonGuiControlKind', 'GuiControlKind enum value for buttons.'],
+  ['textBoxGuiControlKind', 'GuiControlKind enum value for text boxes.'],
+  ['listBoxGuiControlKind', 'GuiControlKind enum value for list boxes.'],
+  ['checkBoxGuiControlKind', 'GuiControlKind enum value for check boxes.'],
+  ['menuItemGuiControlKind', 'GuiControlKind enum value for menu items.'],
+  ['statusBarGuiControlKind', 'GuiControlKind enum value for status bars.'],
+  ['textLabelGuiControlKind', 'GuiControlKind enum value for text labels.'],
+  ['defaultGuiListBoxSelectionMode', 'GuiListBoxSelectionMode default enum value.'],
+  ['singleGuiListBoxSelectionMode', 'GuiListBoxSelectionMode single-selection value.'],
+  ['multipleGuiListBoxSelectionMode', 'GuiListBoxSelectionMode multi-selection value.'],
+  ['clickGuiEventKind', 'GuiEventKind enum value for clicks.'],
+  ['valueChangedGuiEventKind', 'GuiEventKind enum value for value changes.'],
+  ['selectionChangedGuiEventKind', 'GuiEventKind enum value for selection changes.'],
+  ['enterPressedGuiEventKind', 'GuiEventKind enum value for Enter key events.'],
+  ['keyPressedGuiEventKind', 'GuiEventKind enum value for key events.'],
+  ['focusGainedGuiEventKind', 'GuiEventKind enum value for focus gained.'],
+  ['focusLostGuiEventKind', 'GuiEventKind enum value for focus lost.'],
+  ['closeRequestedGuiEventKind', 'GuiEventKind enum value for close requests.'],
+  ['resizedGuiEventKind', 'GuiEventKind enum value for resize events.'],
+  ['shownGuiEventKind', 'GuiEventKind enum value for shown events.'],
+  ['hiddenGuiEventKind', 'GuiEventKind enum value for hidden events.'],
+  ['okGuiRuntimeStatus', 'GuiRuntimeStatus enum success value.'],
+  ['configGuiRuntimeStatus', 'GuiRuntimeStatus enum config error value.'],
+  ['runtimeUnavailableGuiRuntimeStatus', 'GuiRuntimeStatus enum runtime-unavailable value.'],
+  ['allocationGuiRuntimeStatus', 'GuiRuntimeStatus enum allocation failure value.'],
+  ['platformGuiRuntimeStatus', 'GuiRuntimeStatus enum platform failure value.'],
+  ['notFoundGuiRuntimeStatus', 'GuiRuntimeStatus enum not-found value.'],
+  ['wrongKindGuiRuntimeStatus', 'GuiRuntimeStatus enum wrong-kind value.'],
+  ['handlerGuiRuntimeStatus', 'GuiRuntimeStatus enum handler failure value.'],
+  ['unsupportedGuiRuntimeStatus', 'GuiRuntimeStatus enum unsupported operation value.'],
+  ['threadGuiRuntimeStatus', 'GuiRuntimeStatus enum thread-policy failure value.'],
 ]);
 
 const domainMethods = new Set([
@@ -417,6 +602,7 @@ const domainMethods = new Set([
   'lessThan', 'lessThanOrEqual', 'greaterThan', 'greaterThanOrEqual',
   'square', 'checkedMultiply', 'checkedMultiplyByCounter', 'checkedMultiplyByStep',
   'length', 'append', 'get', 'set', 'slice', 'insert', 'update', 'remove',
+  'clear', 'contains', 'borrow', 'capacity', 'reserve',
 ]);
 
 const primitiveTypes = new Map([
@@ -434,6 +620,16 @@ const primitiveTypes = new Map([
   ['RawUtf8Text', 'Unvalidated UTF-8 text bytes.'],
   ['RawJsonBytes', 'Untrusted JSON byte input.'],
   ['JsonBytes', 'Validated/generated JSON bytes.'],
+  ['JsonBuilder', 'Opaque native JSON builder handle.'],
+  ['JsonDocument', 'Opaque native JSON document handle.'],
+  ['JsonCursor', 'Stable per-document JSON cursor index.'],
+  ['JsonText', 'Validated JSON text value.'],
+  ['JsonFieldName', 'JSON object field-name text.'],
+  ['JsonPath', 'JSON document path using .field and [index] steps.'],
+  ['JsonStringValue', 'JSON string payload value.'],
+  ['JsonScratchBuffer', 'Caller-owned JSON scratch buffer.'],
+  ['JsonCapacityBytes', 'JSON runtime capacity in bytes.'],
+  ['JsonValueKind', 'JSON cursor kind enum.'],
   ['HtmlText', 'Escaped HTML text value safe for text content and quoted attributes during template hydration.'],
   ['HtmlClass', 'HTML class attribute value. Template sink checks require this for class attributes.'],
   ['SafeUrl', 'Trusted URL value for URL-bearing HTML attributes such as href, src, action, formaction, and poster.'],
@@ -452,9 +648,39 @@ const primitiveTypes = new Map([
   ['GuiMenuItem', 'Opaque GUI menu-item handle reserved for future standard.gui functions.'],
   ['GuiStatusBar', 'Opaque GUI status-bar handle reserved for future standard.gui functions.'],
   ['GuiTextLabel', 'Opaque GUI text-label handle returned by gui.textLabelCreate.'],
+  ['GuiWindowId', 'standard.gui role alias for emitted window identifiers.'],
+  ['GuiControlId', 'standard.gui role alias for emitted control identifiers.'],
+  ['GuiText', 'standard.gui text payload alias.'],
+  ['GuiApplicationTitle', 'standard.gui application-title alias.'],
+  ['GuiWindowTitle', 'standard.gui window-title alias.'],
+  ['GuiControlText', 'standard.gui control-text alias.'],
+  ['GuiPlaceholderText', 'standard.gui placeholder-text alias.'],
+  ['GuiAccessibleName', 'standard.gui accessible-name alias.'],
+  ['GuiListBoxItemText', 'standard.gui list-box item text alias.'],
+  ['GuiIconGroupName', 'standard.gui icon-group name alias.'],
+  ['GuiPixels', 'standard.gui pixel measurement alias.'],
+  ['GuiMinimumPixels', 'standard.gui minimum pixel measurement alias.'],
+  ['GuiTabIndex', 'standard.gui tab-index alias.'],
+  ['GuiKeyCode', 'standard.gui key-code alias.'],
+  ['GuiSelectedIndex', 'standard.gui selected-index alias.'],
+  ['GuiEventDimensionPixels', 'standard.gui event dimension alias.'],
+  ['GuiHandlerStatus', 'standard.gui GUI handler status alias.'],
+  ['GuiRuntimeStatusCode', 'standard.gui runtime status-code alias.'],
+  ['GuiDeclarationVerb', 'standard.gui declaration verb token alias.'],
+  ['GuiKeywordToken', 'standard.gui keyword token alias.'],
+  ['GuiRuntimeTarget', 'standard.gui runtime target token alias.'],
+  ['GuiTargetKind', 'standard.gui target-kind enum.'],
+  ['GuiWindowLayout', 'standard.gui window-layout enum.'],
+  ['GuiControlKind', 'standard.gui control-kind enum.'],
+  ['GuiListBoxSelectionMode', 'standard.gui list-box selection enum.'],
+  ['GuiEventKind', 'standard.gui event-kind enum.'],
+  ['GuiRuntimeStatus', 'standard.gui runtime-status enum.'],
   ['CNullTerminatedByteString', 'Validated null-terminated C byte string.'],
   ['RawCStringPointer', 'Raw C string pointer before trust-boundary validation.'],
   ['COpaqueMemoryAddress', 'Opaque memory address value.'],
+  ['CString', 'C ABI null-terminated string pointer.'],
+  ['VoidPtr', 'Opaque C void pointer alias.'],
+  ['CVoidPtr', 'Opaque C void pointer alias.'],
   ['CByteCount', 'C ABI byte-count value.'],
   ['CSignedByteCount', 'C ABI signed byte-count value.'],
   ['CAddressOffset', 'C ABI pointer offset value.'],
@@ -471,9 +697,44 @@ const primitiveTypes = new Map([
   ['CUnsignedInt64', 'C ABI unsigned 64-bit integer.'],
   ['CFloat32', 'C ABI 32-bit floating-point value.'],
   ['CFloat64', 'C ABI 64-bit floating-point value.'],
+  ['CVoid', 'C ABI void result marker.'],
+  ['CFile', 'C ABI FILE object marker.'],
+  ['CFilePtr', 'Opaque C FILE* pointer.'],
   ['CFileHandle', 'Opaque C file handle pointer.'],
+  ['CTm', 'C ABI decomposed-time object marker.'],
+  ['CTmPtr', 'Opaque C tm* pointer.'],
+  ['CJmpBuf', 'Opaque C jmp_buf pointer.'],
   ['CDecomposedTimeAddress', 'Opaque C decomposed-time pointer.'],
   ['CSetjmpRegisterBuffer', 'Opaque C setjmp buffer pointer.'],
+  ['SqliteDatabase', 'Opaque standard.sqlite database handle.'],
+  ['SqliteStatement', 'Opaque standard.sqlite prepared statement handle.'],
+  ['SqliteRowId', 'standard.sqlite rowid alias.'],
+  ['SqliteText', 'standard.sqlite text alias.'],
+  ['SqliteBlob', 'standard.sqlite blob pointer alias.'],
+  ['SqliteByteCount', 'standard.sqlite byte-count alias.'],
+  ['SqliteOpenMode', 'standard.sqlite database-open mode enum.'],
+  ['SqliteStepResult', 'standard.sqlite step result enum.'],
+  ['SqliteColumnType', 'standard.sqlite column type enum.'],
+  ['Url', 'standard.net URL alias.'],
+  ['NetworkTimeoutMilliseconds', 'standard.net timeout alias.'],
+  ['ResponseBodyLimitBytes', 'standard.net response body limit alias.'],
+  ['HttpRedirectLimit', 'standard.net redirect-limit alias.'],
+  ['HttpClientStatusCode', 'standard.net HTTP client status-code alias.'],
+  ['HttpClientResponse', 'standard.net HTTP client response record.'],
+  ['HttpClientBodyText', 'standard.net owned response body text.'],
+  ['HttpClientBodyBytes', 'standard.net owned response body bytes.'],
+  ['HttpClientBodyLength', 'standard.net response body length alias.'],
+  ['HttpClientErrorCode', 'standard.net HTTP client error-code alias.'],
+  ['HttpFetchPolicy', 'standard.net fetch policy record.'],
+  ['HttpGetRequest', 'standard.net GET request record.'],
+  ['HttpTextResponse', 'standard.net text response record.'],
+  ['BcryptPlaintextPassword', 'standard.bcrypt plaintext password alias; explicitly untrusted.'],
+  ['BcryptPasswordHash', 'standard.bcrypt trusted bcrypt hash alias.'],
+  ['BcryptHashBuffer', 'standard.bcrypt caller-owned hash output buffer.'],
+  ['BcryptRandomBuffer', 'standard.bcrypt caller-owned random byte buffer.'],
+  ['SessionToken', 'standard.bcrypt session token text alias.'],
+  ['SessionTokenBuffer', 'standard.bcrypt session-token output buffer.'],
+  ['Base64UrlBuffer', 'standard.bcrypt base64url output buffer.'],
   ['Console', 'Opaque console dependency token.'],
   ['Process', 'Opaque process dependency token.'],
   ['Environment', 'Opaque environment dependency token.'],
@@ -500,7 +761,7 @@ const verbHoverText = new Map([
   ['entry', 'Top-level declaration: entry MODE OPERATION.'],
   ['module', 'Top-level module declaration. Validated as a dotted namespace and recorded in compiler metadata.'],
   ['mode', 'Top-level mode declaration such as mode capturedOutputReplay.'],
-  ['languageMode', 'Top-level language mode declaration: languageMode strictExecutable or languageMode refinedSyntax.'],
+  ['languageMode', 'Top-level language mode declaration: languageMode strictExecutable, refinedSyntax, or permissiveExecutable.'],
   ['buildProject', 'Build tape declaration: buildProject PROJECT.'],
   ['modulePath', 'Build tape project path: modulePath PROJECT MODULE_PATH.'],
   ['languageVersion', 'Build tape language contract: languageVersion PROJECT "VERSION".'],
@@ -513,8 +774,10 @@ const verbHoverText = new Map([
   ['testRoot', 'Build tape test root: testRoot PROJECT "PATH".'],
   ['testPattern', 'Build tape test glob: testPattern PROJECT "*.test.sem".'],
   ['targetRuntime', 'Build tape runtime target: targetRuntime PROJECT nativeExe|webServer|library|windowsGui.'],
+  ['guiBackend', 'Build tape GUI backend: guiBackend PROJECT win32|winui3. win32 is active/default; winui3 is blocked until Windows App SDK integration lands.'],
   ['buildProfile', 'Build tape profile: buildProfile PROJECT dev|prod.'],
   ['runtimeChecks', 'Build tape runtime checks: runtimeChecks PROJECT off|traps|panic.'],
+  ['asyncRuntime', 'Build tape async backend: asyncRuntime PROJECT none|libuv. none preserves 1.0 synchronous lowering; libuv is experimental.'],
   ['optLevel', 'Build tape LLVM optimization level: optLevel PROJECT 0|1|2|3.'],
   ['persistLlvmIr', 'Build tape LLVM IR persistence: persistLlvmIr PROJECT auto|yes|no.'],
   ['emitLlvmIr', 'Build tape pre-optimization LLVM IR switch: emitLlvmIr PROJECT auto|yes|no.'],
@@ -524,16 +787,19 @@ const verbHoverText = new Map([
   ['buildDir', 'Build tape exact artifact directory: buildDir PROJECT "PATH".'],
   ['buildRoot', 'Build tape artifact parent directory: buildRoot PROJECT "PATH".'],
   ['buildFolderName', 'Build tape managed artifact folder name: buildFolderName PROJECT NAME.'],
-  ['cpuBaseline', 'Build tape CPU baseline: cpuBaseline PROJECT generic|native|x86_64_v2|x86_64_v3|x86_64_v4|arm64_generic|arm64_v8_2.'],
+  ['cpuBaseline', 'Build tape CPU baseline: cpuBaseline PROJECT generic|native|x86_64_v1|x86_64_v2|x86_64_v3|x86_64_v4|arm64_generic|arm64_v8_2.'],
   ['cpuTune', 'Build tape CPU tune token: cpuTune PROJECT generic|native|CPU_NAME.'],
   ['cpuFeature', 'Build tape CPU feature override: cpuFeature PROJECT FEATURE on|off.'],
   ['cpuFeatureCheck', 'Build tape host CPU check policy: cpuFeatureCheck PROJECT auto|off|warn|require.'],
   ['nativeOutput', 'Build tape native executable output: nativeOutput PROJECT "PATH". Basenames use the managed build folder.'],
+  ['keepResources', 'Build tape Windows resource retention switch: keepResources PROJECT yes|no.'],
+  ['resourcesDir', 'Build tape Windows resource scratch directory: resourcesDir PROJECT "PATH". Implies keepResources yes.'],
   ['nativeHttpHost', 'Build tape native webserver host metadata: nativeHttpHost PROJECT "HOST".'],
   ['nativeHttpPort', 'Build tape native webserver port metadata: nativeHttpPort PROJECT PORT.'],
   ['formatterSetting', 'Build tape formatter setting: formatterSetting PROJECT KEY VALUE.'],
   ['linterSetting', 'Build tape linter setting: linterSetting PROJECT KEY VALUE.'],
   ['docsOutput', 'Build tape documentation output: docsOutput PROJECT "PATH".'],
+  ['buildConstant', 'Build tape constant injection: buildConstant PROJECT NAME TYPE VALUE. Exposes shared build config as module immutable storage.'],
   ['iconRoleDefinition', 'Icon role taxonomy entry: iconRoleDefinition ROLE "text".'],
   ['icon', 'Icon group declaration: icon GROUP.'],
   ['iconRole', 'Icon group role assignment: iconRole GROUP ROLE.'],
@@ -549,6 +815,8 @@ const verbHoverText = new Map([
   ['iconImagePlatform', 'Icon image platform selector: iconImagePlatform IMAGE any|windows|macos|linux.'],
   ['iconImagePurpose', 'Icon image documentation: iconImagePurpose IMAGE "text".'],
   ['moduleFolder', 'Compatibility module registry alias. Prefer registerModule PROJECT MODULE_PATH "PATH".'],
+  ['nativeRuntimeSource', 'Standard-library native adapter source metadata: nativeRuntimeSource MODULE "path.c".'],
+  ['nativeRuntimeLinkArg', 'Standard-library native adapter link metadata: nativeRuntimeLinkArg MODULE any|windows|posix "ARG".'],
   ['exportType', 'Module-local export contract: exportType MODULE_PATH TYPE. Belongs in the module source.'],
   ['exportError', 'Module-local export contract: exportError MODULE_PATH ERROR. Belongs in the module source.'],
   ['exportOperation', 'Module-local export contract: exportOperation MODULE_PATH OPERATION. Belongs in the module source.'],
@@ -591,6 +859,8 @@ const verbHoverText = new Map([
   ['typeLayout', 'Type metadata: typeLayout TYPE row|column|packed.'],
   ['record', 'Record declaration: record NAME [layout KIND] [align N]. Parsed by the current compiler.'],
   ['field', 'Record field declaration: field RECORD_NAME FIELD_NAME FIELD_TYPE.'],
+  ['recordFieldJsonName', 'Record JSON key override: recordFieldJsonName RECORD FIELD "jsonKey".'],
+  ['recordFieldJsonOmitWhen', 'Record JSON omission policy: recordFieldJsonOmitWhen RECORD FIELD empty|null|false|zero.'],
   ['enum', 'Enum declaration: enum NAME [repr TYPE]. Parsed by the current compiler.'],
   ['enumCase', 'Enum case declaration: enumCase ENUM_NAME CASE_NAME [VALUE].'],
   ['error', 'Error type declaration: error NAME.'],
@@ -654,6 +924,7 @@ const verbHoverText = new Map([
   ['rationale', 'Call-site rationale: rationale CALL "text". Attaches context to one call so diagnostics survive refactors.'],
   ['const', 'Body declaration statement: const NAME TYPE VALUE.'],
   ['var', 'Body declaration statement: var NAME TYPE INITIAL_VALUE.'],
+  ['let', 'Legacy body declaration statement: let NAME TYPE INITIAL_VALUE. Prefer explicit storage rows in new executable code.'],
   ['label', 'Control-flow statement: label NAME. Labels are first-class basic blocks.'],
   ['call', 'Call lifecycle statement: call CALL_NAME TARGET_PATH.'],
   ['argument', 'Call argument edge: argument CALL_NAME ARG_NAME ARG_TYPE VALUE_NAME.'],
@@ -663,7 +934,9 @@ const verbHoverText = new Map([
   ['run', 'Call lifecycle statement: execute call immediately.'],
   ['runChecked', 'Strict checked-call statement: runChecked CALL ok VALUE TYPE error ERROR TYPE else LABEL. Current compiler support is limited to the committed checked-call lowering/tests.'],
   ['start', 'Call lifecycle statement: begin async work. Parsed by current compiler.'],
-  ['await', 'Call lifecycle statement: wait for started async work. Parsed by current compiler.'],
+  ['await', 'Call lifecycle statement: wait for started async work, or introduce an await/case/done wait set. Parsed by current compiler.'],
+  ['case', 'Await wait-set statement: case CALL_NAME LABEL_NAME. Must immediately follow await WAIT_SET and materializes the selected call before branching.'],
+  ['done', 'Await wait-set terminator: done LABEL_NAME. Branches after all wait-set cases are consumed.'],
   ['bind', 'Binding statement for infallible calls: bind VALUE TYPE CALL_NAME.'],
   ['bindOk', 'Binding statement for success leg: bindOk VALUE TYPE CALL_NAME.'],
   ['bindError', 'Binding statement for failure leg: bindError ERROR ERROR_TYPE CALL_NAME. Must pair with branchIfError.'],
@@ -878,6 +1151,8 @@ let compilerEmitLlvmIr = false;
 let compilerBuildDir = '';
 let compilerBuildRoot = '';
 let compilerBuildFolderName = '';
+let compilerKeepResources = false;
+let compilerResourceDir = '';
 let compilerCpuBaseline = 'default';
 let compilerCpuTune = '';
 let compilerCpuFeatureCheck = 'default';
@@ -1294,6 +1569,26 @@ const operationOwnerName = (tokens) => {
   return index === null ? '' : tokenAt(tokens, index);
 };
 
+const inputParts = (tokens) => {
+  const ownerIndex = operationOwnerIndex(tokens);
+  const nameIndex = ownerIndex === null ? 2 : ownerIndex + 1;
+  return { ownerIndex, nameIndex, typeIndex: nameIndex + 1 };
+};
+
+const outputParts = (tokens) => {
+  const ownerIndex = operationOwnerIndex(tokens);
+  const typeIndex = ownerIndex === null ? 2 : ownerIndex + 1;
+  return { ownerIndex, typeIndex };
+};
+
+const narrativeParts = (tokens) => {
+  if (tokenAt(tokens, 1) === 'module' || tokenAt(tokens, 1) === 'operation') {
+    return { subjectKindIndex: 1, subjectIndex: 2, textIndex: 3 };
+  }
+
+  return { subjectKindIndex: null, subjectIndex: 1, textIndex: 2 };
+};
+
 const branchLabelIndex = (tokens) => {
   if (tokenAt(tokens, 0) === 'jump' && tokenAt(tokens, 1) === 'target') {
     return 2;
@@ -1473,13 +1768,16 @@ const namedDeclarationVerbs = new Set([
   'listLiteral', 'htmlTemplate', 'listType', 'arrayType', 'sliceType', 'smallListType',
   'mapType', 'collectionOperation', 'interval', 'workerPool', 'work',
   'buildProject', 'registerModule', 'modulePath', 'mainFile', 'mainOperation',
-  'targetRuntime', 'buildProfile', 'optLevel', 'cpuBaseline', 'cpuTune',
-  'cpuFeature', 'cpuFeatureCheck', 'nativeOutput',
+  'targetRuntime', 'guiBackend', 'buildProfile', 'runtimeChecks', 'asyncRuntime', 'optLevel',
+  'cpuBaseline', 'cpuTune', 'cpuFeature', 'cpuFeatureCheck', 'nativeOutput',
+  'keepResources', 'resourcesDir', 'nativeHttpHost', 'nativeHttpPort',
+  'formatterSetting', 'linterSetting', 'docsOutput', 'nativeRuntimeSource',
+  'nativeRuntimeLinkArg',
   'iconRoleDefinition', 'icon', 'iconImage',
 ]);
 
 const singleCallReferenceVerbs = new Set([
-  'run', 'start', 'await', 'timeout', 'cancelOn', 'ignoreOk', 'ignoreValue',
+  'run', 'start', 'await', 'case', 'timeout', 'cancelOn', 'ignoreOk', 'ignoreValue',
   'useRetry', 'recordBuild', 'rationale',
 ]);
 
@@ -1665,12 +1963,11 @@ const buildDocumentSymbolIndex = (document) => {
 
       case 'input':
         {
-          const ownerIndex = operationOwnerIndex(tokens);
-          const nameIndex = ownerIndex === null ? 2 : ownerIndex + 1;
+          const { ownerIndex, nameIndex, typeIndex } = inputParts(tokens);
           addSymbolDeclaration(symbols, tokenText(tokens, nameIndex), declarationBase('input parameter', tokens, lineIndex, {
             name: tokenText(tokens, nameIndex),
             owner: ownerIndex === null ? '?' : tokenText(tokens, ownerIndex),
-            type: tokenText(tokens, nameIndex + 1),
+            type: tokenText(tokens, typeIndex),
           }));
         }
         break;
@@ -1685,6 +1982,7 @@ const buildDocumentSymbolIndex = (document) => {
         break;
 
       case 'var':
+      case 'let':
         addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase('mutable variable', tokens, lineIndex, {
           name: tokenText(tokens, 1),
           type: tokenText(tokens, 2),
@@ -1815,9 +2113,24 @@ const buildDocumentSymbolIndex = (document) => {
 
       case 'dependencyCache':
       case 'dependencyLock':
+      case 'asyncRuntime':
+      case 'keepResources':
+      case 'resourcesDir':
+      case 'nativeRuntimeSource':
+      case 'nativeRuntimeLinkArg':
         addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase(readableVerbName(verb).toLowerCase(), tokens, lineIndex, {
           name: tokenText(tokens, 1),
           details: tokenTailText(tokens, 2),
+        }));
+        break;
+
+      case 'buildConstant':
+        addSymbolDeclaration(symbols, tokenText(tokens, 2), declarationBase('build constant', tokens, lineIndex, {
+          name: tokenText(tokens, 2),
+          owner: tokenText(tokens, 1),
+          type: tokenText(tokens, 3),
+          value: tokenTailText(tokens, 4),
+          mutability: 'immutable',
         }));
         break;
 
@@ -1835,6 +2148,15 @@ const buildDocumentSymbolIndex = (document) => {
           name: tokenText(tokens, 2),
           owner: tokenText(tokens, 1),
           type: tokenText(tokens, 3),
+        }));
+        break;
+
+      case 'recordFieldJsonName':
+      case 'recordFieldJsonOmitWhen':
+        addSymbolDeclaration(symbols, tokenText(tokens, 2), declarationBase('record field JSON metadata', tokens, lineIndex, {
+          name: tokenText(tokens, 2),
+          owner: tokenText(tokens, 1),
+          details: tokenTailText(tokens, 3),
         }));
         break;
 
@@ -2054,8 +2376,12 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
     return 'semanticscriptConstName';
   }
 
-  if (verb === 'var' && index === 1) {
+  if ((verb === 'var' || verb === 'let') && index === 1) {
     return 'semanticscriptMutableName';
+  }
+
+  if (verb === 'buildConstant' && index === 2) {
+    return 'semanticscriptConstName';
   }
 
   if (verb === 'type' && index === 1) {
@@ -2139,7 +2465,13 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
     return 'semanticscriptDeclaredName';
   }
 
-  if ((verb === 'field' || verb === 'fieldDefault' || verb === 'fieldInvariant') && index === 2) {
+  if ((
+    verb === 'field'
+    || verb === 'fieldDefault'
+    || verb === 'fieldInvariant'
+    || verb === 'recordFieldJsonName'
+    || verb === 'recordFieldJsonOmitWhen'
+  ) && index === 2) {
     return 'semanticscriptArgumentName';
   }
 
@@ -2235,7 +2567,7 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
     return 'semanticscriptMutableName';
   }
 
-  if (verb === 'input' && index === (operationOwnerIndex(tokens) === null ? 2 : operationOwnerIndex(tokens) + 1)) {
+  if (verb === 'input' && index === inputParts(tokens).nameIndex) {
     return 'semanticscriptArgumentName';
   }
 
@@ -2692,6 +3024,7 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
       ]);
 
     case 'var':
+    case 'let':
       return detailHover(`Mutable variable: ${tokenText(tokens, 1)}`, [
         `Declares ${inlineCode(tokenText(tokens, 1))} as an operation-local mutable value.`,
         `Type: ${inlineCode(tokenText(tokens, 2))}`,
@@ -2758,6 +3091,29 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
         `Path: ${inlineCode(tokenTailText(tokens, 2))}`,
       ]);
 
+    case 'asyncRuntime':
+    case 'keepResources':
+    case 'resourcesDir':
+      return detailHover(`${readableVerbName(verb)}: ${tokenText(tokens, 1)}`, [
+        `Project: ${inlineCode(tokenText(tokens, 1))}`,
+        `Value: ${inlineCode(tokenTailText(tokens, 2))}`,
+      ]);
+
+    case 'buildConstant':
+      return detailHover(`Build constant: ${tokenText(tokens, 2)}`, [
+        `Project: ${inlineCode(tokenText(tokens, 1))}`,
+        `Name: ${inlineCode(tokenText(tokens, 2))}`,
+        `Type: ${inlineCode(tokenText(tokens, 3))}`,
+        `Value: ${inlineCode(tokenTailText(tokens, 4))}`,
+      ]);
+
+    case 'nativeRuntimeSource':
+    case 'nativeRuntimeLinkArg':
+      return detailHover(`${readableVerbName(verb)}: ${tokenText(tokens, 1)}`, [
+        `Module: ${inlineCode(tokenText(tokens, 1))}`,
+        `Value: ${inlineCode(tokenTailText(tokens, 2))}`,
+      ]);
+
     case 'htmlTemplate':
       return detailHover(`HTML template: ${tokenText(tokens, 1)}`, [
         `Declares first-class HTML/SSX template ${inlineCode(tokenText(tokens, 1))}.`,
@@ -2821,16 +3177,22 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
       ]);
 
     case 'input':
-      return detailHover(`Input: ${tokenText(tokens, 2)}`, [
-        `Adds parameter ${inlineCode(tokenText(tokens, 2))} to operation ${inlineCode(tokenText(tokens, 1))}.`,
-        `Type: ${inlineCode(tokenText(tokens, 3))}`,
-      ]);
+      {
+        const { ownerIndex, nameIndex, typeIndex } = inputParts(tokens);
+        return detailHover(`Input: ${tokenText(tokens, nameIndex)}`, [
+          `Adds parameter ${inlineCode(tokenText(tokens, nameIndex))} to operation ${inlineCode(tokenText(tokens, ownerIndex))}.`,
+          `Type: ${inlineCode(tokenText(tokens, typeIndex))}`,
+        ]);
+      }
 
     case 'output':
-      return detailHover(`Output contract: ${tokenText(tokens, 1)}`, [
-        `Declares what ${inlineCode(tokenText(tokens, 1))} returns.`,
-        `Return shape: ${inlineCode(tokenTailText(tokens, 2))}`,
-      ]);
+      {
+        const { ownerIndex, typeIndex } = outputParts(tokens);
+        return detailHover(`Output contract: ${tokenText(tokens, ownerIndex)}`, [
+          `Declares what ${inlineCode(tokenText(tokens, ownerIndex))} returns.`,
+          `Return shape: ${inlineCode(tokenTailText(tokens, typeIndex))}`,
+        ]);
+      }
 
     case 'effect':
       return detailHover(`Effect: ${tokenText(tokens, 1)}`, [
@@ -2860,10 +3222,14 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
     case 'security':
     case 'timing':
     case 'observability':
-      return detailHover(`${readableVerbName(verb)}: ${tokenText(tokens, 1)}`, [
-        `Human context attached to ${inlineCode(tokenText(tokens, 1))}.`,
-        `Text: ${inlineCode(tokenTailText(tokens, 2))}`,
-      ]);
+      {
+        const { subjectKindIndex, subjectIndex, textIndex } = narrativeParts(tokens);
+        return detailHover(`${readableVerbName(verb)}: ${tokenText(tokens, subjectIndex)}`, [
+          subjectKindIndex === null ? '' : `Subject kind: ${inlineCode(tokenText(tokens, subjectKindIndex))}`,
+          `Human context attached to ${inlineCode(tokenText(tokens, subjectIndex))}.`,
+          `Text: ${inlineCode(tokenTailText(tokens, textIndex))}`,
+        ]);
+      }
 
     case 'call':
       return detailHover(`Call: ${tokenText(tokens, 1)}`, [
@@ -2897,7 +3263,18 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
     case 'await':
       return detailHover(`Await call: ${tokenText(tokens, 1)}`, [
         `Waits for started call ${inlineCode(tokenText(tokens, 1))}.`,
-        'Under current synchronous lowering this is a no-op after `start`, but the contract remains visible.',
+        'When followed by `case` rows and `done`, this introduces a wait set, materializes whichever case is ready next, and branches to that case label.',
+      ]);
+
+    case 'case':
+      return detailHover(`Await case: ${tokenText(tokens, 1)}`, [
+        `Adds started call ${inlineCode(tokenText(tokens, 1))} to the current wait set.`,
+        `Branches to ${inlineCode(tokenText(tokens, 2))} when this future is selected.`,
+      ]);
+
+    case 'done':
+      return detailHover(`Wait set done: ${tokenText(tokens, 1)}`, [
+        `Branches to ${inlineCode(tokenText(tokens, 1))} after every wait-set case has been consumed.`,
       ]);
 
     case 'bind':
@@ -3173,6 +3550,20 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
         'Current single-thread lowering treats interval waiting as a no-op.',
       ]);
 
+    case 'recordFieldJsonName':
+      return detailHover(`Record JSON field name: ${tokenText(tokens, 2)}`, [
+        `Record: ${inlineCode(tokenText(tokens, 1))}`,
+        `Field: ${inlineCode(tokenText(tokens, 2))}`,
+        `JSON key: ${inlineCode(tokenText(tokens, 3))}`,
+      ]);
+
+    case 'recordFieldJsonOmitWhen':
+      return detailHover(`Record JSON omit policy: ${tokenText(tokens, 2)}`, [
+        `Record: ${inlineCode(tokenText(tokens, 1))}`,
+        `Field: ${inlineCode(tokenText(tokens, 2))}`,
+        `Policy: ${inlineCode(tokenText(tokens, 3))}`,
+      ]);
+
     case 'project':
     case 'target':
     case 'runtime':
@@ -3299,6 +3690,7 @@ const tokenUseDescription = (tokens, tokenIndex, declaration) => {
   switch (verb) {
     case 'const':
     case 'var':
+    case 'let':
       if (tokenIndex === 1) {
         return `This token declares ${inlineCode(text)}.`;
       }
@@ -3331,11 +3723,36 @@ const tokenUseDescription = (tokens, tokenIndex, declaration) => {
       break;
 
     case 'input':
+      if (tokenIndex === inputParts(tokens).nameIndex) {
+        return `This token declares input parameter ${inlineCode(text)} for ${inlineCode(tokenText(tokens, inputParts(tokens).ownerIndex))}.`;
+      }
+      if (tokenIndex === inputParts(tokens).typeIndex) {
+        return `This token is the parameter type for ${inlineCode(tokenText(tokens, inputParts(tokens).nameIndex))}.`;
+      }
+      break;
+
+    case 'buildConstant':
       if (tokenIndex === 2) {
-        return `This token declares input parameter ${inlineCode(text)} for ${inlineCode(tokenText(tokens, 1))}.`;
+        return `This token declares a build-injected immutable constant.`;
       }
       if (tokenIndex === 3) {
-        return `This token is the parameter type for ${inlineCode(tokenText(tokens, 2))}.`;
+        return `This token is the declared type for ${inlineCode(tokenText(tokens, 2))}.`;
+      }
+      if (tokenIndex >= 4) {
+        return `This token contributes to the build constant value for ${inlineCode(tokenText(tokens, 2))}.`;
+      }
+      break;
+
+    case 'recordFieldJsonName':
+    case 'recordFieldJsonOmitWhen':
+      if (tokenIndex === 1) {
+        return `This token names the record whose JSON mapping metadata is being configured.`;
+      }
+      if (tokenIndex === 2) {
+        return `This token names the record field receiving JSON metadata.`;
+      }
+      if (tokenIndex >= 3) {
+        return `This token configures the JSON mapping metadata for ${inlineCode(tokenText(tokens, 2))}.`;
       }
       break;
 
@@ -3363,11 +3780,34 @@ const tokenUseDescription = (tokens, tokenIndex, declaration) => {
     case 'run':
     case 'start':
     case 'await':
-    case 'ignoreOk':
-    case 'ignoreValue':
     case 'timeout':
     case 'cancelOn':
     case 'useRetry':
+      if (tokenIndex === 1) {
+        return `This token references call object ${inlineCode(text)}.`;
+      }
+      if (tokenIndex >= 2) {
+        return `This token configures ${inlineCode(tokenText(tokens, 1))}.`;
+      }
+      break;
+
+    case 'case':
+      if (tokenIndex === 1) {
+        return `This token references a started call in the current wait set.`;
+      }
+      if (tokenIndex === 2) {
+        return `This token is the label selected when the call is ready.`;
+      }
+      break;
+
+    case 'done':
+      if (tokenIndex === 1) {
+        return `This token is the label selected after all wait-set cases are consumed.`;
+      }
+      break;
+
+    case 'ignoreOk':
+    case 'ignoreValue':
       if (tokenIndex === 1) {
         return `This token references call object ${inlineCode(text)}.`;
       }
@@ -3789,7 +4229,9 @@ const documentSymbolNameIndex = (verb, tokens) => {
 
   switch (verb) {
     case 'input':
-      return operationOwnerIndex(tokens) === null ? 2 : operationOwnerIndex(tokens) + 1;
+      return inputParts(tokens).nameIndex;
+    case 'buildConstant':
+      return 2;
     case 'json':
       return isJsonBodyDeclaration(tokens) ? jsonBodyNameIndex(tokens) : 1;
     case 'htmlArg':
@@ -3801,6 +4243,8 @@ const documentSymbolNameIndex = (verb, tokens) => {
     case 'import':
       return 1;
     case 'field':
+    case 'recordFieldJsonName':
+    case 'recordFieldJsonOmitWhen':
     case 'enumCase':
     case 'errorCase':
       return 2;
@@ -3843,6 +4287,8 @@ const documentSymbolKind = (verb) => {
     case 'record':
       return vscode.SymbolKind.Struct;
     case 'field':
+    case 'recordFieldJsonName':
+    case 'recordFieldJsonOmitWhen':
       return vscode.SymbolKind.Field;
     case 'enum':
     case 'enumCase':
@@ -3856,10 +4302,12 @@ const documentSymbolKind = (verb) => {
     case 'authority':
       return vscode.SymbolKind.Key;
     case 'const':
+    case 'buildConstant':
     case 'json':
     case 'jsonBody':
       return vscode.SymbolKind.Constant;
     case 'var':
+    case 'let':
     case 'storage':
     case 'sharedState':
       return vscode.SymbolKind.Variable;
@@ -3916,13 +4364,20 @@ const symbolDetailText = (verb, tokens) => {
   }
 
   if (verb === 'input') {
-    const ownerIndex = operationOwnerIndex(tokens);
-    const nameIndex = ownerIndex === null ? 2 : ownerIndex + 1;
-    return `${ownerIndex === null ? '?' : tokenText(tokens, ownerIndex)}: ${tokenText(tokens, nameIndex + 1)}`;
+    const { ownerIndex, typeIndex } = inputParts(tokens);
+    return `${ownerIndex === null ? '?' : tokenText(tokens, ownerIndex)}: ${tokenText(tokens, typeIndex)}`;
   }
 
-  if (verb === 'const' || verb === 'var') {
+  if (verb === 'const' || verb === 'var' || verb === 'let') {
     return tokenText(tokens, 2);
+  }
+
+  if (verb === 'buildConstant') {
+    return `${tokenText(tokens, 1)}: ${tokenText(tokens, 3)}`;
+  }
+
+  if (verb === 'recordFieldJsonName' || verb === 'recordFieldJsonOmitWhen') {
+    return `${tokenText(tokens, 1)} ${tokenTailText(tokens, 3)}`;
   }
 
   if (isJsonBodyDeclaration(tokens)) {
@@ -3938,11 +4393,13 @@ const provideDocumentSymbols = (document) => {
     'section', 'project', 'target', 'runtime', 'entry', 'module',
     'buildProject', 'modulePath', 'projectVersion', 'projectLicense',
     'sourceRoot', 'registerModule', 'mainFile', 'mainOperation',
-    'targetRuntime', 'buildProfile', 'runtimeChecks', 'optLevel',
+    'targetRuntime', 'guiBackend', 'buildProfile', 'runtimeChecks', 'asyncRuntime', 'optLevel',
     'persistLlvmIr', 'emitLlvmIr', 'llvmIrOutput', 'buildDir',
     'buildRoot', 'buildFolderName', 'cpuBaseline', 'cpuTune',
-    'cpuFeature', 'cpuFeatureCheck', 'nativeOutput', 'docsOutput',
-    'dependencyFetch', 'dependencyCache', 'dependencyLock',
+    'cpuFeature', 'cpuFeatureCheck', 'nativeOutput', 'keepResources',
+    'resourcesDir', 'nativeHttpHost', 'nativeHttpPort', 'docsOutput',
+    'buildConstant', 'dependencyFetch', 'dependencyCache', 'dependencyLock',
+    'nativeRuntimeSource', 'nativeRuntimeLinkArg',
     'import', 'importModule', 'importOperation', 'importType', 'importError',
     'importCapability', 'importConstant',
     'iconRoleDefinition', 'icon', 'iconRole', 'iconPurpose',
@@ -3952,9 +4409,10 @@ const provideDocumentSymbols = (document) => {
     'exportOperation', 'exportType',
     'exportError', 'exportCapability', 'exportConstant',
     'operation', 'input', 'webServer', 'route', 'record', 'field',
+    'recordFieldJsonName', 'recordFieldJsonOmitWhen',
     'enum', 'enumCase', 'error', 'errorCase', 'type', 'capability',
     'authority', 'timeoutBudget', 'storage', 'sharedState', 'const',
-    'var', 'call', 'label', 'jsonCodec', 'json', 'jsonBody', 'policy', 'retryPolicy',
+    'var', 'let', 'call', 'label', 'jsonCodec', 'json', 'jsonBody', 'policy', 'retryPolicy',
     'workerPool', 'work', 'interval', 'html', 'htmlTemplate', 'htmlArg',
   ]);
   let insideIndentedIsland = false;
@@ -4141,6 +4599,8 @@ const syncConfiguration = () => {
   compilerBuildDir = compilerConfig.get('buildDir', '');
   compilerBuildRoot = compilerConfig.get('buildRoot', '');
   compilerBuildFolderName = compilerConfig.get('buildFolderName', '');
+  compilerKeepResources = compilerConfig.get('keepResources', false);
+  compilerResourceDir = compilerConfig.get('resourceDir', '');
   compilerCpuBaseline = compilerConfig.get('cpuBaseline', 'default');
   compilerCpuTune = compilerConfig.get('cpuTune', '');
   compilerCpuFeatureCheck = compilerConfig.get('cpuFeatureCheck', 'default');
@@ -4745,6 +5205,14 @@ const runCompilerForDocument = async (document) => {
     if (compilerBuildFolderName) {
       args.push('--build-folder-name', compilerBuildFolderName);
     }
+  }
+
+  if (compilerKeepResources) {
+    args.push('--keep-resources');
+  }
+
+  if (compilerResourceDir) {
+    args.push('--resource-dir', compilerResourceDir);
   }
 
   compilerOutputChannel.clear();

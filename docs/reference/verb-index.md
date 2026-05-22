@@ -35,7 +35,9 @@ partial       mixed behavior; see owning language doc
 | `testRoot` | `testRoot PROJECT "PATH"` | metadata |
 | `testPattern` | `testPattern PROJECT "GLOB"` | metadata |
 | `targetRuntime` | `targetRuntime PROJECT nativeExe\|webServer\|windowsGui\|library` | partial |
+| `guiBackend` | `guiBackend PROJECT win32\|winui3` | partial |
 | `buildProfile` | `buildProfile PROJECT dev|prod` | partial |
+| `asyncRuntime` | `asyncRuntime PROJECT none|libuv` | partial |
 | `runtimeChecks` | `runtimeChecks PROJECT off|traps|panic` | partial |
 | `optLevel` | `optLevel PROJECT 0|1|2|3` | partial |
 | `persistLlvmIr` | `persistLlvmIr PROJECT auto|yes|no` | partial |
@@ -126,7 +128,7 @@ literalBytes literalDigest literalPreview literalSource literalTrust
 
 | Family | Verbs |
 |---|---|
-| Calls | `call`, `argument`, `timeout`, `cancelOn`, `run`, `start`, `await` |
+| Calls | `call`, `argument`, `timeout`, `cancelOn`, `run`, `start`, `await`, `case`, `done` |
 | Binding | `bind value`, `bind ok`, `bind error`, `ignore ok`, `ignore value`, `ignore void` |
 | Errors | `makeError`, `declareFailure`, `error`, `errorCase` |
 | Labels | `label`, `jump`, `branch if`, `branch error`, `branch else` |
@@ -226,11 +228,14 @@ positions where raw markup is intentional.
 ## Native Windows GUI
 
 `target windowsGui` and `targetRuntime PROJECT windowsGui` are the
-compiler/build bridge. GUI source uses normal `entry console OPERATION`,
+compiler/build bridge. `guiBackend PROJECT win32|winui3` selects the native
+adapter; `win32` is the default and `winui3` is currently a recognized-but-blocked
+Windows App SDK scaffold. GUI source uses normal `entry console OPERATION`,
 `operation`, `call`, `argument`, and `run` rows. The larger GUI vocabulary belongs
 to `standard.gui` as function targets, contracts, capabilities, and validation
 rules. The compiler should only lower explicit `gui.*` calls and link/start the
-native GUI runtime. There is no `entry windowsGui` row. The preferred
+selected native GUI runtime. Do not use C# / XAML sidecar apps as a substitute
+for `guiBackend winui3`. There is no `entry windowsGui` row. The preferred
 standard-library import is:
 
 ```text
@@ -310,7 +315,8 @@ a kind-specific handle such as `textBox GuiTextBox`, `listBox GuiListBox`, or
 | Task groups | `taskGroup`, `startInGroup`, `awaitGroup`, `bindGroupError`, `branchIfGroupError` compatibility rows | sync-fallback |
 | Channels | `send`, `receive`, `branchIfChannelClosed` compatibility row | sync-fallback |
 | Locks | `mutex`, `lock`, `unlock` | sync-fallback |
-| Select | `select`, `selectCase`, `runSelect`, `branchSelected` | sync-fallback |
+| Await wait sets | `await WAIT_SET`, `case CALL LABEL`, `done LABEL` | lowered for libuv console async |
+| Legacy select rows | `select`, `selectCase`, `runSelect`, `branchSelected` | sync-fallback |
 | Intervals | `interval`, `startInterval`, `awaitIntervalTick` | sync-fallback |
 | Worker pools | `workerPool`, `work`, `workArg`, `submitWork`, `awaitWork` | sync-fallback |
 

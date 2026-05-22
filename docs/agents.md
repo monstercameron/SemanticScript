@@ -111,6 +111,7 @@ the installed compiler, or when the std root is passed explicitly.
 Compiler-owned GUI surface should stay minimal:
   target windowsGui
   targetRuntime PROJECT windowsGui
+  guiBackend PROJECT win32|winui3  # win32 default; winui3 scaffold is blocked until Windows App SDK build integration
   native GUI runtime link/codegen bridge
   preserve GuiSession and GuiEvent handler ABI inputs
   lower explicit standard.gui gui.* calls
@@ -119,6 +120,10 @@ Do not add `entry windowsGui OPERATION`. Do not move control/event validation
 into a giant compiler grammar. `standard.gui` owns GUI functions,
 contracts, capabilities, and most validation. Preferred import:
   importModule gui standard.gui
+
+Do not implement WinUI by adding C# / XAML app sidecars under `apps/`. The app
+UI source remains SemanticScript; WinUI belongs behind `guiBackend winui3` as a
+native backend adapter exporting the existing `ss_gui_*` ABI.
 
 Standard GUI source shape:
   entry console main
@@ -512,7 +517,11 @@ locks/select/interval no-op/fallthrough.
   operationBody addSignedInt64 intrinsic
   intrinsicName addSignedInt64 arithmetic.addI64
 
-Selected names lower directly. Unknown runtime binding => normal body.
+Pure ABI names lower directly. Policy-bearing runtime bindings such as retry
+delay, metrics increment, metrics lock token sentinels, scheduler sleep,
+calendar predicates, and UTF-8 validation must be normal SemanticScript
+operation bodies or explicit native runtime calls; known legacy targets are
+compile-blocking.
 
 == linter ==
 semlint checks and guardrails: unknown verbs; vague names; missing op metadata; hidden

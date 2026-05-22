@@ -156,6 +156,7 @@ starts with the same `PROJECT` token declared by `buildProject PROJECT`.
 | `targetRuntime PROJECT nativeExe\|webServer\|windowsGui\|library` | yes | Project build target class. |
 | `buildProfile PROJECT dev\|prod` | yes | Default compiler profile. |
 | `runtimeChecks PROJECT off\|traps\|panic` | yes | Runtime check lowering policy. |
+| `asyncRuntime PROJECT none\|libuv` | no | Optional post-1.0 async backend selector. Defaults to `none`; `libuv` is experimental and must not change 1.0 synchronous lowering unless the compiler/runtime feature gate is explicitly enabled. |
 | `optLevel PROJECT 0\|1\|2\|3` | yes | LLVM optimization level for JIT/AOT paths. |
 | `persistLlvmIr PROJECT auto\|yes\|no` | yes | Whether generated LLVM IR is kept. |
 | `emitLlvmIr PROJECT auto\|yes\|no` | no | Project default for pre-optimization `.ll` output. |

@@ -27,10 +27,9 @@ SemanticScript file icon theme.
 
 ## Release Readiness
 
-The package is 1.0 local-release oriented. Before a public Marketplace release,
-the release owner must decide:
-
-- the real Marketplace `publisher` value to replace `semanticscript-local`.
+The initial 1.0 package is local VSIX only. Marketplace publishing is out of
+scope until the release owner selects a real Marketplace `publisher` value to
+replace `semanticscript-local`.
 
 The extension package is licensed as MIT, matching the root repository license.
 Run `npm run check` before packaging. Use `npm run package:vsix` for local VSIX
@@ -92,8 +91,10 @@ The extension recognizes the recent syntax families from the refined example:
 - Native HTTP call targets:
   `http.requestMethod`, `http.requestPath`, `http.requestHeader`,
   `http.requestQueryParam`, `http.requestBodyText`, `http.requestBodyBytes`,
-  `http.requestBodyLength`, `http.responseText`, `http.responseBytes`,
-  `http.responseHeader`, `http.responseSseEvent`, and multipart helpers such as
+  `http.requestBodyLength`, `http.requestPathParam`, `http.requestCookie`,
+  `http.responseHtml`, `http.responseText`, `http.responseBytes`,
+  `http.responseFile`, `http.responseHeader`, `http.responseSseEvent`,
+  `http.ensureDirectory`, `http.nowMillis`, and multipart helpers such as
   `http.multipartPartText`, `http.multipartPartBytes`,
   `http.multipartPartLength`, `http.multipartPartFilename`, and
   `http.multipartPartContentType`.
@@ -113,7 +114,9 @@ The extension recognizes the recent syntax families from the refined example:
 - Module/dependency build tape:
   `import ALIAS MODULE_PATH`, legacy `importModule`, singular imports such as
   `importOperation` and `importType`, plus `dependencyFetch`,
-  `dependencyCache`, and `dependencyLock`.
+  `dependencyCache`, `dependencyLock`, `asyncRuntime`, `keepResources`,
+  `resourcesDir`, `buildConstant`, `nativeRuntimeSource`, and
+  `nativeRuntimeLinkArg`.
 - Memory contracts:
   `memoryHeap`, `memoryArena`, `memoryAllocationSource`, `memoryStackLimit`.
 - Trust and literals:
@@ -121,6 +124,7 @@ The extension recognizes the recent syntax families from the refined example:
   `typeLiteralTerminator`, `domainLiteral*`, `literal*`.
 - Records and builders:
   `recordLayout`, `recordAlign`, `fieldDefault`, `fieldInvariant`,
+  `recordFieldJsonName`, `recordFieldJsonOmitWhen`,
   `recordBuilder`, `recordSet`, `recordCopy`, `recordBuild`,
   `recordBuildFailure`, `recordConstructor*`, `fieldGet`, `fieldSet`.
 - Collections and aggregates:
@@ -128,8 +132,17 @@ The extension recognizes the recent syntax families from the refined example:
   `listLiteral*`, `collectionOperation*`, and typed collection methods such as
   `TaskList.length`, `TaskList.append`, `TaskList.get`, and `TaskMap.insert`.
 - Codecs:
-  `jsonCodec*`, plus generated targets such as `json.parse.Task` and
-  `json.stringify.AccountBalanceResponse`.
+  `jsonCodec*`, legacy `json.encode.*` / `json.decode.*`, high-level
+  `json.parse.Task` / `json.stringify.AccountBalanceResponse`, and native JSON
+  builder/document CRUD targets such as `json.createDocument`,
+  `json.cursorAtPath`, `json.setObjectFieldString`, and
+  `json.removeArrayElementAt`.
+- Standard native targets:
+  `net.fetchText`, `net.fetchBytes`, `net.freeTextBody`, expanded SQLite targets
+  including `sqlite.finalizeStatement`, `sqlite.resetStatement`,
+  `sqlite.columnBlob`, `sqlite.columnByteCount`, and standard exported type/value
+  surfaces for `standard.gui`, `standard.json`, `standard.sqlite`,
+  `standard.net`, and `standard.bcrypt`.
 - Groups, guards, and defers:
   `group*`, `guardToken*`, `deferLog`, `deferLogSink`, `deferRunOn`,
   `deferOrder`, `deferFailurePolicy`, `deferConsumes`, and async defer forms.
@@ -148,12 +161,15 @@ ordinary variables. Examples include:
 ```text
 yes no
 strictExecutable refinedSyntax
+permissiveExecutable library none libuv
 local module process sharedState
 immutable mutable
+win32 winui3 x86_64_v1 on off
 sourceTape runtimeBinding recordConstructor intrinsic externalDependency
 success error
 decode encode reject ignore keep none
 utf8 nullByte sha256 maximumBytes
+empty null zero
 validatedRuntimeValue trustedStaticLiteral trustedUtf8Literal
 rawPointerToValidatedCString rawUtf8ToValidatedText
 row immutableUpdate borrowedView
@@ -163,6 +179,8 @@ return value ok error void reverseRegistration logAndSuppress
 protectedBy ownedBy
 continueMiddlewareControl shortCircuitMiddlewareControl
 inMemorySqliteOpenMode readWriteCreateSqliteOpenMode
+rowSqliteStepResult doneSqliteStepResult objectJsonValueKind arrayJsonValueKind
+defaultGuiWindowLayout clickGuiEventKind okGuiRuntimeStatus
 ```
 
 Role suffix highlighting is intentionally limited to real user symbols. Fixed
@@ -264,6 +282,8 @@ Then reload VS Code.
   "semanticScript.compiler.buildDir": "",
   "semanticScript.compiler.buildRoot": "",
   "semanticScript.compiler.buildFolderName": "",
+  "semanticScript.compiler.keepResources": false,
+  "semanticScript.compiler.resourceDir": "",
   "semanticScript.compiler.cpuBaseline": "default",
   "semanticScript.compiler.cpuTune": "",
   "semanticScript.compiler.cpuFeatureCheck": "default"
@@ -300,3 +320,7 @@ When a `.sem` file is inside a project, compile and lint commands use the
 nearest `build.sem` as the project root. `buildDir`, `buildRoot`, and
 `buildFolderName` pass through the matching compiler artifact-directory flags.
 CPU settings pass through the matching compiler CPU flags.
+
+`semanticScript.compiler.keepResources` and
+`semanticScript.compiler.resourceDir` pass through the matching Windows resource
+debugging flags.

@@ -177,11 +177,15 @@ current emitted representation is the compiler's flattened record-slot model.
 typed entry points. They are intended to wrap the native document/builder
 surface instead of requiring handlers to assemble JSON with `c.snprintf`.
 
-Primitive stringify/parse aliases dispatch through the existing primitive
-format/parse lowering internally, but the public call surface is
-`json.stringify.<TypeName>` / `json.parse.<TypeName>`. `JsonText` stringify
-copies through bounded scratch and `JsonText` parse validates syntax through
-the native document parser. Record stringify/parse walks record metadata and
-the native document runtime field by field, honoring `recordFieldJsonName`,
+Primitive stringify/parse aliases use compiler glue only to allocate scratch
+and call native JSON helpers. `json.stringify.String` and
+`json.stringify.CNullTerminatedByteString` escape through native_json and fail
+with `JsonEncodeError.OutputBufferTooSmall` when the bounded scratch cannot
+hold the quoted value. Primitive `json.parse` targets reject malformed input
+and trailing junk with `JsonDecodeError.UnexpectedToken`; they no longer mark
+success unconditionally after libc default parsing. `JsonText` stringify copies
+through bounded scratch and `JsonText` parse validates syntax through the
+native document parser. Record stringify/parse walks record metadata and the
+native document runtime field by field, honoring `recordFieldJsonName`,
 `recordFieldJsonOmitWhen`, required fields, nested records, and wrong-type
 errors while exposing `JsonEncodeError` / `JsonDecodeError` at the call site.

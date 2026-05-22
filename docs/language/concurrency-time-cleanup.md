@@ -49,6 +49,8 @@ run accountLookupCall
 Current lowering wraps `run CALL` in a bounded retry loop using
 `retryMaxAttempts`. If the policy omits a bound, the compiler uses a fallback
 attempt count. Delay and jitter metadata are preserved for runtime integration.
+`retryPolicy.delayForAttempt` is not a compiler runtimeBinding; implement delay
+calculation as a normal SemanticScript operation body or in an explicit runtime.
 
 ## Defer and Cleanup
 
@@ -114,6 +116,10 @@ Current lowering: lock and unlock are no-ops in single-thread execution.
 They do not provide runtime mutual exclusion until a multi-thread runtime is
 bound. `semlint.py` checks for lock acquisition without cleanup so the source
 still records the intended release path.
+
+`metricsLock.acquire` and `metricsLock.release` are not compiler runtimeBinding
+sentinels. Runtime-backed locks need explicit operations supplied by that
+runtime; source-level `lock` / `unlock` rows remain the portable metadata shape.
 
 ## Select
 

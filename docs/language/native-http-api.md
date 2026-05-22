@@ -152,6 +152,7 @@ Initial call targets:
 
 | Target | Inputs | Output | Lowering |
 |---|---|---|---|
+| `http.responseHtml` | `response HttpResponse`, `status HttpStatus`, `body CNullTerminatedByteString` | `CSignedInt32` | `ss_http_response_text` with `text/html; charset=utf-8` |
 | `http.responseText` | `response HttpResponse`, `status HttpStatus`, `body CNullTerminatedByteString`, optional `contentType CNullTerminatedByteString` | `CSignedInt32` | `ss_http_response_text` |
 | `http.responseBytes` | `response HttpResponse`, `status HttpStatus`, `body COpaqueMemoryAddress`, `bodyLength CByteCount`, optional `contentType CNullTerminatedByteString` | `CSignedInt32` | `ss_http_response_bytes` |
 | `http.responseSseEvent` | `response HttpResponse`, `status HttpStatus`, `event CNullTerminatedByteString`, `data CNullTerminatedByteString` | `CSignedInt32` | `ss_http_response_sse_event` |
