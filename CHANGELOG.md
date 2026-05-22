@@ -2,6 +2,10 @@
 
 ## 2026-05-22
 
+- `4a3a06843fdd094c7c90756a11489479aa370b91` - `app: add TaskForge async API client`
+  - Adds the real SemanticScript app entry for `apps/taskforge-api-client`: `build.sem` plus `main.sem`, where `main.sem` starts three `standard.net` `net.fetchText` requests to the running `taskforge-web` server before awaiting any response.
+  - Wires the outbound HTTP client surface through `standard.net`, compiler/linter lowering, native async/libuv and native HTTP client/libcurl runtime adapters, docs, tests, and a real-backend build harness.
+  - Adds `scripts/build_async_client.py --run` and `scripts/test_taskforge_async_client.py --real-backend`, which build the generated SemanticScript client against actual libuv/libcurl and verify `/health`, `/api/version`, and protected `/api/todos` responses from TaskForge.
 - `7ee77dee86a9d098583acf42afea20bfd04c819d` - `app: add TaskForge API todo client`
   - Adds `apps/taskforge-api-client`, a standalone browser todo app that consumes the existing `taskforge-web` JSON API through relative `/api/*` calls.
   - Adds a local Python same-origin proxy so browser auth cookies work without CORS changes while forwarding `/api/version`, auth, list, create, complete, uncomplete, and delete routes to the TaskForge backend.
