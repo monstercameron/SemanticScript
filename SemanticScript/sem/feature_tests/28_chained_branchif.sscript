@@ -7,49 +7,49 @@ entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Two-tier branching: x>0 AND x<10."
-invariant main "5 falls into the between range."
+purpose operation main "Two-tier branching: x>0 AND x<10."
+invariant operation main "5 falls into the between range."
 label startMain
-const fiveInitial I64 5
-const zeroCompare I64 0
-const tenCompare I64 10
-var value I64 fiveInitial
+storage module immutable fiveInitial I64 5
+storage module immutable zeroCompare I64 0
+storage module immutable tenCompare I64 10
+memory main mutable value I64 fiveInitial
 call posCheckCall math.greaterThanI64
-arg posCheckCall left value
-arg posCheckCall right zeroCompare
+argument posCheckCall left I64 value
+argument posCheckCall right I64 zeroCompare
 run posCheckCall
-bind isPositive Bool posCheckCall
-branchIf isPositive checkUpperBound
-branch outOfRangeLabel
+bind value isPositive Bool posCheckCall
+branch if condition isPositive target checkUpperBound
+branch else target outOfRangeLabel
 label checkUpperBound
 call upperCheckCall math.lessThanI64
-arg upperCheckCall left value
-arg upperCheckCall right tenCompare
+argument upperCheckCall left I64 value
+argument upperCheckCall right I64 tenCompare
 run upperCheckCall
-bind isUnderTen Bool upperCheckCall
-branchIf isUnderTen betweenLabel
-branch outOfRangeLabel
+bind value isUnderTen Bool upperCheckCall
+branch if condition isUnderTen target betweenLabel
+branch else target outOfRangeLabel
 label betweenLabel
-const betweenText CNullTerminatedByteString "between"
+storage module immutable betweenText CNullTerminatedByteString "between"
 call writeBetweenCall console.writeLine
-arg writeBetweenCall console console
-arg writeBetweenCall text betweenText
+argument writeBetweenCall console Console console
+argument writeBetweenCall text CNullTerminatedByteString betweenText
 run writeBetweenCall
-ignoreOk writeBetweenCall Void
-branch endLabel
+ignore void source writeBetweenCall
+jump target endLabel
 label outOfRangeLabel
-const oorText CNullTerminatedByteString "out-of-range"
+storage module immutable oorText CNullTerminatedByteString "out-of-range"
 call writeOorCall console.writeLine
-arg writeOorCall console console
-arg writeOorCall text oorText
+argument writeOorCall console Console console
+argument writeOorCall text CNullTerminatedByteString oorText
 run writeOorCall
-ignoreOk writeOorCall Void
-branch endLabel
+ignore void source writeOorCall
+jump target endLabel
 label endLabel
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

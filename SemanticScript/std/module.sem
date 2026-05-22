@@ -1,44 +1,44 @@
 # SemanticScript standard-library relay module.
 
 module standard
-modulePurpose standard "Top-level relay for the official SemanticScript standard-library modules."
+purpose module standard "Top-level relay for the official SemanticScript standard-library modules."
 moduleOwns standard "The `standard` namespace relay and explicit imports for each child `standard.*` module."
 moduleDoesNotOwn standard "Child module implementation bodies, executable entry points, tests, or application build metadata."
-moduleInvariant standard "Each child module resolves through `std/<module>/main.sem`; this relay has no runtime entry operation."
+invariant module standard "Each child module resolves through `std/<module>/main.sem`; this relay has no runtime entry operation."
 
 exportConstant standard standardModuleVersionText
 storage module immutable standardModuleVersionText CNullTerminatedByteString "standard 0.1"
 
-importModule standard.array
-importModule standard.assert
-importModule standard.bit
-importModule standard.bool
-importModule standard.char
-importModule standard.compare
-importModule standard.constants
-importModule standard.convert
-importModule standard.ctype
-importModule standard.errno
-importModule standard.errno_more
-importModule standard.gui
-importModule standard.html
-importModule standard.http
-importModule standard.inttypes
-importModule standard.iso646
-importModule standard.json
-importModule standard.limits
-importModule standard.math
-importModule standard.math_float
-importModule standard.memory
-importModule standard.numeric
-importModule standard.process
-importModule standard.random
-importModule standard.signal
-importModule standard.signal_more
-importModule standard.sqlite
-importModule standard.sort
-importModule standard.stddef
-importModule standard.stdio
-importModule standard.stdlib
-importModule standard.string
-importModule standard.time
+import array standard.array
+import assert standard.assert
+import bit standard.bit
+import bool standard.bool
+import char standard.char
+import compare standard.compare
+import constants standard.constants
+import convert standard.convert
+import ctype standard.ctype
+import errno standard.errno
+import errno_more standard.errno_more
+import gui standard.gui
+import html standard.html
+import http standard.http
+import inttypes standard.inttypes
+import iso646 standard.iso646
+import json standard.json
+import limits standard.limits
+import math standard.math
+import math_float standard.math_float
+import memory standard.memory
+import numeric standard.numeric
+import process standard.process
+import random standard.random
+import signal standard.signal
+import signal_more standard.signal_more
+import sqlite standard.sqlite
+import sort standard.sort
+import stddef standard.stddef
+import stdio standard.stdio
+import stdlib standard.stdlib
+import string standard.string
+import time standard.time

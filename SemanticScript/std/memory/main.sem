@@ -1,10 +1,10 @@
 # SemanticScript standard-library canonical module: standard.memory.
 
 module standard.memory
-modulePurpose standard.memory "Canonical standard-library module for memory helpers."
+purpose module standard.memory "Canonical standard-library module for memory helpers."
 moduleOwns standard.memory "The official import path `standard.memory` and this module's implementation body."
 moduleDoesNotOwn standard.memory "App-specific wrappers, compatibility aliases, or generated build artifacts."
-moduleInvariant standard.memory "The standard module entry is this file; tests live beside it as `main.test.sem`."
+invariant module standard.memory "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.memory memoryModuleVersionText
 storage module immutable memoryModuleVersionText CNullTerminatedByteString "standard.memory 0.1"
@@ -14,25 +14,24 @@ storage module immutable memoryModuleVersionText CNullTerminatedByteString "stan
 # SEMANTICSCRIPT STANDARD LIBRARY: bulk memory operations
 # ============================================================
 #
-# # rationale: pure-SemanticScript analogues of memcpy / memmove / memset /
+# rationale: pure-SemanticScript analogues of memcpy / memmove / memset /
 #   memcmp / memchr / bzero / FNV-1a hash. Implemented via
 #   pointer.loadByte / pointer.storeByte loops because the refined
 #   surface targets transparency over raw libc symbols. Each total
 #   operation drops the Result wrapper.
 #
-# # invariant: all loops walk exactly byteCount bytes (or fewer
+# invariant: all loops walk exactly byteCount bytes (or fewer
 #   on early return for find/compare). Caller is responsible for
 #   ensuring the source / destination buffers are at least
 #   byteCount bytes wide â€” no capacity contract is encoded at
 #   this layer.
 #
-# # security: copy / move / fill mutate the destination buffer in
+# security: copy / move / fill mutate the destination buffer in
 #   place. Bounds enforcement is the caller's responsibility.
 #
-# # timing: every op is O(byteCount).
+# timing: every op is O(byteCount).
 #
-# # observability: no logs or metrics.
-
+# observability: no logs or metrics.
 
 # Pure-module file: smoke + extended tests live in
 # std/memory/main.test.sem.
@@ -55,343 +54,343 @@ domainLiteralSource fnvOneAPrime ietf.fnv1a.prime64
 # section memory.copy
 
 operation copyMemoryBytes
-input copyMemoryBytes destinationBuffer COpaqueMemoryAddress
-input copyMemoryBytes sourceBuffer CNullTerminatedByteString
-input copyMemoryBytes byteCount CByteCount
-output copyMemoryBytes CByteCount
-memoryHeap copyMemoryBytes no
+input operation copyMemoryBytes destinationBuffer COpaqueMemoryAddress
+input operation copyMemoryBytes sourceBuffer CNullTerminatedByteString
+input operation copyMemoryBytes byteCount CByteCount
+output operation copyMemoryBytes CByteCount
+memory copyMemoryBytes heap no
 memoryStackLimit copyMemoryBytes 1024
 async copyMemoryBytes no
-purpose copyMemoryBytes "Copies byteCount bytes from sourceBuffer to destinationBuffer (forward walk). Returns byteCount."
-invariant copyMemoryBytes "Forward copy â€” caller must guarantee non-overlapping regions; use moveMemoryBytesAllowOverlap when they may overlap."
+purpose operation copyMemoryBytes "Copies byteCount bytes from sourceBuffer to destinationBuffer (forward walk). Returns byteCount."
+invariant operation copyMemoryBytes "Forward copy â€” caller must guarantee non-overlapping regions; use moveMemoryBytesAllowOverlap when they may overlap."
 guarantee copyMemoryBytes "Total."
 label startCopyMemoryBytes
-var copyCursor I64 0
+memory copyMemoryBytes mutable copyCursor I64 0
 label copyForwardLoop
 call detectCopyDoneCall math.greaterThanOrEqualI64
-arg detectCopyDoneCall left copyCursor
-arg detectCopyDoneCall right byteCount
+argument detectCopyDoneCall left I64 copyCursor
+argument detectCopyDoneCall right I64 byteCount
 run detectCopyDoneCall
-bind copyDone Bool detectCopyDoneCall
-branchIf copyDone copyComplete
+bind value copyDone Bool detectCopyDoneCall
+branch if condition copyDone target copyComplete
 call loadByteForCopyCall pointer.loadByte
-arg loadByteForCopyCall buffer sourceBuffer
-arg loadByteForCopyCall offset copyCursor
+argument loadByteForCopyCall buffer COpaqueMemoryAddress sourceBuffer
+argument loadByteForCopyCall offset CByteCount copyCursor
 run loadByteForCopyCall
-bind currentCopyByte I8 loadByteForCopyCall
+bind value currentCopyByte I8 loadByteForCopyCall
 call storeByteForCopyCall pointer.storeByte
-arg storeByteForCopyCall buffer destinationBuffer
-arg storeByteForCopyCall offset copyCursor
-arg storeByteForCopyCall value currentCopyByte
+argument storeByteForCopyCall buffer COpaqueMemoryAddress destinationBuffer
+argument storeByteForCopyCall offset CByteCount copyCursor
+argument storeByteForCopyCall value CSignedInt64 currentCopyByte
 run storeByteForCopyCall
 call advanceCopyCursorCall math.addI64
-arg advanceCopyCursorCall left copyCursor
-arg advanceCopyCursorCall right integerOneStepValue
+argument advanceCopyCursorCall left I64 copyCursor
+argument advanceCopyCursorCall right I64 integerOneStepValue
 run advanceCopyCursorCall
-bind nextCopyCursor I64 advanceCopyCursorCall
-set copyCursor nextCopyCursor
-branch copyForwardLoop
+bind value nextCopyCursor I64 advanceCopyCursorCall
+set memory copyCursor nextCopyCursor
+jump target copyForwardLoop
 label copyComplete
-returnValue byteCount
+return value byteCount
 
 operation moveMemoryBytesAllowOverlap
-input moveMemoryBytesAllowOverlap destinationBuffer COpaqueMemoryAddress
-input moveMemoryBytesAllowOverlap sourceBuffer CNullTerminatedByteString
-input moveMemoryBytesAllowOverlap byteCount CByteCount
-output moveMemoryBytesAllowOverlap CByteCount
-memoryHeap moveMemoryBytesAllowOverlap no
+input operation moveMemoryBytesAllowOverlap destinationBuffer COpaqueMemoryAddress
+input operation moveMemoryBytesAllowOverlap sourceBuffer CNullTerminatedByteString
+input operation moveMemoryBytesAllowOverlap byteCount CByteCount
+output operation moveMemoryBytesAllowOverlap CByteCount
+memory moveMemoryBytesAllowOverlap heap no
 memoryStackLimit moveMemoryBytesAllowOverlap 1024
 async moveMemoryBytesAllowOverlap no
-purpose moveMemoryBytesAllowOverlap "Overlap-safe memmove. When destinationBuffer > sourceBuffer in memory, copies bytes backwards so overlapping regions don't clobber unread source bytes."
-invariant moveMemoryBytesAllowOverlap "Equivalent in result to copyMemoryBytes when regions don't overlap; correct under overlap when they do."
+purpose operation moveMemoryBytesAllowOverlap "Overlap-safe memmove. When destinationBuffer > sourceBuffer in memory, copies bytes backwards so overlapping regions don't clobber unread source bytes."
+invariant operation moveMemoryBytesAllowOverlap "Equivalent in result to copyMemoryBytes when regions don't overlap; correct under overlap when they do."
 guarantee moveMemoryBytesAllowOverlap "Total."
 label startMoveMemoryBytesAllowOverlap
 call computePointerDeltaCall pointer.difference
-arg computePointerDeltaCall left destinationBuffer
-arg computePointerDeltaCall right sourceBuffer
+argument computePointerDeltaCall left COpaqueMemoryAddress destinationBuffer
+argument computePointerDeltaCall right COpaqueMemoryAddress sourceBuffer
 run computePointerDeltaCall
-bind destinationMinusSource CSignedInt64 computePointerDeltaCall
+bind value destinationMinusSource CSignedInt64 computePointerDeltaCall
 call detectForwardCopyIsSafeCall math.lessThanOrEqualI64
-arg detectForwardCopyIsSafeCall left destinationMinusSource
-arg detectForwardCopyIsSafeCall right integerZeroBoundaryForMemory
+argument detectForwardCopyIsSafeCall left I64 destinationMinusSource
+argument detectForwardCopyIsSafeCall right I64 integerZeroBoundaryForMemory
 run detectForwardCopyIsSafeCall
-bind forwardCopyIsSafe Bool detectForwardCopyIsSafeCall
-branchIf forwardCopyIsSafe moveForwardLoop
-var moveReverseCursor I64 0
-set moveReverseCursor byteCount
+bind value forwardCopyIsSafe Bool detectForwardCopyIsSafeCall
+branch if condition forwardCopyIsSafe target moveForwardLoop
+memory moveMemoryBytesAllowOverlap mutable moveReverseCursor I64 0
+set memory moveReverseCursor byteCount
 label moveReverseLoop
 call detectMoveReverseDoneCall math.equalI64
-arg detectMoveReverseDoneCall left moveReverseCursor
-arg detectMoveReverseDoneCall right integerZeroBoundaryForMemory
+argument detectMoveReverseDoneCall left I64 moveReverseCursor
+argument detectMoveReverseDoneCall right I64 integerZeroBoundaryForMemory
 run detectMoveReverseDoneCall
-bind moveReverseDone Bool detectMoveReverseDoneCall
-branchIf moveReverseDone moveComplete
+bind value moveReverseDone Bool detectMoveReverseDoneCall
+branch if condition moveReverseDone target moveComplete
 call retreatMoveReverseCursorCall math.subtractI64
-arg retreatMoveReverseCursorCall left moveReverseCursor
-arg retreatMoveReverseCursorCall right integerOneStepValue
+argument retreatMoveReverseCursorCall left I64 moveReverseCursor
+argument retreatMoveReverseCursorCall right I64 integerOneStepValue
 run retreatMoveReverseCursorCall
-bind retreatedReverseCursor I64 retreatMoveReverseCursorCall
-set moveReverseCursor retreatedReverseCursor
+bind value retreatedReverseCursor I64 retreatMoveReverseCursorCall
+set memory moveReverseCursor retreatedReverseCursor
 call loadByteForReverseMoveCall pointer.loadByte
-arg loadByteForReverseMoveCall buffer sourceBuffer
-arg loadByteForReverseMoveCall offset retreatedReverseCursor
+argument loadByteForReverseMoveCall buffer COpaqueMemoryAddress sourceBuffer
+argument loadByteForReverseMoveCall offset CByteCount retreatedReverseCursor
 run loadByteForReverseMoveCall
-bind reverseMoveByte I8 loadByteForReverseMoveCall
+bind value reverseMoveByte I8 loadByteForReverseMoveCall
 call storeByteForReverseMoveCall pointer.storeByte
-arg storeByteForReverseMoveCall buffer destinationBuffer
-arg storeByteForReverseMoveCall offset retreatedReverseCursor
-arg storeByteForReverseMoveCall value reverseMoveByte
+argument storeByteForReverseMoveCall buffer COpaqueMemoryAddress destinationBuffer
+argument storeByteForReverseMoveCall offset CByteCount retreatedReverseCursor
+argument storeByteForReverseMoveCall value CSignedInt64 reverseMoveByte
 run storeByteForReverseMoveCall
-branch moveReverseLoop
+jump target moveReverseLoop
 label moveForwardLoop
-var moveForwardCursor I64 0
+memory moveMemoryBytesAllowOverlap mutable moveForwardCursor I64 0
 label moveForwardLoopBody
 call detectMoveForwardDoneCall math.greaterThanOrEqualI64
-arg detectMoveForwardDoneCall left moveForwardCursor
-arg detectMoveForwardDoneCall right byteCount
+argument detectMoveForwardDoneCall left I64 moveForwardCursor
+argument detectMoveForwardDoneCall right I64 byteCount
 run detectMoveForwardDoneCall
-bind moveForwardDone Bool detectMoveForwardDoneCall
-branchIf moveForwardDone moveComplete
+bind value moveForwardDone Bool detectMoveForwardDoneCall
+branch if condition moveForwardDone target moveComplete
 call loadByteForForwardMoveCall pointer.loadByte
-arg loadByteForForwardMoveCall buffer sourceBuffer
-arg loadByteForForwardMoveCall offset moveForwardCursor
+argument loadByteForForwardMoveCall buffer COpaqueMemoryAddress sourceBuffer
+argument loadByteForForwardMoveCall offset CByteCount moveForwardCursor
 run loadByteForForwardMoveCall
-bind forwardMoveByte I8 loadByteForForwardMoveCall
+bind value forwardMoveByte I8 loadByteForForwardMoveCall
 call storeByteForForwardMoveCall pointer.storeByte
-arg storeByteForForwardMoveCall buffer destinationBuffer
-arg storeByteForForwardMoveCall offset moveForwardCursor
-arg storeByteForForwardMoveCall value forwardMoveByte
+argument storeByteForForwardMoveCall buffer COpaqueMemoryAddress destinationBuffer
+argument storeByteForForwardMoveCall offset CByteCount moveForwardCursor
+argument storeByteForForwardMoveCall value CSignedInt64 forwardMoveByte
 run storeByteForForwardMoveCall
 call advanceMoveForwardCursorCall math.addI64
-arg advanceMoveForwardCursorCall left moveForwardCursor
-arg advanceMoveForwardCursorCall right integerOneStepValue
+argument advanceMoveForwardCursorCall left I64 moveForwardCursor
+argument advanceMoveForwardCursorCall right I64 integerOneStepValue
 run advanceMoveForwardCursorCall
-bind nextMoveForwardCursor I64 advanceMoveForwardCursorCall
-set moveForwardCursor nextMoveForwardCursor
-branch moveForwardLoopBody
+bind value nextMoveForwardCursor I64 advanceMoveForwardCursorCall
+set memory moveForwardCursor nextMoveForwardCursor
+jump target moveForwardLoopBody
 label moveComplete
-returnValue byteCount
+return value byteCount
 
 # section memory.fill
 
 operation fillMemoryBytesWithValue
-input fillMemoryBytesWithValue byteBuffer COpaqueMemoryAddress
-input fillMemoryBytesWithValue targetValue CSignedInt32
-input fillMemoryBytesWithValue byteCount CByteCount
-output fillMemoryBytesWithValue CByteCount
-memoryHeap fillMemoryBytesWithValue no
+input operation fillMemoryBytesWithValue byteBuffer COpaqueMemoryAddress
+input operation fillMemoryBytesWithValue targetValue CSignedInt32
+input operation fillMemoryBytesWithValue byteCount CByteCount
+output operation fillMemoryBytesWithValue CByteCount
+memory fillMemoryBytesWithValue heap no
 memoryStackLimit fillMemoryBytesWithValue 1024
 async fillMemoryBytesWithValue no
-purpose fillMemoryBytesWithValue "Writes byteCount copies of targetValue into byteBuffer."
-invariant fillMemoryBytesWithValue "Writes exactly byteCount bytes; never reads from byteBuffer; the low 8 bits of targetValue are stored at each offset."
+purpose operation fillMemoryBytesWithValue "Writes byteCount copies of targetValue into byteBuffer."
+invariant operation fillMemoryBytesWithValue "Writes exactly byteCount bytes; never reads from byteBuffer; the low 8 bits of targetValue are stored at each offset."
 guarantee fillMemoryBytesWithValue "Total."
 label startFillMemoryBytesWithValue
-var fillCursor I64 0
+memory fillMemoryBytesWithValue mutable fillCursor I64 0
 label fillLoop
 call detectFillDoneCall math.greaterThanOrEqualI64
-arg detectFillDoneCall left fillCursor
-arg detectFillDoneCall right byteCount
+argument detectFillDoneCall left I64 fillCursor
+argument detectFillDoneCall right I64 byteCount
 run detectFillDoneCall
-bind fillDone Bool detectFillDoneCall
-branchIf fillDone fillComplete
+bind value fillDone Bool detectFillDoneCall
+branch if condition fillDone target fillComplete
 call storeFillByteCall pointer.storeByte
-arg storeFillByteCall buffer byteBuffer
-arg storeFillByteCall offset fillCursor
-arg storeFillByteCall value targetValue
+argument storeFillByteCall buffer COpaqueMemoryAddress byteBuffer
+argument storeFillByteCall offset CByteCount fillCursor
+argument storeFillByteCall value CSignedInt64 targetValue
 run storeFillByteCall
 call advanceFillCursorCall math.addI64
-arg advanceFillCursorCall left fillCursor
-arg advanceFillCursorCall right integerOneStepValue
+argument advanceFillCursorCall left I64 fillCursor
+argument advanceFillCursorCall right I64 integerOneStepValue
 run advanceFillCursorCall
-bind nextFillCursor I64 advanceFillCursorCall
-set fillCursor nextFillCursor
-branch fillLoop
+bind value nextFillCursor I64 advanceFillCursorCall
+set memory fillCursor nextFillCursor
+jump target fillLoop
 label fillComplete
-returnValue byteCount
+return value byteCount
 
 operation zeroMemoryBytes
-input zeroMemoryBytes byteBuffer COpaqueMemoryAddress
-input zeroMemoryBytes byteCount CByteCount
-output zeroMemoryBytes CByteCount
-memoryHeap zeroMemoryBytes no
+input operation zeroMemoryBytes byteBuffer COpaqueMemoryAddress
+input operation zeroMemoryBytes byteCount CByteCount
+output operation zeroMemoryBytes CByteCount
+memory zeroMemoryBytes heap no
 memoryStackLimit zeroMemoryBytes 1024
 async zeroMemoryBytes no
-purpose zeroMemoryBytes "Writes byteCount zeros into byteBuffer (bzero shape). Delegates to fillMemoryBytesWithValue."
+purpose operation zeroMemoryBytes "Writes byteCount zeros into byteBuffer (bzero shape). Delegates to fillMemoryBytesWithValue."
 guarantee zeroMemoryBytes "Total."
 label startZeroMemoryBytes
-const zeroByteValue CSignedInt32 0
+storage module immutable zeroByteValue CSignedInt32 0
 call delegateToFillCall fillMemoryBytesWithValue
-arg delegateToFillCall byteBuffer byteBuffer
-arg delegateToFillCall targetValue zeroByteValue
-arg delegateToFillCall byteCount byteCount
+argument delegateToFillCall byteBuffer COpaqueMemoryAddress byteBuffer
+argument delegateToFillCall targetValue CSignedInt32 zeroByteValue
+argument delegateToFillCall byteCount CByteCount byteCount
 run delegateToFillCall
-bind zeroFillResult CByteCount delegateToFillCall
-returnValue zeroFillResult
+bind value zeroFillResult CByteCount delegateToFillCall
+return value zeroFillResult
 
 # section memory.compareAndSearch
 
 operation compareMemoryByteRanges
-input compareMemoryByteRanges leftBuffer CNullTerminatedByteString
-input compareMemoryByteRanges rightBuffer CNullTerminatedByteString
-input compareMemoryByteRanges byteCount CByteCount
-output compareMemoryByteRanges CSignedInt64
-memoryHeap compareMemoryByteRanges no
+input operation compareMemoryByteRanges leftBuffer CNullTerminatedByteString
+input operation compareMemoryByteRanges rightBuffer CNullTerminatedByteString
+input operation compareMemoryByteRanges byteCount CByteCount
+output operation compareMemoryByteRanges CSignedInt64
+memory compareMemoryByteRanges heap no
 memoryStackLimit compareMemoryByteRanges 1024
 async compareMemoryByteRanges no
-purpose compareMemoryByteRanges "Compares the first byteCount bytes of two buffers; returns 0 on full match, otherwise the signed difference of the first mismatched pair (leftByte - rightByte)."
-invariant compareMemoryByteRanges "Sign of the result matches the sign of the first byte difference."
+purpose operation compareMemoryByteRanges "Compares the first byteCount bytes of two buffers; returns 0 on full match, otherwise the signed difference of the first mismatched pair (leftByte - rightByte)."
+invariant operation compareMemoryByteRanges "Sign of the result matches the sign of the first byte difference."
 guarantee compareMemoryByteRanges "Total."
 label startCompareMemoryByteRanges
-var compareCursor I64 0
+memory compareMemoryByteRanges mutable compareCursor I64 0
 label compareLoop
 call detectCompareDoneCall math.greaterThanOrEqualI64
-arg detectCompareDoneCall left compareCursor
-arg detectCompareDoneCall right byteCount
+argument detectCompareDoneCall left I64 compareCursor
+argument detectCompareDoneCall right I64 byteCount
 run detectCompareDoneCall
-bind compareDone Bool detectCompareDoneCall
-branchIf compareDone returnCompareEqual
+bind value compareDone Bool detectCompareDoneCall
+branch if condition compareDone target returnCompareEqual
 call loadLeftByteForCompareCall pointer.loadByte
-arg loadLeftByteForCompareCall buffer leftBuffer
-arg loadLeftByteForCompareCall offset compareCursor
+argument loadLeftByteForCompareCall buffer COpaqueMemoryAddress leftBuffer
+argument loadLeftByteForCompareCall offset CByteCount compareCursor
 run loadLeftByteForCompareCall
-bind compareLeftByte I8 loadLeftByteForCompareCall
+bind value compareLeftByte I8 loadLeftByteForCompareCall
 call loadRightByteForCompareCall pointer.loadByte
-arg loadRightByteForCompareCall buffer rightBuffer
-arg loadRightByteForCompareCall offset compareCursor
+argument loadRightByteForCompareCall buffer COpaqueMemoryAddress rightBuffer
+argument loadRightByteForCompareCall offset CByteCount compareCursor
 run loadRightByteForCompareCall
-bind compareRightByte I8 loadRightByteForCompareCall
+bind value compareRightByte I8 loadRightByteForCompareCall
 call computeByteDifferenceCall math.subtractI64
-arg computeByteDifferenceCall left compareLeftByte
-arg computeByteDifferenceCall right compareRightByte
+argument computeByteDifferenceCall left I64 compareLeftByte
+argument computeByteDifferenceCall right I64 compareRightByte
 run computeByteDifferenceCall
-bind byteDifferenceValue I64 computeByteDifferenceCall
+bind value byteDifferenceValue I64 computeByteDifferenceCall
 call detectByteDifferenceNonZeroCall math.notEqualI64
-arg detectByteDifferenceNonZeroCall left byteDifferenceValue
-arg detectByteDifferenceNonZeroCall right integerZeroBoundaryForMemory
+argument detectByteDifferenceNonZeroCall left I64 byteDifferenceValue
+argument detectByteDifferenceNonZeroCall right I64 integerZeroBoundaryForMemory
 run detectByteDifferenceNonZeroCall
-bind byteDifferenceNonZero Bool detectByteDifferenceNonZeroCall
-branchIf byteDifferenceNonZero returnByteDifference
+bind value byteDifferenceNonZero Bool detectByteDifferenceNonZeroCall
+branch if condition byteDifferenceNonZero target returnByteDifference
 call advanceCompareCursorCall math.addI64
-arg advanceCompareCursorCall left compareCursor
-arg advanceCompareCursorCall right integerOneStepValue
+argument advanceCompareCursorCall left I64 compareCursor
+argument advanceCompareCursorCall right I64 integerOneStepValue
 run advanceCompareCursorCall
-bind nextCompareCursor I64 advanceCompareCursorCall
-set compareCursor nextCompareCursor
-branch compareLoop
+bind value nextCompareCursor I64 advanceCompareCursorCall
+set memory compareCursor nextCompareCursor
+jump target compareLoop
 label returnByteDifference
-returnValue byteDifferenceValue
+return value byteDifferenceValue
 label returnCompareEqual
-returnValue integerZeroBoundaryForMemory
+return value integerZeroBoundaryForMemory
 
 operation findByteValueInMemoryRange
-input findByteValueInMemoryRange byteBuffer CNullTerminatedByteString
-input findByteValueInMemoryRange targetValue CSignedInt32
-input findByteValueInMemoryRange byteCount CByteCount
-output findByteValueInMemoryRange CSignedInt64
-memoryHeap findByteValueInMemoryRange no
+input operation findByteValueInMemoryRange byteBuffer CNullTerminatedByteString
+input operation findByteValueInMemoryRange targetValue CSignedInt32
+input operation findByteValueInMemoryRange byteCount CByteCount
+output operation findByteValueInMemoryRange CSignedInt64
+memory findByteValueInMemoryRange heap no
 memoryStackLimit findByteValueInMemoryRange 1024
 async findByteValueInMemoryRange no
-purpose findByteValueInMemoryRange "Returns the offset of the first byte in [0, byteCount) that equals targetValue, or -1 if not present."
-invariant findByteValueInMemoryRange "Result is in [-1, byteCount); -1 only when target is absent."
+purpose operation findByteValueInMemoryRange "Returns the offset of the first byte in [0, byteCount) that equals targetValue, or -1 if not present."
+invariant operation findByteValueInMemoryRange "Result is in [-1, byteCount); -1 only when target is absent."
 guarantee findByteValueInMemoryRange "Total."
 label startFindByteValueInMemoryRange
-var findByteCursor I64 0
+memory findByteValueInMemoryRange mutable findByteCursor I64 0
 label findByteLoop
 call detectFindByteDoneCall math.greaterThanOrEqualI64
-arg detectFindByteDoneCall left findByteCursor
-arg detectFindByteDoneCall right byteCount
+argument detectFindByteDoneCall left I64 findByteCursor
+argument detectFindByteDoneCall right I64 byteCount
 run detectFindByteDoneCall
-bind findByteDone Bool detectFindByteDoneCall
-branchIf findByteDone findByteNotFound
+bind value findByteDone Bool detectFindByteDoneCall
+branch if condition findByteDone target findByteNotFound
 call loadByteForFindCall pointer.loadByte
-arg loadByteForFindCall buffer byteBuffer
-arg loadByteForFindCall offset findByteCursor
+argument loadByteForFindCall buffer COpaqueMemoryAddress byteBuffer
+argument loadByteForFindCall offset CByteCount findByteCursor
 run loadByteForFindCall
-bind findCurrentByte I8 loadByteForFindCall
+bind value findCurrentByte I8 loadByteForFindCall
 call detectFindByteMatchCall math.equalI64
-arg detectFindByteMatchCall left findCurrentByte
-arg detectFindByteMatchCall right targetValue
+argument detectFindByteMatchCall left I64 findCurrentByte
+argument detectFindByteMatchCall right I64 targetValue
 run detectFindByteMatchCall
-bind findByteMatch Bool detectFindByteMatchCall
-branchIf findByteMatch findByteFoundAtCursor
+bind value findByteMatch Bool detectFindByteMatchCall
+branch if condition findByteMatch target findByteFoundAtCursor
 call advanceFindByteCursorCall math.addI64
-arg advanceFindByteCursorCall left findByteCursor
-arg advanceFindByteCursorCall right integerOneStepValue
+argument advanceFindByteCursorCall left I64 findByteCursor
+argument advanceFindByteCursorCall right I64 integerOneStepValue
 run advanceFindByteCursorCall
-bind nextFindByteCursor I64 advanceFindByteCursorCall
-set findByteCursor nextFindByteCursor
-branch findByteLoop
+bind value nextFindByteCursor I64 advanceFindByteCursorCall
+set memory findByteCursor nextFindByteCursor
+jump target findByteLoop
 label findByteFoundAtCursor
-returnValue findByteCursor
+return value findByteCursor
 label findByteNotFound
-returnValue integerNegativeOneSentinel
+return value integerNegativeOneSentinel
 
 # section memory.hash
 
 operation hashMemoryBytesWithFnv1a
-input hashMemoryBytesWithFnv1a byteBuffer CNullTerminatedByteString
-input hashMemoryBytesWithFnv1a byteCount CByteCount
-output hashMemoryBytesWithFnv1a CSignedInt64
-memoryHeap hashMemoryBytesWithFnv1a no
+input operation hashMemoryBytesWithFnv1a byteBuffer CNullTerminatedByteString
+input operation hashMemoryBytesWithFnv1a byteCount CByteCount
+output operation hashMemoryBytesWithFnv1a CSignedInt64
+memory hashMemoryBytesWithFnv1a heap no
 memoryStackLimit hashMemoryBytesWithFnv1a 1024
 async hashMemoryBytesWithFnv1a no
-purpose hashMemoryBytesWithFnv1a "Approximate FNV-1a 64-bit hash. Walks every byte of byteBuffer, mixes via add+multiply (XOR is not natively available at this layer), produces a deterministic per-input value."
-invariant hashMemoryBytesWithFnv1a "Deterministic on the input bytes; identical buffers produce identical hashes; no allocation."
+purpose operation hashMemoryBytesWithFnv1a "Approximate FNV-1a 64-bit hash. Walks every byte of byteBuffer, mixes via add+multiply (XOR is not natively available at this layer), produces a deterministic per-input value."
+invariant operation hashMemoryBytesWithFnv1a "Deterministic on the input bytes; identical buffers produce identical hashes; no allocation."
 warning hashMemoryBytesWithFnv1a "Not a bit-exact FNV-1a â€” useful for dispatch tables but NOT for cryptographic or interoperability purposes."
 guarantee hashMemoryBytesWithFnv1a "Total."
 label startHashMemoryBytesWithFnv1a
-var hashAccumulator I64 0
-set hashAccumulator fnvOneAOffsetBasis
-var hashByteCursor I64 0
+memory hashMemoryBytesWithFnv1a mutable hashAccumulator I64 0
+set memory hashAccumulator fnvOneAOffsetBasis
+memory hashMemoryBytesWithFnv1a mutable hashByteCursor I64 0
 label hashLoop
 call detectHashDoneCall math.greaterThanOrEqualI64
-arg detectHashDoneCall left hashByteCursor
-arg detectHashDoneCall right byteCount
+argument detectHashDoneCall left I64 hashByteCursor
+argument detectHashDoneCall right I64 byteCount
 run detectHashDoneCall
-bind hashDone Bool detectHashDoneCall
-branchIf hashDone hashComplete
+bind value hashDone Bool detectHashDoneCall
+branch if condition hashDone target hashComplete
 call loadByteForHashCall pointer.loadByte
-arg loadByteForHashCall buffer byteBuffer
-arg loadByteForHashCall offset hashByteCursor
+argument loadByteForHashCall buffer COpaqueMemoryAddress byteBuffer
+argument loadByteForHashCall offset CByteCount hashByteCursor
 run loadByteForHashCall
-bind hashCurrentByte I8 loadByteForHashCall
+bind value hashCurrentByte I8 loadByteForHashCall
 call normalizeHashByteCall math.addI64
-arg normalizeHashByteCall left hashCurrentByte
-arg normalizeHashByteCall right byteRoleAdjustmentValue
+argument normalizeHashByteCall left I64 hashCurrentByte
+argument normalizeHashByteCall right I64 byteRoleAdjustmentValue
 run normalizeHashByteCall
-bind shiftedHashByte I64 normalizeHashByteCall
+bind value shiftedHashByte I64 normalizeHashByteCall
 call moduloHashByteCall math.moduloI64
-arg moduloHashByteCall left shiftedHashByte
-arg moduloHashByteCall right byteRoleAdjustmentValue
+argument moduloHashByteCall left I64 shiftedHashByte
+argument moduloHashByteCall right I64 byteRoleAdjustmentValue
 run moduloHashByteCall
-bind unsignedHashByte I64 moduloHashByteCall
+bind value unsignedHashByte I64 moduloHashByteCall
 call mixHashByteCall math.multiplyI64
-arg mixHashByteCall left unsignedHashByte
-arg mixHashByteCall right byteRoleAdjustmentValue
+argument mixHashByteCall left I64 unsignedHashByte
+argument mixHashByteCall right I64 byteRoleAdjustmentValue
 run mixHashByteCall
-bind mixedHashByte I64 mixHashByteCall
+bind value mixedHashByte I64 mixHashByteCall
 call addMixedHashByteCall math.addI64
-arg addMixedHashByteCall left hashAccumulator
-arg addMixedHashByteCall right mixedHashByte
+argument addMixedHashByteCall left I64 hashAccumulator
+argument addMixedHashByteCall right I64 mixedHashByte
 run addMixedHashByteCall
-bind hashAfterMixedAdd I64 addMixedHashByteCall
+bind value hashAfterMixedAdd I64 addMixedHashByteCall
 call addRawHashByteCall math.addI64
-arg addRawHashByteCall left hashAfterMixedAdd
-arg addRawHashByteCall right unsignedHashByte
+argument addRawHashByteCall left I64 hashAfterMixedAdd
+argument addRawHashByteCall right I64 unsignedHashByte
 run addRawHashByteCall
-bind hashAfterRawAdd I64 addRawHashByteCall
+bind value hashAfterRawAdd I64 addRawHashByteCall
 call multiplyByFnvPrimeCall math.multiplyI64
-arg multiplyByFnvPrimeCall left hashAfterRawAdd
-arg multiplyByFnvPrimeCall right fnvOneAPrime
+argument multiplyByFnvPrimeCall left I64 hashAfterRawAdd
+argument multiplyByFnvPrimeCall right I64 fnvOneAPrime
 run multiplyByFnvPrimeCall
-bind hashAfterPrimeMultiply I64 multiplyByFnvPrimeCall
-set hashAccumulator hashAfterPrimeMultiply
+bind value hashAfterPrimeMultiply I64 multiplyByFnvPrimeCall
+set memory hashAccumulator hashAfterPrimeMultiply
 call advanceHashCursorCall math.addI64
-arg advanceHashCursorCall left hashByteCursor
-arg advanceHashCursorCall right integerOneStepValue
+argument advanceHashCursorCall left I64 hashByteCursor
+argument advanceHashCursorCall right I64 integerOneStepValue
 run advanceHashCursorCall
-bind nextHashCursor I64 advanceHashCursorCall
-set hashByteCursor nextHashCursor
-branch hashLoop
+bind value nextHashCursor I64 advanceHashCursorCall
+set memory hashByteCursor nextHashCursor
+jump target hashLoop
 label hashComplete
-returnValue hashAccumulator
+return value hashAccumulator

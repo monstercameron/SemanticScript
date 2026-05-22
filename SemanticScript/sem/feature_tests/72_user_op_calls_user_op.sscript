@@ -8,60 +8,60 @@ error MainError
 errorCase MainError Placeholder CSignedInt32
 
 operation double
-input double n CSignedInt64
-output double Result CSignedInt64 Void
+input operation double n CSignedInt64
+output operation double Result CSignedInt64 Void
 memory double heap no
 async double no
-purpose double "Return n * 2. Intentionally separate from the caller `tripleViaDouble` so the test exercises one user op invoking another."
-invariant double "n is i64."
+purpose operation double "Return n * 2. Intentionally separate from the caller `tripleViaDouble` so the test exercises one user op invoking another."
+invariant operation double "n is i64."
 label startDouble
-const two CSignedInt64 2
+storage module immutable two CSignedInt64 2
 call mulCall math.multiplyI64
-arg mulCall left n
-arg mulCall right two
+argument mulCall left CSignedInt64 n
+argument mulCall right CSignedInt64 two
 run mulCall
-bind doubled CSignedInt64 mulCall
-returnOk doubled
+bind value doubled CSignedInt64 mulCall
+return ok doubled
 
 operation tripleViaDouble
-input tripleViaDouble n CSignedInt64
-output tripleViaDouble Result CSignedInt64 Void
+input operation tripleViaDouble n CSignedInt64
+output operation tripleViaDouble Result CSignedInt64 Void
 memory tripleViaDouble heap no
 async tripleViaDouble no
-purpose tripleViaDouble "Compute n * 3 by doing double(n) + n."
-invariant tripleViaDouble "Exercises user-op call from inside another user op."
+purpose operation tripleViaDouble "Compute n * 3 by doing double(n) + n."
+invariant operation tripleViaDouble "Exercises user-op call from inside another user op."
 label startTriple
 call doubleCall double
-arg doubleCall n n
+argument doubleCall n CSignedInt64 n
 run doubleCall
-bindOk doubledValue CSignedInt64 doubleCall
+bind ok doubledValue CSignedInt64 doubleCall
 call sumCall math.addI64
-arg sumCall left doubledValue
-arg sumCall right n
+argument sumCall left I64 doubledValue
+argument sumCall right I64 n
 run sumCall
-bind tripled CSignedInt64 sumCall
-returnOk tripled
+bind value tripled CSignedInt64 sumCall
+return ok tripled
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Verify tripleViaDouble(2) == 6, exercising nested user-op calls."
-invariant main "Output should be 6."
+purpose operation main "Verify tripleViaDouble(2) == 6, exercising nested user-op calls."
+invariant operation main "Output should be 6."
 label startMain
-const seed CSignedInt64 2
+storage module immutable seed CSignedInt64 2
 call tripleCall tripleViaDouble
-arg tripleCall n seed
+argument tripleCall n CSignedInt64 seed
 run tripleCall
-bindOk tripledOutcome CSignedInt64 tripleCall
-var resultStorage I64 0
-set resultStorage tripledOutcome
+bind ok tripledOutcome CSignedInt64 tripleCall
+memory main mutable resultStorage I64 0
+set memory resultStorage tripledOutcome
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value resultStorage
+argument writeCall console Console console
+argument writeCall value I64 resultStorage
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

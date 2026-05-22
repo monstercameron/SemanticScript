@@ -18,47 +18,47 @@ errorCase MainError ConsoleWriteFailed ConsoleWriteError
 capability consoleStdoutWriteCapability console.stdout write
 
 operation writeStandardOutputLine
-input writeStandardOutputLine text String
-output writeStandardOutputLine Result Void ConsoleWriteError
+input operation writeStandardOutputLine text String
+output operation writeStandardOutputLine Result Void ConsoleWriteError
 effect writeStandardOutputLine write console.stdout
 useCapability writeStandardOutputLine consoleStdoutWriteCapability
-memoryHeap writeStandardOutputLine no
+memory writeStandardOutputLine heap no
 memoryStackLimit writeStandardOutputLine 1KiB
 async writeStandardOutputLine no
 
-purpose writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
-invariant writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
+purpose operation writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
+invariant operation writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
 guarantee writeStandardOutputLine "On success the entire text plus a single newline byte is written exactly once"
 
 # group writeStandardOutputLineHelperBody
 label startWriteStandardOutputLine
 
 call writeStandardOutputLineConsoleWriteCall console.writeLine
-arg writeStandardOutputLineConsoleWriteCall console console
-arg writeStandardOutputLineConsoleWriteCall text text
+argument writeStandardOutputLineConsoleWriteCall console Console console
+argument writeStandardOutputLineConsoleWriteCall text String text
 run writeStandardOutputLineConsoleWriteCall
-ignoreOk writeStandardOutputLineConsoleWriteCall Void
-bindError writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
-branchIfError writeStandardOutputLineConsoleWriteCall writeStandardOutputLineConsoleWriteFailed
+ignore void source writeStandardOutputLineConsoleWriteCall
+bind error writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
+branch error source writeStandardOutputLineConsoleWriteCall target writeStandardOutputLineConsoleWriteFailed
 
 storage local immutable writeStandardOutputLineSuccessSentinel ExitCode 0
-returnOk writeStandardOutputLineSuccessSentinel
+return ok writeStandardOutputLineSuccessSentinel
 
 label writeStandardOutputLineConsoleWriteFailed
-returnError writeStandardOutputLineConsoleWriteError
+return error writeStandardOutputLineConsoleWriteError
 # endGroup writeStandardOutputLineHelperBody
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 useCapability main consoleStdoutWriteCapability
-memoryHeap main no
+memory main heap no
 memoryStackLimit main 4KiB
 async main no
 
-purpose main "Print the captured listen-banner from javascript/webserver-console.js after the parity harness normalizes the JS-side port"
-invariant main "A single banner line is written before the server would otherwise block on accept"
+purpose operation main "Print the captured listen-banner from javascript/webserver-console.js after the parity harness normalizes the JS-side port"
+invariant operation main "A single banner line is written before the server would otherwise block on accept"
 
 label startMain
 
@@ -67,19 +67,19 @@ storage local immutable webserverListenBannerText String "Server listening at ht
 storage local mutable lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
 
 call writeWebserverListenBannerLineCall writeStandardOutputLine
-arg writeWebserverListenBannerLineCall text webserverListenBannerText
+argument writeWebserverListenBannerLineCall text String webserverListenBannerText
 run writeWebserverListenBannerLineCall
-ignoreOk writeWebserverListenBannerLineCall Void
-bindError writeWebserverListenBannerLineError ConsoleWriteError writeWebserverListenBannerLineCall
-set local lastConsoleWriteErrorCode writeWebserverListenBannerLineError
-branchIfError writeWebserverListenBannerLineCall consoleWriteFailed
+ignore void source writeWebserverListenBannerLineCall
+bind error writeWebserverListenBannerLineError ConsoleWriteError writeWebserverListenBannerLineCall
+set memory lastConsoleWriteErrorCode writeWebserverListenBannerLineError
+branch error source writeWebserverListenBannerLineCall target consoleWriteFailed
 
 storage local immutable successfulExitCode ExitCode 0
-returnOk successfulExitCode
+return ok successfulExitCode
 
 label consoleWriteFailed
 # rationale: lastConsoleWriteErrorCode holds whichever emit actually failed; its `set`
 # ran immediately before the corresponding branchIfError, so the typed
 # MainError.ConsoleWriteFailed value honestly names its cause (Â§12).
 makeError consoleWriteFailure MainError.ConsoleWriteFailed lastConsoleWriteErrorCode
-returnError consoleWriteFailure
+return error consoleWriteFailure

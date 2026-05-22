@@ -7,28 +7,28 @@ entry console main
 error MainError
 errorCase MainError Placeholder CSignedInt32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main read memory.buffer
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "c.strcmp of two identical strings returns 0."
-invariant main "Tests c.strcmp passthrough."
+purpose operation main "c.strcmp of two identical strings returns 0."
+invariant operation main "Tests c.strcmp passthrough."
 label startMain
-const leftText CNullTerminatedByteString "hello"
-const rightText CNullTerminatedByteString "hello"
+storage module immutable leftText CNullTerminatedByteString "hello"
+storage module immutable rightText CNullTerminatedByteString "hello"
 call cmpCall c.strcmp
-arg cmpCall left leftText
-arg cmpCall right rightText
+argument cmpCall left CNullTerminatedByteString leftText
+argument cmpCall right CNullTerminatedByteString rightText
 run cmpCall
-bind cmpResult CSignedInt32 cmpCall
-var cmpVar I64 0
-set cmpVar cmpResult
+bind value cmpResult CSignedInt32 cmpCall
+memory main mutable cmpVar I64 0
+set memory cmpVar cmpResult
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value cmpVar
+argument writeCall console Console console
+argument writeCall value I64 cmpVar
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

@@ -7,20 +7,20 @@ entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Print zero (edge case: writeIntegerLine of 0)."
-invariant main "Outputs '0'."
+purpose operation main "Print zero (edge case: writeIntegerLine of 0)."
+invariant operation main "Outputs '0'."
 label startMain
-const zeroInitial I64 0
-var counter I64 zeroInitial
+storage module immutable zeroInitial I64 0
+memory main mutable counter I64 zeroInitial
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value counter
+argument writeCall console Console console
+argument writeCall value I64 counter
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

@@ -56,9 +56,40 @@ TYPED_COMMENT_PREFIXES = frozenset({
 })
 
 INDENTED_ISLAND_VERBS = frozenset({
-    "htmlBody",
     "jsonBody",
 })
+
+REPLACED_ROW_VERBS = frozenset({
+    "arg",
+    "bindOk",
+    "bindError",
+    "branchIf",
+    "branchIfError",
+    "const",
+    "ignoreValue",
+    "ignoreOk",
+    "ignoreError",
+    "importModule",
+    "let",
+    "memoryHeap",
+    "modulePurpose",
+    "moduleInvariant",
+    "htmlTemplate",
+    "htmlArg",
+    "htmlBody",
+    "returnValue",
+    "returnOk",
+    "returnError",
+    "returnVoid",
+    "var",
+})
+
+METADATA_SUBJECT_KINDS = frozenset({"module", "operation"})
+SIGNATURE_SUBJECT_KINDS = frozenset({"operation"})
+BIND_VARIANTS = frozenset({"value", "ok", "error"})
+BRANCH_VARIANTS = frozenset({"if", "error", "else"})
+RETURN_VARIANTS = frozenset({"value", "ok", "error", "void"})
+IGNORE_VARIANTS = frozenset({"value", "ok", "error", "void"})
 
 
 class FormatError(ValueError):
@@ -149,6 +180,79 @@ def tokenize_code_prefix(line: str) -> Tuple[List[Token], Optional[str]]:
     return tokens, inline_comment
 
 
+def _token_values(tokens: Sequence[Token]) -> List[str]:
+    return [token.raw for token in tokens]
+
+
+def _raise_replaced_syntax(row: str, *, reason: str) -> None:
+    raise FormatError(f"{reason}: {row!r}")
+
+
+def reject_replaced_syntax(tokens: Sequence[Token], row: str) -> None:
+    """Reject rows the cutover says normal formatting must not emit."""
+
+    if not tokens:
+        return
+
+    values = _token_values(tokens)
+    head = values[0]
+
+    if head in REPLACED_ROW_VERBS:
+        _raise_replaced_syntax(row, reason=f"replaced SemanticScript row verb {head!r}")
+
+    if head.startswith("@") or head.startswith("#"):
+        _raise_replaced_syntax(row, reason=f"forbidden row prefix in {head!r}")
+
+    if "." in head:
+        _raise_replaced_syntax(row, reason=f"forbidden dotted row verb {head!r}")
+
+    if any(token.kind == "atom" and "=" in token.raw for token in tokens):
+        _raise_replaced_syntax(row, reason="forbidden equals-sign row shape")
+
+    if head == "type" and len(values) >= 3 and values[2] == "Result":
+        _raise_replaced_syntax(row, reason="replaced result type row")
+
+    if head in {"purpose", "invariant"} and len(values) >= 2:
+        if values[1] not in METADATA_SUBJECT_KINDS:
+            _raise_replaced_syntax(row, reason=f"bare {head} row is replaced")
+
+    if head in {"input", "output"} and len(values) >= 2:
+        if values[1] not in SIGNATURE_SUBJECT_KINDS:
+            _raise_replaced_syntax(row, reason=f"subject kind is required for {head} row")
+
+    if head == "set" and len(values) >= 2 and values[1] in {"local", "module"}:
+        _raise_replaced_syntax(row, reason=f"replaced set target {values[1]!r}")
+
+    if head == "bind" and (len(values) < 2 or values[1] not in BIND_VARIANTS):
+        _raise_replaced_syntax(row, reason="bind row must use value/ok/error variant")
+
+    if head == "branch" and (len(values) < 2 or values[1] not in BRANCH_VARIANTS):
+        _raise_replaced_syntax(row, reason="branch row must use if/error/else variant")
+
+    if head == "return" and (len(values) < 2 or values[1] not in RETURN_VARIANTS):
+        _raise_replaced_syntax(row, reason="return row must use value/ok/error/void variant")
+
+    if head == "ignore" and (len(values) < 2 or values[1] not in IGNORE_VARIANTS):
+        _raise_replaced_syntax(row, reason="ignore row must use value/ok/error/void variant")
+
+    if values[:2] == ["ignore", "value"] and len(values) >= 6:
+        for index, value in enumerate(values[:-1]):
+            if value == "type" and values[index + 1] == "Void":
+                _raise_replaced_syntax(row, reason="void calls must use ignore void")
+
+    if head == "html":
+        valid_html = (
+            values[:2] == ["html", "template"] and len(values) == 3
+        ) or (
+            values[:3] == ["html", "body", "template"] and len(values) == 4
+        )
+        if not valid_html:
+            _raise_replaced_syntax(
+                row,
+                reason="html row must use template or body template shape",
+            )
+
+
 def format_line(line: str, *, normalize_comment_headings: bool = True) -> str:
     trimmed_right = line.rstrip()
     if not trimmed_right.strip():
@@ -165,6 +269,8 @@ def format_line(line: str, *, normalize_comment_headings: bool = True) -> str:
     if not tokens:
         return inline_comment or ""
 
+    reject_replaced_syntax(tokens, trimmed_right)
+
     formatted = " ".join(token.raw for token in tokens)
     if inline_comment:
         formatted = f"{formatted}  {inline_comment}"
@@ -175,6 +281,83 @@ def split_preserving_physical_lines(source: str) -> List[str]:
     if source == "":
         return []
     return source.splitlines()
+
+
+def _is_blank_or_full_line_comment(line: str) -> bool:
+    return line == "" or line.lstrip().startswith("#")
+
+
+def _formatted_code_tokens(line: str) -> List[str]:
+    if _is_blank_or_full_line_comment(line):
+        return []
+    tokens, _ = tokenize_code_prefix(line)
+    return _token_values(tokens)
+
+
+def _is_branch_with_attached_else(line: str) -> bool:
+    tokens = _formatted_code_tokens(line)
+    return len(tokens) >= 2 and tokens[0] == "branch" and tokens[1] in {"if", "error"}
+
+
+def _is_branch_else(line: str) -> bool:
+    tokens = _formatted_code_tokens(line)
+    return len(tokens) >= 2 and tokens[0] == "branch" and tokens[1] == "else"
+
+
+def _is_indented_island_start(line: str) -> bool:
+    tokens = _formatted_code_tokens(line)
+    return (
+        bool(tokens) and tokens[0] in INDENTED_ISLAND_VERBS
+    ) or tokens[:3] == ["html", "body", "template"]
+
+
+def preserve_branch_pair_adjacency(lines: Sequence[str]) -> List[str]:
+    """Move blank/comment separators out from between attached branch pairs."""
+
+    output_lines: List[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if not _is_branch_with_attached_else(line):
+            output_lines.append(line)
+            index += 1
+            continue
+
+        pending_separators: List[str] = []
+        lookahead = index + 1
+        while lookahead < len(lines) and _is_blank_or_full_line_comment(lines[lookahead]):
+            pending_separators.append(lines[lookahead])
+            lookahead += 1
+
+        if (
+            pending_separators
+            and lookahead < len(lines)
+            and _is_branch_else(lines[lookahead])
+        ):
+            output_lines.append(line)
+            output_lines.append(lines[lookahead])
+            output_lines.extend(pending_separators)
+            index = lookahead + 1
+            continue
+
+        output_lines.append(line)
+        index += 1
+
+    return output_lines
+
+
+def collapse_blank_runs(lines: Sequence[str], *, max_blank_lines: int) -> List[str]:
+    output_lines: List[str] = []
+    blank_run = 0
+    for line in lines:
+        if line == "":
+            blank_run += 1
+            if output_lines and blank_run <= max_blank_lines:
+                output_lines.append(line)
+            continue
+        blank_run = 0
+        output_lines.append(line)
+    return output_lines
 
 
 def format_source(
@@ -210,9 +393,11 @@ def format_source(
             continue
         blank_run = 0
         output_lines.append(formatted_line)
-        head = formatted_line.split(" ", 1)[0]
-        if head in INDENTED_ISLAND_VERBS:
+        if _is_indented_island_start(formatted_line):
             inside_indented_island = True
+
+    output_lines = preserve_branch_pair_adjacency(output_lines)
+    output_lines = collapse_blank_runs(output_lines, max_blank_lines=max_blank_lines)
 
     while output_lines and output_lines[-1] == "":
         output_lines.pop()

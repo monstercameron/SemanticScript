@@ -8,45 +8,45 @@ error MainError
 errorCase MainError Placeholder CSignedInt32
 
 operation addTwo
-input addTwo a CSignedInt64
-input addTwo b CSignedInt64
-output addTwo Result CSignedInt64 Void
+input operation addTwo a CSignedInt64
+input operation addTwo b CSignedInt64
+output operation addTwo Result CSignedInt64 Void
 memory addTwo heap no
 async addTwo no
-purpose addTwo "Return a + b."
-invariant addTwo "Two-parameter user op."
+purpose operation addTwo "Return a + b."
+invariant operation addTwo "Two-parameter user op."
 label startAddTwo
 call addCall math.addI64
-arg addCall left a
-arg addCall right b
+argument addCall left I64 a
+argument addCall right I64 b
 run addCall
-bind sumResult I64 addCall
-returnOk sumResult
+bind value sumResult I64 addCall
+return ok sumResult
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Call addTwo(7, 8) = 15."
-invariant main "Two-arg call into user op."
+purpose operation main "Call addTwo(7, 8) = 15."
+invariant operation main "Two-arg call into user op."
 label startMain
-const sevenInitial I64 7
-const eightInitial I64 8
-var leftValue I64 sevenInitial
-var rightValue I64 eightInitial
+storage module immutable sevenInitial I64 7
+storage module immutable eightInitial I64 8
+memory main mutable leftValue I64 sevenInitial
+memory main mutable rightValue I64 eightInitial
 call sumCall addTwo
-arg sumCall a leftValue
-arg sumCall b rightValue
+argument sumCall a CSignedInt64 leftValue
+argument sumCall b CSignedInt64 rightValue
 run sumCall
-bindOk sumOutcome I64 sumCall
-var resultVar I64 sevenInitial
-set resultVar sumOutcome
+bind ok sumOutcome I64 sumCall
+memory main mutable resultVar I64 sevenInitial
+set memory resultVar sumOutcome
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value resultVar
+argument writeCall console Console console
+argument writeCall value I64 resultVar
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

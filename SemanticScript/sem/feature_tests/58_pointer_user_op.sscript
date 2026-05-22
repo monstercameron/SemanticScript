@@ -8,40 +8,40 @@ error MainError
 errorCase MainError Placeholder CSignedInt32
 
 operation strlenOf
-input strlenOf s CNullTerminatedByteString
-output strlenOf Result CByteCount Void
+input operation strlenOf s CNullTerminatedByteString
+output operation strlenOf Result CByteCount Void
 effect strlenOf read memory.buffer
 memory strlenOf heap no
 async strlenOf no
-purpose strlenOf "Return strlen(s) via libc."
-invariant strlenOf "Passes pointer s through to c.strlen."
+purpose operation strlenOf "Return strlen(s) via libc."
+invariant operation strlenOf "Passes pointer s through to c.strlen."
 label startStrlenOf
 call lenCall c.strlen
-arg lenCall s s
+argument lenCall s CNullTerminatedByteString s
 run lenCall
-bind lenValue CByteCount lenCall
-returnOk lenValue
+bind value lenValue CByteCount lenCall
+return ok lenValue
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Call strlenOf('hello') = 5."
-invariant main "Pointer-typed user-op call."
+purpose operation main "Call strlenOf('hello') = 5."
+invariant operation main "Pointer-typed user-op call."
 label startMain
-const greetingText CNullTerminatedByteString "hello"
+storage module immutable greetingText CNullTerminatedByteString "hello"
 call myStrlenCall strlenOf
-arg myStrlenCall s greetingText
+argument myStrlenCall s CNullTerminatedByteString greetingText
 run myStrlenCall
-bindOk lenOutcome CByteCount myStrlenCall
-var resultVar I64 0
-set resultVar lenOutcome
+bind ok lenOutcome CByteCount myStrlenCall
+memory main mutable resultVar I64 0
+set memory resultVar lenOutcome
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value resultVar
+argument writeCall console Console console
+argument writeCall value I64 resultVar
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

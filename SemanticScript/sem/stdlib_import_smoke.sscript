@@ -2,7 +2,7 @@
 # SemanticScript stdlib import-and-use smoke
 # ============================================================
 #
-# # rationale: every std/*.sscript module ships an `operation main`
+# rationale: every std/*.sscript module ships an `operation main`
 #   as its self-test. This file goes one step further — it asks
 #   whether those operations can be IMPORTED into a separate
 #   program via `importModule` and called from outside. It pulls
@@ -11,20 +11,20 @@
 #   float math, byte strings, time) and exercises one operation
 #   from each.
 #
-# # invariant: every imported operation under test must return its
+# invariant: every imported operation under test must return its
 #   declared value (Bool / CSignedInt64 / CFloat64 / CByteCount /
 #   etc.) when called from this file. If any imported operation
 #   were not actually reachable through the resolver, the call
 #   would fail to typecheck at codegen time and this whole file
 #   would fail to compile — that's the unit-test pass condition.
 #
-# # security: no I/O beyond writing "OK" / "FAIL" on stdout.
+# security: no I/O beyond writing "OK" / "FAIL" on stdout.
 #
-# # timing: dominated by the imported math operations
+# timing: dominated by the imported math operations
 #   (squareRootFloat64 Newton iteration ~ 50 floating-point
 #   instructions). Whole test runs in microseconds.
 #
-# # observability: prints "OK\n" on full pass, otherwise emits
+# observability: prints "OK\n" on full pass, otherwise emits
 #   a tag identifying the first failing assertion so a CI diff
 #   pinpoints the broken import.
 
@@ -42,229 +42,229 @@ errorCase MainError ConsoleWriteFailed
 capability stdoutWriteCapability console.stdout write
 
 # ----- imports under test (stochastic sample of seven modules) -----
-importModule bool
-importModule compare
-importModule ctype
-importModule numeric
-importModule math
-importModule math_float
-importModule string
-importModule time
+import bool bool
+import compare compare
+import ctype ctype
+import numeric numeric
+import math math
+import math_float math_float
+import string string
+import time time
 
 operation stdlibImportSmokeMain
-input stdlibImportSmokeMain console Console
-output stdlibImportSmokeMain Result ExitCode MainError
+input operation stdlibImportSmokeMain console Console
+output operation stdlibImportSmokeMain Result ExitCode MainError
 useCapability stdlibImportSmokeMain stdoutWriteCapability
 effect stdlibImportSmokeMain write console.stdout
-memoryHeap stdlibImportSmokeMain no
+memory stdlibImportSmokeMain heap no
 async stdlibImportSmokeMain no
-purpose stdlibImportSmokeMain "Call one or two operations from each imported std module and assert each result. Demonstrates that importModule successfully wires the stdlib surface into a downstream program."
-invariant stdlibImportSmokeMain "All eight imported-module assertions hold; final exit code is 0; stdout is exactly 'OK\\n'."
+purpose operation stdlibImportSmokeMain "Call one or two operations from each imported std module and assert each result. Demonstrates that importModule successfully wires the stdlib surface into a downstream program."
+invariant operation stdlibImportSmokeMain "All eight imported-module assertions hold; final exit code is 0; stdout is exactly 'OK\\n'."
 
 label startStdlibImportSmokeMain
 
 # ---- bool: negateBoolean(false) == true ----
-const importedBooleanFalseLiteral Bool false
-const importedBooleanTrueLiteral Bool true
+storage module immutable importedBooleanFalseLiteral Bool false
+storage module immutable importedBooleanTrueLiteral Bool true
 call assertNegateBooleanCall negateBoolean
-arg assertNegateBooleanCall valueToNegate importedBooleanFalseLiteral
+argument assertNegateBooleanCall valueToNegate Bool importedBooleanFalseLiteral
 run assertNegateBooleanCall
-bind negateBooleanResult Bool assertNegateBooleanCall
-branchIf negateBooleanResult negateBooleanHolds
-branch stdlibImportAssertionFailed
+bind value negateBooleanResult Bool assertNegateBooleanCall
+branch if condition negateBooleanResult target negateBooleanHolds
+branch else target stdlibImportAssertionFailed
 label negateBooleanHolds
 
 # ---- bool: andBooleans(true, true) == true ----
 call assertAndBooleansCall andBooleans
-arg assertAndBooleansCall firstOperand importedBooleanTrueLiteral
-arg assertAndBooleansCall secondOperand importedBooleanTrueLiteral
+argument assertAndBooleansCall firstOperand Bool importedBooleanTrueLiteral
+argument assertAndBooleansCall secondOperand Bool importedBooleanTrueLiteral
 run assertAndBooleansCall
-bind andBooleansResult Bool assertAndBooleansCall
-branchIf andBooleansResult andBooleansHolds
-branch stdlibImportAssertionFailed
+bind value andBooleansResult Bool assertAndBooleansCall
+branch if condition andBooleansResult target andBooleansHolds
+branch else target stdlibImportAssertionFailed
 label andBooleansHolds
 
 # ---- compare: areSignedInt64ValuesEqual(7, 7) == true ----
-const sevenForCompareImport CSignedInt64 7
+storage module immutable sevenForCompareImport CSignedInt64 7
 call assertEqualSevenCall areSignedInt64ValuesEqual
-arg assertEqualSevenCall leftValue sevenForCompareImport
-arg assertEqualSevenCall rightValue sevenForCompareImport
+argument assertEqualSevenCall leftValue CSignedInt64 sevenForCompareImport
+argument assertEqualSevenCall rightValue CSignedInt64 sevenForCompareImport
 run assertEqualSevenCall
-bind equalSevenResult Bool assertEqualSevenCall
-branchIf equalSevenResult equalSevenHolds
-branch stdlibImportAssertionFailed
+bind value equalSevenResult Bool assertEqualSevenCall
+branch if condition equalSevenResult target equalSevenHolds
+branch else target stdlibImportAssertionFailed
 label equalSevenHolds
 
 # ---- compare: isSignedInt64LeftLessThanRight(5, 10) == true ----
-const fiveForLessThanImport CSignedInt64 5
-const tenForLessThanImport CSignedInt64 10
+storage module immutable fiveForLessThanImport CSignedInt64 5
+storage module immutable tenForLessThanImport CSignedInt64 10
 call assertFiveLessThanTenCall isSignedInt64LeftLessThanRight
-arg assertFiveLessThanTenCall leftValue fiveForLessThanImport
-arg assertFiveLessThanTenCall rightValue tenForLessThanImport
+argument assertFiveLessThanTenCall leftValue CSignedInt64 fiveForLessThanImport
+argument assertFiveLessThanTenCall rightValue CSignedInt64 tenForLessThanImport
 run assertFiveLessThanTenCall
-bind fiveLessThanTenResult Bool assertFiveLessThanTenCall
-branchIf fiveLessThanTenResult fiveLessThanTenHolds
-branch stdlibImportAssertionFailed
+bind value fiveLessThanTenResult Bool assertFiveLessThanTenCall
+branch if condition fiveLessThanTenResult target fiveLessThanTenHolds
+branch else target stdlibImportAssertionFailed
 label fiveLessThanTenHolds
 
 # ---- ctype: isAsciiDecimalDigitCode('5') == true ----
-const asciiFiveCharacterCode CSignedInt32 53
+storage module immutable asciiFiveCharacterCode CSignedInt32 53
 call assertDigitFiveImportCall isAsciiDecimalDigitCode
-arg assertDigitFiveImportCall characterCode asciiFiveCharacterCode
+argument assertDigitFiveImportCall characterCode CSignedInt32 asciiFiveCharacterCode
 run assertDigitFiveImportCall
-bind digitFiveImportResult Bool assertDigitFiveImportCall
-branchIf digitFiveImportResult digitFiveImportHolds
-branch stdlibImportAssertionFailed
+bind value digitFiveImportResult Bool assertDigitFiveImportCall
+branch if condition digitFiveImportResult target digitFiveImportHolds
+branch else target stdlibImportAssertionFailed
 label digitFiveImportHolds
 
 # ---- ctype: convertAsciiLetterCodeToUppercase('h') == 'H' ----
-const lowercaseHForConvertImport CSignedInt32 104
-const uppercaseHExpectedImport CSignedInt32 72
+storage module immutable lowercaseHForConvertImport CSignedInt32 104
+storage module immutable uppercaseHExpectedImport CSignedInt32 72
 call assertConvertUppercaseCall convertAsciiLetterCodeToUppercase
-arg assertConvertUppercaseCall characterCode lowercaseHForConvertImport
+argument assertConvertUppercaseCall characterCode CSignedInt32 lowercaseHForConvertImport
 run assertConvertUppercaseCall
-bind convertUppercaseResult CSignedInt32 assertConvertUppercaseCall
+bind value convertUppercaseResult CSignedInt32 assertConvertUppercaseCall
 call checkConvertUppercaseCall math.equalI64
-arg checkConvertUppercaseCall left convertUppercaseResult
-arg checkConvertUppercaseCall right uppercaseHExpectedImport
+argument checkConvertUppercaseCall left CSignedInt32 convertUppercaseResult
+argument checkConvertUppercaseCall right I64 uppercaseHExpectedImport
 run checkConvertUppercaseCall
-bind convertUppercaseOk Bool checkConvertUppercaseCall
-branchIf convertUppercaseOk convertUppercaseHolds
-branch stdlibImportAssertionFailed
+bind value convertUppercaseOk Bool checkConvertUppercaseCall
+branch if condition convertUppercaseOk target convertUppercaseHolds
+branch else target stdlibImportAssertionFailed
 label convertUppercaseHolds
 
 # ---- numeric: incrementSignedInt64(41) == 42 ----
-const fortyOneForIncrementImport CSignedInt64 41
-const fortyTwoExpectedImport CSignedInt64 42
+storage module immutable fortyOneForIncrementImport CSignedInt64 41
+storage module immutable fortyTwoExpectedImport CSignedInt64 42
 call assertIncrementCall incrementSignedInt64
-arg assertIncrementCall inputValue fortyOneForIncrementImport
+argument assertIncrementCall inputValue CSignedInt64 fortyOneForIncrementImport
 run assertIncrementCall
-bind incrementResult CSignedInt64 assertIncrementCall
+bind value incrementResult CSignedInt64 assertIncrementCall
 call checkIncrementCall math.equalI64
-arg checkIncrementCall left incrementResult
-arg checkIncrementCall right fortyTwoExpectedImport
+argument checkIncrementCall left CSignedInt64 incrementResult
+argument checkIncrementCall right I64 fortyTwoExpectedImport
 run checkIncrementCall
-bind incrementOk Bool checkIncrementCall
-branchIf incrementOk incrementHolds
-branch stdlibImportAssertionFailed
+bind value incrementOk Bool checkIncrementCall
+branch if condition incrementOk target incrementHolds
+branch else target stdlibImportAssertionFailed
 label incrementHolds
 
 # ---- numeric: sumSignedInt64OneThroughN(10) == 55 ----
-const tenForGaussSumImport CSignedInt64 10
-const fiftyFiveExpectedImport CSignedInt64 55
+storage module immutable tenForGaussSumImport CSignedInt64 10
+storage module immutable fiftyFiveExpectedImport CSignedInt64 55
 call assertGaussSumCall sumSignedInt64OneThroughN
-arg assertGaussSumCall inputValue tenForGaussSumImport
+argument assertGaussSumCall inputValue CSignedInt64 tenForGaussSumImport
 run assertGaussSumCall
-bind gaussSumResult CSignedInt64 assertGaussSumCall
+bind value gaussSumResult CSignedInt64 assertGaussSumCall
 call checkGaussSumCall math.equalI64
-arg checkGaussSumCall left gaussSumResult
-arg checkGaussSumCall right fiftyFiveExpectedImport
+argument checkGaussSumCall left CSignedInt64 gaussSumResult
+argument checkGaussSumCall right I64 fiftyFiveExpectedImport
 run checkGaussSumCall
-bind gaussSumOk Bool checkGaussSumCall
-branchIf gaussSumOk gaussSumHolds
-branch stdlibImportAssertionFailed
+bind value gaussSumOk Bool checkGaussSumCall
+branch if condition gaussSumOk target gaussSumHolds
+branch else target stdlibImportAssertionFailed
 label gaussSumHolds
 
 # ---- math: factorialSignedInt64(6) == 720 ----
-const sixForFactorialImport CSignedInt64 6
-const sevenTwentyExpectedImport CSignedInt64 720
+storage module immutable sixForFactorialImport CSignedInt64 6
+storage module immutable sevenTwentyExpectedImport CSignedInt64 720
 call assertFactorialImportCall factorialSignedInt64
-arg assertFactorialImportCall inputValue sixForFactorialImport
+argument assertFactorialImportCall inputValue CSignedInt64 sixForFactorialImport
 run assertFactorialImportCall
-bind factorialImportResult CSignedInt64 assertFactorialImportCall
+bind value factorialImportResult CSignedInt64 assertFactorialImportCall
 call checkFactorialImportCall math.equalI64
-arg checkFactorialImportCall left factorialImportResult
-arg checkFactorialImportCall right sevenTwentyExpectedImport
+argument checkFactorialImportCall left CSignedInt64 factorialImportResult
+argument checkFactorialImportCall right I64 sevenTwentyExpectedImport
 run checkFactorialImportCall
-bind factorialImportOk Bool checkFactorialImportCall
-branchIf factorialImportOk factorialImportHolds
-branch stdlibImportAssertionFailed
+bind value factorialImportOk Bool checkFactorialImportCall
+branch if condition factorialImportOk target factorialImportHolds
+branch else target stdlibImportAssertionFailed
 label factorialImportHolds
 
 # ---- math: isSignedInt64Prime(19) == true ----
-const nineteenPrimeImport CSignedInt64 19
+storage module immutable nineteenPrimeImport CSignedInt64 19
 call assertPrimeImportCall isSignedInt64Prime
-arg assertPrimeImportCall inputValue nineteenPrimeImport
+argument assertPrimeImportCall inputValue CSignedInt64 nineteenPrimeImport
 run assertPrimeImportCall
-bind primeImportResult Bool assertPrimeImportCall
-branchIf primeImportResult primeImportHolds
-branch stdlibImportAssertionFailed
+bind value primeImportResult Bool assertPrimeImportCall
+branch if condition primeImportResult target primeImportHolds
+branch else target stdlibImportAssertionFailed
 label primeImportHolds
 
 # ---- math_float: absoluteFloat64(-2.5) == 2.5 ----
-const negativeTwoPointFiveImport CFloat64 -2.5
-const twoPointFiveExpectedImport CFloat64 2.5
+storage module immutable negativeTwoPointFiveImport CFloat64 -2.5
+storage module immutable twoPointFiveExpectedImport CFloat64 2.5
 call assertAbsoluteFloatCall absoluteFloat64
-arg assertAbsoluteFloatCall inputValue negativeTwoPointFiveImport
+argument assertAbsoluteFloatCall inputValue CFloat64 negativeTwoPointFiveImport
 run assertAbsoluteFloatCall
-bind absoluteFloatResult CFloat64 assertAbsoluteFloatCall
+bind value absoluteFloatResult CFloat64 assertAbsoluteFloatCall
 call checkAbsoluteFloatCall math.equalF64
-arg checkAbsoluteFloatCall left absoluteFloatResult
-arg checkAbsoluteFloatCall right twoPointFiveExpectedImport
+argument checkAbsoluteFloatCall left CFloat64 absoluteFloatResult
+argument checkAbsoluteFloatCall right CFloat64 twoPointFiveExpectedImport
 run checkAbsoluteFloatCall
-bind absoluteFloatOk Bool checkAbsoluteFloatCall
-branchIf absoluteFloatOk absoluteFloatHolds
-branch stdlibImportAssertionFailed
+bind value absoluteFloatOk Bool checkAbsoluteFloatCall
+branch if condition absoluteFloatOk target absoluteFloatHolds
+branch else target stdlibImportAssertionFailed
 label absoluteFloatHolds
 
 # ---- string: stringByteLength("semanticscript") == 11 ----
-const semanticscriptLiteralForLengthImport CNullTerminatedByteString "semanticscript"
-const elevenBytesExpectedImport CByteCount 11
+storage module immutable semanticscriptLiteralForLengthImport CNullTerminatedByteString "semanticscript"
+storage module immutable elevenBytesExpectedImport CByteCount 11
 call assertStringByteLengthCall stringByteLength
-arg assertStringByteLengthCall inputText semanticscriptLiteralForLengthImport
+argument assertStringByteLengthCall inputText CNullTerminatedByteString semanticscriptLiteralForLengthImport
 run assertStringByteLengthCall
-bind stringByteLengthResult CByteCount assertStringByteLengthCall
+bind value stringByteLengthResult CByteCount assertStringByteLengthCall
 call checkStringByteLengthCall math.equalI64
-arg checkStringByteLengthCall left stringByteLengthResult
-arg checkStringByteLengthCall right elevenBytesExpectedImport
+argument checkStringByteLengthCall left CByteCount stringByteLengthResult
+argument checkStringByteLengthCall right I64 elevenBytesExpectedImport
 run checkStringByteLengthCall
-bind stringByteLengthOk Bool checkStringByteLengthCall
-branchIf stringByteLengthOk stringByteLengthHolds
-branch stdlibImportAssertionFailed
+bind value stringByteLengthOk Bool checkStringByteLengthCall
+branch if condition stringByteLengthOk target stringByteLengthHolds
+branch else target stdlibImportAssertionFailed
 label stringByteLengthHolds
 
 # ---- time: isGregorianLeapYear(2024) == true ----
-const twentyTwentyFourYearImport CSignedInt64 2024
+storage module immutable twentyTwentyFourYearImport CSignedInt64 2024
 call assertLeapYear2024ImportCall isGregorianLeapYear
-arg assertLeapYear2024ImportCall candidateYear twentyTwentyFourYearImport
+argument assertLeapYear2024ImportCall candidateYear CSignedInt64 twentyTwentyFourYearImport
 run assertLeapYear2024ImportCall
-bind leapYear2024Result Bool assertLeapYear2024ImportCall
-branchIf leapYear2024Result leapYear2024Holds
-branch stdlibImportAssertionFailed
+bind value leapYear2024Result Bool assertLeapYear2024ImportCall
+branch if condition leapYear2024Result target leapYear2024Holds
+branch else target stdlibImportAssertionFailed
 label leapYear2024Holds
 
 # ---- time: convertSecondsToWholeHours(7200) == 2 ----
-const sevenThousandTwoHundredSecondsImport CSignedInt64 7200
-const twoHoursExpectedImport CSignedInt64 2
+storage module immutable sevenThousandTwoHundredSecondsImport CSignedInt64 7200
+storage module immutable twoHoursExpectedImport CSignedInt64 2
 call assertConvertHoursCall convertSecondsToWholeHours
-arg assertConvertHoursCall secondCount sevenThousandTwoHundredSecondsImport
+argument assertConvertHoursCall secondCount CSignedInt64 sevenThousandTwoHundredSecondsImport
 run assertConvertHoursCall
-bind convertHoursResult CSignedInt64 assertConvertHoursCall
+bind value convertHoursResult CSignedInt64 assertConvertHoursCall
 call checkConvertHoursCall math.equalI64
-arg checkConvertHoursCall left convertHoursResult
-arg checkConvertHoursCall right twoHoursExpectedImport
+argument checkConvertHoursCall left CSignedInt64 convertHoursResult
+argument checkConvertHoursCall right I64 twoHoursExpectedImport
 run checkConvertHoursCall
-bind convertHoursOk Bool checkConvertHoursCall
-branchIf convertHoursOk convertHoursHolds
-branch stdlibImportAssertionFailed
+bind value convertHoursOk Bool checkConvertHoursCall
+branch if condition convertHoursOk target convertHoursHolds
+branch else target stdlibImportAssertionFailed
 label convertHoursHolds
 
 # All assertions held — emit OK and exit 0.
-const stdlibImportSuccessMessage CNullTerminatedByteString "OK"
+storage module immutable stdlibImportSuccessMessage CNullTerminatedByteString "OK"
 call writeStdlibImportSuccessCall console.writeLine
-arg writeStdlibImportSuccessCall console console
-arg writeStdlibImportSuccessCall text stdlibImportSuccessMessage
+argument writeStdlibImportSuccessCall console Console console
+argument writeStdlibImportSuccessCall text CNullTerminatedByteString stdlibImportSuccessMessage
 run writeStdlibImportSuccessCall
-ignoreOk writeStdlibImportSuccessCall CSignedInt32
-bindError stdlibImportConsoleWriteError CSignedInt32 writeStdlibImportSuccessCall
-branchIfError writeStdlibImportSuccessCall stdlibImportConsoleWriteFailed
-const stdlibImportExitOk ExitCode 0
-returnOk stdlibImportExitOk
+ignore ok source writeStdlibImportSuccessCall type CSignedInt32
+bind error stdlibImportConsoleWriteError CSignedInt32 writeStdlibImportSuccessCall
+branch error source writeStdlibImportSuccessCall target stdlibImportConsoleWriteFailed
+storage module immutable stdlibImportExitOk ExitCode 0
+return ok stdlibImportExitOk
 
 label stdlibImportConsoleWriteFailed
 makeError stdlibImportConsoleWriteFailure MainError.ConsoleWriteFailed stdlibImportConsoleWriteError
-returnError stdlibImportConsoleWriteFailure
+return error stdlibImportConsoleWriteFailure
 
 label stdlibImportAssertionFailed
 makeError stdlibImportSmokeFailure MainError.StdlibImportSmokeAssertionFailed
-returnError stdlibImportSmokeFailure
+return error stdlibImportSmokeFailure

@@ -19,7 +19,7 @@ explicit runtime checks, and refinement-only documentation forms.
 
 ## Current Status
 
-Active editor tooling. Version `1.0.3` supports highlighting, semantic tokens,
+Active editor tooling. Version `1.0.4` supports highlighting, semantic tokens,
 hovers, same-file navigation, completions, lint integration, and direct
 `semsc.py` executable builds from VS Code. The package also includes a
 SemanticScript gallery icon, language file icon fallback, and selectable
@@ -43,7 +43,7 @@ builds after accepting the publisher metadata constraint for the target release.
   `.sem`, `build.sscript`, and `build.sem`.
 - TextMate highlighting for verbs, types, strings, numbers, comments, symbols,
   qualified paths, error variants, schema values, primitive targets, generated
-  targets, domain targets, and embedded `htmlBody` markup islands.
+  targets, domain targets, and embedded `html body template` markup islands.
 - Semantic token coloring for declaration, context, action, and control verbs.
 - Semantic roles for declared names, immutable values, mutable values, call
   objects, argument names, labels, effect paths, opaque inputs, generated
@@ -62,7 +62,7 @@ builds after accepting the publisher metadata constraint for the target release.
   project declarations.
 - Completion suggestions for verbs, primitive/native call targets, and same-file
   symbols, including `html.hydrate.TemplateName` targets declared by local
-  `htmlTemplate` rows.
+  `html template` rows.
 - Optional diagnostics from the canonical `semlint.py` engine.
 - `SemanticScript: Compile Current File` runs `semsc.py --emit-exe` with
   configurable build profile, runtime checks, and LLVM IR persistence.
@@ -105,13 +105,15 @@ The extension recognizes the recent syntax families from the refined example:
   `gui.applicationRun`, `gui.textBoxText`, `gui.textLabelSetText`, and
   `gui.windowClose`.
 - First-class HTML templates:
-  `htmlTemplate`, `htmlArg`, `htmlBody`, `HtmlText`, `HtmlClass`, `SafeUrl`,
-  `HtmlFragment`, `HtmlTrustedFragment`, `HtmlDocument`, embedded HTML/SSX
-  highlighting, `{htmlArg.name}` hole hovers, and generated hydration targets
-  such as `html.hydrate.TodoDashboardPageTemplate`.
+  `html template`, optional `html parameter template`, `html body template`,
+  `String`, `HtmlFragment`, `HtmlTrustedFragment`, `HtmlDocument`, embedded
+  HTML/SSX highlighting, bare or dotted hole hovers such as `{titleText}` and
+  `{profile.title}`, and generated hydration targets such as
+  `html.hydrate.TodoDashboardPageTemplate`.
 - Module/dependency build tape:
-  `importModule`, singular imports such as `importOperation` and `importType`,
-  plus `dependencyFetch`, `dependencyCache`, and `dependencyLock`.
+  `import ALIAS MODULE_PATH`, legacy `importModule`, singular imports such as
+  `importOperation` and `importType`, plus `dependencyFetch`,
+  `dependencyCache`, and `dependencyLock`.
 - Memory contracts:
   `memoryHeap`, `memoryArena`, `memoryAllocationSource`, `memoryStackLimit`.
 - Trust and literals:

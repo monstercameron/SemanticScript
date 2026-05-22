@@ -2,13 +2,13 @@
 # SEMANTICSCRIPT STANDARD LIBRARY TESTS: byte-buffer array helpers
 # ============================================================
 #
-# # rationale: companion test file for std/array/main.sem. Imports
+# rationale: companion test file for std/array/main.sem. Imports
 #   the array module and exercises every operation it exports â€”
 #   sum / min / max / contains / count / reverse â€” with boundary
 #   cases (empty buffer, not-found) and a reverse round-trip that
 #   walks a heap copy of "hello".
 #
-# # invariant: success prints "OK\n" and exits 0; assertion failures
+# invariant: success prints "OK\n" and exits 0; assertion failures
 #   surface MainError.ArraySmokeAssertionFailed; heap allocation
 #   failure surfaces MainError.MemoryAllocationFailed.
 #
@@ -22,7 +22,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 
-importModule standard.array
+import array standard.array
 error MainError
 errorCase MainError ArraySmokeAssertionFailed
 errorCase MainError ConsoleWriteFailed
@@ -39,67 +39,67 @@ capability heapFreeCapability heap free
 # ============================================================
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 useCapability main stdoutWriteCapability
 useCapability main heapAllocationCapability
 useCapability main heapFreeCapability
 effect main write console.stdout
 effect main allocate heap
 effect main free heap
-memoryHeap main yes
+memory main heap yes
 memoryAllocationSource main reverseAllocCall
 async main no
-purpose main "Smoke-test every byte-buffer array helper on the static literal 'hello'; reverseBytesInBufferInPlace is exercised against a fresh heap copy."
+purpose operation main "Smoke-test every byte-buffer array helper on the static literal 'hello'; reverseBytesInBufferInPlace is exercised against a fresh heap copy."
 
 label startMain
 
-const fiveByteCount CByteCount 5
-const helloLiteral CNullTerminatedByteString "hello"
+storage module immutable fiveByteCount CByteCount 5
+storage module immutable helloLiteral CNullTerminatedByteString "hello"
 
 # sumSignedByteValuesInBuffer("hello", 5) == 532  ('h'+'e'+'l'+'l'+'o')
 call assertSumCall sumSignedByteValuesInBuffer
-arg assertSumCall byteBuffer helloLiteral
-arg assertSumCall byteCount fiveByteCount
+argument assertSumCall byteBuffer CNullTerminatedByteString helloLiteral
+argument assertSumCall byteCount CByteCount fiveByteCount
 run assertSumCall
-bind sumResult CSignedInt64 assertSumCall
-const expectedSumValue CSignedInt64 532
+bind value sumResult CSignedInt64 assertSumCall
+storage module immutable expectedSumValue CSignedInt64 532
 call checkSumCall math.equalI64
-arg checkSumCall left sumResult
-arg checkSumCall right expectedSumValue
+argument checkSumCall left I64 sumResult
+argument checkSumCall right I64 expectedSumValue
 run checkSumCall
-bind sumOk Bool checkSumCall
-branchIf sumOk sumHolds
-branch smokeAssertionFailed
+bind value sumOk Bool checkSumCall
+branch if condition sumOk target sumHolds
+branch else target smokeAssertionFailed
 label sumHolds
 
 # bufferContainsSignedByteValue("hello", 5, 'l') == true
-const lowercaseLCode CSignedInt32 108
+storage module immutable lowercaseLCode CSignedInt32 108
 call assertContainsCall bufferContainsSignedByteValue
-arg assertContainsCall byteBuffer helloLiteral
-arg assertContainsCall byteCount fiveByteCount
-arg assertContainsCall targetValue lowercaseLCode
+argument assertContainsCall byteBuffer CNullTerminatedByteString helloLiteral
+argument assertContainsCall byteCount CByteCount fiveByteCount
+argument assertContainsCall targetValue CSignedInt32 lowercaseLCode
 run assertContainsCall
-bind containsResult Bool assertContainsCall
-branchIf containsResult containsHolds
-branch smokeAssertionFailed
+bind value containsResult Bool assertContainsCall
+branch if condition containsResult target containsHolds
+branch else target smokeAssertionFailed
 label containsHolds
 
 # countSignedByteValueInBuffer("hello", 5, 'l') == 2
 call assertCountCall countSignedByteValueInBuffer
-arg assertCountCall byteBuffer helloLiteral
-arg assertCountCall byteCount fiveByteCount
-arg assertCountCall targetValue lowercaseLCode
+argument assertCountCall byteBuffer CNullTerminatedByteString helloLiteral
+argument assertCountCall byteCount CByteCount fiveByteCount
+argument assertCountCall targetValue CSignedInt32 lowercaseLCode
 run assertCountCall
-bind countResult CSignedInt64 assertCountCall
-const expectedTwoMatches CSignedInt64 2
+bind value countResult CSignedInt64 assertCountCall
+storage module immutable expectedTwoMatches CSignedInt64 2
 call checkCountCall math.equalI64
-arg checkCountCall left countResult
-arg checkCountCall right expectedTwoMatches
+argument checkCountCall left I64 countResult
+argument checkCountCall right I64 expectedTwoMatches
 run checkCountCall
-bind countOk Bool checkCountCall
-branchIf countOk countHolds
-branch smokeAssertionFailed
+bind value countOk Bool checkCountCall
+branch if condition countOk target countHolds
+branch else target smokeAssertionFailed
 label countHolds
 
 # ============================================================
@@ -108,212 +108,212 @@ label countHolds
 # and not-found scenarios).
 # ============================================================
 
-const zeroByteCount CByteCount 0
-const zeroSigned CSignedInt64 0
-const lowercaseHCode CSignedInt32 104
-const lowercaseECode CSignedInt32 101
-const lowercaseOCode CSignedInt32 111
-const lowercaseZCode CSignedInt32 122
+storage module immutable zeroByteCount CByteCount 0
+storage module immutable zeroSigned CSignedInt64 0
+storage module immutable lowercaseHCode CSignedInt32 104
+storage module immutable lowercaseECode CSignedInt32 101
+storage module immutable lowercaseOCode CSignedInt32 111
+storage module immutable lowercaseZCode CSignedInt32 122
 
 # findMinimumSignedByteInBuffer("hello", 5) == 'e' (101)
-const expectedMinValue CSignedInt64 101
+storage module immutable expectedMinValue CSignedInt64 101
 call findMinCall findMinimumSignedByteInBuffer
-arg findMinCall byteBuffer helloLiteral
-arg findMinCall byteCount fiveByteCount
+argument findMinCall byteBuffer CNullTerminatedByteString helloLiteral
+argument findMinCall byteCount CByteCount fiveByteCount
 run findMinCall
-bind findMinResult CSignedInt64 findMinCall
+bind value findMinResult CSignedInt64 findMinCall
 call checkMinCall math.equalI64
-arg checkMinCall left findMinResult
-arg checkMinCall right expectedMinValue
+argument checkMinCall left I64 findMinResult
+argument checkMinCall right I64 expectedMinValue
 run checkMinCall
-bind findMinOk Bool checkMinCall
-branchIf findMinOk findMinHolds
-branch smokeAssertionFailed
+bind value findMinOk Bool checkMinCall
+branch if condition findMinOk target findMinHolds
+branch else target smokeAssertionFailed
 label findMinHolds
 
 # findMaximumSignedByteInBuffer("hello", 5) == 'o' (111)
-const expectedMaxValue CSignedInt64 111
+storage module immutable expectedMaxValue CSignedInt64 111
 call findMaxCall findMaximumSignedByteInBuffer
-arg findMaxCall byteBuffer helloLiteral
-arg findMaxCall byteCount fiveByteCount
+argument findMaxCall byteBuffer CNullTerminatedByteString helloLiteral
+argument findMaxCall byteCount CByteCount fiveByteCount
 run findMaxCall
-bind findMaxResult CSignedInt64 findMaxCall
+bind value findMaxResult CSignedInt64 findMaxCall
 call checkMaxCall math.equalI64
-arg checkMaxCall left findMaxResult
-arg checkMaxCall right expectedMaxValue
+argument checkMaxCall left I64 findMaxResult
+argument checkMaxCall right I64 expectedMaxValue
 run checkMaxCall
-bind findMaxOk Bool checkMaxCall
-branchIf findMaxOk findMaxHolds
-branch smokeAssertionFailed
+bind value findMaxOk Bool checkMaxCall
+branch if condition findMaxOk target findMaxHolds
+branch else target smokeAssertionFailed
 label findMaxHolds
 
 # bufferContainsSignedByteValue("hello", 5, 'z') == false (not present)
 call notContainsCall bufferContainsSignedByteValue
-arg notContainsCall byteBuffer helloLiteral
-arg notContainsCall byteCount fiveByteCount
-arg notContainsCall targetValue lowercaseZCode
+argument notContainsCall byteBuffer CNullTerminatedByteString helloLiteral
+argument notContainsCall byteCount CByteCount fiveByteCount
+argument notContainsCall targetValue CSignedInt32 lowercaseZCode
 run notContainsCall
-bind notContainsResult Bool notContainsCall
-branchIf notContainsResult smokeAssertionFailed
+bind value notContainsResult Bool notContainsCall
+branch if condition notContainsResult target smokeAssertionFailed
+branch else target notContainsHolds
 # fell through: false as expected, continue
-branch notContainsHolds
 label notContainsHolds
 
 # countSignedByteValueInBuffer("hello", 5, 'z') == 0 (zero matches)
 call zeroCountCall countSignedByteValueInBuffer
-arg zeroCountCall byteBuffer helloLiteral
-arg zeroCountCall byteCount fiveByteCount
-arg zeroCountCall targetValue lowercaseZCode
+argument zeroCountCall byteBuffer CNullTerminatedByteString helloLiteral
+argument zeroCountCall byteCount CByteCount fiveByteCount
+argument zeroCountCall targetValue CSignedInt32 lowercaseZCode
 run zeroCountCall
-bind zeroCountResult CSignedInt64 zeroCountCall
+bind value zeroCountResult CSignedInt64 zeroCountCall
 call checkZeroCountCall math.equalI64
-arg checkZeroCountCall left zeroCountResult
-arg checkZeroCountCall right zeroSigned
+argument checkZeroCountCall left I64 zeroCountResult
+argument checkZeroCountCall right I64 zeroSigned
 run checkZeroCountCall
-bind zeroCountOk Bool checkZeroCountCall
-branchIf zeroCountOk zeroCountHolds
-branch smokeAssertionFailed
+bind value zeroCountOk Bool checkZeroCountCall
+branch if condition zeroCountOk target zeroCountHolds
+branch else target smokeAssertionFailed
 label zeroCountHolds
 
 # sumSignedByteValuesInBuffer("hello", 0) == 0 (empty buffer)
 call emptySumCall sumSignedByteValuesInBuffer
-arg emptySumCall byteBuffer helloLiteral
-arg emptySumCall byteCount zeroByteCount
+argument emptySumCall byteBuffer CNullTerminatedByteString helloLiteral
+argument emptySumCall byteCount CByteCount zeroByteCount
 run emptySumCall
-bind emptySumResult CSignedInt64 emptySumCall
+bind value emptySumResult CSignedInt64 emptySumCall
 call checkEmptySumCall math.equalI64
-arg checkEmptySumCall left emptySumResult
-arg checkEmptySumCall right zeroSigned
+argument checkEmptySumCall left I64 emptySumResult
+argument checkEmptySumCall right I64 zeroSigned
 run checkEmptySumCall
-bind emptySumOk Bool checkEmptySumCall
-branchIf emptySumOk emptySumHolds
-branch smokeAssertionFailed
+bind value emptySumOk Bool checkEmptySumCall
+branch if condition emptySumOk target emptySumHolds
+branch else target smokeAssertionFailed
 label emptySumHolds
 
 # reverseBytesInBufferInPlace: copy "hello" to a heap buffer, reverse,
 # then verify by reading individual bytes (first should be 'o', last 'h').
-const reverseAllocByteSize CByteCount 5
+storage module immutable reverseAllocByteSize CByteCount 5
 call reverseAllocCall c.malloc
-arg reverseAllocCall size reverseAllocByteSize
+argument reverseAllocCall size CByteCount reverseAllocByteSize
 run reverseAllocCall
-bind reverseBuffer COpaqueMemoryAddress reverseAllocCall
-bindError reverseAllocError CSignedInt32 reverseAllocCall
-branchIfError reverseAllocCall heapAllocationFailedHandler
+bind value reverseBuffer COpaqueMemoryAddress reverseAllocCall
+bind error reverseAllocError CSignedInt32 reverseAllocCall
+branch error source reverseAllocCall target heapAllocationFailedHandler
 defer releaseReverseAllocCall c.free reverseBuffer
 
 # Copy 'h','e','l','l','o' into the heap buffer at offsets 0..4.
-const offsetZero CByteCount 0
-const offsetOne CByteCount 1
-const offsetTwo CByteCount 2
-const offsetThree CByteCount 3
-const offsetFour CByteCount 4
+storage module immutable offsetZero CByteCount 0
+storage module immutable offsetOne CByteCount 1
+storage module immutable offsetTwo CByteCount 2
+storage module immutable offsetThree CByteCount 3
+storage module immutable offsetFour CByteCount 4
 call storeHCall pointer.storeByte
-arg storeHCall buffer reverseBuffer
-arg storeHCall offset offsetZero
-arg storeHCall value lowercaseHCode
+argument storeHCall buffer COpaqueMemoryAddress reverseBuffer
+argument storeHCall offset CByteCount offsetZero
+argument storeHCall value CSignedInt64 lowercaseHCode
 run storeHCall
 call storeECall pointer.storeByte
-arg storeECall buffer reverseBuffer
-arg storeECall offset offsetOne
-arg storeECall value lowercaseECode
+argument storeECall buffer COpaqueMemoryAddress reverseBuffer
+argument storeECall offset CByteCount offsetOne
+argument storeECall value CSignedInt64 lowercaseECode
 run storeECall
 call storeL1Call pointer.storeByte
-arg storeL1Call buffer reverseBuffer
-arg storeL1Call offset offsetTwo
-arg storeL1Call value lowercaseLCode
+argument storeL1Call buffer COpaqueMemoryAddress reverseBuffer
+argument storeL1Call offset CByteCount offsetTwo
+argument storeL1Call value CSignedInt64 lowercaseLCode
 run storeL1Call
 call storeL2Call pointer.storeByte
-arg storeL2Call buffer reverseBuffer
-arg storeL2Call offset offsetThree
-arg storeL2Call value lowercaseLCode
+argument storeL2Call buffer COpaqueMemoryAddress reverseBuffer
+argument storeL2Call offset CByteCount offsetThree
+argument storeL2Call value CSignedInt64 lowercaseLCode
 run storeL2Call
 call storeOCall pointer.storeByte
-arg storeOCall buffer reverseBuffer
-arg storeOCall offset offsetFour
-arg storeOCall value lowercaseOCode
+argument storeOCall buffer COpaqueMemoryAddress reverseBuffer
+argument storeOCall offset CByteCount offsetFour
+argument storeOCall value CSignedInt64 lowercaseOCode
 run storeOCall
 
 # Reverse the 5 bytes in place.
 call runReverseCall reverseBytesInBufferInPlace
-arg runReverseCall byteBuffer reverseBuffer
-arg runReverseCall byteCount reverseAllocByteSize
+argument runReverseCall byteBuffer COpaqueMemoryAddress reverseBuffer
+argument runReverseCall byteCount CByteCount reverseAllocByteSize
 run runReverseCall
-ignoreValue runReverseCall CByteCount
+ignore value source runReverseCall type CByteCount
 
 # After reverse, byte at offset 0 should be 'o' (111).
 call loadFirstAfterReverseCall pointer.loadByte
-arg loadFirstAfterReverseCall buffer reverseBuffer
-arg loadFirstAfterReverseCall offset offsetZero
+argument loadFirstAfterReverseCall buffer COpaqueMemoryAddress reverseBuffer
+argument loadFirstAfterReverseCall offset CByteCount offsetZero
 run loadFirstAfterReverseCall
-bind firstByteAfterReverse I8 loadFirstAfterReverseCall
+bind value firstByteAfterReverse I8 loadFirstAfterReverseCall
 # normalize to unsigned for comparison
-const twoFiveSixCount CSignedInt64 256
+storage module immutable twoFiveSixCount CSignedInt64 256
 call shiftFirstByteCall math.addI64
-arg shiftFirstByteCall left firstByteAfterReverse
-arg shiftFirstByteCall right twoFiveSixCount
+argument shiftFirstByteCall left I64 firstByteAfterReverse
+argument shiftFirstByteCall right I64 twoFiveSixCount
 run shiftFirstByteCall
-bind shiftedFirstByte CSignedInt64 shiftFirstByteCall
+bind value shiftedFirstByte CSignedInt64 shiftFirstByteCall
 call moduloFirstByteCall math.moduloI64
-arg moduloFirstByteCall left shiftedFirstByte
-arg moduloFirstByteCall right twoFiveSixCount
+argument moduloFirstByteCall left I64 shiftedFirstByte
+argument moduloFirstByteCall right I64 twoFiveSixCount
 run moduloFirstByteCall
-bind firstByteUnsigned CSignedInt64 moduloFirstByteCall
+bind value firstByteUnsigned CSignedInt64 moduloFirstByteCall
 call checkFirstByteCall math.equalI64
-arg checkFirstByteCall left firstByteUnsigned
-arg checkFirstByteCall right expectedMaxValue
+argument checkFirstByteCall left I64 firstByteUnsigned
+argument checkFirstByteCall right I64 expectedMaxValue
 run checkFirstByteCall
-bind firstByteOk Bool checkFirstByteCall
-branchIf firstByteOk reversedFirstHolds
-branch smokeAssertionFailed
+bind value firstByteOk Bool checkFirstByteCall
+branch if condition firstByteOk target reversedFirstHolds
+branch else target smokeAssertionFailed
 label reversedFirstHolds
 
 # After reverse, byte at offset 4 should be 'h' (104).
 call loadLastAfterReverseCall pointer.loadByte
-arg loadLastAfterReverseCall buffer reverseBuffer
-arg loadLastAfterReverseCall offset offsetFour
+argument loadLastAfterReverseCall buffer COpaqueMemoryAddress reverseBuffer
+argument loadLastAfterReverseCall offset CByteCount offsetFour
 run loadLastAfterReverseCall
-bind lastByteAfterReverse I8 loadLastAfterReverseCall
+bind value lastByteAfterReverse I8 loadLastAfterReverseCall
 call shiftLastByteCall math.addI64
-arg shiftLastByteCall left lastByteAfterReverse
-arg shiftLastByteCall right twoFiveSixCount
+argument shiftLastByteCall left I64 lastByteAfterReverse
+argument shiftLastByteCall right I64 twoFiveSixCount
 run shiftLastByteCall
-bind shiftedLastByte CSignedInt64 shiftLastByteCall
+bind value shiftedLastByte CSignedInt64 shiftLastByteCall
 call moduloLastByteCall math.moduloI64
-arg moduloLastByteCall left shiftedLastByte
-arg moduloLastByteCall right twoFiveSixCount
+argument moduloLastByteCall left I64 shiftedLastByte
+argument moduloLastByteCall right I64 twoFiveSixCount
 run moduloLastByteCall
-bind lastByteUnsigned CSignedInt64 moduloLastByteCall
-const expectedHValue CSignedInt64 104
+bind value lastByteUnsigned CSignedInt64 moduloLastByteCall
+storage module immutable expectedHValue CSignedInt64 104
 call checkLastByteCall math.equalI64
-arg checkLastByteCall left lastByteUnsigned
-arg checkLastByteCall right expectedHValue
+argument checkLastByteCall left I64 lastByteUnsigned
+argument checkLastByteCall right I64 expectedHValue
 run checkLastByteCall
-bind lastByteOk Bool checkLastByteCall
-branchIf lastByteOk reversedLastHolds
-branch smokeAssertionFailed
+bind value lastByteOk Bool checkLastByteCall
+branch if condition lastByteOk target reversedLastHolds
+branch else target smokeAssertionFailed
 label reversedLastHolds
 
-const successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText CNullTerminatedByteString "OK"
 call writeSuccessLineCall console.writeLine
-arg writeSuccessLineCall console console
-arg writeSuccessLineCall text successMessageText
+argument writeSuccessLineCall console Console console
+argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
 run writeSuccessLineCall
-ignoreOk writeSuccessLineCall CSignedInt32
-bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
-branchIfError writeSuccessLineCall consoleWriteFailedHandler
-const exitOkCode ExitCode 0
-returnOk exitOkCode
+ignore ok source writeSuccessLineCall type CSignedInt32
+bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branch error source writeSuccessLineCall target consoleWriteFailedHandler
+storage module immutable exitOkCode ExitCode 0
+return ok exitOkCode
 
 # Failure leg: surface the raw negative CSignedInt32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler
 makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
-returnError consoleWriteFailedFailure
+return error consoleWriteFailedFailure
 label smokeAssertionFailed
 makeError arraySmokeFailure MainError.ArraySmokeAssertionFailed
-returnError arraySmokeFailure
+return error arraySmokeFailure
 
 label heapAllocationFailedHandler
 makeError reverseAllocFailure MainError.MemoryAllocationFailed reverseAllocError
-returnError reverseAllocFailure
+return error reverseAllocFailure

@@ -8,67 +8,67 @@ error MainError
 errorCase MainError Placeholder CSignedInt32
 
 operation sumFive
-input sumFive a CSignedInt64
-input sumFive b CSignedInt64
-input sumFive c CSignedInt64
-input sumFive d CSignedInt64
-input sumFive e CSignedInt64
-output sumFive Result CSignedInt64 Void
+input operation sumFive a CSignedInt64
+input operation sumFive b CSignedInt64
+input operation sumFive c CSignedInt64
+input operation sumFive d CSignedInt64
+input operation sumFive e CSignedInt64
+output operation sumFive Result CSignedInt64 Void
 memory sumFive heap no
 async sumFive no
-purpose sumFive "Add five CSignedInt64 inputs. Exercises the 5-arg user-op call site emission."
-invariant sumFive "All five params are i64."
+purpose operation sumFive "Add five CSignedInt64 inputs. Exercises the 5-arg user-op call site emission."
+invariant operation sumFive "All five params are i64."
 label startSumFive
 call sumAbCall math.addI64
-arg sumAbCall left a
-arg sumAbCall right b
+argument sumAbCall left I64 a
+argument sumAbCall right I64 b
 run sumAbCall
-bind sumAb CSignedInt64 sumAbCall
+bind value sumAb CSignedInt64 sumAbCall
 call sumAbcCall math.addI64
-arg sumAbcCall left sumAb
-arg sumAbcCall right c
+argument sumAbcCall left I64 sumAb
+argument sumAbcCall right I64 c
 run sumAbcCall
-bind sumAbc CSignedInt64 sumAbcCall
+bind value sumAbc CSignedInt64 sumAbcCall
 call sumAbcdCall math.addI64
-arg sumAbcdCall left sumAbc
-arg sumAbcdCall right d
+argument sumAbcdCall left I64 sumAbc
+argument sumAbcdCall right I64 d
 run sumAbcdCall
-bind sumAbcd CSignedInt64 sumAbcdCall
+bind value sumAbcd CSignedInt64 sumAbcdCall
 call sumAbcdeCall math.addI64
-arg sumAbcdeCall left sumAbcd
-arg sumAbcdeCall right e
+argument sumAbcdeCall left I64 sumAbcd
+argument sumAbcdeCall right I64 e
 run sumAbcdeCall
-bind total CSignedInt64 sumAbcdeCall
-returnOk total
+bind value total CSignedInt64 sumAbcdeCall
+return ok total
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "sumFive(1,2,3,2,4) == 12."
-invariant main "Exercises 5-arg user-op call from main."
+purpose operation main "sumFive(1,2,3,2,4) == 12."
+invariant operation main "Exercises 5-arg user-op call from main."
 label startMain
-const valOne CSignedInt64 1
-const valTwo CSignedInt64 2
-const valThree CSignedInt64 3
-const valFour CSignedInt64 2
-const valFive CSignedInt64 4
+storage module immutable valOne CSignedInt64 1
+storage module immutable valTwo CSignedInt64 2
+storage module immutable valThree CSignedInt64 3
+storage module immutable valFour CSignedInt64 2
+storage module immutable valFive CSignedInt64 4
 call sumCall sumFive
-arg sumCall a valOne
-arg sumCall b valTwo
-arg sumCall c valThree
-arg sumCall d valFour
-arg sumCall e valFive
+argument sumCall a CSignedInt64 valOne
+argument sumCall b CSignedInt64 valTwo
+argument sumCall c CSignedInt64 valThree
+argument sumCall d CSignedInt64 valFour
+argument sumCall e CSignedInt64 valFive
 run sumCall
-bindOk total CSignedInt64 sumCall
-var totalStorage I64 0
-set totalStorage total
+bind ok total CSignedInt64 sumCall
+memory main mutable totalStorage I64 0
+set memory totalStorage total
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value totalStorage
+argument writeCall console Console console
+argument writeCall value I64 totalStorage
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

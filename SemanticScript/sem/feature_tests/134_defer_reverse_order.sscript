@@ -8,43 +8,43 @@ entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 operation printSecondCleanup
-input printSecondCleanup console Console
-output printSecondCleanup I32
-const secondCleanupMessage CNullTerminatedByteString "secondCleanup"
+input operation printSecondCleanup console Console
+output operation printSecondCleanup I32
+storage module immutable secondCleanupMessage CNullTerminatedByteString "secondCleanup"
 call writeSecondCall console.writeLine
-arg writeSecondCall console console
-arg writeSecondCall text secondCleanupMessage
+argument writeSecondCall console Console console
+argument writeSecondCall text CNullTerminatedByteString secondCleanupMessage
 run writeSecondCall
-ignoreOk writeSecondCall Void
-const successfulInnerExit I32 0
-returnValue successfulInnerExit
+ignore void source writeSecondCall
+storage module immutable successfulInnerExit I32 0
+return value successfulInnerExit
 operation printFirstCleanup
-input printFirstCleanup console Console
-output printFirstCleanup I32
-const firstCleanupMessage CNullTerminatedByteString "firstCleanup"
+input operation printFirstCleanup console Console
+output operation printFirstCleanup I32
+storage module immutable firstCleanupMessage CNullTerminatedByteString "firstCleanup"
 call writeFirstCall console.writeLine
-arg writeFirstCall console console
-arg writeFirstCall text firstCleanupMessage
+argument writeFirstCall console Console console
+argument writeFirstCall text CNullTerminatedByteString firstCleanupMessage
 run writeFirstCall
-ignoreOk writeFirstCall Void
-const innerExitSuccess I32 0
-returnValue innerExitSuccess
+ignore void source writeFirstCall
+storage module immutable innerExitSuccess I32 0
+return value innerExitSuccess
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Defers run in reverse registration order on every exit path."
-invariant main "After 'hello', firstCleanup prints (because secondCleanup registered first, runs second)."
+purpose operation main "Defers run in reverse registration order on every exit path."
+invariant operation main "After 'hello', firstCleanup prints (because secondCleanup registered first, runs second)."
 label startMain
 defer secondCleanupDefer printSecondCleanup console
 defer firstCleanupDefer printFirstCleanup console
-const helloMessage CNullTerminatedByteString "hello"
+storage module immutable helloMessage CNullTerminatedByteString "hello"
 call writeHelloCall console.writeLine
-arg writeHelloCall console console
-arg writeHelloCall text helloMessage
+argument writeHelloCall console Console console
+argument writeHelloCall text CNullTerminatedByteString helloMessage
 run writeHelloCall
-ignoreOk writeHelloCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeHelloCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

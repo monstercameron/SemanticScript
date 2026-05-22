@@ -6,7 +6,7 @@ target console
 runtime AgentRuntime 0.1
 module jsonDocumentCrudRoundTrip
 
-importModule standard.json as json
+import json standard.json
 dependency standard.json version 0.1 source standard
 
 entry console main
@@ -16,21 +16,21 @@ errorCase MainError JsonAccessFailed CSignedInt32
 errorCase MainError ConsoleWriteFailed CSignedInt32
 
 capability jsonCrudStdout console.stdout write
-purpose jsonCrudStdout "Authority to print the JSON CRUD round-trip results."
+purpose operation jsonCrudStdout "Authority to print the JSON CRUD round-trip results."
 
 capability jsonCrudHeapAllocate heap allocate
-purpose jsonCrudHeapAllocate "Authority to allocate JSON serialization scratch space."
+purpose operation jsonCrudHeapAllocate "Authority to allocate JSON serialization scratch space."
 
 capability jsonCrudHeapFree heap free
-purpose jsonCrudHeapFree "Authority to release JSON serialization scratch space."
+purpose operation jsonCrudHeapFree "Authority to release JSON serialization scratch space."
 
 storage module immutable successExit ExitCode 0
 storage module immutable jsonAccessFailedCode CSignedInt32 1
 storage module immutable consoleFailedCode CSignedInt32 2
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 effect main allocate heap
 effect main free heap
@@ -41,130 +41,130 @@ async main no
 useCapability main jsonCrudStdout
 useCapability main jsonCrudHeapAllocate
 useCapability main jsonCrudHeapFree
-purpose main "Create an object document, mutate fields, read a field through a path cursor, delete that field, serialize the final document, and print both observable results."
-invariant main "A no-op document lowering cannot pass because stdout depends on cursorString reading title and serializeDocument reflecting update/delete mutations."
+purpose operation main "Create an object document, mutate fields, read a field through a path cursor, delete that field, serialize the final document, and print both observable results."
+invariant operation main "A no-op document lowering cannot pass because stdout depends on cursorString reading title and serializeDocument reflecting update/delete mutations."
 
 label startMain
 
-const documentCapacity JsonCapacityBytes 2048
-const scratchCapacity JsonCapacityBytes 512
-const objectRootKind CSignedInt32 0
+storage module immutable documentCapacity JsonCapacityBytes 2048
+storage module immutable scratchCapacity JsonCapacityBytes 512
+storage module immutable objectRootKind CSignedInt32 0
 
 call allocateScratchCall c.malloc
-arg allocateScratchCall size scratchCapacity
+argument allocateScratchCall size JsonCapacityBytes scratchCapacity
 run allocateScratchCall
-bind serializationScratch COpaqueMemoryAddress allocateScratchCall
+bind value serializationScratch COpaqueMemoryAddress allocateScratchCall
 defer releaseScratchDefer c.free serializationScratch
 
 call createDocumentCall json.createEmptyDocument
-arg createDocumentCall capacityBytes documentCapacity
-arg createDocumentCall rootKind objectRootKind
+argument createDocumentCall capacityBytes JsonCapacityBytes documentCapacity
+argument createDocumentCall rootKind CSignedInt32 objectRootKind
 run createDocumentCall
-bindOk todoDocument JsonDocument createDocumentCall
-bindError createDocumentError JsonAccessError createDocumentCall
-branchIfError createDocumentCall jsonAccessFailed
+bind ok todoDocument JsonDocument createDocumentCall
+bind error createDocumentError JsonAccessError createDocumentCall
+branch error source createDocumentCall target jsonAccessFailed
 
 defer releaseDocumentDefer json.destroyDocument todoDocument
 
 call rootCursorCall json.documentRoot
-arg rootCursorCall document todoDocument
+argument rootCursorCall document JsonDocument todoDocument
 run rootCursorCall
-bind rootCursor JsonCursor rootCursorCall
+bind value rootCursor JsonCursor rootCursorCall
 
-const titleField CNullTerminatedByteString "title"
-const titleValue CNullTerminatedByteString "ship json"
+storage module immutable titleField CNullTerminatedByteString "title"
+storage module immutable titleValue CNullTerminatedByteString "ship json"
 call setTitleCall json.setObjectFieldString
-arg setTitleCall document todoDocument
-arg setTitleCall cursor rootCursor
-arg setTitleCall fieldName titleField
-arg setTitleCall value titleValue
+argument setTitleCall document JsonDocument todoDocument
+argument setTitleCall cursor JsonCursor rootCursor
+argument setTitleCall fieldName CNullTerminatedByteString titleField
+argument setTitleCall value CNullTerminatedByteString titleValue
 run setTitleCall
-ignoreOk setTitleCall CSignedInt32
-bindError setTitleError CSignedInt32 setTitleCall
-branchIfError setTitleCall jsonAccessFailed
+ignore ok source setTitleCall type CSignedInt32
+bind error setTitleError CSignedInt32 setTitleCall
+branch error source setTitleCall target jsonAccessFailed
 
-const countField CNullTerminatedByteString "count"
-const initialCount I64 1
+storage module immutable countField CNullTerminatedByteString "count"
+storage module immutable initialCount I64 1
 call setInitialCountCall json.setObjectFieldInt64
-arg setInitialCountCall document todoDocument
-arg setInitialCountCall cursor rootCursor
-arg setInitialCountCall fieldName countField
-arg setInitialCountCall value initialCount
+argument setInitialCountCall document JsonDocument todoDocument
+argument setInitialCountCall cursor JsonCursor rootCursor
+argument setInitialCountCall fieldName CNullTerminatedByteString countField
+argument setInitialCountCall value I64 initialCount
 run setInitialCountCall
-ignoreOk setInitialCountCall CSignedInt32
-bindError setInitialCountError CSignedInt32 setInitialCountCall
-branchIfError setInitialCountCall jsonAccessFailed
+ignore ok source setInitialCountCall type CSignedInt32
+bind error setInitialCountError CSignedInt32 setInitialCountCall
+branch error source setInitialCountCall target jsonAccessFailed
 
-const titlePath CNullTerminatedByteString ".title"
+storage module immutable titlePath CNullTerminatedByteString ".title"
 call findTitleCursorCall json.cursorAtPath
-arg findTitleCursorCall document todoDocument
-arg findTitleCursorCall path titlePath
+argument findTitleCursorCall document JsonDocument todoDocument
+argument findTitleCursorCall path CNullTerminatedByteString titlePath
 run findTitleCursorCall
-bindOk titleCursor JsonCursor findTitleCursorCall
-bindError findTitleCursorError JsonAccessError findTitleCursorCall
-branchIfError findTitleCursorCall jsonAccessFailed
+bind ok titleCursor JsonCursor findTitleCursorCall
+bind error findTitleCursorError JsonAccessError findTitleCursorCall
+branch error source findTitleCursorCall target jsonAccessFailed
 
 call readTitleCall json.cursorString
-arg readTitleCall document todoDocument
-arg readTitleCall cursor titleCursor
-arg readTitleCall scratch serializationScratch
-arg readTitleCall scratchCapacity scratchCapacity
+argument readTitleCall document JsonDocument todoDocument
+argument readTitleCall cursor JsonCursor titleCursor
+argument readTitleCall scratch COpaqueMemoryAddress serializationScratch
+argument readTitleCall scratchCapacity JsonCapacityBytes scratchCapacity
 run readTitleCall
-bindOk recoveredTitle JsonText readTitleCall
-bindError readTitleError JsonAccessError readTitleCall
-branchIfError readTitleCall jsonAccessFailed
+bind ok recoveredTitle JsonText readTitleCall
+bind error readTitleError JsonAccessError readTitleCall
+branch error source readTitleCall target jsonAccessFailed
 
 call writeTitleCall console.writeLine
-arg writeTitleCall console console
-arg writeTitleCall text recoveredTitle
+argument writeTitleCall console Console console
+argument writeTitleCall text JsonText recoveredTitle
 run writeTitleCall
-ignoreOk writeTitleCall Void
-bindError writeTitleError ConsoleWriteError writeTitleCall
-branchIfError writeTitleCall consoleWriteFailed
+ignore void source writeTitleCall
+bind error writeTitleError ConsoleWriteError writeTitleCall
+branch error source writeTitleCall target consoleWriteFailed
 
-const updatedCount I64 2
+storage module immutable updatedCount I64 2
 call updateCountCall json.setObjectFieldInt64
-arg updateCountCall document todoDocument
-arg updateCountCall cursor rootCursor
-arg updateCountCall fieldName countField
-arg updateCountCall value updatedCount
+argument updateCountCall document JsonDocument todoDocument
+argument updateCountCall cursor JsonCursor rootCursor
+argument updateCountCall fieldName CNullTerminatedByteString countField
+argument updateCountCall value I64 updatedCount
 run updateCountCall
-ignoreOk updateCountCall CSignedInt32
-bindError updateCountError CSignedInt32 updateCountCall
-branchIfError updateCountCall jsonAccessFailed
+ignore ok source updateCountCall type CSignedInt32
+bind error updateCountError CSignedInt32 updateCountCall
+branch error source updateCountCall target jsonAccessFailed
 
 call removeTitleCall json.removeObjectField
-arg removeTitleCall document todoDocument
-arg removeTitleCall cursor rootCursor
-arg removeTitleCall fieldName titleField
+argument removeTitleCall document JsonDocument todoDocument
+argument removeTitleCall cursor JsonCursor rootCursor
+argument removeTitleCall fieldName CNullTerminatedByteString titleField
 run removeTitleCall
-ignoreOk removeTitleCall CSignedInt32
-bindError removeTitleError CSignedInt32 removeTitleCall
-branchIfError removeTitleCall jsonAccessFailed
+ignore ok source removeTitleCall type CSignedInt32
+bind error removeTitleError CSignedInt32 removeTitleCall
+branch error source removeTitleCall target jsonAccessFailed
 
 call serializeDocumentCall json.serializeDocument
-arg serializeDocumentCall document todoDocument
-arg serializeDocumentCall scratch serializationScratch
-arg serializeDocumentCall scratchCapacity scratchCapacity
+argument serializeDocumentCall document JsonDocument todoDocument
+argument serializeDocumentCall scratch COpaqueMemoryAddress serializationScratch
+argument serializeDocumentCall scratchCapacity JsonCapacityBytes scratchCapacity
 run serializeDocumentCall
-bindOk serializedDocument JsonText serializeDocumentCall
-bindError serializeDocumentError JsonAccessError serializeDocumentCall
-branchIfError serializeDocumentCall jsonAccessFailed
+bind ok serializedDocument JsonText serializeDocumentCall
+bind error serializeDocumentError JsonAccessError serializeDocumentCall
+branch error source serializeDocumentCall target jsonAccessFailed
 
 call writeSerializedCall console.writeLine
-arg writeSerializedCall console console
-arg writeSerializedCall text serializedDocument
+argument writeSerializedCall console Console console
+argument writeSerializedCall text JsonText serializedDocument
 run writeSerializedCall
-ignoreOk writeSerializedCall Void
-bindError writeSerializedError ConsoleWriteError writeSerializedCall
-branchIfError writeSerializedCall consoleWriteFailed
+ignore void source writeSerializedCall
+bind error writeSerializedError ConsoleWriteError writeSerializedCall
+branch error source writeSerializedCall target consoleWriteFailed
 
-returnOk successExit
+return ok successExit
 
 label jsonAccessFailed
 makeError jsonAccessFailure MainError.JsonAccessFailed jsonAccessFailedCode
-returnError jsonAccessFailure
+return error jsonAccessFailure
 
 label consoleWriteFailed
 makeError consoleFailure MainError.ConsoleWriteFailed consoleFailedCode
-returnError consoleFailure
+return error consoleFailure

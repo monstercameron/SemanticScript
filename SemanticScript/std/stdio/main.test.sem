@@ -20,7 +20,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 
-importModule standard.stdio
+import stdio standard.stdio
 # Typed error domain for write failures. Aggregate writers absorb
 # putchar/EOF failures via ignoreValue; the smoke wires
 # console.writeLine failures into MainError.ByteWriteFailedDuringSmoke.
@@ -39,22 +39,22 @@ errorCase MainError ByteWriteFailedDuringSmoke
 # ============================================================
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 useCapability main stdoutWriteCapability
 useCapability main heapAllocationCapability
 useCapability main heapFreeCapability
 effect main write console.stdout
 effect main allocate heap
 effect main free heap
-memoryHeap main yes
+memory main heap yes
 memoryStackLimit main 16384
 # The decimal/hex formatters are the heap-allocators; we name one
 # of them as the canonical allocation source for tooling.
 memoryAllocationSource main emitFortyTwoCall
 async main no
-purpose main "Smoke-test every stdio writer. Output matches the byte-exact sequence expected by test_stdlib.py."
-invariant main "Emits the test_stdlib.py-expected byte sequence; returns Ok 0 on success."
+purpose operation main "Smoke-test every stdio writer. Output matches the byte-exact sequence expected by test_stdlib.py."
+invariant operation main "Emits the test_stdlib.py-expected byte sequence; returns Ok 0 on success."
 
 label startMain
 
@@ -63,75 +63,75 @@ label startMain
 # failure path through MainError.ByteWriteFailedDuringSmoke if
 # stdout itself fails (e.g. closed pipe). The remaining lines go
 # through the byte-level writers under test.
-const helloSemanticScriptStdlibBanner CNullTerminatedByteString "Hello, SemanticScript stdlib!"
+storage module immutable helloSemanticScriptStdlibBanner CNullTerminatedByteString "Hello, SemanticScript stdlib!"
 call emitHelloBannerCall console.writeLine
-arg emitHelloBannerCall console console
-arg emitHelloBannerCall text helloSemanticScriptStdlibBanner
+argument emitHelloBannerCall console Console console
+argument emitHelloBannerCall text CNullTerminatedByteString helloSemanticScriptStdlibBanner
 run emitHelloBannerCall
-ignoreOk emitHelloBannerCall CSignedInt32
-bindError emitHelloBannerError CSignedInt32 emitHelloBannerCall
-branchIfError emitHelloBannerCall byteWriteFailedDuringSmokeHandler
+ignore ok source emitHelloBannerCall type CSignedInt32
+bind error emitHelloBannerError CSignedInt32 emitHelloBannerCall
+branch error source emitHelloBannerCall target byteWriteFailedDuringSmokeHandler
 
-const noNewlineProbeText CNullTerminatedByteString "no-newline-then-writeCStringLineToStandardOutput"
+storage module immutable noNewlineProbeText CNullTerminatedByteString "no-newline-then-writeCStringLineToStandardOutput"
 call emitNoNewlineProbeCall writeCStringToStandardOutput
-arg emitNoNewlineProbeCall inputText noNewlineProbeText
+argument emitNoNewlineProbeCall inputText CNullTerminatedByteString noNewlineProbeText
 run emitNoNewlineProbeCall
-ignoreValue emitNoNewlineProbeCall CByteCount
+ignore value source emitNoNewlineProbeCall type CByteCount
 
-const emptyTerminatorMarker CNullTerminatedByteString ""
+storage module immutable emptyTerminatorMarker CNullTerminatedByteString ""
 call emitEmptyTerminatorCall writeCStringLineToStandardOutput
-arg emitEmptyTerminatorCall inputText emptyTerminatorMarker
+argument emitEmptyTerminatorCall inputText CNullTerminatedByteString emptyTerminatorMarker
 run emitEmptyTerminatorCall
-ignoreValue emitEmptyTerminatorCall CByteCount
+ignore value source emitEmptyTerminatorCall type CByteCount
 
-const fortyTwoSampleValue CSignedInt64 42
+storage module immutable fortyTwoSampleValue CSignedInt64 42
 call emitFortyTwoCall writeSignedInt64DecimalToStandardOutput
-arg emitFortyTwoCall inputValue fortyTwoSampleValue
+argument emitFortyTwoCall inputValue CSignedInt64 fortyTwoSampleValue
 run emitFortyTwoCall
-ignoreValue emitFortyTwoCall CByteCount
+ignore value source emitFortyTwoCall type CByteCount
 
-const negativeTwelveThirtyFour CSignedInt64 -1234
+storage module immutable negativeTwelveThirtyFour CSignedInt64 -1234
 call emitNegativeSampleCall writeSignedInt64DecimalToStandardOutput
-arg emitNegativeSampleCall inputValue negativeTwelveThirtyFour
+argument emitNegativeSampleCall inputValue CSignedInt64 negativeTwelveThirtyFour
 run emitNegativeSampleCall
-ignoreValue emitNegativeSampleCall CByteCount
+ignore value source emitNegativeSampleCall type CByteCount
 
-const zeroSampleForDecimal CSignedInt64 0
+storage module immutable zeroSampleForDecimal CSignedInt64 0
 call emitDecimalZeroSampleCall writeSignedInt64DecimalToStandardOutput
-arg emitDecimalZeroSampleCall inputValue zeroSampleForDecimal
+argument emitDecimalZeroSampleCall inputValue CSignedInt64 zeroSampleForDecimal
 run emitDecimalZeroSampleCall
-ignoreValue emitDecimalZeroSampleCall CByteCount
+ignore value source emitDecimalZeroSampleCall type CByteCount
 
-const twoFiftyFiveSampleValue CSignedInt64 255
+storage module immutable twoFiftyFiveSampleValue CSignedInt64 255
 call emitUnsignedTwoFiftyFiveCall writeUnsignedInt64DecimalToStandardOutput
-arg emitUnsignedTwoFiftyFiveCall inputValue twoFiftyFiveSampleValue
+argument emitUnsignedTwoFiftyFiveCall inputValue CSignedInt64 twoFiftyFiveSampleValue
 run emitUnsignedTwoFiftyFiveCall
-ignoreValue emitUnsignedTwoFiftyFiveCall CByteCount
+ignore value source emitUnsignedTwoFiftyFiveCall type CByteCount
 
 call emitHexTwoFiftyFiveCall writeSignedInt64HexToStandardOutput
-arg emitHexTwoFiftyFiveCall inputValue twoFiftyFiveSampleValue
+argument emitHexTwoFiftyFiveCall inputValue CSignedInt64 twoFiftyFiveSampleValue
 run emitHexTwoFiftyFiveCall
-ignoreValue emitHexTwoFiftyFiveCall CByteCount
+ignore value source emitHexTwoFiftyFiveCall type CByteCount
 
 # Exercise writeByteToStandardOutput by emitting 'A' (65) then '\n' (10).
 # This was the one stdio op missing from the original smoke; the
 # expected stdout in test_stdlib.py is extended by exactly "A\n".
-const capitalAByteCode CSignedInt32 65
+storage module immutable capitalAByteCode CSignedInt32 65
 call emitCapitalAByteCall writeByteToStandardOutput
-arg emitCapitalAByteCall characterCode capitalAByteCode
+argument emitCapitalAByteCall characterCode CSignedInt32 capitalAByteCode
 run emitCapitalAByteCall
-ignoreValue emitCapitalAByteCall CSignedInt32
-const lineFeedByteCode CSignedInt32 10
+ignore value source emitCapitalAByteCall type CSignedInt32
+storage module immutable lineFeedByteCode CSignedInt32 10
 call emitLineFeedByteCall writeByteToStandardOutput
-arg emitLineFeedByteCall characterCode lineFeedByteCode
+argument emitLineFeedByteCall characterCode CSignedInt32 lineFeedByteCode
 run emitLineFeedByteCall
-ignoreValue emitLineFeedByteCall CSignedInt32
+ignore value source emitLineFeedByteCall type CSignedInt32
 
-const exitOkCode ExitCode 0
-returnOk exitOkCode
+storage module immutable exitOkCode ExitCode 0
+return ok exitOkCode
 
 # Failure leg: the first banner write failed (closed pipe, etc.).
 # Surface the typed variant with the raw negative status as cause.
 label byteWriteFailedDuringSmokeHandler
 makeError byteWriteFailedDuringSmokeFailure MainError.ByteWriteFailedDuringSmoke emitHelloBannerError
-returnError byteWriteFailedDuringSmokeFailure
+return error byteWriteFailedDuringSmokeFailure

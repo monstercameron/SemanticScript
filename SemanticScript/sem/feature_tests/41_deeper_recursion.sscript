@@ -8,61 +8,61 @@ error MainError
 errorCase MainError Placeholder CSignedInt32
 
 operation factorialOf
-input factorialOf n CSignedInt64
-output factorialOf Result CSignedInt64 Void
+input operation factorialOf n CSignedInt64
+output operation factorialOf Result CSignedInt64 Void
 memory factorialOf heap no
 async factorialOf no
-purpose factorialOf "Recursive factorial — deep call stack at n=10."
-invariant factorialOf "Tail-style recursion through up to 10 frames."
+purpose operation factorialOf "Recursive factorial — deep call stack at n=10."
+invariant operation factorialOf "Tail-style recursion through up to 10 frames."
 label startFactorialOf
-const oneLit I64 1
+storage module immutable oneLit I64 1
 call atBaseCall math.lessThanOrEqualI64
-arg atBaseCall left n
-arg atBaseCall right oneLit
+argument atBaseCall left CSignedInt64 n
+argument atBaseCall right I64 oneLit
 run atBaseCall
-bind atBase Bool atBaseCall
-branchIf atBase baseCase
-branch recursiveCase
+bind value atBase Bool atBaseCall
+branch if condition atBase target baseCase
+branch else target recursiveCase
 label baseCase
-returnOk oneLit
+return ok oneLit
 label recursiveCase
 call decCall math.subtractI64
-arg decCall left n
-arg decCall right oneLit
+argument decCall left CSignedInt64 n
+argument decCall right I64 oneLit
 run decCall
-bind decremented I64 decCall
+bind value decremented I64 decCall
 call recCall factorialOf
-arg recCall n decremented
+argument recCall n CSignedInt64 decremented
 run recCall
-bindOk recResult I64 recCall
+bind ok recResult I64 recCall
 call mulCall math.multiplyI64
-arg mulCall left n
-arg mulCall right recResult
+argument mulCall left CSignedInt64 n
+argument mulCall right I64 recResult
 run mulCall
-bind multiplied I64 mulCall
-returnOk multiplied
+bind value multiplied I64 mulCall
+return ok multiplied
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Compute factorialOf(10) = 3628800."
-invariant main "Deeper recursion than test 39."
+purpose operation main "Compute factorialOf(10) = 3628800."
+invariant operation main "Deeper recursion than test 39."
 label startMain
-const tenInitial I64 10
-var input I64 tenInitial
+storage module immutable tenInitial I64 10
+memory main mutable input I64 tenInitial
 call factCall factorialOf
-arg factCall n input
+argument factCall n CSignedInt64 input
 run factCall
-bindOk factResult I64 factCall
-var outputVar I64 tenInitial
-set outputVar factResult
+bind ok factResult I64 factCall
+memory main mutable outputVar I64 tenInitial
+set memory outputVar factResult
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value outputVar
+argument writeCall console Console console
+argument writeCall value I64 outputVar
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

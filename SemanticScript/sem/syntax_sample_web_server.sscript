@@ -15,10 +15,10 @@ project AccountServer
 target webServer
 runtime AgentRuntime 0.1
 
-importModule standard.http as http
-importModule standard.json as json
-importModule standard.time as time
-importModule database.postgres as postgres
+import http standard.http
+import json standard.json
+import time standard.time
+import postgres database.postgres
 
 dependency standard.http version 0.1 source standard
 dependency standard.json version 0.1 source standard
@@ -39,7 +39,7 @@ module account
 
 type AccountId UuidV7
 type MoneyCents I64
-type AccountBalanceResult Result AccountBalance AccountLookupError
+type AccountBalanceResult result ok AccountBalance error AccountLookupError
 
 typeInvariant AccountId "value is a v7 UUID encoded as a 128-bit big-endian integer"
 typeRepresentation AccountId UuidV7
@@ -52,14 +52,14 @@ typeMemory MoneyCents inline
 # ----- records -----
 
 record AccountBalance layout row align 16
-purpose AccountBalance "Internal account-balance snapshot read from the database, including the last update timestamp"
+purpose operation AccountBalance "Internal account-balance snapshot read from the database, including the last update timestamp"
 field AccountBalance accountId AccountId
 field AccountBalance availableCents MoneyCents
 field AccountBalance pendingCents MoneyCents
 field AccountBalance updatedAtUtc UtcMilliseconds
 
 record AccountBalanceResponse layout row align 16
-purpose AccountBalanceResponse "Public account-balance shape returned by the HTTP API; drops internal timestamp metadata before serialization"
+purpose operation AccountBalanceResponse "Public account-balance shape returned by the HTTP API; drops internal timestamp metadata before serialization"
 field AccountBalanceResponse accountId AccountId
 field AccountBalanceResponse availableCents MoneyCents
 field AccountBalanceResponse pendingCents MoneyCents
@@ -83,60 +83,60 @@ errorCase MainError JsonEncodingFailed JsonEncodingError
 
 jsonCodec AccountBalanceResponseJsonCodec strict yes unknownFields reject
 schema AccountBalanceResponseJsonCodec AccountBalanceResponse
-purpose AccountBalanceResponseJsonCodec "Serialize an AccountBalanceResponse record into a strict JSON envelope safe to ship in an HTTP response body"
+purpose operation AccountBalanceResponseJsonCodec "Serialize an AccountBalanceResponse record into a strict JSON envelope safe to ship in an HTTP response body"
 guarantee AccountBalanceResponseJsonCodec "Only fields declared on AccountBalanceResponse are serialized"
 
 # ----- validator -----
 
 validator accountIdPathValidator
-input accountIdPathValidator http.PathParameter
-output accountIdPathValidator Result AccountId AccountIdParseError
-purpose accountIdPathValidator "Parse an HTTP path parameter into a typed AccountId or surface a typed AccountIdParseError"
+input operation accountIdPathValidator http.PathParameter
+output operation accountIdPathValidator Result AccountId AccountIdParseError
+purpose operation accountIdPathValidator "Parse an HTTP path parameter into a typed AccountId or surface a typed AccountIdParseError"
 guarantee accountIdPathValidator "AccountId is a syntactically valid v7 UUID"
 
 # ----- retry policy -----
 
-const databaseRetryInitialDelay DurationMilliseconds 50
-const databaseRetryMaximumDelay DurationMilliseconds 500
+storage module immutable databaseRetryInitialDelay DurationMilliseconds 50
+storage module immutable databaseRetryMaximumDelay DurationMilliseconds 500
 
 retryPolicy databaseReadRetryPolicy maxAttempts 3 initialDelay databaseRetryInitialDelay maximumDelay databaseRetryMaximumDelay jitter yes
-purpose databaseReadRetryPolicy "Bound transient database-read retries to at most three attempts with exponential backoff and jitter"
+purpose operation databaseReadRetryPolicy "Bound transient database-read retries to at most three attempts with exponential backoff and jitter"
 
 timeoutBudget accountLookupTimeoutBudget DurationMilliseconds 2000
-purpose accountLookupTimeoutBudget "Cap the total time spent on a single account balance lookup so a slow query cannot pin a request handler"
+purpose operation accountLookupTimeoutBudget "Cap the total time spent on a single account balance lookup so a slow query cannot pin a request handler"
 
 # ----- capabilities (explicit authority grants) -----
 
 capability stdoutWrite console.stdout write
-purpose stdoutWrite "Authority to write a stream of lines to the process's standard output device"
+purpose operation stdoutWrite "Authority to write a stream of lines to the process's standard output device"
 
 capability databaseReadWrite database readWrite
-purpose databaseReadWrite "Authority to read from and write to the application's database tier"
+purpose operation databaseReadWrite "Authority to read from and write to the application's database tier"
 
 capability clockRead clock read
-purpose clockRead "Authority to read clock sources used for timestamps and latency measurement"
+purpose operation clockRead "Authority to read clock sources used for timestamps and latency measurement"
 
 capability httpRequestReader http.request read
-purpose httpRequestReader "Authority to inspect HTTP request path and cancellation-token values"
+purpose operation httpRequestReader "Authority to inspect HTTP request path and cancellation-token values"
 
 capability httpResponseWriter http.response write
-purpose httpResponseWriter "Authority to build HTTP response status, header, and body values"
+purpose operation httpResponseWriter "Authority to build HTTP response status, header, and body values"
 
-const httpStatusOk CSignedInt32 200
-const httpStatusBadRequest CSignedInt32 400
-const httpStatusServiceUnavailable CSignedInt32 503
-const httpStatusInternalServerError CSignedInt32 500
-const invalidAccountIdBody CNullTerminatedByteString "invalid account id"
-const databaseUnavailableBody CNullTerminatedByteString "database unavailable"
-const accountBalanceLookupFailedBody CNullTerminatedByteString "account balance lookup failed"
-const responseEncodingFailedBody CNullTerminatedByteString "response encoding failed"
-const accountPageEmptyJsonBody CNullTerminatedByteString "{}"
-const accountPageLoadFailedBody CNullTerminatedByteString "page load failed"
+storage module immutable httpStatusOk CSignedInt32 200
+storage module immutable httpStatusBadRequest CSignedInt32 400
+storage module immutable httpStatusServiceUnavailable CSignedInt32 503
+storage module immutable httpStatusInternalServerError CSignedInt32 500
+storage module immutable invalidAccountIdBody CNullTerminatedByteString "invalid account id"
+storage module immutable databaseUnavailableBody CNullTerminatedByteString "database unavailable"
+storage module immutable accountBalanceLookupFailedBody CNullTerminatedByteString "account balance lookup failed"
+storage module immutable responseEncodingFailedBody CNullTerminatedByteString "response encoding failed"
+storage module immutable accountPageEmptyJsonBody CNullTerminatedByteString "{}"
+storage module immutable accountPageLoadFailedBody CNullTerminatedByteString "page load failed"
 
 # ----- web server -----
 
 webServer accountHttpServer
-purpose accountHttpServer "Host the AccountServer HTTP interface; bind to all interfaces on port 8080 and route account balance reads to getAccountBalanceHandler"
+purpose operation accountHttpServer "Host the AccountServer HTTP interface; bind to all interfaces on port 8080 and route account balance reads to getAccountBalanceHandler"
 serverHost accountHttpServer "0.0.0.0"
 serverPort accountHttpServer 8080
 route accountHttpServer get "/accounts/:accountId/balance" getAccountBalanceHandler
@@ -144,9 +144,9 @@ route accountHttpServer get "/accounts/:accountId/balance" getAccountBalanceHand
 # ----- handler operation -----
 
 operation getAccountBalanceHandler
-input getAccountBalanceHandler request HttpRequest
-input getAccountBalanceHandler response HttpResponse
-output getAccountBalanceHandler CSignedInt32
+input operation getAccountBalanceHandler request HttpRequest
+input operation getAccountBalanceHandler response HttpResponse
+output operation getAccountBalanceHandler CSignedInt32
 effect getAccountBalanceHandler read http.request.path
 effect getAccountBalanceHandler read http.request.cancellationToken
 effect getAccountBalanceHandler write http.response
@@ -161,8 +161,8 @@ useCapability getAccountBalanceHandler clockRead
 useCapability getAccountBalanceHandler httpRequestReader
 useCapability getAccountBalanceHandler httpResponseWriter
 
-purpose getAccountBalanceHandler "Return the current account balance as a JSON HTTP response"
-invariant getAccountBalanceHandler "Every database await must use requestCancellationToken"
+purpose operation getAccountBalanceHandler "Return the current account balance as a JSON HTTP response"
+invariant operation getAccountBalanceHandler "Every database await must use requestCancellationToken"
 guarantee getAccountBalanceHandler "Response body never includes raw database driver error details"
 warning getAccountBalanceHandler "Never expose raw database errors in the HTTP response body"
 timing getAccountBalanceHandler "Total handler latency budget is accountLookupTimeoutBudget"
@@ -172,51 +172,51 @@ security getAccountBalanceHandler "accountId is parsed through accountIdPathVali
 label startGetAccountBalanceHandler
 
 call requestPathReadCall http.requestPath
-arg requestPathReadCall request request
+argument requestPathReadCall request HttpRequest request
 run requestPathReadCall
-ignoreValue requestPathReadCall CNullTerminatedByteString
+ignore value source requestPathReadCall type CNullTerminatedByteString
 
 # rationale: Read the cancellation token first so every later async call can be tied to client disconnects.
 call requestCancellationTokenReadCall http.requestCancellationToken
-arg requestCancellationTokenReadCall request request
+argument requestCancellationTokenReadCall request HttpRequest request
 run requestCancellationTokenReadCall
-bind requestCancellationToken CancellationToken requestCancellationTokenReadCall
+bind value requestCancellationToken CancellationToken requestCancellationTokenReadCall
 
 # rationale: Parse the accountId path parameter through the dedicated validator.
 call accountIdParseCall accountIdPathValidator.validate
-arg accountIdParseCall request request
-arg accountIdParseCall name "accountId"
+argument accountIdParseCall request HttpRequest request
+argument accountIdParseCall name CNullTerminatedByteString "accountId"
 run accountIdParseCall
-bindOk accountId AccountId accountIdParseCall
-bindError accountIdParseError AccountIdParseError accountIdParseCall
-branchIfError accountIdParseCall accountIdParseFailed
+bind ok accountId AccountId accountIdParseCall
+bind error accountIdParseError AccountIdParseError accountIdParseCall
+branch error source accountIdParseCall target accountIdParseFailed
 
 # rationale: Open the database connection with a bounded timeout.
-const databaseOpenTimeout DurationMilliseconds 1000
+storage module immutable databaseOpenTimeout DurationMilliseconds 1000
 call databaseOpenCall database.openConnection
-arg databaseOpenCall database databaseClient
+argument databaseOpenCall database DatabaseClient databaseClient
 timeout databaseOpenCall databaseOpenTimeout
 cancelOn databaseOpenCall requestCancellationToken
 start databaseOpenCall
 await databaseOpenCall
-bindOk databaseConnection DatabaseConnection databaseOpenCall
-bindError databaseOpenError DatabaseOpenError databaseOpenCall
-branchIfError databaseOpenCall databaseOpenFailed
+bind ok databaseConnection DatabaseConnection databaseOpenCall
+bind error databaseOpenError DatabaseOpenError databaseOpenCall
+branch error source databaseOpenCall target databaseOpenFailed
 
 deferAwaitLog databaseConnectionCloseDefer database.closeConnection databaseConnection
 
 # rationale: Balance lookup uses the request cancellation token and the configured timeout budget.
 call accountBalanceLookupCall database.accounts.findBalance
-arg accountBalanceLookupCall connection databaseConnection
-arg accountBalanceLookupCall accountId accountId
+argument accountBalanceLookupCall connection DatabaseConnection databaseConnection
+argument accountBalanceLookupCall accountId AccountId accountId
 timeout accountBalanceLookupCall accountLookupTimeoutBudget
 cancelOn accountBalanceLookupCall requestCancellationToken
 useRetry accountBalanceLookupCall databaseReadRetryPolicy
 start accountBalanceLookupCall
 await accountBalanceLookupCall
-bindOk accountBalance AccountBalance accountBalanceLookupCall
-bindError accountBalanceLookupError AccountLookupError accountBalanceLookupCall
-branchIfError accountBalanceLookupCall accountBalanceLookupFailed
+bind ok accountBalance AccountBalance accountBalanceLookupCall
+bind error accountBalanceLookupError AccountLookupError accountBalanceLookupCall
+branch error source accountBalanceLookupCall target accountBalanceLookupFailed
 
 # rationale: Build the response record explicitly so JSON encoding sees a stable schema.
 new accountBalanceResponse AccountBalanceResponse
@@ -228,63 +228,63 @@ fieldSet accountBalanceResponse pendingCents accountBalancePendingCents
 
 # rationale: Encode the response record using the typed codec.
 call jsonEncodingCall AccountBalanceResponseJsonCodec.encode
-arg jsonEncodingCall value accountBalanceResponse
+argument jsonEncodingCall value AccountBalanceResponse accountBalanceResponse
 run jsonEncodingCall
-bindOk responseBody JsonBytes jsonEncodingCall
-bindError jsonEncodingError JsonEncodingError jsonEncodingCall
-branchIfError jsonEncodingCall jsonEncodingFailed
+bind ok responseBody JsonBytes jsonEncodingCall
+bind error jsonEncodingError JsonEncodingError jsonEncodingCall
+branch error source jsonEncodingCall target jsonEncodingFailed
 
 # rationale: Build the success response envelope.
 call successResponseBuildCall http.responseJson
-arg successResponseBuildCall response response
-arg successResponseBuildCall status httpStatusOk
-arg successResponseBuildCall body responseBody
+argument successResponseBuildCall response HttpResponse response
+argument successResponseBuildCall status CSignedInt32 httpStatusOk
+argument successResponseBuildCall body JsonBytes responseBody
 run successResponseBuildCall
-bind successResponseStatus CSignedInt32 successResponseBuildCall
-returnValue successResponseStatus
+bind value successResponseStatus CSignedInt32 successResponseBuildCall
+return value successResponseStatus
 
 label accountIdParseFailed
 call accountIdParseFailureResponseBuildCall http.responseText
-arg accountIdParseFailureResponseBuildCall response response
-arg accountIdParseFailureResponseBuildCall status httpStatusBadRequest
-arg accountIdParseFailureResponseBuildCall body invalidAccountIdBody
+argument accountIdParseFailureResponseBuildCall response HttpResponse response
+argument accountIdParseFailureResponseBuildCall status CSignedInt32 httpStatusBadRequest
+argument accountIdParseFailureResponseBuildCall body CNullTerminatedByteString invalidAccountIdBody
 run accountIdParseFailureResponseBuildCall
-bind accountIdParseFailureResponseStatus CSignedInt32 accountIdParseFailureResponseBuildCall
-returnValue accountIdParseFailureResponseStatus
+bind value accountIdParseFailureResponseStatus CSignedInt32 accountIdParseFailureResponseBuildCall
+return value accountIdParseFailureResponseStatus
 
 label databaseOpenFailed
 call databaseOpenFailureResponseBuildCall http.responseText
-arg databaseOpenFailureResponseBuildCall response response
-arg databaseOpenFailureResponseBuildCall status httpStatusServiceUnavailable
-arg databaseOpenFailureResponseBuildCall body databaseUnavailableBody
+argument databaseOpenFailureResponseBuildCall response HttpResponse response
+argument databaseOpenFailureResponseBuildCall status CSignedInt32 httpStatusServiceUnavailable
+argument databaseOpenFailureResponseBuildCall body CNullTerminatedByteString databaseUnavailableBody
 run databaseOpenFailureResponseBuildCall
-bind databaseOpenFailureResponseStatus CSignedInt32 databaseOpenFailureResponseBuildCall
-returnValue databaseOpenFailureResponseStatus
+bind value databaseOpenFailureResponseStatus CSignedInt32 databaseOpenFailureResponseBuildCall
+return value databaseOpenFailureResponseStatus
 
 label accountBalanceLookupFailed
 call accountBalanceLookupFailureResponseBuildCall http.responseText
-arg accountBalanceLookupFailureResponseBuildCall response response
-arg accountBalanceLookupFailureResponseBuildCall status httpStatusInternalServerError
-arg accountBalanceLookupFailureResponseBuildCall body accountBalanceLookupFailedBody
+argument accountBalanceLookupFailureResponseBuildCall response HttpResponse response
+argument accountBalanceLookupFailureResponseBuildCall status CSignedInt32 httpStatusInternalServerError
+argument accountBalanceLookupFailureResponseBuildCall body CNullTerminatedByteString accountBalanceLookupFailedBody
 run accountBalanceLookupFailureResponseBuildCall
-bind accountBalanceLookupFailureResponseStatus CSignedInt32 accountBalanceLookupFailureResponseBuildCall
-returnValue accountBalanceLookupFailureResponseStatus
+bind value accountBalanceLookupFailureResponseStatus CSignedInt32 accountBalanceLookupFailureResponseBuildCall
+return value accountBalanceLookupFailureResponseStatus
 
 label jsonEncodingFailed
 call jsonEncodingFailureResponseBuildCall http.responseText
-arg jsonEncodingFailureResponseBuildCall response response
-arg jsonEncodingFailureResponseBuildCall status httpStatusInternalServerError
-arg jsonEncodingFailureResponseBuildCall body responseEncodingFailedBody
+argument jsonEncodingFailureResponseBuildCall response HttpResponse response
+argument jsonEncodingFailureResponseBuildCall status CSignedInt32 httpStatusInternalServerError
+argument jsonEncodingFailureResponseBuildCall body CNullTerminatedByteString responseEncodingFailedBody
 run jsonEncodingFailureResponseBuildCall
-bind jsonEncodingFailureResponseStatus CSignedInt32 jsonEncodingFailureResponseBuildCall
-returnValue jsonEncodingFailureResponseStatus
+bind value jsonEncodingFailureResponseStatus CSignedInt32 jsonEncodingFailureResponseBuildCall
+return value jsonEncodingFailureResponseStatus
 
 # ===== a second handler demonstrating structured concurrency =====
 
 operation getAccountPageHandler
-input getAccountPageHandler request HttpRequest
-input getAccountPageHandler response HttpResponse
-output getAccountPageHandler CSignedInt32
+input operation getAccountPageHandler request HttpRequest
+input operation getAccountPageHandler response HttpResponse
+output operation getAccountPageHandler CSignedInt32
 effect getAccountPageHandler read http.request.cancellationToken
 effect getAccountPageHandler write http.response
 effect getAccountPageHandler read database.accounts
@@ -295,16 +295,16 @@ useCapability getAccountPageHandler databaseReadWrite
 useCapability getAccountPageHandler httpRequestReader
 useCapability getAccountPageHandler httpResponseWriter
 
-purpose getAccountPageHandler "Load all per-account widgets in parallel under a single structured task group"
-invariant getAccountPageHandler "All tasks complete or cancel before the response is built"
+purpose operation getAccountPageHandler "Load all per-account widgets in parallel under a single structured task group"
+invariant operation getAccountPageHandler "All tasks complete or cancel before the response is built"
 
 label startGetAccountPageHandler
 
 # rationale: Read request cancellation up front so the task group can be wired into client disconnects.
 call requestCancellationTokenReadCall http.requestCancellationToken
-arg requestCancellationTokenReadCall request request
+argument requestCancellationTokenReadCall request HttpRequest request
 run requestCancellationTokenReadCall
-bind requestCancellationToken CancellationToken requestCancellationTokenReadCall
+bind value requestCancellationToken CancellationToken requestCancellationTokenReadCall
 
 # rationale: Bounded task group; first error cancels the rest.
 taskGroup accountPageLoadTasks maxTasks 4 cancelOnFirstError yes
@@ -319,21 +319,21 @@ branchIfGroupError accountPageLoadTasks accountPageLoadFailed
 
 # rationale: All three lookups succeeded; build the page response.
 call accountPageResponseBuildCall http.responseJson
-arg accountPageResponseBuildCall response response
-arg accountPageResponseBuildCall status httpStatusOk
-arg accountPageResponseBuildCall body accountPageEmptyJsonBody
+argument accountPageResponseBuildCall response HttpResponse response
+argument accountPageResponseBuildCall status CSignedInt32 httpStatusOk
+argument accountPageResponseBuildCall body CNullTerminatedByteString accountPageEmptyJsonBody
 run accountPageResponseBuildCall
-bind accountPageResponseStatus CSignedInt32 accountPageResponseBuildCall
-returnValue accountPageResponseStatus
+bind value accountPageResponseStatus CSignedInt32 accountPageResponseBuildCall
+return value accountPageResponseStatus
 
 label accountPageLoadFailed
 call accountPageLoadFailureResponseBuildCall http.responseText
-arg accountPageLoadFailureResponseBuildCall response response
-arg accountPageLoadFailureResponseBuildCall status httpStatusInternalServerError
-arg accountPageLoadFailureResponseBuildCall body accountPageLoadFailedBody
+argument accountPageLoadFailureResponseBuildCall response HttpResponse response
+argument accountPageLoadFailureResponseBuildCall status CSignedInt32 httpStatusInternalServerError
+argument accountPageLoadFailureResponseBuildCall body CNullTerminatedByteString accountPageLoadFailedBody
 run accountPageLoadFailureResponseBuildCall
-bind accountPageLoadFailureResponseStatus CSignedInt32 accountPageLoadFailureResponseBuildCall
-returnValue accountPageLoadFailureResponseStatus
+bind value accountPageLoadFailureResponseStatus CSignedInt32 accountPageLoadFailureResponseBuildCall
+return value accountPageLoadFailureResponseStatus
 
 # ----- tests cross-link the operation by name -----
 

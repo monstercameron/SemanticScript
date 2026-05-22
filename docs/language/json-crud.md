@@ -153,9 +153,9 @@ contract above.
 
 ## jsonBody
 
-`jsonBody NAME` is the JSON counterpart to `htmlBody`: a column-0 row followed
-by an indented JSON island. It binds to a matching storage row with no inline
-value:
+`jsonBody NAME` is the JSON counterpart to `html body template`: a column-0 row
+followed by an indented JSON island. It binds to a matching storage row with no
+inline value:
 
 ```semanticscript
 storage module immutable healthBody JsonText

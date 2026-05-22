@@ -2,26 +2,26 @@
 # Second stdlib import-and-use smoke (buffer/array/sort/memory tier)
 # ============================================================
 #
-# # rationale: companion to stdlib_import_smoke.sscript. Where that file
+# rationale: companion to stdlib_import_smoke.sscript. Where that file
 #   samples the value-level tiers (logic / ordering / math / time /
 #   strings), this file samples the buffer-touching tiers: array
 #   scans, in-place sort, raw memory ops, deterministic random,
 #   plus a representative metadata-cluster check from the constants
 #   modules.
 #
-# # invariant: every imported buffer-touching operation must run
+# invariant: every imported buffer-touching operation must run
 #   correctly on a heap allocation we manage from inside this
 #   smoke. If any import didn't actually wire through, the call
 #   site would fail to typecheck.
 #
-# # security: allocates one 8-byte scratch buffer via c.malloc,
+# security: allocates one 8-byte scratch buffer via c.malloc,
 #   exercises imported byte-array ops on it, frees it. No I/O
 #   beyond writing "OK" / failure marker on stdout.
 #
-# # timing: dominated by the imported deterministic-random LCG
+# timing: dominated by the imported deterministic-random LCG
 #   reseed + step (constant cost ~50 i64 ops).
 #
-# # observability: prints "OK\n" on full pass.
+# observability: prints "OK\n" on full pass.
 
 project StdlibImportSmokeBuffers
 target console
@@ -42,282 +42,282 @@ capability heapAllocationCapability heap allocate
 capability heapFreeCapability heap free
 
 # ----- imports under test (different stochastic sample of seven modules) -----
-importModule array
-importModule sort
-importModule memory
-importModule inttypes
-importModule stdlib
-importModule random
-importModule limits
-importModule signal
+import array array
+import sort sort
+import memory memory
+import inttypes inttypes
+import stdlib stdlib
+import random random
+import limits limits
+import signal signal
 
 operation stdlibImportSmokeBuffersMain
-input stdlibImportSmokeBuffersMain console Console
-output stdlibImportSmokeBuffersMain Result ExitCode MainError
+input operation stdlibImportSmokeBuffersMain console Console
+output operation stdlibImportSmokeBuffersMain Result ExitCode MainError
 useCapability stdlibImportSmokeBuffersMain stdoutWriteCapability
 useCapability stdlibImportSmokeBuffersMain heapAllocationCapability
 useCapability stdlibImportSmokeBuffersMain heapFreeCapability
 effect stdlibImportSmokeBuffersMain write console.stdout
 effect stdlibImportSmokeBuffersMain allocate heap
 effect stdlibImportSmokeBuffersMain free heap
-memoryHeap stdlibImportSmokeBuffersMain yes
+memory stdlibImportSmokeBuffersMain heap yes
 memoryAllocationSource stdlibImportSmokeBuffersMain allocateSortBufferImportCall
 async stdlibImportSmokeBuffersMain no
-purpose stdlibImportSmokeBuffersMain "Exercise one operation from each of array, sort, memory, inttypes, stdlib, random, limits, signal — proving the buffer-and-runtime tier of std is importable."
-invariant stdlibImportSmokeBuffersMain "Every imported assertion holds; final exit 0; stdout is 'OK\\n'."
+purpose operation stdlibImportSmokeBuffersMain "Exercise one operation from each of array, sort, memory, inttypes, stdlib, random, limits, signal — proving the buffer-and-runtime tier of std is importable."
+invariant operation stdlibImportSmokeBuffersMain "Every imported assertion holds; final exit 0; stdout is 'OK\\n'."
 
 label startStdlibImportSmokeBuffersMain
 
 # ---- array: bufferContainsSignedByteValue("hello", 5, 'l') == true ----
-const helloLiteralForArrayImport CNullTerminatedByteString "hello"
-const fiveByteCountForArrayImport CByteCount 5
-const lowercaseLByteCodeForArrayImport CSignedInt32 108
+storage module immutable helloLiteralForArrayImport CNullTerminatedByteString "hello"
+storage module immutable fiveByteCountForArrayImport CByteCount 5
+storage module immutable lowercaseLByteCodeForArrayImport CSignedInt32 108
 call assertContainsLowercaseLCall bufferContainsSignedByteValue
-arg assertContainsLowercaseLCall byteBuffer helloLiteralForArrayImport
-arg assertContainsLowercaseLCall byteCount fiveByteCountForArrayImport
-arg assertContainsLowercaseLCall targetValue lowercaseLByteCodeForArrayImport
+argument assertContainsLowercaseLCall byteBuffer CNullTerminatedByteString helloLiteralForArrayImport
+argument assertContainsLowercaseLCall byteCount CByteCount fiveByteCountForArrayImport
+argument assertContainsLowercaseLCall targetValue CSignedInt32 lowercaseLByteCodeForArrayImport
 run assertContainsLowercaseLCall
-bind containsLowercaseLResult Bool assertContainsLowercaseLCall
-branchIf containsLowercaseLResult containsLowercaseLHolds
-branch stdlibImportBuffersAssertionFailed
+bind value containsLowercaseLResult Bool assertContainsLowercaseLCall
+branch if condition containsLowercaseLResult target containsLowercaseLHolds
+branch else target stdlibImportBuffersAssertionFailed
 label containsLowercaseLHolds
 
 # ---- array: countSignedByteValueInBuffer("hello", 5, 'l') == 2 ----
-const expectedTwoLowercaseLs CSignedInt64 2
+storage module immutable expectedTwoLowercaseLs CSignedInt64 2
 call assertCountLowercaseLCall countSignedByteValueInBuffer
-arg assertCountLowercaseLCall byteBuffer helloLiteralForArrayImport
-arg assertCountLowercaseLCall byteCount fiveByteCountForArrayImport
-arg assertCountLowercaseLCall targetValue lowercaseLByteCodeForArrayImport
+argument assertCountLowercaseLCall byteBuffer CNullTerminatedByteString helloLiteralForArrayImport
+argument assertCountLowercaseLCall byteCount CByteCount fiveByteCountForArrayImport
+argument assertCountLowercaseLCall targetValue CSignedInt32 lowercaseLByteCodeForArrayImport
 run assertCountLowercaseLCall
-bind countLowercaseLResult CSignedInt64 assertCountLowercaseLCall
+bind value countLowercaseLResult CSignedInt64 assertCountLowercaseLCall
 call checkCountLowercaseLCall math.equalI64
-arg checkCountLowercaseLCall left countLowercaseLResult
-arg checkCountLowercaseLCall right expectedTwoLowercaseLs
+argument checkCountLowercaseLCall left CSignedInt64 countLowercaseLResult
+argument checkCountLowercaseLCall right I64 expectedTwoLowercaseLs
 run checkCountLowercaseLCall
-bind countLowercaseLOk Bool checkCountLowercaseLCall
-branchIf countLowercaseLOk countLowercaseLHolds
-branch stdlibImportBuffersAssertionFailed
+bind value countLowercaseLOk Bool checkCountLowercaseLCall
+branch if condition countLowercaseLOk target countLowercaseLHolds
+branch else target stdlibImportBuffersAssertionFailed
 label countLowercaseLHolds
 
 # ---- memory + sort: allocate buffer, fill with {5,2,8,1,9}, bubble-sort, verify ascending ----
-const eightBytesAllocImport CByteCount 8
+storage module immutable eightBytesAllocImport CByteCount 8
 call allocateSortBufferImportCall c.malloc
-arg allocateSortBufferImportCall size eightBytesAllocImport
+argument allocateSortBufferImportCall size CByteCount eightBytesAllocImport
 run allocateSortBufferImportCall
-bind sortBufferImport COpaqueMemoryAddress allocateSortBufferImportCall
-bindError sortBufferAllocError CSignedInt32 allocateSortBufferImportCall
-branchIfError allocateSortBufferImportCall sortBufferAllocFailed
+bind value sortBufferImport COpaqueMemoryAddress allocateSortBufferImportCall
+bind error sortBufferAllocError CSignedInt32 allocateSortBufferImportCall
+branch error source allocateSortBufferImportCall target sortBufferAllocFailed
 defer releaseAllocateSortBufferImportCall c.free sortBufferImport
 
-const byteFiveLiteralImport CSignedInt32 5
-const byteTwoLiteralImport CSignedInt32 2
-const byteEightLiteralImport CSignedInt32 8
-const byteOneLiteralImport CSignedInt32 1
-const byteNineLiteralImport CSignedInt32 9
-const offsetZeroByte CByteCount 0
-const offsetOneByte CByteCount 1
-const offsetTwoByte CByteCount 2
-const offsetThreeByte CByteCount 3
-const offsetFourByte CByteCount 4
-const totalSortLength CByteCount 5
+storage module immutable byteFiveLiteralImport CSignedInt32 5
+storage module immutable byteTwoLiteralImport CSignedInt32 2
+storage module immutable byteEightLiteralImport CSignedInt32 8
+storage module immutable byteOneLiteralImport CSignedInt32 1
+storage module immutable byteNineLiteralImport CSignedInt32 9
+storage module immutable offsetZeroByte CByteCount 0
+storage module immutable offsetOneByte CByteCount 1
+storage module immutable offsetTwoByte CByteCount 2
+storage module immutable offsetThreeByte CByteCount 3
+storage module immutable offsetFourByte CByteCount 4
+storage module immutable totalSortLength CByteCount 5
 
 call storeByteZeroForSortImportCall pointer.storeByte
-arg storeByteZeroForSortImportCall buffer sortBufferImport
-arg storeByteZeroForSortImportCall offset offsetZeroByte
-arg storeByteZeroForSortImportCall value byteFiveLiteralImport
+argument storeByteZeroForSortImportCall buffer COpaqueMemoryAddress sortBufferImport
+argument storeByteZeroForSortImportCall offset CByteCount offsetZeroByte
+argument storeByteZeroForSortImportCall value CSignedInt32 byteFiveLiteralImport
 run storeByteZeroForSortImportCall
 call storeByteOneForSortImportCall pointer.storeByte
-arg storeByteOneForSortImportCall buffer sortBufferImport
-arg storeByteOneForSortImportCall offset offsetOneByte
-arg storeByteOneForSortImportCall value byteTwoLiteralImport
+argument storeByteOneForSortImportCall buffer COpaqueMemoryAddress sortBufferImport
+argument storeByteOneForSortImportCall offset CByteCount offsetOneByte
+argument storeByteOneForSortImportCall value CSignedInt32 byteTwoLiteralImport
 run storeByteOneForSortImportCall
 call storeByteTwoForSortImportCall pointer.storeByte
-arg storeByteTwoForSortImportCall buffer sortBufferImport
-arg storeByteTwoForSortImportCall offset offsetTwoByte
-arg storeByteTwoForSortImportCall value byteEightLiteralImport
+argument storeByteTwoForSortImportCall buffer COpaqueMemoryAddress sortBufferImport
+argument storeByteTwoForSortImportCall offset CByteCount offsetTwoByte
+argument storeByteTwoForSortImportCall value CSignedInt32 byteEightLiteralImport
 run storeByteTwoForSortImportCall
 call storeByteThreeForSortImportCall pointer.storeByte
-arg storeByteThreeForSortImportCall buffer sortBufferImport
-arg storeByteThreeForSortImportCall offset offsetThreeByte
-arg storeByteThreeForSortImportCall value byteOneLiteralImport
+argument storeByteThreeForSortImportCall buffer COpaqueMemoryAddress sortBufferImport
+argument storeByteThreeForSortImportCall offset CByteCount offsetThreeByte
+argument storeByteThreeForSortImportCall value CSignedInt32 byteOneLiteralImport
 run storeByteThreeForSortImportCall
 call storeByteFourForSortImportCall pointer.storeByte
-arg storeByteFourForSortImportCall buffer sortBufferImport
-arg storeByteFourForSortImportCall offset offsetFourByte
-arg storeByteFourForSortImportCall value byteNineLiteralImport
+argument storeByteFourForSortImportCall buffer COpaqueMemoryAddress sortBufferImport
+argument storeByteFourForSortImportCall offset CByteCount offsetFourByte
+argument storeByteFourForSortImportCall value CSignedInt32 byteNineLiteralImport
 run storeByteFourForSortImportCall
 
 call runImportedBubbleSortCall sortBytesWithBubbleSortInPlace
-arg runImportedBubbleSortCall byteBuffer sortBufferImport
-arg runImportedBubbleSortCall byteCount totalSortLength
+argument runImportedBubbleSortCall byteBuffer COpaqueMemoryAddress sortBufferImport
+argument runImportedBubbleSortCall byteCount CByteCount totalSortLength
 run runImportedBubbleSortCall
-ignoreValue runImportedBubbleSortCall CByteCount
+ignore value source runImportedBubbleSortCall type CByteCount
 
 call checkSortedAfterImportedSortCall areBytesSortedAscending
-arg checkSortedAfterImportedSortCall byteBuffer sortBufferImport
-arg checkSortedAfterImportedSortCall byteCount totalSortLength
+argument checkSortedAfterImportedSortCall byteBuffer COpaqueMemoryAddress sortBufferImport
+argument checkSortedAfterImportedSortCall byteCount CByteCount totalSortLength
 run checkSortedAfterImportedSortCall
-bind sortedAfterImportResult Bool checkSortedAfterImportedSortCall
-branchIf sortedAfterImportResult sortedAfterImportHolds
-branch stdlibImportBuffersAssertionFailed
+bind value sortedAfterImportResult Bool checkSortedAfterImportedSortCall
+branch if condition sortedAfterImportResult target sortedAfterImportHolds
+branch else target stdlibImportBuffersAssertionFailed
 label sortedAfterImportHolds
 
 # ---- memory: compareMemoryByteRanges of the just-sorted buffer against the byte sequence {1,2,5,8,9} should return 0 ----
 # The expected literal is built byte-by-byte because the sorted buffer
 # contains raw byte values (0x01..0x09), NOT ASCII characters '1'..'9'.
 call allocateExpectedSortedImportCall c.malloc
-arg allocateExpectedSortedImportCall size eightBytesAllocImport
+argument allocateExpectedSortedImportCall size CByteCount eightBytesAllocImport
 run allocateExpectedSortedImportCall
-bind expectedSortedBufferImport COpaqueMemoryAddress allocateExpectedSortedImportCall
-bindError expectedSortedAllocError CSignedInt32 allocateExpectedSortedImportCall
-branchIfError allocateExpectedSortedImportCall expectedSortedAllocFailed
+bind value expectedSortedBufferImport COpaqueMemoryAddress allocateExpectedSortedImportCall
+bind error expectedSortedAllocError CSignedInt32 allocateExpectedSortedImportCall
+branch error source allocateExpectedSortedImportCall target expectedSortedAllocFailed
 defer releaseAllocateExpectedSortedImportCall c.free expectedSortedBufferImport
 call storeExpectedByteZeroCall pointer.storeByte
-arg storeExpectedByteZeroCall buffer expectedSortedBufferImport
-arg storeExpectedByteZeroCall offset offsetZeroByte
-arg storeExpectedByteZeroCall value byteOneLiteralImport
+argument storeExpectedByteZeroCall buffer COpaqueMemoryAddress expectedSortedBufferImport
+argument storeExpectedByteZeroCall offset CByteCount offsetZeroByte
+argument storeExpectedByteZeroCall value CSignedInt32 byteOneLiteralImport
 run storeExpectedByteZeroCall
 call storeExpectedByteOneCall pointer.storeByte
-arg storeExpectedByteOneCall buffer expectedSortedBufferImport
-arg storeExpectedByteOneCall offset offsetOneByte
-arg storeExpectedByteOneCall value byteTwoLiteralImport
+argument storeExpectedByteOneCall buffer COpaqueMemoryAddress expectedSortedBufferImport
+argument storeExpectedByteOneCall offset CByteCount offsetOneByte
+argument storeExpectedByteOneCall value CSignedInt32 byteTwoLiteralImport
 run storeExpectedByteOneCall
 call storeExpectedByteTwoCall pointer.storeByte
-arg storeExpectedByteTwoCall buffer expectedSortedBufferImport
-arg storeExpectedByteTwoCall offset offsetTwoByte
-arg storeExpectedByteTwoCall value byteFiveLiteralImport
+argument storeExpectedByteTwoCall buffer COpaqueMemoryAddress expectedSortedBufferImport
+argument storeExpectedByteTwoCall offset CByteCount offsetTwoByte
+argument storeExpectedByteTwoCall value CSignedInt32 byteFiveLiteralImport
 run storeExpectedByteTwoCall
 call storeExpectedByteThreeCall pointer.storeByte
-arg storeExpectedByteThreeCall buffer expectedSortedBufferImport
-arg storeExpectedByteThreeCall offset offsetThreeByte
-arg storeExpectedByteThreeCall value byteEightLiteralImport
+argument storeExpectedByteThreeCall buffer COpaqueMemoryAddress expectedSortedBufferImport
+argument storeExpectedByteThreeCall offset CByteCount offsetThreeByte
+argument storeExpectedByteThreeCall value CSignedInt32 byteEightLiteralImport
 run storeExpectedByteThreeCall
 call storeExpectedByteFourCall pointer.storeByte
-arg storeExpectedByteFourCall buffer expectedSortedBufferImport
-arg storeExpectedByteFourCall offset offsetFourByte
-arg storeExpectedByteFourCall value byteNineLiteralImport
+argument storeExpectedByteFourCall buffer COpaqueMemoryAddress expectedSortedBufferImport
+argument storeExpectedByteFourCall offset CByteCount offsetFourByte
+argument storeExpectedByteFourCall value CSignedInt32 byteNineLiteralImport
 run storeExpectedByteFourCall
-const zeroSentinelForCompareImport CSignedInt64 0
+storage module immutable zeroSentinelForCompareImport CSignedInt64 0
 call assertCompareAfterSortCall compareMemoryByteRanges
-arg assertCompareAfterSortCall leftBuffer sortBufferImport
-arg assertCompareAfterSortCall rightBuffer expectedSortedBufferImport
-arg assertCompareAfterSortCall byteCount totalSortLength
+argument assertCompareAfterSortCall leftBuffer COpaqueMemoryAddress sortBufferImport
+argument assertCompareAfterSortCall rightBuffer COpaqueMemoryAddress expectedSortedBufferImport
+argument assertCompareAfterSortCall byteCount CByteCount totalSortLength
 run assertCompareAfterSortCall
-bind compareAfterSortResult CSignedInt64 assertCompareAfterSortCall
+bind value compareAfterSortResult CSignedInt64 assertCompareAfterSortCall
 call checkCompareAfterSortCall math.equalI64
-arg checkCompareAfterSortCall left compareAfterSortResult
-arg checkCompareAfterSortCall right zeroSentinelForCompareImport
+argument checkCompareAfterSortCall left CSignedInt64 compareAfterSortResult
+argument checkCompareAfterSortCall right I64 zeroSentinelForCompareImport
 run checkCompareAfterSortCall
-bind compareAfterSortOk Bool checkCompareAfterSortCall
-branchIf compareAfterSortOk compareAfterSortHolds
-branch stdlibImportBuffersAssertionFailed
+bind value compareAfterSortOk Bool checkCompareAfterSortCall
+branch if condition compareAfterSortOk target compareAfterSortHolds
+branch else target stdlibImportBuffersAssertionFailed
 label compareAfterSortHolds
 
 # ---- inttypes: absoluteMaxWidthSignedInt(-9) == 9 ----
-const negativeNineForAbsImport CSignedInt64 -9
-const nineExpectedForAbsImport CSignedInt64 9
+storage module immutable negativeNineForAbsImport CSignedInt64 -9
+storage module immutable nineExpectedForAbsImport CSignedInt64 9
 call assertImportedAbsCall absoluteMaxWidthSignedInt
-arg assertImportedAbsCall inputValue negativeNineForAbsImport
+argument assertImportedAbsCall inputValue CSignedInt64 negativeNineForAbsImport
 run assertImportedAbsCall
-bind importedAbsResult CSignedInt64 assertImportedAbsCall
+bind value importedAbsResult CSignedInt64 assertImportedAbsCall
 call checkImportedAbsCall math.equalI64
-arg checkImportedAbsCall left importedAbsResult
-arg checkImportedAbsCall right nineExpectedForAbsImport
+argument checkImportedAbsCall left CSignedInt64 importedAbsResult
+argument checkImportedAbsCall right I64 nineExpectedForAbsImport
 run checkImportedAbsCall
-bind importedAbsOk Bool checkImportedAbsCall
-branchIf importedAbsOk importedAbsHolds
-branch stdlibImportBuffersAssertionFailed
+bind value importedAbsOk Bool checkImportedAbsCall
+branch if condition importedAbsOk target importedAbsHolds
+branch else target stdlibImportBuffersAssertionFailed
 label importedAbsHolds
 
 # ---- stdlib: parseDecimalCStringToSignedInt64("  -42") == -42 ----
-const negativeFortyTwoTextImport CNullTerminatedByteString "  -42"
-const negativeFortyTwoExpectedImport CSignedInt64 -42
+storage module immutable negativeFortyTwoTextImport CNullTerminatedByteString "  -42"
+storage module immutable negativeFortyTwoExpectedImport CSignedInt64 -42
 call assertParseDecimalImportCall parseDecimalCStringToSignedInt64
-arg assertParseDecimalImportCall inputText negativeFortyTwoTextImport
+argument assertParseDecimalImportCall inputText CNullTerminatedByteString negativeFortyTwoTextImport
 run assertParseDecimalImportCall
-bind parseDecimalImportResult CSignedInt64 assertParseDecimalImportCall
+bind value parseDecimalImportResult CSignedInt64 assertParseDecimalImportCall
 call checkParseDecimalImportCall math.equalI64
-arg checkParseDecimalImportCall left parseDecimalImportResult
-arg checkParseDecimalImportCall right negativeFortyTwoExpectedImport
+argument checkParseDecimalImportCall left CSignedInt64 parseDecimalImportResult
+argument checkParseDecimalImportCall right I64 negativeFortyTwoExpectedImport
 run checkParseDecimalImportCall
-bind parseDecimalImportOk Bool checkParseDecimalImportCall
-branchIf parseDecimalImportOk parseDecimalImportHolds
-branch stdlibImportBuffersAssertionFailed
+bind value parseDecimalImportOk Bool checkParseDecimalImportCall
+branch if condition parseDecimalImportOk target parseDecimalImportHolds
+branch else target stdlibImportBuffersAssertionFailed
 label parseDecimalImportHolds
 
 # ---- random: seed with 1, draw, verify 48271 (MINSTD canonical) ----
-const seedOneForLcgImport CSignedInt64 1
+storage module immutable seedOneForLcgImport CSignedInt64 1
 call createLcgStateImportCall createDeterministicRandomState
-arg createLcgStateImportCall randomSeed seedOneForLcgImport
+argument createLcgStateImportCall randomSeed CSignedInt64 seedOneForLcgImport
 run createLcgStateImportCall
-bindOk lcgStateSlotImport COpaqueMemoryAddress createLcgStateImportCall
+bind ok lcgStateSlotImport COpaqueMemoryAddress createLcgStateImportCall
 call drawFromLcgImportCall nextDeterministicRandomSignedInt64
-arg drawFromLcgImportCall randomState lcgStateSlotImport
+argument drawFromLcgImportCall randomState COpaqueMemoryAddress lcgStateSlotImport
 run drawFromLcgImportCall
-bind lcgFirstDrawImport CSignedInt64 drawFromLcgImportCall
-const minstdFirstDrawExpected CSignedInt64 48271
+bind value lcgFirstDrawImport CSignedInt64 drawFromLcgImportCall
+storage module immutable minstdFirstDrawExpected CSignedInt64 48271
 call checkLcgDrawImportCall math.equalI64
-arg checkLcgDrawImportCall left lcgFirstDrawImport
-arg checkLcgDrawImportCall right minstdFirstDrawExpected
+argument checkLcgDrawImportCall left CSignedInt64 lcgFirstDrawImport
+argument checkLcgDrawImportCall right I64 minstdFirstDrawExpected
 run checkLcgDrawImportCall
-bind lcgDrawImportOk Bool checkLcgDrawImportCall
-branchIf lcgDrawImportOk lcgDrawImportHolds
-branch stdlibImportBuffersAssertionFailed
+bind value lcgDrawImportOk Bool checkLcgDrawImportCall
+branch if condition lcgDrawImportOk target lcgDrawImportHolds
+branch else target stdlibImportBuffersAssertionFailed
 label lcgDrawImportHolds
 
 call releaseLcgStateImportCall releaseDeterministicRandomState
-arg releaseLcgStateImportCall randomState lcgStateSlotImport
+argument releaseLcgStateImportCall randomState COpaqueMemoryAddress lcgStateSlotImport
 run releaseLcgStateImportCall
-ignoreValue releaseLcgStateImportCall CSignedInt32
+ignore value source releaseLcgStateImportCall type CSignedInt32
 
 # ---- limits: maximumSignedInt32Value == 2147483647 ----
-const expectedMaximumSignedInt32 CSignedInt64 2147483647
+storage module immutable expectedMaximumSignedInt32 CSignedInt64 2147483647
 call checkImportedLimitMaxInt32Call math.equalI64
-arg checkImportedLimitMaxInt32Call left maximumSignedInt32Value
-arg checkImportedLimitMaxInt32Call right expectedMaximumSignedInt32
+argument checkImportedLimitMaxInt32Call left I64 maximumSignedInt32Value
+argument checkImportedLimitMaxInt32Call right I64 expectedMaximumSignedInt32
 run checkImportedLimitMaxInt32Call
-bind importedLimitMaxInt32Ok Bool checkImportedLimitMaxInt32Call
-branchIf importedLimitMaxInt32Ok importedLimitMaxInt32Holds
-branch stdlibImportBuffersAssertionFailed
+bind value importedLimitMaxInt32Ok Bool checkImportedLimitMaxInt32Call
+branch if condition importedLimitMaxInt32Ok target importedLimitMaxInt32Holds
+branch else target stdlibImportBuffersAssertionFailed
 label importedLimitMaxInt32Holds
 
 # ---- signal: interruptSignalNumber == 2 ----
-const expectedInterruptSignalNumber CSignedInt32 2
+storage module immutable expectedInterruptSignalNumber CSignedInt32 2
 call checkImportedInterruptCall math.equalI64
-arg checkImportedInterruptCall left interruptSignalNumber
-arg checkImportedInterruptCall right expectedInterruptSignalNumber
+argument checkImportedInterruptCall left I64 interruptSignalNumber
+argument checkImportedInterruptCall right I64 expectedInterruptSignalNumber
 run checkImportedInterruptCall
-bind importedInterruptOk Bool checkImportedInterruptCall
-branchIf importedInterruptOk importedInterruptHolds
-branch stdlibImportBuffersAssertionFailed
+bind value importedInterruptOk Bool checkImportedInterruptCall
+branch if condition importedInterruptOk target importedInterruptHolds
+branch else target stdlibImportBuffersAssertionFailed
 label importedInterruptHolds
 
 # All imported assertions held.
-const buffersImportSuccessMessage CNullTerminatedByteString "OK"
+storage module immutable buffersImportSuccessMessage CNullTerminatedByteString "OK"
 call writeBuffersImportSuccessCall console.writeLine
-arg writeBuffersImportSuccessCall console console
-arg writeBuffersImportSuccessCall text buffersImportSuccessMessage
+argument writeBuffersImportSuccessCall console Console console
+argument writeBuffersImportSuccessCall text CNullTerminatedByteString buffersImportSuccessMessage
 run writeBuffersImportSuccessCall
-ignoreOk writeBuffersImportSuccessCall CSignedInt32
-bindError buffersImportConsoleWriteError CSignedInt32 writeBuffersImportSuccessCall
-branchIfError writeBuffersImportSuccessCall buffersImportConsoleWriteFailed
-const buffersImportExitOk ExitCode 0
-returnOk buffersImportExitOk
+ignore ok source writeBuffersImportSuccessCall type CSignedInt32
+bind error buffersImportConsoleWriteError CSignedInt32 writeBuffersImportSuccessCall
+branch error source writeBuffersImportSuccessCall target buffersImportConsoleWriteFailed
+storage module immutable buffersImportExitOk ExitCode 0
+return ok buffersImportExitOk
 
 label buffersImportConsoleWriteFailed
 makeError buffersImportConsoleWriteFailure MainError.ConsoleWriteFailed buffersImportConsoleWriteError
-returnError buffersImportConsoleWriteFailure
+return error buffersImportConsoleWriteFailure
 
 # Heap-allocation failure handlers — surface MemoryAllocationFailed
 # with the per-call bindError as cause. Each handler is dedicated to
 # one malloc so the bindError value is referenced (per SS0106).
 label sortBufferAllocFailed
 makeError sortBufferAllocFailure MainError.MemoryAllocationFailed sortBufferAllocError
-returnError sortBufferAllocFailure
+return error sortBufferAllocFailure
 label expectedSortedAllocFailed
 makeError expectedSortedAllocFailure MainError.MemoryAllocationFailed expectedSortedAllocError
-returnError expectedSortedAllocFailure
+return error expectedSortedAllocFailure
 
 label stdlibImportBuffersAssertionFailed
 makeError stdlibImportBuffersFailure MainError.StdlibImportBuffersSmokeAssertionFailed
-returnError stdlibImportBuffersFailure
+return error stdlibImportBuffersFailure

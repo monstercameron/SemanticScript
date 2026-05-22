@@ -17,9 +17,7 @@ typeMemory AccountId inline
 typeLayout AccountId packed
 typeLiteralEncoding AccountId base32CrockfordLower
 typeLiteralTerminator AccountId none
-type TaskLookupResult Result
-typeParameter TaskLookupResult 0 TaskId
-typeParameter TaskLookupResult 1 TaskLookupError
+type TaskLookupResult result ok TaskId error TaskLookupError
 
 # ---- error cluster ----
 error MainError
@@ -74,7 +72,7 @@ dependencyFunctionEffect queryTasks read database.tasks
 
 # ---- capability cluster ----
 capability lookupCapability database.read trustedInternal
-authority main database.read trustedInternal
+authority main trustedInternal database.read
 
 # ---- resource cluster ----
 resource taskQueryHandle kind opaque
@@ -162,15 +160,15 @@ groupOutput taskMetadataGroup currentAttemptIndexState
 groupTiming taskMetadataGroup taskLookupRetryPolicy
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
-memoryHeap main no
+memory main heap no
 memoryStackLimit main 8192
 async main no
-purpose main "Smoke test for declarative-metadata verbs; verifies all parse cleanly and the program compiles + runs."
-invariant main "Exits 0 and prints `metadataClusterOk`."
+purpose operation main "Smoke test for declarative-metadata verbs; verifies all parse cleanly and the program compiles + runs."
+invariant operation main "Exits 0 and prints `metadataClusterOk`."
 warning main "Many declarative rows; lint may flag style issues."
 guarantee main "All metadata verbs parse without error."
 security main "No user input; pure compile-time metadata."
@@ -178,11 +176,11 @@ timing main "Runs synchronously to completion."
 observability main "Prints a single success line."
 
 label startMain
-const successMessage CNullTerminatedByteString "metadataClusterOk"
+storage module immutable successMessage CNullTerminatedByteString "metadataClusterOk"
 call writeSuccessCall console.writeLine
-arg writeSuccessCall console console
-arg writeSuccessCall text successMessage
+argument writeSuccessCall console Console console
+argument writeSuccessCall text CNullTerminatedByteString successMessage
 run writeSuccessCall
-ignoreOk writeSuccessCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeSuccessCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

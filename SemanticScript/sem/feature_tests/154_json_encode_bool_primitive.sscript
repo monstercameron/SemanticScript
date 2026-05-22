@@ -9,47 +9,47 @@ error MainError
 errorCase MainError EncodeFailed CSignedInt32
 errorCase MainError ConsoleWriteFailed CSignedInt32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "json.stringify.Bool returns true for true input and false for false."
-invariant main "Output is exactly true newline false newline."
+purpose operation main "json.stringify.Bool returns true for true input and false for false."
+invariant operation main "Output is exactly true newline false newline."
 label startMain
-const trueValue Bool 1
-const falseValue Bool 0
+storage module immutable trueValue Bool 1
+storage module immutable falseValue Bool 0
 call stringifyTrueCall json.stringify.Bool
-arg stringifyTrueCall value trueValue
+argument stringifyTrueCall value Bool trueValue
 run stringifyTrueCall
-bindOk trueEncodedString JsonText stringifyTrueCall
-bindError trueEncodeError JsonEncodeError stringifyTrueCall
-branchIfError stringifyTrueCall encodeFailed
+bind ok trueEncodedString JsonText stringifyTrueCall
+bind error trueEncodeError JsonEncodeError stringifyTrueCall
+branch error source stringifyTrueCall target encodeFailed
 call writeTrueCall console.writeLine
-arg writeTrueCall console console
-arg writeTrueCall text trueEncodedString
+argument writeTrueCall console Console console
+argument writeTrueCall text JsonText trueEncodedString
 run writeTrueCall
-ignoreOk writeTrueCall Void
-bindError writeTrueError ConsoleWriteError writeTrueCall
-branchIfError writeTrueCall consoleWriteFailed
+ignore void source writeTrueCall
+bind error writeTrueError ConsoleWriteError writeTrueCall
+branch error source writeTrueCall target consoleWriteFailed
 call stringifyFalseCall json.stringify.Bool
-arg stringifyFalseCall value falseValue
+argument stringifyFalseCall value Bool falseValue
 run stringifyFalseCall
-bindOk falseEncodedString JsonText stringifyFalseCall
-bindError falseEncodeError JsonEncodeError stringifyFalseCall
-branchIfError stringifyFalseCall encodeFailed
+bind ok falseEncodedString JsonText stringifyFalseCall
+bind error falseEncodeError JsonEncodeError stringifyFalseCall
+branch error source stringifyFalseCall target encodeFailed
 call writeFalseCall console.writeLine
-arg writeFalseCall console console
-arg writeFalseCall text falseEncodedString
+argument writeFalseCall console Console console
+argument writeFalseCall text JsonText falseEncodedString
 run writeFalseCall
-ignoreOk writeFalseCall Void
-bindError writeFalseError ConsoleWriteError writeFalseCall
-branchIfError writeFalseCall consoleWriteFailed
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeFalseCall
+bind error writeFalseError ConsoleWriteError writeFalseCall
+branch error source writeFalseCall target consoleWriteFailed
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
 label encodeFailed
 makeError encodeFailure MainError.EncodeFailed trueEncodeError
-returnError encodeFailure
+return error encodeFailure
 label consoleWriteFailed
 makeError writeFailure MainError.ConsoleWriteFailed writeTrueError
-returnError writeFailure
+return error writeFailure

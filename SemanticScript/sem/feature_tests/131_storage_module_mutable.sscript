@@ -7,33 +7,33 @@ runtime AgentRuntime 0.1
 entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
-const initialModuleCounterValue I64 5
-const moduleIncrementStepValue I64 7
+storage module immutable initialModuleCounterValue I64 5
+storage module immutable moduleIncrementStepValue I64 7
 storage module mutable persistentCounterValue I64 initialModuleCounterValue
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "storage module mutable persists across set/read within the same op."
-invariant main "Initial print is 5; after set the print is 12."
+purpose operation main "storage module mutable persists across set/read within the same op."
+invariant operation main "Initial print is 5; after set the print is 12."
 label startMain
 call writeInitialCall console.writeIntegerLine
-arg writeInitialCall console console
-arg writeInitialCall value persistentCounterValue
+argument writeInitialCall console Console console
+argument writeInitialCall value I64 persistentCounterValue
 run writeInitialCall
-ignoreOk writeInitialCall Void
+ignore void source writeInitialCall
 call addStepCall math.addI64
-arg addStepCall left persistentCounterValue
-arg addStepCall right moduleIncrementStepValue
+argument addStepCall left I64 persistentCounterValue
+argument addStepCall right I64 moduleIncrementStepValue
 run addStepCall
-bind addStepResult I64 addStepCall
-set module persistentCounterValue addStepResult
+bind value addStepResult I64 addStepCall
+set storage persistentCounterValue addStepResult
 call writeUpdatedCall console.writeIntegerLine
-arg writeUpdatedCall console console
-arg writeUpdatedCall value persistentCounterValue
+argument writeUpdatedCall console Console console
+argument writeUpdatedCall value I64 persistentCounterValue
 run writeUpdatedCall
-ignoreOk writeUpdatedCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeUpdatedCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

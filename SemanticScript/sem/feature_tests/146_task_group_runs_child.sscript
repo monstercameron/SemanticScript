@@ -7,32 +7,32 @@ runtime AgentRuntime 0.1
 entry console main
 error MainError
 errorCase MainError Placeholder CSignedInt32
-const zeroInitial I64 0
-const hundredValue I64 100
+storage module immutable zeroInitial I64 0
+storage module immutable hundredValue I64 100
 sharedState process mutable groupSharedCounter I64 zeroInitial
 operation childOpWritesHundred
-input childOpWritesHundred trigger I64
-output childOpWritesHundred I64
+input operation childOpWritesHundred trigger I64
+output operation childOpWritesHundred I64
 set sharedState groupSharedCounter hundredValue
-returnValue hundredValue
+return value hundredValue
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "startInGroup under synchronous taskGroup lowering must call the child op."
-invariant main "groupSharedCounter is 100 after awaitGroup — proving the child actually ran."
+purpose operation main "startInGroup under synchronous taskGroup lowering must call the child op."
+invariant operation main "groupSharedCounter is 100 after awaitGroup — proving the child actually ran."
 label startMain
 taskGroup mainBackgroundGroup
 call childWorkCall childOpWritesHundred
-arg childWorkCall trigger zeroInitial
+argument childWorkCall trigger I64 zeroInitial
 startInGroup childWorkCall mainBackgroundGroup
 awaitGroup mainBackgroundGroup
 call writeFinalCall console.writeIntegerLine
-arg writeFinalCall console console
-arg writeFinalCall value groupSharedCounter
+argument writeFinalCall console Console console
+argument writeFinalCall value I64 groupSharedCounter
 run writeFinalCall
-ignoreOk writeFinalCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeFinalCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

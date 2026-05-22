@@ -11,10 +11,10 @@
 # reusable capability contracts for that intrinsic namespace.
 
 module standard.http
-modulePurpose standard.http "Standard-library namespace and contracts for native HTTP server request and response intrinsics."
+purpose module standard.http "Standard-library namespace and contracts for native HTTP server request and response intrinsics."
 moduleOwns standard.http "The official import path `standard.http`, semantic HTTP type aliases, reusable HTTP capabilities, and the compiler-owned `http.*` intrinsic namespace contract."
 moduleDoesNotOwn standard.http "Application routes, handler implementations, middleware order, native HTTP runtime implementation, or generated route dispatch."
-moduleInvariant standard.http "The standard module entry is this file; new modules may import it as alias `http` before using compiler-owned targets in the `http.*` namespace."
+invariant module standard.http "The standard module entry is this file; new modules may import it as alias `http` before using compiler-owned targets in the `http.*` namespace."
 
 type HttpStatusCode CSignedInt32
 type HttpHeaderName CNullTerminatedByteString
@@ -50,10 +50,10 @@ typeInvariant HttpBodyLength "Byte count paired with HttpByteBody."
 typeInvariant HttpRequestValue "Request-derived string value returned by native request readers; nullable readers must be guarded before response-body use."
 
 capability httpRequestReader http.request read
-purpose httpRequestReader "Authority to read fields off the incoming HttpRequest (method, path, headers, cookies, query params, body, multipart parts)."
+purpose operation httpRequestReader "Authority to read fields off the incoming HttpRequest (method, path, headers, cookies, query params, body, multipart parts)."
 
 capability httpResponseWriter http.response write
-purpose httpResponseWriter "Authority to write headers and a body to the HttpResponse handed to the route handler (http.responseText/Bytes/SseEvent/File and http.responseHeader)."
+purpose operation httpResponseWriter "Authority to write headers and a body to the HttpResponse handed to the route handler (http.responseText/Bytes/SseEvent/File and http.responseHeader)."
 
 storage module immutable httpModuleVersionText HttpTextBody "standard.http 0.1"
 storage module immutable plainTextContentType HttpContentType "text/plain; charset=utf-8"

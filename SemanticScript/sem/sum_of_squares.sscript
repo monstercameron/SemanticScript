@@ -12,79 +12,79 @@ error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 memory main stack max 16KiB
 async main no
 
-purpose main "Compute one squared plus two squared up through sumOfSquaresUpperLimit squared and print the result as a single line"
-invariant main "currentSumOfSquaresAccumulator equals the sum of squares from one through currentSumOfSquaresCounter minus one"
-invariant main "sumOfSquaresStepValue is strictly greater than zero"
+purpose operation main "Compute one squared plus two squared up through sumOfSquaresUpperLimit squared and print the result as a single line"
+invariant operation main "currentSumOfSquaresAccumulator equals the sum of squares from one through currentSumOfSquaresCounter minus one"
+invariant operation main "sumOfSquaresStepValue is strictly greater than zero"
 
 label startMain
 
-const sumOfSquaresLowerLimit SumOfSquaresCounter 1
-const sumOfSquaresUpperLimit SumOfSquaresCounter 10
-const sumOfSquaresStepValue PositiveSumOfSquaresStep 1
-const sumOfSquaresAccumulatorInitial SumOfSquaresAccumulator 0
+storage module immutable sumOfSquaresLowerLimit SumOfSquaresCounter 1
+storage module immutable sumOfSquaresUpperLimit SumOfSquaresCounter 10
+storage module immutable sumOfSquaresStepValue PositiveSumOfSquaresStep 1
+storage module immutable sumOfSquaresAccumulatorInitial SumOfSquaresAccumulator 0
 
-var currentSumOfSquaresCounter SumOfSquaresCounter sumOfSquaresLowerLimit
-var currentSumOfSquaresAccumulator SumOfSquaresAccumulator sumOfSquaresAccumulatorInitial
+memory main mutable currentSumOfSquaresCounter SumOfSquaresCounter sumOfSquaresLowerLimit
+memory main mutable currentSumOfSquaresAccumulator SumOfSquaresAccumulator sumOfSquaresAccumulatorInitial
 
 label sumOfSquaresLoopHead
 
 # rationale: Continue while currentSumOfSquaresCounter is less than or equal to sumOfSquaresUpperLimit.
 call sumOfSquaresRangeCheckCall SumOfSquaresCounter.lessThanOrEqual
-arg sumOfSquaresRangeCheckCall left currentSumOfSquaresCounter
-arg sumOfSquaresRangeCheckCall right sumOfSquaresUpperLimit
+argument sumOfSquaresRangeCheckCall left SumOfSquaresCounter currentSumOfSquaresCounter
+argument sumOfSquaresRangeCheckCall right SumOfSquaresCounter sumOfSquaresUpperLimit
 run sumOfSquaresRangeCheckCall
-bind sumOfSquaresShouldContinue Bool sumOfSquaresRangeCheckCall
+bind value sumOfSquaresShouldContinue Bool sumOfSquaresRangeCheckCall
 
-branchIf sumOfSquaresShouldContinue sumOfSquaresLoopBody
-branch sumOfSquaresFinished
+branch if condition sumOfSquaresShouldContinue target sumOfSquaresLoopBody
+branch else target sumOfSquaresFinished
 
 label sumOfSquaresLoopBody
 
 # rationale: Square the current counter; the square method takes a single operand and multiplies it by itself.
 call currentCounterSquareCall SumOfSquaresCounter.square
-arg currentCounterSquareCall counter currentSumOfSquaresCounter
+argument currentCounterSquareCall counter SumOfSquaresCounter currentSumOfSquaresCounter
 run currentCounterSquareCall
-bind currentCounterSquareValue SumOfSquaresAccumulator currentCounterSquareCall
+bind value currentCounterSquareValue SumOfSquaresAccumulator currentCounterSquareCall
 
 # rationale: Add the freshly computed square into the running accumulator.
 call sumOfSquaresAccumulatorAddCall SumOfSquaresAccumulator.add
-arg sumOfSquaresAccumulatorAddCall accumulator currentSumOfSquaresAccumulator
-arg sumOfSquaresAccumulatorAddCall summand currentCounterSquareValue
+argument sumOfSquaresAccumulatorAddCall accumulator SumOfSquaresAccumulator currentSumOfSquaresAccumulator
+argument sumOfSquaresAccumulatorAddCall summand SumOfSquaresAccumulator currentCounterSquareValue
 run sumOfSquaresAccumulatorAddCall
-bind nextSumOfSquaresAccumulator SumOfSquaresAccumulator sumOfSquaresAccumulatorAddCall
-set currentSumOfSquaresAccumulator nextSumOfSquaresAccumulator
+bind value nextSumOfSquaresAccumulator SumOfSquaresAccumulator sumOfSquaresAccumulatorAddCall
+set memory currentSumOfSquaresAccumulator nextSumOfSquaresAccumulator
 
 # rationale: Advance the counter by exactly sumOfSquaresStepValue.
 call sumOfSquaresCounterIncrementCall SumOfSquaresCounter.add
-arg sumOfSquaresCounterIncrementCall counter currentSumOfSquaresCounter
-arg sumOfSquaresCounterIncrementCall step sumOfSquaresStepValue
+argument sumOfSquaresCounterIncrementCall counter SumOfSquaresCounter currentSumOfSquaresCounter
+argument sumOfSquaresCounterIncrementCall step PositiveSumOfSquaresStep sumOfSquaresStepValue
 run sumOfSquaresCounterIncrementCall
-bind nextSumOfSquaresCounter SumOfSquaresCounter sumOfSquaresCounterIncrementCall
-set currentSumOfSquaresCounter nextSumOfSquaresCounter
+bind value nextSumOfSquaresCounter SumOfSquaresCounter sumOfSquaresCounterIncrementCall
+set memory currentSumOfSquaresCounter nextSumOfSquaresCounter
 
-branch sumOfSquaresLoopHead
+jump target sumOfSquaresLoopHead
 
 label sumOfSquaresFinished
 
 # rationale: Emit the final accumulator as a single line of standard output.
 call writeFinalSumOfSquaresAccumulatorCall console.writeIntegerLine
-arg writeFinalSumOfSquaresAccumulatorCall console console
-arg writeFinalSumOfSquaresAccumulatorCall value currentSumOfSquaresAccumulator
+argument writeFinalSumOfSquaresAccumulatorCall console Console console
+argument writeFinalSumOfSquaresAccumulatorCall value SumOfSquaresAccumulator currentSumOfSquaresAccumulator
 run writeFinalSumOfSquaresAccumulatorCall
-ignoreOk writeFinalSumOfSquaresAccumulatorCall Void
-bindError writeFinalSumOfSquaresAccumulatorError ConsoleWriteError writeFinalSumOfSquaresAccumulatorCall
-branchIfError writeFinalSumOfSquaresAccumulatorCall consoleWriteFailed
+ignore void source writeFinalSumOfSquaresAccumulatorCall
+bind error writeFinalSumOfSquaresAccumulatorError ConsoleWriteError writeFinalSumOfSquaresAccumulatorCall
+branch error source writeFinalSumOfSquaresAccumulatorCall target consoleWriteFailed
 
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
 
 label consoleWriteFailed
 makeError consoleWriteFailure MainError.ConsoleWriteFailed writeFinalSumOfSquaresAccumulatorError
-returnError consoleWriteFailure
+return error consoleWriteFailure

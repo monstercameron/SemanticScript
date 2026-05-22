@@ -1,10 +1,10 @@
 module app.hello_gui
-modulePurpose app.hello_gui "Minimal Windows GUI app built with standard SemanticScript function calls."
+purpose module app.hello_gui "Minimal Windows GUI app built with standard SemanticScript function calls."
 moduleOwns app.hello_gui "The app-level constants and main operation that compose one GUI window through standard.gui functions."
 moduleDoesNotOwn app.hello_gui "The native Win32 message loop, handle lifetime, layout engine, or standard.gui runtime implementation."
-moduleInvariant app.hello_gui "GUI construction uses operation/call/arg/run syntax; app code does not declare GUI-specific top-level keywords."
+invariant module app.hello_gui "GUI construction uses operation/call/arg/run syntax; app code does not declare GUI-specific top-level keywords."
 
-importModule gui standard.gui
+import gui standard.gui
 
 exportOperation app.hello_gui main
 
@@ -29,265 +29,265 @@ storage module mutable taskListHandle GuiListBox 0
 storage module mutable statusLabelHandle GuiTextLabel 0
 
 operation main
-output main ExitCode
+output operation main ExitCode
 effect main allocate gui.application
 effect main allocate gui.window
 effect main allocate gui.control
 effect main write gui.window
 effect main write gui.control.event
-authority main gui.application allocate
-authority main gui.window allocate
-authority main gui.control allocate
-authority main gui.window write
-authority main gui.control.event write
-memoryHeap main yes
+authority main allocate gui.application
+authority main allocate gui.window
+authority main allocate gui.control
+authority main write gui.window
+authority main write gui.control.event
+memory main heap yes
 memoryAllocationSource main createApplicationCall
 async main no
-purpose main "Compose one native GUI window using standard.gui functions and return the GUI runtime exit status."
-invariant main "GUI handles are created through standard.gui calls, attached to one main window, and event handlers are registered before applicationRun."
+purpose operation main "Compose one native GUI window using standard.gui functions and return the GUI runtime exit status."
+invariant operation main "GUI handles are created through standard.gui calls, attached to one main window, and event handlers are registered before applicationRun."
 
 call createApplicationCall gui.applicationCreate
-arg createApplicationCall title helloGuiTitle
+argument createApplicationCall title GuiText helloGuiTitle
 run createApplicationCall
-bind application GuiApplication createApplicationCall
+bind value application GuiApplication createApplicationCall
 
 call createWindowCall gui.windowCreate
-arg createWindowCall title helloGuiTitle
-arg createWindowCall width windowWidth
-arg createWindowCall height windowHeight
-arg createWindowCall layout verticalStackGuiWindowLayout
-arg createWindowCall resizable yesGuiFlag
+argument createWindowCall title GuiText helloGuiTitle
+argument createWindowCall width GuiPixels windowWidth
+argument createWindowCall height GuiPixels windowHeight
+argument createWindowCall layout GuiWindowLayout verticalStackGuiWindowLayout
+argument createWindowCall resizable CSignedInt32 yesGuiFlag
 run createWindowCall
-bind mainWindow GuiWindow createWindowCall
+bind value mainWindow GuiWindow createWindowCall
 
 call createTitleLabelCall gui.textLabelCreate
-arg createTitleLabelCall text titleText
+argument createTitleLabelCall text GuiText titleText
 run createTitleLabelCall
-bind titleLabel GuiTextLabel createTitleLabelCall
+bind value titleLabel GuiTextLabel createTitleLabelCall
 
 call addTitleLabelCall gui.windowAddControl
-arg addTitleLabelCall window mainWindow
-arg addTitleLabelCall control titleLabel
+argument addTitleLabelCall window GuiWindow mainWindow
+argument addTitleLabelCall control GuiControl titleLabel
 run addTitleLabelCall
-ignoreValue addTitleLabelCall CSignedInt32
+ignore value source addTitleLabelCall type CSignedInt32
 
 call createTaskInputCall gui.textBoxCreate
-arg createTaskInputCall placeholder newTaskPlaceholder
-arg createTaskInputCall maxLength maxTaskTitleLength
+argument createTaskInputCall placeholder GuiText newTaskPlaceholder
+argument createTaskInputCall maxLength CSignedInt32 maxTaskTitleLength
 run createTaskInputCall
-bind taskInput GuiTextBox createTaskInputCall
+bind value taskInput GuiTextBox createTaskInputCall
 
 call addTaskInputCall gui.windowAddControl
-arg addTaskInputCall window mainWindow
-arg addTaskInputCall control taskInput
+argument addTaskInputCall window GuiWindow mainWindow
+argument addTaskInputCall control GuiControl taskInput
 run addTaskInputCall
-ignoreValue addTaskInputCall CSignedInt32
-set module taskInputHandle taskInput
+ignore value source addTaskInputCall type CSignedInt32
+set storage taskInputHandle taskInput
 
 call createAddButtonCall gui.buttonCreate
-arg createAddButtonCall text addTaskText
-arg createAddButtonCall isDefault yesGuiFlag
+argument createAddButtonCall text GuiText addTaskText
+argument createAddButtonCall isDefault CSignedInt32 yesGuiFlag
 run createAddButtonCall
-bind addButton GuiButton createAddButtonCall
+bind value addButton GuiButton createAddButtonCall
 
 call addAddButtonCall gui.windowAddControl
-arg addAddButtonCall window mainWindow
-arg addAddButtonCall control addButton
+argument addAddButtonCall window GuiWindow mainWindow
+argument addAddButtonCall control GuiControl addButton
 run addAddButtonCall
-ignoreValue addAddButtonCall CSignedInt32
+ignore value source addAddButtonCall type CSignedInt32
 
 call createTaskListCall gui.listBoxCreate
-arg createTaskListCall selectionMode singleGuiListBoxSelectionMode
+argument createTaskListCall selectionMode GuiListBoxSelectionMode singleGuiListBoxSelectionMode
 run createTaskListCall
-bind taskList GuiListBox createTaskListCall
+bind value taskList GuiListBox createTaskListCall
 
 call addTaskListCall gui.windowAddControl
-arg addTaskListCall window mainWindow
-arg addTaskListCall control taskList
+argument addTaskListCall window GuiWindow mainWindow
+argument addTaskListCall control GuiControl taskList
 run addTaskListCall
-ignoreValue addTaskListCall CSignedInt32
-set module taskListHandle taskList
+ignore value source addTaskListCall type CSignedInt32
+set storage taskListHandle taskList
 
 call createCompleteButtonCall gui.buttonCreate
-arg createCompleteButtonCall text completeSelectedText
-arg createCompleteButtonCall isDefault noGuiFlag
+argument createCompleteButtonCall text GuiText completeSelectedText
+argument createCompleteButtonCall isDefault CSignedInt32 noGuiFlag
 run createCompleteButtonCall
-bind completeButton GuiButton createCompleteButtonCall
+bind value completeButton GuiButton createCompleteButtonCall
 
 call addCompleteButtonCall gui.windowAddControl
-arg addCompleteButtonCall window mainWindow
-arg addCompleteButtonCall control completeButton
+argument addCompleteButtonCall window GuiWindow mainWindow
+argument addCompleteButtonCall control GuiControl completeButton
 run addCompleteButtonCall
-ignoreValue addCompleteButtonCall CSignedInt32
+ignore value source addCompleteButtonCall type CSignedInt32
 
 call createClearButtonCall gui.buttonCreate
-arg createClearButtonCall text clearCompletedText
-arg createClearButtonCall isDefault noGuiFlag
+argument createClearButtonCall text GuiText clearCompletedText
+argument createClearButtonCall isDefault CSignedInt32 noGuiFlag
 run createClearButtonCall
-bind clearButton GuiButton createClearButtonCall
+bind value clearButton GuiButton createClearButtonCall
 
 call addClearButtonCall gui.windowAddControl
-arg addClearButtonCall window mainWindow
-arg addClearButtonCall control clearButton
+argument addClearButtonCall window GuiWindow mainWindow
+argument addClearButtonCall control GuiControl clearButton
 run addClearButtonCall
-ignoreValue addClearButtonCall CSignedInt32
+ignore value source addClearButtonCall type CSignedInt32
 
 call createStatusLabelCall gui.textLabelCreate
-arg createStatusLabelCall text statusReadyText
+argument createStatusLabelCall text GuiText statusReadyText
 run createStatusLabelCall
-bind statusLabel GuiTextLabel createStatusLabelCall
+bind value statusLabel GuiTextLabel createStatusLabelCall
 
 call addStatusLabelCall gui.windowAddControl
-arg addStatusLabelCall window mainWindow
-arg addStatusLabelCall control statusLabel
+argument addStatusLabelCall window GuiWindow mainWindow
+argument addStatusLabelCall control GuiControl statusLabel
 run addStatusLabelCall
-ignoreValue addStatusLabelCall CSignedInt32
-set module statusLabelHandle statusLabel
+ignore value source addStatusLabelCall type CSignedInt32
+set storage statusLabelHandle statusLabel
 
 call registerAddButtonClickCall gui.controlOnEvent
-arg registerAddButtonClickCall control addButton
-arg registerAddButtonClickCall eventKind clickGuiEventKind
-arg registerAddButtonClickCall handler addTaskFromInput
+argument registerAddButtonClickCall control GuiControl addButton
+argument registerAddButtonClickCall eventKind GuiEventKind clickGuiEventKind
+argument registerAddButtonClickCall handler GuiEventHandler addTaskFromInput
 run registerAddButtonClickCall
-ignoreValue registerAddButtonClickCall CSignedInt32
+ignore value source registerAddButtonClickCall type CSignedInt32
 
 call registerTaskInputEnterCall gui.controlOnEvent
-arg registerTaskInputEnterCall control taskInput
-arg registerTaskInputEnterCall eventKind enterPressedGuiEventKind
-arg registerTaskInputEnterCall handler addTaskFromInput
+argument registerTaskInputEnterCall control GuiControl taskInput
+argument registerTaskInputEnterCall eventKind GuiEventKind enterPressedGuiEventKind
+argument registerTaskInputEnterCall handler GuiEventHandler addTaskFromInput
 run registerTaskInputEnterCall
-ignoreValue registerTaskInputEnterCall CSignedInt32
+ignore value source registerTaskInputEnterCall type CSignedInt32
 
 call registerCompleteButtonClickCall gui.controlOnEvent
-arg registerCompleteButtonClickCall control completeButton
-arg registerCompleteButtonClickCall eventKind clickGuiEventKind
-arg registerCompleteButtonClickCall handler markSelectedTask
+argument registerCompleteButtonClickCall control GuiControl completeButton
+argument registerCompleteButtonClickCall eventKind GuiEventKind clickGuiEventKind
+argument registerCompleteButtonClickCall handler GuiEventHandler markSelectedTask
 run registerCompleteButtonClickCall
-ignoreValue registerCompleteButtonClickCall CSignedInt32
+ignore value source registerCompleteButtonClickCall type CSignedInt32
 
 call registerClearButtonClickCall gui.controlOnEvent
-arg registerClearButtonClickCall control clearButton
-arg registerClearButtonClickCall eventKind clickGuiEventKind
-arg registerClearButtonClickCall handler clearTasks
+argument registerClearButtonClickCall control GuiControl clearButton
+argument registerClearButtonClickCall eventKind GuiEventKind clickGuiEventKind
+argument registerClearButtonClickCall handler GuiEventHandler clearTasks
 run registerClearButtonClickCall
-ignoreValue registerClearButtonClickCall CSignedInt32
+ignore value source registerClearButtonClickCall type CSignedInt32
 
 call setMainWindowCall gui.applicationSetMainWindow
-arg setMainWindowCall application application
-arg setMainWindowCall window mainWindow
+argument setMainWindowCall application GuiApplication application
+argument setMainWindowCall window GuiWindow mainWindow
 run setMainWindowCall
-ignoreValue setMainWindowCall CSignedInt32
+ignore value source setMainWindowCall type CSignedInt32
 
 call runApplicationCall gui.applicationRun
-arg runApplicationCall application application
+argument runApplicationCall application GuiApplication application
 run runApplicationCall
-bind guiExitCode ExitCode runApplicationCall
-returnValue guiExitCode
+bind value guiExitCode ExitCode runApplicationCall
+return value guiExitCode
 
 operation addTaskFromInput
-input addTaskFromInput session GuiSession
-input addTaskFromInput event GuiEvent
-output addTaskFromInput CSignedInt32
+input operation addTaskFromInput session GuiSession
+input operation addTaskFromInput event GuiEvent
+output operation addTaskFromInput CSignedInt32
 effect addTaskFromInput read gui.control.textBox.text
 effect addTaskFromInput write gui.control.textBox.text
 effect addTaskFromInput write gui.control.listBox.items
 effect addTaskFromInput write gui.control.textLabel.text
-authority addTaskFromInput gui.control.textBox.text read
-authority addTaskFromInput gui.control.textBox.text write
-authority addTaskFromInput gui.control.listBox.items write
-authority addTaskFromInput gui.control.textLabel.text write
-memoryHeap addTaskFromInput no
+authority addTaskFromInput read gui.control.textBox.text
+authority addTaskFromInput write gui.control.textBox.text
+authority addTaskFromInput write gui.control.listBox.items
+authority addTaskFromInput write gui.control.textLabel.text
+memory addTaskFromInput heap no
 async addTaskFromInput no
-purpose addTaskFromInput "Append the current text box value to the visible task list and clear the input."
-invariant addTaskFromInput "The handler reads the current input once, appends one list item, clears the input box, and reports the append status as the event result."
+purpose operation addTaskFromInput "Append the current text box value to the visible task list and clear the input."
+invariant operation addTaskFromInput "The handler reads the current input once, appends one list item, clears the input box, and reports the append status as the event result."
 
 call readTitleCall gui.textBoxText
-arg readTitleCall session session
-arg readTitleCall textBox taskInputHandle
+argument readTitleCall session GuiSession session
+argument readTitleCall textBox GuiTextBox taskInputHandle
 run readTitleCall
-bind taskTitle GuiText readTitleCall
+bind value taskTitle GuiText readTitleCall
 
 call appendTaskCall gui.listBoxAppendItem
-arg appendTaskCall session session
-arg appendTaskCall listBox taskListHandle
-arg appendTaskCall text taskTitle
+argument appendTaskCall session GuiSession session
+argument appendTaskCall listBox GuiListBox taskListHandle
+argument appendTaskCall text CNullTerminatedByteString taskTitle
 run appendTaskCall
-bind appendTaskStatus CSignedInt32 appendTaskCall
+bind value appendTaskStatus CSignedInt32 appendTaskCall
 
 call clearTaskInputCall gui.textBoxSetText
-arg clearTaskInputCall session session
-arg clearTaskInputCall textBox taskInputHandle
-arg clearTaskInputCall text emptyGuiText
+argument clearTaskInputCall session GuiSession session
+argument clearTaskInputCall textBox GuiTextBox taskInputHandle
+argument clearTaskInputCall text CNullTerminatedByteString emptyGuiText
 run clearTaskInputCall
-ignoreValue clearTaskInputCall CSignedInt32
+ignore value source clearTaskInputCall type CSignedInt32
 
 call setAddedStatusCall gui.textLabelSetText
-arg setAddedStatusCall session session
-arg setAddedStatusCall textLabel statusLabelHandle
-arg setAddedStatusCall text addedStatusText
+argument setAddedStatusCall session GuiSession session
+argument setAddedStatusCall textLabel GuiTextLabel statusLabelHandle
+argument setAddedStatusCall text GuiText addedStatusText
 run setAddedStatusCall
-ignoreValue setAddedStatusCall CSignedInt32
+ignore value source setAddedStatusCall type CSignedInt32
 
-returnValue appendTaskStatus
+return value appendTaskStatus
 
 operation markSelectedTask
-input markSelectedTask session GuiSession
-input markSelectedTask event GuiEvent
-output markSelectedTask CSignedInt32
+input operation markSelectedTask session GuiSession
+input operation markSelectedTask event GuiEvent
+output operation markSelectedTask CSignedInt32
 effect markSelectedTask read gui.control.listBox.selection
 effect markSelectedTask write gui.control.textLabel.text
-authority markSelectedTask gui.control.listBox.selection read
-authority markSelectedTask gui.control.textLabel.text write
-memoryHeap markSelectedTask no
+authority markSelectedTask read gui.control.listBox.selection
+authority markSelectedTask write gui.control.textLabel.text
+memory markSelectedTask heap no
 async markSelectedTask no
-purpose markSelectedTask "Confirm that the complete button click reached the GUI event handler without appending another list item."
-invariant markSelectedTask "The handler observes the selected row and updates only the status label; it never mutates the list item collection."
+purpose operation markSelectedTask "Confirm that the complete button click reached the GUI event handler without appending another list item."
+invariant operation markSelectedTask "The handler observes the selected row and updates only the status label; it never mutates the list item collection."
 
 call selectedIndexCall gui.listBoxSelectedIndex
-arg selectedIndexCall session session
-arg selectedIndexCall listBox taskListHandle
+argument selectedIndexCall session GuiSession session
+argument selectedIndexCall listBox GuiListBox taskListHandle
 run selectedIndexCall
-bind selectedTaskIndex CSignedInt32 selectedIndexCall
+bind value selectedTaskIndex CSignedInt32 selectedIndexCall
 
 call observeSelectedTaskIndexCall math.greaterThanOrEqualCSignedInt32
-arg observeSelectedTaskIndexCall left selectedTaskIndex
-arg observeSelectedTaskIndexCall right noGuiFlag
+argument observeSelectedTaskIndexCall left CSignedInt32 selectedTaskIndex
+argument observeSelectedTaskIndexCall right CSignedInt32 noGuiFlag
 run observeSelectedTaskIndexCall
-ignoreValue observeSelectedTaskIndexCall Bool
+ignore value source observeSelectedTaskIndexCall type Bool
 
 call setCompletedStatusCall gui.textLabelSetText
-arg setCompletedStatusCall session session
-arg setCompletedStatusCall textLabel statusLabelHandle
-arg setCompletedStatusCall text completedStatusText
+argument setCompletedStatusCall session GuiSession session
+argument setCompletedStatusCall textLabel GuiTextLabel statusLabelHandle
+argument setCompletedStatusCall text GuiText completedStatusText
 run setCompletedStatusCall
-bind completeStatusUpdate CSignedInt32 setCompletedStatusCall
+bind value completeStatusUpdate CSignedInt32 setCompletedStatusCall
 
-returnValue completeStatusUpdate
+return value completeStatusUpdate
 
 operation clearTasks
-input clearTasks session GuiSession
-input clearTasks event GuiEvent
-output clearTasks CSignedInt32
+input operation clearTasks session GuiSession
+input operation clearTasks event GuiEvent
+output operation clearTasks CSignedInt32
 effect clearTasks write gui.control.listBox.items
 effect clearTasks write gui.control.textLabel.text
-authority clearTasks gui.control.listBox.items write
-authority clearTasks gui.control.textLabel.text write
-memoryHeap clearTasks no
+authority clearTasks write gui.control.listBox.items
+authority clearTasks write gui.control.textLabel.text
+memory clearTasks heap no
 async clearTasks no
-purpose clearTasks "Clear visible tasks and update the status label."
-invariant clearTasks "The handler clears the list once, updates the status label, and reports the list clear status as the event result."
+purpose operation clearTasks "Clear visible tasks and update the status label."
+invariant operation clearTasks "The handler clears the list once, updates the status label, and reports the list clear status as the event result."
 
 call clearTaskListCall gui.listBoxClear
-arg clearTaskListCall session session
-arg clearTaskListCall listBox taskListHandle
+argument clearTaskListCall session GuiSession session
+argument clearTaskListCall listBox GuiListBox taskListHandle
 run clearTaskListCall
-bind clearTaskListStatus CSignedInt32 clearTaskListCall
+bind value clearTaskListStatus CSignedInt32 clearTaskListCall
 
 call setClearedStatusCall gui.textLabelSetText
-arg setClearedStatusCall session session
-arg setClearedStatusCall textLabel statusLabelHandle
-arg setClearedStatusCall text clearedStatusText
+argument setClearedStatusCall session GuiSession session
+argument setClearedStatusCall textLabel GuiTextLabel statusLabelHandle
+argument setClearedStatusCall text GuiText clearedStatusText
 run setClearedStatusCall
-ignoreValue setClearedStatusCall CSignedInt32
+ignore value source setClearedStatusCall type CSignedInt32
 
-returnValue clearTaskListStatus
+return value clearTaskListStatus

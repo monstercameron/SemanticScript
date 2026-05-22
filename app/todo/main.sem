@@ -4,11 +4,11 @@
 # exports, and executable source. Run from app/todo/build so todos.json lives
 # beside todo.exe.
 module app.todo
-modulePurpose app.todo "Keyboard-driven console todo app with heap-backed todo storage and JSON persistence."
+purpose module app.todo "Keyboard-driven console todo app with heap-backed todo storage and JSON persistence."
 moduleOwns app.todo "Terminal TUI lifecycle, keyboard handling, in-memory todo arrays, todos.json load/save, and process-local app state."
 moduleDoesNotOwn app.todo "Reusable standard library abstractions, native console primitive implementation, or cross-project package management."
 moduleWarning app.todo "This module is intentionally monolithic while the project-layout model is being prototyped; future refactors can split TUI, persistence, and domain operations into folder modules."
-moduleInvariant app.todo "main.sem is the default executable entry selected by build.sem, and todo.exe must be run from app/todo/build so todos.json resolves beside the executable."
+invariant module app.todo "main.sem is the default executable entry selected by build.sem, and todo.exe must be run from app/todo/build so todos.json resolves beside the executable."
 
 # Explicit public surface carried from the module contract. Exports are not
 # inferred; every symbol below is declared in this module source.
@@ -93,281 +93,270 @@ storage module immutable successCode CSignedInt32 0
 storage module immutable flushAllStreams CSignedInt64 0
 
 operation readTuiKey
-output readTuiKey TuiKeyCode
+output operation readTuiKey TuiKeyCode
 effect readTuiKey read console.stdin
-authority readTuiKey console.stdin read
-memoryHeap readTuiKey no
+authority readTuiKey read console.stdin
+memory readTuiKey heap no
 async readTuiKey no
-purpose readTuiKey "Read one no-echo console key and normalize Windows extended arrow key sequences."
-invariant readTuiKey "Arrow keys return stable app-local key codes; ordinary keys return their raw byte."
+purpose operation readTuiKey "Read one no-echo console key through the shared terminal adapter and normalize arrow keys to this app's local key codes."
+invariant operation readTuiKey "Arrow keys return stable app-local key codes; ordinary keys return their raw byte. Unhandled terminal soft keys return zero so the caller treats them as ignored input."
 label startReadTuiKey
-# rationale: Windows console scan codes returned by _getch after the
-# extendedZeroPrefix (0x00) or extendedArrowPrefix (0xE0) lead byte. The byte
-# values 72/80/75/77 happen to be ASCII letters 'H','P','K','M' by accident —
-# they are NOT characters here, they are scan codes for arrow keys in the
-# Windows IBM PC keyboard scan-code table. Keep them local to readTuiKey
-# because they are an OS-input contract, not a SemanticScript-level constant.
-storage local immutable extendedZeroPrefix CSignedInt32 0
-storage local immutable extendedArrowPrefix CSignedInt32 224
-storage local immutable rawArrowUpByte CSignedInt32 72
-storage local immutable rawArrowDownByte CSignedInt32 80
-storage local immutable rawArrowLeftByte CSignedInt32 75
-storage local immutable rawArrowRightByte CSignedInt32 77
-call firstKeyCall c.consoleGetch
-run firstKeyCall
-bind firstKeyCode CSignedInt32 firstKeyCall
-call zeroPrefixCheckCall math.equalCSignedInt32
-arg zeroPrefixCheckCall left firstKeyCode
-arg zeroPrefixCheckCall right extendedZeroPrefix
-run zeroPrefixCheckCall
-bind isZeroPrefix Bool zeroPrefixCheckCall
-branchIf isZeroPrefix readExtendedTuiKey
-call arrowPrefixCheckCall math.equalCSignedInt32
-arg arrowPrefixCheckCall left firstKeyCode
-arg arrowPrefixCheckCall right extendedArrowPrefix
-run arrowPrefixCheckCall
-bind isArrowPrefix Bool arrowPrefixCheckCall
-branchIf isArrowPrefix readExtendedTuiKey
-returnValue firstKeyCode
-label readExtendedTuiKey
-call secondKeyCall c.consoleGetch
-run secondKeyCall
-bind secondKeyCode CSignedInt32 secondKeyCall
+# rationale: c.terminalReadKey wraps the old Windows _getch path and also
+# honors SEM_TERMINAL_TEST_KEYS, which lets app smoke tests drive the TUI
+# without a visible interactive console. The adapter has its own soft-key
+# codes, so this operation maps only the arrows this app understands.
+storage local immutable terminalKeyLeft CSignedInt32 1000
+storage local immutable terminalKeyRight CSignedInt32 1001
+storage local immutable terminalKeyUp CSignedInt32 1002
+storage local immutable terminalKeyDown CSignedInt32 1003
+storage local immutable terminalKeyDelete CSignedInt32 1004
+storage local immutable ignoredSoftKey TuiKeyCode 0
+call keyCall c.terminalReadKey
+run keyCall
+bind value keyCode CSignedInt32 keyCall
 call upArrowCheckCall math.equalCSignedInt32
-arg upArrowCheckCall left secondKeyCode
-arg upArrowCheckCall right rawArrowUpByte
+argument upArrowCheckCall left CSignedInt32 keyCode
+argument upArrowCheckCall right CSignedInt32 terminalKeyUp
 run upArrowCheckCall
-bind isUpArrow Bool upArrowCheckCall
-branchIf isUpArrow returnArrowUpKey
+bind value isUpArrow Bool upArrowCheckCall
+branch if condition isUpArrow target returnArrowUpKey
 call downArrowCheckCall math.equalCSignedInt32
-arg downArrowCheckCall left secondKeyCode
-arg downArrowCheckCall right rawArrowDownByte
+argument downArrowCheckCall left CSignedInt32 keyCode
+argument downArrowCheckCall right CSignedInt32 terminalKeyDown
 run downArrowCheckCall
-bind isDownArrow Bool downArrowCheckCall
-branchIf isDownArrow returnArrowDownKey
+bind value isDownArrow Bool downArrowCheckCall
+branch if condition isDownArrow target returnArrowDownKey
 call leftArrowCheckCall math.equalCSignedInt32
-arg leftArrowCheckCall left secondKeyCode
-arg leftArrowCheckCall right rawArrowLeftByte
+argument leftArrowCheckCall left CSignedInt32 keyCode
+argument leftArrowCheckCall right CSignedInt32 terminalKeyLeft
 run leftArrowCheckCall
-bind isLeftArrow Bool leftArrowCheckCall
-branchIf isLeftArrow returnArrowLeftKey
+bind value isLeftArrow Bool leftArrowCheckCall
+branch if condition isLeftArrow target returnArrowLeftKey
 call rightArrowCheckCall math.equalCSignedInt32
-arg rightArrowCheckCall left secondKeyCode
-arg rightArrowCheckCall right rawArrowRightByte
+argument rightArrowCheckCall left CSignedInt32 keyCode
+argument rightArrowCheckCall right CSignedInt32 terminalKeyRight
 run rightArrowCheckCall
-bind isRightArrow Bool rightArrowCheckCall
-branchIf isRightArrow returnArrowRightKey
-returnValue secondKeyCode
+bind value isRightArrow Bool rightArrowCheckCall
+branch if condition isRightArrow target returnArrowRightKey
+call deleteSoftKeyCheckCall math.equalCSignedInt32
+argument deleteSoftKeyCheckCall left CSignedInt32 keyCode
+argument deleteSoftKeyCheckCall right CSignedInt32 terminalKeyDelete
+run deleteSoftKeyCheckCall
+bind value isDeleteSoftKey Bool deleteSoftKeyCheckCall
+branch if condition isDeleteSoftKey target returnIgnoredSoftKey
+return value keyCode
 label returnArrowUpKey
-returnValue tuiKeyArrowUp
+return value tuiKeyArrowUp
 label returnArrowDownKey
-returnValue tuiKeyArrowDown
+return value tuiKeyArrowDown
 label returnArrowLeftKey
-returnValue tuiKeyArrowLeft
+return value tuiKeyArrowLeft
 label returnArrowRightKey
-returnValue tuiKeyArrowRight
+return value tuiKeyArrowRight
+label returnIgnoredSoftKey
+return value ignoredSoftKey
 
 operation clearScreen
-output clearScreen CSignedInt32
+output operation clearScreen CSignedInt32
 effect clearScreen write console.stdout
-authority clearScreen console.stdout write
-memoryHeap clearScreen no
+authority clearScreen write console.stdout
+memory clearScreen heap no
 async clearScreen no
-purpose clearScreen "Clear the terminal and move the cursor home while the TUI owns the screen."
-invariant clearScreen "Only ANSI terminal state is changed; todo storage is untouched."
+purpose operation clearScreen "Clear the terminal and move the cursor home while the TUI owns the screen."
+invariant operation clearScreen "Only ANSI terminal state is changed; todo storage is untouched."
 label startClearScreen
 storage local immutable clearCode CNullTerminatedByteString "[2J"
 storage local immutable homeCode CNullTerminatedByteString "[H"
 call clearEscapeCall c.putchar
-arg clearEscapeCall character escapeByte
+argument clearEscapeCall character CSignedInt32 escapeByte
 run clearEscapeCall
-ignoreValue clearEscapeCall CSignedInt32
+ignore value source clearEscapeCall type CSignedInt32
 call clearCodeCall c.printf
-arg clearCodeCall format clearCode
+argument clearCodeCall format CNullTerminatedByteString clearCode
 run clearCodeCall
-ignoreValue clearCodeCall CSignedInt32
+ignore value source clearCodeCall type CSignedInt32
 call homeEscapeCall c.putchar
-arg homeEscapeCall character escapeByte
+argument homeEscapeCall character CSignedInt32 escapeByte
 run homeEscapeCall
-ignoreValue homeEscapeCall CSignedInt32
+ignore value source homeEscapeCall type CSignedInt32
 call homeCodeCall c.printf
-arg homeCodeCall format homeCode
+argument homeCodeCall format CNullTerminatedByteString homeCode
 run homeCodeCall
-ignoreValue homeCodeCall CSignedInt32
+ignore value source homeCodeCall type CSignedInt32
 call flushCall c.fflush
-arg flushCall stream flushAllStreams
+argument flushCall stream CSignedInt64 flushAllStreams
 run flushCall
-ignoreValue flushCall CSignedInt32
-returnValue successCode
+ignore value source flushCall type CSignedInt32
+return value successCode
 
 operation hideCursor
-output hideCursor CSignedInt32
+output operation hideCursor CSignedInt32
 effect hideCursor write console.stdout
-authority hideCursor console.stdout write
-memoryHeap hideCursor no
+authority hideCursor write console.stdout
+memory hideCursor heap no
 async hideCursor no
-purpose hideCursor "Hide the native terminal caret while the TUI is active."
-invariant hideCursor "Only ANSI cursor visibility is changed; todo storage is untouched."
+purpose operation hideCursor "Hide the native terminal caret while the TUI is active."
+invariant operation hideCursor "Only ANSI cursor visibility is changed; todo storage is untouched."
 label startHideCursor
 storage local immutable hideCursorCode CNullTerminatedByteString "[?25l"
 call hideEscapeCall c.putchar
-arg hideEscapeCall character escapeByte
+argument hideEscapeCall character CSignedInt32 escapeByte
 run hideEscapeCall
-ignoreValue hideEscapeCall CSignedInt32
+ignore value source hideEscapeCall type CSignedInt32
 call hideCodeCall c.printf
-arg hideCodeCall format hideCursorCode
+argument hideCodeCall format CNullTerminatedByteString hideCursorCode
 run hideCodeCall
-ignoreValue hideCodeCall CSignedInt32
+ignore value source hideCodeCall type CSignedInt32
 call flushCall c.fflush
-arg flushCall stream flushAllStreams
+argument flushCall stream CSignedInt64 flushAllStreams
 run flushCall
-ignoreValue flushCall CSignedInt32
-returnValue successCode
+ignore value source flushCall type CSignedInt32
+return value successCode
 
 operation showCursor
-output showCursor CSignedInt32
+output operation showCursor CSignedInt32
 effect showCursor write console.stdout
-authority showCursor console.stdout write
-memoryHeap showCursor no
+authority showCursor write console.stdout
+memory showCursor heap no
 async showCursor no
-purpose showCursor "Restore the native terminal caret before returning to the shell."
-invariant showCursor "Only ANSI cursor visibility is changed; todo storage is untouched."
+purpose operation showCursor "Restore the native terminal caret before returning to the shell."
+invariant operation showCursor "Only ANSI cursor visibility is changed; todo storage is untouched."
 label startShowCursor
 storage local immutable showCursorCode CNullTerminatedByteString "[?25h"
 call showEscapeCall c.putchar
-arg showEscapeCall character escapeByte
+argument showEscapeCall character CSignedInt32 escapeByte
 run showEscapeCall
-ignoreValue showEscapeCall CSignedInt32
+ignore value source showEscapeCall type CSignedInt32
 call showCodeCall c.printf
-arg showCodeCall format showCursorCode
+argument showCodeCall format CNullTerminatedByteString showCursorCode
 run showCodeCall
-ignoreValue showCodeCall CSignedInt32
+ignore value source showCodeCall type CSignedInt32
 call flushCall c.fflush
-arg flushCall stream flushAllStreams
+argument flushCall stream CSignedInt64 flushAllStreams
 run flushCall
-ignoreValue flushCall CSignedInt32
-returnValue successCode
+ignore value source flushCall type CSignedInt32
+return value successCode
 
 operation getTitlePointerAt
-input getTitlePointerAt titlesBuffer COpaqueMemoryAddress
-input getTitlePointerAt todoIndex CSignedInt64
-input getTitlePointerAt titleCapacity CSignedInt64
-output getTitlePointerAt COpaqueMemoryAddress
-memoryHeap getTitlePointerAt no
+input operation getTitlePointerAt titlesBuffer COpaqueMemoryAddress
+input operation getTitlePointerAt todoIndex CSignedInt64
+input operation getTitlePointerAt titleCapacity CSignedInt64
+output operation getTitlePointerAt COpaqueMemoryAddress
+memory getTitlePointerAt heap no
 async getTitlePointerAt no
-purpose getTitlePointerAt "Return the start pointer for one title slot in the contiguous title array."
-invariant getTitlePointerAt "The returned pointer is titlesBuffer plus todoIndex multiplied by titleCapacity."
-invariant getTitlePointerAt "This operation is the *title-stride* half of the implicit `TodoEntry` record. The corresponding done flag for the same todoIndex lives at byte offset todoIndex in the sibling doneArray (stride 1). A future refactor that introduces `record TodoEntry { field done Bool, field title CNullTerminatedByteString }` plus `recordLayout TodoEntry column` would replace this pointer arithmetic with declarative field access; until that exists, every reader/writer of the two arrays must obey the same-index rule documented in `invariant main` (todo data shape)."
+purpose operation getTitlePointerAt "Return the start pointer for one title slot in the contiguous title array."
+invariant operation getTitlePointerAt "The returned pointer is titlesBuffer plus todoIndex multiplied by titleCapacity."
+invariant operation getTitlePointerAt "This operation is the *title-stride* half of the implicit `TodoEntry` record. The corresponding done flag for the same todoIndex lives at byte offset todoIndex in the sibling doneArray (stride 1). A future refactor that introduces `record TodoEntry { field done Bool, field title CNullTerminatedByteString }` plus `recordLayout TodoEntry column` would replace this pointer arithmetic with declarative field access; until that exists, every reader/writer of the two arrays must obey the same-index rule documented in `invariant main` (todo data shape)."
 label startGetTitlePointerAt
 call offsetCall math.multiplyI64
-arg offsetCall left todoIndex
-arg offsetCall right titleCapacity
+argument offsetCall left I64 todoIndex
+argument offsetCall right I64 titleCapacity
 run offsetCall
-bind titleOffset CSignedInt64 offsetCall
+bind value titleOffset CSignedInt64 offsetCall
 call pointerCall pointer.offset
-arg pointerCall base titlesBuffer
-arg pointerCall offset titleOffset
+argument pointerCall base COpaqueMemoryAddress titlesBuffer
+argument pointerCall offset CByteCount titleOffset
 run pointerCall
-bind titlePointer COpaqueMemoryAddress pointerCall
-returnValue titlePointer
+bind value titlePointer COpaqueMemoryAddress pointerCall
+return value titlePointer
 
 operation writeEmptyBuffer
-input writeEmptyBuffer targetBuffer COpaqueMemoryAddress
-output writeEmptyBuffer CSignedInt64
+input operation writeEmptyBuffer targetBuffer COpaqueMemoryAddress
+output operation writeEmptyBuffer CSignedInt64
 effect writeEmptyBuffer write memory.buffer
-authority writeEmptyBuffer memory.buffer write
-memoryHeap writeEmptyBuffer no
+authority writeEmptyBuffer write memory.buffer
+memory writeEmptyBuffer heap no
 async writeEmptyBuffer no
-purpose writeEmptyBuffer "Store a leading NUL so a title-edit buffer starts empty."
-invariant writeEmptyBuffer "After success targetBuffer contains an empty C string."
+purpose operation writeEmptyBuffer "Store a leading NUL so a title-edit buffer starts empty."
+invariant operation writeEmptyBuffer "After success targetBuffer contains an empty C string."
 label startWriteEmptyBuffer
 storage local immutable zeroOffset CSignedInt64 0
 call storeNulCall pointer.storeByte
-arg storeNulCall buffer targetBuffer
-arg storeNulCall offset zeroOffset
-arg storeNulCall value nulByte
+argument storeNulCall buffer COpaqueMemoryAddress targetBuffer
+argument storeNulCall offset CByteCount zeroOffset
+argument storeNulCall value CSignedInt64 nulByte
 run storeNulCall
-returnValue zeroOffset
+return value zeroOffset
 
 operation copyStringBuffer
-input copyStringBuffer sourceBuffer COpaqueMemoryAddress
-input copyStringBuffer targetBuffer COpaqueMemoryAddress
-input copyStringBuffer targetBufferCapacity CSignedInt64
-output copyStringBuffer CSignedInt64
+input operation copyStringBuffer sourceBuffer COpaqueMemoryAddress
+input operation copyStringBuffer targetBuffer COpaqueMemoryAddress
+input operation copyStringBuffer targetBufferCapacity CSignedInt64
+output operation copyStringBuffer CSignedInt64
 effect copyStringBuffer read memory.buffer
 effect copyStringBuffer write memory.buffer
-authority copyStringBuffer memory.buffer read
-authority copyStringBuffer memory.buffer write
-memoryHeap copyStringBuffer no
+authority copyStringBuffer read memory.buffer
+authority copyStringBuffer write memory.buffer
+memory copyStringBuffer heap no
 async copyStringBuffer no
-purpose copyStringBuffer "Copy a bounded null-terminated title string into another buffer."
-invariant copyStringBuffer "The target buffer is always null-terminated and the returned value is its copied length."
+purpose operation copyStringBuffer "Copy a bounded null-terminated title string into another buffer."
+invariant operation copyStringBuffer "The target buffer is always null-terminated and the returned value is its copied length."
 label startCopyStringBuffer
 storage local immutable zeroIndex CSignedInt64 0
 storage local immutable oneStep CSignedInt64 1
 storage local mutable readIndex CSignedInt64 zeroIndex
 storage local mutable writeIndex CSignedInt64 zeroIndex
 call maxWritableIndexCall math.subtractI64
-arg maxWritableIndexCall left targetBufferCapacity
-arg maxWritableIndexCall right oneStep
+argument maxWritableIndexCall left I64 targetBufferCapacity
+argument maxWritableIndexCall right I64 oneStep
 run maxWritableIndexCall
-bind maxWritableIndex CSignedInt64 maxWritableIndexCall
+bind value maxWritableIndex CSignedInt64 maxWritableIndexCall
 label copyStringBufferLoop
 call loadSourceByteCall pointer.loadByte
-arg loadSourceByteCall buffer sourceBuffer
-arg loadSourceByteCall offset readIndex
+argument loadSourceByteCall buffer COpaqueMemoryAddress sourceBuffer
+argument loadSourceByteCall offset CByteCount readIndex
 run loadSourceByteCall
-bind sourceByte CSignedInt32 loadSourceByteCall
+bind value sourceByte CSignedInt32 loadSourceByteCall
 call nulCheckCall math.equalCSignedInt32
-arg nulCheckCall left sourceByte
-arg nulCheckCall right nulByte
+argument nulCheckCall left CSignedInt32 sourceByte
+argument nulCheckCall right CSignedInt32 nulByte
 run nulCheckCall
-bind sourceByteIsNul Bool nulCheckCall
-branchIf sourceByteIsNul finishCopyStringBuffer
+bind value sourceByteIsNul Bool nulCheckCall
+branch if condition sourceByteIsNul target finishCopyStringBuffer
 call capacityCheckCall math.greaterThanOrEqualI64
-arg capacityCheckCall left writeIndex
-arg capacityCheckCall right maxWritableIndex
+argument capacityCheckCall left I64 writeIndex
+argument capacityCheckCall right I64 maxWritableIndex
 run capacityCheckCall
-bind targetBufferFull Bool capacityCheckCall
-branchIf targetBufferFull finishCopyStringBuffer
+bind value targetBufferFull Bool capacityCheckCall
+branch if condition targetBufferFull target finishCopyStringBuffer
 call storeTargetByteCall pointer.storeByte
-arg storeTargetByteCall buffer targetBuffer
-arg storeTargetByteCall offset writeIndex
-arg storeTargetByteCall value sourceByte
+argument storeTargetByteCall buffer COpaqueMemoryAddress targetBuffer
+argument storeTargetByteCall offset CByteCount writeIndex
+argument storeTargetByteCall value CSignedInt64 sourceByte
 run storeTargetByteCall
 call incrementReadIndexCall math.addI64
-arg incrementReadIndexCall left readIndex
-arg incrementReadIndexCall right oneStep
+argument incrementReadIndexCall left I64 readIndex
+argument incrementReadIndexCall right I64 oneStep
 run incrementReadIndexCall
-bind nextReadIndex CSignedInt64 incrementReadIndexCall
-set local readIndex nextReadIndex
+bind value nextReadIndex CSignedInt64 incrementReadIndexCall
+set memory readIndex nextReadIndex
 call incrementWriteIndexCall math.addI64
-arg incrementWriteIndexCall left writeIndex
-arg incrementWriteIndexCall right oneStep
+argument incrementWriteIndexCall left I64 writeIndex
+argument incrementWriteIndexCall right I64 oneStep
 run incrementWriteIndexCall
-bind nextWriteIndex CSignedInt64 incrementWriteIndexCall
-set local writeIndex nextWriteIndex
-branch copyStringBufferLoop
+bind value nextWriteIndex CSignedInt64 incrementWriteIndexCall
+set memory writeIndex nextWriteIndex
+jump target copyStringBufferLoop
 label finishCopyStringBuffer
 call terminateTargetCall pointer.storeByte
-arg terminateTargetCall buffer targetBuffer
-arg terminateTargetCall offset writeIndex
-arg terminateTargetCall value nulByte
+argument terminateTargetCall buffer COpaqueMemoryAddress targetBuffer
+argument terminateTargetCall offset CByteCount writeIndex
+argument terminateTargetCall value CSignedInt64 nulByte
 run terminateTargetCall
-returnValue writeIndex
+return value writeIndex
 
 operation appendPrintableKeyToBuffer
-input appendPrintableKeyToBuffer targetBuffer COpaqueMemoryAddress
-input appendPrintableKeyToBuffer currentLength CSignedInt64
-input appendPrintableKeyToBuffer bufferCapacity CSignedInt64
-input appendPrintableKeyToBuffer keyCode TuiKeyCode
-output appendPrintableKeyToBuffer CSignedInt64
+input operation appendPrintableKeyToBuffer targetBuffer COpaqueMemoryAddress
+input operation appendPrintableKeyToBuffer currentLength CSignedInt64
+input operation appendPrintableKeyToBuffer bufferCapacity CSignedInt64
+input operation appendPrintableKeyToBuffer keyCode TuiKeyCode
+output operation appendPrintableKeyToBuffer CSignedInt64
 effect appendPrintableKeyToBuffer write memory.buffer
-authority appendPrintableKeyToBuffer memory.buffer write
-memoryHeap appendPrintableKeyToBuffer no
+authority appendPrintableKeyToBuffer write memory.buffer
+memory appendPrintableKeyToBuffer heap no
 async appendPrintableKeyToBuffer no
-purpose appendPrintableKeyToBuffer "Append one printable key to the edit buffer when there is room."
-invariant appendPrintableKeyToBuffer "The target buffer remains null-terminated and currentLength never grows past capacity minus one."
+purpose operation appendPrintableKeyToBuffer "Append one printable key to the edit buffer when there is room."
+invariant operation appendPrintableKeyToBuffer "The target buffer remains null-terminated and currentLength never grows past capacity minus one."
 warning appendPrintableKeyToBuffer "Only single-byte printable ASCII input (codepoints 32..126) is accepted. Multi-byte UTF-8 input, terminal paste blocks, control characters, and IME composition sequences are silently dropped here; supporting them requires a UTF-8 decoder and a separate paste-mode reader, neither of which exists yet."
 label startAppendPrintableKeyToBuffer
 storage local immutable oneStep CSignedInt64 1
@@ -377,94 +366,94 @@ storage local immutable oneStep CSignedInt64 1
 storage local immutable minPrintableKey CSignedInt32 32
 storage local immutable maxPrintableKey CSignedInt32 126
 call belowPrintableCheckCall math.lessThanCSignedInt32
-arg belowPrintableCheckCall left keyCode
-arg belowPrintableCheckCall right minPrintableKey
+argument belowPrintableCheckCall left CSignedInt32 keyCode
+argument belowPrintableCheckCall right CSignedInt32 minPrintableKey
 run belowPrintableCheckCall
-bind belowPrintable Bool belowPrintableCheckCall
-branchIf belowPrintable skipAppendPrintableKey
+bind value belowPrintable Bool belowPrintableCheckCall
+branch if condition belowPrintable target skipAppendPrintableKey
 call abovePrintableCheckCall math.greaterThanCSignedInt32
-arg abovePrintableCheckCall left keyCode
-arg abovePrintableCheckCall right maxPrintableKey
+argument abovePrintableCheckCall left CSignedInt32 keyCode
+argument abovePrintableCheckCall right CSignedInt32 maxPrintableKey
 run abovePrintableCheckCall
-bind abovePrintable Bool abovePrintableCheckCall
-branchIf abovePrintable skipAppendPrintableKey
+bind value abovePrintable Bool abovePrintableCheckCall
+branch if condition abovePrintable target skipAppendPrintableKey
 call maxWritableIndexCall math.subtractI64
-arg maxWritableIndexCall left bufferCapacity
-arg maxWritableIndexCall right oneStep
+argument maxWritableIndexCall left I64 bufferCapacity
+argument maxWritableIndexCall right I64 oneStep
 run maxWritableIndexCall
-bind maxWritableIndex CSignedInt64 maxWritableIndexCall
+bind value maxWritableIndex CSignedInt64 maxWritableIndexCall
 call capacityCheckCall math.greaterThanOrEqualI64
-arg capacityCheckCall left currentLength
-arg capacityCheckCall right maxWritableIndex
+argument capacityCheckCall left I64 currentLength
+argument capacityCheckCall right I64 maxWritableIndex
 run capacityCheckCall
-bind bufferFull Bool capacityCheckCall
-branchIf bufferFull skipAppendPrintableKey
+bind value bufferFull Bool capacityCheckCall
+branch if condition bufferFull target skipAppendPrintableKey
 call storeKeyCall pointer.storeByte
-arg storeKeyCall buffer targetBuffer
-arg storeKeyCall offset currentLength
-arg storeKeyCall value keyCode
+argument storeKeyCall buffer COpaqueMemoryAddress targetBuffer
+argument storeKeyCall offset CByteCount currentLength
+argument storeKeyCall value CSignedInt64 keyCode
 run storeKeyCall
 call incrementLengthCall math.addI64
-arg incrementLengthCall left currentLength
-arg incrementLengthCall right oneStep
+argument incrementLengthCall left I64 currentLength
+argument incrementLengthCall right I64 oneStep
 run incrementLengthCall
-bind nextLength CSignedInt64 incrementLengthCall
+bind value nextLength CSignedInt64 incrementLengthCall
 call terminateBufferCall pointer.storeByte
-arg terminateBufferCall buffer targetBuffer
-arg terminateBufferCall offset nextLength
-arg terminateBufferCall value nulByte
+argument terminateBufferCall buffer COpaqueMemoryAddress targetBuffer
+argument terminateBufferCall offset CByteCount nextLength
+argument terminateBufferCall value CSignedInt64 nulByte
 run terminateBufferCall
-returnValue nextLength
+return value nextLength
 label skipAppendPrintableKey
-returnValue currentLength
+return value currentLength
 
 operation deleteLastBufferByte
-input deleteLastBufferByte targetBuffer COpaqueMemoryAddress
-input deleteLastBufferByte currentLength CSignedInt64
-output deleteLastBufferByte CSignedInt64
+input operation deleteLastBufferByte targetBuffer COpaqueMemoryAddress
+input operation deleteLastBufferByte currentLength CSignedInt64
+output operation deleteLastBufferByte CSignedInt64
 effect deleteLastBufferByte write memory.buffer
-authority deleteLastBufferByte memory.buffer write
-memoryHeap deleteLastBufferByte no
+authority deleteLastBufferByte write memory.buffer
+memory deleteLastBufferByte heap no
 async deleteLastBufferByte no
-purpose deleteLastBufferByte "Remove the last edit-buffer byte for backspace handling."
-invariant deleteLastBufferByte "The target buffer remains null-terminated and length never goes below zero."
+purpose operation deleteLastBufferByte "Remove the last edit-buffer byte for backspace handling."
+invariant operation deleteLastBufferByte "The target buffer remains null-terminated and length never goes below zero."
 label startDeleteLastBufferByte
 storage local immutable zeroLength CSignedInt64 0
 storage local immutable oneStep CSignedInt64 1
 call emptyCheckCall math.equalI64
-arg emptyCheckCall left currentLength
-arg emptyCheckCall right zeroLength
+argument emptyCheckCall left I64 currentLength
+argument emptyCheckCall right I64 zeroLength
 run emptyCheckCall
-bind bufferIsEmpty Bool emptyCheckCall
-branchIf bufferIsEmpty skipDeleteLastBufferByte
+bind value bufferIsEmpty Bool emptyCheckCall
+branch if condition bufferIsEmpty target skipDeleteLastBufferByte
 call decrementLengthCall math.subtractI64
-arg decrementLengthCall left currentLength
-arg decrementLengthCall right oneStep
+argument decrementLengthCall left I64 currentLength
+argument decrementLengthCall right I64 oneStep
 run decrementLengthCall
-bind nextLength CSignedInt64 decrementLengthCall
+bind value nextLength CSignedInt64 decrementLengthCall
 call terminateBufferCall pointer.storeByte
-arg terminateBufferCall buffer targetBuffer
-arg terminateBufferCall offset nextLength
-arg terminateBufferCall value nulByte
+argument terminateBufferCall buffer COpaqueMemoryAddress targetBuffer
+argument terminateBufferCall offset CByteCount nextLength
+argument terminateBufferCall value CSignedInt64 nulByte
 run terminateBufferCall
-returnValue nextLength
+return value nextLength
 label skipDeleteLastBufferByte
-returnValue currentLength
+return value currentLength
 
 operation copyFixedTodoJsonTitleAtOffset
-input copyFixedTodoJsonTitleAtOffset sourceLine COpaqueMemoryAddress
-input copyFixedTodoJsonTitleAtOffset titleBuffer COpaqueMemoryAddress
-input copyFixedTodoJsonTitleAtOffset valueOffset CSignedInt64
-input copyFixedTodoJsonTitleAtOffset titleBufferCapacity CSignedInt64
-output copyFixedTodoJsonTitleAtOffset CSignedInt64
+input operation copyFixedTodoJsonTitleAtOffset sourceLine COpaqueMemoryAddress
+input operation copyFixedTodoJsonTitleAtOffset titleBuffer COpaqueMemoryAddress
+input operation copyFixedTodoJsonTitleAtOffset valueOffset CSignedInt64
+input operation copyFixedTodoJsonTitleAtOffset titleBufferCapacity CSignedInt64
+output operation copyFixedTodoJsonTitleAtOffset CSignedInt64
 effect copyFixedTodoJsonTitleAtOffset read memory.buffer
 effect copyFixedTodoJsonTitleAtOffset write memory.buffer
-authority copyFixedTodoJsonTitleAtOffset memory.buffer read
-authority copyFixedTodoJsonTitleAtOffset memory.buffer write
-memoryHeap copyFixedTodoJsonTitleAtOffset no
+authority copyFixedTodoJsonTitleAtOffset read memory.buffer
+authority copyFixedTodoJsonTitleAtOffset write memory.buffer
+memory copyFixedTodoJsonTitleAtOffset heap no
 async copyFixedTodoJsonTitleAtOffset no
-purpose copyFixedTodoJsonTitleAtOffset "Copy a fixed todo JSON title value into a caller-owned C string buffer."
-invariant copyFixedTodoJsonTitleAtOffset "Only the exact object shape emitted by saveTodosToJson is supported; only quote and backslash escapes emitted by saveTodosToJson are decoded."
+purpose operation copyFixedTodoJsonTitleAtOffset "Copy a fixed todo JSON title value into a caller-owned C string buffer."
+invariant operation copyFixedTodoJsonTitleAtOffset "Only the exact object shape emitted by saveTodosToJson is supported; only quote and backslash escapes emitted by saveTodosToJson are decoded."
 label startCopyFixedTodoJsonTitleAtOffset
 storage local immutable zeroIndex CSignedInt64 0
 storage local immutable oneStep CSignedInt64 1
@@ -474,176 +463,176 @@ storage local immutable oneStep CSignedInt64 1
 storage local mutable readIndex CSignedInt64 valueOffset
 storage local mutable writeIndex CSignedInt64 zeroIndex
 call maxWritableIndexCall math.subtractI64
-arg maxWritableIndexCall left titleBufferCapacity
-arg maxWritableIndexCall right oneStep
+argument maxWritableIndexCall left I64 titleBufferCapacity
+argument maxWritableIndexCall right I64 oneStep
 run maxWritableIndexCall
-bind maxWritableIndex CSignedInt64 maxWritableIndexCall
+bind value maxWritableIndex CSignedInt64 maxWritableIndexCall
 label copyTitleLoop
 call loadTitleByteCall pointer.loadByte
-arg loadTitleByteCall buffer sourceLine
-arg loadTitleByteCall offset readIndex
+argument loadTitleByteCall buffer COpaqueMemoryAddress sourceLine
+argument loadTitleByteCall offset CByteCount readIndex
 run loadTitleByteCall
-bind titleByte CSignedInt32 loadTitleByteCall
+bind value titleByte CSignedInt32 loadTitleByteCall
 call quoteCheckCall math.equalCSignedInt32
-arg quoteCheckCall left titleByte
-arg quoteCheckCall right quoteByte
+argument quoteCheckCall left CSignedInt32 titleByte
+argument quoteCheckCall right CSignedInt32 quoteByte
 run quoteCheckCall
-bind titleByteIsQuote Bool quoteCheckCall
-branchIf titleByteIsQuote finishCopyTitle
+bind value titleByteIsQuote Bool quoteCheckCall
+branch if condition titleByteIsQuote target finishCopyTitle
 call newlineCheckCall math.equalCSignedInt32
-arg newlineCheckCall left titleByte
-arg newlineCheckCall right newlineByte
+argument newlineCheckCall left CSignedInt32 titleByte
+argument newlineCheckCall right CSignedInt32 newlineByte
 run newlineCheckCall
-bind titleByteIsNewline Bool newlineCheckCall
-branchIf titleByteIsNewline finishCopyTitle
+bind value titleByteIsNewline Bool newlineCheckCall
+branch if condition titleByteIsNewline target finishCopyTitle
 call carriageReturnCheckCall math.equalCSignedInt32
-arg carriageReturnCheckCall left titleByte
-arg carriageReturnCheckCall right carriageReturnByte
+argument carriageReturnCheckCall left CSignedInt32 titleByte
+argument carriageReturnCheckCall right CSignedInt32 carriageReturnByte
 run carriageReturnCheckCall
-bind titleByteIsCarriageReturn Bool carriageReturnCheckCall
-branchIf titleByteIsCarriageReturn finishCopyTitle
+bind value titleByteIsCarriageReturn Bool carriageReturnCheckCall
+branch if condition titleByteIsCarriageReturn target finishCopyTitle
 call nulCheckCall math.equalCSignedInt32
-arg nulCheckCall left titleByte
-arg nulCheckCall right nulByte
+argument nulCheckCall left CSignedInt32 titleByte
+argument nulCheckCall right CSignedInt32 nulByte
 run nulCheckCall
-bind titleByteIsNul Bool nulCheckCall
-branchIf titleByteIsNul finishCopyTitle
+bind value titleByteIsNul Bool nulCheckCall
+branch if condition titleByteIsNul target finishCopyTitle
 call backslashCheckCall math.equalCSignedInt32
-arg backslashCheckCall left titleByte
-arg backslashCheckCall right backslashByte
+argument backslashCheckCall left CSignedInt32 titleByte
+argument backslashCheckCall right CSignedInt32 backslashByte
 run backslashCheckCall
-bind titleByteIsBackslash Bool backslashCheckCall
-branchIf titleByteIsBackslash copyEscapedTitleByte
+bind value titleByteIsBackslash Bool backslashCheckCall
+branch if condition titleByteIsBackslash target copyEscapedTitleByte
 call capacityCheckCall math.greaterThanOrEqualI64
-arg capacityCheckCall left writeIndex
-arg capacityCheckCall right maxWritableIndex
+argument capacityCheckCall left I64 writeIndex
+argument capacityCheckCall right I64 maxWritableIndex
 run capacityCheckCall
-bind titleBufferFull Bool capacityCheckCall
-branchIf titleBufferFull finishCopyTitle
+bind value titleBufferFull Bool capacityCheckCall
+branch if condition titleBufferFull target finishCopyTitle
 call storeTitleByteCall pointer.storeByte
-arg storeTitleByteCall buffer titleBuffer
-arg storeTitleByteCall offset writeIndex
-arg storeTitleByteCall value titleByte
+argument storeTitleByteCall buffer COpaqueMemoryAddress titleBuffer
+argument storeTitleByteCall offset CByteCount writeIndex
+argument storeTitleByteCall value CSignedInt64 titleByte
 run storeTitleByteCall
 call incrementReadIndexCall math.addI64
-arg incrementReadIndexCall left readIndex
-arg incrementReadIndexCall right oneStep
+argument incrementReadIndexCall left I64 readIndex
+argument incrementReadIndexCall right I64 oneStep
 run incrementReadIndexCall
-bind nextReadIndex CSignedInt64 incrementReadIndexCall
-set local readIndex nextReadIndex
+bind value nextReadIndex CSignedInt64 incrementReadIndexCall
+set memory readIndex nextReadIndex
 call incrementWriteIndexCall math.addI64
-arg incrementWriteIndexCall left writeIndex
-arg incrementWriteIndexCall right oneStep
+argument incrementWriteIndexCall left I64 writeIndex
+argument incrementWriteIndexCall right I64 oneStep
 run incrementWriteIndexCall
-bind nextWriteIndex CSignedInt64 incrementWriteIndexCall
-set local writeIndex nextWriteIndex
-branch copyTitleLoop
+bind value nextWriteIndex CSignedInt64 incrementWriteIndexCall
+set memory writeIndex nextWriteIndex
+jump target copyTitleLoop
 label copyEscapedTitleByte
 call escapedReadIndexCall math.addI64
-arg escapedReadIndexCall left readIndex
-arg escapedReadIndexCall right oneStep
+argument escapedReadIndexCall left I64 readIndex
+argument escapedReadIndexCall right I64 oneStep
 run escapedReadIndexCall
-bind escapedReadIndex CSignedInt64 escapedReadIndexCall
+bind value escapedReadIndex CSignedInt64 escapedReadIndexCall
 call loadEscapedByteCall pointer.loadByte
-arg loadEscapedByteCall buffer sourceLine
-arg loadEscapedByteCall offset escapedReadIndex
+argument loadEscapedByteCall buffer COpaqueMemoryAddress sourceLine
+argument loadEscapedByteCall offset CByteCount escapedReadIndex
 run loadEscapedByteCall
-bind escapedTitleByte CSignedInt32 loadEscapedByteCall
+bind value escapedTitleByte CSignedInt32 loadEscapedByteCall
 call escapedNewlineCheckCall math.equalCSignedInt32
-arg escapedNewlineCheckCall left escapedTitleByte
-arg escapedNewlineCheckCall right newlineByte
+argument escapedNewlineCheckCall left CSignedInt32 escapedTitleByte
+argument escapedNewlineCheckCall right CSignedInt32 newlineByte
 run escapedNewlineCheckCall
-bind escapedByteIsNewline Bool escapedNewlineCheckCall
-branchIf escapedByteIsNewline finishCopyTitle
+bind value escapedByteIsNewline Bool escapedNewlineCheckCall
+branch if condition escapedByteIsNewline target finishCopyTitle
 call escapedCarriageReturnCheckCall math.equalCSignedInt32
-arg escapedCarriageReturnCheckCall left escapedTitleByte
-arg escapedCarriageReturnCheckCall right carriageReturnByte
+argument escapedCarriageReturnCheckCall left CSignedInt32 escapedTitleByte
+argument escapedCarriageReturnCheckCall right CSignedInt32 carriageReturnByte
 run escapedCarriageReturnCheckCall
-bind escapedByteIsCarriageReturn Bool escapedCarriageReturnCheckCall
-branchIf escapedByteIsCarriageReturn finishCopyTitle
+bind value escapedByteIsCarriageReturn Bool escapedCarriageReturnCheckCall
+branch if condition escapedByteIsCarriageReturn target finishCopyTitle
 call escapedNulCheckCall math.equalCSignedInt32
-arg escapedNulCheckCall left escapedTitleByte
-arg escapedNulCheckCall right nulByte
+argument escapedNulCheckCall left CSignedInt32 escapedTitleByte
+argument escapedNulCheckCall right CSignedInt32 nulByte
 run escapedNulCheckCall
-bind escapedByteIsNul Bool escapedNulCheckCall
-branchIf escapedByteIsNul finishCopyTitle
+bind value escapedByteIsNul Bool escapedNulCheckCall
+branch if condition escapedByteIsNul target finishCopyTitle
 call escapedCapacityCheckCall math.greaterThanOrEqualI64
-arg escapedCapacityCheckCall left writeIndex
-arg escapedCapacityCheckCall right maxWritableIndex
+argument escapedCapacityCheckCall left I64 writeIndex
+argument escapedCapacityCheckCall right I64 maxWritableIndex
 run escapedCapacityCheckCall
-bind escapedTitleBufferFull Bool escapedCapacityCheckCall
-branchIf escapedTitleBufferFull finishCopyTitle
+bind value escapedTitleBufferFull Bool escapedCapacityCheckCall
+branch if condition escapedTitleBufferFull target finishCopyTitle
 call storeEscapedTitleByteCall pointer.storeByte
-arg storeEscapedTitleByteCall buffer titleBuffer
-arg storeEscapedTitleByteCall offset writeIndex
-arg storeEscapedTitleByteCall value escapedTitleByte
+argument storeEscapedTitleByteCall buffer COpaqueMemoryAddress titleBuffer
+argument storeEscapedTitleByteCall offset CByteCount writeIndex
+argument storeEscapedTitleByteCall value CSignedInt64 escapedTitleByte
 run storeEscapedTitleByteCall
 call advancePastEscapedByteCall math.addI64
-arg advancePastEscapedByteCall left escapedReadIndex
-arg advancePastEscapedByteCall right oneStep
+argument advancePastEscapedByteCall left I64 escapedReadIndex
+argument advancePastEscapedByteCall right I64 oneStep
 run advancePastEscapedByteCall
-bind nextEscapedReadIndex CSignedInt64 advancePastEscapedByteCall
-set local readIndex nextEscapedReadIndex
+bind value nextEscapedReadIndex CSignedInt64 advancePastEscapedByteCall
+set memory readIndex nextEscapedReadIndex
 call incrementEscapedWriteIndexCall math.addI64
-arg incrementEscapedWriteIndexCall left writeIndex
-arg incrementEscapedWriteIndexCall right oneStep
+argument incrementEscapedWriteIndexCall left I64 writeIndex
+argument incrementEscapedWriteIndexCall right I64 oneStep
 run incrementEscapedWriteIndexCall
-bind nextEscapedWriteIndex CSignedInt64 incrementEscapedWriteIndexCall
-set local writeIndex nextEscapedWriteIndex
-branch copyTitleLoop
+bind value nextEscapedWriteIndex CSignedInt64 incrementEscapedWriteIndexCall
+set memory writeIndex nextEscapedWriteIndex
+jump target copyTitleLoop
 label finishCopyTitle
 call terminateTitleCall pointer.storeByte
-arg terminateTitleCall buffer titleBuffer
-arg terminateTitleCall offset writeIndex
-arg terminateTitleCall value nulByte
+argument terminateTitleCall buffer COpaqueMemoryAddress titleBuffer
+argument terminateTitleCall offset CByteCount writeIndex
+argument terminateTitleCall value CSignedInt64 nulByte
 run terminateTitleCall
-returnValue writeIndex
+return value writeIndex
 
 operation parseJsonFlagAtOffset
-input parseJsonFlagAtOffset sourceLine COpaqueMemoryAddress
-input parseJsonFlagAtOffset valueOffset CSignedInt64
-output parseJsonFlagAtOffset CSignedInt32
+input operation parseJsonFlagAtOffset sourceLine COpaqueMemoryAddress
+input operation parseJsonFlagAtOffset valueOffset CSignedInt64
+output operation parseJsonFlagAtOffset CSignedInt32
 effect parseJsonFlagAtOffset read memory.buffer
-authority parseJsonFlagAtOffset memory.buffer read
-memoryHeap parseJsonFlagAtOffset no
+authority parseJsonFlagAtOffset read memory.buffer
+memory parseJsonFlagAtOffset heap no
 async parseJsonFlagAtOffset no
-purpose parseJsonFlagAtOffset "Parse a zero-or-one flag from a fixed todo JSON field offset."
-invariant parseJsonFlagAtOffset "Only ASCII one maps to one; every other byte maps to zero."
+purpose operation parseJsonFlagAtOffset "Parse a zero-or-one flag from a fixed todo JSON field offset."
+invariant operation parseJsonFlagAtOffset "Only ASCII one maps to one; every other byte maps to zero."
 label startParseJsonFlagAtOffset
 storage local immutable zeroFlag CSignedInt32 0
 storage local immutable oneFlag CSignedInt32 1
 call loadFlagByteCall pointer.loadByte
-arg loadFlagByteCall buffer sourceLine
-arg loadFlagByteCall offset valueOffset
+argument loadFlagByteCall buffer COpaqueMemoryAddress sourceLine
+argument loadFlagByteCall offset CByteCount valueOffset
 run loadFlagByteCall
-bind flagByte CSignedInt32 loadFlagByteCall
+bind value flagByte CSignedInt32 loadFlagByteCall
 call flagOneCheckCall math.equalCSignedInt32
-arg flagOneCheckCall left flagByte
-arg flagOneCheckCall right oneAsciiByte
+argument flagOneCheckCall left CSignedInt32 flagByte
+argument flagOneCheckCall right CSignedInt32 oneAsciiByte
 run flagOneCheckCall
-bind flagIsOne Bool flagOneCheckCall
-branchIf flagIsOne parsedOneFlag
-returnValue zeroFlag
+bind value flagIsOne Bool flagOneCheckCall
+branch if condition flagIsOne target parsedOneFlag
+return value zeroFlag
 label parsedOneFlag
-returnValue oneFlag
+return value oneFlag
 
 operation renderTodoRow
-input renderTodoRow doneArray COpaqueMemoryAddress
-input renderTodoRow titlesBuffer COpaqueMemoryAddress
-input renderTodoRow actualIndex CSignedInt64
-input renderTodoRow selectedIndex CSignedInt64
-input renderTodoRow todoCount CSignedInt64
-input renderTodoRow titleCapacity CSignedInt64
-output renderTodoRow CSignedInt32
+input operation renderTodoRow doneArray COpaqueMemoryAddress
+input operation renderTodoRow titlesBuffer COpaqueMemoryAddress
+input operation renderTodoRow actualIndex CSignedInt64
+input operation renderTodoRow selectedIndex CSignedInt64
+input operation renderTodoRow todoCount CSignedInt64
+input operation renderTodoRow titleCapacity CSignedInt64
+output operation renderTodoRow CSignedInt32
 effect renderTodoRow read memory.buffer
 effect renderTodoRow write console.stdout
-authority renderTodoRow memory.buffer read
-authority renderTodoRow console.stdout write
-memoryHeap renderTodoRow no
+authority renderTodoRow read memory.buffer
+authority renderTodoRow write console.stdout
+memory renderTodoRow heap no
 async renderTodoRow no
-purpose renderTodoRow "Render one visible table row from the heap-backed todo arrays."
-invariant renderTodoRow "Rendering reads todo arrays but does not mutate todo state."
-invariant renderTodoRow "todoRowFormatText's `%3lld` index column reserves three digits, which assumes todoCapacity <= 999. If todoCapacity grows past 999, the column will widen and the table borders in topFrameText/bottomFrameText/blankRowText will misalign. Update all four format constants in lockstep when bumping todoCapacity."
+purpose operation renderTodoRow "Render one visible table row from the heap-backed todo arrays."
+invariant operation renderTodoRow "Rendering reads todo arrays but does not mutate todo state."
+invariant operation renderTodoRow "todoRowFormatText's `%3lld` index column reserves three digits, which assumes todoCapacity <= 999. If todoCapacity grows past 999, the column will widen and the table borders in topFrameText/bottomFrameText/blankRowText will misalign. Update all four format constants in lockstep when bumping todoCapacity."
 warning renderTodoRow "todoRowFormatText's `%-40.40s` title column silently truncates titles longer than 40 bytes to 40 bytes on screen. The underlying titlesArray slot is still titleCapacity bytes (currently 128); only the rendered display is clipped. Editing a truncated row in the modal shows the full underlying title, not the truncated form."
 label startRenderTodoRow
 storage local immutable oneValue CSignedInt64 1
@@ -659,101 +648,101 @@ storage local immutable addRowFormatText CNullTerminatedByteString "  | %s   + |
 storage local mutable markerText CNullTerminatedByteString normalMarkerText
 storage local mutable statusText CNullTerminatedByteString openStatusText
 call selectedCheckCall math.equalI64
-arg selectedCheckCall left actualIndex
-arg selectedCheckCall right selectedIndex
+argument selectedCheckCall left I64 actualIndex
+argument selectedCheckCall right I64 selectedIndex
 run selectedCheckCall
-bind rowIsSelected Bool selectedCheckCall
-branchIf rowIsSelected markSelectedRow
-branch chooseRowKind
+bind value rowIsSelected Bool selectedCheckCall
+branch if condition rowIsSelected target markSelectedRow
+branch else target chooseRowKind
 label markSelectedRow
-set local markerText selectedMarkerText
-branch chooseRowKind
+set memory markerText selectedMarkerText
+jump target chooseRowKind
 label chooseRowKind
 call existingRowCheckCall math.lessThanI64
-arg existingRowCheckCall left actualIndex
-arg existingRowCheckCall right todoCount
+argument existingRowCheckCall left I64 actualIndex
+argument existingRowCheckCall right I64 todoCount
 run existingRowCheckCall
-bind rowIsExistingTodo Bool existingRowCheckCall
-branchIf rowIsExistingTodo renderExistingTodoRow
+bind value rowIsExistingTodo Bool existingRowCheckCall
+branch if condition rowIsExistingTodo target renderExistingTodoRow
 call addRowCheckCall math.equalI64
-arg addRowCheckCall left actualIndex
-arg addRowCheckCall right todoCount
+argument addRowCheckCall left I64 actualIndex
+argument addRowCheckCall right I64 todoCount
 run addRowCheckCall
-bind rowIsAddTodo Bool addRowCheckCall
-branchIf rowIsAddTodo renderAddTodoRow
+bind value rowIsAddTodo Bool addRowCheckCall
+branch if condition rowIsAddTodo target renderAddTodoRow
 call blankRowCall c.printf
-arg blankRowCall format blankRowText
+argument blankRowCall format CNullTerminatedByteString blankRowText
 run blankRowCall
-ignoreValue blankRowCall CSignedInt32
-returnValue successCode
+ignore value source blankRowCall type CSignedInt32
+return value successCode
 label renderAddTodoRow
 call addRowCall c.printf
-arg addRowCall format addRowFormatText
-arg addRowCall marker markerText
-arg addRowCall title addRowText
+argument addRowCall format CNullTerminatedByteString addRowFormatText
+argument addRowCall marker CNullTerminatedByteString markerText
+argument addRowCall title CNullTerminatedByteString addRowText
 run addRowCall
-ignoreValue addRowCall CSignedInt32
-returnValue successCode
+ignore value source addRowCall type CSignedInt32
+return value successCode
 label renderExistingTodoRow
 call doneLoadCall pointer.loadByte
-arg doneLoadCall buffer doneArray
-arg doneLoadCall offset actualIndex
+argument doneLoadCall buffer COpaqueMemoryAddress doneArray
+argument doneLoadCall offset CByteCount actualIndex
 run doneLoadCall
-bind doneValue CSignedInt32 doneLoadCall
+bind value doneValue CSignedInt32 doneLoadCall
 call doneCheckCall math.equalCSignedInt32
-arg doneCheckCall left doneValue
-arg doneCheckCall right doneFlagValue
+argument doneCheckCall left CSignedInt32 doneValue
+argument doneCheckCall right CSignedInt32 doneFlagValue
 run doneCheckCall
-bind rowIsDone Bool doneCheckCall
-branchIf rowIsDone markDoneRow
-branch renderExistingTodoLine
+bind value rowIsDone Bool doneCheckCall
+branch if condition rowIsDone target markDoneRow
+branch else target renderExistingTodoLine
 label markDoneRow
-set local statusText doneStatusText
-branch renderExistingTodoLine
+set memory statusText doneStatusText
+jump target renderExistingTodoLine
 label renderExistingTodoLine
 call titlePointerCall getTitlePointerAt
-arg titlePointerCall titlesBuffer titlesBuffer
-arg titlePointerCall todoIndex actualIndex
-arg titlePointerCall titleCapacity titleCapacity
+argument titlePointerCall titlesBuffer COpaqueMemoryAddress titlesBuffer
+argument titlePointerCall todoIndex CSignedInt64 actualIndex
+argument titlePointerCall titleCapacity CSignedInt64 titleCapacity
 run titlePointerCall
-bind titlePointer COpaqueMemoryAddress titlePointerCall
+bind value titlePointer COpaqueMemoryAddress titlePointerCall
 call displayNumberCall math.addI64
-arg displayNumberCall left actualIndex
-arg displayNumberCall right oneValue
+argument displayNumberCall left I64 actualIndex
+argument displayNumberCall right I64 oneValue
 run displayNumberCall
-bind displayNumber CSignedInt64 displayNumberCall
+bind value displayNumber CSignedInt64 displayNumberCall
 call rowCall c.printf
-arg rowCall format todoRowFormatText
-arg rowCall marker markerText
-arg rowCall number displayNumber
-arg rowCall status statusText
-arg rowCall title titlePointer
+argument rowCall format CNullTerminatedByteString todoRowFormatText
+argument rowCall marker CNullTerminatedByteString markerText
+argument rowCall number CSignedInt64 displayNumber
+argument rowCall status CNullTerminatedByteString statusText
+argument rowCall title COpaqueMemoryAddress titlePointer
 run rowCall
-ignoreValue rowCall CSignedInt32
-returnValue successCode
+ignore value source rowCall type CSignedInt32
+return value successCode
 
 operation renderScreen
-input renderScreen doneArray COpaqueMemoryAddress
-input renderScreen titlesBuffer COpaqueMemoryAddress
-input renderScreen todoCount CSignedInt64
-input renderScreen selectedIndex CSignedInt64
-input renderScreen topIndex CSignedInt64
-input renderScreen screenMode ScreenMode
-input renderScreen editBuffer COpaqueMemoryAddress
-input renderScreen editLength CSignedInt64
-input renderScreen titleCapacity CSignedInt64
-input renderScreen visibleRows CSignedInt64
-input renderScreen statusText CNullTerminatedByteString
-output renderScreen CSignedInt32
+input operation renderScreen doneArray COpaqueMemoryAddress
+input operation renderScreen titlesBuffer COpaqueMemoryAddress
+input operation renderScreen todoCount CSignedInt64
+input operation renderScreen selectedIndex CSignedInt64
+input operation renderScreen topIndex CSignedInt64
+input operation renderScreen screenMode ScreenMode
+input operation renderScreen editBuffer COpaqueMemoryAddress
+input operation renderScreen editLength CSignedInt64
+input operation renderScreen titleCapacity CSignedInt64
+input operation renderScreen visibleRows CSignedInt64
+input operation renderScreen statusText CNullTerminatedByteString
+output operation renderScreen CSignedInt32
 effect renderScreen read memory.buffer
 effect renderScreen write console.stdout
-authority renderScreen memory.buffer read
-authority renderScreen console.stdout write
-memoryHeap renderScreen no
+authority renderScreen read memory.buffer
+authority renderScreen write console.stdout
+memory renderScreen heap no
 async renderScreen no
-purpose renderScreen "Render the todo TUI from heap-backed arrays with a fixed-width edit modal."
-invariant renderScreen "The visible row loop emits at most visibleRows rows and does not mutate todo state."
-invariant renderScreen "editBuffer is an opaque memory pointer that callers guarantee holds a null-terminated byte sequence: writeEmptyBuffer seeds the first byte with NUL on allocation, and appendPrintableKeyToBuffer / deleteLastBufferByte maintain the terminator at every length change. renderScreen passes editBuffer to c.printf as a %s argument, which relies on that invariant."
+purpose operation renderScreen "Render the todo TUI from heap-backed arrays with a fixed-width edit modal."
+invariant operation renderScreen "The visible row loop emits at most visibleRows rows and does not mutate todo state."
+invariant operation renderScreen "editBuffer is an opaque memory pointer that callers guarantee holds a null-terminated byte sequence: writeEmptyBuffer seeds the first byte with NUL on allocation, and appendPrintableKeyToBuffer / deleteLastBufferByte maintain the terminator at every length change. renderScreen passes editBuffer to c.printf as a %s argument, which relies on that invariant."
 warning renderScreen "modalValueFormatText's `%-47.47s` edit-modal title column silently truncates titles longer than 47 bytes on screen. The full editBuffer (up to titleCapacity-1 = 127 bytes) is still in memory; only the modal view is clipped. The character-count line below (modalMetaFormatText) shows the true length so an editor of a long title knows the visible region is partial."
 label startRenderScreen
 storage local immutable zeroValue CSignedInt64 0
@@ -769,186 +758,186 @@ storage local immutable modalHelpText CNullTerminatedByteString "  | Enter save 
 storage local mutable visibleRowCursor CSignedInt64 zeroValue
 call clearCall clearScreen
 run clearCall
-ignoreValue clearCall CSignedInt32
+ignore value source clearCall type CSignedInt32
 call topCall c.puts
-arg topCall text topFrameText
+argument topCall text CNullTerminatedByteString topFrameText
 run topCall
-ignoreValue topCall CSignedInt32
+ignore value source topCall type CSignedInt32
 label renderRowsLoop
 call rowsDoneCheckCall math.greaterThanOrEqualI64
-arg rowsDoneCheckCall left visibleRowCursor
-arg rowsDoneCheckCall right visibleRows
+argument rowsDoneCheckCall left I64 visibleRowCursor
+argument rowsDoneCheckCall right I64 visibleRows
 run rowsDoneCheckCall
-bind rowsDone Bool rowsDoneCheckCall
-branchIf rowsDone finishRows
+bind value rowsDone Bool rowsDoneCheckCall
+branch if condition rowsDone target finishRows
 call actualIndexCall math.addI64
-arg actualIndexCall left topIndex
-arg actualIndexCall right visibleRowCursor
+argument actualIndexCall left I64 topIndex
+argument actualIndexCall right I64 visibleRowCursor
 run actualIndexCall
-bind actualIndex CSignedInt64 actualIndexCall
+bind value actualIndex CSignedInt64 actualIndexCall
 call renderRowCall renderTodoRow
-arg renderRowCall doneArray doneArray
-arg renderRowCall titlesBuffer titlesBuffer
-arg renderRowCall actualIndex actualIndex
-arg renderRowCall selectedIndex selectedIndex
-arg renderRowCall todoCount todoCount
-arg renderRowCall titleCapacity titleCapacity
+argument renderRowCall doneArray COpaqueMemoryAddress doneArray
+argument renderRowCall titlesBuffer COpaqueMemoryAddress titlesBuffer
+argument renderRowCall actualIndex CSignedInt64 actualIndex
+argument renderRowCall selectedIndex CSignedInt64 selectedIndex
+argument renderRowCall todoCount CSignedInt64 todoCount
+argument renderRowCall titleCapacity CSignedInt64 titleCapacity
 run renderRowCall
-ignoreValue renderRowCall CSignedInt32
+ignore value source renderRowCall type CSignedInt32
 call advanceVisibleRowCall math.addI64
-arg advanceVisibleRowCall left visibleRowCursor
-arg advanceVisibleRowCall right oneValue
+argument advanceVisibleRowCall left I64 visibleRowCursor
+argument advanceVisibleRowCall right I64 oneValue
 run advanceVisibleRowCall
-bind nextVisibleRowCursor CSignedInt64 advanceVisibleRowCall
-set local visibleRowCursor nextVisibleRowCursor
-branch renderRowsLoop
+bind value nextVisibleRowCursor CSignedInt64 advanceVisibleRowCall
+set memory visibleRowCursor nextVisibleRowCursor
+jump target renderRowsLoop
 label finishRows
 call bottomCall c.puts
-arg bottomCall text bottomFrameText
+argument bottomCall text CNullTerminatedByteString bottomFrameText
 run bottomCall
-ignoreValue bottomCall CSignedInt32
+ignore value source bottomCall type CSignedInt32
 call statusCall c.printf
-arg statusCall format statusFormatText
-arg statusCall status statusText
+argument statusCall format CNullTerminatedByteString statusFormatText
+argument statusCall status CNullTerminatedByteString statusText
 run statusCall
-ignoreValue statusCall CSignedInt32
+ignore value source statusCall type CSignedInt32
 call editModeCheckCall ScreenMode.equal
-arg editModeCheckCall left screenMode
-arg editModeCheckCall right EditMode
+argument editModeCheckCall left ScreenMode screenMode
+argument editModeCheckCall right ScreenMode EditMode
 run editModeCheckCall
-bind isEditMode Bool editModeCheckCall
-branchIf isEditMode renderModal
+bind value isEditMode Bool editModeCheckCall
+branch if condition isEditMode target renderModal
 call navigationCall c.puts
-arg navigationCall text navigationText
+argument navigationCall text CNullTerminatedByteString navigationText
 run navigationCall
-ignoreValue navigationCall CSignedInt32
-returnValue successCode
+ignore value source navigationCall type CSignedInt32
+return value successCode
 label renderModal
 call modalTopCall c.puts
-arg modalTopCall text modalTopText
+argument modalTopCall text CNullTerminatedByteString modalTopText
 run modalTopCall
-ignoreValue modalTopCall CSignedInt32
+ignore value source modalTopCall type CSignedInt32
 call modalValueCall c.printf
-arg modalValueCall format modalValueFormatText
-arg modalValueCall title editBuffer
+argument modalValueCall format CNullTerminatedByteString modalValueFormatText
+argument modalValueCall title COpaqueMemoryAddress editBuffer
 run modalValueCall
-ignoreValue modalValueCall CSignedInt32
+ignore value source modalValueCall type CSignedInt32
 call modalMetaCall c.printf
-arg modalMetaCall format modalMetaFormatText
-arg modalMetaCall length editLength
+argument modalMetaCall format CNullTerminatedByteString modalMetaFormatText
+argument modalMetaCall length CSignedInt64 editLength
 run modalMetaCall
-ignoreValue modalMetaCall CSignedInt32
+ignore value source modalMetaCall type CSignedInt32
 call modalHelpCall c.puts
-arg modalHelpCall text modalHelpText
+argument modalHelpCall text CNullTerminatedByteString modalHelpText
 run modalHelpCall
-ignoreValue modalHelpCall CSignedInt32
-returnValue successCode
+ignore value source modalHelpCall type CSignedInt32
+return value successCode
 
 operation clampTopIndex
-input clampTopIndex selectedIndex CSignedInt64
-input clampTopIndex topIndex CSignedInt64
-input clampTopIndex visibleRows CSignedInt64
-output clampTopIndex CSignedInt64
-memoryHeap clampTopIndex no
+input operation clampTopIndex selectedIndex CSignedInt64
+input operation clampTopIndex topIndex CSignedInt64
+input operation clampTopIndex visibleRows CSignedInt64
+output operation clampTopIndex CSignedInt64
+memory clampTopIndex heap no
 async clampTopIndex no
-purpose clampTopIndex "Keep the selected row inside the visible scroll window."
+purpose operation clampTopIndex "Keep the selected row inside the visible scroll window."
 label startClampTopIndex
 storage local immutable oneValue CSignedInt64 1
 call selectedBeforeTopCall math.lessThanI64
-arg selectedBeforeTopCall left selectedIndex
-arg selectedBeforeTopCall right topIndex
+argument selectedBeforeTopCall left I64 selectedIndex
+argument selectedBeforeTopCall right I64 topIndex
 run selectedBeforeTopCall
-bind selectedBeforeTop Bool selectedBeforeTopCall
-branchIf selectedBeforeTop returnSelectedAsTop
+bind value selectedBeforeTop Bool selectedBeforeTopCall
+branch if condition selectedBeforeTop target returnSelectedAsTop
 call visibleLimitCall math.addI64
-arg visibleLimitCall left topIndex
-arg visibleLimitCall right visibleRows
+argument visibleLimitCall left I64 topIndex
+argument visibleLimitCall right I64 visibleRows
 run visibleLimitCall
-bind visibleLimit CSignedInt64 visibleLimitCall
+bind value visibleLimit CSignedInt64 visibleLimitCall
 call selectedPastVisibleCall math.greaterThanOrEqualI64
-arg selectedPastVisibleCall left selectedIndex
-arg selectedPastVisibleCall right visibleLimit
+argument selectedPastVisibleCall left I64 selectedIndex
+argument selectedPastVisibleCall right I64 visibleLimit
 run selectedPastVisibleCall
-bind selectedPastVisible Bool selectedPastVisibleCall
-branchIf selectedPastVisible computeScrolledTop
-returnValue topIndex
+bind value selectedPastVisible Bool selectedPastVisibleCall
+branch if condition selectedPastVisible target computeScrolledTop
+return value topIndex
 label returnSelectedAsTop
-returnValue selectedIndex
+return value selectedIndex
 label computeScrolledTop
 call subtractRowsCall math.subtractI64
-arg subtractRowsCall left selectedIndex
-arg subtractRowsCall right visibleRows
+argument subtractRowsCall left I64 selectedIndex
+argument subtractRowsCall right I64 visibleRows
 run subtractRowsCall
-bind selectedMinusVisibleRows CSignedInt64 subtractRowsCall
+bind value selectedMinusVisibleRows CSignedInt64 subtractRowsCall
 call addOneCall math.addI64
-arg addOneCall left selectedMinusVisibleRows
-arg addOneCall right oneValue
+argument addOneCall left I64 selectedMinusVisibleRows
+argument addOneCall right I64 oneValue
 run addOneCall
-bind scrolledTop CSignedInt64 addOneCall
-returnValue scrolledTop
+bind value scrolledTop CSignedInt64 addOneCall
+return value scrolledTop
 
 operation computeMaxSelectable
-input computeMaxSelectable todoCount CSignedInt64
-input computeMaxSelectable todoCapacity CSignedInt64
-output computeMaxSelectable CSignedInt64
-memoryHeap computeMaxSelectable no
+input operation computeMaxSelectable todoCount CSignedInt64
+input operation computeMaxSelectable todoCapacity CSignedInt64
+output operation computeMaxSelectable CSignedInt64
+memory computeMaxSelectable heap no
 async computeMaxSelectable no
-purpose computeMaxSelectable "Return the last selectable row, including the new-note row when capacity remains."
-invariant computeMaxSelectable "Requires todoCapacity greater than zero; zero capacity falls back to zero only as a defensive sentinel."
+purpose operation computeMaxSelectable "Return the last selectable row, including the new-note row when capacity remains."
+invariant operation computeMaxSelectable "Requires todoCapacity greater than zero; zero capacity falls back to zero only as a defensive sentinel."
 label startComputeMaxSelectable
 storage local immutable oneValue CSignedInt64 1
 storage local immutable zeroValue CSignedInt64 0
 call hasAddRowCall math.lessThanI64
-arg hasAddRowCall left todoCount
-arg hasAddRowCall right todoCapacity
+argument hasAddRowCall left I64 todoCount
+argument hasAddRowCall right I64 todoCapacity
 run hasAddRowCall
-bind hasAddRow Bool hasAddRowCall
-branchIf hasAddRow returnCountAsMax
+bind value hasAddRow Bool hasAddRowCall
+branch if condition hasAddRow target returnCountAsMax
 call emptyCapacityCheckCall math.equalI64
-arg emptyCapacityCheckCall left todoCapacity
-arg emptyCapacityCheckCall right zeroValue
+argument emptyCapacityCheckCall left I64 todoCapacity
+argument emptyCapacityCheckCall right I64 zeroValue
 run emptyCapacityCheckCall
-bind capacityIsZero Bool emptyCapacityCheckCall
-branchIf capacityIsZero returnZeroMax
+bind value capacityIsZero Bool emptyCapacityCheckCall
+branch if condition capacityIsZero target returnZeroMax
 call lastExistingCall math.subtractI64
-arg lastExistingCall left todoCount
-arg lastExistingCall right oneValue
+argument lastExistingCall left I64 todoCount
+argument lastExistingCall right I64 oneValue
 run lastExistingCall
-bind lastExistingIndex CSignedInt64 lastExistingCall
-returnValue lastExistingIndex
+bind value lastExistingIndex CSignedInt64 lastExistingCall
+return value lastExistingIndex
 label returnCountAsMax
-returnValue todoCount
+return value todoCount
 label returnZeroMax
-returnValue zeroValue
+return value zeroValue
 
 operation isNegativeStatus
-input isNegativeStatus statusCode CSignedInt32
-output isNegativeStatus Bool
-memoryHeap isNegativeStatus no
+input operation isNegativeStatus statusCode CSignedInt32
+output operation isNegativeStatus Bool
+memory isNegativeStatus heap no
 async isNegativeStatus no
-purpose isNegativeStatus "Return true when a C status code is negative."
-invariant isNegativeStatus "Used for libc write/close calls whose negative result indicates failure."
+purpose operation isNegativeStatus "Return true when a C status code is negative."
+invariant operation isNegativeStatus "Used for libc write/close calls whose negative result indicates failure."
 label startIsNegativeStatus
 storage local immutable zeroStatus CSignedInt32 0
 call negativeCheckCall math.lessThanCSignedInt32
-arg negativeCheckCall left statusCode
-arg negativeCheckCall right zeroStatus
+argument negativeCheckCall left CSignedInt32 statusCode
+argument negativeCheckCall right CSignedInt32 zeroStatus
 run negativeCheckCall
-bind statusIsNegative Bool negativeCheckCall
-returnValue statusIsNegative
+bind value statusIsNegative Bool negativeCheckCall
+return value statusIsNegative
 
 operation writeJsonEscapedStringBuffer
-input writeJsonEscapedStringBuffer fileHandle CFileHandle
-input writeJsonEscapedStringBuffer titleBuffer COpaqueMemoryAddress
-output writeJsonEscapedStringBuffer SaveTodosStatus
+input operation writeJsonEscapedStringBuffer fileHandle CFileHandle
+input operation writeJsonEscapedStringBuffer titleBuffer COpaqueMemoryAddress
+output operation writeJsonEscapedStringBuffer SaveTodosStatus
 effect writeJsonEscapedStringBuffer read memory.buffer
 effect writeJsonEscapedStringBuffer write filesystem
-authority writeJsonEscapedStringBuffer memory.buffer read
-authority writeJsonEscapedStringBuffer filesystem write
-memoryHeap writeJsonEscapedStringBuffer no
+authority writeJsonEscapedStringBuffer read memory.buffer
+authority writeJsonEscapedStringBuffer write filesystem
+memory writeJsonEscapedStringBuffer heap no
 async writeJsonEscapedStringBuffer no
-purpose writeJsonEscapedStringBuffer "Write a title buffer as JSON string content with quote and backslash escaped."
-invariant writeJsonEscapedStringBuffer "The loop reads until NUL and writes each source byte once, escaping quote and backslash before the byte reaches JSON."
+purpose operation writeJsonEscapedStringBuffer "Write a title buffer as JSON string content with quote and backslash escaped."
+invariant operation writeJsonEscapedStringBuffer "The loop reads until NUL and writes each source byte once, escaping quote and backslash before the byte reaches JSON."
 label startWriteJsonEscapedStringBuffer
 storage local immutable zeroIndex CSignedInt64 0
 storage local immutable oneStep CSignedInt64 1
@@ -958,95 +947,95 @@ storage local immutable escapedBackslashText CNullTerminatedByteString "\\\\"
 storage local mutable readIndex CSignedInt64 zeroIndex
 label writeJsonEscapedLoop
 call loadTitleByteCall pointer.loadByte
-arg loadTitleByteCall buffer titleBuffer
-arg loadTitleByteCall offset readIndex
+argument loadTitleByteCall buffer COpaqueMemoryAddress titleBuffer
+argument loadTitleByteCall offset CByteCount readIndex
 run loadTitleByteCall
-bind titleByte CSignedInt32 loadTitleByteCall
+bind value titleByte CSignedInt32 loadTitleByteCall
 call nulCheckCall math.equalCSignedInt32
-arg nulCheckCall left titleByte
-arg nulCheckCall right nulByte
+argument nulCheckCall left CSignedInt32 titleByte
+argument nulCheckCall right CSignedInt32 nulByte
 run nulCheckCall
-bind titleByteIsNul Bool nulCheckCall
-branchIf titleByteIsNul finishWriteJsonEscaped
+bind value titleByteIsNul Bool nulCheckCall
+branch if condition titleByteIsNul target finishWriteJsonEscaped
 call quoteCheckCall math.equalCSignedInt32
-arg quoteCheckCall left titleByte
-arg quoteCheckCall right quoteByte
+argument quoteCheckCall left CSignedInt32 titleByte
+argument quoteCheckCall right CSignedInt32 quoteByte
 run quoteCheckCall
-bind titleByteIsQuote Bool quoteCheckCall
-branchIf titleByteIsQuote writeEscapedQuote
+bind value titleByteIsQuote Bool quoteCheckCall
+branch if condition titleByteIsQuote target writeEscapedQuote
 call backslashCheckCall math.equalCSignedInt32
-arg backslashCheckCall left titleByte
-arg backslashCheckCall right backslashByte
+argument backslashCheckCall left CSignedInt32 titleByte
+argument backslashCheckCall right CSignedInt32 backslashByte
 run backslashCheckCall
-bind titleByteIsBackslash Bool backslashCheckCall
-branchIf titleByteIsBackslash writeEscapedBackslash
+bind value titleByteIsBackslash Bool backslashCheckCall
+branch if condition titleByteIsBackslash target writeEscapedBackslash
 call writeRawCharacterCall c.fprintf
-arg writeRawCharacterCall stream fileHandle
-arg writeRawCharacterCall format rawCharacterFormatText
-arg writeRawCharacterCall character titleByte
+argument writeRawCharacterCall stream CFileHandle fileHandle
+argument writeRawCharacterCall format CNullTerminatedByteString rawCharacterFormatText
+argument writeRawCharacterCall character CSignedInt32 titleByte
 run writeRawCharacterCall
-bind rawCharacterWriteResult CSignedInt32 writeRawCharacterCall
+bind value rawCharacterWriteResult CSignedInt32 writeRawCharacterCall
 call rawCharacterWriteFailedCall isNegativeStatus
-arg rawCharacterWriteFailedCall statusCode rawCharacterWriteResult
+argument rawCharacterWriteFailedCall statusCode CSignedInt32 rawCharacterWriteResult
 run rawCharacterWriteFailedCall
-bind rawCharacterWriteFailed Bool rawCharacterWriteFailedCall
-branchIf rawCharacterWriteFailed returnJsonWriteFailed
-branch advanceJsonEscapedLoop
+bind value rawCharacterWriteFailed Bool rawCharacterWriteFailedCall
+branch if condition rawCharacterWriteFailed target returnJsonWriteFailed
+branch else target advanceJsonEscapedLoop
 label writeEscapedQuote
 call writeEscapedQuoteCall c.fprintf
-arg writeEscapedQuoteCall stream fileHandle
-arg writeEscapedQuoteCall format escapedQuoteText
+argument writeEscapedQuoteCall stream CFileHandle fileHandle
+argument writeEscapedQuoteCall format CNullTerminatedByteString escapedQuoteText
 run writeEscapedQuoteCall
-bind escapedQuoteWriteResult CSignedInt32 writeEscapedQuoteCall
+bind value escapedQuoteWriteResult CSignedInt32 writeEscapedQuoteCall
 call escapedQuoteWriteFailedCall isNegativeStatus
-arg escapedQuoteWriteFailedCall statusCode escapedQuoteWriteResult
+argument escapedQuoteWriteFailedCall statusCode CSignedInt32 escapedQuoteWriteResult
 run escapedQuoteWriteFailedCall
-bind escapedQuoteWriteFailed Bool escapedQuoteWriteFailedCall
-branchIf escapedQuoteWriteFailed returnJsonWriteFailed
-branch advanceJsonEscapedLoop
+bind value escapedQuoteWriteFailed Bool escapedQuoteWriteFailedCall
+branch if condition escapedQuoteWriteFailed target returnJsonWriteFailed
+branch else target advanceJsonEscapedLoop
 label writeEscapedBackslash
 call writeEscapedBackslashCall c.fprintf
-arg writeEscapedBackslashCall stream fileHandle
-arg writeEscapedBackslashCall format escapedBackslashText
+argument writeEscapedBackslashCall stream CFileHandle fileHandle
+argument writeEscapedBackslashCall format CNullTerminatedByteString escapedBackslashText
 run writeEscapedBackslashCall
-bind escapedBackslashWriteResult CSignedInt32 writeEscapedBackslashCall
+bind value escapedBackslashWriteResult CSignedInt32 writeEscapedBackslashCall
 call escapedBackslashWriteFailedCall isNegativeStatus
-arg escapedBackslashWriteFailedCall statusCode escapedBackslashWriteResult
+argument escapedBackslashWriteFailedCall statusCode CSignedInt32 escapedBackslashWriteResult
 run escapedBackslashWriteFailedCall
-bind escapedBackslashWriteFailed Bool escapedBackslashWriteFailedCall
-branchIf escapedBackslashWriteFailed returnJsonWriteFailed
-branch advanceJsonEscapedLoop
+bind value escapedBackslashWriteFailed Bool escapedBackslashWriteFailedCall
+branch if condition escapedBackslashWriteFailed target returnJsonWriteFailed
+branch else target advanceJsonEscapedLoop
 label advanceJsonEscapedLoop
 call advanceReadIndexCall math.addI64
-arg advanceReadIndexCall left readIndex
-arg advanceReadIndexCall right oneStep
+argument advanceReadIndexCall left I64 readIndex
+argument advanceReadIndexCall right I64 oneStep
 run advanceReadIndexCall
-bind nextReadIndex CSignedInt64 advanceReadIndexCall
-set local readIndex nextReadIndex
-branch writeJsonEscapedLoop
+bind value nextReadIndex CSignedInt64 advanceReadIndexCall
+set memory readIndex nextReadIndex
+jump target writeJsonEscapedLoop
 label finishWriteJsonEscaped
-returnValue SaveSucceeded
+return value SaveSucceeded
 label returnJsonWriteFailed
-returnValue SaveWriteFailed
+return value SaveWriteFailed
 
 operation saveTodosToJson
-input saveTodosToJson doneArray COpaqueMemoryAddress
-input saveTodosToJson titlesBuffer COpaqueMemoryAddress
-input saveTodosToJson todoCount CSignedInt64
-input saveTodosToJson titleCapacity CSignedInt64
-output saveTodosToJson SaveTodosStatus
+input operation saveTodosToJson doneArray COpaqueMemoryAddress
+input operation saveTodosToJson titlesBuffer COpaqueMemoryAddress
+input operation saveTodosToJson todoCount CSignedInt64
+input operation saveTodosToJson titleCapacity CSignedInt64
+output operation saveTodosToJson SaveTodosStatus
 effect saveTodosToJson read memory.buffer
 effect saveTodosToJson write filesystem
 effect saveTodosToJson open file
 effect saveTodosToJson close file
-authority saveTodosToJson memory.buffer read
-authority saveTodosToJson filesystem write
-authority saveTodosToJson file open
-authority saveTodosToJson file close
-memoryHeap saveTodosToJson no
+authority saveTodosToJson read memory.buffer
+authority saveTodosToJson write filesystem
+authority saveTodosToJson open file
+authority saveTodosToJson close file
+memory saveTodosToJson heap no
 async saveTodosToJson no
-purpose saveTodosToJson "Persist the active todo array as a JSON array."
-invariant saveTodosToJson "The save loop writes each active todo index once from zero up to todoCount, title bytes pass through JSON escaping, and write failure takes precedence if close also fails."
+purpose operation saveTodosToJson "Persist the active todo array as a JSON array."
+invariant operation saveTodosToJson "The save loop writes each active todo index once from zero up to todoCount, title bytes pass through JSON escaping, and write failure takes precedence if close also fails."
 label startSaveTodosToJson
 storage local immutable zeroValue CSignedInt64 0
 storage local immutable oneValue CSignedInt64 1
@@ -1059,158 +1048,158 @@ storage local immutable itemSuffixText CNullTerminatedByteString "\"}\n"
 storage local immutable itemCommaSuffixText CNullTerminatedByteString "\"},\n"
 storage local mutable saveIndex CSignedInt64 zeroValue
 call openCall c.fopen
-arg openCall filename dataFilePath
-arg openCall mode writeMode
+argument openCall filename CNullTerminatedByteString dataFilePath
+argument openCall mode CNullTerminatedByteString writeMode
 run openCall
-bind fileHandle CFileHandle openCall
+bind value fileHandle CFileHandle openCall
 call fileNullCheckCall pointer.isNull
-arg fileNullCheckCall pointer fileHandle
+argument fileNullCheckCall pointer COpaqueMemoryAddress fileHandle
 run fileNullCheckCall
-bind fileIsNull Bool fileNullCheckCall
-branchIf fileIsNull saveSkipped
+bind value fileIsNull Bool fileNullCheckCall
+branch if condition fileIsNull target saveSkipped
 call openArrayCall c.fprintf
-arg openArrayCall stream fileHandle
-arg openArrayCall format openArrayText
+argument openArrayCall stream CFileHandle fileHandle
+argument openArrayCall format CNullTerminatedByteString openArrayText
 run openArrayCall
-bind openArrayResult CSignedInt32 openArrayCall
+bind value openArrayResult CSignedInt32 openArrayCall
 call openArrayFailedCall isNegativeStatus
-arg openArrayFailedCall statusCode openArrayResult
+argument openArrayFailedCall statusCode CSignedInt32 openArrayResult
 run openArrayFailedCall
-bind openArrayFailed Bool openArrayFailedCall
-branchIf openArrayFailed closeAfterWriteFailed
+bind value openArrayFailed Bool openArrayFailedCall
+branch if condition openArrayFailed target closeAfterWriteFailed
 label saveLoop
 call saveDoneCheckCall math.greaterThanOrEqualI64
-arg saveDoneCheckCall left saveIndex
-arg saveDoneCheckCall right todoCount
+argument saveDoneCheckCall left I64 saveIndex
+argument saveDoneCheckCall right I64 todoCount
 run saveDoneCheckCall
-bind saveDone Bool saveDoneCheckCall
-branchIf saveDone finishSave
+bind value saveDone Bool saveDoneCheckCall
+branch if condition saveDone target finishSave
 call doneLoadCall pointer.loadByte
-arg doneLoadCall buffer doneArray
-arg doneLoadCall offset saveIndex
+argument doneLoadCall buffer COpaqueMemoryAddress doneArray
+argument doneLoadCall offset CByteCount saveIndex
 run doneLoadCall
-bind doneValue CSignedInt32 doneLoadCall
+bind value doneValue CSignedInt32 doneLoadCall
 call titlePointerCall getTitlePointerAt
-arg titlePointerCall titlesBuffer titlesBuffer
-arg titlePointerCall todoIndex saveIndex
-arg titlePointerCall titleCapacity titleCapacity
+argument titlePointerCall titlesBuffer COpaqueMemoryAddress titlesBuffer
+argument titlePointerCall todoIndex CSignedInt64 saveIndex
+argument titlePointerCall titleCapacity CSignedInt64 titleCapacity
 run titlePointerCall
-bind titlePointer COpaqueMemoryAddress titlePointerCall
+bind value titlePointer COpaqueMemoryAddress titlePointerCall
 call nextIndexCall math.addI64
-arg nextIndexCall left saveIndex
-arg nextIndexCall right oneValue
+argument nextIndexCall left I64 saveIndex
+argument nextIndexCall right I64 oneValue
 run nextIndexCall
-bind nextSaveIndex CSignedInt64 nextIndexCall
+bind value nextSaveIndex CSignedInt64 nextIndexCall
 call lastItemCheckCall math.equalI64
-arg lastItemCheckCall left nextSaveIndex
-arg lastItemCheckCall right todoCount
+argument lastItemCheckCall left I64 nextSaveIndex
+argument lastItemCheckCall right I64 todoCount
 run lastItemCheckCall
-bind isLastItem Bool lastItemCheckCall
+bind value isLastItem Bool lastItemCheckCall
 call writeItemPrefixCall c.fprintf
-arg writeItemPrefixCall stream fileHandle
-arg writeItemPrefixCall format itemPrefixFormatText
-arg writeItemPrefixCall done doneValue
+argument writeItemPrefixCall stream CFileHandle fileHandle
+argument writeItemPrefixCall format CNullTerminatedByteString itemPrefixFormatText
+argument writeItemPrefixCall done CSignedInt32 doneValue
 run writeItemPrefixCall
-bind itemPrefixWriteResult CSignedInt32 writeItemPrefixCall
+bind value itemPrefixWriteResult CSignedInt32 writeItemPrefixCall
 call itemPrefixWriteFailedCall isNegativeStatus
-arg itemPrefixWriteFailedCall statusCode itemPrefixWriteResult
+argument itemPrefixWriteFailedCall statusCode CSignedInt32 itemPrefixWriteResult
 run itemPrefixWriteFailedCall
-bind itemPrefixWriteFailed Bool itemPrefixWriteFailedCall
-branchIf itemPrefixWriteFailed closeAfterWriteFailed
+bind value itemPrefixWriteFailed Bool itemPrefixWriteFailedCall
+branch if condition itemPrefixWriteFailed target closeAfterWriteFailed
 call writeTitleCall writeJsonEscapedStringBuffer
-arg writeTitleCall fileHandle fileHandle
-arg writeTitleCall titleBuffer titlePointer
+argument writeTitleCall fileHandle CFileHandle fileHandle
+argument writeTitleCall titleBuffer COpaqueMemoryAddress titlePointer
 run writeTitleCall
-bind titleWriteStatus SaveTodosStatus writeTitleCall
+bind value titleWriteStatus SaveTodosStatus writeTitleCall
 call titleWriteSuccessCall SaveTodosStatus.equal
-arg titleWriteSuccessCall left titleWriteStatus
-arg titleWriteSuccessCall right SaveSucceeded
+argument titleWriteSuccessCall left SaveTodosStatus titleWriteStatus
+argument titleWriteSuccessCall right SaveTodosStatus SaveSucceeded
 run titleWriteSuccessCall
-bind titleWriteSucceeded Bool titleWriteSuccessCall
-branchIf titleWriteSucceeded continueAfterTitleWrite
-branch closeAfterWriteFailed
+bind value titleWriteSucceeded Bool titleWriteSuccessCall
+branch if condition titleWriteSucceeded target continueAfterTitleWrite
+branch else target closeAfterWriteFailed
 label continueAfterTitleWrite
-branchIf isLastItem writeLastItemSuffix
+branch if condition isLastItem target writeLastItemSuffix
 call writeItemCommaSuffixCall c.fprintf
-arg writeItemCommaSuffixCall stream fileHandle
-arg writeItemCommaSuffixCall format itemCommaSuffixText
+argument writeItemCommaSuffixCall stream CFileHandle fileHandle
+argument writeItemCommaSuffixCall format CNullTerminatedByteString itemCommaSuffixText
 run writeItemCommaSuffixCall
-bind commaSuffixWriteResult CSignedInt32 writeItemCommaSuffixCall
+bind value commaSuffixWriteResult CSignedInt32 writeItemCommaSuffixCall
 call commaSuffixWriteFailedCall isNegativeStatus
-arg commaSuffixWriteFailedCall statusCode commaSuffixWriteResult
+argument commaSuffixWriteFailedCall statusCode CSignedInt32 commaSuffixWriteResult
 run commaSuffixWriteFailedCall
-bind commaSuffixWriteFailed Bool commaSuffixWriteFailedCall
-branchIf commaSuffixWriteFailed closeAfterWriteFailed
-set local saveIndex nextSaveIndex
-branch saveLoop
+bind value commaSuffixWriteFailed Bool commaSuffixWriteFailedCall
+branch if condition commaSuffixWriteFailed target closeAfterWriteFailed
+set memory saveIndex nextSaveIndex
+jump target saveLoop
 label writeLastItemSuffix
 call writeItemSuffixCall c.fprintf
-arg writeItemSuffixCall stream fileHandle
-arg writeItemSuffixCall format itemSuffixText
+argument writeItemSuffixCall stream CFileHandle fileHandle
+argument writeItemSuffixCall format CNullTerminatedByteString itemSuffixText
 run writeItemSuffixCall
-bind itemSuffixWriteResult CSignedInt32 writeItemSuffixCall
+bind value itemSuffixWriteResult CSignedInt32 writeItemSuffixCall
 call itemSuffixWriteFailedCall isNegativeStatus
-arg itemSuffixWriteFailedCall statusCode itemSuffixWriteResult
+argument itemSuffixWriteFailedCall statusCode CSignedInt32 itemSuffixWriteResult
 run itemSuffixWriteFailedCall
-bind itemSuffixWriteFailed Bool itemSuffixWriteFailedCall
-branchIf itemSuffixWriteFailed closeAfterWriteFailed
-set local saveIndex nextSaveIndex
-branch saveLoop
+bind value itemSuffixWriteFailed Bool itemSuffixWriteFailedCall
+branch if condition itemSuffixWriteFailed target closeAfterWriteFailed
+set memory saveIndex nextSaveIndex
+jump target saveLoop
 label finishSave
 call closeArrayCall c.fprintf
-arg closeArrayCall stream fileHandle
-arg closeArrayCall format closeArrayText
+argument closeArrayCall stream CFileHandle fileHandle
+argument closeArrayCall format CNullTerminatedByteString closeArrayText
 run closeArrayCall
-bind closeArrayWriteResult CSignedInt32 closeArrayCall
+bind value closeArrayWriteResult CSignedInt32 closeArrayCall
 call closeArrayWriteFailedCall isNegativeStatus
-arg closeArrayWriteFailedCall statusCode closeArrayWriteResult
+argument closeArrayWriteFailedCall statusCode CSignedInt32 closeArrayWriteResult
 run closeArrayWriteFailedCall
-bind closeArrayWriteFailed Bool closeArrayWriteFailedCall
-branchIf closeArrayWriteFailed closeAfterWriteFailed
+bind value closeArrayWriteFailed Bool closeArrayWriteFailedCall
+branch if condition closeArrayWriteFailed target closeAfterWriteFailed
 call closeCall c.fclose
-arg closeCall stream fileHandle
+argument closeCall stream CFileHandle fileHandle
 run closeCall
-bind closeResult CSignedInt32 closeCall
+bind value closeResult CSignedInt32 closeCall
 call closeFailedCall isNegativeStatus
-arg closeFailedCall statusCode closeResult
+argument closeFailedCall statusCode CSignedInt32 closeResult
 run closeFailedCall
-bind closeFailed Bool closeFailedCall
-branchIf closeFailed returnSaveCloseFailed
-returnValue SaveSucceeded
+bind value closeFailed Bool closeFailedCall
+branch if condition closeFailed target returnSaveCloseFailed
+return value SaveSucceeded
 label closeAfterWriteFailed
 call closeAfterWriteFailedCall c.fclose
-arg closeAfterWriteFailedCall stream fileHandle
+argument closeAfterWriteFailedCall stream CFileHandle fileHandle
 run closeAfterWriteFailedCall
-ignoreValue closeAfterWriteFailedCall CSignedInt32
-returnValue SaveWriteFailed
+ignore value source closeAfterWriteFailedCall type CSignedInt32
+return value SaveWriteFailed
 label returnSaveCloseFailed
-returnValue SaveCloseFailed
+return value SaveCloseFailed
 label saveSkipped
-returnValue SaveOpenFailed
+return value SaveOpenFailed
 
 operation loadTodosFromJson
-input loadTodosFromJson doneArray COpaqueMemoryAddress
-input loadTodosFromJson titlesBuffer COpaqueMemoryAddress
-input loadTodosFromJson todoCapacity CSignedInt64
-input loadTodosFromJson titleCapacity CSignedInt64
-input loadTodosFromJson lineBuffer COpaqueMemoryAddress
-input loadTodosFromJson lineBufferCapacity CSignedInt32
-output loadTodosFromJson CSignedInt64
+input operation loadTodosFromJson doneArray COpaqueMemoryAddress
+input operation loadTodosFromJson titlesBuffer COpaqueMemoryAddress
+input operation loadTodosFromJson todoCapacity CSignedInt64
+input operation loadTodosFromJson titleCapacity CSignedInt64
+input operation loadTodosFromJson lineBuffer COpaqueMemoryAddress
+input operation loadTodosFromJson lineBufferCapacity CSignedInt32
+output operation loadTodosFromJson CSignedInt64
 effect loadTodosFromJson read filesystem
 effect loadTodosFromJson open file
 effect loadTodosFromJson close file
 effect loadTodosFromJson read memory.buffer
 effect loadTodosFromJson write memory.buffer
-authority loadTodosFromJson filesystem read
-authority loadTodosFromJson file open
-authority loadTodosFromJson file close
-authority loadTodosFromJson memory.buffer read
-authority loadTodosFromJson memory.buffer write
-memoryHeap loadTodosFromJson no
+authority loadTodosFromJson read filesystem
+authority loadTodosFromJson open file
+authority loadTodosFromJson close file
+authority loadTodosFromJson read memory.buffer
+authority loadTodosFromJson write memory.buffer
+memory loadTodosFromJson heap no
 async loadTodosFromJson no
-purpose loadTodosFromJson "Load active todo objects from todos.json into the heap-backed arrays."
-invariant loadTodosFromJson "The load loop never appends more than todoCapacity active todos and accepts only the exact object key order emitted by saveTodosToJson."
-invariant loadTodosFromJson "activeValueOffset, doneValueOffset, and titleValueOffset are coupled to saveTodosToJson's itemPrefixFormatText. Any edit to that format string must update all three offsets in lockstep or this loader will silently parse the wrong byte positions."
+purpose operation loadTodosFromJson "Load active todo objects from todos.json into the heap-backed arrays."
+invariant operation loadTodosFromJson "The load loop never appends more than todoCapacity active todos and accepts only the exact object key order emitted by saveTodosToJson."
+invariant operation loadTodosFromJson "activeValueOffset, doneValueOffset, and titleValueOffset are coupled to saveTodosToJson's itemPrefixFormatText. Any edit to that format string must update all three offsets in lockstep or this loader will silently parse the wrong byte positions."
 warning loadTodosFromJson "Malformed lines are skipped or truncated by fixed-offset parsing; this is not a general JSON decoder."
 label startLoadTodosFromJson
 storage local immutable zeroValue CSignedInt64 0
@@ -1229,15 +1218,15 @@ storage local immutable doneValueOffset CSignedInt64 19
 storage local immutable titleValueOffset CSignedInt64 30
 storage local mutable loadedCount CSignedInt64 zeroValue
 call openCall c.fopen
-arg openCall filename dataFilePath
-arg openCall mode readMode
+argument openCall filename CNullTerminatedByteString dataFilePath
+argument openCall mode CNullTerminatedByteString readMode
 run openCall
-bind fileHandle CFileHandle openCall
+bind value fileHandle CFileHandle openCall
 call fileNullCheckCall pointer.isNull
-arg fileNullCheckCall pointer fileHandle
+argument fileNullCheckCall pointer COpaqueMemoryAddress fileHandle
 run fileNullCheckCall
-bind fileIsNull Bool fileNullCheckCall
-branchIf fileIsNull loadSkipped
+bind value fileIsNull Bool fileNullCheckCall
+branch if condition fileIsNull target loadSkipped
 # rationale: Consume and discard the opening `[\n` line emitted by
 # saveTodosToJson's openArrayText. The result is intentionally ignored:
 # an empty or malformed file makes the next c.fgets in loadLoop return
@@ -1245,299 +1234,299 @@ branchIf fileIsNull loadSkipped
 # finishLoad. There is no separate diagnostic for a missing `[` because
 # the loader is best-effort by design (see warning on loadTodosFromJson).
 call readOpenArrayCall c.fgets
-arg readOpenArrayCall string lineBuffer
-arg readOpenArrayCall count lineBufferCapacity
-arg readOpenArrayCall stream fileHandle
+argument readOpenArrayCall string COpaqueMemoryAddress lineBuffer
+argument readOpenArrayCall count CSignedInt32 lineBufferCapacity
+argument readOpenArrayCall stream CFileHandle fileHandle
 run readOpenArrayCall
-ignoreValue readOpenArrayCall CNullTerminatedByteString
+ignore value source readOpenArrayCall type CNullTerminatedByteString
 label loadLoop
 call capacityCheckCall math.greaterThanOrEqualI64
-arg capacityCheckCall left loadedCount
-arg capacityCheckCall right todoCapacity
+argument capacityCheckCall left I64 loadedCount
+argument capacityCheckCall right I64 todoCapacity
 run capacityCheckCall
-bind capacityReached Bool capacityCheckCall
-branchIf capacityReached finishLoad
+bind value capacityReached Bool capacityCheckCall
+branch if condition capacityReached target finishLoad
 call readLineCall c.fgets
-arg readLineCall string lineBuffer
-arg readLineCall count lineBufferCapacity
-arg readLineCall stream fileHandle
+argument readLineCall string COpaqueMemoryAddress lineBuffer
+argument readLineCall count CSignedInt32 lineBufferCapacity
+argument readLineCall stream CFileHandle fileHandle
 run readLineCall
-bind lineReadResult CNullTerminatedByteString readLineCall
+bind value lineReadResult CNullTerminatedByteString readLineCall
 call readNullCheckCall pointer.isNull
-arg readNullCheckCall pointer lineReadResult
+argument readNullCheckCall pointer COpaqueMemoryAddress lineReadResult
 run readNullCheckCall
-bind readReturnedNull Bool readNullCheckCall
-branchIf readReturnedNull finishLoad
+bind value readReturnedNull Bool readNullCheckCall
+branch if condition readReturnedNull target finishLoad
 call firstByteCall pointer.loadByte
-arg firstByteCall buffer lineBuffer
-arg firstByteCall offset zeroValue
+argument firstByteCall buffer COpaqueMemoryAddress lineBuffer
+argument firstByteCall offset CByteCount zeroValue
 run firstByteCall
-bind firstByte CSignedInt32 firstByteCall
+bind value firstByte CSignedInt32 firstByteCall
 call closeBracketCheckCall math.equalCSignedInt32
-arg closeBracketCheckCall left firstByte
-arg closeBracketCheckCall right closeBracketByte
+argument closeBracketCheckCall left CSignedInt32 firstByte
+argument closeBracketCheckCall right CSignedInt32 closeBracketByte
 run closeBracketCheckCall
-bind lineIsCloseBracket Bool closeBracketCheckCall
-branchIf lineIsCloseBracket finishLoad
+bind value lineIsCloseBracket Bool closeBracketCheckCall
+branch if condition lineIsCloseBracket target finishLoad
 call activeParseCall parseJsonFlagAtOffset
-arg activeParseCall sourceLine lineBuffer
-arg activeParseCall valueOffset activeValueOffset
+argument activeParseCall sourceLine COpaqueMemoryAddress lineBuffer
+argument activeParseCall valueOffset CSignedInt64 activeValueOffset
 run activeParseCall
-bind activeValue CSignedInt32 activeParseCall
+bind value activeValue CSignedInt32 activeParseCall
 call activeCheckCall math.equalCSignedInt32
-arg activeCheckCall left activeValue
-arg activeCheckCall right oneFlag
+argument activeCheckCall left CSignedInt32 activeValue
+argument activeCheckCall right CSignedInt32 oneFlag
 run activeCheckCall
-bind lineIsActive Bool activeCheckCall
-branchIf lineIsActive appendLoadedTodo
-branch loadLoop
+bind value lineIsActive Bool activeCheckCall
+branch if condition lineIsActive target appendLoadedTodo
+branch else target loadLoop
 label appendLoadedTodo
 call doneParseCall parseJsonFlagAtOffset
-arg doneParseCall sourceLine lineBuffer
-arg doneParseCall valueOffset doneValueOffset
+argument doneParseCall sourceLine COpaqueMemoryAddress lineBuffer
+argument doneParseCall valueOffset CSignedInt64 doneValueOffset
 run doneParseCall
-bind doneValue CSignedInt32 doneParseCall
+bind value doneValue CSignedInt32 doneParseCall
 call storeDoneCall pointer.storeByte
-arg storeDoneCall buffer doneArray
-arg storeDoneCall offset loadedCount
-arg storeDoneCall value doneValue
+argument storeDoneCall buffer COpaqueMemoryAddress doneArray
+argument storeDoneCall offset CByteCount loadedCount
+argument storeDoneCall value CSignedInt64 doneValue
 run storeDoneCall
 call titlePointerCall getTitlePointerAt
-arg titlePointerCall titlesBuffer titlesBuffer
-arg titlePointerCall todoIndex loadedCount
-arg titlePointerCall titleCapacity titleCapacity
+argument titlePointerCall titlesBuffer COpaqueMemoryAddress titlesBuffer
+argument titlePointerCall todoIndex CSignedInt64 loadedCount
+argument titlePointerCall titleCapacity CSignedInt64 titleCapacity
 run titlePointerCall
-bind titlePointer COpaqueMemoryAddress titlePointerCall
+bind value titlePointer COpaqueMemoryAddress titlePointerCall
 call copyTitleCall copyFixedTodoJsonTitleAtOffset
-arg copyTitleCall sourceLine lineBuffer
-arg copyTitleCall titleBuffer titlePointer
-arg copyTitleCall valueOffset titleValueOffset
-arg copyTitleCall titleBufferCapacity titleCapacity
+argument copyTitleCall sourceLine COpaqueMemoryAddress lineBuffer
+argument copyTitleCall titleBuffer COpaqueMemoryAddress titlePointer
+argument copyTitleCall valueOffset CSignedInt64 titleValueOffset
+argument copyTitleCall titleBufferCapacity CSignedInt64 titleCapacity
 run copyTitleCall
-ignoreValue copyTitleCall CSignedInt64
+ignore value source copyTitleCall type CSignedInt64
 call incrementLoadedCall math.addI64
-arg incrementLoadedCall left loadedCount
-arg incrementLoadedCall right oneValue
+argument incrementLoadedCall left I64 loadedCount
+argument incrementLoadedCall right I64 oneValue
 run incrementLoadedCall
-bind nextLoadedCount CSignedInt64 incrementLoadedCall
-set local loadedCount nextLoadedCount
-branch loadLoop
+bind value nextLoadedCount CSignedInt64 incrementLoadedCall
+set memory loadedCount nextLoadedCount
+jump target loadLoop
 label finishLoad
 call closeCall c.fclose
-arg closeCall stream fileHandle
+argument closeCall stream CFileHandle fileHandle
 run closeCall
-ignoreValue closeCall CSignedInt32
-returnValue loadedCount
+ignore value source closeCall type CSignedInt32
+return value loadedCount
 label loadSkipped
-returnValue zeroValue
+return value zeroValue
 
 operation appendTodoFromEditBuffer
-input appendTodoFromEditBuffer doneArray COpaqueMemoryAddress
-input appendTodoFromEditBuffer titlesBuffer COpaqueMemoryAddress
-input appendTodoFromEditBuffer editBuffer COpaqueMemoryAddress
-input appendTodoFromEditBuffer todoCount CSignedInt64
-input appendTodoFromEditBuffer titleCapacity CSignedInt64
-output appendTodoFromEditBuffer CSignedInt64
+input operation appendTodoFromEditBuffer doneArray COpaqueMemoryAddress
+input operation appendTodoFromEditBuffer titlesBuffer COpaqueMemoryAddress
+input operation appendTodoFromEditBuffer editBuffer COpaqueMemoryAddress
+input operation appendTodoFromEditBuffer todoCount CSignedInt64
+input operation appendTodoFromEditBuffer titleCapacity CSignedInt64
+output operation appendTodoFromEditBuffer CSignedInt64
 effect appendTodoFromEditBuffer read memory.buffer
 effect appendTodoFromEditBuffer write memory.buffer
-authority appendTodoFromEditBuffer memory.buffer read
-authority appendTodoFromEditBuffer memory.buffer write
-memoryHeap appendTodoFromEditBuffer no
+authority appendTodoFromEditBuffer read memory.buffer
+authority appendTodoFromEditBuffer write memory.buffer
+memory appendTodoFromEditBuffer heap no
 async appendTodoFromEditBuffer no
-purpose appendTodoFromEditBuffer "Append the edit buffer as a new unfinished todo."
+purpose operation appendTodoFromEditBuffer "Append the edit buffer as a new unfinished todo."
 precondition appendTodoFromEditBuffer "todoCount < todoCapacity (caller must have verified the active todo array has room before calling)."
-invariant appendTodoFromEditBuffer "This operation writes exactly one title slot and one done byte, then returns todoCount plus one."
+invariant operation appendTodoFromEditBuffer "This operation writes exactly one title slot and one done byte, then returns todoCount plus one."
 label startAppendTodoFromEditBuffer
 storage local immutable zeroValue CSignedInt64 0
 storage local immutable oneValue CSignedInt64 1
 call appendTitlePointerCall getTitlePointerAt
-arg appendTitlePointerCall titlesBuffer titlesBuffer
-arg appendTitlePointerCall todoIndex todoCount
-arg appendTitlePointerCall titleCapacity titleCapacity
+argument appendTitlePointerCall titlesBuffer COpaqueMemoryAddress titlesBuffer
+argument appendTitlePointerCall todoIndex CSignedInt64 todoCount
+argument appendTitlePointerCall titleCapacity CSignedInt64 titleCapacity
 run appendTitlePointerCall
-bind appendTitlePointer COpaqueMemoryAddress appendTitlePointerCall
+bind value appendTitlePointer COpaqueMemoryAddress appendTitlePointerCall
 call copyNewTitleCall copyStringBuffer
-arg copyNewTitleCall sourceBuffer editBuffer
-arg copyNewTitleCall targetBuffer appendTitlePointer
-arg copyNewTitleCall targetBufferCapacity titleCapacity
+argument copyNewTitleCall sourceBuffer COpaqueMemoryAddress editBuffer
+argument copyNewTitleCall targetBuffer COpaqueMemoryAddress appendTitlePointer
+argument copyNewTitleCall targetBufferCapacity CSignedInt64 titleCapacity
 run copyNewTitleCall
-ignoreValue copyNewTitleCall CSignedInt64
+ignore value source copyNewTitleCall type CSignedInt64
 call storeNewDoneCall pointer.storeByte
-arg storeNewDoneCall buffer doneArray
-arg storeNewDoneCall offset todoCount
-arg storeNewDoneCall value zeroValue
+argument storeNewDoneCall buffer COpaqueMemoryAddress doneArray
+argument storeNewDoneCall offset CByteCount todoCount
+argument storeNewDoneCall value CSignedInt64 zeroValue
 run storeNewDoneCall
 call incrementTodoCountCall math.addI64
-arg incrementTodoCountCall left todoCount
-arg incrementTodoCountCall right oneValue
+argument incrementTodoCountCall left I64 todoCount
+argument incrementTodoCountCall right I64 oneValue
 run incrementTodoCountCall
-bind incrementedTodoCount CSignedInt64 incrementTodoCountCall
-returnValue incrementedTodoCount
+bind value incrementedTodoCount CSignedInt64 incrementTodoCountCall
+return value incrementedTodoCount
 
 operation commitEditToSelectedTodo
-input commitEditToSelectedTodo titlesBuffer COpaqueMemoryAddress
-input commitEditToSelectedTodo editBuffer COpaqueMemoryAddress
-input commitEditToSelectedTodo selectedIndex CSignedInt64
-input commitEditToSelectedTodo titleCapacity CSignedInt64
-output commitEditToSelectedTodo CSignedInt64
+input operation commitEditToSelectedTodo titlesBuffer COpaqueMemoryAddress
+input operation commitEditToSelectedTodo editBuffer COpaqueMemoryAddress
+input operation commitEditToSelectedTodo selectedIndex CSignedInt64
+input operation commitEditToSelectedTodo titleCapacity CSignedInt64
+output operation commitEditToSelectedTodo CSignedInt64
 effect commitEditToSelectedTodo read memory.buffer
 effect commitEditToSelectedTodo write memory.buffer
-authority commitEditToSelectedTodo memory.buffer read
-authority commitEditToSelectedTodo memory.buffer write
-memoryHeap commitEditToSelectedTodo no
+authority commitEditToSelectedTodo read memory.buffer
+authority commitEditToSelectedTodo write memory.buffer
+memory commitEditToSelectedTodo heap no
 async commitEditToSelectedTodo no
-purpose commitEditToSelectedTodo "Replace the selected todo title with the edit buffer."
+purpose operation commitEditToSelectedTodo "Replace the selected todo title with the edit buffer."
 precondition commitEditToSelectedTodo "selectedIndex < todoCount (caller must have verified the index addresses an existing todo, not the (new note) row)."
-invariant commitEditToSelectedTodo "Only the selectedIndex title buffer is rewritten; doneArray and todoCount are unchanged."
+invariant operation commitEditToSelectedTodo "Only the selectedIndex title buffer is rewritten; doneArray and todoCount are unchanged."
 label startCommitEditToSelectedTodo
 call existingTitlePointerCall getTitlePointerAt
-arg existingTitlePointerCall titlesBuffer titlesBuffer
-arg existingTitlePointerCall todoIndex selectedIndex
-arg existingTitlePointerCall titleCapacity titleCapacity
+argument existingTitlePointerCall titlesBuffer COpaqueMemoryAddress titlesBuffer
+argument existingTitlePointerCall todoIndex CSignedInt64 selectedIndex
+argument existingTitlePointerCall titleCapacity CSignedInt64 titleCapacity
 run existingTitlePointerCall
-bind existingTitlePointer COpaqueMemoryAddress existingTitlePointerCall
+bind value existingTitlePointer COpaqueMemoryAddress existingTitlePointerCall
 call copyExistingTitleCall copyStringBuffer
-arg copyExistingTitleCall sourceBuffer editBuffer
-arg copyExistingTitleCall targetBuffer existingTitlePointer
-arg copyExistingTitleCall targetBufferCapacity titleCapacity
+argument copyExistingTitleCall sourceBuffer COpaqueMemoryAddress editBuffer
+argument copyExistingTitleCall targetBuffer COpaqueMemoryAddress existingTitlePointer
+argument copyExistingTitleCall targetBufferCapacity CSignedInt64 titleCapacity
 run copyExistingTitleCall
-bind copiedTitleLength CSignedInt64 copyExistingTitleCall
-returnValue copiedTitleLength
+bind value copiedTitleLength CSignedInt64 copyExistingTitleCall
+return value copiedTitleLength
 
 operation toggleTodoAtSelectedIndex
-input toggleTodoAtSelectedIndex doneArray COpaqueMemoryAddress
-input toggleTodoAtSelectedIndex selectedIndex CSignedInt64
-output toggleTodoAtSelectedIndex CSignedInt32
+input operation toggleTodoAtSelectedIndex doneArray COpaqueMemoryAddress
+input operation toggleTodoAtSelectedIndex selectedIndex CSignedInt64
+output operation toggleTodoAtSelectedIndex CSignedInt32
 effect toggleTodoAtSelectedIndex read memory.buffer
 effect toggleTodoAtSelectedIndex write memory.buffer
-authority toggleTodoAtSelectedIndex memory.buffer read
-authority toggleTodoAtSelectedIndex memory.buffer write
-memoryHeap toggleTodoAtSelectedIndex no
+authority toggleTodoAtSelectedIndex read memory.buffer
+authority toggleTodoAtSelectedIndex write memory.buffer
+memory toggleTodoAtSelectedIndex heap no
 async toggleTodoAtSelectedIndex no
-purpose toggleTodoAtSelectedIndex "Toggle the done flag for an existing selected todo and return the new done value."
+purpose operation toggleTodoAtSelectedIndex "Toggle the done flag for an existing selected todo and return the new done value."
 precondition toggleTodoAtSelectedIndex "selectedIndex < todoCount (caller must have verified the index addresses an existing todo)."
-invariant toggleTodoAtSelectedIndex "The selected done byte is changed to zero or one and that new byte is returned; titlesArray and todoCount are unchanged."
+invariant operation toggleTodoAtSelectedIndex "The selected done byte is changed to zero or one and that new byte is returned; titlesArray and todoCount are unchanged."
 label startToggleTodoAtSelectedIndex
 storage local immutable zeroValue CSignedInt32 0
 storage local immutable oneValue CSignedInt32 1
 call loadDoneForToggleCall pointer.loadByte
-arg loadDoneForToggleCall buffer doneArray
-arg loadDoneForToggleCall offset selectedIndex
+argument loadDoneForToggleCall buffer COpaqueMemoryAddress doneArray
+argument loadDoneForToggleCall offset CByteCount selectedIndex
 run loadDoneForToggleCall
-bind currentDoneValue CSignedInt32 loadDoneForToggleCall
+bind value currentDoneValue CSignedInt32 loadDoneForToggleCall
 call doneIsZeroCall math.equalCSignedInt32
-arg doneIsZeroCall left currentDoneValue
-arg doneIsZeroCall right zeroValue
+argument doneIsZeroCall left CSignedInt32 currentDoneValue
+argument doneIsZeroCall right CSignedInt32 zeroValue
 run doneIsZeroCall
-bind doneIsZero Bool doneIsZeroCall
-branchIf doneIsZero setDoneTrue
+bind value doneIsZero Bool doneIsZeroCall
+branch if condition doneIsZero target setDoneTrue
 call storeDoneFalseCall pointer.storeByte
-arg storeDoneFalseCall buffer doneArray
-arg storeDoneFalseCall offset selectedIndex
-arg storeDoneFalseCall value zeroValue
+argument storeDoneFalseCall buffer COpaqueMemoryAddress doneArray
+argument storeDoneFalseCall offset CByteCount selectedIndex
+argument storeDoneFalseCall value CSignedInt64 zeroValue
 run storeDoneFalseCall
-returnValue zeroValue
+return value zeroValue
 label setDoneTrue
 call storeDoneTrueCall pointer.storeByte
-arg storeDoneTrueCall buffer doneArray
-arg storeDoneTrueCall offset selectedIndex
-arg storeDoneTrueCall value oneValue
+argument storeDoneTrueCall buffer COpaqueMemoryAddress doneArray
+argument storeDoneTrueCall offset CByteCount selectedIndex
+argument storeDoneTrueCall value CSignedInt64 oneValue
 run storeDoneTrueCall
-returnValue oneValue
+return value oneValue
 
 operation deleteTodoAtSelectedIndex
-input deleteTodoAtSelectedIndex doneArray COpaqueMemoryAddress
-input deleteTodoAtSelectedIndex titlesBuffer COpaqueMemoryAddress
-input deleteTodoAtSelectedIndex todoCount CSignedInt64
-input deleteTodoAtSelectedIndex deletedIndex CSignedInt64
-input deleteTodoAtSelectedIndex titleCapacity CSignedInt64
-output deleteTodoAtSelectedIndex CSignedInt64
+input operation deleteTodoAtSelectedIndex doneArray COpaqueMemoryAddress
+input operation deleteTodoAtSelectedIndex titlesBuffer COpaqueMemoryAddress
+input operation deleteTodoAtSelectedIndex todoCount CSignedInt64
+input operation deleteTodoAtSelectedIndex deletedIndex CSignedInt64
+input operation deleteTodoAtSelectedIndex titleCapacity CSignedInt64
+output operation deleteTodoAtSelectedIndex CSignedInt64
 effect deleteTodoAtSelectedIndex read memory.buffer
 effect deleteTodoAtSelectedIndex write memory.buffer
-authority deleteTodoAtSelectedIndex memory.buffer read
-authority deleteTodoAtSelectedIndex memory.buffer write
-memoryHeap deleteTodoAtSelectedIndex no
+authority deleteTodoAtSelectedIndex read memory.buffer
+authority deleteTodoAtSelectedIndex write memory.buffer
+memory deleteTodoAtSelectedIndex heap no
 async deleteTodoAtSelectedIndex no
-purpose deleteTodoAtSelectedIndex "Delete the selected todo and shift later todo storage left."
+purpose operation deleteTodoAtSelectedIndex "Delete the selected todo and shift later todo storage left."
 precondition deleteTodoAtSelectedIndex "deletedIndex < todoCount (caller must have verified the index addresses an existing todo)."
-invariant deleteTodoAtSelectedIndex "All later todos shift left by one slot in both doneArray and titlesArray; todoCount is decremented exactly once; the returned value is the new todoCount."
+invariant operation deleteTodoAtSelectedIndex "All later todos shift left by one slot in both doneArray and titlesArray; todoCount is decremented exactly once; the returned value is the new todoCount."
 label startDeleteTodoAtSelectedIndex
 storage local immutable zeroValue CSignedInt64 0
 storage local immutable oneValue CSignedInt64 1
 call remainingAfterDeleteCall math.subtractI64
-arg remainingAfterDeleteCall left todoCount
-arg remainingAfterDeleteCall right deletedIndex
+argument remainingAfterDeleteCall left I64 todoCount
+argument remainingAfterDeleteCall right I64 deletedIndex
 run remainingAfterDeleteCall
-bind includingDeletedCount CSignedInt64 remainingAfterDeleteCall
+bind value includingDeletedCount CSignedInt64 remainingAfterDeleteCall
 call subtractDeletedCall math.subtractI64
-arg subtractDeletedCall left includingDeletedCount
-arg subtractDeletedCall right oneValue
+argument subtractDeletedCall left I64 includingDeletedCount
+argument subtractDeletedCall right I64 oneValue
 run subtractDeletedCall
-bind remainingToShift CSignedInt64 subtractDeletedCall
+bind value remainingToShift CSignedInt64 subtractDeletedCall
 call shiftNeededCheckCall math.greaterThanI64
-arg shiftNeededCheckCall left remainingToShift
-arg shiftNeededCheckCall right zeroValue
+argument shiftNeededCheckCall left I64 remainingToShift
+argument shiftNeededCheckCall right I64 zeroValue
 run shiftNeededCheckCall
-bind shiftNeeded Bool shiftNeededCheckCall
-branchIf shiftNeeded shiftDeletedGap
-branch finishDelete
+bind value shiftNeeded Bool shiftNeededCheckCall
+branch if condition shiftNeeded target shiftDeletedGap
+branch else target finishDelete
 label shiftDeletedGap
 call nextIndexForShiftCall math.addI64
-arg nextIndexForShiftCall left deletedIndex
-arg nextIndexForShiftCall right oneValue
+argument nextIndexForShiftCall left I64 deletedIndex
+argument nextIndexForShiftCall right I64 oneValue
 run nextIndexForShiftCall
-bind nextIndexForShift CSignedInt64 nextIndexForShiftCall
+bind value nextIndexForShift CSignedInt64 nextIndexForShiftCall
 call doneDestinationCall pointer.offset
-arg doneDestinationCall base doneArray
-arg doneDestinationCall offset deletedIndex
+argument doneDestinationCall base COpaqueMemoryAddress doneArray
+argument doneDestinationCall offset CByteCount deletedIndex
 run doneDestinationCall
-bind doneDestination COpaqueMemoryAddress doneDestinationCall
+bind value doneDestination COpaqueMemoryAddress doneDestinationCall
 call doneSourceCall pointer.offset
-arg doneSourceCall base doneArray
-arg doneSourceCall offset nextIndexForShift
+argument doneSourceCall base COpaqueMemoryAddress doneArray
+argument doneSourceCall offset CByteCount nextIndexForShift
 run doneSourceCall
-bind doneSource COpaqueMemoryAddress doneSourceCall
+bind value doneSource COpaqueMemoryAddress doneSourceCall
 call moveDoneCall c.memmove
-arg moveDoneCall dest doneDestination
-arg moveDoneCall src doneSource
-arg moveDoneCall count remainingToShift
+argument moveDoneCall dest COpaqueMemoryAddress doneDestination
+argument moveDoneCall src COpaqueMemoryAddress doneSource
+argument moveDoneCall count CSignedInt64 remainingToShift
 run moveDoneCall
-ignoreValue moveDoneCall COpaqueMemoryAddress
+ignore value source moveDoneCall type COpaqueMemoryAddress
 call titleDestinationCall getTitlePointerAt
-arg titleDestinationCall titlesBuffer titlesBuffer
-arg titleDestinationCall todoIndex deletedIndex
-arg titleDestinationCall titleCapacity titleCapacity
+argument titleDestinationCall titlesBuffer COpaqueMemoryAddress titlesBuffer
+argument titleDestinationCall todoIndex CSignedInt64 deletedIndex
+argument titleDestinationCall titleCapacity CSignedInt64 titleCapacity
 run titleDestinationCall
-bind titleDestination COpaqueMemoryAddress titleDestinationCall
+bind value titleDestination COpaqueMemoryAddress titleDestinationCall
 call titleSourceCall getTitlePointerAt
-arg titleSourceCall titlesBuffer titlesBuffer
-arg titleSourceCall todoIndex nextIndexForShift
-arg titleSourceCall titleCapacity titleCapacity
+argument titleSourceCall titlesBuffer COpaqueMemoryAddress titlesBuffer
+argument titleSourceCall todoIndex CSignedInt64 nextIndexForShift
+argument titleSourceCall titleCapacity CSignedInt64 titleCapacity
 run titleSourceCall
-bind titleSource COpaqueMemoryAddress titleSourceCall
+bind value titleSource COpaqueMemoryAddress titleSourceCall
 call titleBytesToMoveCall math.multiplyI64
-arg titleBytesToMoveCall left remainingToShift
-arg titleBytesToMoveCall right titleCapacity
+argument titleBytesToMoveCall left I64 remainingToShift
+argument titleBytesToMoveCall right I64 titleCapacity
 run titleBytesToMoveCall
-bind titleBytesToMove CByteCount titleBytesToMoveCall
+bind value titleBytesToMove CByteCount titleBytesToMoveCall
 call moveTitlesCall c.memmove
-arg moveTitlesCall dest titleDestination
-arg moveTitlesCall src titleSource
-arg moveTitlesCall count titleBytesToMove
+argument moveTitlesCall dest COpaqueMemoryAddress titleDestination
+argument moveTitlesCall src COpaqueMemoryAddress titleSource
+argument moveTitlesCall count CByteCount titleBytesToMove
 run moveTitlesCall
-ignoreValue moveTitlesCall COpaqueMemoryAddress
-branch finishDelete
+ignore value source moveTitlesCall type COpaqueMemoryAddress
+jump target finishDelete
 label finishDelete
 call decrementCountCall math.subtractI64
-arg decrementCountCall left todoCount
-arg decrementCountCall right oneValue
+argument decrementCountCall left I64 todoCount
+argument decrementCountCall right I64 oneValue
 run decrementCountCall
-bind decrementedTodoCount CSignedInt64 decrementCountCall
-returnValue decrementedTodoCount
+bind value decrementedTodoCount CSignedInt64 decrementCountCall
+return value decrementedTodoCount
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main read console.stdin
 effect main write console.stdout
 effect main read filesystem
@@ -1548,30 +1537,30 @@ effect main allocate heap
 effect main free heap
 effect main read memory.buffer
 effect main write memory.buffer
-authority main console.stdin read
-authority main console.stdout write
-authority main filesystem read
-authority main filesystem write
-authority main file open
-authority main file close
-authority main heap allocate
-authority main heap free
-authority main memory.buffer read
-authority main memory.buffer write
-memoryHeap main yes
+authority main read console.stdin
+authority main write console.stdout
+authority main read filesystem
+authority main write filesystem
+authority main open file
+authority main close file
+authority main allocate heap
+authority main free heap
+authority main read memory.buffer
+authority main write memory.buffer
+memory main heap yes
 memoryAllocationSource main allocateDoneArrayCall
 memoryAllocationSource main allocateTitlesArrayCall
 memoryAllocationSource main allocateEditBufferCall
 memoryAllocationSource main allocateLineBufferCall
 async main no
-purpose main "Run a heap-array backed keyboard todo TUI with JSON persistence."
-invariant main "todo data shape: the active todos for indices [0, todoCount) are stored as two parallel heap arrays — doneArray (stride 1 byte; each cell holds byte value 0=open or 1=done, passed through CSignedInt32 only because that is the value type pointer.storeByte / pointer.loadByte accepts; the on-disk and in-memory storage is a single byte per todo) and titlesArray (stride titleCapacity bytes; each cell holds a CNullTerminatedByteString of at most titleCapacity-1 bytes plus NUL). Both arrays are allocated to length todoCapacity; the i-th todo's done flag is at pointer.offset(doneArray, i) and its title is at getTitlePointerAt(titlesArray, i, titleCapacity). Every reader/writer of `a todo` (renderTodoRow, saveTodosToJson, loadTodosFromJson, appendTodoFromEditBuffer, commitEditToSelectedTodo, toggleTodoAtSelectedIndex, deleteTodoAtSelectedIndex) obeys this same-index rule. Migrating to `record TodoEntry { field done Bool, field title CNullTerminatedByteString }` with `recordLayout TodoEntry column` would make the layout declarative."
-invariant main "The selected index stays within the active todo range plus the add row while capacity remains."
-invariant main "restoreCursorOnExit owns cursor visibility cleanup on every exit path; showCursor is idempotent and safe before hideCursor."
-invariant main "After startup, every interactive mutation path (toggle, append, commit, delete) exits through persistTodosThenLoop; if saveTodosToJson succeeds, todos.json reflects the new todo state before the next render. Startup load mutates the arrays through loadTodosFromJson and does not route through persistTodosThenLoop because it is restoring already-persisted state."
-invariant main "lineBufferBytes = 384 is the worst-case-safe bound for a JSON line emitted by saveTodosToJson at titleCapacity = 128: 2 * (titleCapacity - 1) escaped bytes (254) + 30-byte itemPrefixFormatText prefix + 4-byte item suffix + 1-byte c.fgets NUL = 289 bytes, rounded up to 384 for headroom. If titleCapacity grows, lineBufferBytes must grow with it or c.fgets will truncate an all-quote/all-backslash adversarial title on reload."
-invariant main "lineBufferBytes (CByteCount) and lineBufferCapacity (CSignedInt32) are deliberately parallel scalars holding the same numeric value — lineBufferBytes is the malloc size and lineBufferCapacity is the c.fgets `count` argument. They MUST stay equal: a future edit that bumps one without the other will desync allocation and read length, silently truncating or over-reading. If SemanticScript later supports an explicit narrowing call from CByteCount to CSignedInt32, derive lineBufferCapacity from lineBufferBytes rather than carrying two constants."
-invariant main "lineBuffer lifetime: allocated by allocateLineBufferCall before loadTodosFromJson and freed by freeLineBufferCall immediately after load completion. Unlike doneArray, titlesArray, and editBuffer (which live until quitProgram), lineBuffer is intentionally a short-lived scratch buffer for one-shot JSON parsing. The asymmetry is deliberate: quitProgram MUST NOT free lineBuffer again because it has already been freed; a use of lineBuffer after the loadTodosCall return is a use-after-free."
+purpose operation main "Run a heap-array backed keyboard todo TUI with JSON persistence."
+invariant operation main "todo data shape: the active todos for indices [0, todoCount) are stored as two parallel heap arrays — doneArray (stride 1 byte; each cell holds byte value 0=open or 1=done, passed through CSignedInt32 only because that is the value type pointer.storeByte / pointer.loadByte accepts; the on-disk and in-memory storage is a single byte per todo) and titlesArray (stride titleCapacity bytes; each cell holds a CNullTerminatedByteString of at most titleCapacity-1 bytes plus NUL). Both arrays are allocated to length todoCapacity; the i-th todo's done flag is at pointer.offset(doneArray, i) and its title is at getTitlePointerAt(titlesArray, i, titleCapacity). Every reader/writer of `a todo` (renderTodoRow, saveTodosToJson, loadTodosFromJson, appendTodoFromEditBuffer, commitEditToSelectedTodo, toggleTodoAtSelectedIndex, deleteTodoAtSelectedIndex) obeys this same-index rule. Migrating to `record TodoEntry { field done Bool, field title CNullTerminatedByteString }` with `recordLayout TodoEntry column` would make the layout declarative."
+invariant operation main "The selected index stays within the active todo range plus the add row while capacity remains."
+invariant operation main "restoreCursorOnExit owns cursor visibility cleanup on every exit path; showCursor is idempotent and safe before hideCursor."
+invariant operation main "After startup, every interactive mutation path (toggle, append, commit, delete) exits through persistTodosThenLoop; if saveTodosToJson succeeds, todos.json reflects the new todo state before the next render. Startup load mutates the arrays through loadTodosFromJson and does not route through persistTodosThenLoop because it is restoring already-persisted state."
+invariant operation main "lineBufferBytes = 384 is the worst-case-safe bound for a JSON line emitted by saveTodosToJson at titleCapacity = 128: 2 * (titleCapacity - 1) escaped bytes (254) + 30-byte itemPrefixFormatText prefix + 4-byte item suffix + 1-byte c.fgets NUL = 289 bytes, rounded up to 384 for headroom. If titleCapacity grows, lineBufferBytes must grow with it or c.fgets will truncate an all-quote/all-backslash adversarial title on reload."
+invariant operation main "lineBufferBytes (CByteCount) and lineBufferCapacity (CSignedInt32) are deliberately parallel scalars holding the same numeric value — lineBufferBytes is the malloc size and lineBufferCapacity is the c.fgets `count` argument. They MUST stay equal: a future edit that bumps one without the other will desync allocation and read length, silently truncating or over-reading. If SemanticScript later supports an explicit narrowing call from CByteCount to CSignedInt32, derive lineBufferCapacity from lineBufferBytes rather than carrying two constants."
+invariant operation main "lineBuffer lifetime: allocated by allocateLineBufferCall before loadTodosFromJson and freed by freeLineBufferCall immediately after load completion. Unlike doneArray, titlesArray, and editBuffer (which live until quitProgram), lineBuffer is intentionally a short-lived scratch buffer for one-shot JSON parsing. The asymmetry is deliberate: quitProgram MUST NOT free lineBuffer again because it has already been freed; a use of lineBuffer after the loadTodosCall return is a use-after-free."
 defer restoreCursorOnExit showCursor
 deferRunOn restoreCursorOnExit all
 label startMain
@@ -1633,536 +1622,536 @@ storage local mutable statusMessage CNullTerminatedByteString readyStatusText
 storage local mutable exitMessage CNullTerminatedByteString goodbyeText
 
 call todoArrayBytesCall math.multiplyI64
-arg todoArrayBytesCall left todoCapacity
-arg todoArrayBytesCall right doneFlagByteWidth
+argument todoArrayBytesCall left I64 todoCapacity
+argument todoArrayBytesCall right I64 doneFlagByteWidth
 run todoArrayBytesCall
-bind todoArrayBytes CByteCount todoArrayBytesCall
+bind value todoArrayBytes CByteCount todoArrayBytesCall
 call titleBufferBytesCall math.multiplyI64
-arg titleBufferBytesCall left titleCapacity
-arg titleBufferBytesCall right titleByteWidth
+argument titleBufferBytesCall left I64 titleCapacity
+argument titleBufferBytesCall right I64 titleByteWidth
 run titleBufferBytesCall
-bind titleBufferBytes CByteCount titleBufferBytesCall
+bind value titleBufferBytes CByteCount titleBufferBytesCall
 call titleSlotsCall math.multiplyI64
-arg titleSlotsCall left todoCapacity
-arg titleSlotsCall right titleCapacity
+argument titleSlotsCall left I64 todoCapacity
+argument titleSlotsCall right I64 titleCapacity
 run titleSlotsCall
-bind titleSlots CSignedInt64 titleSlotsCall
+bind value titleSlots CSignedInt64 titleSlotsCall
 call titleArrayBytesCall math.multiplyI64
-arg titleArrayBytesCall left titleSlots
-arg titleArrayBytesCall right titleByteWidth
+argument titleArrayBytesCall left I64 titleSlots
+argument titleArrayBytesCall right I64 titleByteWidth
 run titleArrayBytesCall
-bind titleArrayBytes CByteCount titleArrayBytesCall
+bind value titleArrayBytes CByteCount titleArrayBytesCall
 call allocateDoneArrayCall c.malloc
-arg allocateDoneArrayCall size todoArrayBytes
+argument allocateDoneArrayCall size CByteCount todoArrayBytes
 run allocateDoneArrayCall
-bindOk doneArray COpaqueMemoryAddress allocateDoneArrayCall
-bindError allocateDoneArrayError CAllocationError allocateDoneArrayCall
-branchIfError allocateDoneArrayCall doneArrayAllocationFailed
+bind ok doneArray COpaqueMemoryAddress allocateDoneArrayCall
+bind error allocateDoneArrayError CAllocationError allocateDoneArrayCall
+branch error source allocateDoneArrayCall target doneArrayAllocationFailed
 call zeroDoneArrayCall c.memset
-arg zeroDoneArrayCall ptr doneArray
-arg zeroDoneArrayCall value zeroValue
-arg zeroDoneArrayCall num todoArrayBytes
+argument zeroDoneArrayCall ptr COpaqueMemoryAddress doneArray
+argument zeroDoneArrayCall value CSignedInt64 zeroValue
+argument zeroDoneArrayCall num CByteCount todoArrayBytes
 run zeroDoneArrayCall
-ignoreValue zeroDoneArrayCall COpaqueMemoryAddress
+ignore value source zeroDoneArrayCall type COpaqueMemoryAddress
 call allocateTitlesArrayCall c.malloc
-arg allocateTitlesArrayCall size titleArrayBytes
+argument allocateTitlesArrayCall size CByteCount titleArrayBytes
 run allocateTitlesArrayCall
-bindOk titlesArray COpaqueMemoryAddress allocateTitlesArrayCall
-bindError allocateTitlesArrayError CAllocationError allocateTitlesArrayCall
-branchIfError allocateTitlesArrayCall titlesArrayAllocationFailed
+bind ok titlesArray COpaqueMemoryAddress allocateTitlesArrayCall
+bind error allocateTitlesArrayError CAllocationError allocateTitlesArrayCall
+branch error source allocateTitlesArrayCall target titlesArrayAllocationFailed
 call zeroTitlesArrayCall c.memset
-arg zeroTitlesArrayCall ptr titlesArray
-arg zeroTitlesArrayCall value zeroValue
-arg zeroTitlesArrayCall num titleArrayBytes
+argument zeroTitlesArrayCall ptr COpaqueMemoryAddress titlesArray
+argument zeroTitlesArrayCall value CSignedInt64 zeroValue
+argument zeroTitlesArrayCall num CByteCount titleArrayBytes
 run zeroTitlesArrayCall
-ignoreValue zeroTitlesArrayCall COpaqueMemoryAddress
+ignore value source zeroTitlesArrayCall type COpaqueMemoryAddress
 call allocateEditBufferCall c.malloc
-arg allocateEditBufferCall size titleBufferBytes
+argument allocateEditBufferCall size CByteCount titleBufferBytes
 run allocateEditBufferCall
-bindOk editBuffer COpaqueMemoryAddress allocateEditBufferCall
-bindError allocateEditBufferError CAllocationError allocateEditBufferCall
-branchIfError allocateEditBufferCall editBufferAllocationFailed
+bind ok editBuffer COpaqueMemoryAddress allocateEditBufferCall
+bind error allocateEditBufferError CAllocationError allocateEditBufferCall
+branch error source allocateEditBufferCall target editBufferAllocationFailed
 call initEditBufferCall writeEmptyBuffer
-arg initEditBufferCall targetBuffer editBuffer
+argument initEditBufferCall targetBuffer COpaqueMemoryAddress editBuffer
 run initEditBufferCall
-ignoreValue initEditBufferCall CSignedInt64
+ignore value source initEditBufferCall type CSignedInt64
 call allocateLineBufferCall c.malloc
-arg allocateLineBufferCall size lineBufferBytes
+argument allocateLineBufferCall size CByteCount lineBufferBytes
 run allocateLineBufferCall
-bindOk lineBuffer COpaqueMemoryAddress allocateLineBufferCall
-bindError allocateLineBufferError CAllocationError allocateLineBufferCall
-branchIfError allocateLineBufferCall lineBufferAllocationFailed
+bind ok lineBuffer COpaqueMemoryAddress allocateLineBufferCall
+bind error allocateLineBufferError CAllocationError allocateLineBufferCall
+branch error source allocateLineBufferCall target lineBufferAllocationFailed
 call loadTodosCall loadTodosFromJson
-arg loadTodosCall doneArray doneArray
-arg loadTodosCall titlesBuffer titlesArray
-arg loadTodosCall todoCapacity todoCapacity
-arg loadTodosCall titleCapacity titleCapacity
-arg loadTodosCall lineBuffer lineBuffer
-arg loadTodosCall lineBufferCapacity lineBufferCapacity
+argument loadTodosCall doneArray COpaqueMemoryAddress doneArray
+argument loadTodosCall titlesBuffer COpaqueMemoryAddress titlesArray
+argument loadTodosCall todoCapacity CSignedInt64 todoCapacity
+argument loadTodosCall titleCapacity CSignedInt64 titleCapacity
+argument loadTodosCall lineBuffer COpaqueMemoryAddress lineBuffer
+argument loadTodosCall lineBufferCapacity CSignedInt32 lineBufferCapacity
 run loadTodosCall
-bind loadedTodoCount CSignedInt64 loadTodosCall
-set local todoCount loadedTodoCount
+bind value loadedTodoCount CSignedInt64 loadTodosCall
+set memory todoCount loadedTodoCount
 call freeLineBufferCall c.free
-arg freeLineBufferCall ptr lineBuffer
+argument freeLineBufferCall ptr COpaqueMemoryAddress lineBuffer
 run freeLineBufferCall
-ignoreValue freeLineBufferCall Void
-set local statusMessage loadedStatusText
+ignore void source freeLineBufferCall
+set memory statusMessage loadedStatusText
 call hideCursorOnStartCall hideCursor
 run hideCursorOnStartCall
-ignoreValue hideCursorOnStartCall CSignedInt32
-branch replLoop
+ignore value source hideCursorOnStartCall type CSignedInt32
+jump target replLoop
 
 label replLoop
 call renderScreenCall renderScreen
-arg renderScreenCall doneArray doneArray
-arg renderScreenCall titlesBuffer titlesArray
-arg renderScreenCall todoCount todoCount
-arg renderScreenCall selectedIndex selectedIndex
-arg renderScreenCall topIndex topIndex
-arg renderScreenCall screenMode screenMode
-arg renderScreenCall editBuffer editBuffer
-arg renderScreenCall editLength editLength
-arg renderScreenCall titleCapacity titleCapacity
-arg renderScreenCall visibleRows visibleRows
-arg renderScreenCall statusText statusMessage
+argument renderScreenCall doneArray COpaqueMemoryAddress doneArray
+argument renderScreenCall titlesBuffer COpaqueMemoryAddress titlesArray
+argument renderScreenCall todoCount CSignedInt64 todoCount
+argument renderScreenCall selectedIndex CSignedInt64 selectedIndex
+argument renderScreenCall topIndex CSignedInt64 topIndex
+argument renderScreenCall screenMode ScreenMode screenMode
+argument renderScreenCall editBuffer COpaqueMemoryAddress editBuffer
+argument renderScreenCall editLength CSignedInt64 editLength
+argument renderScreenCall titleCapacity CSignedInt64 titleCapacity
+argument renderScreenCall visibleRows CSignedInt64 visibleRows
+argument renderScreenCall statusText CNullTerminatedByteString statusMessage
 run renderScreenCall
-ignoreValue renderScreenCall CSignedInt32
+ignore value source renderScreenCall type CSignedInt32
 call readKeyCall readTuiKey
 run readKeyCall
-bind pressedKey TuiKeyCode readKeyCall
+bind value pressedKey TuiKeyCode readKeyCall
 call listModeCheckCall ScreenMode.equal
-arg listModeCheckCall left screenMode
-arg listModeCheckCall right ListMode
+argument listModeCheckCall left ScreenMode screenMode
+argument listModeCheckCall right ScreenMode ListMode
 run listModeCheckCall
-bind inListMode Bool listModeCheckCall
-branchIf inListMode handleListKey
-branch handleEditKey
+bind value inListMode Bool listModeCheckCall
+branch if condition inListMode target handleListKey
+branch else target handleEditKey
 
 label handleListKey
 call listUpKeyCheckCall math.equalCSignedInt32
-arg listUpKeyCheckCall left pressedKey
-arg listUpKeyCheckCall right tuiKeyArrowUp
+argument listUpKeyCheckCall left CSignedInt32 pressedKey
+argument listUpKeyCheckCall right CSignedInt32 tuiKeyArrowUp
 run listUpKeyCheckCall
-bind listUpPressed Bool listUpKeyCheckCall
-branchIf listUpPressed moveSelectionUp
+bind value listUpPressed Bool listUpKeyCheckCall
+branch if condition listUpPressed target moveSelectionUp
 call listDownKeyCheckCall math.equalCSignedInt32
-arg listDownKeyCheckCall left pressedKey
-arg listDownKeyCheckCall right tuiKeyArrowDown
+argument listDownKeyCheckCall left CSignedInt32 pressedKey
+argument listDownKeyCheckCall right CSignedInt32 tuiKeyArrowDown
 run listDownKeyCheckCall
-bind listDownPressed Bool listDownKeyCheckCall
-branchIf listDownPressed moveSelectionDown
+bind value listDownPressed Bool listDownKeyCheckCall
+branch if condition listDownPressed target moveSelectionDown
 call listRightKeyCheckCall math.equalCSignedInt32
-arg listRightKeyCheckCall left pressedKey
-arg listRightKeyCheckCall right tuiKeyArrowRight
+argument listRightKeyCheckCall left CSignedInt32 pressedKey
+argument listRightKeyCheckCall right CSignedInt32 tuiKeyArrowRight
 run listRightKeyCheckCall
-bind listRightPressed Bool listRightKeyCheckCall
-branchIf listRightPressed openEditor
+bind value listRightPressed Bool listRightKeyCheckCall
+branch if condition listRightPressed target openEditor
 call listEnterKeyCheckCall math.equalCSignedInt32
-arg listEnterKeyCheckCall left pressedKey
-arg listEnterKeyCheckCall right keyEnter
+argument listEnterKeyCheckCall left CSignedInt32 pressedKey
+argument listEnterKeyCheckCall right CSignedInt32 keyEnter
 run listEnterKeyCheckCall
-bind listEnterPressed Bool listEnterKeyCheckCall
-branchIf listEnterPressed toggleSelectedTodo
+bind value listEnterPressed Bool listEnterKeyCheckCall
+branch if condition listEnterPressed target toggleSelectedTodo
 call listSpaceKeyCheckCall math.equalCSignedInt32
-arg listSpaceKeyCheckCall left pressedKey
-arg listSpaceKeyCheckCall right keySpace
+argument listSpaceKeyCheckCall left CSignedInt32 pressedKey
+argument listSpaceKeyCheckCall right CSignedInt32 keySpace
 run listSpaceKeyCheckCall
-bind listSpacePressed Bool listSpaceKeyCheckCall
-branchIf listSpacePressed toggleSelectedTodo
+bind value listSpacePressed Bool listSpaceKeyCheckCall
+branch if condition listSpacePressed target toggleSelectedTodo
 call listDeleteLowerKeyCheckCall math.equalCSignedInt32
-arg listDeleteLowerKeyCheckCall left pressedKey
-arg listDeleteLowerKeyCheckCall right keyDeleteLower
+argument listDeleteLowerKeyCheckCall left CSignedInt32 pressedKey
+argument listDeleteLowerKeyCheckCall right CSignedInt32 keyDeleteLower
 run listDeleteLowerKeyCheckCall
-bind listDeleteLowerPressed Bool listDeleteLowerKeyCheckCall
-branchIf listDeleteLowerPressed deleteSelectedTodo
+bind value listDeleteLowerPressed Bool listDeleteLowerKeyCheckCall
+branch if condition listDeleteLowerPressed target deleteSelectedTodo
 call listDeleteUpperKeyCheckCall math.equalCSignedInt32
-arg listDeleteUpperKeyCheckCall left pressedKey
-arg listDeleteUpperKeyCheckCall right keyDeleteUpper
+argument listDeleteUpperKeyCheckCall left CSignedInt32 pressedKey
+argument listDeleteUpperKeyCheckCall right CSignedInt32 keyDeleteUpper
 run listDeleteUpperKeyCheckCall
-bind listDeleteUpperPressed Bool listDeleteUpperKeyCheckCall
-branchIf listDeleteUpperPressed deleteSelectedTodo
+bind value listDeleteUpperPressed Bool listDeleteUpperKeyCheckCall
+branch if condition listDeleteUpperPressed target deleteSelectedTodo
 call listEscapeKeyCheckCall math.equalCSignedInt32
-arg listEscapeKeyCheckCall left pressedKey
-arg listEscapeKeyCheckCall right keyEscape
+argument listEscapeKeyCheckCall left CSignedInt32 pressedKey
+argument listEscapeKeyCheckCall right CSignedInt32 keyEscape
 run listEscapeKeyCheckCall
-bind listEscapePressed Bool listEscapeKeyCheckCall
-branchIf listEscapePressed quitProgram
-set local statusMessage ignoredKeyText
-branch replLoop
+bind value listEscapePressed Bool listEscapeKeyCheckCall
+branch if condition listEscapePressed target quitProgram
+set memory statusMessage ignoredKeyText
+jump target replLoop
 
 label moveSelectionUp
 call maxSelectableForUpCall computeMaxSelectable
-arg maxSelectableForUpCall todoCount todoCount
-arg maxSelectableForUpCall todoCapacity todoCapacity
+argument maxSelectableForUpCall todoCount CSignedInt64 todoCount
+argument maxSelectableForUpCall todoCapacity CSignedInt64 todoCapacity
 run maxSelectableForUpCall
-bind maxSelectableIndexForUp CSignedInt64 maxSelectableForUpCall
+bind value maxSelectableIndexForUp CSignedInt64 maxSelectableForUpCall
 call selectedAtTopCall math.equalI64
-arg selectedAtTopCall left selectedIndex
-arg selectedAtTopCall right zeroValue
+argument selectedAtTopCall left I64 selectedIndex
+argument selectedAtTopCall right I64 zeroValue
 run selectedAtTopCall
-bind selectedAtTop Bool selectedAtTopCall
-branchIf selectedAtTop wrapSelectionToBottom
+bind value selectedAtTop Bool selectedAtTopCall
+branch if condition selectedAtTop target wrapSelectionToBottom
 call decrementSelectedCall math.subtractI64
-arg decrementSelectedCall left selectedIndex
-arg decrementSelectedCall right oneValue
+argument decrementSelectedCall left I64 selectedIndex
+argument decrementSelectedCall right I64 oneValue
 run decrementSelectedCall
-bind previousSelectedIndex CSignedInt64 decrementSelectedCall
-set local selectedIndex previousSelectedIndex
-branch clampSelectionWindow
+bind value previousSelectedIndex CSignedInt64 decrementSelectedCall
+set memory selectedIndex previousSelectedIndex
+jump target clampSelectionWindow
 label wrapSelectionToBottom
-set local selectedIndex maxSelectableIndexForUp
-branch clampSelectionWindow
+set memory selectedIndex maxSelectableIndexForUp
+jump target clampSelectionWindow
 
 label moveSelectionDown
 call maxSelectableForDownCall computeMaxSelectable
-arg maxSelectableForDownCall todoCount todoCount
-arg maxSelectableForDownCall todoCapacity todoCapacity
+argument maxSelectableForDownCall todoCount CSignedInt64 todoCount
+argument maxSelectableForDownCall todoCapacity CSignedInt64 todoCapacity
 run maxSelectableForDownCall
-bind maxSelectableIndexForDown CSignedInt64 maxSelectableForDownCall
+bind value maxSelectableIndexForDown CSignedInt64 maxSelectableForDownCall
 call selectedAtBottomCall math.equalI64
-arg selectedAtBottomCall left selectedIndex
-arg selectedAtBottomCall right maxSelectableIndexForDown
+argument selectedAtBottomCall left I64 selectedIndex
+argument selectedAtBottomCall right I64 maxSelectableIndexForDown
 run selectedAtBottomCall
-bind selectedAtBottom Bool selectedAtBottomCall
-branchIf selectedAtBottom wrapSelectionToTop
+bind value selectedAtBottom Bool selectedAtBottomCall
+branch if condition selectedAtBottom target wrapSelectionToTop
 call incrementSelectedCall math.addI64
-arg incrementSelectedCall left selectedIndex
-arg incrementSelectedCall right oneValue
+argument incrementSelectedCall left I64 selectedIndex
+argument incrementSelectedCall right I64 oneValue
 run incrementSelectedCall
-bind nextSelectedIndex CSignedInt64 incrementSelectedCall
-set local selectedIndex nextSelectedIndex
-branch clampSelectionWindow
+bind value nextSelectedIndex CSignedInt64 incrementSelectedCall
+set memory selectedIndex nextSelectedIndex
+jump target clampSelectionWindow
 label wrapSelectionToTop
-set local selectedIndex zeroValue
-branch clampSelectionWindow
+set memory selectedIndex zeroValue
+jump target clampSelectionWindow
 
 label clampSelectionWindow
 call clampTopCall clampTopIndex
-arg clampTopCall selectedIndex selectedIndex
-arg clampTopCall topIndex topIndex
-arg clampTopCall visibleRows visibleRows
+argument clampTopCall selectedIndex CSignedInt64 selectedIndex
+argument clampTopCall topIndex CSignedInt64 topIndex
+argument clampTopCall visibleRows CSignedInt64 visibleRows
 run clampTopCall
-bind clampedTopIndex CSignedInt64 clampTopCall
-set local topIndex clampedTopIndex
-set local statusMessage readyStatusText
-branch replLoop
+bind value clampedTopIndex CSignedInt64 clampTopCall
+set memory topIndex clampedTopIndex
+set memory statusMessage readyStatusText
+jump target replLoop
 
 label openEditor
 call selectedExistingForOpenCall math.lessThanI64
-arg selectedExistingForOpenCall left selectedIndex
-arg selectedExistingForOpenCall right todoCount
+argument selectedExistingForOpenCall left I64 selectedIndex
+argument selectedExistingForOpenCall right I64 todoCount
 run selectedExistingForOpenCall
-bind selectedExistingForOpen Bool selectedExistingForOpenCall
-branchIf selectedExistingForOpen openExistingEditor
+bind value selectedExistingForOpen Bool selectedExistingForOpenCall
+branch if condition selectedExistingForOpen target openExistingEditor
 call clearEditForNewCall writeEmptyBuffer
-arg clearEditForNewCall targetBuffer editBuffer
+argument clearEditForNewCall targetBuffer COpaqueMemoryAddress editBuffer
 run clearEditForNewCall
-bind newEditLength CSignedInt64 clearEditForNewCall
-set local editLength newEditLength
-set local screenMode EditMode
-set local statusMessage editStatusText
-branch replLoop
+bind value newEditLength CSignedInt64 clearEditForNewCall
+set memory editLength newEditLength
+set memory screenMode EditMode
+set memory statusMessage editStatusText
+jump target replLoop
 label openExistingEditor
 call selectedTitlePointerCall getTitlePointerAt
-arg selectedTitlePointerCall titlesBuffer titlesArray
-arg selectedTitlePointerCall todoIndex selectedIndex
-arg selectedTitlePointerCall titleCapacity titleCapacity
+argument selectedTitlePointerCall titlesBuffer COpaqueMemoryAddress titlesArray
+argument selectedTitlePointerCall todoIndex CSignedInt64 selectedIndex
+argument selectedTitlePointerCall titleCapacity CSignedInt64 titleCapacity
 run selectedTitlePointerCall
-bind selectedTitlePointer COpaqueMemoryAddress selectedTitlePointerCall
+bind value selectedTitlePointer COpaqueMemoryAddress selectedTitlePointerCall
 call copySelectedTitleCall copyStringBuffer
-arg copySelectedTitleCall sourceBuffer selectedTitlePointer
-arg copySelectedTitleCall targetBuffer editBuffer
-arg copySelectedTitleCall targetBufferCapacity titleCapacity
+argument copySelectedTitleCall sourceBuffer COpaqueMemoryAddress selectedTitlePointer
+argument copySelectedTitleCall targetBuffer COpaqueMemoryAddress editBuffer
+argument copySelectedTitleCall targetBufferCapacity CSignedInt64 titleCapacity
 run copySelectedTitleCall
-bind copiedEditLength CSignedInt64 copySelectedTitleCall
-set local editLength copiedEditLength
-set local screenMode EditMode
-set local statusMessage editStatusText
-branch replLoop
+bind value copiedEditLength CSignedInt64 copySelectedTitleCall
+set memory editLength copiedEditLength
+set memory screenMode EditMode
+set memory statusMessage editStatusText
+jump target replLoop
 
 label handleEditKey
 call editEscapeKeyCheckCall math.equalCSignedInt32
-arg editEscapeKeyCheckCall left pressedKey
-arg editEscapeKeyCheckCall right keyEscape
+argument editEscapeKeyCheckCall left CSignedInt32 pressedKey
+argument editEscapeKeyCheckCall right CSignedInt32 keyEscape
 run editEscapeKeyCheckCall
-bind editEscapePressed Bool editEscapeKeyCheckCall
-branchIf editEscapePressed cancelEdit
+bind value editEscapePressed Bool editEscapeKeyCheckCall
+branch if condition editEscapePressed target cancelEdit
 call editLeftKeyCheckCall math.equalCSignedInt32
-arg editLeftKeyCheckCall left pressedKey
-arg editLeftKeyCheckCall right tuiKeyArrowLeft
+argument editLeftKeyCheckCall left CSignedInt32 pressedKey
+argument editLeftKeyCheckCall right CSignedInt32 tuiKeyArrowLeft
 run editLeftKeyCheckCall
-bind editLeftPressed Bool editLeftKeyCheckCall
-branchIf editLeftPressed cancelEdit
+bind value editLeftPressed Bool editLeftKeyCheckCall
+branch if condition editLeftPressed target cancelEdit
 call editEnterKeyCheckCall math.equalCSignedInt32
-arg editEnterKeyCheckCall left pressedKey
-arg editEnterKeyCheckCall right keyEnter
+argument editEnterKeyCheckCall left CSignedInt32 pressedKey
+argument editEnterKeyCheckCall right CSignedInt32 keyEnter
 run editEnterKeyCheckCall
-bind editEnterPressed Bool editEnterKeyCheckCall
-branchIf editEnterPressed commitEdit
+bind value editEnterPressed Bool editEnterKeyCheckCall
+branch if condition editEnterPressed target commitEdit
 call editBackspaceKeyCheckCall math.equalCSignedInt32
-arg editBackspaceKeyCheckCall left pressedKey
-arg editBackspaceKeyCheckCall right keyBackspace
+argument editBackspaceKeyCheckCall left CSignedInt32 pressedKey
+argument editBackspaceKeyCheckCall right CSignedInt32 keyBackspace
 run editBackspaceKeyCheckCall
-bind editBackspacePressed Bool editBackspaceKeyCheckCall
-branchIf editBackspacePressed backspaceEditBuffer
+bind value editBackspacePressed Bool editBackspaceKeyCheckCall
+branch if condition editBackspacePressed target backspaceEditBuffer
 call appendEditBufferCall appendPrintableKeyToBuffer
-arg appendEditBufferCall targetBuffer editBuffer
-arg appendEditBufferCall currentLength editLength
-arg appendEditBufferCall bufferCapacity titleCapacity
-arg appendEditBufferCall keyCode pressedKey
+argument appendEditBufferCall targetBuffer COpaqueMemoryAddress editBuffer
+argument appendEditBufferCall currentLength CSignedInt64 editLength
+argument appendEditBufferCall bufferCapacity CSignedInt64 titleCapacity
+argument appendEditBufferCall keyCode TuiKeyCode pressedKey
 run appendEditBufferCall
-bind appendedEditLength CSignedInt64 appendEditBufferCall
-set local editLength appendedEditLength
-set local statusMessage editStatusText
-branch replLoop
+bind value appendedEditLength CSignedInt64 appendEditBufferCall
+set memory editLength appendedEditLength
+set memory statusMessage editStatusText
+jump target replLoop
 label backspaceEditBuffer
 call backspaceEditBufferCall deleteLastBufferByte
-arg backspaceEditBufferCall targetBuffer editBuffer
-arg backspaceEditBufferCall currentLength editLength
+argument backspaceEditBufferCall targetBuffer COpaqueMemoryAddress editBuffer
+argument backspaceEditBufferCall currentLength CSignedInt64 editLength
 run backspaceEditBufferCall
-bind shortenedEditLength CSignedInt64 backspaceEditBufferCall
-set local editLength shortenedEditLength
-set local statusMessage editStatusText
-branch replLoop
+bind value shortenedEditLength CSignedInt64 backspaceEditBufferCall
+set memory editLength shortenedEditLength
+set memory statusMessage editStatusText
+jump target replLoop
 label cancelEdit
-set local screenMode ListMode
-set local editLength zeroValue
-set local statusMessage canceledText
-branch replLoop
+set memory screenMode ListMode
+set memory editLength zeroValue
+set memory statusMessage canceledText
+jump target replLoop
 
 label commitEdit
 call editEmptyCheckCall math.equalI64
-arg editEmptyCheckCall left editLength
-arg editEmptyCheckCall right zeroValue
+argument editEmptyCheckCall left I64 editLength
+argument editEmptyCheckCall right I64 zeroValue
 run editEmptyCheckCall
-bind editIsEmpty Bool editEmptyCheckCall
-branchIf editIsEmpty ignoreEmptyEdit
+bind value editIsEmpty Bool editEmptyCheckCall
+branch if condition editIsEmpty target ignoreEmptyEdit
 call selectedExistingForCommitCall math.lessThanI64
-arg selectedExistingForCommitCall left selectedIndex
-arg selectedExistingForCommitCall right todoCount
+argument selectedExistingForCommitCall left I64 selectedIndex
+argument selectedExistingForCommitCall right I64 todoCount
 run selectedExistingForCommitCall
-bind selectedExistingForCommit Bool selectedExistingForCommitCall
-branchIf selectedExistingForCommit commitExistingEdit
+bind value selectedExistingForCommit Bool selectedExistingForCommitCall
+branch if condition selectedExistingForCommit target commitExistingEdit
 call capacityForAppendCheckCall math.greaterThanOrEqualI64
-arg capacityForAppendCheckCall left todoCount
-arg capacityForAppendCheckCall right todoCapacity
+argument capacityForAppendCheckCall left I64 todoCount
+argument capacityForAppendCheckCall right I64 todoCapacity
 run capacityForAppendCheckCall
-bind appendWouldOverflow Bool capacityForAppendCheckCall
-branchIf appendWouldOverflow listFullOnCommit
+bind value appendWouldOverflow Bool capacityForAppendCheckCall
+branch if condition appendWouldOverflow target listFullOnCommit
 call appendTodoCall appendTodoFromEditBuffer
-arg appendTodoCall doneArray doneArray
-arg appendTodoCall titlesBuffer titlesArray
-arg appendTodoCall editBuffer editBuffer
-arg appendTodoCall todoCount todoCount
-arg appendTodoCall titleCapacity titleCapacity
+argument appendTodoCall doneArray COpaqueMemoryAddress doneArray
+argument appendTodoCall titlesBuffer COpaqueMemoryAddress titlesArray
+argument appendTodoCall editBuffer COpaqueMemoryAddress editBuffer
+argument appendTodoCall todoCount CSignedInt64 todoCount
+argument appendTodoCall titleCapacity CSignedInt64 titleCapacity
 run appendTodoCall
-bind incrementedTodoCount CSignedInt64 appendTodoCall
-set local todoCount incrementedTodoCount
-set local statusMessage savedText
-branch persistTodosThenLoop
+bind value incrementedTodoCount CSignedInt64 appendTodoCall
+set memory todoCount incrementedTodoCount
+set memory statusMessage savedText
+jump target persistTodosThenLoop
 label commitExistingEdit
 call commitExistingEditCall commitEditToSelectedTodo
-arg commitExistingEditCall titlesBuffer titlesArray
-arg commitExistingEditCall editBuffer editBuffer
-arg commitExistingEditCall selectedIndex selectedIndex
-arg commitExistingEditCall titleCapacity titleCapacity
+argument commitExistingEditCall titlesBuffer COpaqueMemoryAddress titlesArray
+argument commitExistingEditCall editBuffer COpaqueMemoryAddress editBuffer
+argument commitExistingEditCall selectedIndex CSignedInt64 selectedIndex
+argument commitExistingEditCall titleCapacity CSignedInt64 titleCapacity
 run commitExistingEditCall
-ignoreValue commitExistingEditCall CSignedInt64
-set local statusMessage savedText
-branch persistTodosThenLoop
+ignore value source commitExistingEditCall type CSignedInt64
+set memory statusMessage savedText
+jump target persistTodosThenLoop
 label ignoreEmptyEdit
-set local screenMode ListMode
-set local editLength zeroValue
-set local statusMessage emptyIgnoredText
-branch replLoop
+set memory screenMode ListMode
+set memory editLength zeroValue
+set memory statusMessage emptyIgnoredText
+jump target replLoop
 label listFullOnCommit
-set local screenMode ListMode
-set local editLength zeroValue
-set local statusMessage listFullText
-branch replLoop
+set memory screenMode ListMode
+set memory editLength zeroValue
+set memory statusMessage listFullText
+jump target replLoop
 
 label toggleSelectedTodo
 call selectedExistingForToggleCall math.lessThanI64
-arg selectedExistingForToggleCall left selectedIndex
-arg selectedExistingForToggleCall right todoCount
+argument selectedExistingForToggleCall left I64 selectedIndex
+argument selectedExistingForToggleCall right I64 todoCount
 run selectedExistingForToggleCall
-bind selectedExistingForToggle Bool selectedExistingForToggleCall
-branchIf selectedExistingForToggle toggleExistingTodo
-set local statusMessage noTodoText
-branch replLoop
+bind value selectedExistingForToggle Bool selectedExistingForToggleCall
+branch if condition selectedExistingForToggle target toggleExistingTodo
+set memory statusMessage noTodoText
+jump target replLoop
 label toggleExistingTodo
 call toggleSelectedTodoCall toggleTodoAtSelectedIndex
-arg toggleSelectedTodoCall doneArray doneArray
-arg toggleSelectedTodoCall selectedIndex selectedIndex
+argument toggleSelectedTodoCall doneArray COpaqueMemoryAddress doneArray
+argument toggleSelectedTodoCall selectedIndex CSignedInt64 selectedIndex
 run toggleSelectedTodoCall
-ignoreValue toggleSelectedTodoCall CSignedInt32
-set local statusMessage toggledText
-branch persistTodosThenLoop
+ignore value source toggleSelectedTodoCall type CSignedInt32
+set memory statusMessage toggledText
+jump target persistTodosThenLoop
 
 label deleteSelectedTodo
 call selectedExistingForDeleteCall math.lessThanI64
-arg selectedExistingForDeleteCall left selectedIndex
-arg selectedExistingForDeleteCall right todoCount
+argument selectedExistingForDeleteCall left I64 selectedIndex
+argument selectedExistingForDeleteCall right I64 todoCount
 run selectedExistingForDeleteCall
-bind selectedExistingForDelete Bool selectedExistingForDeleteCall
-branchIf selectedExistingForDelete deleteExistingTodo
-set local statusMessage noTodoText
-branch replLoop
+bind value selectedExistingForDelete Bool selectedExistingForDeleteCall
+branch if condition selectedExistingForDelete target deleteExistingTodo
+set memory statusMessage noTodoText
+jump target replLoop
 label deleteExistingTodo
 call deleteSelectedTodoCall deleteTodoAtSelectedIndex
-arg deleteSelectedTodoCall doneArray doneArray
-arg deleteSelectedTodoCall titlesBuffer titlesArray
-arg deleteSelectedTodoCall todoCount todoCount
-arg deleteSelectedTodoCall deletedIndex selectedIndex
-arg deleteSelectedTodoCall titleCapacity titleCapacity
+argument deleteSelectedTodoCall doneArray COpaqueMemoryAddress doneArray
+argument deleteSelectedTodoCall titlesBuffer COpaqueMemoryAddress titlesArray
+argument deleteSelectedTodoCall todoCount CSignedInt64 todoCount
+argument deleteSelectedTodoCall deletedIndex CSignedInt64 selectedIndex
+argument deleteSelectedTodoCall titleCapacity CSignedInt64 titleCapacity
 run deleteSelectedTodoCall
-bind decrementedTodoCount CSignedInt64 deleteSelectedTodoCall
-set local todoCount decrementedTodoCount
+bind value decrementedTodoCount CSignedInt64 deleteSelectedTodoCall
+set memory todoCount decrementedTodoCount
 call selectionPastCountCheckCall math.greaterThanOrEqualI64
-arg selectionPastCountCheckCall left selectedIndex
-arg selectionPastCountCheckCall right todoCount
+argument selectionPastCountCheckCall left I64 selectedIndex
+argument selectionPastCountCheckCall right I64 todoCount
 run selectionPastCountCheckCall
-bind selectionPastCount Bool selectionPastCountCheckCall
-branchIf selectionPastCount clampSelectionAfterDelete
-branch deleteStatusAndPersist
+bind value selectionPastCount Bool selectionPastCountCheckCall
+branch if condition selectionPastCount target clampSelectionAfterDelete
+branch else target deleteStatusAndPersist
 label clampSelectionAfterDelete
 call countIsZeroCheckCall math.equalI64
-arg countIsZeroCheckCall left todoCount
-arg countIsZeroCheckCall right zeroValue
+argument countIsZeroCheckCall left I64 todoCount
+argument countIsZeroCheckCall right I64 zeroValue
 run countIsZeroCheckCall
-bind countIsZero Bool countIsZeroCheckCall
-branchIf countIsZero setSelectionZeroAfterDelete
+bind value countIsZero Bool countIsZeroCheckCall
+branch if condition countIsZero target setSelectionZeroAfterDelete
 call lastIndexAfterDeleteCall math.subtractI64
-arg lastIndexAfterDeleteCall left todoCount
-arg lastIndexAfterDeleteCall right oneValue
+argument lastIndexAfterDeleteCall left I64 todoCount
+argument lastIndexAfterDeleteCall right I64 oneValue
 run lastIndexAfterDeleteCall
-bind lastIndexAfterDelete CSignedInt64 lastIndexAfterDeleteCall
-set local selectedIndex lastIndexAfterDelete
-branch deleteStatusAndPersist
+bind value lastIndexAfterDelete CSignedInt64 lastIndexAfterDeleteCall
+set memory selectedIndex lastIndexAfterDelete
+jump target deleteStatusAndPersist
 label setSelectionZeroAfterDelete
-set local selectedIndex zeroValue
-branch deleteStatusAndPersist
+set memory selectedIndex zeroValue
+jump target deleteStatusAndPersist
 label deleteStatusAndPersist
 call clampTopAfterDeleteCall clampTopIndex
-arg clampTopAfterDeleteCall selectedIndex selectedIndex
-arg clampTopAfterDeleteCall topIndex topIndex
-arg clampTopAfterDeleteCall visibleRows visibleRows
+argument clampTopAfterDeleteCall selectedIndex CSignedInt64 selectedIndex
+argument clampTopAfterDeleteCall topIndex CSignedInt64 topIndex
+argument clampTopAfterDeleteCall visibleRows CSignedInt64 visibleRows
 run clampTopAfterDeleteCall
-bind clampedTopAfterDelete CSignedInt64 clampTopAfterDeleteCall
-set local topIndex clampedTopAfterDelete
-set local statusMessage deletedText
-branch persistTodosThenLoop
+bind value clampedTopAfterDelete CSignedInt64 clampTopAfterDeleteCall
+set memory topIndex clampedTopAfterDelete
+set memory statusMessage deletedText
+jump target persistTodosThenLoop
 
 label persistTodosThenLoop
-set local screenMode ListMode
-set local editLength zeroValue
+set memory screenMode ListMode
+set memory editLength zeroValue
 call saveTodosAfterChangeCall saveTodosToJson
-arg saveTodosAfterChangeCall doneArray doneArray
-arg saveTodosAfterChangeCall titlesBuffer titlesArray
-arg saveTodosAfterChangeCall todoCount todoCount
-arg saveTodosAfterChangeCall titleCapacity titleCapacity
+argument saveTodosAfterChangeCall doneArray COpaqueMemoryAddress doneArray
+argument saveTodosAfterChangeCall titlesBuffer COpaqueMemoryAddress titlesArray
+argument saveTodosAfterChangeCall todoCount CSignedInt64 todoCount
+argument saveTodosAfterChangeCall titleCapacity CSignedInt64 titleCapacity
 run saveTodosAfterChangeCall
-bind saveAfterChangeStatus SaveTodosStatus saveTodosAfterChangeCall
+bind value saveAfterChangeStatus SaveTodosStatus saveTodosAfterChangeCall
 call saveAfterChangeSucceededCall SaveTodosStatus.equal
-arg saveAfterChangeSucceededCall left saveAfterChangeStatus
-arg saveAfterChangeSucceededCall right SaveSucceeded
+argument saveAfterChangeSucceededCall left SaveTodosStatus saveAfterChangeStatus
+argument saveAfterChangeSucceededCall right SaveTodosStatus SaveSucceeded
 run saveAfterChangeSucceededCall
-bind saveAfterChangeSucceeded Bool saveAfterChangeSucceededCall
-branchIf saveAfterChangeSucceeded replLoop
-set local statusMessage saveFailedText
-branch replLoop
+bind value saveAfterChangeSucceeded Bool saveAfterChangeSucceededCall
+branch if condition saveAfterChangeSucceeded target replLoop
+set memory statusMessage saveFailedText
+jump target replLoop
 
 label doneArrayAllocationFailed
 call allocationFailedDoneCall c.puts
-arg allocationFailedDoneCall text allocationFailedText
+argument allocationFailedDoneCall text CNullTerminatedByteString allocationFailedText
 run allocationFailedDoneCall
-ignoreValue allocationFailedDoneCall CSignedInt32
+ignore value source allocationFailedDoneCall type CSignedInt32
 makeError doneArrayAllocationFailure MainError.StartupAllocationFailed allocateDoneArrayError
-returnError doneArrayAllocationFailure
+return error doneArrayAllocationFailure
 label titlesArrayAllocationFailed
 call allocationFailedTitlesCall c.puts
-arg allocationFailedTitlesCall text allocationFailedText
+argument allocationFailedTitlesCall text CNullTerminatedByteString allocationFailedText
 run allocationFailedTitlesCall
-ignoreValue allocationFailedTitlesCall CSignedInt32
+ignore value source allocationFailedTitlesCall type CSignedInt32
 call freeDoneAfterTitlesFailureCall c.free
-arg freeDoneAfterTitlesFailureCall ptr doneArray
+argument freeDoneAfterTitlesFailureCall ptr COpaqueMemoryAddress doneArray
 run freeDoneAfterTitlesFailureCall
-ignoreValue freeDoneAfterTitlesFailureCall Void
+ignore void source freeDoneAfterTitlesFailureCall
 makeError titlesArrayAllocationFailure MainError.StartupAllocationFailed allocateTitlesArrayError
-returnError titlesArrayAllocationFailure
+return error titlesArrayAllocationFailure
 label editBufferAllocationFailed
 call allocationFailedEditCall c.puts
-arg allocationFailedEditCall text allocationFailedText
+argument allocationFailedEditCall text CNullTerminatedByteString allocationFailedText
 run allocationFailedEditCall
-ignoreValue allocationFailedEditCall CSignedInt32
+ignore value source allocationFailedEditCall type CSignedInt32
 call freeDoneAfterEditFailureCall c.free
-arg freeDoneAfterEditFailureCall ptr doneArray
+argument freeDoneAfterEditFailureCall ptr COpaqueMemoryAddress doneArray
 run freeDoneAfterEditFailureCall
-ignoreValue freeDoneAfterEditFailureCall Void
+ignore void source freeDoneAfterEditFailureCall
 call freeTitlesAfterEditFailureCall c.free
-arg freeTitlesAfterEditFailureCall ptr titlesArray
+argument freeTitlesAfterEditFailureCall ptr COpaqueMemoryAddress titlesArray
 run freeTitlesAfterEditFailureCall
-ignoreValue freeTitlesAfterEditFailureCall Void
+ignore void source freeTitlesAfterEditFailureCall
 makeError editBufferAllocationFailure MainError.StartupAllocationFailed allocateEditBufferError
-returnError editBufferAllocationFailure
+return error editBufferAllocationFailure
 label lineBufferAllocationFailed
 call allocationFailedLineCall c.puts
-arg allocationFailedLineCall text allocationFailedText
+argument allocationFailedLineCall text CNullTerminatedByteString allocationFailedText
 run allocationFailedLineCall
-ignoreValue allocationFailedLineCall CSignedInt32
+ignore value source allocationFailedLineCall type CSignedInt32
 call freeDoneAfterLineFailureCall c.free
-arg freeDoneAfterLineFailureCall ptr doneArray
+argument freeDoneAfterLineFailureCall ptr COpaqueMemoryAddress doneArray
 run freeDoneAfterLineFailureCall
-ignoreValue freeDoneAfterLineFailureCall Void
+ignore void source freeDoneAfterLineFailureCall
 call freeTitlesAfterLineFailureCall c.free
-arg freeTitlesAfterLineFailureCall ptr titlesArray
+argument freeTitlesAfterLineFailureCall ptr COpaqueMemoryAddress titlesArray
 run freeTitlesAfterLineFailureCall
-ignoreValue freeTitlesAfterLineFailureCall Void
+ignore void source freeTitlesAfterLineFailureCall
 call freeEditAfterLineFailureCall c.free
-arg freeEditAfterLineFailureCall ptr editBuffer
+argument freeEditAfterLineFailureCall ptr COpaqueMemoryAddress editBuffer
 run freeEditAfterLineFailureCall
-ignoreValue freeEditAfterLineFailureCall Void
+ignore void source freeEditAfterLineFailureCall
 makeError lineBufferAllocationFailure MainError.StartupAllocationFailed allocateLineBufferError
-returnError lineBufferAllocationFailure
+return error lineBufferAllocationFailure
 
 label quitProgram
 call saveTodosOnQuitCall saveTodosToJson
-arg saveTodosOnQuitCall doneArray doneArray
-arg saveTodosOnQuitCall titlesBuffer titlesArray
-arg saveTodosOnQuitCall todoCount todoCount
-arg saveTodosOnQuitCall titleCapacity titleCapacity
+argument saveTodosOnQuitCall doneArray COpaqueMemoryAddress doneArray
+argument saveTodosOnQuitCall titlesBuffer COpaqueMemoryAddress titlesArray
+argument saveTodosOnQuitCall todoCount CSignedInt64 todoCount
+argument saveTodosOnQuitCall titleCapacity CSignedInt64 titleCapacity
 run saveTodosOnQuitCall
-bind saveOnQuitStatus SaveTodosStatus saveTodosOnQuitCall
+bind value saveOnQuitStatus SaveTodosStatus saveTodosOnQuitCall
 call saveOnQuitSucceededCall SaveTodosStatus.equal
-arg saveOnQuitSucceededCall left saveOnQuitStatus
-arg saveOnQuitSucceededCall right SaveSucceeded
+argument saveOnQuitSucceededCall left SaveTodosStatus saveOnQuitStatus
+argument saveOnQuitSucceededCall right SaveTodosStatus SaveSucceeded
 run saveOnQuitSucceededCall
-bind saveOnQuitSucceeded Bool saveOnQuitSucceededCall
-branchIf saveOnQuitSucceeded useSavedExitMessage
-set local exitMessage quitSaveFailedText
-branch clearAndExitProgram
+bind value saveOnQuitSucceeded Bool saveOnQuitSucceededCall
+branch if condition saveOnQuitSucceeded target useSavedExitMessage
+set memory exitMessage quitSaveFailedText
+jump target clearAndExitProgram
 label useSavedExitMessage
-set local exitMessage goodbyeText
-branch clearAndExitProgram
+set memory exitMessage goodbyeText
+jump target clearAndExitProgram
 label clearAndExitProgram
 call clearScreenOnQuitCall clearScreen
 run clearScreenOnQuitCall
-ignoreValue clearScreenOnQuitCall CSignedInt32
+ignore value source clearScreenOnQuitCall type CSignedInt32
 call goodbyeCall c.puts
-arg goodbyeCall text exitMessage
+argument goodbyeCall text CNullTerminatedByteString exitMessage
 run goodbyeCall
-ignoreValue goodbyeCall CSignedInt32
+ignore value source goodbyeCall type CSignedInt32
 call freeDoneCall c.free
-arg freeDoneCall ptr doneArray
+argument freeDoneCall ptr COpaqueMemoryAddress doneArray
 run freeDoneCall
-ignoreValue freeDoneCall Void
+ignore void source freeDoneCall
 call freeTitlesCall c.free
-arg freeTitlesCall ptr titlesArray
+argument freeTitlesCall ptr COpaqueMemoryAddress titlesArray
 run freeTitlesCall
-ignoreValue freeTitlesCall Void
+ignore void source freeTitlesCall
 call freeEditCall c.free
-arg freeEditCall ptr editBuffer
+argument freeEditCall ptr COpaqueMemoryAddress editBuffer
 run freeEditCall
-ignoreValue freeEditCall Void
+ignore void source freeEditCall
 storage local immutable successfulExitCode ExitCode 0
-returnOk successfulExitCode
+return ok successfulExitCode

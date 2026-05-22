@@ -510,55 +510,55 @@ iconImagePurpose todoPrimaryAt16 "Small shell icon."
     def test_gui_function_calls_not_flagged(self) -> None:
         diagnostics = _lint_source("""project GuiLint
 target windowsGui
-importModule gui standard.gui
+import gui standard.gui
 storage module immutable title GuiText "Todo"
 storage module immutable width GuiPixels 640
 storage module immutable height GuiPixels 480
 storage module immutable yesFlag CSignedInt32 1
 storage module immutable maxTitleLength CSignedInt32 120
 operation main
-output main ExitCode
+output operation main ExitCode
 effect main allocate gui.application
 effect main allocate gui.window
 effect main allocate gui.control
 effect main write gui.window
-authority main gui.application allocate
-authority main gui.window allocate
-authority main gui.control allocate
-authority main gui.window write
-purpose main "compose the GUI through standard function calls"
+authority main allocate gui.application
+authority main allocate gui.window
+authority main allocate gui.control
+authority main write gui.window
+purpose operation main "compose the GUI through standard function calls"
 call createApplicationCall gui.applicationCreate
-arg createApplicationCall title title
+argument createApplicationCall title GuiText title
 run createApplicationCall
-bind application GuiApplication createApplicationCall
+bind value application GuiApplication createApplicationCall
 call createWindowCall gui.windowCreate
-arg createWindowCall title title
-arg createWindowCall width width
-arg createWindowCall height height
-arg createWindowCall layout verticalStackGuiWindowLayout
-arg createWindowCall resizable yesFlag
+argument createWindowCall title GuiText title
+argument createWindowCall width GuiPixels width
+argument createWindowCall height GuiPixels height
+argument createWindowCall layout GuiWindowLayout verticalStackGuiWindowLayout
+argument createWindowCall resizable CSignedInt32 yesFlag
 run createWindowCall
-bind window GuiWindow createWindowCall
+bind value window GuiWindow createWindowCall
 call createTextBoxCall gui.textBoxCreate
-arg createTextBoxCall placeholder title
-arg createTextBoxCall maxLength maxTitleLength
+argument createTextBoxCall placeholder GuiText title
+argument createTextBoxCall maxLength CSignedInt32 maxTitleLength
 run createTextBoxCall
-bind textBox GuiTextBox createTextBoxCall
+bind value textBox GuiTextBox createTextBoxCall
 call addControlCall gui.windowAddControl
-arg addControlCall window window
-arg addControlCall control textBox
+argument addControlCall window GuiWindow window
+argument addControlCall control GuiControl textBox
 run addControlCall
-ignoreValue addControlCall CSignedInt32
+ignore value source addControlCall type CSignedInt32
 call setMainWindowCall gui.applicationSetMainWindow
-arg setMainWindowCall application application
-arg setMainWindowCall window window
+argument setMainWindowCall application GuiApplication application
+argument setMainWindowCall window GuiWindow window
 run setMainWindowCall
-ignoreValue setMainWindowCall CSignedInt32
+ignore value source setMainWindowCall type CSignedInt32
 call runApplicationCall gui.applicationRun
-arg runApplicationCall application application
+argument runApplicationCall application GuiApplication application
 run runApplicationCall
-bind status ExitCode runApplicationCall
-returnValue status
+bind value status ExitCode runApplicationCall
+return value status
 """)
         self.assertNotIn("SS0001", _codes(diagnostics))
         self.assertNotIn("SS0002", _codes(diagnostics))
@@ -586,31 +586,28 @@ guiButton addTodoButton
 class TestHtmlSyntaxIsland(unittest.TestCase):
     def test_html_template_verbs_and_body_lines_are_known(self) -> None:
         diagnostics = _lint_source("""project HtmlLint
-htmlTemplate CardTemplate
-htmlArg CardTemplate titleText HtmlText
-htmlArg CardTemplate cardClassName HtmlClass
-htmlBody CardTemplate
-  <section class="{htmlArg.cardClassName}">
+html template CardTemplate
+html body template CardTemplate
+  <section class="{cardClassName}">
     <style>
       .meter { width: 100%; content: "{literal-braces-stay-static}"; }
     </style>
-    <h1>{htmlArg.titleText}</h1>
+    <h1>{titleText}</h1>
   </section>
 operation main
-output main Void
-purpose main "html lint smoke"
+output operation main Void
+purpose operation main "html lint smoke"
 """)
         self.assertNotIn("SS0001", _codes(diagnostics))
         self.assertNotIn("SS0002", _codes(diagnostics))
 
     def test_html_body_can_continue_through_blank_lines_and_eof(self) -> None:
         diagnostics = _lint_source("""project HtmlLint
-htmlTemplate CardTemplate
-htmlArg CardTemplate titleText HtmlText
-htmlBody CardTemplate
+html template CardTemplate
+html body template CardTemplate
   <section>
 
-    <h1>{htmlArg.titleText}</h1>
+    <h1>{titleText}</h1>
   </section>
 """)
         self.assertNotIn("SS0001", _codes(diagnostics))
@@ -618,10 +615,9 @@ htmlBody CardTemplate
 
     def test_column_zero_after_html_body_is_linted_normally(self) -> None:
         diagnostics = _lint_source("""project HtmlLint
-htmlTemplate CardTemplate
-htmlArg CardTemplate titleText HtmlText
-htmlBody CardTemplate
-  <h1>{htmlArg.titleText}</h1>
+html template CardTemplate
+html body template CardTemplate
+  <h1>{titleText}</h1>
 operation main
 output main Void
 purpose main "html lint smoke"
@@ -640,26 +636,60 @@ purpose main "html lint smoke"
 """)
         self.assertIn("SS0001", _codes(diagnostics))
 
-    def test_html_arg_arity_is_checked(self) -> None:
+    def test_html_parameter_rows_are_rejected(self) -> None:
         diagnostics = _lint_source("""project HtmlLint
-htmlTemplate CardTemplate
-htmlArg CardTemplate titleText
-htmlBody CardTemplate
-  <h1>{htmlArg.titleText}</h1>
+html template CardTemplate
+html parameter template CardTemplate titleText String
+html body template CardTemplate
+  <h1>{titleText}</h1>
 """)
-        self.assertIn("SS0002", _codes(diagnostics))
-        matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS0002")[0]
-        self.assertEqual(matchingDiagnostic.subjectName, "htmlArg")
+        self.assertIn("SS0003", _codes(diagnostics))
+        matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS0003")[0]
+        self.assertEqual(matchingDiagnostic.subjectName, "html")
 
     def test_html_body_arity_is_checked(self) -> None:
         diagnostics = _lint_source("""project HtmlLint
-htmlTemplate CardTemplate
-htmlBody
+html template CardTemplate
+html body template
   <h1>missing template name</h1>
 """)
-        self.assertIn("SS0002", _codes(diagnostics))
-        matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS0002")[0]
-        self.assertEqual(matchingDiagnostic.subjectName, "htmlBody")
+        self.assertIn("SS0003", _codes(diagnostics))
+        matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS0003")[0]
+        self.assertEqual(matchingDiagnostic.subjectName, "html")
+
+    def test_html_hydrate_requires_exact_inferred_hole_roots(self) -> None:
+        diagnostics = _lint_source("""project HtmlLint
+html template CardTemplate
+html body template CardTemplate
+  <h1>{titleText}</h1>
+operation main
+output operation main Void
+purpose operation main "html lint smoke"
+call hydrateCardCall html.hydrate.CardTemplate
+argument hydrateCardCall extraText String extraText
+run hydrateCardCall
+return void
+""")
+        codes = _codes(diagnostics)
+        self.assertIn("SS3520", codes)
+        messages = [diagnostic.invariantRule for diagnostic in diagnostics if diagnostic.code == "SS3520"]
+        self.assertTrue(any("titleText" in message for message in messages))
+        self.assertTrue(any("extraText" in message for message in messages))
+
+    def test_html_record_field_hole_root_is_the_required_argument(self) -> None:
+        diagnostics = _lint_source("""project HtmlLint
+html template CardTemplate
+html body template CardTemplate
+  <h1>{profile.titleText}</h1>
+operation main
+output operation main Void
+purpose operation main "html lint smoke"
+call hydrateCardCall html.hydrate.CardTemplate
+argument hydrateCardCall profile Profile profileValue
+run hydrateCardCall
+return void
+""")
+        self.assertNotIn("SS3520", _codes(diagnostics))
 
 
 class TestGuiRuntimeContracts(unittest.TestCase):
@@ -823,6 +853,70 @@ docsOutput todoGui "docs"
 {extraRows}""", encoding="utf-8")
         return buildPath
 
+    def _write_regular_build_plan_project(
+        self,
+        root: Path,
+        *,
+        targetRuntime: str = "nativeExe",
+        optLevel: int = 2,
+    ) -> Path:
+        (root / "main.sem").write_text("module app.todo\n", encoding="utf-8")
+        buildPath = root / "build.sem"
+        buildPath.write_text(f"""module app.todo.build
+record BuildProject
+field BuildProject id String
+field BuildProject name String
+field BuildProject modulePath String
+field BuildProject languageVersion String
+field BuildProject projectVersion String
+field BuildProject license String
+record BuildModule
+field BuildModule moduleName String
+field BuildModule sourceRoot String
+field BuildModule sourcePath String
+field BuildModule mainFile String
+field BuildModule mainOperation String
+record BuildTarget
+field BuildTarget runtime String
+field BuildTarget profile String
+field BuildTarget optLevel I64
+field BuildTarget runtimeChecks String
+field BuildTarget persistLlvmIr Bool
+field BuildTarget buildFolderName String
+record BuildPlan
+field BuildPlan project BuildProject
+field BuildPlan module BuildModule
+field BuildPlan target BuildTarget
+storage module immutable todoBuildPlan BuildPlan
+jsonBody todoBuildPlan
+  {{
+    "project": {{
+      "id": "todoTui",
+      "name": "TodoTuiApp",
+      "modulePath": "github.com/example/todo",
+      "languageVersion": "1.0",
+      "projectVersion": "1.0.0",
+      "license": "MIT"
+    }},
+    "module": {{
+      "moduleName": "app.todo",
+      "sourceRoot": ".",
+      "sourcePath": ".",
+      "mainFile": "main.sem",
+      "mainOperation": "main"
+    }},
+    "target": {{
+      "runtime": "{targetRuntime}",
+      "profile": "dev",
+      "optLevel": {optLevel},
+      "runtimeChecks": "panic",
+      "persistLlvmIr": true,
+      "buildFolderName": "build"
+    }}
+  }}
+""", encoding="utf-8")
+        return buildPath
+
     def test_complete_build_tape_schema_is_clean(self) -> None:
         with TemporaryDirectory() as tempDir:
             buildPath = self._write_complete_project(Path(tempDir))
@@ -845,6 +939,28 @@ docsOutput todoGui "docs"
         codes = _codes(diagnostics)
         self.assertNotIn("SS2522", codes)
         self.assertNotIn("SS2525", codes)
+
+    def test_regular_build_plan_schema_is_clean_and_registers_module(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            buildPath = self._write_regular_build_plan_project(Path(tempDir))
+            diagnostics = semlint.lint_path(buildPath)
+            facts = semlint.parse_file(buildPath)
+            registered, mainFiles = semlint._collect_registered_modules(facts)
+        codes = _codes(diagnostics)
+        self.assertNotIn("SS2521", codes)
+        self.assertNotIn("SS2522", codes)
+        self.assertNotIn("SS2525", codes)
+        self.assertEqual({"app.todo"}, set(registered))
+        self.assertEqual(["main.sem"], mainFiles)
+
+    def test_regular_build_plan_invalid_runtime_is_flagged(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            buildPath = self._write_regular_build_plan_project(
+                Path(tempDir),
+                targetRuntime="desktopWizard",
+            )
+            diagnostics = semlint.lint_path(buildPath)
+        self.assertIn("SS2525", _codes(diagnostics))
 
     def test_missing_required_rows_are_flagged(self) -> None:
         diagnostics = _lint_source("""buildProject todoTui
@@ -1067,11 +1183,10 @@ mainFile todoTui "main.sem"
             modulePath = root / "main.sem"
             modulePath.write_text("""module app.todo
 importModule html standard.html
-htmlTemplate CardTemplate
-htmlArg CardTemplate titleText HtmlText
-htmlBody CardTemplate
-  <h1>{htmlArg.titleText}</h1>
-storage module immutable titleText HtmlText "Title"
+html template CardTemplate
+html body template CardTemplate
+  <h1>{titleText}</h1>
+storage module immutable titleText String "Title"
 operation main
 output main HtmlDocument
 purpose main "hydrate through the imported standard.html namespace"
@@ -1138,7 +1253,7 @@ returnValue okCode
         semanticScriptRoot = Path(_LINTER_DIRECTORY).resolve().parent
         relayPath = semanticScriptRoot / "std" / "module.sem"
         diagnostics = semlint.lint_path(relayPath)
-        self.assertEqual([], _codes(diagnostics))
+        self.assertEqual(set(), set(_codes(diagnostics)))
         relayText = relayPath.read_text(encoding="utf-8")
         canonicalModules = (
             "array", "assert", "bit", "bool", "char", "compare", "constants",
@@ -1149,7 +1264,7 @@ returnValue okCode
         )
         for moduleName in canonicalModules:
             self.assertIn(
-                f"importModule standard.{moduleName}",
+                f"import {moduleName} standard.{moduleName}",
                 relayText,
             )
             self.assertTrue(
@@ -1729,8 +1844,8 @@ ignoreOk writeLineCall Void
         self.assertIn("SS3106", _codes(diagnostics))
         matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS3106")[0]
         self.assertEqual(matchingDiagnostic.subjectName, "writeLineCall")
-        self.assertIn("bindError", matchingDiagnostic.gapEdge)
-        self.assertIn("branchIfError", matchingDiagnostic.gapEdge)
+        self.assertIn("bind error", matchingDiagnostic.gapEdge)
+        self.assertIn("branch error", matchingDiagnostic.gapEdge)
 
     def test_console_write_with_full_error_disposition_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
@@ -3524,12 +3639,148 @@ arg writeCall console
     def test_correctly_arity_lines_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
-output main Void
-purpose main "smoke"
+output operation main Void
+purpose operation main "smoke"
 call writeCall console.writeLine
-arg writeCall console consoleHandle
+argument writeCall console Console consoleHandle
 """)
         self.assertNotIn("SS0002", _codes(diagnostics))
+
+
+class TestSemanticSyntaxCutover(unittest.TestCase):
+    def test_new_cutover_rows_are_accepted_by_grammar_passes(self) -> None:
+        diagnostics = _lint_source("""project Test
+import math standard.math
+type MainResult result ok ExitCode error MainError
+error MainError
+errorCase MainError Failed
+storage module immutable okCode ExitCode 0
+html template CardTemplate
+html body template CardTemplate
+  <h1>{titleText}</h1>
+operation main
+input operation main console Console
+output operation main MainResult
+purpose operation main "smoke"
+effect main write console.stdout
+authority main write console.stdout
+memory main heap no
+memory main mutable counter I64 0
+call writeCall console.writeLine
+argument writeCall console Console console
+argument writeCall text CNullTerminatedByteString someMessageText
+run writeCall
+bind error writeCallError MainError writeCall
+branch error source writeCall target failed
+branch else target succeeded
+label succeeded
+return ok okCode
+label failed
+makeError writeFailure MainError.Failed
+return error writeFailure
+""")
+        self.assertNotIn("SS0002", _codes(diagnostics))
+        self.assertNotIn("SS0003", _codes(diagnostics))
+
+    def test_replaced_old_rows_emit_cutover_error(self) -> None:
+        diagnostics = _lint_source("""project Test
+importModule math standard.math
+operation main
+output main Void
+purpose main "old fixture"
+memoryHeap main no
+htmlTemplate CardTemplate
+htmlArg CardTemplate titleText String
+htmlBody CardTemplate
+  <h1>{titleText}</h1>
+arg callName param value
+bind result I64 callName
+bindOk ok I64 callName
+bindError bad MainError callName
+branchIf condition done
+branchIfError callName failed
+branch done
+returnValue result
+returnOk ok
+returnError bad
+returnVoid
+ignoreValue callName I64
+ignoreOk callName I64
+ignoreError callName
+""")
+        cutoverSubjects = {
+            diagnostic.subjectName
+            for diagnostic in _diagnostics_with_code(diagnostics, "SS0003")
+        }
+        self.assertIn("importModule", cutoverSubjects)
+        self.assertIn("arg", cutoverSubjects)
+        self.assertIn("htmlTemplate", cutoverSubjects)
+        self.assertIn("htmlArg", cutoverSubjects)
+        self.assertIn("htmlBody", cutoverSubjects)
+        self.assertIn("bind", cutoverSubjects)
+        self.assertIn("branchIf", cutoverSubjects)
+        self.assertIn("returnVoid", cutoverSubjects)
+        self.assertIn("ignoreError", cutoverSubjects)
+
+    def test_branch_if_condition_must_be_bool(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output operation main Void
+purpose operation main "smoke"
+memory main immutable count I64 1
+branch if condition count target done
+label done
+return void
+""")
+        self.assertIn("SS4106", _codes(diagnostics))
+
+    def test_branch_error_requires_fallible_source(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output operation main Void
+purpose operation main "smoke"
+call addCall math.addI64
+branch error source addCall target failed
+label failed
+return void
+""")
+        self.assertIn("SS4107", _codes(diagnostics))
+
+    def test_branch_else_must_be_physically_adjacent(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output operation main Void
+purpose operation main "smoke"
+memory main immutable isReady Bool true
+branch if condition isReady target ready
+# comment breaks adjacency
+branch else target notReady
+label ready
+return void
+label notReady
+return void
+""")
+        self.assertIn("SS4108", _codes(diagnostics))
+
+    def test_jump_target_resolution_uses_new_shape(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output operation main Void
+purpose operation main "smoke"
+jump target missingLabel
+""")
+        self.assertIn("SS4102", _codes(diagnostics))
+
+    def test_argument_repeated_type_must_match_signature(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output operation main Void
+purpose operation main "smoke"
+memory main immutable leftValue I64 1
+call addCall math.addI64
+argument addCall left Bool leftValue
+""")
+        self.assertIn("SS4301", _codes(diagnostics))
 
 
 class TestUnresolvedReferences(unittest.TestCase):
@@ -3997,7 +4248,7 @@ returnValue 2
         self.assertIn("SS4302", _codes(diagnostics))
         diagnostic = _diagnostics_with_code(diagnostics, "SS4302")[0]
         self.assertEqual(diagnostic.kind, "typeIntegrity.enumReturnUsesRawValue")
-        self.assertEqual(diagnostic.fixCandidates[0].shape, "returnValue SaveFailed")
+        self.assertEqual(diagnostic.fixCandidates[0].shape, "return value SaveFailed")
 
     def test_enum_output_returning_case_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
@@ -5975,7 +6226,7 @@ returnValue legacyZeroSentinel
         self.assertEqual(matching.subjectName, "legacyVoidOp")
         self.assertEqual(matching.gapEdge, "returnVoid")
         self.assertEqual(matching.fixCandidates[0].name, "replaceReturnValueWithReturnVoid")
-        self.assertEqual(matching.fixCandidates[0].shape, "returnVoid")
+        self.assertEqual(matching.fixCandidates[0].shape, "return void")
         self.assertTrue(matching.fixCandidates[0].autoApplicable)
 
     def test_void_output_with_return_void_not_flagged(self) -> None:

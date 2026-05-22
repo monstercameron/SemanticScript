@@ -8,61 +8,61 @@ error MainError
 errorCase MainError Placeholder CSignedInt32
 
 operation doubleIt
-input doubleIt x CSignedInt64
-output doubleIt Result CSignedInt64 Void
+input operation doubleIt x CSignedInt64
+output operation doubleIt Result CSignedInt64 Void
 memory doubleIt heap no
 async doubleIt no
-purpose doubleIt "Return 2x."
-invariant doubleIt "Doubles input."
+purpose operation doubleIt "Return 2x."
+invariant operation doubleIt "Doubles input."
 label startDoubleIt
-const twoLit I64 2
+storage module immutable twoLit I64 2
 call mulCall math.multiplyI64
-arg mulCall left x
-arg mulCall right twoLit
+argument mulCall left CSignedInt64 x
+argument mulCall right I64 twoLit
 run mulCall
-bind productResult I64 mulCall
-returnOk productResult
+bind value productResult I64 mulCall
+return ok productResult
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Loop counter 1..5 and print doubleIt(counter) each iteration."
-invariant main "Outputs 2,4,6,8,10."
+purpose operation main "Loop counter 1..5 and print doubleIt(counter) each iteration."
+invariant operation main "Outputs 2,4,6,8,10."
 label startMain
-const oneInitial I64 1
-const fiveBound I64 5
-const oneStep I64 1
-var counter I64 oneInitial
+storage module immutable oneInitial I64 1
+storage module immutable fiveBound I64 5
+storage module immutable oneStep I64 1
+memory main mutable counter I64 oneInitial
 label loopHead
 call checkCall math.lessThanOrEqualI64
-arg checkCall left counter
-arg checkCall right fiveBound
+argument checkCall left I64 counter
+argument checkCall right I64 fiveBound
 run checkCall
-bind shouldContinue Bool checkCall
-branchIf shouldContinue loopBody
-branch loopExit
+bind value shouldContinue Bool checkCall
+branch if condition shouldContinue target loopBody
+branch else target loopExit
 label loopBody
 call dblCall doubleIt
-arg dblCall x counter
+argument dblCall x CSignedInt64 counter
 run dblCall
-bindOk doubledValue I64 dblCall
-var doubledVar I64 oneInitial
-set doubledVar doubledValue
+bind ok doubledValue I64 dblCall
+memory main mutable doubledVar I64 oneInitial
+set memory doubledVar doubledValue
 call printCall console.writeIntegerLine
-arg printCall console console
-arg printCall value doubledVar
+argument printCall console Console console
+argument printCall value I64 doubledVar
 run printCall
-ignoreOk printCall Void
+ignore void source printCall
 call incCall math.addI64
-arg incCall left counter
-arg incCall right oneStep
+argument incCall left I64 counter
+argument incCall right I64 oneStep
 run incCall
-bind nextCounter I64 incCall
-set counter nextCounter
-branch loopHead
+bind value nextCounter I64 incCall
+set memory counter nextCounter
+jump target loopHead
 label loopExit
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

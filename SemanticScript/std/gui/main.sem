@@ -21,11 +21,11 @@
 # keywords. This file is the human-readable contract layer.
 
 module standard.gui
-modulePurpose standard.gui "Standard-library namespace and contracts for GUI application, window, control, event, and runtime-call functions."
+purpose module standard.gui "Standard-library namespace and contracts for GUI application, window, control, event, and runtime-call functions."
 moduleOwns standard.gui "The official import path `standard.gui`, semantic GUI handle aliases, reusable GUI capabilities, closed GUI token sets, status-code names, and the compiler-lowered `gui.*` function namespace contract."
 moduleDoesNotOwn standard.gui "Application GUI graphs, event handler implementations, native Win32 runtime internals, platform message-loop internals, generated application configuration tables, or diagnostics text."
-moduleInvariant standard.gui "The standard module entry is this file; new GUI modules import it as alias `gui` before using compiler-owned targets in the `gui.*` namespace."
-moduleInvariant standard.gui "Parser and runtime implementations may mirror the numeric IDs below, but the vocabulary and user-facing semantics belong to `standard.gui`."
+invariant module standard.gui "The standard module entry is this file; new GUI modules import it as alias `gui` before using compiler-owned targets in the `gui.*` namespace."
+invariant module standard.gui "Parser and runtime implementations may mirror the numeric IDs below, but the vocabulary and user-facing semantics belong to `standard.gui`."
 
 type GuiApplication COpaqueMemoryAddress
 type GuiSession COpaqueMemoryAddress

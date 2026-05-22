@@ -16,120 +16,120 @@ error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 
 operation writeStandardOutputLine
-input writeStandardOutputLine text String
-output writeStandardOutputLine Result Void ConsoleWriteError
+input operation writeStandardOutputLine text String
+output operation writeStandardOutputLine Result Void ConsoleWriteError
 effect writeStandardOutputLine write console.stdout
 memory writeStandardOutputLine heap no
 memory writeStandardOutputLine stack max 1KiB
 async writeStandardOutputLine no
 
-purpose writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
-invariant writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
+purpose operation writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
+invariant operation writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
 guarantee writeStandardOutputLine "On success the entire text plus a single newline byte is written exactly once"
 
 # group writeStandardOutputLineHelperBody
 label startWriteStandardOutputLine
 
 call writeStandardOutputLineConsoleWriteCall console.writeLine
-arg writeStandardOutputLineConsoleWriteCall console console
-arg writeStandardOutputLineConsoleWriteCall text text
+argument writeStandardOutputLineConsoleWriteCall console Console console
+argument writeStandardOutputLineConsoleWriteCall text String text
 run writeStandardOutputLineConsoleWriteCall
-ignoreOk writeStandardOutputLineConsoleWriteCall Void
-bindError writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
-branchIfError writeStandardOutputLineConsoleWriteCall writeStandardOutputLineConsoleWriteFailed
+ignore void source writeStandardOutputLineConsoleWriteCall
+bind error writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
+branch error source writeStandardOutputLineConsoleWriteCall target writeStandardOutputLineConsoleWriteFailed
 
-const writeStandardOutputLineSuccessSentinel ExitCode 0
-returnOk writeStandardOutputLineSuccessSentinel
+storage module immutable writeStandardOutputLineSuccessSentinel ExitCode 0
+return ok writeStandardOutputLineSuccessSentinel
 
 label writeStandardOutputLineConsoleWriteFailed
-returnError writeStandardOutputLineConsoleWriteError
+return error writeStandardOutputLineConsoleWriteError
 # endGroup writeStandardOutputLineHelperBody
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 memory main stack max 4KiB
 async main no
 
-purpose main "Print the JavaScript this-binding surprises from javascript/counterintuitive-this-binding.js"
-invariant main "Detached method invocation reports TypeError; arrow functions ignore explicit .call"
+purpose operation main "Print the JavaScript this-binding surprises from javascript/counterintuitive-this-binding.js"
+invariant operation main "Detached method invocation reports TypeError; arrow functions ignore explicit .call"
 
 label startMain
 
-const thisBindingTitleText String "Counterintuitive This Binding"
-const thisBindingTitleUnderlineText String "============================="
-const thisBindingCounterReadText String "counter.readCount() => 3"
-const thisBindingDetachedTypeErrorText String "detachedReadCount() => TypeError"
-const thisBindingBoundReadText String "boundReadCount() => 3"
-const thisBindingOtherReadText String "otherCounter.readCount() => 99"
-const thisBindingArrowCallText String "arrowReadCount.call({ count: 42 }) => 3"
+storage module immutable thisBindingTitleText String "Counterintuitive This Binding"
+storage module immutable thisBindingTitleUnderlineText String "============================="
+storage module immutable thisBindingCounterReadText String "counter.readCount() => 3"
+storage module immutable thisBindingDetachedTypeErrorText String "detachedReadCount() => TypeError"
+storage module immutable thisBindingBoundReadText String "boundReadCount() => 3"
+storage module immutable thisBindingOtherReadText String "otherCounter.readCount() => 99"
+storage module immutable thisBindingArrowCallText String "arrowReadCount.call({ count: 42 }) => 3"
 
-var lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
+memory main mutable lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
 
 call writeThisBindingTitleLineCall writeStandardOutputLine
-arg writeThisBindingTitleLineCall text thisBindingTitleText
+argument writeThisBindingTitleLineCall text String thisBindingTitleText
 run writeThisBindingTitleLineCall
-ignoreOk writeThisBindingTitleLineCall Void
-bindError writeThisBindingTitleLineError ConsoleWriteError writeThisBindingTitleLineCall
-set lastConsoleWriteErrorCode writeThisBindingTitleLineError
-branchIfError writeThisBindingTitleLineCall consoleWriteFailed
+ignore void source writeThisBindingTitleLineCall
+bind error writeThisBindingTitleLineError ConsoleWriteError writeThisBindingTitleLineCall
+set memory lastConsoleWriteErrorCode writeThisBindingTitleLineError
+branch error source writeThisBindingTitleLineCall target consoleWriteFailed
 
 call writeThisBindingTitleUnderlineLineCall writeStandardOutputLine
-arg writeThisBindingTitleUnderlineLineCall text thisBindingTitleUnderlineText
+argument writeThisBindingTitleUnderlineLineCall text String thisBindingTitleUnderlineText
 run writeThisBindingTitleUnderlineLineCall
-ignoreOk writeThisBindingTitleUnderlineLineCall Void
-bindError writeThisBindingTitleUnderlineLineError ConsoleWriteError writeThisBindingTitleUnderlineLineCall
-set lastConsoleWriteErrorCode writeThisBindingTitleUnderlineLineError
-branchIfError writeThisBindingTitleUnderlineLineCall consoleWriteFailed
+ignore void source writeThisBindingTitleUnderlineLineCall
+bind error writeThisBindingTitleUnderlineLineError ConsoleWriteError writeThisBindingTitleUnderlineLineCall
+set memory lastConsoleWriteErrorCode writeThisBindingTitleUnderlineLineError
+branch error source writeThisBindingTitleUnderlineLineCall target consoleWriteFailed
 
 call writeThisBindingCounterReadLineCall writeStandardOutputLine
-arg writeThisBindingCounterReadLineCall text thisBindingCounterReadText
+argument writeThisBindingCounterReadLineCall text String thisBindingCounterReadText
 run writeThisBindingCounterReadLineCall
-ignoreOk writeThisBindingCounterReadLineCall Void
-bindError writeThisBindingCounterReadLineError ConsoleWriteError writeThisBindingCounterReadLineCall
-set lastConsoleWriteErrorCode writeThisBindingCounterReadLineError
-branchIfError writeThisBindingCounterReadLineCall consoleWriteFailed
+ignore void source writeThisBindingCounterReadLineCall
+bind error writeThisBindingCounterReadLineError ConsoleWriteError writeThisBindingCounterReadLineCall
+set memory lastConsoleWriteErrorCode writeThisBindingCounterReadLineError
+branch error source writeThisBindingCounterReadLineCall target consoleWriteFailed
 
 call writeThisBindingDetachedTypeErrorLineCall writeStandardOutputLine
-arg writeThisBindingDetachedTypeErrorLineCall text thisBindingDetachedTypeErrorText
+argument writeThisBindingDetachedTypeErrorLineCall text String thisBindingDetachedTypeErrorText
 run writeThisBindingDetachedTypeErrorLineCall
-ignoreOk writeThisBindingDetachedTypeErrorLineCall Void
-bindError writeThisBindingDetachedTypeLineError ConsoleWriteError writeThisBindingDetachedTypeErrorLineCall
-set lastConsoleWriteErrorCode writeThisBindingDetachedTypeLineError
-branchIfError writeThisBindingDetachedTypeErrorLineCall consoleWriteFailed
+ignore void source writeThisBindingDetachedTypeErrorLineCall
+bind error writeThisBindingDetachedTypeLineError ConsoleWriteError writeThisBindingDetachedTypeErrorLineCall
+set memory lastConsoleWriteErrorCode writeThisBindingDetachedTypeLineError
+branch error source writeThisBindingDetachedTypeErrorLineCall target consoleWriteFailed
 
 call writeThisBindingBoundReadLineCall writeStandardOutputLine
-arg writeThisBindingBoundReadLineCall text thisBindingBoundReadText
+argument writeThisBindingBoundReadLineCall text String thisBindingBoundReadText
 run writeThisBindingBoundReadLineCall
-ignoreOk writeThisBindingBoundReadLineCall Void
-bindError writeThisBindingBoundReadLineError ConsoleWriteError writeThisBindingBoundReadLineCall
-set lastConsoleWriteErrorCode writeThisBindingBoundReadLineError
-branchIfError writeThisBindingBoundReadLineCall consoleWriteFailed
+ignore void source writeThisBindingBoundReadLineCall
+bind error writeThisBindingBoundReadLineError ConsoleWriteError writeThisBindingBoundReadLineCall
+set memory lastConsoleWriteErrorCode writeThisBindingBoundReadLineError
+branch error source writeThisBindingBoundReadLineCall target consoleWriteFailed
 
 call writeThisBindingOtherReadLineCall writeStandardOutputLine
-arg writeThisBindingOtherReadLineCall text thisBindingOtherReadText
+argument writeThisBindingOtherReadLineCall text String thisBindingOtherReadText
 run writeThisBindingOtherReadLineCall
-ignoreOk writeThisBindingOtherReadLineCall Void
-bindError writeThisBindingOtherReadLineError ConsoleWriteError writeThisBindingOtherReadLineCall
-set lastConsoleWriteErrorCode writeThisBindingOtherReadLineError
-branchIfError writeThisBindingOtherReadLineCall consoleWriteFailed
+ignore void source writeThisBindingOtherReadLineCall
+bind error writeThisBindingOtherReadLineError ConsoleWriteError writeThisBindingOtherReadLineCall
+set memory lastConsoleWriteErrorCode writeThisBindingOtherReadLineError
+branch error source writeThisBindingOtherReadLineCall target consoleWriteFailed
 
 call writeThisBindingArrowCallLineCall writeStandardOutputLine
-arg writeThisBindingArrowCallLineCall text thisBindingArrowCallText
+argument writeThisBindingArrowCallLineCall text String thisBindingArrowCallText
 run writeThisBindingArrowCallLineCall
-ignoreOk writeThisBindingArrowCallLineCall Void
-bindError writeThisBindingArrowCallLineError ConsoleWriteError writeThisBindingArrowCallLineCall
-set lastConsoleWriteErrorCode writeThisBindingArrowCallLineError
-branchIfError writeThisBindingArrowCallLineCall consoleWriteFailed
+ignore void source writeThisBindingArrowCallLineCall
+bind error writeThisBindingArrowCallLineError ConsoleWriteError writeThisBindingArrowCallLineCall
+set memory lastConsoleWriteErrorCode writeThisBindingArrowCallLineError
+branch error source writeThisBindingArrowCallLineCall target consoleWriteFailed
 
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
 
 label consoleWriteFailed
 # rationale: lastConsoleWriteErrorCode holds whichever emit actually failed; its `set`
 # ran immediately before the corresponding branchIfError, so the typed
 # MainError.ConsoleWriteFailed value honestly names its cause (§12).
 makeError consoleWriteFailure MainError.ConsoleWriteFailed lastConsoleWriteErrorCode
-returnError consoleWriteFailure
+return error consoleWriteFailure

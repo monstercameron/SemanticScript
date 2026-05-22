@@ -8,38 +8,38 @@ error MainError
 errorCase MainError Placeholder CSignedInt32
 
 operation cmpStrs
-input cmpStrs left CNullTerminatedByteString
-input cmpStrs right CNullTerminatedByteString
-output cmpStrs Result CSignedInt64 Void
-purpose cmpStrs "Compare two strings via c.strcmp; return the result as i64."
+input operation cmpStrs left CNullTerminatedByteString
+input operation cmpStrs right CNullTerminatedByteString
+output operation cmpStrs Result CSignedInt64 Void
+purpose operation cmpStrs "Compare two strings via c.strcmp; return the result as i64."
 label startCmp
 call cmpCall c.strcmp
-arg cmpCall left left
-arg cmpCall right right
+argument cmpCall left CNullTerminatedByteString left
+argument cmpCall right CNullTerminatedByteString right
 run cmpCall
-bind cmpResult CSignedInt64 cmpCall
-returnOk cmpResult
+bind value cmpResult CSignedInt64 cmpCall
+return ok cmpResult
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
 label startMain
-const a CNullTerminatedByteString "hello"
-const b CNullTerminatedByteString "hello"
+storage module immutable a CNullTerminatedByteString "hello"
+storage module immutable b CNullTerminatedByteString "hello"
 call doCmp cmpStrs
-arg doCmp left a
-arg doCmp right b
+argument doCmp left CNullTerminatedByteString a
+argument doCmp right CNullTerminatedByteString b
 run doCmp
-bindOk cmpVal CSignedInt64 doCmp
-var displayStore I64 0
-set displayStore cmpVal
+bind ok cmpVal CSignedInt64 doCmp
+memory main mutable displayStore I64 0
+set memory displayStore cmpVal
 call w console.writeIntegerLine
-arg w console console
-arg w value displayStore
+argument w console Console console
+argument w value I64 displayStore
 run w
-ignoreOk w Void
-const okExit ExitCode 0
-returnOk okExit
+ignore void source w
+storage module immutable okExit ExitCode 0
+return ok okExit

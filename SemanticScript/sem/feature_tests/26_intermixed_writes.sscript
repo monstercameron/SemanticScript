@@ -7,32 +7,32 @@ entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Interleaved writeLine and writeIntegerLine."
-invariant main "Mixed string and integer output."
+purpose operation main "Interleaved writeLine and writeIntegerLine."
+invariant operation main "Mixed string and integer output."
 label startMain
-const labelText CNullTerminatedByteString "label"
-const fortyTwoInitial I64 42
-const endText CNullTerminatedByteString "end"
-var counter I64 fortyTwoInitial
+storage module immutable labelText CNullTerminatedByteString "label"
+storage module immutable fortyTwoInitial I64 42
+storage module immutable endText CNullTerminatedByteString "end"
+memory main mutable counter I64 fortyTwoInitial
 call writeLabelCall console.writeLine
-arg writeLabelCall console console
-arg writeLabelCall text labelText
+argument writeLabelCall console Console console
+argument writeLabelCall text CNullTerminatedByteString labelText
 run writeLabelCall
-ignoreOk writeLabelCall Void
+ignore void source writeLabelCall
 call writeNumCall console.writeIntegerLine
-arg writeNumCall console console
-arg writeNumCall value counter
+argument writeNumCall console Console console
+argument writeNumCall value I64 counter
 run writeNumCall
-ignoreOk writeNumCall Void
+ignore void source writeNumCall
 call writeEndCall console.writeLine
-arg writeEndCall console console
-arg writeEndCall text endText
+argument writeEndCall console Console console
+argument writeEndCall text CNullTerminatedByteString endText
 run writeEndCall
-ignoreOk writeEndCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeEndCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

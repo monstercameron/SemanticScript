@@ -1,46 +1,140 @@
-# Kilo SemanticScript port build tape.
-buildProject kiloPort
-project KiloPort
-modulePath kiloPort github.com/monstercameron/SemanticScript/app/Kilo_port
-languageVersion kiloPort "1.0"
-projectVersion kiloPort "0.1.0"
-projectLicense kiloPort BSD-2-Clause
+# KiloPort regular SemanticScript build plan.
+# Build configuration is ordinary typed record data; semsc lowers BuildPlan internally.
 
-sourceRoot kiloPort "."
-registerModule kiloPort app.kiloport "."
-mainFile kiloPort "main.sem"
-mainOperation kiloPort main
-testPattern kiloPort "*.test.sem"
-testRoot kiloPort "."
+module app.kiloport.build
+purpose module app.kiloport.build "Describe the KiloPort build as ordinary typed SemanticScript data."
+moduleOwns app.kiloport.build "Build project metadata, module registration, target options, version metadata, and build constants."
+moduleDoesNotOwn app.kiloport.build "Runtime application behavior; registered app modules own operations, routes, exports, and UI/domain logic."
+invariant module app.kiloport.build "Build configuration is data first: records hold settings, and configure operation returns the selected BuildPlan."
 
-target console
-runtime native 1
-entry console main
+record BuildProject
+field BuildProject id String
+field BuildProject name String
+field BuildProject modulePath String
+field BuildProject languageVersion String
+field BuildProject projectVersion String
+field BuildProject license String
+field BuildProject sourceRoot String
+field BuildProject testPattern String
+field BuildProject testRoot String
 
-version "0.1.0.0"
-publisher "Earl Cameron"
-description "SemanticScript port of antirez/kilo."
-copyright "Kilo upstream copyright (c) 2016 Salvatore Sanfilippo. Port code licensed under the repository license."
-productName "Kilo SemanticScript Port"
-internalName "kilo_port"
-originalFilename "kilo_port.exe"
-comments "Built from app/Kilo_port/main.sem by the SemanticScript reference compiler."
-metadata "UpstreamRepository" "https://github.com/antirez/kilo"
-metadata "UpstreamClone" "app/Kilo_port/upstream-kilo"
+record BuildModule
+field BuildModule moduleName String
+field BuildModule sourcePath String
+field BuildModule mainFile String
 
-targetRuntime kiloPort nativeExe
-buildProfile kiloPort dev
-optLevel kiloPort 2
-runtimeChecks kiloPort panic
-persistLlvmIr kiloPort yes
-emitLlvmIr kiloPort auto
-emitOptimizedLlvmIr kiloPort no
-buildFolderName kiloPort build
-cpuBaseline kiloPort generic
-cpuTune kiloPort generic
-cpuFeatureCheck kiloPort auto
-nativeOutput kiloPort "kilo_port.exe"
-formatterSetting kiloPort lineWidth 100
-linterSetting kiloPort maxTier T4
+record BuildModules
+field BuildModules main BuildModule
 
-importModule app.kiloport
+record BuildTarget
+field BuildTarget runtime String
+field BuildTarget nativeRuntime String
+field BuildTarget nativeRuntimeVersion I64
+field BuildTarget profile String
+field BuildTarget optLevel I64
+field BuildTarget runtimeChecks String
+field BuildTarget persistLlvmIr String
+field BuildTarget emitLlvmIr String
+field BuildTarget emitOptimizedLlvmIr Bool
+field BuildTarget buildFolderName String
+field BuildTarget cpuBaseline String
+field BuildTarget cpuTune String
+field BuildTarget cpuFeatureCheck String
+field BuildTarget formatterLineWidth I64
+field BuildTarget linterMaxTier String
+field BuildTarget nativeOutput String
+
+record BuildMetadata
+field BuildMetadata upstreamRepository String
+field BuildMetadata upstreamClone String
+
+record BuildVersionInfo
+field BuildVersionInfo version String
+field BuildVersionInfo publisher String
+field BuildVersionInfo description String
+field BuildVersionInfo copyright String
+field BuildVersionInfo productName String
+field BuildVersionInfo internalName String
+field BuildVersionInfo originalFilename String
+field BuildVersionInfo comments String
+field BuildVersionInfo metadata BuildMetadata
+
+record BuildConstant
+field BuildConstant type String
+field BuildConstant value String
+
+record BuildConstants
+
+record BuildPlan
+field BuildPlan project BuildProject
+field BuildPlan modules BuildModules
+field BuildPlan mainModule String
+field BuildPlan mainOperation String
+field BuildPlan target BuildTarget
+field BuildPlan versionInfo BuildVersionInfo
+field BuildPlan constants BuildConstants
+
+storage module immutable kiloPortBuildPlan BuildPlan
+jsonBody kiloPortBuildPlan
+  {
+      "project": {
+          "name": "KiloPort",
+          "id": "kiloPort",
+          "modulePath": "github.com/monstercameron/SemanticScript/app/Kilo_port",
+          "languageVersion": "1.0",
+          "projectVersion": "0.1.0",
+          "license": "BSD-2-Clause",
+          "sourceRoot": ".",
+          "testPattern": "*.test.sem",
+          "testRoot": "."
+      },
+      "modules": {
+          "main": {
+              "moduleName": "app.kiloport",
+              "sourcePath": ".",
+              "mainFile": "main.sem"
+          }
+      },
+      "mainModule": "main",
+      "target": {
+          "runtime": "nativeExe",
+          "nativeRuntime": "native",
+          "nativeRuntimeVersion": 1,
+          "profile": "dev",
+          "optLevel": 2,
+          "runtimeChecks": "panic",
+          "persistLlvmIr": "yes",
+          "emitLlvmIr": "auto",
+          "emitOptimizedLlvmIr": false,
+          "buildFolderName": "build",
+          "cpuBaseline": "generic",
+          "cpuTune": "generic",
+          "cpuFeatureCheck": "auto",
+          "formatterLineWidth": 100,
+          "linterMaxTier": "T4",
+          "nativeOutput": "kilo_port.exe"
+      },
+      "versionInfo": {
+          "version": "0.1.0.0",
+          "publisher": "Earl Cameron",
+          "description": "SemanticScript port of antirez/kilo.",
+          "copyright": "Kilo upstream copyright (c) 2016 Salvatore Sanfilippo. Port code licensed under the repository license.",
+          "productName": "Kilo SemanticScript Port",
+          "internalName": "kilo_port",
+          "originalFilename": "kilo_port.exe",
+          "comments": "Built from app/Kilo_port/main.sem by the SemanticScript reference compiler.",
+          "metadata": {
+              "upstreamRepository": "https://github.com/antirez/kilo",
+              "upstreamClone": "app/Kilo_port/upstream-kilo"
+          }
+      },
+      "constants": {},
+      "mainOperation": "main"
+  }
+
+operation configureKiloPortBuild
+output operation configureKiloPortBuild BuildPlan
+memory configureKiloPortBuild heap no
+async configureKiloPortBuild no
+purpose operation configureKiloPortBuild "Return the typed build plan for KiloPort."
+return value kiloPortBuildPlan

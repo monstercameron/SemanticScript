@@ -8,72 +8,72 @@ error MainError
 errorCase MainError Placeholder CSignedInt32
 
 operation fibOf
-input fibOf n CSignedInt64
-output fibOf Result CSignedInt64 Void
+input operation fibOf n CSignedInt64
+output operation fibOf Result CSignedInt64 Void
 memory fibOf heap no
 async fibOf no
-purpose fibOf "Naive recursive Fibonacci."
-invariant fibOf "fib(0)=0, fib(1)=1, fib(n)=fib(n-1)+fib(n-2)."
+purpose operation fibOf "Naive recursive Fibonacci."
+invariant operation fibOf "fib(0)=0, fib(1)=1, fib(n)=fib(n-1)+fib(n-2)."
 label startFibOf
-const zeroLit I64 0
-const oneLit I64 1
-const twoLit I64 2
+storage module immutable zeroLit I64 0
+storage module immutable oneLit I64 1
+storage module immutable twoLit I64 2
 call atBaseCall math.lessThanI64
-arg atBaseCall left n
-arg atBaseCall right twoLit
+argument atBaseCall left CSignedInt64 n
+argument atBaseCall right I64 twoLit
 run atBaseCall
-bind atBase Bool atBaseCall
-branchIf atBase fibBase
-branch fibRecurse
+bind value atBase Bool atBaseCall
+branch if condition atBase target fibBase
+branch else target fibRecurse
 label fibBase
-returnOk n
+return ok n
 label fibRecurse
 call decOneCall math.subtractI64
-arg decOneCall left n
-arg decOneCall right oneLit
+argument decOneCall left CSignedInt64 n
+argument decOneCall right I64 oneLit
 run decOneCall
-bind nMinusOne I64 decOneCall
+bind value nMinusOne I64 decOneCall
 call recAOneCall fibOf
-arg recAOneCall n nMinusOne
+argument recAOneCall n CSignedInt64 nMinusOne
 run recAOneCall
-bindOk fibAOne I64 recAOneCall
+bind ok fibAOne I64 recAOneCall
 call decTwoCall math.subtractI64
-arg decTwoCall left n
-arg decTwoCall right twoLit
+argument decTwoCall left CSignedInt64 n
+argument decTwoCall right I64 twoLit
 run decTwoCall
-bind nMinusTwo I64 decTwoCall
+bind value nMinusTwo I64 decTwoCall
 call recBTwoCall fibOf
-arg recBTwoCall n nMinusTwo
+argument recBTwoCall n CSignedInt64 nMinusTwo
 run recBTwoCall
-bindOk fibBTwo I64 recBTwoCall
+bind ok fibBTwo I64 recBTwoCall
 call sumCall math.addI64
-arg sumCall left fibAOne
-arg sumCall right fibBTwo
+argument sumCall left I64 fibAOne
+argument sumCall right I64 fibBTwo
 run sumCall
-bind fibTotal I64 sumCall
-returnOk fibTotal
+bind value fibTotal I64 sumCall
+return ok fibTotal
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Compute fib(10) = 55."
-invariant main "Two recursive calls per frame."
+purpose operation main "Compute fib(10) = 55."
+invariant operation main "Two recursive calls per frame."
 label startMain
-const tenInitial I64 10
-var input I64 tenInitial
+storage module immutable tenInitial I64 10
+memory main mutable input I64 tenInitial
 call fibCall fibOf
-arg fibCall n input
+argument fibCall n CSignedInt64 input
 run fibCall
-bindOk fibResult I64 fibCall
-var outputVar I64 tenInitial
-set outputVar fibResult
+bind ok fibResult I64 fibCall
+memory main mutable outputVar I64 tenInitial
+set memory outputVar fibResult
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value outputVar
+argument writeCall console Console console
+argument writeCall value I64 outputVar
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

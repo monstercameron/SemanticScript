@@ -8,39 +8,39 @@ entry console main
 error MainError
 errorCase MainError ForcedFailureForTest CSignedInt32
 operation printCleanupBeforeError
-input printCleanupBeforeError console Console
-output printCleanupBeforeError I32
-const cleanupBeforeErrorMessage CNullTerminatedByteString "cleanupBeforeError"
+input operation printCleanupBeforeError console Console
+output operation printCleanupBeforeError I32
+storage module immutable cleanupBeforeErrorMessage CNullTerminatedByteString "cleanupBeforeError"
 call writeCleanupCall console.writeLine
-arg writeCleanupCall console console
-arg writeCleanupCall text cleanupBeforeErrorMessage
+argument writeCleanupCall console Console console
+argument writeCleanupCall text CNullTerminatedByteString cleanupBeforeErrorMessage
 run writeCleanupCall
-ignoreOk writeCleanupCall Void
-const cleanupExitValue I32 0
-returnValue cleanupExitValue
+ignore void source writeCleanupCall
+storage module immutable cleanupExitValue I32 0
+return value cleanupExitValue
 operation alwaysReturnsNegative
-input alwaysReturnsNegative trigger I64
-output alwaysReturnsNegative Result I64 MainError
+input operation alwaysReturnsNegative trigger I64
+output operation alwaysReturnsNegative Result I64 MainError
 makeError alwaysFailValue MainError.ForcedFailureForTest
-returnError alwaysFailValue
+return error alwaysFailValue
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "branchIfError jumps to failure label; the defer cleanup fires before returnError."
-invariant main "Output is exactly one line of 'cleanupBeforeError'; exit code is the variant index (1)."
+purpose operation main "branchIfError jumps to failure label; the defer cleanup fires before returnError."
+invariant operation main "Output is exactly one line of 'cleanupBeforeError'; exit code is the variant index (1)."
 label startMain
-const zeroTrigger I64 0
+storage module immutable zeroTrigger I64 0
 defer earlyReturnCleanup printCleanupBeforeError console
 call failingHelperCall alwaysReturnsNegative
-arg failingHelperCall trigger zeroTrigger
+argument failingHelperCall trigger I64 zeroTrigger
 run failingHelperCall
-bindOk failingHelperOk I64 failingHelperCall
-bindError failingHelperErrorVal I64 failingHelperCall
-branchIfError failingHelperCall handleEarlyFailure
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+bind ok failingHelperOk I64 failingHelperCall
+bind error failingHelperErrorVal I64 failingHelperCall
+branch error source failingHelperCall target handleEarlyFailure
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
 label handleEarlyFailure
-returnError failingHelperErrorVal
+return error failingHelperErrorVal

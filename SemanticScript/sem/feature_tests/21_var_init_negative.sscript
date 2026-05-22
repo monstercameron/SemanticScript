@@ -7,20 +7,20 @@ entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "var initialized to a negative const integer."
-invariant main "Prints -42 via writeIntegerLine."
+purpose operation main "var initialized to a negative const integer."
+invariant operation main "Prints -42 via writeIntegerLine."
 label startMain
-const negFortyTwoInitial I64 -42
-var counter I64 negFortyTwoInitial
+storage module immutable negFortyTwoInitial I64 -42
+memory main mutable counter I64 negFortyTwoInitial
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value counter
+argument writeCall console Console console
+argument writeCall value I64 counter
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

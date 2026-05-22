@@ -8,103 +8,103 @@ error MainError
 errorCase MainError Placeholder CSignedInt32
 
 operation writeAt
-input writeAt buffer COpaqueMemoryAddress
-input writeAt position CSignedInt64
-input writeAt byteValue CSignedInt32
-output writeAt Result CSignedInt32 Void
+input operation writeAt buffer COpaqueMemoryAddress
+input operation writeAt position CSignedInt64
+input operation writeAt byteValue CSignedInt32
+output operation writeAt Result CSignedInt32 Void
 effect writeAt write memory.buffer
 memory writeAt heap no
 async writeAt no
-purpose writeAt "Store a single byte at buffer[position]. Encapsulates pointer.storeByte so the test exercises a user op that returns void-like int."
-invariant writeAt "Returns 0 to match CSignedInt32 contract."
+purpose operation writeAt "Store a single byte at buffer[position]. Encapsulates pointer.storeByte so the test exercises a user op that returns void-like int."
+invariant operation writeAt "Returns 0 to match CSignedInt32 contract."
 label startWriteAt
 call doStoreCall pointer.storeByte
-arg doStoreCall buffer buffer
-arg doStoreCall offset position
-arg doStoreCall value byteValue
+argument doStoreCall buffer COpaqueMemoryAddress buffer
+argument doStoreCall offset CSignedInt64 position
+argument doStoreCall value CSignedInt32 byteValue
 run doStoreCall
-const writeOk CSignedInt32 0
-returnOk writeOk
+storage module immutable writeOk CSignedInt32 0
+return ok writeOk
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main read memory.buffer
 effect main write memory.buffer
 effect main write console.stdout
 memory main heap auto
 async main no
-purpose main "Allocate a 6-byte buffer, write 'HELLO\\0' via writeAt() calls, then print it via console.writeLine."
-invariant main "Validates pointer-typed user op param + repeated pointer.storeByte calls + console.writeLine over a heap-allocated buffer."
+purpose operation main "Allocate a 6-byte buffer, write 'HELLO\\0' via writeAt() calls, then print it via console.writeLine."
+invariant operation main "Validates pointer-typed user op param + repeated pointer.storeByte calls + console.writeLine over a heap-allocated buffer."
 label startMain
-const bufferSize CByteCount 6
+storage module immutable bufferSize CByteCount 6
 call mallocCall c.malloc
-arg mallocCall size bufferSize
+argument mallocCall size CByteCount bufferSize
 run mallocCall
-bind bufferPointer COpaqueMemoryAddress mallocCall
+bind value bufferPointer COpaqueMemoryAddress mallocCall
 
-const pos0 CSignedInt64 0
-const pos1 CSignedInt64 1
-const pos2 CSignedInt64 2
-const pos3 CSignedInt64 3
-const pos4 CSignedInt64 4
-const pos5 CSignedInt64 5
-const byteH CSignedInt32 72
-const byteE CSignedInt32 69
-const byteL CSignedInt32 76
-const byteOLetter CSignedInt32 79
-const byteNul CSignedInt32 0
+storage module immutable pos0 CSignedInt64 0
+storage module immutable pos1 CSignedInt64 1
+storage module immutable pos2 CSignedInt64 2
+storage module immutable pos3 CSignedInt64 3
+storage module immutable pos4 CSignedInt64 4
+storage module immutable pos5 CSignedInt64 5
+storage module immutable byteH CSignedInt32 72
+storage module immutable byteE CSignedInt32 69
+storage module immutable byteL CSignedInt32 76
+storage module immutable byteOLetter CSignedInt32 79
+storage module immutable byteNul CSignedInt32 0
 
 call write0 writeAt
-arg write0 buffer bufferPointer
-arg write0 position pos0
-arg write0 byteValue byteH
+argument write0 buffer COpaqueMemoryAddress bufferPointer
+argument write0 position CSignedInt64 pos0
+argument write0 byteValue CSignedInt32 byteH
 run write0
-ignoreOk write0 CSignedInt32
+ignore ok source write0 type CSignedInt32
 
 call write1 writeAt
-arg write1 buffer bufferPointer
-arg write1 position pos1
-arg write1 byteValue byteE
+argument write1 buffer COpaqueMemoryAddress bufferPointer
+argument write1 position CSignedInt64 pos1
+argument write1 byteValue CSignedInt32 byteE
 run write1
-ignoreOk write1 CSignedInt32
+ignore ok source write1 type CSignedInt32
 
 call write2 writeAt
-arg write2 buffer bufferPointer
-arg write2 position pos2
-arg write2 byteValue byteL
+argument write2 buffer COpaqueMemoryAddress bufferPointer
+argument write2 position CSignedInt64 pos2
+argument write2 byteValue CSignedInt32 byteL
 run write2
-ignoreOk write2 CSignedInt32
+ignore ok source write2 type CSignedInt32
 
 call write3 writeAt
-arg write3 buffer bufferPointer
-arg write3 position pos3
-arg write3 byteValue byteL
+argument write3 buffer COpaqueMemoryAddress bufferPointer
+argument write3 position CSignedInt64 pos3
+argument write3 byteValue CSignedInt32 byteL
 run write3
-ignoreOk write3 CSignedInt32
+ignore ok source write3 type CSignedInt32
 
 call write4 writeAt
-arg write4 buffer bufferPointer
-arg write4 position pos4
-arg write4 byteValue byteOLetter
+argument write4 buffer COpaqueMemoryAddress bufferPointer
+argument write4 position CSignedInt64 pos4
+argument write4 byteValue CSignedInt32 byteOLetter
 run write4
-ignoreOk write4 CSignedInt32
+ignore ok source write4 type CSignedInt32
 
 call write5 writeAt
-arg write5 buffer bufferPointer
-arg write5 position pos5
-arg write5 byteValue byteNul
+argument write5 buffer COpaqueMemoryAddress bufferPointer
+argument write5 position CSignedInt64 pos5
+argument write5 byteValue CSignedInt32 byteNul
 run write5
-ignoreOk write5 CSignedInt32
+ignore ok source write5 type CSignedInt32
 
 call writeLineCall console.writeLine
-arg writeLineCall console console
-arg writeLineCall text bufferPointer
+argument writeLineCall console Console console
+argument writeLineCall text COpaqueMemoryAddress bufferPointer
 run writeLineCall
-ignoreOk writeLineCall Void
+ignore void source writeLineCall
 
 call freeCall c.free
-arg freeCall ptr bufferPointer
+argument freeCall ptr COpaqueMemoryAddress bufferPointer
 run freeCall
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

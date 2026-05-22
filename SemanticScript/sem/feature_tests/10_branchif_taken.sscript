@@ -7,40 +7,40 @@ entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "branchIf with TRUE condition takes the labeled branch."
-invariant main "Prints 'taken' when condition holds."
+purpose operation main "branchIf with TRUE condition takes the labeled branch."
+invariant operation main "Prints 'taken' when condition holds."
 label startMain
-const fiveInitial I64 5
-const fiveCompare I64 5
-var leftOp I64 fiveInitial
+storage module immutable fiveInitial I64 5
+storage module immutable fiveCompare I64 5
+memory main mutable leftOp I64 fiveInitial
 call eqCall math.equalI64
-arg eqCall left leftOp
-arg eqCall right fiveCompare
+argument eqCall left I64 leftOp
+argument eqCall right I64 fiveCompare
 run eqCall
-bind isEqual Bool eqCall
-branchIf isEqual takenLabel
-branch notTakenLabel
+bind value isEqual Bool eqCall
+branch if condition isEqual target takenLabel
+branch else target notTakenLabel
 label takenLabel
-const takenText CNullTerminatedByteString "taken"
+storage module immutable takenText CNullTerminatedByteString "taken"
 call writeTakenCall console.writeLine
-arg writeTakenCall console console
-arg writeTakenCall text takenText
+argument writeTakenCall console Console console
+argument writeTakenCall text CNullTerminatedByteString takenText
 run writeTakenCall
-ignoreOk writeTakenCall Void
-branch endLabel
+ignore void source writeTakenCall
+jump target endLabel
 label notTakenLabel
-const notTakenText CNullTerminatedByteString "not-taken"
+storage module immutable notTakenText CNullTerminatedByteString "not-taken"
 call writeNotTakenCall console.writeLine
-arg writeNotTakenCall console console
-arg writeNotTakenCall text notTakenText
+argument writeNotTakenCall console Console console
+argument writeNotTakenCall text CNullTerminatedByteString notTakenText
 run writeNotTakenCall
-ignoreOk writeNotTakenCall Void
-branch endLabel
+ignore void source writeNotTakenCall
+jump target endLabel
 label endLabel
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

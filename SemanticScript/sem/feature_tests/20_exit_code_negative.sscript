@@ -7,12 +7,12 @@ entry console main
 error MainError
 errorCase MainError Placeholder CSignedInt32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 memory main heap no
 async main no
-purpose main "Negative ExitCode: -1 should produce exit 255 (wrap mod 256)."
-invariant main "Negative integer parsing works for const decls."
+purpose operation main "Negative ExitCode: -1 should produce exit 255 (wrap mod 256)."
+invariant operation main "Negative integer parsing works for const decls."
 label startMain
-const negativeOneExitCode ExitCode -1
-returnOk negativeOneExitCode
+storage module immutable negativeOneExitCode ExitCode -1
+return ok negativeOneExitCode

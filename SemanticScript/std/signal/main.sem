@@ -1,10 +1,10 @@
 # SemanticScript standard-library canonical module: standard.signal.
 
 module standard.signal
-modulePurpose standard.signal "Canonical standard-library module for signal helpers."
+purpose module standard.signal "Canonical standard-library module for signal helpers."
 moduleOwns standard.signal "The official import path `standard.signal` and this module's implementation body."
 moduleDoesNotOwn standard.signal "App-specific wrappers, compatibility aliases, or generated build artifacts."
-moduleInvariant standard.signal "The standard module entry is this file; tests live beside it as `main.test.sem`."
+invariant module standard.signal "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.signal signalModuleVersionText
 storage module immutable signalModuleVersionText CNullTerminatedByteString "standard.signal 0.1"
@@ -14,27 +14,26 @@ storage module immutable signalModuleVersionText CNullTerminatedByteString "stan
 # SEMANTICSCRIPT STANDARD LIBRARY: POSIX signal numbers + raise
 # ============================================================
 #
-# # rationale: C's <signal.h> exposes SIGABRT, SIGFPE, SIGILL,
+# rationale: C's <signal.h> exposes SIGABRT, SIGFPE, SIGILL,
 #   SIGINT, SIGSEGV, SIGTERM as preprocessor `#define`s plus
 #   raise(int) for self-delivery. The refined surface replaces the
 #   zero-arg accessor operations with module-scope `domainLiteral`
 #   constants and keeps `raiseProcessSignalNumber` as a real
 #   operation (it has an effect: write process.signal).
 #
-# # invariant: every signal number matches the canonical POSIX
+# invariant: every signal number matches the canonical POSIX
 #   value as documented in IEEE Std 1003.1.
 #
-# # security: raising a signal can terminate the process. The
+# security: raising a signal can terminate the process. The
 #   effect declaration on raiseProcessSignalNumber surfaces that
 #   risk so the lint can flag any unauthorized call site.
 #
-# # timing: signal accessors are O(0) (constant-folded);
+# timing: signal accessors are O(0) (constant-folded);
 #   raiseProcessSignalNumber yields to the OS scheduler.
 #
-# # observability: c.raise return value is propagated as a typed
+# observability: c.raise return value is propagated as a typed
 #   SignalDeliveryError variant rather than the C convention of
 #   "non-zero means failure".
-
 
 # This is a pure-module (library) file: it exports operations and
 # domainLiterals consumed by other programs (notably
@@ -86,31 +85,31 @@ domainLiteralTrust terminationSignalNumber trustedStaticLiteral
 # rationale: deliver a signal to the current process.
 
 operation raiseProcessSignalNumber
-input raiseProcessSignalNumber signalNumber CSignedInt32
-output raiseProcessSignalNumber Result CSignedInt32 SignalDeliveryError
+input operation raiseProcessSignalNumber signalNumber CSignedInt32
+output operation raiseProcessSignalNumber Result CSignedInt32 SignalDeliveryError
 useCapability raiseProcessSignalNumber processSignalCapability
 effect raiseProcessSignalNumber write process.signal
-memoryHeap raiseProcessSignalNumber no
+memory raiseProcessSignalNumber heap no
 async raiseProcessSignalNumber no
-purpose raiseProcessSignalNumber "Deliver the given POSIX signal to this process via libc raise()."
-invariant raiseProcessSignalNumber "On success returns 0; on failure returns SignalDeliveryError.DeliveryFailed."
+purpose operation raiseProcessSignalNumber "Deliver the given POSIX signal to this process via libc raise()."
+invariant operation raiseProcessSignalNumber "On success returns 0; on failure returns SignalDeliveryError.DeliveryFailed."
 failure raiseProcessSignalNumber DeliveryFailed "Returned when libc raise() reports a non-zero status â€” typically when signalNumber is out of range."
 warning raiseProcessSignalNumber "May terminate the process if the signal's default disposition is fatal and no handler is installed via c.signal."
 guarantee raiseProcessSignalNumber "Always returns OR terminates; never hangs."
 
 label startRaiseProcessSignalNumber
 call deliverSignalCall c.raise
-arg deliverSignalCall sig signalNumber
+argument deliverSignalCall sig CSignedInt32 signalNumber
 run deliverSignalCall
-bind raiseLibcResultCode CSignedInt32 deliverSignalCall
-const zeroSuccessCode CSignedInt32 0
+bind value raiseLibcResultCode CSignedInt32 deliverSignalCall
+storage module immutable zeroSuccessCode CSignedInt32 0
 call detectRaiseSuccessCall math.equalI64
-arg detectRaiseSuccessCall left raiseLibcResultCode
-arg detectRaiseSuccessCall right zeroSuccessCode
+argument detectRaiseSuccessCall left I64 raiseLibcResultCode
+argument detectRaiseSuccessCall right I64 zeroSuccessCode
 run detectRaiseSuccessCall
-bind raiseSucceeded Bool detectRaiseSuccessCall
-branchIf raiseSucceeded returnRaiseSuccess
+bind value raiseSucceeded Bool detectRaiseSuccessCall
+branch if condition raiseSucceeded target returnRaiseSuccess
 makeError signalDeliveryFailure SignalDeliveryError.DeliveryFailed
-returnError signalDeliveryFailure
+return error signalDeliveryFailure
 label returnRaiseSuccess
-returnOk zeroSuccessCode
+return ok zeroSuccessCode

@@ -1,57 +1,128 @@
-# Hello GUI project build tape.
-# This sample is the Windows GUI smoke app for the standard.gui function
-# surface. GUI contracts live in standard.gui; the compiler bridge lowers
-# ordinary gui.* function calls and links the native runtime.
+# Hello GUI build plan prototype.
+# This file uses regular SemanticScript records, jsonBody constants, and a
+# normal operation instead of one build-specific verb per field.
 
-buildProject helloGui
-project HelloGui
-modulePath helloGui github.com/monstercameron/SemanticScript/app/hello-gui
-languageVersion helloGui "1.0"
-projectVersion helloGui "0.1.0"
-projectLicense helloGui MIT
+module app.hello_gui.build
+purpose module app.hello_gui.build "Describe the Hello GUI build as ordinary typed SemanticScript data."
+moduleOwns app.hello_gui.build "Build project metadata, module selection, target options, Windows version info, and the BuildPlan-returning operation."
+moduleDoesNotOwn app.hello_gui.build "GUI application construction; app.hello_gui owns the runtime GUI operation graph."
+invariant module app.hello_gui.build "Build configuration is data first: records hold settings, and configureHelloGuiBuild returns the selected BuildPlan."
 
-sourceRoot helloGui "."
-registerModule helloGui app.hello_gui "."
-mainFile helloGui "main.sem"
-mainOperation helloGui main
-testPattern helloGui "*.test.sem"
-testRoot helloGui "."
+record BuildProject
+field BuildProject id String
+field BuildProject name String
+field BuildProject modulePath String
+field BuildProject languageVersion String
+field BuildProject projectVersion String
+field BuildProject license String
 
-target windowsGui
-runtime native 1
+record BuildModule
+field BuildModule moduleName String
+field BuildModule sourceRoot String
+field BuildModule sourcePath String
+field BuildModule mainFile String
+field BuildModule mainOperation String
+field BuildModule testPattern String
+field BuildModule testRoot String
 
-version "0.1.0.0"
-publisher "Earl Cameron"
-description "SemanticScript Hello GUI - minimal declarative Windows desktop window."
-productName "Hello GUI"
-internalName "hello_gui"
-originalFilename "hello_gui.exe"
-comments "Built from app/hello-gui/main.sem by the SemanticScript reference compiler."
-metadata "BuildSource" "app/hello-gui/main.sem"
-metadata "RuntimeContract" "native 1"
-metadata "GuiSurface" "standard.gui|gui.* functions"
+record BuildTarget
+field BuildTarget runtime String
+field BuildTarget nativeRuntime String
+field BuildTarget nativeRuntimeVersion I64
+field BuildTarget profile String
+field BuildTarget optLevel I64
+field BuildTarget runtimeChecks String
+field BuildTarget persistLlvmIr Bool
+field BuildTarget emitLlvmIr String
+field BuildTarget emitOptimizedLlvmIr Bool
+field BuildTarget buildFolderName String
+field BuildTarget cpuBaseline String
+field BuildTarget cpuTune String
+field BuildTarget cpuFeatureCheck String
+field BuildTarget formatterLineWidth I64
+field BuildTarget linterMaxTier String
+field BuildTarget docsOutput String
+field BuildTarget nativeOutput String
 
-targetRuntime helloGui windowsGui
-buildProfile helloGui dev
-optLevel helloGui 2
-runtimeChecks helloGui panic
-persistLlvmIr helloGui yes
-emitLlvmIr helloGui auto
-emitOptimizedLlvmIr helloGui no
-buildFolderName helloGui build
-cpuBaseline helloGui generic
-cpuTune helloGui generic
-cpuFeatureCheck helloGui auto
-formatterSetting helloGui lineWidth 100
-linterSetting helloGui maxTier T4
-docsOutput helloGui "docs"
-nativeOutput helloGui "hello_gui.exe"
+record WindowsVersionMetadata
+field WindowsVersionMetadata buildSource String
+field WindowsVersionMetadata runtimeContract String
+field WindowsVersionMetadata guiSurface String
 
-# Future comptime hook. Reserved for 2.0; not executed by the current compiler.
-comptimeOperation helloGui configureHelloGuiBuild
+record WindowsVersionInfo
+field WindowsVersionInfo version String
+field WindowsVersionInfo publisher String
+field WindowsVersionInfo description String
+field WindowsVersionInfo productName String
+field WindowsVersionInfo internalName String
+field WindowsVersionInfo originalFilename String
+field WindowsVersionInfo comments String
+field WindowsVersionInfo metadata WindowsVersionMetadata
 
-# Current compiler bridge: inline the GUI module registered above. A
-# windowsGui build uses regular entry/operation/call syntax; the compiler does
-# not build GUI application graphs from GUI-specific top-level keywords.
-entry console main
-importModule app.hello_gui
+record BuildPlan
+field BuildPlan project BuildProject
+field BuildPlan module BuildModule
+field BuildPlan target BuildTarget
+field BuildPlan versionInfo WindowsVersionInfo
+
+storage module immutable helloGuiBuildPlan BuildPlan
+jsonBody helloGuiBuildPlan
+  {
+    "project": {
+      "id": "helloGui",
+      "name": "HelloGui",
+      "modulePath": "github.com/monstercameron/SemanticScript/app/hello-gui",
+      "languageVersion": "1.0",
+      "projectVersion": "0.1.0",
+      "license": "MIT"
+    },
+    "module": {
+      "moduleName": "app.hello_gui",
+      "sourceRoot": ".",
+      "sourcePath": ".",
+      "mainFile": "main.sem",
+      "mainOperation": "main",
+      "testPattern": "*.test.sem",
+      "testRoot": "."
+    },
+    "target": {
+      "runtime": "windowsGui",
+      "nativeRuntime": "native",
+      "nativeRuntimeVersion": 1,
+      "profile": "dev",
+      "optLevel": 2,
+      "runtimeChecks": "panic",
+      "persistLlvmIr": true,
+      "emitLlvmIr": "auto",
+      "emitOptimizedLlvmIr": false,
+      "buildFolderName": "build",
+      "cpuBaseline": "generic",
+      "cpuTune": "generic",
+      "cpuFeatureCheck": "auto",
+      "formatterLineWidth": 100,
+      "linterMaxTier": "T4",
+      "docsOutput": "docs",
+      "nativeOutput": "hello_gui.exe"
+    },
+    "versionInfo": {
+      "version": "0.1.0.0",
+      "publisher": "Earl Cameron",
+      "description": "SemanticScript Hello GUI - minimal declarative Windows desktop window.",
+      "productName": "Hello GUI",
+      "internalName": "hello_gui",
+      "originalFilename": "hello_gui.exe",
+      "comments": "Built from app/hello-gui/main.sem by the SemanticScript reference compiler.",
+      "metadata": {
+        "buildSource": "app/hello-gui/main.sem",
+        "runtimeContract": "native 1",
+        "guiSurface": "standard.gui|gui.* functions"
+      }
+    }
+  }
+
+operation configureHelloGuiBuild
+output operation configureHelloGuiBuild BuildPlan
+memory configureHelloGuiBuild heap no
+async configureHelloGuiBuild no
+purpose operation configureHelloGuiBuild "Return the typed build plan for the Hello GUI app."
+return value helloGuiBuildPlan

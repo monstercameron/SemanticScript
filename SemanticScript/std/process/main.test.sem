@@ -2,13 +2,13 @@
 # SEMANTICSCRIPT STANDARD LIBRARY TESTS: process lifecycle terminators
 # ============================================================
 #
-# # rationale: companion test file for std/process/main.sem. Imports
+# rationale: companion test file for std/process/main.sem. Imports
 #   the process module and verifies that compilation succeeds and
 #   the OK banner reaches stdout. The terminators
 #   (exitProcessWithStatusCode, abortCurrentProcess) are deliberately
 #   NOT invoked â€” calling either would kill the test runner.
 #
-# # invariant: success prints "OK\n" and exits 0; only the typed
+# invariant: success prints "OK\n" and exits 0; only the typed
 #   ConsoleWriteFailed variant is surfaced if the OK write itself
 #   returns an error.
 #
@@ -22,7 +22,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 
-importModule standard.process
+import process standard.process
 error MainError
 errorCase MainError ConsoleWriteFailed
 
@@ -43,26 +43,26 @@ capability stdoutWriteCapability console.stdout write
 # if the write itself fails (e.g. broken pipe).
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 useCapability main stdoutWriteCapability
 effect main write console.stdout
-memoryHeap main no
+memory main heap no
 async main no
-purpose main "Verify process.sscript compiles and metadata parses; emit OK on stdout. The terminators are NOT invoked."
-invariant main "Exit 0 on success; ConsoleWriteFailed only if the OK write itself returns an error."
+purpose operation main "Verify process.sscript compiles and metadata parses; emit OK on stdout. The terminators are NOT invoked."
+invariant operation main "Exit 0 on success; ConsoleWriteFailed only if the OK write itself returns an error."
 
 label startMain
-const successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText CNullTerminatedByteString "OK"
 call writeSuccessLineCall console.writeLine
-arg writeSuccessLineCall console console
-arg writeSuccessLineCall text successMessageText
+argument writeSuccessLineCall console Console console
+argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
 run writeSuccessLineCall
-ignoreOk writeSuccessLineCall CSignedInt32
-bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
-branchIfError writeSuccessLineCall consoleWriteFailedHandler
-const exitOkCode ExitCode 0
-returnOk exitOkCode
+ignore ok source writeSuccessLineCall type CSignedInt32
+bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branch error source writeSuccessLineCall target consoleWriteFailedHandler
+storage module immutable exitOkCode ExitCode 0
+return ok exitOkCode
 
 # Failure leg: console.writeLine returned a negative CSignedInt32.
 # We surface that raw return as the cause attached to the typed
@@ -71,4 +71,4 @@ returnOk exitOkCode
 # preserved for diagnostic correlation.
 label consoleWriteFailedHandler
 makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
-returnError consoleWriteFailedFailure
+return error consoleWriteFailedFailure

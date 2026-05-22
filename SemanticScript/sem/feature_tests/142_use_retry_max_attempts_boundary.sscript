@@ -7,40 +7,40 @@ runtime AgentRuntime 0.1
 entry console main
 error MainError
 errorCase MainError Placeholder CSignedInt32
-const oneStep I64 1
-const zeroInitial I64 0
-const failureMarker I64 -7
+storage module immutable oneStep I64 1
+storage module immutable zeroInitial I64 0
+storage module immutable failureMarker I64 -7
 sharedState process mutable singleAttemptCounter I64 zeroInitial
 retryPolicy singleAttemptOnlyPolicy
 retryMaxAttempts singleAttemptOnlyPolicy 1
 operation singleAttemptFailingOperation
-input singleAttemptFailingOperation trigger I64
-output singleAttemptFailingOperation I64
+input operation singleAttemptFailingOperation trigger I64
+output operation singleAttemptFailingOperation I64
 call recordCall math.addI64
-arg recordCall left singleAttemptCounter
-arg recordCall right oneStep
+argument recordCall left I64 singleAttemptCounter
+argument recordCall right I64 oneStep
 run recordCall
-bind nextCount I64 recordCall
+bind value nextCount I64 recordCall
 set sharedState singleAttemptCounter nextCount
-returnValue failureMarker
+return value failureMarker
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "retryMaxAttempts of 1 produces exactly one attempt — proves the loop honors the boundary even though the call always fails."
-invariant main "Counter must equal 1 after the run, not 0 (didn't run) or 2+ (over-retried)."
+purpose operation main "retryMaxAttempts of 1 produces exactly one attempt — proves the loop honors the boundary even though the call always fails."
+invariant operation main "Counter must equal 1 after the run, not 0 (didn't run) or 2+ (over-retried)."
 label startMain
 useRetry singleAttemptCall singleAttemptOnlyPolicy
 call singleAttemptCall singleAttemptFailingOperation
-arg singleAttemptCall trigger zeroInitial
+argument singleAttemptCall trigger I64 zeroInitial
 run singleAttemptCall
-bind boundedResult I64 singleAttemptCall
+bind value boundedResult I64 singleAttemptCall
 call writeBoundaryCall console.writeIntegerLine
-arg writeBoundaryCall console console
-arg writeBoundaryCall value singleAttemptCounter
+argument writeBoundaryCall console Console console
+argument writeBoundaryCall value I64 singleAttemptCounter
 run writeBoundaryCall
-ignoreOk writeBoundaryCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeBoundaryCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

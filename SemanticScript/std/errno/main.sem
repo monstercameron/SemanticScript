@@ -1,10 +1,10 @@
 # SemanticScript standard-library canonical module: standard.errno.
 
 module standard.errno
-modulePurpose standard.errno "Canonical standard-library module for errno constants and helpers."
+purpose module standard.errno "Canonical standard-library module for errno constants and helpers."
 moduleOwns standard.errno "The official import path `standard.errno` and this module's implementation body."
 moduleDoesNotOwn standard.errno "App-specific wrappers, compatibility aliases, or generated build artifacts."
-moduleInvariant standard.errno "The standard module entry is this file; tests live beside it as `main.test.sem`."
+invariant module standard.errno "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.errno errnoModuleVersionText
 storage module immutable errnoModuleVersionText CNullTerminatedByteString "standard.errno 0.1"
@@ -14,23 +14,22 @@ storage module immutable errnoModuleVersionText CNullTerminatedByteString "stand
 # SEMANTICSCRIPT STANDARD LIBRARY: POSIX errno numbers + message lookup
 # ============================================================
 #
-# # rationale: C's <errno.h> exposes EPERM/ENOENT/etc. as
+# rationale: C's <errno.h> exposes EPERM/ENOENT/etc. as
 #   preprocessor `#define`s. The refined surface replaces every
 #   zero-arg accessor with a module-scope `domainLiteral` and keeps
 #   the `lookupErrnoMessageCString` chain (a real string-mapping
 #   operation with branching logic) as an `operation`.
 #
-# # invariant: every errno value matches the canonical POSIX number.
+# invariant: every errno value matches the canonical POSIX number.
 #   Messages are short English text, ASCII-only, NUL-terminated.
 #
-# # security: pure value-level mapping; no I/O; no allocation.
+# security: pure value-level mapping; no I/O; no allocation.
 #
-# # timing: accessors are O(0). The message lookup is O(K) where K
+# timing: accessors are O(0). The message lookup is O(K) where K
 #   is the number of known codes (currently 13); a code that is
 #   not in the table maps to the "unknown error" sentinel.
 #
-# # observability: no logs; callers wrap when needed.
-
+# observability: no logs; callers wrap when needed.
 
 # This is a pure-module (library) file: it exports operations and
 # domainLiterals consumed by other programs (notably
@@ -97,134 +96,134 @@ domainLiteralTrust resultOutOfRangeErrorNumber trustedStaticLiteral
 # section errno.messageLookup
 
 operation lookupErrnoMessageCString
-input lookupErrnoMessageCString errorNumber CSignedInt32
-output lookupErrnoMessageCString CNullTerminatedByteString
-memoryHeap lookupErrnoMessageCString no
+input operation lookupErrnoMessageCString errorNumber CSignedInt32
+output operation lookupErrnoMessageCString CNullTerminatedByteString
+memory lookupErrnoMessageCString heap no
 async lookupErrnoMessageCString no
-purpose lookupErrnoMessageCString "Map a POSIX errno number to a short English text description; returns 'unknown error' for codes outside the known set."
-invariant lookupErrnoMessageCString "Output is always non-empty NUL-terminated ASCII."
+purpose operation lookupErrnoMessageCString "Map a POSIX errno number to a short English text description; returns 'unknown error' for codes outside the known set."
+invariant operation lookupErrnoMessageCString "Output is always non-empty NUL-terminated ASCII."
 guarantee lookupErrnoMessageCString "Total â€” every input produces some message."
 # rationale: pure-SemanticScript comparison chain â€” no libc strerror dependency
 #   (strerror is not thread-safe in all libcs and would pull in extra
 #   FFI metadata for one short helper).
 label startLookupErrnoMessageCString
-const messageForPermissionDenied CNullTerminatedByteString "operation not permitted"
-const messageForFileNotFound CNullTerminatedByteString "no such file or directory"
-const messageForProcessNotFound CNullTerminatedByteString "no such process"
-const messageForInterruptedSystemCall CNullTerminatedByteString "interrupted system call"
-const messageForInputOutputError CNullTerminatedByteString "input/output error"
-const messageForOutOfMemory CNullTerminatedByteString "out of memory"
-const messageForAccessDenied CNullTerminatedByteString "permission denied"
-const messageForBadAddress CNullTerminatedByteString "bad address"
-const messageForFileAlreadyExists CNullTerminatedByteString "file exists"
-const messageForInvalidArgument CNullTerminatedByteString "invalid argument"
-const messageForNoSpaceLeftOnDevice CNullTerminatedByteString "no space left on device"
-const messageForBrokenPipe CNullTerminatedByteString "broken pipe"
-const messageForResultOutOfRange CNullTerminatedByteString "result out of range"
-const messageForUnknownErrorCode CNullTerminatedByteString "unknown error"
+storage module immutable messageForPermissionDenied CNullTerminatedByteString "operation not permitted"
+storage module immutable messageForFileNotFound CNullTerminatedByteString "no such file or directory"
+storage module immutable messageForProcessNotFound CNullTerminatedByteString "no such process"
+storage module immutable messageForInterruptedSystemCall CNullTerminatedByteString "interrupted system call"
+storage module immutable messageForInputOutputError CNullTerminatedByteString "input/output error"
+storage module immutable messageForOutOfMemory CNullTerminatedByteString "out of memory"
+storage module immutable messageForAccessDenied CNullTerminatedByteString "permission denied"
+storage module immutable messageForBadAddress CNullTerminatedByteString "bad address"
+storage module immutable messageForFileAlreadyExists CNullTerminatedByteString "file exists"
+storage module immutable messageForInvalidArgument CNullTerminatedByteString "invalid argument"
+storage module immutable messageForNoSpaceLeftOnDevice CNullTerminatedByteString "no space left on device"
+storage module immutable messageForBrokenPipe CNullTerminatedByteString "broken pipe"
+storage module immutable messageForResultOutOfRange CNullTerminatedByteString "result out of range"
+storage module immutable messageForUnknownErrorCode CNullTerminatedByteString "unknown error"
 
 call detectIsPermissionDeniedCall math.equalI64
-arg detectIsPermissionDeniedCall left errorNumber
-arg detectIsPermissionDeniedCall right permissionDeniedErrorNumber
+argument detectIsPermissionDeniedCall left I64 errorNumber
+argument detectIsPermissionDeniedCall right I64 permissionDeniedErrorNumber
 run detectIsPermissionDeniedCall
-bind isPermissionDenied Bool detectIsPermissionDeniedCall
-branchIf isPermissionDenied returnPermissionDeniedMessage
+bind value isPermissionDenied Bool detectIsPermissionDeniedCall
+branch if condition isPermissionDenied target returnPermissionDeniedMessage
 call detectIsFileNotFoundCall math.equalI64
-arg detectIsFileNotFoundCall left errorNumber
-arg detectIsFileNotFoundCall right fileNotFoundErrorNumber
+argument detectIsFileNotFoundCall left I64 errorNumber
+argument detectIsFileNotFoundCall right I64 fileNotFoundErrorNumber
 run detectIsFileNotFoundCall
-bind isFileNotFound Bool detectIsFileNotFoundCall
-branchIf isFileNotFound returnFileNotFoundMessage
+bind value isFileNotFound Bool detectIsFileNotFoundCall
+branch if condition isFileNotFound target returnFileNotFoundMessage
 call detectIsProcessNotFoundCall math.equalI64
-arg detectIsProcessNotFoundCall left errorNumber
-arg detectIsProcessNotFoundCall right processNotFoundErrorNumber
+argument detectIsProcessNotFoundCall left I64 errorNumber
+argument detectIsProcessNotFoundCall right I64 processNotFoundErrorNumber
 run detectIsProcessNotFoundCall
-bind isProcessNotFound Bool detectIsProcessNotFoundCall
-branchIf isProcessNotFound returnProcessNotFoundMessage
+bind value isProcessNotFound Bool detectIsProcessNotFoundCall
+branch if condition isProcessNotFound target returnProcessNotFoundMessage
 call detectIsInterruptedSystemCallCall math.equalI64
-arg detectIsInterruptedSystemCallCall left errorNumber
-arg detectIsInterruptedSystemCallCall right interruptedSystemCallErrorNumber
+argument detectIsInterruptedSystemCallCall left I64 errorNumber
+argument detectIsInterruptedSystemCallCall right I64 interruptedSystemCallErrorNumber
 run detectIsInterruptedSystemCallCall
-bind isInterruptedSystemCall Bool detectIsInterruptedSystemCallCall
-branchIf isInterruptedSystemCall returnInterruptedSystemCallMessage
+bind value isInterruptedSystemCall Bool detectIsInterruptedSystemCallCall
+branch if condition isInterruptedSystemCall target returnInterruptedSystemCallMessage
 call detectIsInputOutputErrorCall math.equalI64
-arg detectIsInputOutputErrorCall left errorNumber
-arg detectIsInputOutputErrorCall right inputOutputErrorNumber
+argument detectIsInputOutputErrorCall left I64 errorNumber
+argument detectIsInputOutputErrorCall right I64 inputOutputErrorNumber
 run detectIsInputOutputErrorCall
-bind isInputOutputError Bool detectIsInputOutputErrorCall
-branchIf isInputOutputError returnInputOutputErrorMessage
+bind value isInputOutputError Bool detectIsInputOutputErrorCall
+branch if condition isInputOutputError target returnInputOutputErrorMessage
 call detectIsOutOfMemoryCall math.equalI64
-arg detectIsOutOfMemoryCall left errorNumber
-arg detectIsOutOfMemoryCall right outOfMemoryErrorNumber
+argument detectIsOutOfMemoryCall left I64 errorNumber
+argument detectIsOutOfMemoryCall right I64 outOfMemoryErrorNumber
 run detectIsOutOfMemoryCall
-bind isOutOfMemory Bool detectIsOutOfMemoryCall
-branchIf isOutOfMemory returnOutOfMemoryMessage
+bind value isOutOfMemory Bool detectIsOutOfMemoryCall
+branch if condition isOutOfMemory target returnOutOfMemoryMessage
 call detectIsAccessDeniedCall math.equalI64
-arg detectIsAccessDeniedCall left errorNumber
-arg detectIsAccessDeniedCall right accessDeniedErrorNumber
+argument detectIsAccessDeniedCall left I64 errorNumber
+argument detectIsAccessDeniedCall right I64 accessDeniedErrorNumber
 run detectIsAccessDeniedCall
-bind isAccessDenied Bool detectIsAccessDeniedCall
-branchIf isAccessDenied returnAccessDeniedMessage
+bind value isAccessDenied Bool detectIsAccessDeniedCall
+branch if condition isAccessDenied target returnAccessDeniedMessage
 call detectIsBadAddressCall math.equalI64
-arg detectIsBadAddressCall left errorNumber
-arg detectIsBadAddressCall right badAddressErrorNumber
+argument detectIsBadAddressCall left I64 errorNumber
+argument detectIsBadAddressCall right I64 badAddressErrorNumber
 run detectIsBadAddressCall
-bind isBadAddress Bool detectIsBadAddressCall
-branchIf isBadAddress returnBadAddressMessage
+bind value isBadAddress Bool detectIsBadAddressCall
+branch if condition isBadAddress target returnBadAddressMessage
 call detectIsFileAlreadyExistsCall math.equalI64
-arg detectIsFileAlreadyExistsCall left errorNumber
-arg detectIsFileAlreadyExistsCall right fileAlreadyExistsErrorNumber
+argument detectIsFileAlreadyExistsCall left I64 errorNumber
+argument detectIsFileAlreadyExistsCall right I64 fileAlreadyExistsErrorNumber
 run detectIsFileAlreadyExistsCall
-bind isFileAlreadyExists Bool detectIsFileAlreadyExistsCall
-branchIf isFileAlreadyExists returnFileAlreadyExistsMessage
+bind value isFileAlreadyExists Bool detectIsFileAlreadyExistsCall
+branch if condition isFileAlreadyExists target returnFileAlreadyExistsMessage
 call detectIsInvalidArgumentCall math.equalI64
-arg detectIsInvalidArgumentCall left errorNumber
-arg detectIsInvalidArgumentCall right invalidArgumentErrorNumber
+argument detectIsInvalidArgumentCall left I64 errorNumber
+argument detectIsInvalidArgumentCall right I64 invalidArgumentErrorNumber
 run detectIsInvalidArgumentCall
-bind isInvalidArgument Bool detectIsInvalidArgumentCall
-branchIf isInvalidArgument returnInvalidArgumentMessage
+bind value isInvalidArgument Bool detectIsInvalidArgumentCall
+branch if condition isInvalidArgument target returnInvalidArgumentMessage
 call detectIsNoSpaceLeftOnDeviceCall math.equalI64
-arg detectIsNoSpaceLeftOnDeviceCall left errorNumber
-arg detectIsNoSpaceLeftOnDeviceCall right noSpaceLeftOnDeviceErrorNumber
+argument detectIsNoSpaceLeftOnDeviceCall left I64 errorNumber
+argument detectIsNoSpaceLeftOnDeviceCall right I64 noSpaceLeftOnDeviceErrorNumber
 run detectIsNoSpaceLeftOnDeviceCall
-bind isNoSpaceLeftOnDevice Bool detectIsNoSpaceLeftOnDeviceCall
-branchIf isNoSpaceLeftOnDevice returnNoSpaceLeftOnDeviceMessage
+bind value isNoSpaceLeftOnDevice Bool detectIsNoSpaceLeftOnDeviceCall
+branch if condition isNoSpaceLeftOnDevice target returnNoSpaceLeftOnDeviceMessage
 call detectIsBrokenPipeCall math.equalI64
-arg detectIsBrokenPipeCall left errorNumber
-arg detectIsBrokenPipeCall right brokenPipeErrorNumber
+argument detectIsBrokenPipeCall left I64 errorNumber
+argument detectIsBrokenPipeCall right I64 brokenPipeErrorNumber
 run detectIsBrokenPipeCall
-bind isBrokenPipe Bool detectIsBrokenPipeCall
-branchIf isBrokenPipe returnBrokenPipeMessage
+bind value isBrokenPipe Bool detectIsBrokenPipeCall
+branch if condition isBrokenPipe target returnBrokenPipeMessage
 call detectIsResultOutOfRangeCall math.equalI64
-arg detectIsResultOutOfRangeCall left errorNumber
-arg detectIsResultOutOfRangeCall right resultOutOfRangeErrorNumber
+argument detectIsResultOutOfRangeCall left I64 errorNumber
+argument detectIsResultOutOfRangeCall right I64 resultOutOfRangeErrorNumber
 run detectIsResultOutOfRangeCall
-bind isResultOutOfRange Bool detectIsResultOutOfRangeCall
-branchIf isResultOutOfRange returnResultOutOfRangeMessage
-returnValue messageForUnknownErrorCode
+bind value isResultOutOfRange Bool detectIsResultOutOfRangeCall
+branch if condition isResultOutOfRange target returnResultOutOfRangeMessage
+return value messageForUnknownErrorCode
 label returnPermissionDeniedMessage
-returnValue messageForPermissionDenied
+return value messageForPermissionDenied
 label returnFileNotFoundMessage
-returnValue messageForFileNotFound
+return value messageForFileNotFound
 label returnProcessNotFoundMessage
-returnValue messageForProcessNotFound
+return value messageForProcessNotFound
 label returnInterruptedSystemCallMessage
-returnValue messageForInterruptedSystemCall
+return value messageForInterruptedSystemCall
 label returnInputOutputErrorMessage
-returnValue messageForInputOutputError
+return value messageForInputOutputError
 label returnOutOfMemoryMessage
-returnValue messageForOutOfMemory
+return value messageForOutOfMemory
 label returnAccessDeniedMessage
-returnValue messageForAccessDenied
+return value messageForAccessDenied
 label returnBadAddressMessage
-returnValue messageForBadAddress
+return value messageForBadAddress
 label returnFileAlreadyExistsMessage
-returnValue messageForFileAlreadyExists
+return value messageForFileAlreadyExists
 label returnInvalidArgumentMessage
-returnValue messageForInvalidArgument
+return value messageForInvalidArgument
 label returnNoSpaceLeftOnDeviceMessage
-returnValue messageForNoSpaceLeftOnDevice
+return value messageForNoSpaceLeftOnDevice
 label returnBrokenPipeMessage
-returnValue messageForBrokenPipe
+return value messageForBrokenPipe
 label returnResultOutOfRangeMessage
-returnValue messageForResultOutOfRange
+return value messageForResultOutOfRange

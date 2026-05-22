@@ -7,37 +7,37 @@ entry console main
 error MainError
 errorCase MainError Placeholder CSignedInt32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main read memory.buffer
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Compute the byte distance between two pointer.offset'd positions of the same string-const buffer using pointer.difference."
-invariant main "Exercises pointer.difference."
+purpose operation main "Compute the byte distance between two pointer.offset'd positions of the same string-const buffer using pointer.difference."
+invariant operation main "Exercises pointer.difference."
 label startMain
-const sentence CNullTerminatedByteString "abcdefghij"
-const positionTwo I64 2
-const positionNine I64 9
+storage module immutable sentence CNullTerminatedByteString "abcdefghij"
+storage module immutable positionTwo I64 2
+storage module immutable positionNine I64 9
 call leftPtrCall pointer.offset
-arg leftPtrCall base sentence
-arg leftPtrCall offset positionTwo
+argument leftPtrCall base CNullTerminatedByteString sentence
+argument leftPtrCall offset I64 positionTwo
 run leftPtrCall
-bind leftPointer COpaqueMemoryAddress leftPtrCall
+bind value leftPointer COpaqueMemoryAddress leftPtrCall
 call rightPtrCall pointer.offset
-arg rightPtrCall base sentence
-arg rightPtrCall offset positionNine
+argument rightPtrCall base CNullTerminatedByteString sentence
+argument rightPtrCall offset I64 positionNine
 run rightPtrCall
-bind rightPointer COpaqueMemoryAddress rightPtrCall
+bind value rightPointer COpaqueMemoryAddress rightPtrCall
 call diffCall pointer.difference
-arg diffCall left rightPointer
-arg diffCall right leftPointer
+argument diffCall left COpaqueMemoryAddress rightPointer
+argument diffCall right COpaqueMemoryAddress leftPointer
 run diffCall
-bind diffValue CSignedInt64 diffCall
+bind value diffValue CSignedInt64 diffCall
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value diffValue
+argument writeCall console Console console
+argument writeCall value CSignedInt64 diffValue
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

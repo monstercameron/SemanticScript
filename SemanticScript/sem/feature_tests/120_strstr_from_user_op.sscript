@@ -8,35 +8,35 @@ error MainError
 errorCase MainError Placeholder CSignedInt32
 
 operation findIn
-input findIn haystack CNullTerminatedByteString
-input findIn needle CNullTerminatedByteString
-output findIn Result CNullTerminatedByteString Void
+input operation findIn haystack CNullTerminatedByteString
+input operation findIn needle CNullTerminatedByteString
+output operation findIn Result CNullTerminatedByteString Void
 label startFind
 call ssCall c.strstr
-arg ssCall haystack haystack
-arg ssCall needle needle
+argument ssCall haystack CNullTerminatedByteString haystack
+argument ssCall needle CNullTerminatedByteString needle
 run ssCall
-bind found CNullTerminatedByteString ssCall
-returnOk found
+bind value found CNullTerminatedByteString ssCall
+return ok found
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
 label startMain
-const text CNullTerminatedByteString "this is found here"
-const what CNullTerminatedByteString "found"
+storage module immutable text CNullTerminatedByteString "this is found here"
+storage module immutable what CNullTerminatedByteString "found"
 call fc findIn
-arg fc haystack text
-arg fc needle what
+argument fc haystack CNullTerminatedByteString text
+argument fc needle CNullTerminatedByteString what
 run fc
-bindOk res CNullTerminatedByteString fc
+bind ok res CNullTerminatedByteString fc
 call w console.writeLine
-arg w console console
-arg w text res
+argument w console Console console
+argument w text CNullTerminatedByteString res
 run w
-ignoreOk w Void
-const okExit ExitCode 0
-returnOk okExit
+ignore void source w
+storage module immutable okExit ExitCode 0
+return ok okExit

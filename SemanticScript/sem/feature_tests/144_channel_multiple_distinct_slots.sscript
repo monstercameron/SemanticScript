@@ -8,29 +8,29 @@ entry console main
 error MainError
 errorCase MainError Placeholder CSignedInt32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Two distinct channels do not share storage."
-invariant main "channelAlpha carries 11, channelBeta carries 22; reads of each see their own value."
+purpose operation main "Two distinct channels do not share storage."
+invariant operation main "channelAlpha carries 11, channelBeta carries 22; reads of each see their own value."
 label startMain
-const elevenValue I64 11
-const twentyTwoValue I64 22
+storage module immutable elevenValue I64 11
+storage module immutable twentyTwoValue I64 22
 send channelAlpha elevenValue
 send channelBeta twentyTwoValue
 receive receivedFromAlpha I64 channelAlpha
 receive receivedFromBeta I64 channelBeta
 call writeFirstCall console.writeIntegerLine
-arg writeFirstCall console console
-arg writeFirstCall value receivedFromAlpha
+argument writeFirstCall console Console console
+argument writeFirstCall value I64 receivedFromAlpha
 run writeFirstCall
-ignoreOk writeFirstCall Void
+ignore void source writeFirstCall
 call writeSecondCall console.writeIntegerLine
-arg writeSecondCall console console
-arg writeSecondCall value receivedFromBeta
+argument writeSecondCall console Console console
+argument writeSecondCall value I64 receivedFromBeta
 run writeSecondCall
-ignoreOk writeSecondCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeSecondCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

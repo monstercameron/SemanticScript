@@ -9,33 +9,33 @@ error MainError
 errorCase MainError EncodeFailed CSignedInt32
 errorCase MainError ConsoleWriteFailed CSignedInt32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "json.stringify.I64 formats an integer to its JSON decimal string."
-invariant main "Output is the JSON representation of 42, exactly the string 42."
+purpose operation main "json.stringify.I64 formats an integer to its JSON decimal string."
+invariant operation main "Output is the JSON representation of 42, exactly the string 42."
 label startMain
-const fortyTwoValue I64 42
+storage module immutable fortyTwoValue I64 42
 call stringifyIntCall json.stringify.I64
-arg stringifyIntCall value fortyTwoValue
+argument stringifyIntCall value I64 fortyTwoValue
 run stringifyIntCall
-bindOk encodedString JsonText stringifyIntCall
-bindError encodeError JsonEncodeError stringifyIntCall
-branchIfError stringifyIntCall encodeFailed
+bind ok encodedString JsonText stringifyIntCall
+bind error encodeError JsonEncodeError stringifyIntCall
+branch error source stringifyIntCall target encodeFailed
 call writeResultCall console.writeLine
-arg writeResultCall console console
-arg writeResultCall text encodedString
+argument writeResultCall console Console console
+argument writeResultCall text JsonText encodedString
 run writeResultCall
-ignoreOk writeResultCall Void
-bindError writeError ConsoleWriteError writeResultCall
-branchIfError writeResultCall consoleWriteFailed
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeResultCall
+bind error writeError ConsoleWriteError writeResultCall
+branch error source writeResultCall target consoleWriteFailed
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
 label encodeFailed
 makeError encodeFailure MainError.EncodeFailed encodeError
-returnError encodeFailure
+return error encodeFailure
 label consoleWriteFailed
 makeError writeFailure MainError.ConsoleWriteFailed writeError
-returnError writeFailure
+return error writeFailure

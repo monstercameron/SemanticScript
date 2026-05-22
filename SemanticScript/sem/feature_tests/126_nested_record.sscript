@@ -17,19 +17,19 @@ field Segment start Point
 field Segment finish Point
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Construct Segment containing two nested Points, sum all four field values. 1+2+5+7 = 15."
-invariant main "Output is '15\\n'."
+purpose operation main "Construct Segment containing two nested Points, sum all four field values. 1+2+5+7 = 15."
+invariant operation main "Output is '15\\n'."
 label startMain
 new mySegment Segment
-const oneVal I64 1
-const twoVal I64 2
-const fiveVal I64 5
-const sevenVal I64 7
+storage module immutable oneVal I64 1
+storage module immutable twoVal I64 2
+storage module immutable fiveVal I64 5
+storage module immutable sevenVal I64 7
 fieldSet mySegment start.x oneVal
 fieldSet mySegment start.y twoVal
 fieldSet mySegment finish.x fiveVal
@@ -39,26 +39,26 @@ fieldGet sy I64 mySegment start.y
 fieldGet fx I64 mySegment finish.x
 fieldGet fy I64 mySegment finish.y
 call sum1Call math.addI64
-arg sum1Call left sx
-arg sum1Call right sy
+argument sum1Call left I64 sx
+argument sum1Call right I64 sy
 run sum1Call
-bind partial1 I64 sum1Call
+bind value partial1 I64 sum1Call
 call sum2Call math.addI64
-arg sum2Call left fx
-arg sum2Call right fy
+argument sum2Call left I64 fx
+argument sum2Call right I64 fy
 run sum2Call
-bind partial2 I64 sum2Call
+bind value partial2 I64 sum2Call
 call totalCall math.addI64
-arg totalCall left partial1
-arg totalCall right partial2
+argument totalCall left I64 partial1
+argument totalCall right I64 partial2
 run totalCall
-bind totalResult I64 totalCall
-var totalVar I64 oneVal
-set totalVar totalResult
+bind value totalResult I64 totalCall
+memory main mutable totalVar I64 oneVal
+set memory totalVar totalResult
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value totalVar
+argument writeCall console Console console
+argument writeCall value I64 totalVar
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

@@ -11,10 +11,10 @@
 # enum, constant, and capability contracts for that intrinsic namespace.
 
 module standard.sqlite
-modulePurpose standard.sqlite "Standard-library namespace and contracts for native SQLite database intrinsics."
+purpose module standard.sqlite "Standard-library namespace and contracts for native SQLite database intrinsics."
 moduleOwns standard.sqlite "The official import path `standard.sqlite`, semantic SQLite type aliases, enum tokens, reusable database capabilities, and the compiler-owned `sqlite.*` intrinsic namespace contract."
 moduleDoesNotOwn standard.sqlite "Application schemas, migrations, query text, transaction policy, native SQLite runtime internals, or caller-owned statement lifetimes."
-moduleInvariant standard.sqlite "The standard module entry is this file; new modules may import it as alias `sqlite` before using compiler-owned targets in the `sqlite.*` namespace."
+invariant module standard.sqlite "The standard module entry is this file; new modules may import it as alias `sqlite` before using compiler-owned targets in the `sqlite.*` namespace."
 
 type SqliteDatabase COpaqueMemoryAddress
 type SqliteStatement COpaqueMemoryAddress
@@ -72,9 +72,9 @@ typeInvariant SqliteBlob "Opaque SQLite blob pointer paired with SqliteByteCount
 typeInvariant SqliteByteCount "Byte count paired with SQLite blob/text buffers."
 
 capability sqliteDatabaseReader database read
-purpose sqliteDatabaseReader "Authority to execute read-only SQL — prepareStatement of SELECT statements, bind*, step, and the column readers — against an open SqliteDatabase handle."
+purpose operation sqliteDatabaseReader "Authority to execute read-only SQL — prepareStatement of SELECT statements, bind*, step, and the column readers — against an open SqliteDatabase handle."
 
 capability sqliteDatabaseReadWriter database readWrite
-purpose sqliteDatabaseReadWriter "Authority to execute read-or-write SQL — prepareStatement of any statement plus sqlite.exec for DDL — against an open SqliteDatabase handle."
+purpose operation sqliteDatabaseReadWriter "Authority to execute read-or-write SQL — prepareStatement of any statement plus sqlite.exec for DDL — against an open SqliteDatabase handle."
 
 storage module immutable sqliteModuleVersionText SqliteText "standard.sqlite 0.1"

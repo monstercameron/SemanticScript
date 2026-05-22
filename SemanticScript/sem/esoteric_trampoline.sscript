@@ -16,102 +16,102 @@ error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 
 operation writeStandardOutputLine
-input writeStandardOutputLine text String
-output writeStandardOutputLine Result Void ConsoleWriteError
+input operation writeStandardOutputLine text String
+output operation writeStandardOutputLine Result Void ConsoleWriteError
 effect writeStandardOutputLine write console.stdout
 memory writeStandardOutputLine heap no
 memory writeStandardOutputLine stack max 1KiB
 async writeStandardOutputLine no
 
-purpose writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
-invariant writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
+purpose operation writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
+invariant operation writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
 guarantee writeStandardOutputLine "On success the entire text plus a single newline byte is written exactly once"
 
 # group writeStandardOutputLineHelperBody
 label startWriteStandardOutputLine
 
 call writeStandardOutputLineConsoleWriteCall console.writeLine
-arg writeStandardOutputLineConsoleWriteCall console console
-arg writeStandardOutputLineConsoleWriteCall text text
+argument writeStandardOutputLineConsoleWriteCall console Console console
+argument writeStandardOutputLineConsoleWriteCall text String text
 run writeStandardOutputLineConsoleWriteCall
-ignoreOk writeStandardOutputLineConsoleWriteCall Void
-bindError writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
-branchIfError writeStandardOutputLineConsoleWriteCall writeStandardOutputLineConsoleWriteFailed
+ignore void source writeStandardOutputLineConsoleWriteCall
+bind error writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
+branch error source writeStandardOutputLineConsoleWriteCall target writeStandardOutputLineConsoleWriteFailed
 
-const writeStandardOutputLineSuccessSentinel ExitCode 0
-returnOk writeStandardOutputLineSuccessSentinel
+storage module immutable writeStandardOutputLineSuccessSentinel ExitCode 0
+return ok writeStandardOutputLineSuccessSentinel
 
 label writeStandardOutputLineConsoleWriteFailed
-returnError writeStandardOutputLineConsoleWriteError
+return error writeStandardOutputLineConsoleWriteError
 # endGroup writeStandardOutputLineHelperBody
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 memory main stack max 4KiB
 async main no
 
-purpose main "Print the trampolined-factorial demonstration output from javascript/esoteric-trampoline.js"
-invariant main "Each result line includes the input, computed factorial, and bounce count"
+purpose operation main "Print the trampolined-factorial demonstration output from javascript/esoteric-trampoline.js"
+invariant operation main "Each result line includes the input, computed factorial, and bounce count"
 
 label startMain
 
-const trampolineTitleText String "Esoteric Trampoline"
-const trampolineTitleUnderlineText String "==================="
-const trampolineFactorialThreeText String "factorial(3)=6 bounces=5"
-const trampolineFactorialFiveText String "factorial(5)=120 bounces=9"
-const trampolineFactorialEightText String "factorial(8)=40320 bounces=15"
+storage module immutable trampolineTitleText String "Esoteric Trampoline"
+storage module immutable trampolineTitleUnderlineText String "==================="
+storage module immutable trampolineFactorialThreeText String "factorial(3)=6 bounces=5"
+storage module immutable trampolineFactorialFiveText String "factorial(5)=120 bounces=9"
+storage module immutable trampolineFactorialEightText String "factorial(8)=40320 bounces=15"
 
-var lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
+memory main mutable lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
 
 call writeTrampolineTitleLineCall writeStandardOutputLine
-arg writeTrampolineTitleLineCall text trampolineTitleText
+argument writeTrampolineTitleLineCall text String trampolineTitleText
 run writeTrampolineTitleLineCall
-ignoreOk writeTrampolineTitleLineCall Void
-bindError writeTrampolineTitleLineError ConsoleWriteError writeTrampolineTitleLineCall
-set lastConsoleWriteErrorCode writeTrampolineTitleLineError
-branchIfError writeTrampolineTitleLineCall consoleWriteFailed
+ignore void source writeTrampolineTitleLineCall
+bind error writeTrampolineTitleLineError ConsoleWriteError writeTrampolineTitleLineCall
+set memory lastConsoleWriteErrorCode writeTrampolineTitleLineError
+branch error source writeTrampolineTitleLineCall target consoleWriteFailed
 
 call writeTrampolineTitleUnderlineLineCall writeStandardOutputLine
-arg writeTrampolineTitleUnderlineLineCall text trampolineTitleUnderlineText
+argument writeTrampolineTitleUnderlineLineCall text String trampolineTitleUnderlineText
 run writeTrampolineTitleUnderlineLineCall
-ignoreOk writeTrampolineTitleUnderlineLineCall Void
-bindError writeTrampolineTitleUnderlineLineError ConsoleWriteError writeTrampolineTitleUnderlineLineCall
-set lastConsoleWriteErrorCode writeTrampolineTitleUnderlineLineError
-branchIfError writeTrampolineTitleUnderlineLineCall consoleWriteFailed
+ignore void source writeTrampolineTitleUnderlineLineCall
+bind error writeTrampolineTitleUnderlineLineError ConsoleWriteError writeTrampolineTitleUnderlineLineCall
+set memory lastConsoleWriteErrorCode writeTrampolineTitleUnderlineLineError
+branch error source writeTrampolineTitleUnderlineLineCall target consoleWriteFailed
 
 call writeTrampolineFactorialThreeLineCall writeStandardOutputLine
-arg writeTrampolineFactorialThreeLineCall text trampolineFactorialThreeText
+argument writeTrampolineFactorialThreeLineCall text String trampolineFactorialThreeText
 run writeTrampolineFactorialThreeLineCall
-ignoreOk writeTrampolineFactorialThreeLineCall Void
-bindError writeTrampolineFactorialThreeLineError ConsoleWriteError writeTrampolineFactorialThreeLineCall
-set lastConsoleWriteErrorCode writeTrampolineFactorialThreeLineError
-branchIfError writeTrampolineFactorialThreeLineCall consoleWriteFailed
+ignore void source writeTrampolineFactorialThreeLineCall
+bind error writeTrampolineFactorialThreeLineError ConsoleWriteError writeTrampolineFactorialThreeLineCall
+set memory lastConsoleWriteErrorCode writeTrampolineFactorialThreeLineError
+branch error source writeTrampolineFactorialThreeLineCall target consoleWriteFailed
 
 call writeTrampolineFactorialFiveLineCall writeStandardOutputLine
-arg writeTrampolineFactorialFiveLineCall text trampolineFactorialFiveText
+argument writeTrampolineFactorialFiveLineCall text String trampolineFactorialFiveText
 run writeTrampolineFactorialFiveLineCall
-ignoreOk writeTrampolineFactorialFiveLineCall Void
-bindError writeTrampolineFactorialFiveLineError ConsoleWriteError writeTrampolineFactorialFiveLineCall
-set lastConsoleWriteErrorCode writeTrampolineFactorialFiveLineError
-branchIfError writeTrampolineFactorialFiveLineCall consoleWriteFailed
+ignore void source writeTrampolineFactorialFiveLineCall
+bind error writeTrampolineFactorialFiveLineError ConsoleWriteError writeTrampolineFactorialFiveLineCall
+set memory lastConsoleWriteErrorCode writeTrampolineFactorialFiveLineError
+branch error source writeTrampolineFactorialFiveLineCall target consoleWriteFailed
 
 call writeTrampolineFactorialEightLineCall writeStandardOutputLine
-arg writeTrampolineFactorialEightLineCall text trampolineFactorialEightText
+argument writeTrampolineFactorialEightLineCall text String trampolineFactorialEightText
 run writeTrampolineFactorialEightLineCall
-ignoreOk writeTrampolineFactorialEightLineCall Void
-bindError writeTrampolineFactorialEightLineError ConsoleWriteError writeTrampolineFactorialEightLineCall
-set lastConsoleWriteErrorCode writeTrampolineFactorialEightLineError
-branchIfError writeTrampolineFactorialEightLineCall consoleWriteFailed
+ignore void source writeTrampolineFactorialEightLineCall
+bind error writeTrampolineFactorialEightLineError ConsoleWriteError writeTrampolineFactorialEightLineCall
+set memory lastConsoleWriteErrorCode writeTrampolineFactorialEightLineError
+branch error source writeTrampolineFactorialEightLineCall target consoleWriteFailed
 
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
 
 label consoleWriteFailed
 # rationale: lastConsoleWriteErrorCode holds whichever emit actually failed; its `set`
 # ran immediately before the corresponding branchIfError, so the typed
 # MainError.ConsoleWriteFailed value honestly names its cause (§12).
 makeError consoleWriteFailure MainError.ConsoleWriteFailed lastConsoleWriteErrorCode
-returnError consoleWriteFailure
+return error consoleWriteFailure

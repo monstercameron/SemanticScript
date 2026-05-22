@@ -12,46 +12,46 @@ field Measurement reading CFloat64
 field Measurement scale CFloat64
 
 operation scaleReading
-input scaleReading m Measurement
-output scaleReading Result CFloat64 Void
+input operation scaleReading m Measurement
+output operation scaleReading Result CFloat64 Void
 memory scaleReading heap no
 async scaleReading no
-purpose scaleReading "Return m.reading * m.scale. Probes whether the record-param call-site helpers handle CFloat64 fields."
-invariant scaleReading "Returns reading * scale."
+purpose operation scaleReading "Return m.reading * m.scale. Probes whether the record-param call-site helpers handle CFloat64 fields."
+invariant operation scaleReading "Returns reading * scale."
 label startScaleReading
 fieldGet readingVal CFloat64 m reading
 fieldGet scaleVal CFloat64 m scale
 call mulCall math.multiplyF64
-arg mulCall left readingVal
-arg mulCall right scaleVal
+argument mulCall left CFloat64 readingVal
+argument mulCall right CFloat64 scaleVal
 run mulCall
-bind productResult CFloat64 mulCall
-returnOk productResult
+bind value productResult CFloat64 mulCall
+return ok productResult
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap auto
 async main no
-purpose main "Construct Measurement {reading:2.2, scale:2.5} and call scaleReading(m). Expect 5.5."
-invariant main "Output is '5.500000\\n'."
+purpose operation main "Construct Measurement {reading:2.2, scale:2.5} and call scaleReading(m). Expect 5.5."
+invariant operation main "Output is '5.500000\\n'."
 label startMain
 new myMeasurement Measurement
-const readingInit CFloat64 2.2
-const scaleInit CFloat64 2.5
+storage module immutable readingInit CFloat64 2.2
+storage module immutable scaleInit CFloat64 2.5
 fieldSet myMeasurement reading readingInit
 fieldSet myMeasurement scale scaleInit
 call scaleReadingCall scaleReading
-arg scaleReadingCall m myMeasurement
+argument scaleReadingCall m Measurement myMeasurement
 run scaleReadingCall
-bind productResult CFloat64 scaleReadingCall
-var productVar CFloat64 readingInit
-set productVar productResult
+bind value productResult CFloat64 scaleReadingCall
+memory main mutable productVar CFloat64 readingInit
+set memory productVar productResult
 call writeCall console.writeFloatLine
-arg writeCall console console
-arg writeCall value productVar
+argument writeCall console Console console
+argument writeCall value CFloat64 productVar
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

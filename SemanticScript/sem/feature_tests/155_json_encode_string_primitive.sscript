@@ -9,33 +9,33 @@ error MainError
 errorCase MainError EncodeFailed CSignedInt32
 errorCase MainError ConsoleWriteFailed CSignedInt32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "json.stringify.String wraps an ASCII string in JSON double-quotes."
-invariant main "Output is exactly the source string surrounded by quotes."
+purpose operation main "json.stringify.String wraps an ASCII string in JSON double-quotes."
+invariant operation main "Output is exactly the source string surrounded by quotes."
 label startMain
-const helloPayload CNullTerminatedByteString "hello"
+storage module immutable helloPayload CNullTerminatedByteString "hello"
 call stringifyStringCall json.stringify.String
-arg stringifyStringCall value helloPayload
+argument stringifyStringCall value CNullTerminatedByteString helloPayload
 run stringifyStringCall
-bindOk encodedJsonString JsonText stringifyStringCall
-bindError encodeError JsonEncodeError stringifyStringCall
-branchIfError stringifyStringCall encodeFailed
+bind ok encodedJsonString JsonText stringifyStringCall
+bind error encodeError JsonEncodeError stringifyStringCall
+branch error source stringifyStringCall target encodeFailed
 call writeEncodedCall console.writeLine
-arg writeEncodedCall console console
-arg writeEncodedCall text encodedJsonString
+argument writeEncodedCall console Console console
+argument writeEncodedCall text JsonText encodedJsonString
 run writeEncodedCall
-ignoreOk writeEncodedCall Void
-bindError writeError ConsoleWriteError writeEncodedCall
-branchIfError writeEncodedCall consoleWriteFailed
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeEncodedCall
+bind error writeError ConsoleWriteError writeEncodedCall
+branch error source writeEncodedCall target consoleWriteFailed
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
 label encodeFailed
 makeError encodeFailure MainError.EncodeFailed encodeError
-returnError encodeFailure
+return error encodeFailure
 label consoleWriteFailed
 makeError writeFailure MainError.ConsoleWriteFailed writeError
-returnError writeFailure
+return error writeFailure

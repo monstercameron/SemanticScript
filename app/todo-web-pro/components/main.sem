@@ -1,9 +1,9 @@
 # Todo Web Pro — reusable HTML components.
 #
-# Every component is a small htmlTemplate that returns an HtmlFragment
+# Every component is a small HTML template that returns an HtmlFragment
 # via a render-operation; the pages module composes those fragments
-# into full HtmlDocuments. Same pattern as React: each component takes
-# its props (htmlArgs), produces a fragment, never reaches into other
+# into full HTML documents. Same pattern as React: each component takes
+# hydrate arguments, produces a fragment, never reaches into other
 # components' DOM, and is reusable across pages.
 #
 # Component inventory:
@@ -20,12 +20,12 @@
 #   AppFooterComponent         — attribution row pinned to bottom
 
 module app.todo_web_pro.components
-modulePurpose app.todo_web_pro.components "Reusable HTML component templates for Todo Web Pro pages. Each component declares one htmlTemplate and one render-operation that returns an HtmlFragment for composition."
+purpose module app.todo_web_pro.components "Reusable HTML component templates for Todo Web Pro pages. Each component declares one html template and one render-operation that returns an HtmlFragment for composition."
 moduleOwns app.todo_web_pro.components "Shared <head>, hero background, brand mark, brand header, landing hero, feature grid, auth card + login + register panels, status card, and footer components. Component-level Tailwind classes and design tokens live with each template."
-moduleDoesNotOwn app.todo_web_pro.components "Page-level layout (lives in pages/), routing, session lookup, or any API logic. Components are pure render — they read static text from htmlArg props and emit escaped HTML."
-moduleInvariant app.todo_web_pro.components "Every dynamic hole in every component template is an htmlArg with a standard.html trust type (HtmlText / HtmlFragment / SafeUrl / HtmlClass) so the hydrator escapes user-controlled content at the right context boundary."
+moduleDoesNotOwn app.todo_web_pro.components "Page-level layout (lives in pages/), routing, session lookup, or any API logic. Components are pure render — they read static text from hydrate arguments and emit escaped HTML."
+invariant module app.todo_web_pro.components "Every dynamic hole in every component template is a bare scoped hole whose hydrate argument is type-checked as String or generated HtmlFragment before the hydrator escapes or composes it at the right context boundary."
 
-importModule standard.html
+import html standard.html
 
 exportOperation app.todo_web_pro.components renderPageShellHead
 exportOperation app.todo_web_pro.components renderHeroBackground
@@ -46,111 +46,114 @@ exportOperation app.todo_web_pro.components renderAppFooter
 # this in a single component means tweaking the visual system is a
 # single-file change.
 
-htmlTemplate PageShellHeadComponent
-htmlArg PageShellHeadComponent pageTitleText HtmlText
-htmlBody PageShellHeadComponent
+html template PageShellHeadComponent
+html body template PageShellHeadComponent
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="light" />
-  <title>{htmlArg.pageTitleText}</title>
+  <title>{pageTitleText}</title>
   <link rel="preconnect" href="https://rsms.me/" />
   <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
-  tailwind.config = {
-  theme: {
-  extend: {
-  fontFamily: { sans: ['Inter var', 'Inter', 'ui-sans-serif', 'system-ui'] },
-  colors: {
-  ink: { 50:'  #f8fafc', 100:'#f1f5f9', 200:'#e2e8f0', 300:'#cbd5e1', 400:'#94a3b8', 500:'#64748b', 600:'#475569', 700:'#334155', 800:'#1e293b', 900:'#0f172a' },
-  brand: { 50:'  #eef2ff', 100:'#e0e7ff', 200:'#c7d2fe', 300:'#a5b4fc', 400:'#818cf8', 500:'#6366f1', 600:'#4f46e5', 700:'#4338ca', 800:'#3730a3', 900:'#312e81' },
-  },
-  boxShadow: {
-  'glow-brand': '0 0 0 1px rgba(99,102,241,0.15), 0 10px 30px -10px rgba(99,102,241,0.35)',
-  'glow-soft': '0 1px 0 rgba(255,255,255,0.6) inset, 0 24px 48px -24px rgba(15,23,42,0.15)',
-  },
-  },
-  },
-  };
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter var', 'Inter', 'ui-sans-serif', 'system-ui'] },
+          colors: {
+            ink: { 50:'#f8fafc', 100:'#f1f5f9', 200:'#e2e8f0', 300:'#cbd5e1', 400:'#94a3b8', 500:'#64748b', 600:'#475569', 700:'#334155', 800:'#1e293b', 900:'#0f172a' },
+            brand: { 50:'#eef2ff', 100:'#e0e7ff', 200:'#c7d2fe', 300:'#a5b4fc', 400:'#818cf8', 500:'#6366f1', 600:'#4f46e5', 700:'#4338ca', 800:'#3730a3', 900:'#312e81' },
+          },
+          boxShadow: {
+            'glow-brand': '0 0 0 1px rgba(99,102,241,0.15), 0 10px 30px -10px rgba(99,102,241,0.35)',
+            'glow-soft': '0 1px 0 rgba(255,255,255,0.6) inset, 0 24px 48px -24px rgba(15,23,42,0.15)',
+          },
+        },
+      },
+    };
   </script>
   <style>
-  :root { font-feature-settings: 'cv11','ss01','ss03'; }
-  body { font-family: 'Inter var', 'Inter', ui-sans-serif, system-ui, sans-serif; }
-  .mesh-bg {
-  background-color:  #f8fafc;
-  background-image:
-  radial-gradient(at 12% 18%, rgba(165,180,252,0.45) 0px, transparent 50%),
-  radial-gradient(at 88% 22%, rgba(192,132,252,0.40) 0px, transparent 55%),
-  radial-gradient(at 30% 92%, rgba(125,211,252,0.40) 0px, transparent 50%),
-  radial-gradient(at 80% 80%, rgba(244,114,182,0.25) 0px, transparent 55%);
-  }
-  .mesh-bg-soft { background-image:
-  radial-gradient(at 18% 12%, rgba(199,210,254,0.55) 0px, transparent 55%),
-  radial-gradient(at 92% 28%, rgba(216,180,254,0.40) 0px, transparent 55%),
-  radial-gradient(at 50% 98%, rgba(186,230,253,0.35) 0px, transparent 50%); }
-  .glass {
-  background: rgba(255,255,255,0.72);
-  backdrop-filter: saturate(140%) blur(14px);
-  -webkit-backdrop-filter: saturate(140%) blur(14px);
-  border: 1px solid rgba(255,255,255,0.6);
-  }
-  .glass-dark { background: rgba(15,23,42,0.55); backdrop-filter: blur(14px); }
-  .ring-soft { box-shadow: 0 0 0 1px rgba(15,23,42,0.06), 0 24px 48px -24px rgba(15,23,42,0.18); }
-  .grad-text {
-  background: linear-gradient(135deg,  #4338ca 0%, #6d28d9 45%, #db2777 100%);
-  -webkit-background-clip: text; background-clip: text; color: transparent;
-  }
-  .grad-btn { background: linear-gradient(135deg,  #4f46e5 0%, #7c3aed 50%, #c026d3 100%); }
-  .grad-btn:hover { background: linear-gradient(135deg,  #4338ca 0%, #6d28d9 50%, #a21caf 100%); }
-  @keyframes fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-  .fade-up { animation: fade-up 0.5s ease-out both; }
-  @keyframes float-slow { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-  .float-slow { animation: float-slow 8s ease-in-out infinite; }
-  .scroll-thin::-webkit-scrollbar { width: 8px; }
-  .scroll-thin::-webkit-scrollbar-thumb { background: rgba(15,23,42,0.18); border-radius: 4px; }
-  .check-card[data-done="true"] .check-title { text-decoration: line-through; color:  #94a3b8; }
-  .check-card[data-done="true"] .check-dot { background: linear-gradient(135deg,  #10b981, #059669); }
+    :root { font-feature-settings: 'cv11','ss01','ss03'; }
+    body { font-family: 'Inter var', 'Inter', ui-sans-serif, system-ui, sans-serif; }
+    .mesh-bg {
+      background-color: #f8fafc;
+      background-image:
+        radial-gradient(at 12% 18%, rgba(165,180,252,0.45) 0px, transparent 50%),
+        radial-gradient(at 88% 22%, rgba(192,132,252,0.40) 0px, transparent 55%),
+        radial-gradient(at 30% 92%, rgba(125,211,252,0.40) 0px, transparent 50%),
+        radial-gradient(at 80% 80%, rgba(244,114,182,0.25) 0px, transparent 55%);
+    }
+    .mesh-bg-soft {
+      background-image:
+        radial-gradient(at 18% 12%, rgba(199,210,254,0.55) 0px, transparent 55%),
+        radial-gradient(at 92% 28%, rgba(216,180,254,0.40) 0px, transparent 55%),
+        radial-gradient(at 50% 98%, rgba(186,230,253,0.35) 0px, transparent 50%);
+    }
+    .glass {
+      background: rgba(255,255,255,0.72);
+      backdrop-filter: saturate(140%) blur(14px);
+      -webkit-backdrop-filter: saturate(140%) blur(14px);
+      border: 1px solid rgba(255,255,255,0.6);
+    }
+    .glass-dark { background: rgba(15,23,42,0.55); backdrop-filter: blur(14px); }
+    .ring-soft { box-shadow: 0 0 0 1px rgba(15,23,42,0.06), 0 24px 48px -24px rgba(15,23,42,0.18); }
+    .grad-text {
+      background: linear-gradient(135deg, #4338ca 0%, #6d28d9 45%, #db2777 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .grad-btn { background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #c026d3 100%); }
+    .grad-btn:hover { background: linear-gradient(135deg, #4338ca 0%, #6d28d9 50%, #a21caf 100%); }
+    @keyframes fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .fade-up { animation: fade-up 0.5s ease-out both; }
+    @keyframes float-slow { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+    .float-slow { animation: float-slow 8s ease-in-out infinite; }
+    .scroll-thin::-webkit-scrollbar { width: 8px; }
+    .scroll-thin::-webkit-scrollbar-thumb { background: rgba(15,23,42,0.18); border-radius: 4px; }
+    .check-card[data-done="true"] .check-title { text-decoration: line-through; color:  #94a3b8; }
+    .check-card[data-done="true"] .check-dot { background: linear-gradient(135deg,  #10b981, #059669); }
   </style>
 
 operation renderPageShellHead
-input renderPageShellHead pageTitleText HtmlText
-output renderPageShellHead HtmlFragment
+input operation renderPageShellHead pageTitleText String
+output operation renderPageShellHead HtmlFragment
 memory renderPageShellHead arena request
 async renderPageShellHead no
-purpose renderPageShellHead "Hydrate the PageShellHeadComponent with a page title — produces a <head> fragment with Tailwind, Inter font, Tailwind config extensions, and the design-token <style> block."
-invariant renderPageShellHead "Every page that wants the modern visual system uses this exact <head>, so visual updates are a single-file edit."
+purpose operation renderPageShellHead "Hydrate the PageShellHeadComponent with a page title — produces a <head> fragment with Tailwind, Inter font, Tailwind config extensions, and the design-token <style> block."
+invariant operation renderPageShellHead "Every page that wants the modern visual system uses this exact <head>, so visual updates are a single-file edit."
 
 label startRenderPageShellHead
 call hydratePageShellHeadCall html.hydrate.PageShellHeadComponent
-arg hydratePageShellHeadCall pageTitleText pageTitleText
+argument hydratePageShellHeadCall pageTitleText String pageTitleText
 run hydratePageShellHeadCall
-bind pageShellHeadFragment HtmlFragment hydratePageShellHeadCall
-returnValue pageShellHeadFragment
+bind value pageShellHeadFragment HtmlFragment hydratePageShellHeadCall
+return value pageShellHeadFragment
 
 # ===== HeroBackgroundComponent =====
 # Decorative floating orbs that sit behind the content. Pure CSS, no
 # layout impact (pointer-events:none + absolutely positioned).
 
-htmlTemplate HeroBackgroundComponent
-htmlBody HeroBackgroundComponent
+html template HeroBackgroundComponent
+html body template HeroBackgroundComponent
   <div aria-hidden="true" class="pointer-events-none fixed inset-0 -z-10 mesh-bg">
-  <div class="absolute -top-24 left-1/4 h-72 w-72 rounded-full bg-brand-300/30 blur-3xl float-slow"></div>
-  <div class="absolute top-1/3 right-0 h-80 w-80 rounded-full bg-fuchsia-300/30 blur-3xl float-slow" style="animation-delay:-3s;"></div>
-  <div class="absolute bottom-0 left-10 h-64 w-64 rounded-full bg-sky-300/25 blur-3xl float-slow" style="animation-delay:-6s;"></div>
+    <div class="absolute -top-24 left-1/4 h-72 w-72 rounded-full bg-brand-300/30 blur-3xl float-slow"></div>
+    <div class="absolute top-1/3 right-0 h-80 w-80 rounded-full bg-fuchsia-300/30 blur-3xl float-slow" style="animation-delay:-3s;"></div>
+    <div class="absolute bottom-0 left-10 h-64 w-64 rounded-full bg-sky-300/25 blur-3xl float-slow" style="animation-delay:-6s;"></div>
   </div>
 
 operation renderHeroBackground
-output renderHeroBackground HtmlFragment
+output operation renderHeroBackground HtmlFragment
 memory renderHeroBackground arena request
 async renderHeroBackground no
-purpose renderHeroBackground "Hydrate the HeroBackgroundComponent — emits a fixed, pointer-events-none decorative layer with mesh gradient + three blurred orbs."
-invariant renderHeroBackground "Pure decoration; safe to drop into any page below the <body> open tag."
+purpose operation renderHeroBackground "Hydrate the HeroBackgroundComponent — emits a fixed, pointer-events-none decorative layer with mesh gradient + three blurred orbs."
+invariant operation renderHeroBackground "Pure decoration; safe to drop into any page below the <body> open tag."
 
 label startRenderHeroBackground
 call hydrateHeroBackgroundCall html.hydrate.HeroBackgroundComponent
 run hydrateHeroBackgroundCall
-bind heroBackgroundFragment HtmlFragment hydrateHeroBackgroundCall
-returnValue heroBackgroundFragment
+bind value heroBackgroundFragment HtmlFragment hydrateHeroBackgroundCall
+return value heroBackgroundFragment
 
 # ===== BrandHeaderComponent =====
 # Top-of-page brand row used by content pages (not the landing hero).
@@ -158,402 +161,390 @@ returnValue heroBackgroundFragment
 # consistent with the dashboard top bar, the 404 page, and any future
 # settings/profile pages.
 
-htmlTemplate BrandHeaderComponent
-htmlArg BrandHeaderComponent productNameText HtmlText
-htmlArg BrandHeaderComponent taglineText HtmlText
-htmlBody BrandHeaderComponent
+html template BrandHeaderComponent
+html body template BrandHeaderComponent
   <header class="mb-10 flex flex-wrap items-center justify-between gap-4">
-  <a href="/" class="group flex items-center gap-3">
-  <div class="flex h-11 w-11 items-center justify-center rounded-2xl grad-btn text-xl font-bold text-white shadow-glow-brand transition group-hover:scale-105">T</div>
-  <div>
-  <div class="text-base font-semibold tracking-tight text-ink-900">{htmlArg.productNameText}</div>
-  <div class="text-xs text-ink-500">{htmlArg.taglineText}</div>
-  </div>
-  </a>
-  <div class="flex items-center gap-2 rounded-full border border-emerald-200/70 bg-emerald-50/70 px-3 py-1 text-xs font-medium text-emerald-700 shadow-sm">
-  <span class="relative flex h-2 w-2">
-  <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60"></span>
-  <span class="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
-  </span>
-  Server online
-  </div>
+    <a href="/" class="group flex items-center gap-3">
+      <div class="flex h-11 w-11 items-center justify-center rounded-2xl grad-btn text-xl font-bold text-white shadow-glow-brand transition group-hover:scale-105">T</div>
+      <div>
+        <div class="text-base font-semibold tracking-tight text-ink-900">{productNameText}</div>
+        <div class="text-xs text-ink-500">{taglineText}</div>
+      </div>
+    </a>
+    <div class="flex items-center gap-2 rounded-full border border-emerald-200/70 bg-emerald-50/70 px-3 py-1 text-xs font-medium text-emerald-700 shadow-sm">
+      <span class="relative flex h-2 w-2">
+        <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60"></span>
+        <span class="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+      </span>
+      Server online
+    </div>
   </header>
 
 operation renderBrandHeader
-input renderBrandHeader productNameText HtmlText
-input renderBrandHeader taglineText HtmlText
-output renderBrandHeader HtmlFragment
+input operation renderBrandHeader productNameText String
+input operation renderBrandHeader taglineText String
+output operation renderBrandHeader HtmlFragment
 memory renderBrandHeader arena request
 async renderBrandHeader no
-purpose renderBrandHeader "Hydrate the BrandHeaderComponent with the given product name + tagline; returns the header fragment for page composition."
-invariant renderBrandHeader "Returns a self-contained <header> element; callers drop it into a page layout's header slot via htmlArg."
+purpose operation renderBrandHeader "Hydrate the BrandHeaderComponent with the given product name + tagline; returns the header fragment for page composition."
+invariant operation renderBrandHeader "Returns a self-contained <header> element; callers drop it into a page layout's header slot as a generated HtmlFragment."
 
 label startRenderBrandHeader
 call hydrateBrandHeaderCall html.hydrate.BrandHeaderComponent
-arg hydrateBrandHeaderCall productNameText productNameText
-arg hydrateBrandHeaderCall taglineText taglineText
+argument hydrateBrandHeaderCall productNameText String productNameText
+argument hydrateBrandHeaderCall taglineText String taglineText
 run hydrateBrandHeaderCall
-bind brandHeaderFragment HtmlFragment hydrateBrandHeaderCall
-returnValue brandHeaderFragment
+bind value brandHeaderFragment HtmlFragment hydrateBrandHeaderCall
+return value brandHeaderFragment
 
 # ===== LandingHeroComponent =====
 # The marketing copy block on the left side of the landing page's
 # split layout: big gradient headline, supporting paragraph, and a row
 # of feature pills (one per major architectural piece).
 
-htmlTemplate LandingHeroComponent
-htmlArg LandingHeroComponent productNameText HtmlText
-htmlArg LandingHeroComponent headlineText HtmlText
-htmlArg LandingHeroComponent leadText HtmlText
-htmlBody LandingHeroComponent
+html template LandingHeroComponent
+html body template LandingHeroComponent
   <section class="fade-up flex flex-col justify-center">
-  <div class="inline-flex w-fit items-center gap-2 rounded-full border border-brand-200/60 bg-white/70 px-3 py-1 text-xs font-medium text-brand-700 shadow-sm">
-  <span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>
-  {htmlArg.productNameText}
-  <span class="text-ink-400">&middot;</span>
-  <span class="font-mono text-[10px] tracking-wide text-ink-500">SemanticScript demo</span>
-  </div>
-  <h1 class="mt-6 text-4xl font-semibold leading-[1.05] tracking-tight text-ink-900 sm:text-5xl md:text-[3.25rem]">
-  {htmlArg.headlineText}
-  </h1>
-  <p class="mt-6 max-w-xl text-base leading-relaxed text-ink-600">
-  {htmlArg.leadText}
-  </p>
-  <ul class="mt-8 flex flex-wrap gap-2 text-xs font-medium">
-  <li class="rounded-full border border-ink-200 bg-white/70 px-3 py-1.5 text-ink-700 shadow-sm">bcrypt cost 12</li>
-  <li class="rounded-full border border-ink-200 bg-white/70 px-3 py-1.5 text-ink-700 shadow-sm">SQLite WAL</li>
-  <li class="rounded-full border border-ink-200 bg-white/70 px-3 py-1.5 text-ink-700 shadow-sm">HttpOnly cookies</li>
-  <li class="rounded-full border border-ink-200 bg-white/70 px-3 py-1.5 text-ink-700 shadow-sm">SameSite=Strict</li>
-  <li class="rounded-full border border-ink-200 bg-white/70 px-3 py-1.5 text-ink-700 shadow-sm">Tailwind UI</li>
-  </ul>
+    <div class="inline-flex w-fit items-center gap-2 rounded-full border border-brand-200/60 bg-white/70 px-3 py-1 text-xs font-medium text-brand-700 shadow-sm">
+      <span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>
+      {productNameText}
+      <span class="text-ink-400">&middot;</span>
+      <span class="font-mono text-[10px] tracking-wide text-ink-500">SemanticScript demo</span>
+    </div>
+    <h1 class="mt-6 text-4xl font-semibold leading-[1.05] tracking-tight text-ink-900 sm:text-5xl md:text-[3.25rem]">
+      {headlineText}
+    </h1>
+    <p class="mt-6 max-w-xl text-base leading-relaxed text-ink-600">
+      {leadText}
+    </p>
+    <ul class="mt-8 flex flex-wrap gap-2 text-xs font-medium">
+      <li class="rounded-full border border-ink-200 bg-white/70 px-3 py-1.5 text-ink-700 shadow-sm">bcrypt cost 12</li>
+      <li class="rounded-full border border-ink-200 bg-white/70 px-3 py-1.5 text-ink-700 shadow-sm">SQLite WAL</li>
+      <li class="rounded-full border border-ink-200 bg-white/70 px-3 py-1.5 text-ink-700 shadow-sm">HttpOnly cookies</li>
+      <li class="rounded-full border border-ink-200 bg-white/70 px-3 py-1.5 text-ink-700 shadow-sm">SameSite=Strict</li>
+      <li class="rounded-full border border-ink-200 bg-white/70 px-3 py-1.5 text-ink-700 shadow-sm">Tailwind UI</li>
+    </ul>
   </section>
 
 operation renderLandingHero
-input renderLandingHero productNameText HtmlText
-input renderLandingHero headlineText HtmlText
-input renderLandingHero leadText HtmlText
-output renderLandingHero HtmlFragment
+input operation renderLandingHero productNameText String
+input operation renderLandingHero headlineText String
+input operation renderLandingHero leadText String
+output operation renderLandingHero HtmlFragment
 memory renderLandingHero arena request
 async renderLandingHero no
-purpose renderLandingHero "Hydrate the LandingHeroComponent with the product name, big headline, and supporting paragraph copy."
-invariant renderLandingHero "Feature pills are baked into the template — extend them here, not in the page."
+purpose operation renderLandingHero "Hydrate the LandingHeroComponent with the product name, big headline, and supporting paragraph copy."
+invariant operation renderLandingHero "Feature pills are baked into the template — extend them here, not in the page."
 
 label startRenderLandingHero
 call hydrateLandingHeroCall html.hydrate.LandingHeroComponent
-arg hydrateLandingHeroCall productNameText productNameText
-arg hydrateLandingHeroCall headlineText headlineText
-arg hydrateLandingHeroCall leadText leadText
+argument hydrateLandingHeroCall productNameText String productNameText
+argument hydrateLandingHeroCall headlineText String headlineText
+argument hydrateLandingHeroCall leadText String leadText
 run hydrateLandingHeroCall
-bind landingHeroFragment HtmlFragment hydrateLandingHeroCall
-returnValue landingHeroFragment
+bind value landingHeroFragment HtmlFragment hydrateLandingHeroCall
+return value landingHeroFragment
 
 # ===== FeatureGridComponent =====
 # Three-card explainer that sits below the fold on the landing page.
 # Static markup — every card's copy is baked in so the page doesn't
 # need to pass a fragment per card.
 
-htmlTemplate FeatureGridComponent
-htmlBody FeatureGridComponent
+html template FeatureGridComponent
+html body template FeatureGridComponent
   <section class="mt-16 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-  <article class="glass rounded-2xl p-6 shadow-glow-soft">
-  <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-100 text-brand-700">
-  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
-  </div>
-  <h3 class="mt-4 text-base font-semibold text-ink-900">Strong auth, real sessions</h3>
-  <p class="mt-2 text-sm leading-relaxed text-ink-600">Bcrypt cost-12 hashes from vendored crypt_blowfish. HttpOnly, SameSite=Strict session cookies stored server-side in SQLite.</p>
-  </article>
-  <article class="glass rounded-2xl p-6 shadow-glow-soft">
-  <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-fuchsia-100 text-fuchsia-700">
-  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v6c0 1.66 4.03 3 9 3s9-1.34 9-3V5" /><path d="M3 11v6c0 1.66 4.03 3 9 3s9-1.34 9-3v-6" /></svg>
-  </div>
-  <h3 class="mt-4 text-base font-semibold text-ink-900">SQLite-backed, per-user</h3>
-  <p class="mt-2 text-sm leading-relaxed text-ink-600">Schema-checked todos table with foreign keys to users. Every SELECT is scoped to <code class="font-mono text-xs">WHERE user_id = ?</code> — no cross-user leaks.</p>
-  </article>
-  <article class="glass rounded-2xl p-6 shadow-glow-soft">
-  <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
-  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></svg>
-  </div>
-  <h3 class="mt-4 text-base font-semibold text-ink-900">Server-rendered, escaped</h3>
-  <p class="mt-2 text-sm leading-relaxed text-ink-600">HTML is composed from typed templates with <span class="font-mono text-xs">HtmlText</span> / <span class="font-mono text-xs">HtmlFragment</span> trust types. Every dynamic hole is auto-escaped.</p>
-  </article>
+    <article class="glass rounded-2xl p-6 shadow-glow-soft">
+      <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-100 text-brand-700">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+      </div>
+      <h3 class="mt-4 text-base font-semibold text-ink-900">Strong auth, real sessions</h3>
+      <p class="mt-2 text-sm leading-relaxed text-ink-600">Bcrypt cost-12 hashes from vendored crypt_blowfish. HttpOnly, SameSite=Strict session cookies stored server-side in SQLite.</p>
+    </article>
+    <article class="glass rounded-2xl p-6 shadow-glow-soft">
+      <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-fuchsia-100 text-fuchsia-700">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v6c0 1.66 4.03 3 9 3s9-1.34 9-3V5" /><path d="M3 11v6c0 1.66 4.03 3 9 3s9-1.34 9-3v-6" /></svg>
+      </div>
+      <h3 class="mt-4 text-base font-semibold text-ink-900">SQLite-backed, per-user</h3>
+      <p class="mt-2 text-sm leading-relaxed text-ink-600">Schema-checked todos table with foreign keys to users. Every SELECT is scoped to <code class="font-mono text-xs">WHERE user_id = ?</code> — no cross-user leaks.</p>
+    </article>
+    <article class="glass rounded-2xl p-6 shadow-glow-soft">
+      <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></svg>
+      </div>
+      <h3 class="mt-4 text-base font-semibold text-ink-900">Server-rendered, escaped</h3>
+      <p class="mt-2 text-sm leading-relaxed text-ink-600">HTML is composed from typed templates with normal <span class="font-mono text-xs">String</span> values and generated <span class="font-mono text-xs">HtmlFragment</span> composition. Every dynamic hole is auto-escaped.</p>
+    </article>
   </section>
 
 operation renderFeatureGrid
-output renderFeatureGrid HtmlFragment
+output operation renderFeatureGrid HtmlFragment
 memory renderFeatureGrid arena request
 async renderFeatureGrid no
-purpose renderFeatureGrid "Hydrate the FeatureGridComponent — three-card grid that sits below the fold on the landing page."
-invariant renderFeatureGrid "Static; identical across every visit."
+purpose operation renderFeatureGrid "Hydrate the FeatureGridComponent — three-card grid that sits below the fold on the landing page."
+invariant operation renderFeatureGrid "Static; identical across every visit."
 
 label startRenderFeatureGrid
 call hydrateFeatureGridCall html.hydrate.FeatureGridComponent
 run hydrateFeatureGridCall
-bind featureGridFragment HtmlFragment hydrateFeatureGridCall
-returnValue featureGridFragment
+bind value featureGridFragment HtmlFragment hydrateFeatureGridCall
+return value featureGridFragment
 
 # ===== LoginPanelComponent =====
 
-htmlTemplate LoginPanelComponent
-htmlArg LoginPanelComponent demoUsernameText HtmlText
-htmlArg LoginPanelComponent demoPasswordText HtmlText
-htmlBody LoginPanelComponent
+html template LoginPanelComponent
+html body template LoginPanelComponent
   <div id="panel-login" class="mt-6">
-  <div class="rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50 to-fuchsia-50/60 p-4">
-  <div class="flex items-start gap-3">
-  <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-brand-700 shadow-sm">
-  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-  </div>
-  <div class="min-w-0 flex-1">
-  <div class="text-sm font-semibold text-ink-900">Try the demo account</div>
-  <div class="mt-0.5 text-xs text-ink-600">Pre-seeded with three sample todos.</div>
-  <div class="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
-  <code class="rounded-md bg-white px-2 py-0.5 font-mono text-ink-800 shadow-sm">{htmlArg.demoUsernameText}</code>
-  <span class="text-ink-400">/</span>
-  <code class="rounded-md bg-white px-2 py-0.5 font-mono text-ink-800 shadow-sm">{htmlArg.demoPasswordText}</code>
-  </div>
-  </div>
-  </div>
-  <button id="useDemoAccount" type="button" class="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-brand-700 shadow-sm ring-1 ring-brand-200 transition hover:bg-brand-50 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-300">
-  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
-  Use demo account
-  </button>
-  </div>
-  <div class="my-5 flex items-center gap-3">
-  <div class="h-px flex-1 bg-ink-200"></div>
-  <span class="text-[10px] font-semibold uppercase tracking-wider text-ink-400">or sign in manually</span>
-  <div class="h-px flex-1 bg-ink-200"></div>
-  </div>
-  <form id="loginForm" method="post" action="/api/auth/login" class="space-y-4" autocomplete="off">
-  <div>
-  <label class="text-xs font-semibold uppercase tracking-wide text-ink-500" for="login-username">Username</label>
-  <div class="mt-1.5 relative">
-  <svg xmlns="http://www.w3.org/2000/svg" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-  <input id="login-username" name="username" type="text" required class="block w-full rounded-xl border border-ink-200 bg-white py-2.5 pl-9 pr-3 text-sm text-ink-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200" placeholder="{htmlArg.demoUsernameText}" />
-  </div>
-  </div>
-  <div>
-  <label class="text-xs font-semibold uppercase tracking-wide text-ink-500" for="login-password">Password</label>
-  <div class="mt-1.5 relative">
-  <svg xmlns="http://www.w3.org/2000/svg" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-  <input id="login-password" name="password" type="password" required class="block w-full rounded-xl border border-ink-200 bg-white py-2.5 pl-9 pr-3 text-sm text-ink-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200" placeholder="••••••••" />
-  </div>
-  </div>
-  <button type="submit" class="grad-btn inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-glow-brand transition hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-brand-300">
-  Sign in
-  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-  </button>
-  </form>
-  <p id="loginResult" class="mt-3 min-h-[1.25rem] text-sm"></p>
+    <div class="rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50 to-fuchsia-50/60 p-4">
+      <div class="flex items-start gap-3">
+        <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-brand-700 shadow-sm">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </div>
+        <div class="min-w-0 flex-1">
+          <div class="text-sm font-semibold text-ink-900">Try the demo account</div>
+          <div class="mt-0.5 text-xs text-ink-600">Pre-seeded with three sample todos.</div>
+          <div class="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+            <code class="rounded-md bg-white px-2 py-0.5 font-mono text-ink-800 shadow-sm">{demoUsernameText}</code>
+            <span class="text-ink-400">/</span>
+            <code class="rounded-md bg-white px-2 py-0.5 font-mono text-ink-800 shadow-sm">{demoPasswordText}</code>
+          </div>
+        </div>
+      </div>
+      <button id="useDemoAccount" type="button" class="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-brand-700 shadow-sm ring-1 ring-brand-200 transition hover:bg-brand-50 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-300">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
+        Use demo account
+      </button>
+    </div>
+    <div class="my-5 flex items-center gap-3">
+      <div class="h-px flex-1 bg-ink-200"></div>
+      <span class="text-[10px] font-semibold uppercase tracking-wider text-ink-400">or sign in manually</span>
+      <div class="h-px flex-1 bg-ink-200"></div>
+    </div>
+    <form id="loginForm" method="post" action="/api/auth/login" class="space-y-4" autocomplete="off">
+      <div>
+        <label class="text-xs font-semibold uppercase tracking-wide text-ink-500" for="login-username">Username</label>
+        <div class="mt-1.5 relative">
+          <svg xmlns="http://www.w3.org/2000/svg" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <input id="login-username" name="username" type="text" required class="block w-full rounded-xl border border-ink-200 bg-white py-2.5 pl-9 pr-3 text-sm text-ink-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200" placeholder="{demoUsernameText}" />
+        </div>
+      </div>
+      <div>
+        <label class="text-xs font-semibold uppercase tracking-wide text-ink-500" for="login-password">Password</label>
+        <div class="mt-1.5 relative">
+          <svg xmlns="http://www.w3.org/2000/svg" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <input id="login-password" name="password" type="password" required class="block w-full rounded-xl border border-ink-200 bg-white py-2.5 pl-9 pr-3 text-sm text-ink-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200" placeholder="••••••••" />
+        </div>
+      </div>
+      <button type="submit" class="grad-btn inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-glow-brand transition hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-brand-300">
+        Sign in
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </button>
+    </form>
+    <p id="loginResult" class="mt-3 min-h-[1.25rem] text-sm"></p>
   </div>
 
 operation renderLoginPanel
-input renderLoginPanel demoUsernameText HtmlText
-input renderLoginPanel demoPasswordText HtmlText
-output renderLoginPanel HtmlFragment
+input operation renderLoginPanel demoUsernameText String
+input operation renderLoginPanel demoPasswordText String
+output operation renderLoginPanel HtmlFragment
 memory renderLoginPanel arena request
 async renderLoginPanel no
-purpose renderLoginPanel "Hydrate the LoginPanelComponent with the seeded demo credentials so the visible 'Use demo account' button matches what the schema actually inserted."
-invariant renderLoginPanel "Both demo credentials are surfaced as HtmlText so the hydrator escapes them — even though they're known constants today, treating them as untrusted-by-default keeps the trust contract uniform."
+purpose operation renderLoginPanel "Hydrate the LoginPanelComponent with the seeded demo credentials so the visible 'Use demo account' button matches what the schema actually inserted."
+invariant operation renderLoginPanel "Both demo credentials are surfaced as String values so the hydrator escapes them — even though they're known constants today, treating them as untrusted-by-default keeps the trust contract uniform."
 
 label startRenderLoginPanel
 call hydrateLoginPanelCall html.hydrate.LoginPanelComponent
-arg hydrateLoginPanelCall demoUsernameText demoUsernameText
-arg hydrateLoginPanelCall demoPasswordText demoPasswordText
+argument hydrateLoginPanelCall demoUsernameText String demoUsernameText
+argument hydrateLoginPanelCall demoPasswordText String demoPasswordText
 run hydrateLoginPanelCall
-bind loginPanelFragment HtmlFragment hydrateLoginPanelCall
-returnValue loginPanelFragment
+bind value loginPanelFragment HtmlFragment hydrateLoginPanelCall
+return value loginPanelFragment
 
 # ===== RegisterPanelComponent =====
 
-htmlTemplate RegisterPanelComponent
-htmlBody RegisterPanelComponent
+html template RegisterPanelComponent
+html body template RegisterPanelComponent
   <div id="panel-register" class="mt-6 hidden">
-  <div class="rounded-2xl border border-ink-100 bg-ink-50/60 p-4 text-sm text-ink-700">
-  <div class="flex items-start gap-2.5">
-  <svg xmlns="http://www.w3.org/2000/svg" class="mt-0.5 h-4 w-4 shrink-0 text-ink-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-  <div>
-  <div class="font-medium text-ink-800">Account requirements</div>
-  <ul class="mt-1 space-y-0.5 text-xs text-ink-600">
-  <li>Username: 3-32 characters, must be unique</li>
-  <li>Password: at least 8 characters</li>
-  </ul>
-  </div>
-  </div>
-  </div>
-  <form id="registerForm" method="post" action="/api/auth/register" class="mt-5 space-y-4" autocomplete="off">
-  <div>
-  <label class="text-xs font-semibold uppercase tracking-wide text-ink-500" for="register-username">Username</label>
-  <div class="mt-1.5 relative">
-  <svg xmlns="http://www.w3.org/2000/svg" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-  <input id="register-username" name="username" type="text" required minlength="3" maxlength="32" class="block w-full rounded-xl border border-ink-200 bg-white py-2.5 pl-9 pr-3 text-sm text-ink-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200" placeholder="alice" />
-  </div>
-  </div>
-  <div>
-  <label class="text-xs font-semibold uppercase tracking-wide text-ink-500" for="register-password">Password</label>
-  <div class="mt-1.5 relative">
-  <svg xmlns="http://www.w3.org/2000/svg" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-  <input id="register-password" name="password" type="password" required minlength="8" class="block w-full rounded-xl border border-ink-200 bg-white py-2.5 pl-9 pr-3 text-sm text-ink-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200" placeholder="at least 8 characters" />
-  </div>
-  </div>
-  <button type="submit" class="grad-btn inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-glow-brand transition hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-brand-300">
-  Create account
-  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-  </button>
-  </form>
-  <p id="registerResult" class="mt-3 min-h-[1.25rem] text-sm"></p>
+    <div class="rounded-2xl border border-ink-100 bg-ink-50/60 p-4 text-sm text-ink-700">
+      <div class="flex items-start gap-2.5">
+        <svg xmlns="http://www.w3.org/2000/svg" class="mt-0.5 h-4 w-4 shrink-0 text-ink-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <div>
+          <div class="font-medium text-ink-800">Account requirements</div>
+          <ul class="mt-1 space-y-0.5 text-xs text-ink-600">
+            <li>Username: 3-32 characters, must be unique</li>
+            <li>Password: at least 8 characters</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <form id="registerForm" method="post" action="/api/auth/register" class="mt-5 space-y-4" autocomplete="off">
+      <div>
+        <label class="text-xs font-semibold uppercase tracking-wide text-ink-500" for="register-username">Username</label>
+        <div class="mt-1.5 relative">
+          <svg xmlns="http://www.w3.org/2000/svg" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <input id="register-username" name="username" type="text" required minlength="3" maxlength="32" class="block w-full rounded-xl border border-ink-200 bg-white py-2.5 pl-9 pr-3 text-sm text-ink-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200" placeholder="alice" />
+        </div>
+      </div>
+      <div>
+        <label class="text-xs font-semibold uppercase tracking-wide text-ink-500" for="register-password">Password</label>
+        <div class="mt-1.5 relative">
+          <svg xmlns="http://www.w3.org/2000/svg" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <input id="register-password" name="password" type="password" required minlength="8" class="block w-full rounded-xl border border-ink-200 bg-white py-2.5 pl-9 pr-3 text-sm text-ink-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200" placeholder="at least 8 characters" />
+        </div>
+      </div>
+      <button type="submit" class="grad-btn inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-glow-brand transition hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-brand-300">
+        Create account
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </button>
+    </form>
+    <p id="registerResult" class="mt-3 min-h-[1.25rem] text-sm"></p>
   </div>
 
 operation renderRegisterPanel
-output renderRegisterPanel HtmlFragment
+output operation renderRegisterPanel HtmlFragment
 memory renderRegisterPanel arena request
 async renderRegisterPanel no
-purpose renderRegisterPanel "Hydrate the RegisterPanelComponent. Static — no props today; the form action attribute is the API endpoint baked into the component."
-invariant renderRegisterPanel "No htmlArgs, so the rendered fragment is identical across calls; can be cached if a future profiler shows it matters."
+purpose operation renderRegisterPanel "Hydrate the RegisterPanelComponent. Static — no props today; the form action attribute is the API endpoint baked into the component."
+invariant operation renderRegisterPanel "No hydrate arguments, so the rendered fragment is identical across calls; can be cached if a future profiler shows it matters."
 
 label startRenderRegisterPanel
 call hydrateRegisterPanelCall html.hydrate.RegisterPanelComponent
 run hydrateRegisterPanelCall
-bind registerPanelFragment HtmlFragment hydrateRegisterPanelCall
-returnValue registerPanelFragment
+bind value registerPanelFragment HtmlFragment hydrateRegisterPanelCall
+return value registerPanelFragment
 
 # ===== AuthCardComponent =====
 
-htmlTemplate AuthCardComponent
-htmlArg AuthCardComponent loginPanelFragment HtmlFragment
-htmlArg AuthCardComponent registerPanelFragment HtmlFragment
-htmlBody AuthCardComponent
+html template AuthCardComponent
+html body template AuthCardComponent
   <article class="glass fade-up relative rounded-3xl p-6 shadow-glow-soft sm:p-8">
-  <div class="mb-1 flex items-center gap-2">
-  <div class="flex h-9 w-9 items-center justify-center rounded-xl grad-btn text-white shadow-glow-brand">
-  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-  </div>
-  <h2 class="text-lg font-semibold tracking-tight text-ink-900">Get started</h2>
-  </div>
-  <p class="mb-5 text-sm text-ink-600">Sign in to your account or create a new one.</p>
-  <div class="rounded-2xl bg-ink-100/70 p-1.5 ring-1 ring-ink-200/60">
-  <div class="grid grid-cols-2 gap-1">
-  <button id="tab-login" type="button" data-active="true" class="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-brand-700 shadow-sm ring-1 ring-ink-200/40 transition">Sign in</button>
-  <button id="tab-register" type="button" data-active="false" class="rounded-xl px-3 py-2 text-sm font-medium text-ink-500 transition hover:text-ink-700">Create account</button>
-  </div>
-  </div>
-  {htmlArg.loginPanelFragment}
-  {htmlArg.registerPanelFragment}
+    <div class="mb-1 flex items-center gap-2">
+      <div class="flex h-9 w-9 items-center justify-center rounded-xl grad-btn text-white shadow-glow-brand">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      </div>
+      <h2 class="text-lg font-semibold tracking-tight text-ink-900">Get started</h2>
+    </div>
+    <p class="mb-5 text-sm text-ink-600">Sign in to your account or create a new one.</p>
+    <div class="rounded-2xl bg-ink-100/70 p-1.5 ring-1 ring-ink-200/60">
+      <div class="grid grid-cols-2 gap-1">
+        <button id="tab-login" type="button" data-active="true" class="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-brand-700 shadow-sm ring-1 ring-ink-200/40 transition">Sign in</button>
+        <button id="tab-register" type="button" data-active="false" class="rounded-xl px-3 py-2 text-sm font-medium text-ink-500 transition hover:text-ink-700">Create account</button>
+      </div>
+    </div>
+    {loginPanelFragment}
+    {registerPanelFragment}
   </article>
 
 operation renderAuthCard
-input renderAuthCard loginPanelFragment HtmlFragment
-input renderAuthCard registerPanelFragment HtmlFragment
-output renderAuthCard HtmlFragment
+input operation renderAuthCard loginPanelFragment HtmlFragment
+input operation renderAuthCard registerPanelFragment HtmlFragment
+output operation renderAuthCard HtmlFragment
 memory renderAuthCard arena request
 async renderAuthCard no
-purpose renderAuthCard "Compose the LoginPanel + RegisterPanel fragments inside the AuthCard shell (tab switcher + glassmorphic card)."
-invariant renderAuthCard "Both panels are always rendered; the JS toggles visibility via the `hidden` class on `#panel-register`. No conditional rendering at the template layer."
+purpose operation renderAuthCard "Compose the LoginPanel + RegisterPanel fragments inside the AuthCard shell (tab switcher + glassmorphic card)."
+invariant operation renderAuthCard "Both panels are always rendered; the JS toggles visibility via the `hidden` class on `#panel-register`. No conditional rendering at the template layer."
 
 label startRenderAuthCard
 call hydrateAuthCardCall html.hydrate.AuthCardComponent
-arg hydrateAuthCardCall loginPanelFragment loginPanelFragment
-arg hydrateAuthCardCall registerPanelFragment registerPanelFragment
+argument hydrateAuthCardCall loginPanelFragment HtmlFragment loginPanelFragment
+argument hydrateAuthCardCall registerPanelFragment HtmlFragment registerPanelFragment
 run hydrateAuthCardCall
-bind authCardFragment HtmlFragment hydrateAuthCardCall
-returnValue authCardFragment
+bind value authCardFragment HtmlFragment hydrateAuthCardCall
+return value authCardFragment
 
 # ===== StatusCardComponent =====
 
-htmlTemplate StatusCardComponent
-htmlArg StatusCardComponent versionText HtmlText
-htmlArg StatusCardComponent bcryptCostText HtmlText
-htmlArg StatusCardComponent apiBaseUrlText HtmlText
-htmlBody StatusCardComponent
+html template StatusCardComponent
+html body template StatusCardComponent
   <article class="glass rounded-2xl p-6 shadow-glow-soft">
-  <div class="flex items-center justify-between">
-  <h3 class="text-sm font-semibold uppercase tracking-wider text-ink-500">Live status</h3>
-  <div class="flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
-  <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-  Healthy
-  </div>
-  </div>
-  <dl class="mt-5 space-y-2.5 text-sm">
-  <div class="flex items-center justify-between rounded-xl bg-ink-50/70 px-3 py-2">
-  <dt class="text-ink-600">Version</dt>
-  <dd class="font-mono text-ink-900">{htmlArg.versionText}</dd>
-  </div>
-  <div class="flex items-center justify-between rounded-xl bg-ink-50/70 px-3 py-2">
-  <dt class="text-ink-600">Bcrypt cost</dt>
-  <dd class="font-mono text-ink-900">{htmlArg.bcryptCostText}</dd>
-  </div>
-  <div class="flex items-center justify-between rounded-xl bg-ink-50/70 px-3 py-2">
-  <dt class="text-ink-600">API base</dt>
-  <dd class="font-mono text-xs text-ink-900">{htmlArg.apiBaseUrlText}</dd>
-  </div>
-  </dl>
-  <details class="mt-5 group">
-  <summary class="cursor-pointer text-xs font-semibold uppercase tracking-wider text-ink-500 transition hover:text-ink-700">
-  <span>API endpoints</span>
-  <span class="ml-1 inline-block transition group-open:rotate-90">›</span>
-  </summary>
-  <ul class="mt-3 space-y-1 text-xs font-mono text-ink-600">
-  <li class="flex"><span class="inline-block w-14 text-emerald-700">GET</span><span>/health</span></li>
-  <li class="flex"><span class="inline-block w-14 text-emerald-700">GET</span><span>/api/version</span></li>
-  <li class="flex"><span class="inline-block w-14 text-brand-700">POST</span><span>/api/auth/register</span></li>
-  <li class="flex"><span class="inline-block w-14 text-brand-700">POST</span><span>/api/auth/login</span></li>
-  <li class="flex"><span class="inline-block w-14 text-brand-700">POST</span><span>/api/auth/logout</span></li>
-  <li class="flex"><span class="inline-block w-14 text-emerald-700">GET</span><span>/api/auth/me</span></li>
-  <li class="flex"><span class="inline-block w-14 text-emerald-700">GET</span><span>/api/todos</span></li>
-  <li class="flex"><span class="inline-block w-14 text-brand-700">POST</span><span>/api/todos</span></li>
-  </ul>
-  </details>
+    <div class="flex items-center justify-between">
+      <h3 class="text-sm font-semibold uppercase tracking-wider text-ink-500">Live status</h3>
+      <div class="flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+        <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+        Healthy
+      </div>
+    </div>
+    <dl class="mt-5 space-y-2.5 text-sm">
+      <div class="flex items-center justify-between rounded-xl bg-ink-50/70 px-3 py-2">
+        <dt class="text-ink-600">Version</dt>
+        <dd class="font-mono text-ink-900">{versionText}</dd>
+      </div>
+      <div class="flex items-center justify-between rounded-xl bg-ink-50/70 px-3 py-2">
+        <dt class="text-ink-600">Bcrypt cost</dt>
+        <dd class="font-mono text-ink-900">{bcryptCostText}</dd>
+      </div>
+      <div class="flex items-center justify-between rounded-xl bg-ink-50/70 px-3 py-2">
+        <dt class="text-ink-600">API base</dt>
+        <dd class="font-mono text-xs text-ink-900">{apiBaseUrlText}</dd>
+      </div>
+    </dl>
+    <details class="mt-5 group">
+      <summary class="cursor-pointer text-xs font-semibold uppercase tracking-wider text-ink-500 transition hover:text-ink-700">
+        <span>API endpoints</span>
+        <span class="ml-1 inline-block transition group-open:rotate-90">›</span>
+      </summary>
+      <ul class="mt-3 space-y-1 text-xs font-mono text-ink-600">
+        <li class="flex"><span class="inline-block w-14 text-emerald-700">GET</span><span>/health</span></li>
+        <li class="flex"><span class="inline-block w-14 text-emerald-700">GET</span><span>/api/version</span></li>
+        <li class="flex"><span class="inline-block w-14 text-brand-700">POST</span><span>/api/auth/register</span></li>
+        <li class="flex"><span class="inline-block w-14 text-brand-700">POST</span><span>/api/auth/login</span></li>
+        <li class="flex"><span class="inline-block w-14 text-brand-700">POST</span><span>/api/auth/logout</span></li>
+        <li class="flex"><span class="inline-block w-14 text-emerald-700">GET</span><span>/api/auth/me</span></li>
+        <li class="flex"><span class="inline-block w-14 text-emerald-700">GET</span><span>/api/todos</span></li>
+        <li class="flex"><span class="inline-block w-14 text-brand-700">POST</span><span>/api/todos</span></li>
+      </ul>
+    </details>
   </article>
 
 operation renderStatusCard
-input renderStatusCard versionText HtmlText
-input renderStatusCard bcryptCostText HtmlText
-input renderStatusCard apiBaseUrlText HtmlText
-output renderStatusCard HtmlFragment
+input operation renderStatusCard versionText String
+input operation renderStatusCard bcryptCostText String
+input operation renderStatusCard apiBaseUrlText String
+output operation renderStatusCard HtmlFragment
 memory renderStatusCard arena request
 async renderStatusCard no
-purpose renderStatusCard "Hydrate the StatusCardComponent with current version, bcrypt cost, and API base URL. The endpoint list is static markup baked into the template."
-invariant renderStatusCard "All three props pass through HtmlText escaping so even if a future version pulls these from a build-tape source they cannot inject markup."
+purpose operation renderStatusCard "Hydrate the StatusCardComponent with current version, bcrypt cost, and API base URL. The endpoint list is static markup baked into the template."
+invariant operation renderStatusCard "All three props pass through String escaping so even if a future version pulls these from a build-tape source they cannot inject markup."
 
 label startRenderStatusCard
 call hydrateStatusCardCall html.hydrate.StatusCardComponent
-arg hydrateStatusCardCall versionText versionText
-arg hydrateStatusCardCall bcryptCostText bcryptCostText
-arg hydrateStatusCardCall apiBaseUrlText apiBaseUrlText
+argument hydrateStatusCardCall versionText String versionText
+argument hydrateStatusCardCall bcryptCostText String bcryptCostText
+argument hydrateStatusCardCall apiBaseUrlText String apiBaseUrlText
 run hydrateStatusCardCall
-bind statusCardFragment HtmlFragment hydrateStatusCardCall
-returnValue statusCardFragment
+bind value statusCardFragment HtmlFragment hydrateStatusCardCall
+return value statusCardFragment
 
 # ===== AppFooterComponent =====
 
-htmlTemplate AppFooterComponent
-htmlBody AppFooterComponent
+html template AppFooterComponent
+html body template AppFooterComponent
   <footer class="mt-16 flex flex-col items-center gap-3 border-t border-ink-200/70 pt-8 pb-4 text-center text-xs text-ink-500">
-  <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
-  <span>Built with</span>
-  <code class="font-mono text-ink-700">SemanticScript</code>
-  <span class="text-ink-300">&middot;</span>
-  <code class="font-mono text-ink-700">standard.http</code>
-  <span class="text-ink-300">&middot;</span>
-  <code class="font-mono text-ink-700">standard.sqlite</code>
-  <span class="text-ink-300">&middot;</span>
-  <code class="font-mono text-ink-700">standard.json</code>
-  <span class="text-ink-300">&middot;</span>
-  <code class="font-mono text-ink-700">standard.bcrypt</code>
-  <span class="text-ink-300">&middot;</span>
-  <code class="font-mono text-ink-700">standard.html</code>
-  </div>
-  <div class="text-[11px] text-ink-400">No client-side framework. Server-rendered HTML, vanilla JS for interactivity.</div>
+    <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+      <span>Built with</span>
+      <code class="font-mono text-ink-700">SemanticScript</code>
+      <span class="text-ink-300">&middot;</span>
+      <code class="font-mono text-ink-700">standard.http</code>
+      <span class="text-ink-300">&middot;</span>
+      <code class="font-mono text-ink-700">standard.sqlite</code>
+      <span class="text-ink-300">&middot;</span>
+      <code class="font-mono text-ink-700">standard.json</code>
+      <span class="text-ink-300">&middot;</span>
+      <code class="font-mono text-ink-700">standard.bcrypt</code>
+      <span class="text-ink-300">&middot;</span>
+      <code class="font-mono text-ink-700">standard.html</code>
+    </div>
+    <div class="text-[11px] text-ink-400">No client-side framework. Server-rendered HTML, vanilla JS for interactivity.</div>
   </footer>
 
 operation renderAppFooter
-output renderAppFooter HtmlFragment
+output operation renderAppFooter HtmlFragment
 memory renderAppFooter arena request
 async renderAppFooter no
-purpose renderAppFooter "Hydrate the AppFooterComponent. Static — no props; identical across every page."
-invariant renderAppFooter "Single small fragment; could be inlined into each page template if call overhead ever matters, but separation keeps the attribution edit-in-one-place."
+purpose operation renderAppFooter "Hydrate the AppFooterComponent. Static — no props; identical across every page."
+invariant operation renderAppFooter "Single small fragment; could be inlined into each page template if call overhead ever matters, but separation keeps the attribution edit-in-one-place."
 
 label startRenderAppFooter
 call hydrateAppFooterCall html.hydrate.AppFooterComponent
 run hydrateAppFooterCall
-bind appFooterFragment HtmlFragment hydrateAppFooterCall
-returnValue appFooterFragment
+bind value appFooterFragment HtmlFragment hydrateAppFooterCall
+return value appFooterFragment

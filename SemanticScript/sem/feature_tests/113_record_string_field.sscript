@@ -11,22 +11,22 @@ record Greeting layout row align 8
 field Greeting text CNullTerminatedByteString
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Store a string-const into a record field, read, print."
-invariant main "hello goes in and comes out."
+purpose operation main "Store a string-const into a record field, read, print."
+invariant operation main "hello goes in and comes out."
 label startMain
-const helloStr CNullTerminatedByteString "hello"
+storage module immutable helloStr CNullTerminatedByteString "hello"
 new myGreeting Greeting
 fieldSet myGreeting text helloStr
 fieldGet readText CNullTerminatedByteString myGreeting text
 call writeCall console.writeLine
-arg writeCall console console
-arg writeCall text readText
+argument writeCall console Console console
+argument writeCall text CNullTerminatedByteString readText
 run writeCall
-ignoreOk writeCall Void
-const okExit ExitCode 0
-returnOk okExit
+ignore void source writeCall
+storage module immutable okExit ExitCode 0
+return ok okExit

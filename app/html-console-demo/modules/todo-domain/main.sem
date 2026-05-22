@@ -1,10 +1,10 @@
 module app.html_console_demo.todo_domain
-modulePurpose app.html_console_demo.todo_domain "Demo todo domain copy shaped after app.todo's active todo concepts."
+purpose module app.html_console_demo.todo_domain "Demo todo domain copy shaped after app.todo's active todo concepts."
 moduleOwns app.html_console_demo.todo_domain "Static todo titles, status labels, and row classes used by page assembly as component inputs."
 moduleDoesNotOwn app.html_console_demo.todo_domain "HTML tag structure, page layout, console output, or persistence."
-moduleInvariant app.html_console_demo.todo_domain "Todo rows preserve the app.todo idea of title plus done/open state, but stay immutable for deterministic demo output."
+invariant module app.html_console_demo.todo_domain "Todo rows preserve the app.todo idea of title plus done/open state, but stay immutable for deterministic demo output."
 
-importModule app.html_console_demo.shared
+import shared app.html_console_demo.shared
 
 exportConstant app.html_console_demo.todo_domain firstTodoTitleText
 exportConstant app.html_console_demo.todo_domain firstTodoStatusText
@@ -16,14 +16,14 @@ exportConstant app.html_console_demo.todo_domain thirdTodoTitleText
 exportConstant app.html_console_demo.todo_domain thirdTodoStatusText
 exportConstant app.html_console_demo.todo_domain thirdTodoClassName
 
-storage module immutable firstTodoTitleText HtmlText "Wire native webserver"
-storage module immutable firstTodoStatusText HtmlText "done"
-storage module immutable firstTodoClassName HtmlClass doneTodoClassName
+storage module immutable firstTodoTitleText String "Wire native webserver"
+storage module immutable firstTodoStatusText String "done"
+storage module immutable firstTodoClassName String doneTodoClassName
 
-storage module immutable secondTodoTitleText HtmlText "Split HTML rendering into modules"
-storage module immutable secondTodoStatusText HtmlText "open"
-storage module immutable secondTodoClassName HtmlClass openTodoClassName
+storage module immutable secondTodoTitleText String "Split HTML rendering into modules"
+storage module immutable secondTodoStatusText String "open"
+storage module immutable secondTodoClassName String openTodoClassName
 
-storage module immutable thirdTodoTitleText HtmlText "Keep template inputs explicit"
-storage module immutable thirdTodoStatusText HtmlText "open"
-storage module immutable thirdTodoClassName HtmlClass openTodoClassName
+storage module immutable thirdTodoTitleText String "Keep template inputs explicit"
+storage module immutable thirdTodoStatusText String "open"
+storage module immutable thirdTodoClassName String openTodoClassName

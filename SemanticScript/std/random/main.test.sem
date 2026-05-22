@@ -15,7 +15,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 
-importModule standard.random
+import random standard.random
 error MainError
 errorCase MainError RandomSmokeAssertionFailed
 errorCase MainError ConsoleWriteFailed
@@ -34,55 +34,55 @@ capability heapFreeCapability heap free
 # ============================================================
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 useCapability main stdoutWriteCapability
 useCapability main heapAllocationCapability
 useCapability main heapFreeCapability
 effect main write console.stdout
 effect main allocate heap
 effect main free heap
-memoryHeap main yes
+memory main heap yes
 memoryAllocationSource main createStateCall
 async main no
-purpose main "Seed the LCG with 1; draw two values and verify the MINSTD canonical sequence: 1 -> 48271 -> 182605794."
-invariant main "The MINSTD multiplier produces a deterministic sequence â€” any deviation indicates encoder/decoder drift."
+purpose operation main "Seed the LCG with 1; draw two values and verify the MINSTD canonical sequence: 1 -> 48271 -> 182605794."
+invariant operation main "The MINSTD multiplier produces a deterministic sequence â€” any deviation indicates encoder/decoder drift."
 
 label startMain
-const seedOneInteger CSignedInt64 1
+storage module immutable seedOneInteger CSignedInt64 1
 call createStateCall createDeterministicRandomState
-arg createStateCall randomSeed seedOneInteger
+argument createStateCall randomSeed CSignedInt64 seedOneInteger
 run createStateCall
-bindOk randomStateSlot COpaqueMemoryAddress createStateCall
+bind ok randomStateSlot COpaqueMemoryAddress createStateCall
 
 # Draw 1: 1 * 48271 mod (2^31-1) = 48271
 call drawFirstRandomCall nextDeterministicRandomSignedInt64
-arg drawFirstRandomCall randomState randomStateSlot
+argument drawFirstRandomCall randomState COpaqueMemoryAddress randomStateSlot
 run drawFirstRandomCall
-bind firstRandomValue CSignedInt64 drawFirstRandomCall
-const expectedFirstRandom CSignedInt64 48271
+bind value firstRandomValue CSignedInt64 drawFirstRandomCall
+storage module immutable expectedFirstRandom CSignedInt64 48271
 call checkFirstDrawCall math.equalI64
-arg checkFirstDrawCall left firstRandomValue
-arg checkFirstDrawCall right expectedFirstRandom
+argument checkFirstDrawCall left I64 firstRandomValue
+argument checkFirstDrawCall right I64 expectedFirstRandom
 run checkFirstDrawCall
-bind firstDrawOk Bool checkFirstDrawCall
-branchIf firstDrawOk firstDrawHolds
-branch smokeAssertionFailed
+bind value firstDrawOk Bool checkFirstDrawCall
+branch if condition firstDrawOk target firstDrawHolds
+branch else target smokeAssertionFailed
 label firstDrawHolds
 
 # Draw 2: 48271^2 mod (2^31-1) = 182605794
 call drawSecondRandomCall nextDeterministicRandomSignedInt64
-arg drawSecondRandomCall randomState randomStateSlot
+argument drawSecondRandomCall randomState COpaqueMemoryAddress randomStateSlot
 run drawSecondRandomCall
-bind secondRandomValue CSignedInt64 drawSecondRandomCall
-const expectedSecondRandom CSignedInt64 182605794
+bind value secondRandomValue CSignedInt64 drawSecondRandomCall
+storage module immutable expectedSecondRandom CSignedInt64 182605794
 call checkSecondDrawCall math.equalI64
-arg checkSecondDrawCall left secondRandomValue
-arg checkSecondDrawCall right expectedSecondRandom
+argument checkSecondDrawCall left I64 secondRandomValue
+argument checkSecondDrawCall right I64 expectedSecondRandom
 run checkSecondDrawCall
-bind secondDrawOk Bool checkSecondDrawCall
-branchIf secondDrawOk secondDrawHolds
-branch smokeAssertionFailed
+bind value secondDrawOk Bool checkSecondDrawCall
+branch if condition secondDrawOk target secondDrawHolds
+branch else target smokeAssertionFailed
 label secondDrawHolds
 
 # Read the LCG state mid-sequence and verify it equals the last draw.
@@ -90,112 +90,112 @@ label secondDrawHolds
 # LCG stores state[k] = x_k where the most recently produced value is
 # the current state).
 call readStateCall readDeterministicRandomState
-arg readStateCall randomState randomStateSlot
+argument readStateCall randomState COpaqueMemoryAddress randomStateSlot
 run readStateCall
-bind readStateResult CSignedInt64 readStateCall
+bind value readStateResult CSignedInt64 readStateCall
 call checkReadStateCall math.equalI64
-arg checkReadStateCall left readStateResult
-arg checkReadStateCall right expectedSecondRandom
+argument checkReadStateCall left I64 readStateResult
+argument checkReadStateCall right I64 expectedSecondRandom
 run checkReadStateCall
-bind readStateOk Bool checkReadStateCall
-branchIf readStateOk readStateHolds
-branch smokeAssertionFailed
+bind value readStateOk Bool checkReadStateCall
+branch if condition readStateOk target readStateHolds
+branch else target smokeAssertionFailed
 label readStateHolds
 
 # Draw 3: continue the sequence â€” verify it doesn't repeat the first.
 call drawThirdRandomCall nextDeterministicRandomSignedInt64
-arg drawThirdRandomCall randomState randomStateSlot
+argument drawThirdRandomCall randomState COpaqueMemoryAddress randomStateSlot
 run drawThirdRandomCall
-bind thirdRandomValue CSignedInt64 drawThirdRandomCall
+bind value thirdRandomValue CSignedInt64 drawThirdRandomCall
 call checkThirdDistinctCall math.notEqualI64
-arg checkThirdDistinctCall left thirdRandomValue
-arg checkThirdDistinctCall right firstRandomValue
+argument checkThirdDistinctCall left I64 thirdRandomValue
+argument checkThirdDistinctCall right I64 firstRandomValue
 run checkThirdDistinctCall
-bind thirdDistinctOk Bool checkThirdDistinctCall
-branchIf thirdDistinctOk thirdDistinctHolds
-branch smokeAssertionFailed
+bind value thirdDistinctOk Bool checkThirdDistinctCall
+branch if condition thirdDistinctOk target thirdDistinctHolds
+branch else target smokeAssertionFailed
 label thirdDistinctHolds
 
 # loadUnsignedByteFromBufferOffset: 'h' is byte 104 at offset 0 of "hello".
-const helloForRandom CNullTerminatedByteString "hello"
-const offsetZeroForRandom CSignedInt64 0
-const expectedHByte CSignedInt64 104
+storage module immutable helloForRandom CNullTerminatedByteString "hello"
+storage module immutable offsetZeroForRandom CSignedInt64 0
+storage module immutable expectedHByte CSignedInt64 104
 call loadByteCall loadUnsignedByteFromBufferOffset
-arg loadByteCall byteBuffer helloForRandom
-arg loadByteCall byteOffset offsetZeroForRandom
+argument loadByteCall byteBuffer COpaqueMemoryAddress helloForRandom
+argument loadByteCall byteOffset CByteCount offsetZeroForRandom
 run loadByteCall
-bind loadedByteResult CSignedInt64 loadByteCall
+bind value loadedByteResult CSignedInt64 loadByteCall
 call checkLoadByteCall math.equalI64
-arg checkLoadByteCall left loadedByteResult
-arg checkLoadByteCall right expectedHByte
+argument checkLoadByteCall left I64 loadedByteResult
+argument checkLoadByteCall right I64 expectedHByte
 run checkLoadByteCall
-bind loadByteOk Bool checkLoadByteCall
-branchIf loadByteOk loadByteHolds
-branch smokeAssertionFailed
+bind value loadByteOk Bool checkLoadByteCall
+branch if condition loadByteOk target loadByteHolds
+branch else target smokeAssertionFailed
 label loadByteHolds
 
 # loadUnsignedByteFromBufferOffset at non-zero offset: byte at offset 4 of "hello" = 'o' = 111
-const offsetFourForRandom CSignedInt64 4
-const expectedOByte CSignedInt64 111
+storage module immutable offsetFourForRandom CSignedInt64 4
+storage module immutable expectedOByte CSignedInt64 111
 call loadByteOffCall loadUnsignedByteFromBufferOffset
-arg loadByteOffCall byteBuffer helloForRandom
-arg loadByteOffCall byteOffset offsetFourForRandom
+argument loadByteOffCall byteBuffer COpaqueMemoryAddress helloForRandom
+argument loadByteOffCall byteOffset CByteCount offsetFourForRandom
 run loadByteOffCall
-bind loadedByteOffResult CSignedInt64 loadByteOffCall
+bind value loadedByteOffResult CSignedInt64 loadByteOffCall
 call checkLoadByteOffCall math.equalI64
-arg checkLoadByteOffCall left loadedByteOffResult
-arg checkLoadByteOffCall right expectedOByte
+argument checkLoadByteOffCall left I64 loadedByteOffResult
+argument checkLoadByteOffCall right I64 expectedOByte
 run checkLoadByteOffCall
-bind loadByteOffOk Bool checkLoadByteOffCall
-branchIf loadByteOffOk loadByteOffHolds
-branch smokeAssertionFailed
+bind value loadByteOffOk Bool checkLoadByteOffCall
+branch if condition loadByteOffOk target loadByteOffHolds
+branch else target smokeAssertionFailed
 label loadByteOffHolds
 
 call releaseStateCall releaseDeterministicRandomState
-arg releaseStateCall randomState randomStateSlot
+argument releaseStateCall randomState COpaqueMemoryAddress randomStateSlot
 run releaseStateCall
-ignoreValue releaseStateCall CSignedInt32
+ignore value source releaseStateCall type CSignedInt32
 
 # Property: a fresh seed-1 LCG produces the same first value (48271).
 # This verifies determinism across state instances.
 call createStateAgainCall createDeterministicRandomState
-arg createStateAgainCall randomSeed seedOneInteger
+argument createStateAgainCall randomSeed CSignedInt64 seedOneInteger
 run createStateAgainCall
-bindOk randomStateAgainSlot COpaqueMemoryAddress createStateAgainCall
+bind ok randomStateAgainSlot COpaqueMemoryAddress createStateAgainCall
 call drawAgainCall nextDeterministicRandomSignedInt64
-arg drawAgainCall randomState randomStateAgainSlot
+argument drawAgainCall randomState COpaqueMemoryAddress randomStateAgainSlot
 run drawAgainCall
-bind firstRandomAgainValue CSignedInt64 drawAgainCall
+bind value firstRandomAgainValue CSignedInt64 drawAgainCall
 call checkDeterministicCall math.equalI64
-arg checkDeterministicCall left firstRandomAgainValue
-arg checkDeterministicCall right expectedFirstRandom
+argument checkDeterministicCall left I64 firstRandomAgainValue
+argument checkDeterministicCall right I64 expectedFirstRandom
 run checkDeterministicCall
-bind deterministicOk Bool checkDeterministicCall
-branchIf deterministicOk deterministicHolds
-branch smokeAssertionFailed
+bind value deterministicOk Bool checkDeterministicCall
+branch if condition deterministicOk target deterministicHolds
+branch else target smokeAssertionFailed
 label deterministicHolds
 call releaseStateAgainCall releaseDeterministicRandomState
-arg releaseStateAgainCall randomState randomStateAgainSlot
+argument releaseStateAgainCall randomState COpaqueMemoryAddress randomStateAgainSlot
 run releaseStateAgainCall
-ignoreValue releaseStateAgainCall CSignedInt32
+ignore value source releaseStateAgainCall type CSignedInt32
 
-const successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText CNullTerminatedByteString "OK"
 call writeSuccessLineCall console.writeLine
-arg writeSuccessLineCall console console
-arg writeSuccessLineCall text successMessageText
+argument writeSuccessLineCall console Console console
+argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
 run writeSuccessLineCall
-ignoreOk writeSuccessLineCall CSignedInt32
-bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
-branchIfError writeSuccessLineCall consoleWriteFailedHandler
-const exitOkCode ExitCode 0
-returnOk exitOkCode
+ignore ok source writeSuccessLineCall type CSignedInt32
+bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branch error source writeSuccessLineCall target consoleWriteFailedHandler
+storage module immutable exitOkCode ExitCode 0
+return ok exitOkCode
 
 # Failure leg: surface the raw negative CSignedInt32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler
 makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
-returnError consoleWriteFailedFailure
+return error consoleWriteFailedFailure
 label smokeAssertionFailed
 makeError randomSmokeFailure MainError.RandomSmokeAssertionFailed
-returnError randomSmokeFailure
+return error randomSmokeFailure

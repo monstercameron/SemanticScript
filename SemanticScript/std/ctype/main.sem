@@ -1,10 +1,10 @@
 # SemanticScript standard-library canonical module: standard.ctype.
 
 module standard.ctype
-modulePurpose standard.ctype "Canonical standard-library module for C ctype-style classifiers and case conversion helpers."
+purpose module standard.ctype "Canonical standard-library module for C ctype-style classifiers and case conversion helpers."
 moduleOwns standard.ctype "The official import path `standard.ctype` and this module's implementation body."
 moduleDoesNotOwn standard.ctype "App-specific wrappers, compatibility aliases, or generated build artifacts."
-moduleInvariant standard.ctype "The standard module entry is this file; tests live beside it as `main.test.sem`."
+invariant module standard.ctype "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.ctype ctypeModuleVersionText
 storage module immutable ctypeModuleVersionText CNullTerminatedByteString "standard.ctype 0.1"
@@ -14,28 +14,28 @@ storage module immutable ctypeModuleVersionText CNullTerminatedByteString "stand
 # SEMANTICSCRIPT STANDARD LIBRARY: <ctype.h>-style ASCII classifiers
 # ============================================================
 #
-# # rationale: C's <ctype.h> returns nonzero/zero CSignedInt32 to model
+# rationale: C's <ctype.h> returns nonzero/zero CSignedInt32 to model
 #   truth. SemanticScript has Bool, so every classifier here returns Bool
 #   directly. The two case-mapping ops (`convertAsciiLetterCodeToUppercase`,
 #   `convertAsciiLetterCodeToLowercase`) still return CSignedInt32 because
 #   the output is an ASCII codepoint, not a truth value.
 #
-# # invariant: every operation is total. Predicates produce Bool with
+# invariant: every operation is total. Predicates produce Bool with
 #   no error path; case mappers produce CSignedInt32 in [0, 127] when
 #   the input is a valid ASCII byte, and pass non-ASCII bytes through
 #   unchanged so callers can decode without surprises.
 #
-# # security: pure value-level math; no allocation; no I/O; no
+# security: pure value-level math; no allocation; no I/O; no
 #   table lookups against attacker-controlled indices.
 #
-# # timing: at most a constant number of `icmp` + `add`/`sub`
+# timing: at most a constant number of `icmp` + `add`/`sub`
 #   operations per call. No data-dependent branches over secret bytes
 #   beyond the standard ASCII range test.
 #
-# # observability: no logs, no metrics. Callers are responsible for
+# observability: no logs, no metrics. Callers are responsible for
 #   tracing high-frequency classification loops if needed.
 #
-# # warning: ASCII-only by design. Bytes >= 0x80 are not letters,
+# warning: ASCII-only by design. Bytes >= 0x80 are not letters,
 #   digits, etc. regardless of locale. UTF-8 callers must decode to
 #   codepoints first.
 #
@@ -56,7 +56,6 @@ storage module immutable ctypeModuleVersionText CNullTerminatedByteString "stand
 # Case-mapping operations (all return CSignedInt32):
 #   convertAsciiLetterCodeToUppercase(characterCode)
 #   convertAsciiLetterCodeToLowercase(characterCode)
-
 
 # This is a pure-module (library) file: it exports operations
 # consumed by other programs (notably std/ctype/main.test.sem which
@@ -112,454 +111,453 @@ domainLiteralTrust asciiUppercaseLowercaseGap trustedStaticLiteral
 # rationale: numeric classifiers.
 
 operation isAsciiDecimalDigitCode
-input isAsciiDecimalDigitCode characterCode CSignedInt32
-output isAsciiDecimalDigitCode Bool
-memoryHeap isAsciiDecimalDigitCode no
+input operation isAsciiDecimalDigitCode characterCode CSignedInt32
+output operation isAsciiDecimalDigitCode Bool
+memory isAsciiDecimalDigitCode heap no
 memoryStackLimit isAsciiDecimalDigitCode 1024
 async isAsciiDecimalDigitCode no
-purpose isAsciiDecimalDigitCode "Returns true when characterCode is an ASCII decimal digit (0x30..0x39)."
-invariant isAsciiDecimalDigitCode "Holds iff 48 <= characterCode <= 57."
+purpose operation isAsciiDecimalDigitCode "Returns true when characterCode is an ASCII decimal digit (0x30..0x39)."
+invariant operation isAsciiDecimalDigitCode "Holds iff 48 <= characterCode <= 57."
 guarantee isAsciiDecimalDigitCode "Total over the CSignedInt32 domain."
 label startIsAsciiDecimalDigitCode
 call detectBelowDigitRangeCall math.lessThanI64
-arg detectBelowDigitRangeCall left characterCode
-arg detectBelowDigitRangeCall right asciiDigitZeroCode
+argument detectBelowDigitRangeCall left I64 characterCode
+argument detectBelowDigitRangeCall right I64 asciiDigitZeroCode
 run detectBelowDigitRangeCall
-bind belowDigitRange Bool detectBelowDigitRangeCall
-branchIf belowDigitRange returnNotDigit
+bind value belowDigitRange Bool detectBelowDigitRangeCall
+branch if condition belowDigitRange target returnNotDigit
 call detectAboveDigitRangeCall math.greaterThanI64
-arg detectAboveDigitRangeCall left characterCode
-arg detectAboveDigitRangeCall right asciiDigitNineCode
+argument detectAboveDigitRangeCall left I64 characterCode
+argument detectAboveDigitRangeCall right I64 asciiDigitNineCode
 run detectAboveDigitRangeCall
-bind aboveDigitRange Bool detectAboveDigitRangeCall
-branchIf aboveDigitRange returnNotDigit
-const isDigitTrue Bool true
-returnValue isDigitTrue
+bind value aboveDigitRange Bool detectAboveDigitRangeCall
+branch if condition aboveDigitRange target returnNotDigit
+storage module immutable isDigitTrue Bool true
+return value isDigitTrue
 label returnNotDigit
-const isDigitFalse Bool false
-returnValue isDigitFalse
+storage module immutable isDigitFalse Bool false
+return value isDigitFalse
 
 # section ctype.letter
 # rationale: alphabetic classifiers and case-aware variants.
 
 operation isAsciiLowercaseLetterCode
-input isAsciiLowercaseLetterCode characterCode CSignedInt32
-output isAsciiLowercaseLetterCode Bool
-memoryHeap isAsciiLowercaseLetterCode no
+input operation isAsciiLowercaseLetterCode characterCode CSignedInt32
+output operation isAsciiLowercaseLetterCode Bool
+memory isAsciiLowercaseLetterCode heap no
 memoryStackLimit isAsciiLowercaseLetterCode 1024
 async isAsciiLowercaseLetterCode no
-purpose isAsciiLowercaseLetterCode "Returns true when characterCode is an ASCII lowercase letter (0x61..0x7A)."
-invariant isAsciiLowercaseLetterCode "Holds iff 97 <= characterCode <= 122."
+purpose operation isAsciiLowercaseLetterCode "Returns true when characterCode is an ASCII lowercase letter (0x61..0x7A)."
+invariant operation isAsciiLowercaseLetterCode "Holds iff 97 <= characterCode <= 122."
 guarantee isAsciiLowercaseLetterCode "Total."
 label startIsAsciiLowercaseLetterCode
 call detectBelowLowercaseRangeCall math.lessThanI64
-arg detectBelowLowercaseRangeCall left characterCode
-arg detectBelowLowercaseRangeCall right asciiLowercaseACode
+argument detectBelowLowercaseRangeCall left I64 characterCode
+argument detectBelowLowercaseRangeCall right I64 asciiLowercaseACode
 run detectBelowLowercaseRangeCall
-bind belowLowercaseRange Bool detectBelowLowercaseRangeCall
-branchIf belowLowercaseRange returnNotLowercase
+bind value belowLowercaseRange Bool detectBelowLowercaseRangeCall
+branch if condition belowLowercaseRange target returnNotLowercase
 call detectAboveLowercaseRangeCall math.greaterThanI64
-arg detectAboveLowercaseRangeCall left characterCode
-arg detectAboveLowercaseRangeCall right asciiLowercaseZCode
+argument detectAboveLowercaseRangeCall left I64 characterCode
+argument detectAboveLowercaseRangeCall right I64 asciiLowercaseZCode
 run detectAboveLowercaseRangeCall
-bind aboveLowercaseRange Bool detectAboveLowercaseRangeCall
-branchIf aboveLowercaseRange returnNotLowercase
-const isLowercaseTrue Bool true
-returnValue isLowercaseTrue
+bind value aboveLowercaseRange Bool detectAboveLowercaseRangeCall
+branch if condition aboveLowercaseRange target returnNotLowercase
+storage module immutable isLowercaseTrue Bool true
+return value isLowercaseTrue
 label returnNotLowercase
-const isLowercaseFalse Bool false
-returnValue isLowercaseFalse
+storage module immutable isLowercaseFalse Bool false
+return value isLowercaseFalse
 
 operation isAsciiUppercaseLetterCode
-input isAsciiUppercaseLetterCode characterCode CSignedInt32
-output isAsciiUppercaseLetterCode Bool
-memoryHeap isAsciiUppercaseLetterCode no
+input operation isAsciiUppercaseLetterCode characterCode CSignedInt32
+output operation isAsciiUppercaseLetterCode Bool
+memory isAsciiUppercaseLetterCode heap no
 memoryStackLimit isAsciiUppercaseLetterCode 1024
 async isAsciiUppercaseLetterCode no
-purpose isAsciiUppercaseLetterCode "Returns true when characterCode is an ASCII uppercase letter (0x41..0x5A)."
-invariant isAsciiUppercaseLetterCode "Holds iff 65 <= characterCode <= 90."
+purpose operation isAsciiUppercaseLetterCode "Returns true when characterCode is an ASCII uppercase letter (0x41..0x5A)."
+invariant operation isAsciiUppercaseLetterCode "Holds iff 65 <= characterCode <= 90."
 guarantee isAsciiUppercaseLetterCode "Total."
 label startIsAsciiUppercaseLetterCode
 call detectBelowUppercaseRangeCall math.lessThanI64
-arg detectBelowUppercaseRangeCall left characterCode
-arg detectBelowUppercaseRangeCall right asciiUppercaseACode
+argument detectBelowUppercaseRangeCall left I64 characterCode
+argument detectBelowUppercaseRangeCall right I64 asciiUppercaseACode
 run detectBelowUppercaseRangeCall
-bind belowUppercaseRange Bool detectBelowUppercaseRangeCall
-branchIf belowUppercaseRange returnNotUppercase
+bind value belowUppercaseRange Bool detectBelowUppercaseRangeCall
+branch if condition belowUppercaseRange target returnNotUppercase
 call detectAboveUppercaseRangeCall math.greaterThanI64
-arg detectAboveUppercaseRangeCall left characterCode
-arg detectAboveUppercaseRangeCall right asciiUppercaseZCode
+argument detectAboveUppercaseRangeCall left I64 characterCode
+argument detectAboveUppercaseRangeCall right I64 asciiUppercaseZCode
 run detectAboveUppercaseRangeCall
-bind aboveUppercaseRange Bool detectAboveUppercaseRangeCall
-branchIf aboveUppercaseRange returnNotUppercase
-const isUppercaseTrue Bool true
-returnValue isUppercaseTrue
+bind value aboveUppercaseRange Bool detectAboveUppercaseRangeCall
+branch if condition aboveUppercaseRange target returnNotUppercase
+storage module immutable isUppercaseTrue Bool true
+return value isUppercaseTrue
 label returnNotUppercase
-const isUppercaseFalse Bool false
-returnValue isUppercaseFalse
+storage module immutable isUppercaseFalse Bool false
+return value isUppercaseFalse
 
 operation isAsciiLetterCode
-input isAsciiLetterCode characterCode CSignedInt32
-output isAsciiLetterCode Bool
-memoryHeap isAsciiLetterCode no
+input operation isAsciiLetterCode characterCode CSignedInt32
+output operation isAsciiLetterCode Bool
+memory isAsciiLetterCode heap no
 memoryStackLimit isAsciiLetterCode 1024
 async isAsciiLetterCode no
-purpose isAsciiLetterCode "Returns true when characterCode is an ASCII letter (upper or lower case)."
-invariant isAsciiLetterCode "Equivalent to isAsciiUppercaseLetterCode(c) OR isAsciiLowercaseLetterCode(c)."
+purpose operation isAsciiLetterCode "Returns true when characterCode is an ASCII letter (upper or lower case)."
+invariant operation isAsciiLetterCode "Equivalent to isAsciiUppercaseLetterCode(c) OR isAsciiLowercaseLetterCode(c)."
 guarantee isAsciiLetterCode "Total."
 label startIsAsciiLetterCode
 call detectUppercaseCall isAsciiUppercaseLetterCode
-arg detectUppercaseCall characterCode characterCode
+argument detectUppercaseCall characterCode CSignedInt32 characterCode
 run detectUppercaseCall
-bind characterIsUppercase Bool detectUppercaseCall
-branchIf characterIsUppercase returnIsLetter
+bind value characterIsUppercase Bool detectUppercaseCall
+branch if condition characterIsUppercase target returnIsLetter
 call detectLowercaseCall isAsciiLowercaseLetterCode
-arg detectLowercaseCall characterCode characterCode
+argument detectLowercaseCall characterCode CSignedInt32 characterCode
 run detectLowercaseCall
-bind characterIsLowercase Bool detectLowercaseCall
-branchIf characterIsLowercase returnIsLetter
-const isLetterFalse Bool false
-returnValue isLetterFalse
+bind value characterIsLowercase Bool detectLowercaseCall
+branch if condition characterIsLowercase target returnIsLetter
+storage module immutable isLetterFalse Bool false
+return value isLetterFalse
 label returnIsLetter
-const isLetterTrue Bool true
-returnValue isLetterTrue
+storage module immutable isLetterTrue Bool true
+return value isLetterTrue
 
 operation isAsciiLetterOrDigitCode
-input isAsciiLetterOrDigitCode characterCode CSignedInt32
-output isAsciiLetterOrDigitCode Bool
-memoryHeap isAsciiLetterOrDigitCode no
+input operation isAsciiLetterOrDigitCode characterCode CSignedInt32
+output operation isAsciiLetterOrDigitCode Bool
+memory isAsciiLetterOrDigitCode heap no
 memoryStackLimit isAsciiLetterOrDigitCode 1024
 async isAsciiLetterOrDigitCode no
-purpose isAsciiLetterOrDigitCode "Returns true when characterCode is an ASCII letter or decimal digit."
-invariant isAsciiLetterOrDigitCode "Equivalent to isAsciiLetterCode(c) OR isAsciiDecimalDigitCode(c)."
+purpose operation isAsciiLetterOrDigitCode "Returns true when characterCode is an ASCII letter or decimal digit."
+invariant operation isAsciiLetterOrDigitCode "Equivalent to isAsciiLetterCode(c) OR isAsciiDecimalDigitCode(c)."
 guarantee isAsciiLetterOrDigitCode "Total."
 label startIsAsciiLetterOrDigitCode
 call detectLetterCall isAsciiLetterCode
-arg detectLetterCall characterCode characterCode
+argument detectLetterCall characterCode CSignedInt32 characterCode
 run detectLetterCall
-bind characterIsLetter Bool detectLetterCall
-branchIf characterIsLetter returnIsLetterOrDigit
+bind value characterIsLetter Bool detectLetterCall
+branch if condition characterIsLetter target returnIsLetterOrDigit
 call detectDigitCall isAsciiDecimalDigitCode
-arg detectDigitCall characterCode characterCode
+argument detectDigitCall characterCode CSignedInt32 characterCode
 run detectDigitCall
-bind characterIsDigit Bool detectDigitCall
-branchIf characterIsDigit returnIsLetterOrDigit
-const isLetterOrDigitFalse Bool false
-returnValue isLetterOrDigitFalse
+bind value characterIsDigit Bool detectDigitCall
+branch if condition characterIsDigit target returnIsLetterOrDigit
+storage module immutable isLetterOrDigitFalse Bool false
+return value isLetterOrDigitFalse
 label returnIsLetterOrDigit
-const isLetterOrDigitTrue Bool true
-returnValue isLetterOrDigitTrue
+storage module immutable isLetterOrDigitTrue Bool true
+return value isLetterOrDigitTrue
 
 operation isAsciiHexDigitCode
-input isAsciiHexDigitCode characterCode CSignedInt32
-output isAsciiHexDigitCode Bool
-memoryHeap isAsciiHexDigitCode no
+input operation isAsciiHexDigitCode characterCode CSignedInt32
+output operation isAsciiHexDigitCode Bool
+memory isAsciiHexDigitCode heap no
 memoryStackLimit isAsciiHexDigitCode 1024
 async isAsciiHexDigitCode no
-purpose isAsciiHexDigitCode "Returns true when characterCode is an ASCII hexadecimal digit (0-9, A-F, a-f)."
-invariant isAsciiHexDigitCode "Equivalent to digit OR uppercase A..F OR lowercase a..f."
+purpose operation isAsciiHexDigitCode "Returns true when characterCode is an ASCII hexadecimal digit (0-9, A-F, a-f)."
+invariant operation isAsciiHexDigitCode "Equivalent to digit OR uppercase A..F OR lowercase a..f."
 guarantee isAsciiHexDigitCode "Total."
 label startIsAsciiHexDigitCode
 call hexDigitDigitCall isAsciiDecimalDigitCode
-arg hexDigitDigitCall characterCode characterCode
+argument hexDigitDigitCall characterCode CSignedInt32 characterCode
 run hexDigitDigitCall
-bind hexDigitIsDigit Bool hexDigitDigitCall
-branchIf hexDigitIsDigit returnIsHexDigit
+bind value hexDigitIsDigit Bool hexDigitDigitCall
+branch if condition hexDigitIsDigit target returnIsHexDigit
 call detectBelowUppercaseHexCall math.lessThanI64
-arg detectBelowUppercaseHexCall left characterCode
-arg detectBelowUppercaseHexCall right asciiUppercaseACode
+argument detectBelowUppercaseHexCall left I64 characterCode
+argument detectBelowUppercaseHexCall right I64 asciiUppercaseACode
 run detectBelowUppercaseHexCall
-bind belowUppercaseHex Bool detectBelowUppercaseHexCall
-branchIf belowUppercaseHex checkLowercaseHexRange
+bind value belowUppercaseHex Bool detectBelowUppercaseHexCall
+branch if condition belowUppercaseHex target checkLowercaseHexRange
 call detectAboveUppercaseHexCall math.greaterThanI64
-arg detectAboveUppercaseHexCall left characterCode
-arg detectAboveUppercaseHexCall right asciiUppercaseFCode
+argument detectAboveUppercaseHexCall left I64 characterCode
+argument detectAboveUppercaseHexCall right I64 asciiUppercaseFCode
 run detectAboveUppercaseHexCall
-bind aboveUppercaseHex Bool detectAboveUppercaseHexCall
-branchIf aboveUppercaseHex checkLowercaseHexRange
-branch returnIsHexDigit
+bind value aboveUppercaseHex Bool detectAboveUppercaseHexCall
+branch if condition aboveUppercaseHex target checkLowercaseHexRange
+branch else target returnIsHexDigit
 label checkLowercaseHexRange
 call detectBelowLowercaseHexCall math.lessThanI64
-arg detectBelowLowercaseHexCall left characterCode
-arg detectBelowLowercaseHexCall right asciiLowercaseACode
+argument detectBelowLowercaseHexCall left I64 characterCode
+argument detectBelowLowercaseHexCall right I64 asciiLowercaseACode
 run detectBelowLowercaseHexCall
-bind belowLowercaseHex Bool detectBelowLowercaseHexCall
-branchIf belowLowercaseHex returnNotHexDigit
+bind value belowLowercaseHex Bool detectBelowLowercaseHexCall
+branch if condition belowLowercaseHex target returnNotHexDigit
 call detectAboveLowercaseHexCall math.greaterThanI64
-arg detectAboveLowercaseHexCall left characterCode
-arg detectAboveLowercaseHexCall right asciiLowercaseFCode
+argument detectAboveLowercaseHexCall left I64 characterCode
+argument detectAboveLowercaseHexCall right I64 asciiLowercaseFCode
 run detectAboveLowercaseHexCall
-bind aboveLowercaseHex Bool detectAboveLowercaseHexCall
-branchIf aboveLowercaseHex returnNotHexDigit
-branch returnIsHexDigit
+bind value aboveLowercaseHex Bool detectAboveLowercaseHexCall
+branch if condition aboveLowercaseHex target returnNotHexDigit
+branch else target returnIsHexDigit
 label returnIsHexDigit
-const isHexDigitTrue Bool true
-returnValue isHexDigitTrue
+storage module immutable isHexDigitTrue Bool true
+return value isHexDigitTrue
 label returnNotHexDigit
-const isHexDigitFalse Bool false
-returnValue isHexDigitFalse
+storage module immutable isHexDigitFalse Bool false
+return value isHexDigitFalse
 
 # section ctype.whitespace
 # rationale: whitespace and blank classification per ASCII conventions.
 
 operation isAsciiWhitespaceCode
-input isAsciiWhitespaceCode characterCode CSignedInt32
-output isAsciiWhitespaceCode Bool
-memoryHeap isAsciiWhitespaceCode no
+input operation isAsciiWhitespaceCode characterCode CSignedInt32
+output operation isAsciiWhitespaceCode Bool
+memory isAsciiWhitespaceCode heap no
 memoryStackLimit isAsciiWhitespaceCode 1024
 async isAsciiWhitespaceCode no
-purpose isAsciiWhitespaceCode "Returns true for space, tab, LF, VT, FF, or CR (the standard ASCII whitespace set)."
-invariant isAsciiWhitespaceCode "Same membership as C's isspace() on ASCII inputs."
+purpose operation isAsciiWhitespaceCode "Returns true for space, tab, LF, VT, FF, or CR (the standard ASCII whitespace set)."
+invariant operation isAsciiWhitespaceCode "Same membership as C's isspace() on ASCII inputs."
 guarantee isAsciiWhitespaceCode "Total."
 label startIsAsciiWhitespaceCode
 call detectEqualsSpaceCall math.equalI64
-arg detectEqualsSpaceCall left characterCode
-arg detectEqualsSpaceCall right asciiSpaceCode
+argument detectEqualsSpaceCall left I64 characterCode
+argument detectEqualsSpaceCall right I64 asciiSpaceCode
 run detectEqualsSpaceCall
-bind characterEqualsSpace Bool detectEqualsSpaceCall
-branchIf characterEqualsSpace returnIsWhitespace
+bind value characterEqualsSpace Bool detectEqualsSpaceCall
+branch if condition characterEqualsSpace target returnIsWhitespace
 call detectEqualsTabCall math.equalI64
-arg detectEqualsTabCall left characterCode
-arg detectEqualsTabCall right asciiTabCode
+argument detectEqualsTabCall left I64 characterCode
+argument detectEqualsTabCall right I64 asciiTabCode
 run detectEqualsTabCall
-bind characterEqualsTab Bool detectEqualsTabCall
-branchIf characterEqualsTab returnIsWhitespace
+bind value characterEqualsTab Bool detectEqualsTabCall
+branch if condition characterEqualsTab target returnIsWhitespace
 call detectEqualsLineFeedCall math.equalI64
-arg detectEqualsLineFeedCall left characterCode
-arg detectEqualsLineFeedCall right asciiLineFeedCode
+argument detectEqualsLineFeedCall left I64 characterCode
+argument detectEqualsLineFeedCall right I64 asciiLineFeedCode
 run detectEqualsLineFeedCall
-bind characterEqualsLineFeed Bool detectEqualsLineFeedCall
-branchIf characterEqualsLineFeed returnIsWhitespace
+bind value characterEqualsLineFeed Bool detectEqualsLineFeedCall
+branch if condition characterEqualsLineFeed target returnIsWhitespace
 call detectEqualsVerticalTabCall math.equalI64
-arg detectEqualsVerticalTabCall left characterCode
-arg detectEqualsVerticalTabCall right asciiVerticalTabCode
+argument detectEqualsVerticalTabCall left I64 characterCode
+argument detectEqualsVerticalTabCall right I64 asciiVerticalTabCode
 run detectEqualsVerticalTabCall
-bind characterEqualsVerticalTab Bool detectEqualsVerticalTabCall
-branchIf characterEqualsVerticalTab returnIsWhitespace
+bind value characterEqualsVerticalTab Bool detectEqualsVerticalTabCall
+branch if condition characterEqualsVerticalTab target returnIsWhitespace
 call detectEqualsFormFeedCall math.equalI64
-arg detectEqualsFormFeedCall left characterCode
-arg detectEqualsFormFeedCall right asciiFormFeedCode
+argument detectEqualsFormFeedCall left I64 characterCode
+argument detectEqualsFormFeedCall right I64 asciiFormFeedCode
 run detectEqualsFormFeedCall
-bind characterEqualsFormFeed Bool detectEqualsFormFeedCall
-branchIf characterEqualsFormFeed returnIsWhitespace
+bind value characterEqualsFormFeed Bool detectEqualsFormFeedCall
+branch if condition characterEqualsFormFeed target returnIsWhitespace
 call detectEqualsCarriageReturnCall math.equalI64
-arg detectEqualsCarriageReturnCall left characterCode
-arg detectEqualsCarriageReturnCall right asciiCarriageReturnCode
+argument detectEqualsCarriageReturnCall left I64 characterCode
+argument detectEqualsCarriageReturnCall right I64 asciiCarriageReturnCode
 run detectEqualsCarriageReturnCall
-bind characterEqualsCarriageReturn Bool detectEqualsCarriageReturnCall
-branchIf characterEqualsCarriageReturn returnIsWhitespace
-const isWhitespaceFalse Bool false
-returnValue isWhitespaceFalse
+bind value characterEqualsCarriageReturn Bool detectEqualsCarriageReturnCall
+branch if condition characterEqualsCarriageReturn target returnIsWhitespace
+storage module immutable isWhitespaceFalse Bool false
+return value isWhitespaceFalse
 label returnIsWhitespace
-const isWhitespaceTrue Bool true
-returnValue isWhitespaceTrue
+storage module immutable isWhitespaceTrue Bool true
+return value isWhitespaceTrue
 
 operation isAsciiBlankCode
-input isAsciiBlankCode characterCode CSignedInt32
-output isAsciiBlankCode Bool
-memoryHeap isAsciiBlankCode no
+input operation isAsciiBlankCode characterCode CSignedInt32
+output operation isAsciiBlankCode Bool
+memory isAsciiBlankCode heap no
 memoryStackLimit isAsciiBlankCode 1024
 async isAsciiBlankCode no
-purpose isAsciiBlankCode "Returns true only for space or horizontal tab."
-invariant isAsciiBlankCode "Strict subset of isAsciiWhitespaceCode Ã¢â‚¬â€ excludes LF, VT, FF, CR."
+purpose operation isAsciiBlankCode "Returns true only for space or horizontal tab."
+invariant operation isAsciiBlankCode "Strict subset of isAsciiWhitespaceCode Ã¢â‚¬â€ excludes LF, VT, FF, CR."
 guarantee isAsciiBlankCode "Total."
 label startIsAsciiBlankCode
 call detectBlankSpaceCall math.equalI64
-arg detectBlankSpaceCall left characterCode
-arg detectBlankSpaceCall right asciiSpaceCode
+argument detectBlankSpaceCall left I64 characterCode
+argument detectBlankSpaceCall right I64 asciiSpaceCode
 run detectBlankSpaceCall
-bind characterIsBlankSpace Bool detectBlankSpaceCall
-branchIf characterIsBlankSpace returnIsBlank
+bind value characterIsBlankSpace Bool detectBlankSpaceCall
+branch if condition characterIsBlankSpace target returnIsBlank
 call detectBlankTabCall math.equalI64
-arg detectBlankTabCall left characterCode
-arg detectBlankTabCall right asciiTabCode
+argument detectBlankTabCall left I64 characterCode
+argument detectBlankTabCall right I64 asciiTabCode
 run detectBlankTabCall
-bind characterIsBlankTab Bool detectBlankTabCall
-branchIf characterIsBlankTab returnIsBlank
-const isBlankFalse Bool false
-returnValue isBlankFalse
+bind value characterIsBlankTab Bool detectBlankTabCall
+branch if condition characterIsBlankTab target returnIsBlank
+storage module immutable isBlankFalse Bool false
+return value isBlankFalse
 label returnIsBlank
-const isBlankTrue Bool true
-returnValue isBlankTrue
+storage module immutable isBlankTrue Bool true
+return value isBlankTrue
 
 # section ctype.control
 # rationale: control / printable / graphical / punctuation classification.
 
 operation isAsciiControlCode
-input isAsciiControlCode characterCode CSignedInt32
-output isAsciiControlCode Bool
-memoryHeap isAsciiControlCode no
+input operation isAsciiControlCode characterCode CSignedInt32
+output operation isAsciiControlCode Bool
+memory isAsciiControlCode heap no
 memoryStackLimit isAsciiControlCode 1024
 async isAsciiControlCode no
-purpose isAsciiControlCode "Returns true for control characters (0x00..0x1F or 0x7F)."
-invariant isAsciiControlCode "Holds iff 0 <= c <= 31 OR c == 127."
+purpose operation isAsciiControlCode "Returns true for control characters (0x00..0x1F or 0x7F)."
+invariant operation isAsciiControlCode "Holds iff 0 <= c <= 31 OR c == 127."
 guarantee isAsciiControlCode "Total."
 label startIsAsciiControlCode
 call detectLowControlRangeCall math.lessThanOrEqualI64
-arg detectLowControlRangeCall left characterCode
-arg detectLowControlRangeCall right asciiHighestControlCode
+argument detectLowControlRangeCall left I64 characterCode
+argument detectLowControlRangeCall right I64 asciiHighestControlCode
 run detectLowControlRangeCall
-bind characterInLowControlRange Bool detectLowControlRangeCall
-branchIf characterInLowControlRange returnIsControl
+bind value characterInLowControlRange Bool detectLowControlRangeCall
+branch if condition characterInLowControlRange target returnIsControl
 call detectEqualsDeleteCall math.equalI64
-arg detectEqualsDeleteCall left characterCode
-arg detectEqualsDeleteCall right asciiDeleteCode
+argument detectEqualsDeleteCall left I64 characterCode
+argument detectEqualsDeleteCall right I64 asciiDeleteCode
 run detectEqualsDeleteCall
-bind characterEqualsDelete Bool detectEqualsDeleteCall
-branchIf characterEqualsDelete returnIsControl
-const isControlFalse Bool false
-returnValue isControlFalse
+bind value characterEqualsDelete Bool detectEqualsDeleteCall
+branch if condition characterEqualsDelete target returnIsControl
+storage module immutable isControlFalse Bool false
+return value isControlFalse
 label returnIsControl
-const isControlTrue Bool true
-returnValue isControlTrue
+storage module immutable isControlTrue Bool true
+return value isControlTrue
 
 operation isAsciiPrintableCode
-input isAsciiPrintableCode characterCode CSignedInt32
-output isAsciiPrintableCode Bool
-memoryHeap isAsciiPrintableCode no
+input operation isAsciiPrintableCode characterCode CSignedInt32
+output operation isAsciiPrintableCode Bool
+memory isAsciiPrintableCode heap no
 memoryStackLimit isAsciiPrintableCode 1024
 async isAsciiPrintableCode no
-purpose isAsciiPrintableCode "Returns true for printable characters (0x20..0x7E)."
-invariant isAsciiPrintableCode "Holds iff 32 <= c <= 126 (space through tilde)."
+purpose operation isAsciiPrintableCode "Returns true for printable characters (0x20..0x7E)."
+invariant operation isAsciiPrintableCode "Holds iff 32 <= c <= 126 (space through tilde)."
 guarantee isAsciiPrintableCode "Total."
 label startIsAsciiPrintableCode
 call detectBelowPrintableRangeCall math.lessThanI64
-arg detectBelowPrintableRangeCall left characterCode
-arg detectBelowPrintableRangeCall right asciiLowestPrintableCode
+argument detectBelowPrintableRangeCall left I64 characterCode
+argument detectBelowPrintableRangeCall right I64 asciiLowestPrintableCode
 run detectBelowPrintableRangeCall
-bind belowPrintableRange Bool detectBelowPrintableRangeCall
-branchIf belowPrintableRange returnNotPrintable
+bind value belowPrintableRange Bool detectBelowPrintableRangeCall
+branch if condition belowPrintableRange target returnNotPrintable
 call detectAbovePrintableRangeCall math.greaterThanI64
-arg detectAbovePrintableRangeCall left characterCode
-arg detectAbovePrintableRangeCall right asciiHighestPrintableCode
+argument detectAbovePrintableRangeCall left I64 characterCode
+argument detectAbovePrintableRangeCall right I64 asciiHighestPrintableCode
 run detectAbovePrintableRangeCall
-bind abovePrintableRange Bool detectAbovePrintableRangeCall
-branchIf abovePrintableRange returnNotPrintable
-const isPrintableTrue Bool true
-returnValue isPrintableTrue
+bind value abovePrintableRange Bool detectAbovePrintableRangeCall
+branch if condition abovePrintableRange target returnNotPrintable
+storage module immutable isPrintableTrue Bool true
+return value isPrintableTrue
 label returnNotPrintable
-const isPrintableFalse Bool false
-returnValue isPrintableFalse
+storage module immutable isPrintableFalse Bool false
+return value isPrintableFalse
 
 operation isAsciiGraphicalCode
-input isAsciiGraphicalCode characterCode CSignedInt32
-output isAsciiGraphicalCode Bool
-memoryHeap isAsciiGraphicalCode no
+input operation isAsciiGraphicalCode characterCode CSignedInt32
+output operation isAsciiGraphicalCode Bool
+memory isAsciiGraphicalCode heap no
 memoryStackLimit isAsciiGraphicalCode 1024
 async isAsciiGraphicalCode no
-purpose isAsciiGraphicalCode "Returns true for printable characters that are not space (0x21..0x7E)."
-invariant isAsciiGraphicalCode "Holds iff 33 <= c <= 126."
+purpose operation isAsciiGraphicalCode "Returns true for printable characters that are not space (0x21..0x7E)."
+invariant operation isAsciiGraphicalCode "Holds iff 33 <= c <= 126."
 guarantee isAsciiGraphicalCode "Total."
 label startIsAsciiGraphicalCode
 call detectBelowGraphicalRangeCall math.lessThanI64
-arg detectBelowGraphicalRangeCall left characterCode
-arg detectBelowGraphicalRangeCall right asciiLowestGraphicalCode
+argument detectBelowGraphicalRangeCall left I64 characterCode
+argument detectBelowGraphicalRangeCall right I64 asciiLowestGraphicalCode
 run detectBelowGraphicalRangeCall
-bind belowGraphicalRange Bool detectBelowGraphicalRangeCall
-branchIf belowGraphicalRange returnNotGraphical
+bind value belowGraphicalRange Bool detectBelowGraphicalRangeCall
+branch if condition belowGraphicalRange target returnNotGraphical
 call detectAboveGraphicalRangeCall math.greaterThanI64
-arg detectAboveGraphicalRangeCall left characterCode
-arg detectAboveGraphicalRangeCall right asciiHighestPrintableCode
+argument detectAboveGraphicalRangeCall left I64 characterCode
+argument detectAboveGraphicalRangeCall right I64 asciiHighestPrintableCode
 run detectAboveGraphicalRangeCall
-bind aboveGraphicalRange Bool detectAboveGraphicalRangeCall
-branchIf aboveGraphicalRange returnNotGraphical
-const isGraphicalTrue Bool true
-returnValue isGraphicalTrue
+bind value aboveGraphicalRange Bool detectAboveGraphicalRangeCall
+branch if condition aboveGraphicalRange target returnNotGraphical
+storage module immutable isGraphicalTrue Bool true
+return value isGraphicalTrue
 label returnNotGraphical
-const isGraphicalFalse Bool false
-returnValue isGraphicalFalse
+storage module immutable isGraphicalFalse Bool false
+return value isGraphicalFalse
 
 operation isAsciiPunctuationCode
-input isAsciiPunctuationCode characterCode CSignedInt32
-output isAsciiPunctuationCode Bool
-memoryHeap isAsciiPunctuationCode no
+input operation isAsciiPunctuationCode characterCode CSignedInt32
+output operation isAsciiPunctuationCode Bool
+memory isAsciiPunctuationCode heap no
 memoryStackLimit isAsciiPunctuationCode 1024
 async isAsciiPunctuationCode no
-purpose isAsciiPunctuationCode "Returns true for printable characters that are not space or alphanumeric."
-invariant isAsciiPunctuationCode "Equivalent to isAsciiGraphicalCode AND NOT isAsciiLetterOrDigitCode."
+purpose operation isAsciiPunctuationCode "Returns true for printable characters that are not space or alphanumeric."
+invariant operation isAsciiPunctuationCode "Equivalent to isAsciiGraphicalCode AND NOT isAsciiLetterOrDigitCode."
 guarantee isAsciiPunctuationCode "Total."
 label startIsAsciiPunctuationCode
 call punctGraphicalCall isAsciiGraphicalCode
-arg punctGraphicalCall characterCode characterCode
+argument punctGraphicalCall characterCode CSignedInt32 characterCode
 run punctGraphicalCall
-bind characterIsGraphical Bool punctGraphicalCall
-branchIf characterIsGraphical checkPunctuationAlnum
-const isPunctuationFalseFromNonGraphical Bool false
-returnValue isPunctuationFalseFromNonGraphical
+bind value characterIsGraphical Bool punctGraphicalCall
+branch if condition characterIsGraphical target checkPunctuationAlnum
+storage module immutable isPunctuationFalseFromNonGraphical Bool false
+return value isPunctuationFalseFromNonGraphical
 label checkPunctuationAlnum
 call punctAlnumCall isAsciiLetterOrDigitCode
-arg punctAlnumCall characterCode characterCode
+argument punctAlnumCall characterCode CSignedInt32 characterCode
 run punctAlnumCall
-bind characterIsAlphanumeric Bool punctAlnumCall
-branchIf characterIsAlphanumeric returnNotPunctuation
-const isPunctuationTrue Bool true
-returnValue isPunctuationTrue
+bind value characterIsAlphanumeric Bool punctAlnumCall
+branch if condition characterIsAlphanumeric target returnNotPunctuation
+storage module immutable isPunctuationTrue Bool true
+return value isPunctuationTrue
 label returnNotPunctuation
-const isPunctuationFalse Bool false
-returnValue isPunctuationFalse
+storage module immutable isPunctuationFalse Bool false
+return value isPunctuationFalse
 
 # section ctype.case
 # rationale: case-mapping operations that preserve out-of-range bytes.
 
 operation convertAsciiLetterCodeToUppercase
-input convertAsciiLetterCodeToUppercase characterCode CSignedInt32
-output convertAsciiLetterCodeToUppercase CSignedInt32
-memoryHeap convertAsciiLetterCodeToUppercase no
+input operation convertAsciiLetterCodeToUppercase characterCode CSignedInt32
+output operation convertAsciiLetterCodeToUppercase CSignedInt32
+memory convertAsciiLetterCodeToUppercase heap no
 memoryStackLimit convertAsciiLetterCodeToUppercase 1024
 async convertAsciiLetterCodeToUppercase no
-purpose convertAsciiLetterCodeToUppercase "Maps ASCII lowercase letters (0x61..0x7A) to uppercase; passes every other byte through unchanged."
-invariant convertAsciiLetterCodeToUppercase "For characterCode in 97..122, output == characterCode - 32. Otherwise output == characterCode."
+purpose operation convertAsciiLetterCodeToUppercase "Maps ASCII lowercase letters (0x61..0x7A) to uppercase; passes every other byte through unchanged."
+invariant operation convertAsciiLetterCodeToUppercase "For characterCode in 97..122, output == characterCode - 32. Otherwise output == characterCode."
 guarantee convertAsciiLetterCodeToUppercase "Total. Idempotent on already-uppercase or non-letter bytes."
 label startConvertAsciiLetterCodeToUppercase
 call detectBelowLowercaseLetterCall math.lessThanI64
-arg detectBelowLowercaseLetterCall left characterCode
-arg detectBelowLowercaseLetterCall right asciiLowercaseACode
+argument detectBelowLowercaseLetterCall left I64 characterCode
+argument detectBelowLowercaseLetterCall right I64 asciiLowercaseACode
 run detectBelowLowercaseLetterCall
-bind belowLowercaseLetter Bool detectBelowLowercaseLetterCall
-branchIf belowLowercaseLetter passThroughCharacterForUppercase
+bind value belowLowercaseLetter Bool detectBelowLowercaseLetterCall
+branch if condition belowLowercaseLetter target passThroughCharacterForUppercase
 call detectAboveLowercaseLetterCall math.greaterThanI64
-arg detectAboveLowercaseLetterCall left characterCode
-arg detectAboveLowercaseLetterCall right asciiLowercaseZCode
+argument detectAboveLowercaseLetterCall left I64 characterCode
+argument detectAboveLowercaseLetterCall right I64 asciiLowercaseZCode
 run detectAboveLowercaseLetterCall
-bind aboveLowercaseLetter Bool detectAboveLowercaseLetterCall
-branchIf aboveLowercaseLetter passThroughCharacterForUppercase
+bind value aboveLowercaseLetter Bool detectAboveLowercaseLetterCall
+branch if condition aboveLowercaseLetter target passThroughCharacterForUppercase
 call subtractCaseShiftCall math.subtractI64
-arg subtractCaseShiftCall left characterCode
-arg subtractCaseShiftCall right asciiUppercaseLowercaseGap
+argument subtractCaseShiftCall left I64 characterCode
+argument subtractCaseShiftCall right I64 asciiUppercaseLowercaseGap
 run subtractCaseShiftCall
-bind shiftedUppercaseCharacter CSignedInt32 subtractCaseShiftCall
-returnValue shiftedUppercaseCharacter
+bind value shiftedUppercaseCharacter CSignedInt32 subtractCaseShiftCall
+return value shiftedUppercaseCharacter
 label passThroughCharacterForUppercase
-returnValue characterCode
+return value characterCode
 
 operation convertAsciiLetterCodeToLowercase
-input convertAsciiLetterCodeToLowercase characterCode CSignedInt32
-output convertAsciiLetterCodeToLowercase CSignedInt32
-memoryHeap convertAsciiLetterCodeToLowercase no
+input operation convertAsciiLetterCodeToLowercase characterCode CSignedInt32
+output operation convertAsciiLetterCodeToLowercase CSignedInt32
+memory convertAsciiLetterCodeToLowercase heap no
 memoryStackLimit convertAsciiLetterCodeToLowercase 1024
 async convertAsciiLetterCodeToLowercase no
-purpose convertAsciiLetterCodeToLowercase "Maps ASCII uppercase letters (0x41..0x5A) to lowercase; passes every other byte through unchanged."
-invariant convertAsciiLetterCodeToLowercase "For characterCode in 65..90, output == characterCode + 32. Otherwise output == characterCode."
+purpose operation convertAsciiLetterCodeToLowercase "Maps ASCII uppercase letters (0x41..0x5A) to lowercase; passes every other byte through unchanged."
+invariant operation convertAsciiLetterCodeToLowercase "For characterCode in 65..90, output == characterCode + 32. Otherwise output == characterCode."
 guarantee convertAsciiLetterCodeToLowercase "Total. Idempotent on already-lowercase or non-letter bytes."
 label startConvertAsciiLetterCodeToLowercase
 call detectBelowUppercaseLetterCall math.lessThanI64
-arg detectBelowUppercaseLetterCall left characterCode
-arg detectBelowUppercaseLetterCall right asciiUppercaseACode
+argument detectBelowUppercaseLetterCall left I64 characterCode
+argument detectBelowUppercaseLetterCall right I64 asciiUppercaseACode
 run detectBelowUppercaseLetterCall
-bind belowUppercaseLetter Bool detectBelowUppercaseLetterCall
-branchIf belowUppercaseLetter passThroughCharacterForLowercase
+bind value belowUppercaseLetter Bool detectBelowUppercaseLetterCall
+branch if condition belowUppercaseLetter target passThroughCharacterForLowercase
 call detectAboveUppercaseLetterCall math.greaterThanI64
-arg detectAboveUppercaseLetterCall left characterCode
-arg detectAboveUppercaseLetterCall right asciiUppercaseZCode
+argument detectAboveUppercaseLetterCall left I64 characterCode
+argument detectAboveUppercaseLetterCall right I64 asciiUppercaseZCode
 run detectAboveUppercaseLetterCall
-bind aboveUppercaseLetter Bool detectAboveUppercaseLetterCall
-branchIf aboveUppercaseLetter passThroughCharacterForLowercase
+bind value aboveUppercaseLetter Bool detectAboveUppercaseLetterCall
+branch if condition aboveUppercaseLetter target passThroughCharacterForLowercase
 call addCaseShiftCall math.addI64
-arg addCaseShiftCall left characterCode
-arg addCaseShiftCall right asciiUppercaseLowercaseGap
+argument addCaseShiftCall left I64 characterCode
+argument addCaseShiftCall right I64 asciiUppercaseLowercaseGap
 run addCaseShiftCall
-bind shiftedLowercaseCharacter CSignedInt32 addCaseShiftCall
-returnValue shiftedLowercaseCharacter
+bind value shiftedLowercaseCharacter CSignedInt32 addCaseShiftCall
+return value shiftedLowercaseCharacter
 label passThroughCharacterForLowercase
-returnValue characterCode
-
+return value characterCode

@@ -7,28 +7,28 @@ entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Add 8+7 via math.addI64, print result."
-invariant main "Computes 15 and emits it."
+purpose operation main "Add 8+7 via math.addI64, print result."
+invariant operation main "Computes 15 and emits it."
 label startMain
-const eightInitial I64 8
-var leftOperand I64 eightInitial
-const sevenAdd I64 7
+storage module immutable eightInitial I64 8
+memory main mutable leftOperand I64 eightInitial
+storage module immutable sevenAdd I64 7
 call addCall math.addI64
-arg addCall left leftOperand
-arg addCall right sevenAdd
+argument addCall left I64 leftOperand
+argument addCall right I64 sevenAdd
 run addCall
-bind sumResult I64 addCall
-var sumVar I64 eightInitial
-set sumVar sumResult
+bind value sumResult I64 addCall
+memory main mutable sumVar I64 eightInitial
+set memory sumVar sumResult
 call writeSumCall console.writeIntegerLine
-arg writeSumCall console console
-arg writeSumCall value sumVar
+argument writeSumCall console Console console
+argument writeSumCall value I64 sumVar
 run writeSumCall
-ignoreOk writeSumCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeSumCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

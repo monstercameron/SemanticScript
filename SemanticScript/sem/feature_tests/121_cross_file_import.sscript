@@ -9,31 +9,31 @@ entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 
-importModule sem.feature_tests._modules.helper_lib
+import helper_lib sem.feature_tests._modules.helper_lib
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main read memory.buffer
 effect main write console.stdout
 memory main heap auto
 async main no
-purpose main "Call addSeven (defined in an imported module) with 35 and 7, then print the i64 result. Demonstrates that importModule resolves a relative module path, inlines the operation, and the operation is callable from the importing file."
-invariant main "Output is '42\\n'."
+purpose operation main "Call addSeven (defined in an imported module) with 35 and 7, then print the i64 result. Demonstrates that importModule resolves a relative module path, inlines the operation, and the operation is callable from the importing file."
+invariant operation main "Output is '42\\n'."
 label startMain
-const baseValue I64 35
-const sevenValue I64 7
+storage module immutable baseValue I64 35
+storage module immutable sevenValue I64 7
 call addSevenCall addSeven
-arg addSevenCall base baseValue
-arg addSevenCall addend sevenValue
+argument addSevenCall base I64 baseValue
+argument addSevenCall addend I64 sevenValue
 run addSevenCall
-bind resultValue I64 addSevenCall
-var resultVar I64 baseValue
-set resultVar resultValue
+bind value resultValue I64 addSevenCall
+memory main mutable resultVar I64 baseValue
+set memory resultVar resultValue
 call writeResultCall console.writeIntegerLine
-arg writeResultCall console console
-arg writeResultCall value resultVar
+argument writeResultCall console Console console
+argument writeResultCall value I64 resultVar
 run writeResultCall
-ignoreOk writeResultCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeResultCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

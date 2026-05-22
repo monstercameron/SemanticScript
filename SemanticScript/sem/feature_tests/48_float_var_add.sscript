@@ -7,26 +7,26 @@ entry console main
 error MainError
 errorCase MainError Placeholder CSignedInt32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "5.0 + 3.0 via CFloat64 var + math.addF64; print via writeFloatLine."
-invariant main "Tests float vars, float math, float binds, writeFloatLine of bind."
+purpose operation main "5.0 + 3.0 via CFloat64 var + math.addF64; print via writeFloatLine."
+invariant operation main "Tests float vars, float math, float binds, writeFloatLine of bind."
 label startMain
-const fiveFloat CFloat64 5.0
-const threeFloat CFloat64 3.0
-var leftFloat CFloat64 fiveFloat
+storage module immutable fiveFloat CFloat64 5.0
+storage module immutable threeFloat CFloat64 3.0
+memory main mutable leftFloat CFloat64 fiveFloat
 call addCall math.addF64
-arg addCall left leftFloat
-arg addCall right threeFloat
+argument addCall left CFloat64 leftFloat
+argument addCall right CFloat64 threeFloat
 run addCall
-bind sumResult CFloat64 addCall
+bind value sumResult CFloat64 addCall
 call writeCall console.writeFloatLine
-arg writeCall console console
-arg writeCall value sumResult
+argument writeCall console Console console
+argument writeCall value CFloat64 sumResult
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

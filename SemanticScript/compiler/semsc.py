@@ -582,12 +582,12 @@ class Program:
 BODY_VERBS_CODEGEN = {
     "input", "output", "effect", "memory", "async",
     "purpose", "invariant", "warning",
-    "label", "const", "var", "set",
-    "call", "arg", "timeout", "cancelOn", "run", "runChecked", "start", "await",
-    "bind", "bindOk", "bindError", "ignoreOk", "ignoreValue",
+    "label", "set",
+    "call", "argument", "timeout", "cancelOn", "run", "runChecked", "start", "await",
+    "bind", "ignore",
     "makeError",
-    "branch", "branchIf", "branchIfError",
-    "returnOk", "returnError", "returnValue", "returnVoid",
+    "branch", "jump",
+    "return",
 }
 
 # Body verbs the parser stores into op.lines but codegen treats as metadata.
@@ -602,7 +602,6 @@ BODY_VERBS_RESERVED_SOFT = {
     "guarantee", "failure", "security", "timing", "observability",
     "memoryAllocationSource",
     "useCapability",
-    "importModule",
     # `precondition OP "text"` — structured form of "Caller guarantees X"
     # text that was historically written into `invariant` prose. Carries
     # the caller-side proof obligation without claiming the body enforces
@@ -659,6 +658,240 @@ BODY_VERBS_RESERVED = BODY_VERBS_RESERVED_SOFT | BODY_VERBS_RESERVED_HARD
 BODY_VERBS = BODY_VERBS_CODEGEN | BODY_VERBS_RESERVED
 
 
+_OLD_SYNTAX_VERBS = {
+    "importModule",
+    "memoryHeap",
+    "arg",
+    "bindOk",
+    "bindError",
+    "branchIf",
+    "branchIfError",
+    "returnValue",
+    "returnOk",
+    "returnError",
+    "returnVoid",
+    "ignoreValue",
+    "ignoreOk",
+    "ignoreError",
+    "modulePurpose",
+    "moduleInvariant",
+    "htmlTemplate",
+    "htmlArg",
+    "htmlBody",
+    "var",
+    "let",
+    "const",
+}
+
+_AUTHORITY_ACTIONS = {
+    "read", "write", "append", "open", "close", "allocate", "free",
+    "observe", "log", "execute", "connect", "send", "receive", "delete",
+    "create", "update", "network", "configure",
+}
+
+
+def _canonicalize_syntax_row(verb, args, lineno):
+    """Apply the syntax-cutover row shapes before permissive parsing.
+
+    The compiler used to fall back to storing unknown lowercase verbs as
+    metadata. For the syntax cutover, replaced rows must fail here instead of
+    being hidden by that fallback. Returned rows are canonical semantic rows;
+    variant-bearing rows keep their variant token in args for lowering.
+    """
+    if isinstance(verb, str) and (verb.startswith("@") or verb.startswith("#")):
+        raise SyntaxError(
+            f"line {lineno}: sigil-prefixed row verbs are not valid SemanticScript syntax")
+    if isinstance(verb, str) and "." in verb:
+        raise SyntaxError(
+            f"line {lineno}: dotted row verb `{verb}` is not valid; keep dots in value/path tokens")
+    if any(isinstance(tok, str) and "=" in tok for tok in [verb, *args]):
+        raise SyntaxError(
+            f"line {lineno}: equals-sign key/value rows are not valid SemanticScript syntax")
+    if verb in _OLD_SYNTAX_VERBS:
+        raise SyntaxError(
+            f"line {lineno}: old SemanticScript syntax `{verb}` is rejected; run the syntax converter")
+
+    if verb == "import":
+        if len(args) != 2:
+            raise SyntaxError(
+                f"line {lineno}: import requires: import ALIAS MODULE_PATH")
+        return verb, args
+
+    if verb == "html":
+        if len(args) == 2 and args[0] == "template":
+            return "htmlTemplate", [args[1]]
+        if len(args) == 3 and args[0] == "body" and args[1] == "template":
+            return "htmlBody", [args[2]]
+        raise SyntaxError(
+            f"line {lineno}: html requires: html template NAME, "
+            "html body template TEMPLATE")
+
+    if verb == "type":
+        if len(args) >= 2 and args[1] == "Result":
+            raise SyntaxError(
+                f"line {lineno}: old result type syntax is rejected; use "
+                "type NAME result ok OK_TYPE error ERROR_TYPE")
+        if len(args) >= 2 and args[1] == "result":
+            if len(args) != 6 or args[2] != "ok" or args[4] != "error":
+                raise SyntaxError(
+                    f"line {lineno}: result type requires: "
+                    "type NAME result ok OK_TYPE error ERROR_TYPE")
+            return verb, [args[0], "Result", args[3], args[5]]
+        return verb, args
+
+    if verb == "input":
+        if len(args) != 4 or args[0] != "operation":
+            raise SyntaxError(
+                f"line {lineno}: input requires: input operation OPERATION NAME TYPE")
+        return verb, [args[1], args[2], args[3]]
+
+    if verb == "output":
+        if len(args) == 5 and args[0] == "operation" and args[2] == "Result":
+            return verb, [args[1], args[2], args[3], args[4]]
+        if len(args) != 3 or args[0] != "operation":
+            raise SyntaxError(
+                f"line {lineno}: output requires: output operation OPERATION TYPE")
+        return verb, [args[1], args[2]]
+
+    if verb in ("purpose", "invariant"):
+        if len(args) < 3 or args[0] not in ("module", "operation"):
+            raise SyntaxError(
+                f"line {lineno}: {verb} requires: "
+                f"{verb} module|operation SUBJECT \"TEXT\"")
+        return verb, [args[1], *args[2:]]
+
+    if verb == "memory":
+        if len(args) < 3:
+            raise SyntaxError(
+                f"line {lineno}: memory requires: memory OPERATION SUBKIND ...")
+        subkind = args[1]
+        if subkind in ("mutable", "immutable"):
+            if len(args) < 5:
+                raise SyntaxError(
+                    f"line {lineno}: memory {subkind} requires: "
+                    f"memory OPERATION {subkind} NAME TYPE VALUE")
+        elif subkind == "heap":
+            if len(args) != 3:
+                raise SyntaxError(
+                    f"line {lineno}: memory heap requires: memory OPERATION heap MODE")
+        elif subkind == "arena":
+            if len(args) != 3:
+                raise SyntaxError(
+                    f"line {lineno}: memory arena requires: memory OPERATION arena SCOPE")
+        elif subkind == "stack":
+            if len(args) != 4 or args[2] != "max":
+                raise SyntaxError(
+                    f"line {lineno}: memory stack requires: memory OPERATION stack max SIZE")
+        else:
+            raise SyntaxError(
+                f"line {lineno}: unknown memory subkind `{subkind}`")
+        return verb, args
+
+    if verb == "storage":
+        if len(args) < 4:
+            raise SyntaxError(
+                f"line {lineno}: storage requires: storage SCOPE mutable|immutable NAME TYPE [VALUE]")
+        if args[1] not in ("mutable", "immutable"):
+            raise SyntaxError(
+                f"line {lineno}: storage mutability must be mutable or immutable")
+        return verb, args
+
+    if verb == "authority":
+        if len(args) != 3:
+            raise SyntaxError(
+                f"line {lineno}: authority requires: authority OPERATION ACTION PATH")
+        if args[2] in _AUTHORITY_ACTIONS and args[1] not in _AUTHORITY_ACTIONS:
+            raise SyntaxError(
+                f"line {lineno}: old authority order is rejected; use authority OPERATION ACTION PATH")
+        if args[1] not in _AUTHORITY_ACTIONS:
+            raise SyntaxError(
+                f"line {lineno}: authority action `{args[1]}` is not recognized")
+        return verb, args
+
+    if verb == "set":
+        if len(args) != 3 or args[0] not in ("memory", "storage"):
+            raise SyntaxError(
+                f"line {lineno}: set requires: set memory|storage NAME VALUE")
+        return verb, args
+
+    if verb == "argument":
+        if len(args) != 4:
+            raise SyntaxError(
+                f"line {lineno}: argument requires: argument CALL PARAM TYPE VALUE")
+        return verb, args
+
+    if verb == "bind":
+        if len(args) != 4 or args[0] not in ("value", "ok", "error"):
+            raise SyntaxError(
+                f"line {lineno}: bind requires: bind value|ok|error NAME TYPE CALL")
+        return verb, args
+
+    if verb == "branch":
+        if not args:
+            raise SyntaxError(
+                f"line {lineno}: branch requires: branch if|error|else ...")
+        if args[0] == "if":
+            if len(args) != 5 or args[1] != "condition" or args[3] != "target":
+                raise SyntaxError(
+                    f"line {lineno}: branch if requires: "
+                    "branch if condition CONDITION target LABEL")
+        elif args[0] == "error":
+            if len(args) != 5 or args[1] != "source" or args[3] != "target":
+                raise SyntaxError(
+                    f"line {lineno}: branch error requires: "
+                    "branch error source CALL target LABEL")
+        elif args[0] == "else":
+            if len(args) != 3 or args[1] != "target":
+                raise SyntaxError(
+                    f"line {lineno}: branch else requires: branch else target LABEL")
+        else:
+            raise SyntaxError(
+                f"line {lineno}: bare branch is rejected; use branch if/error/else or jump target LABEL")
+        return verb, args
+
+    if verb == "jump":
+        if len(args) != 2 or args[0] != "target":
+            raise SyntaxError(
+                f"line {lineno}: jump requires: jump target LABEL")
+        return verb, args
+
+    if verb == "return":
+        if not args or args[0] not in ("value", "ok", "error", "void"):
+            raise SyntaxError(
+                f"line {lineno}: return requires: return value|ok|error VALUE or return void")
+        if args[0] == "void":
+            if len(args) != 1:
+                raise SyntaxError(f"line {lineno}: return void takes no payload")
+        elif len(args) != 2:
+            raise SyntaxError(
+                f"line {lineno}: return {args[0]} requires exactly one payload")
+        return verb, args
+
+    if verb == "ignore":
+        if not args or args[0] not in ("value", "ok", "error", "void"):
+            raise SyntaxError(
+                f"line {lineno}: ignore requires: ignore value|ok|error|void ...")
+        if args[0] in ("value", "ok"):
+            if len(args) != 5 or args[1] != "source" or args[3] != "type":
+                raise SyntaxError(
+                    f"line {lineno}: ignore {args[0]} requires: "
+                    f"ignore {args[0]} source CALL type TYPE")
+            if args[4] in ("Void", "CVoid"):
+                raise SyntaxError(
+                    f"line {lineno}: ignore {args[0]} cannot discard a Void payload; use ignore void source CALL")
+        elif args[0] == "error":
+            if len(args) != 3 or args[1] != "source":
+                raise SyntaxError(
+                    f"line {lineno}: ignore error requires: ignore error source CALL")
+        elif args[0] == "void":
+            if len(args) != 3 or args[1] != "source":
+                raise SyntaxError(
+                    f"line {lineno}: ignore void requires: ignore void source CALL")
+        return verb, args
+
+    return verb, args
+
+
 # Closed set of recognized `mode` declarations. See AST.md §10.
 _KNOWN_MODES = {
     "capturedOutputReplay",
@@ -681,7 +914,8 @@ _INCOMPATIBLE_LANGUAGE_MODES = {
 }
 
 _MODULE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
-_HTML_ARG_REFERENCE_RE = re.compile(r"\{\s*htmlArg\.([A-Za-z_][A-Za-z0-9_]*)\s*\}")
+_HTML_HOLE_REFERENCE_RE = re.compile(
+    r"\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\}")
 _HTML_BRACE_CONTENT_RE = re.compile(r"\{([^{}\n]*)\}")
 _HTML_RAW_TEXT_RE = re.compile(
     r"<(style|script)\b[^>]*>.*?</\1\s*>",
@@ -697,9 +931,16 @@ _HTML_URL_ATTRS = {
     "src",
 }
 _HTML_TRUST_TYPES = {
-    "HtmlText",
-    "HtmlClass",
-    "SafeUrl",
+    "HtmlFragment",
+    "HtmlTrustedFragment",
+    "HtmlDocument",
+}
+_HTML_STRING_TYPES = {
+    "String",
+    "CNullTerminatedByteString",
+    "CString",
+}
+_HTML_FRAGMENT_TYPES = {
     "HtmlFragment",
     "HtmlTrustedFragment",
     "HtmlDocument",
@@ -1563,6 +1804,7 @@ def parse(source: str) -> Program:
                     f"line {lineno}: jsonBody requires: jsonBody NAME")
             active_json_body = _start_json_body_literal(prog, args[0], lineno)
             continue
+        verb, args = _canonicalize_syntax_row(verb, args, lineno)
         try:
             handle_top(prog, verb, args, lineno)
             if verb == "storage":
@@ -1596,12 +1838,348 @@ def _looks_like_build_tape(source: str) -> bool:
     return False
 
 
+def _looks_like_regular_build_plan(source: str) -> bool:
+    """Return True for the new regular-syntax build.sem shape.
+
+    This is intentionally a cheap lexical probe. The real validation is done
+    by parsing the file as normal SemanticScript and extracting the BuildPlan
+    jsonBody. The probe only decides whether build.sem should use that path
+    instead of the legacy closed-row build-tape validator.
+    """
+    saw_build_plan_record = False
+    build_plan_storage_names = set()
+    json_body_names = set()
+    for raw in source.splitlines():
+        toks = tokenize_line(raw)
+        if not toks or toks[0] == "#":
+            continue
+        verb, args = toks[0], toks[1:]
+        if verb == "record" and args and args[0] == "BuildPlan":
+            saw_build_plan_record = True
+        elif (verb == "storage" and len(args) >= 4
+              and args[0] == "module" and args[1] == "immutable"
+              and args[3] == "BuildPlan"):
+            build_plan_storage_names.add(args[2])
+        elif verb == "jsonBody" and args:
+            json_body_names.add(args[0])
+    return (
+        saw_build_plan_record
+        and bool(build_plan_storage_names)
+        and bool(build_plan_storage_names & json_body_names)
+    )
+
+
 def _declares_language_mode(source: str) -> bool:
     for raw in source.splitlines():
         toks = tokenize_line(raw)
         if toks and toks[0] == "languageMode":
             return True
     return False
+
+
+def _language_mode_rows_from_source(source: str):
+    rows = []
+    for raw in source.splitlines():
+        toks = tokenize_line(raw)
+        if toks and toks[0] == "languageMode":
+            rows.append(raw.strip())
+    return rows
+
+
+def _sem_string(value) -> str:
+    return json.dumps(str(value), ensure_ascii=False)
+
+
+def _sem_literal(value) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value).lower()
+    return _sem_string(value)
+
+
+def _build_plan_required_object(parent: dict, key: str, path: str) -> dict:
+    value = parent.get(key)
+    if not isinstance(value, dict):
+        raise SyntaxError(f"BuildPlan `{path}.{key}` must be an object")
+    return value
+
+
+def _build_plan_required_text(parent: dict, key: str, path: str) -> str:
+    value = parent.get(key)
+    if not isinstance(value, str) or not value:
+        raise SyntaxError(f"BuildPlan `{path}.{key}` must be a non-empty string")
+    return value
+
+
+def _build_plan_optional_text(parent: dict, key: str, default: str = None):
+    value = parent.get(key, default)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise SyntaxError(f"BuildPlan field `{key}` must be a string")
+    return value
+
+
+def _build_plan_required_int(parent: dict, key: str, path: str) -> int:
+    value = parent.get(key)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise SyntaxError(f"BuildPlan `{path}.{key}` must be an integer")
+    return value
+
+
+def _build_plan_boolish_choice(value, *, allow_auto: bool = False) -> str:
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    if isinstance(value, str):
+        normalized = value.strip()
+        lowered = normalized.lower()
+        if allow_auto and lowered == "auto":
+            return "auto"
+        if lowered in {"yes", "true", "on", "1"}:
+            return "yes"
+        if lowered in {"no", "false", "off", "0"}:
+            return "no"
+    expected = "yes/no/auto" if allow_auto else "yes/no"
+    raise SyntaxError(f"BuildPlan boolean build option must be {expected}")
+
+
+def _build_plan_import_alias(module_name: str) -> str:
+    leaf = module_name.rsplit(".", 1)[-1]
+    alias = re.sub(r"[^A-Za-z0-9_]", "_", leaf)
+    if not alias or not re.match(r"^[A-Za-z_]", alias):
+        alias = f"module_{alias}"
+    return alias
+
+
+def _build_plan_module_entries(plan: dict):
+    if "modules" in plan:
+        modules = _build_plan_required_object(plan, "modules", "BuildPlan")
+        if not modules:
+            raise SyntaxError("BuildPlan `modules` must contain at least one module")
+        entries = []
+        for module_key, module_spec in modules.items():
+            if not isinstance(module_key, str) or not module_key:
+                raise SyntaxError("BuildPlan module keys must be non-empty strings")
+            if not isinstance(module_spec, dict):
+                raise SyntaxError(f"BuildPlan `modules.{module_key}` must be an object")
+            entries.append((module_key, module_spec))
+        main_key = _build_plan_required_text(plan, "mainModule", "BuildPlan")
+        main_operation = _build_plan_optional_text(plan, "mainOperation")
+        main_matches = [module_spec for key, module_spec in entries if key == main_key]
+        if len(main_matches) != 1:
+            raise SyntaxError(
+                f"BuildPlan mainModule `{main_key}` must name one entry in `modules`")
+        return entries, main_key, main_matches[0], main_operation
+
+    module = _build_plan_required_object(plan, "module", "BuildPlan")
+    main_operation = (
+        _build_plan_optional_text(module, "mainOperation")
+        or _build_plan_optional_text(plan, "mainOperation")
+    )
+    return [("main", module)], "main", module, main_operation
+
+
+def _regular_build_plan_preserved_rows(source: str):
+    preserved_verbs = {
+        "iconRoleDefinition", "icon", "iconRole", "iconPurpose",
+        "iconImage", "iconImageGroup", "iconImagePath", "iconImageFormat",
+        "iconImageWidth", "iconImageHeight", "iconImageScale",
+        "iconImageDepth", "iconImagePlatform", "iconImagePurpose",
+    }
+    rows = []
+    for raw in source.splitlines():
+        toks = tokenize_line(raw)
+        if toks and toks[0] in preserved_verbs:
+            rows.append(raw.rstrip())
+    return rows
+
+
+def _regular_build_plan_fields(source: str, source_path: str) -> dict:
+    try:
+        plan_prog = parse(source)
+    except SyntaxError as e:
+        raise SyntaxError(f"regular BuildPlan parse failed: {e}") from e
+
+    matches = [
+        (name, payload)
+        for name, payload in plan_prog.record_json_constants.items()
+        if payload.get("recordType") == "BuildPlan"
+    ]
+    if len(matches) != 1:
+        raise SyntaxError(
+            f"{os.path.basename(str(source_path))} requires exactly one "
+            f"module immutable BuildPlan jsonBody; found {len(matches)}")
+    _name, payload = matches[0]
+    fields = payload.get("fields")
+    if not isinstance(fields, dict):
+        raise SyntaxError("BuildPlan jsonBody did not produce an object")
+    return fields
+
+
+def _regular_build_plan_compat_source(source: str, source_path: str) -> str:
+    """Lower a regular BuildPlan file to the compiler's existing build rows.
+
+    The generated rows are an internal compatibility source used by semsc's
+    import resolver and backend. The user-authored file remains the typed
+    record/jsonBody syntax.
+    """
+    plan = _regular_build_plan_fields(source, source_path)
+    project = _build_plan_required_object(plan, "project", "BuildPlan")
+    module_entries, _main_key, main_module, main_operation = (
+        _build_plan_module_entries(plan))
+    target = _build_plan_required_object(plan, "target", "BuildPlan")
+    version_info = plan.get("versionInfo") or {}
+    if not isinstance(version_info, dict):
+        raise SyntaxError("BuildPlan `versionInfo` must be an object when present")
+
+    project_id = _build_plan_required_text(project, "id", "BuildPlan.project")
+    project_name = _build_plan_required_text(project, "name", "BuildPlan.project")
+    source_root = (
+        _build_plan_optional_text(project, "sourceRoot")
+        or _build_plan_optional_text(main_module, "sourceRoot")
+        or "."
+    )
+    main_file = _build_plan_required_text(main_module, "mainFile", "BuildPlan.modules")
+    target_runtime = _build_plan_required_text(target, "runtime", "BuildPlan.target")
+    native_runtime = _build_plan_optional_text(target, "nativeRuntime", "native") or "native"
+    native_runtime_version = target.get("nativeRuntimeVersion", 1)
+    if isinstance(native_runtime_version, bool) or not isinstance(native_runtime_version, int):
+        raise SyntaxError("BuildPlan `target.nativeRuntimeVersion` must be an integer")
+
+    rows = []
+    rows.extend(_language_mode_rows_from_source(source))
+    rows.extend([
+        f"buildProject {project_id}",
+        f"project {_sem_string(project_name)}",
+        f"modulePath {project_id} {_sem_string(_build_plan_required_text(project, 'modulePath', 'BuildPlan.project'))}",
+        f"languageVersion {project_id} {_sem_string(_build_plan_required_text(project, 'languageVersion', 'BuildPlan.project'))}",
+        f"projectVersion {project_id} {_sem_string(_build_plan_required_text(project, 'projectVersion', 'BuildPlan.project'))}",
+        f"projectLicense {project_id} {_sem_string(_build_plan_required_text(project, 'license', 'BuildPlan.project'))}",
+        f"sourceRoot {project_id} {_sem_string(source_root)}",
+    ])
+    for module_key, module_spec in module_entries:
+        module_name = _build_plan_required_text(
+            module_spec, "moduleName", f"BuildPlan.modules.{module_key}")
+        if not _MODULE_NAME_RE.match(module_name):
+            raise SyntaxError(
+                f"BuildPlan modules.{module_key}.moduleName `{module_name}` "
+                "is not a valid dotted namespace")
+        source_path_value = (
+            _build_plan_optional_text(module_spec, "sourcePath")
+            or _build_plan_optional_text(module_spec, "sourceRoot")
+            or source_root
+        )
+        rows.append(
+            f"registerModule {project_id} {module_name} "
+            f"{_sem_string(source_path_value)}")
+    rows.extend([
+        f"mainFile {project_id} {_sem_string(main_file)}",
+    ])
+    if main_operation:
+        rows.append(f"mainOperation {project_id} {main_operation}")
+    for key, verb in (
+        ("testPattern", "testPattern"),
+        ("testRoot", "testRoot"),
+    ):
+        value = (
+            _build_plan_optional_text(project, key)
+            or _build_plan_optional_text(main_module, key)
+        )
+        if value:
+            rows.append(f"{verb} {project_id} {_sem_string(value)}")
+
+    constants = plan.get("constants")
+    if constants is not None:
+        if not isinstance(constants, dict):
+            raise SyntaxError("BuildPlan `constants` must be an object when present")
+        for const_name, const_spec in constants.items():
+            if not isinstance(const_spec, dict):
+                raise SyntaxError(f"BuildPlan `constants.{const_name}` must be an object")
+            const_type = _build_plan_required_text(
+                const_spec, "type", f"BuildPlan.constants.{const_name}")
+            if "value" not in const_spec:
+                raise SyntaxError(
+                    f"BuildPlan `constants.{const_name}.value` is required")
+            rows.append(
+                f"buildConstant {project_id} {const_name} {const_type} "
+                f"{_sem_literal(const_spec.get('value'))}")
+
+    rows.extend([
+        f"target {target_runtime}",
+        f"targetRuntime {project_id} {target_runtime}",
+        f"runtime {native_runtime} {native_runtime_version}",
+        f"buildProfile {project_id} {_build_plan_required_text(target, 'profile', 'BuildPlan.target')}",
+        f"runtimeChecks {project_id} {_build_plan_required_text(target, 'runtimeChecks', 'BuildPlan.target')}",
+        f"persistLlvmIr {project_id} {_build_plan_boolish_choice(target.get('persistLlvmIr'), allow_auto=True)}",
+        f"optLevel {project_id} {_build_plan_required_int(target, 'optLevel', 'BuildPlan.target')}",
+    ])
+
+    emit_llvm = _build_plan_optional_text(target, "emitLlvmIr")
+    if emit_llvm:
+        rows.append(f"emitLlvmIr {project_id} {emit_llvm}")
+    if "emitOptimizedLlvmIr" in target:
+        rows.append(
+            f"emitOptimizedLlvmIr {project_id} "
+            f"{_build_plan_boolish_choice(target.get('emitOptimizedLlvmIr'))}")
+    for key, verb in (
+        ("buildFolderName", "buildFolderName"),
+        ("cpuBaseline", "cpuBaseline"),
+        ("cpuTune", "cpuTune"),
+        ("cpuFeatureCheck", "cpuFeatureCheck"),
+        ("nativeHttpHost", "nativeHttpHost"),
+        ("resourcesDir", "resourcesDir"),
+        ("buildDir", "buildDir"),
+        ("buildRoot", "buildRoot"),
+        ("llvmIrOutput", "llvmIrOutput"),
+        ("optimizedLlvmIrOutput", "optimizedLlvmIrOutput"),
+        ("docsOutput", "docsOutput"),
+        ("nativeOutput", "nativeOutput"),
+        ("comptimeOperation", "comptimeOperation"),
+    ):
+        value = _build_plan_optional_text(target, key)
+        if value:
+            rows.append(f"{verb} {project_id} {_sem_string(value)}")
+    if "nativeHttpPort" in target:
+        rows.append(
+            f"nativeHttpPort {project_id} "
+            f"{_build_plan_required_int(target, 'nativeHttpPort', 'BuildPlan.target')}")
+    if "keepResources" in target:
+        rows.append(
+            f"keepResources {project_id} "
+            f"{_build_plan_boolish_choice(target.get('keepResources'))}")
+    if "formatterLineWidth" in target:
+        rows.append(
+            f"formatterSetting {project_id} lineWidth "
+            f"{_build_plan_required_int(target, 'formatterLineWidth', 'BuildPlan.target')}")
+    linter_max_tier = _build_plan_optional_text(target, "linterMaxTier")
+    if linter_max_tier:
+        rows.append(f"linterSetting {project_id} maxTier {linter_max_tier}")
+
+    for key in _PROJECT_METADATA_VERBS:
+        value = version_info.get(key)
+        if isinstance(value, str) and value:
+            rows.append(f"{key} {_sem_string(value)}")
+    metadata = version_info.get("metadata") or {}
+    if metadata:
+        if not isinstance(metadata, dict):
+            raise SyntaxError("BuildPlan `versionInfo.metadata` must be an object")
+        for key, value in metadata.items():
+            if not isinstance(key, str) or not isinstance(value, str):
+                raise SyntaxError("BuildPlan versionInfo.metadata keys and values must be strings")
+            metadata_key = key[:1].upper() + key[1:]
+            rows.append(f"metadata {_sem_string(metadata_key)} {_sem_string(value)}")
+
+    if main_operation:
+        rows.append(f"entry console {main_operation}")
+    main_module_name = _build_plan_required_text(
+        main_module, "moduleName", "BuildPlan.modules")
+    rows.append(
+        f"import {_build_plan_import_alias(main_module_name)} {main_module_name}")
+    rows.extend(_regular_build_plan_preserved_rows(source))
+    compat_source = "\n".join(rows) + "\n"
+    _validate_build_tape_source(compat_source, source_path)
+    return compat_source
 
 
 def _normalize_build_tape_path(source_path: str, path_text: str,
@@ -1626,13 +2204,20 @@ def _validate_build_tape_source(source: str, source_path: str) -> None:
     examples stay parseable. A build tape is different: it is the project
     contract, so malformed project rows should fail before imports/codegen.
     """
+    if _looks_like_regular_build_plan(source):
+        # Validate the typed BuildPlan by lowering it to the current backend
+        # contract and then validating that generated contract. This keeps the
+        # user syntax regular while preserving the legacy build invariants.
+        _regular_build_plan_compat_source(source, source_path)
+        return
+
     build_projects = []
     rows_by_project = {}
     singleton_seen = {}
     source_roots = {}
     target_runtime_by_project = {}
     allowed_non_project_verbs = (
-        {"buildProject", "project", "target", "runtime", "entry", "importModule",
+        {"buildProject", "project", "target", "runtime", "entry", "import",
          "moduleFolder", "languageMode"}
         | set(_PROJECT_METADATA_VERBS)
         | {
@@ -2101,12 +2686,9 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
                 "dependencyFunctionOutput", "dependencyFunctionEffect",
                 "dependencyFunctionAsync"):
         return
-    if verb == "importModule":
-        # Compatibility:
-        #   importModule DOTTED.PATH [as ALIAS]
-        # Preferred project form:
-        #   importModule ALIAS DOTTED.PATH
-        module_path, alias, _syntax = _parse_import_module_args(args)
+    if verb == "import":
+        # New syntax: import ALIAS MODULE_PATH
+        module_path, alias = args[1], args[0]
         prog.imports.append((module_path, alias))
         if alias:
             prog.import_aliases[alias] = module_path
@@ -2297,19 +2879,6 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
             raise SyntaxError(f"htmlTemplate: template `{name}` already declared")
         prog.html_templates[name] = HtmlTemplate(name, lineno)
         return
-    if verb == "htmlArg":
-        if len(args) < 3:
-            raise SyntaxError("htmlArg requires: htmlArg TEMPLATE ARG_NAME TYPE")
-        template_name, arg_name, arg_type = args[0], args[1], args[2]
-        template = prog.html_templates.get(template_name)
-        if template is None:
-            raise SyntaxError(
-                f"htmlArg references unknown htmlTemplate: {template_name}")
-        if any(existing_name == arg_name for existing_name, _typ, _line in template.args):
-            raise SyntaxError(
-                f"htmlArg: template `{template_name}` already declares `{arg_name}`")
-        template.args.append((arg_name, arg_type, lineno))
-        return
     if verb == "htmlBody":
         if not args:
             raise SyntaxError("htmlBody requires: htmlBody TEMPLATE")
@@ -2334,13 +2903,18 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
         }.get(verb, prog.policies)
         bucket[args[0]] = {"kind": verb, "attrs": args[1:]}
         return
-    if verb in ("schema", "unknownFields", "guarantee", "input", "output", "purpose"):
+    if verb in ("schema", "unknownFields", "guarantee", "input", "output",
+                "purpose", "invariant"):
         # These continue an abstraction declaration started earlier OR
         # (for `input`/`output`/`purpose`) belong to an operation header.
-        if verb in ("purpose", "input", "output") and prog.current_op is not None:
+        if verb in ("purpose", "invariant", "input", "output") and prog.current_op is not None:
             # Spec §9 ownership: each header line's first arg names the
             # operation it belongs to. Reject if it doesn't match.
             if args and args[0] != prog.current_op.name:
+                if args[0] not in prog.operations:
+                    prog.hard_metadata.setdefault(args[0], {}).setdefault(verb, []).extend(
+                        [_unwrap(t) for t in args[1:]])
+                    return
                 raise SyntaxError(
                     f"{verb}: owner `{args[0]}` does not match current "
                     f"operation `{prog.current_op.name}` (spec §9 — header "
@@ -2777,7 +3351,6 @@ def llvm_type_for(prog: Program, typename: str):
     # i8* — every pointer-shaped C type carries an explicit role name
     if typename in (
         "String", "CNullTerminatedByteString", "CString",
-        "HtmlText", "HtmlClass", "SafeUrl",
         "HtmlFragment", "HtmlTrustedFragment", "HtmlDocument",
         "HtmlTemplate",
     ):
@@ -2852,6 +3425,19 @@ def _operation_output_contract(prog: Program, op: Operation) -> OutputContract:
                         "declares `Result` output without both OK and ERROR "
                         "types"))
             ok_type = tokens[1]
+        elif len(tokens) == 1:
+            full = resolve_alias_full(prog, tokens[0])
+            if full and full[0] == "Result":
+                if len(full) < 3:
+                    return OutputContract(
+                        lineno, tokens, problem="malformedOutputContract",
+                        message=(
+                            f"malformedOutputContract: operation `{op.name}` "
+                            f"declares result alias `{tokens[0]}` without both "
+                            "OK and ERROR types"))
+                ok_type = full[1]
+            else:
+                ok_type = tokens[0]
         else:
             ok_type = tokens[0]
 
@@ -3754,26 +4340,35 @@ class Codegen:
 
     def _validate_html_dynamic_holes(self, template: HtmlTemplate, body: str):
         masked = self._html_mask_raw_text_elements(body)
-        html_arg_spans = {
+        html_hole_spans = {
             (match.start(), match.end())
-            for match in _HTML_ARG_REFERENCE_RE.finditer(masked)
+            for match in _HTML_HOLE_REFERENCE_RE.finditer(masked)
         }
         for match in _HTML_BRACE_CONTENT_RE.finditer(masked):
-            if (match.start(), match.end()) in html_arg_spans:
+            if (match.start(), match.end()) in html_hole_spans:
                 continue
             content = match.group(1).strip()
             if not content:
                 continue
             raise ValueError(
                 f"htmlBody {template.name}: dynamic hole `{{{content}}}` "
-                "must reference declared htmlArg.NAME")
+                "must be a bare name or dotted field path")
 
     def _html_hole_context(self, body: str, hole_start: int):
+        for raw_match in _HTML_RAW_TEXT_RE.finditer(body):
+            if raw_match.start() < hole_start < raw_match.end():
+                return "rawText", raw_match.group(1).lower()
+        comment_start = body.rfind("<!--", 0, hole_start)
+        comment_end = body.rfind("-->", 0, hole_start)
+        if comment_start > comment_end:
+            return "comment", None
         last_lt = body.rfind("<", 0, hole_start)
         last_gt = body.rfind(">", 0, hole_start)
         if last_lt <= last_gt:
             return "text", None
         tag_prefix = body[last_lt + 1:hole_start]
+        if tag_prefix.lstrip().startswith("!"):
+            return "doctype", None
         attr_match = _HTML_ATTR_VALUE_PREFIX_RE.search(tag_prefix)
         if attr_match:
             return "attribute", attr_match.group(1).lower()
@@ -3788,42 +4383,58 @@ class Codegen:
         )
         if context_kind == "tag":
             raise ValueError(
-                f"htmlBody {template.name}: htmlArg `{arg_name}` cannot "
+                f"htmlBody {template.name}: hole `{arg_name}` cannot "
                 "hydrate HTML tag syntax; dynamic holes must be text content "
                 "or quoted attribute values")
+        if context_kind == "comment":
+            raise ValueError(
+                f"htmlBody {template.name}: hole `{arg_name}` cannot "
+                "hydrate HTML comments")
+        if context_kind == "doctype":
+            raise ValueError(
+                f"htmlBody {template.name}: hole `{arg_name}` cannot "
+                "hydrate HTML doctypes or declarations")
+        if context_kind == "rawText":
+            raise ValueError(
+                f"htmlBody {template.name}: hole `{arg_name}` cannot "
+                f"hydrate raw `{attr_name}` text")
+        if resolved in _HTML_STRING_TYPES:
+            is_string_like = True
+        else:
+            is_string_like = resolve_alias(self.prog, resolved) in _HTML_STRING_TYPES
         if context_kind == "text":
-            if resolved in ("HtmlClass", "SafeUrl"):
+            if not is_string_like and resolved not in _HTML_FRAGMENT_TYPES:
                 raise ValueError(
-                    f"htmlBody {template.name}: htmlArg `{arg_name}` has "
-                    f"type `{type_name}` and cannot hydrate text content")
+                    f"htmlBody {template.name}: hole `{arg_name}` has "
+                    f"type `{type_name}`; text holes require String or "
+                    "an explicit HTML fragment/document type")
             return
         if context_kind != "attribute":
             return
-        if resolved in ("HtmlFragment", "HtmlTrustedFragment", "HtmlDocument"):
+        if resolved in _HTML_FRAGMENT_TYPES:
             raise ValueError(
-                f"htmlBody {template.name}: htmlArg `{arg_name}` has "
+                f"htmlBody {template.name}: hole `{arg_name}` has "
                 f"type `{type_name}` and cannot hydrate attribute `{attr_name}`")
-        if attr_name == "class" and resolved != "HtmlClass":
+        if attr_name in _HTML_URL_ATTRS:
             raise ValueError(
-                f"htmlBody {template.name}: class attribute htmlArg "
-                f"`{arg_name}` requires HtmlClass, got `{type_name}`")
-        if attr_name in _HTML_URL_ATTRS and resolved != "SafeUrl":
+                f"htmlBody {template.name}: dynamic `{attr_name}` attribute "
+                f"hole `{arg_name}` is rejected; URL-bearing attributes must "
+                "be static until a dedicated safe-url contract exists")
+        if not is_string_like:
             raise ValueError(
-                f"htmlBody {template.name}: `{attr_name}` attribute htmlArg "
-                f"`{arg_name}` requires SafeUrl, got `{type_name}`")
+                f"htmlBody {template.name}: attribute hole "
+                f"`{arg_name}` requires a string-like type, got `{type_name}`")
 
     def _html_arg_escape_mode(self, type_name: str, context_kind: str):
         resolved = (
             type_name if type_name in _HTML_TRUST_TYPES
             else resolve_alias(self.prog, type_name)
         )
-        if context_kind == "text" and resolved in (
-            "HtmlFragment", "HtmlTrustedFragment", "HtmlDocument",
-        ):
+        if context_kind == "text" and resolved in _HTML_FRAGMENT_TYPES:
             return "raw"
         if context_kind == "attribute":
             return "attribute"
-        if resolved in ("HtmlText", "String", "CNullTerminatedByteString", "CString"):
+        if resolved in _HTML_STRING_TYPES:
             return "text"
         return "raw"
 
@@ -3831,42 +4442,41 @@ class Codegen:
         if not template.body_lines:
             raise ValueError(
                 f"htmlBody {template.name}: template has no body lines")
-        arg_types = {name: typ for name, typ, _line in template.args}
+        declared_arg_types = {name: typ for name, typ, _line in template.args}
+        required_roots = {}
         parts = []
         body = "\n".join(line for line, _lineno in template.body_lines)
         if template.body_lines:
             body += "\n"
-        masked_body = self._html_mask_raw_text_elements(body)
         self._validate_html_dynamic_holes(template, body)
         cursor = 0
-        for match in _HTML_ARG_REFERENCE_RE.finditer(masked_body):
+        for match in _HTML_HOLE_REFERENCE_RE.finditer(body):
             static_text = body[cursor:match.start()]
             if static_text:
                 parts.append(("static", static_text, None, None))
-            arg_name = match.group(1)
-            if arg_name not in arg_types:
+            hole_path = match.group(1)
+            arg_name = hole_path.split(".", 1)[0]
+            if declared_arg_types and arg_name not in declared_arg_types:
                 raise ValueError(
-                    f"htmlBody {template.name}: unknown htmlArg `{arg_name}`")
+                    f"htmlBody {template.name}: unknown html hole `{arg_name}`")
+            required_roots.setdefault(arg_name, declared_arg_types.get(arg_name))
             context_kind, attr_name = self._html_hole_context(body, match.start())
-            self._validate_html_arg_context(
-                template, arg_name, arg_types[arg_name], context_kind, attr_name)
-            parts.append(("arg", arg_name, context_kind, attr_name))
+            parts.append(("arg", hole_path, context_kind, attr_name))
             cursor = match.end()
         tail_text = body[cursor:]
         if tail_text:
             parts.append(("static", tail_text, None, None))
-        return parts, arg_types
+        return parts, required_roots
 
     def _html_arg_as_cstring(self, builder, value, arg_name: str, type_name: str):
-        resolved = resolve_alias(self.prog, type_name)
-        if resolved not in (
-            "HtmlText", "HtmlClass", "SafeUrl",
-            "HtmlFragment", "HtmlTrustedFragment", "HtmlDocument",
-            "String", "CNullTerminatedByteString", "CString",
-        ):
+        resolved = (
+            type_name if type_name in _HTML_TRUST_TYPES
+            else resolve_alias(self.prog, type_name)
+        )
+        if resolved not in (_HTML_STRING_TYPES | _HTML_FRAGMENT_TYPES):
             raise ValueError(
-                f"htmlArg `{arg_name}` has type `{type_name}`; "
-                "html.hydrate requires a string-shaped HTML value type")
+                f"html hole `{arg_name}` has type `{type_name}`; "
+                "html.hydrate requires String or an explicit HTML fragment/document type")
         if isinstance(value.type, ir.IntType):
             return builder.inttoptr(value, I8P)
         if isinstance(value.type, ir.PointerType) and value.type != I8P:
@@ -3996,8 +4606,8 @@ class Codegen:
         return dst_phi
 
     def _emit_html_hydrate(self, builder, call_name, call, template: HtmlTemplate,
-                           arg_val_named):
-        parts, arg_types = self._html_template_parts_and_args(template)
+                           arg_val_named, arg_path_named=None):
+        parts, required_roots = self._html_template_parts_and_args(template)
         # One global buffer per hydrate call site. This is intentionally simple
         # and inspectable for the first feature slice: the pointer remains valid
         # after a render helper returns, while later calls to the same helper may
@@ -4012,13 +4622,22 @@ class Codegen:
             raise ValueError(
                 f"htmlBody {template.name}: static HTML is {static_byte_count} "
                 f"bytes, exceeding hydrate buffer capacity {buffer_size - 1}")
-        for required_arg in arg_types:
+        arg_types = dict(call.get("arg_types", {}))
+        for required_arg, declared_type in required_roots.items():
             if required_arg not in call["args"]:
                 raise ValueError(
                     f"{call_name}: missing required arg `{required_arg}` "
                     f"for htmlTemplate `{template.name}`")
+            if declared_type and required_arg in arg_types:
+                resolved_declared = resolve_alias(self.prog, declared_type)
+                resolved_provided = resolve_alias(self.prog, arg_types[required_arg])
+                if resolved_declared != resolved_provided:
+                    raise ValueError(
+                        f"{call_name}: arg `{required_arg}` has type "
+                        f"`{arg_types[required_arg]}` but htmlTemplate "
+                        f"`{template.name}` declared `{declared_type}`")
         for provided_arg in call["args"]:
-            if provided_arg not in arg_types:
+            if provided_arg not in required_roots:
                 raise ValueError(
                     f"{call_name}: arg `{provided_arg}` is not declared by "
                     f"htmlTemplate `{template.name}`")
@@ -4036,17 +4655,29 @@ class Codegen:
             name=f"{call_name}_html_limit")
         write_ptr = buffer_ptr
         arg_index = 0
-        for part_index, (kind, value_text, context_kind, _attr_name) in enumerate(parts):
+        for part_index, (kind, value_text, context_kind, attr_name) in enumerate(parts):
             if kind == "static":
                 write_ptr = self._emit_html_append_static(
                     builder, write_ptr, limit_ptr, value_text,
                     f"{call_name}_{part_index}_static")
                 continue
-            arg_name = value_text
+            hole_path = value_text
+            arg_name = hole_path.split(".", 1)[0]
+            if "." in hole_path:
+                if arg_path_named is None:
+                    raise ValueError(
+                        f"htmlBody {template.name}: record-field hole "
+                        f"`{hole_path}` is not available in this context")
+                value, type_name = arg_path_named(hole_path)
+            else:
+                type_name = arg_types.get(arg_name) or required_roots.get(arg_name) or "String"
+                value = arg_val_named(arg_name)
+            self._validate_html_arg_context(
+                template, hole_path, type_name, context_kind, attr_name)
             value = self._html_arg_as_cstring(
-                builder, arg_val_named(arg_name), arg_name, arg_types[arg_name])
+                builder, value, hole_path, type_name)
             escape_mode = self._html_arg_escape_mode(
-                arg_types[arg_name], context_kind)
+                type_name, context_kind)
             if escape_mode == "raw":
                 write_ptr = self._emit_html_append_cstring(
                     builder, write_ptr, value, limit_ptr,
@@ -4678,6 +5309,7 @@ class Codegen:
                 "line": lineno,
                 "target": target,
                 "args": {},
+                "arg_types": {},
                 "arg_lines": {},
                 "result": None,
                 "error_value": None,
@@ -5129,10 +5761,22 @@ class Codegen:
             builder, "op.enter", "operation", op.name, op.name,
             "", op.decl_line)
 
+        branch_else_by_line = {}
+        attached_branch_else_lines = set()
+        for idx, (row_verb, row_args, row_ln) in enumerate(op.lines[:-1]):
+            if row_verb != "branch" or not row_args or row_args[0] not in ("if", "error"):
+                continue
+            next_verb, next_args, next_ln = op.lines[idx + 1]
+            if next_verb == "branch" and next_args[:2] == ["else", "target"]:
+                branch_else_by_line[row_ln] = next_args[2]
+                attached_branch_else_lines.add(next_ln)
+
         for verb, args, _ln in op.lines:
             # ----- metadata: ignored at codegen -----
-            if verb in ("input", "output", "effect", "memory", "async",
+            if verb in ("input", "output", "effect", "async",
                         "purpose", "invariant", "warning"):
+                continue
+            if verb == "memory" and len(args) >= 2 and args[1] in ("heap", "arena", "stack"):
                 continue
 
             if verb == "label":
@@ -5147,6 +5791,47 @@ class Codegen:
                 continue
 
             if verb == "const":
+                continue
+
+            if verb == "memory" and len(args) >= 5 and args[1] in ("mutable", "immutable"):
+                # memory OPERATION mutable|immutable NAME TYPE INITIAL_VALUE
+                _owner, mutability = args[0], args[1]
+                name, typ_name = args[2], args[3]
+                raw = _unwrap(args[4])
+                if mutability == "immutable":
+                    op.consts[name] = (typ_name, raw)
+                    continue
+                llty = llvm_type_for(prog, typ_name)
+                if llty is None:
+                    raise ValueError(f"memory: unsupported type {typ_name}")
+                with builder.goto_entry_block():
+                    slot = builder.alloca(llty, name=name)
+                if isinstance(raw, str):
+                    try:
+                        init = resolve(raw)
+                    except ValueError:
+                        init = emit_const_value(typ_name, raw)
+                else:
+                    init = emit_const_value(typ_name, raw)
+                if init is SENTINEL:
+                    raise ValueError("memory: cannot initialize from opaque input")
+                if init.type != llty:
+                    if isinstance(init.type, ir.IntType) and isinstance(llty, ir.IntType):
+                        if init.type.width < llty.width:
+                            init = (builder.zext if init.type.width == 1 else builder.sext)(
+                                init, llty)
+                        else:
+                            init = builder.trunc(init, llty)
+                    elif isinstance(init.type, ir.IntType) and isinstance(llty, ir.PointerType):
+                        init = builder.inttoptr(init, llty)
+                    elif isinstance(init.type, ir.PointerType) and isinstance(llty, ir.IntType):
+                        init = builder.ptrtoint(init, llty)
+                    elif isinstance(init.type, ir.PointerType) and isinstance(llty, ir.PointerType):
+                        init = builder.bitcast(init, llty)
+                builder.store(init, slot)
+                binds[name] = slot
+                var_types[name] = llty
+                is_var.add(name)
                 continue
 
             if verb == "var":
@@ -5210,12 +5895,9 @@ class Codegen:
                 continue
 
             if verb == "set":
-                # Refined syntax: `set <scope> NAME VALUE [...]` where scope
-                # is `local`, `module`, or `sharedState`. Legacy form is
-                # `set NAME VALUE`. Distinguish by checking whether args[0]
-                # is a known scope keyword.
+                # Syntax-cutover form: set memory|storage NAME VALUE.
                 scope_prefixed = bool(args and args[0] in
-                                       ("local", "module", "sharedState"))
+                                       ("memory", "storage", "sharedState"))
                 if scope_prefixed:
                     name, value_name = args[1], args[2]
                 else:
@@ -5224,7 +5906,7 @@ class Codegen:
                 # LLVM global. Owner / guard authority is accepted as metadata
                 # but not enforced — surfacing it requires real ownership
                 # tracking, which the spec leaves as future work.
-                if (scope_prefixed and args[0] in ("module", "sharedState")
+                if (scope_prefixed and args[0] in ("storage", "sharedState")
                         and name in self._mutable_globals):
                     gv = self._mutable_globals[name]
                     gv_ty = gv.type.pointee
@@ -5241,11 +5923,10 @@ class Codegen:
                     builder.store(new_val, gv)
                     continue
                 if name not in is_var:
-                    # Refined-syntax `set local NAME VALUE` may refer to a
-                    # storage-local that wasn't surfaced as a var in this
-                    # compiler's model. Treat as a no-op so the program
-                    # still compiles.
-                    if scope_prefixed:
+                    # Some refined metadata surfaces non-lowered storage;
+                    # keep storage writes to those declarations as no-ops,
+                    # but require new `set memory` rows to hit real memory.
+                    if scope_prefixed and args[0] != "memory":
                         continue
                     raise ValueError(f"set: {name} is not a var")
                 new_val = resolve(value_name)
@@ -5284,9 +5965,10 @@ class Codegen:
                 calls[call_name] = make_call(call_name, "record.build", _ln)
                 continue
 
-            if verb == "arg":
-                call_name, arg_name, value_name = args[0], args[1], args[2]
+            if verb == "argument":
+                call_name, arg_name, _type_name, value_name = args[0], args[1], args[2], args[3]
                 calls[call_name]["args"][arg_name] = value_name
+                calls[call_name]["arg_types"][arg_name] = _type_name
                 calls[call_name]["arg_lines"][arg_name] = _ln
                 continue
 
@@ -5411,8 +6093,8 @@ class Codegen:
                     trace_call_event("call.end", args[0])
                 continue
 
-            if verb in ("bindOk", "bind"):
-                value_name, _type_name, call_name = args[0], args[1], args[2]
+            if verb == "bind" and args[0] in ("value", "ok"):
+                _variant, value_name, _type_name, call_name = args[0], args[1], args[2], args[3]
                 if _type_name in prog.records and "record_result" in calls[call_name]:
                     record_values[value_name] = calls[call_name]["record_result"]
                     binds[value_name] = ir.Constant(I64, 0)
@@ -5430,8 +6112,8 @@ class Codegen:
                     bind_slots[value_name] = slot
                 continue
 
-            if verb == "bindError":
-                value_name, _type_name, call_name = args[0], args[1], args[2]
+            if verb == "bind" and args[0] == "error":
+                _variant, value_name, _type_name, call_name = args[0], args[1], args[2], args[3]
                 call = calls[call_name]
                 # Prefer the explicit error value if the call recorded one
                 # (e.g. checked arithmetic exposes an overflow flag); otherwise
@@ -5439,23 +6121,11 @@ class Codegen:
                 binds[value_name] = call["error_value"] if call["error_value"] is not None else call["result"]
                 continue
 
-            if verb == "ignoreOk":
-                # ignoreOk CALL_NAME TYPE
-                # Explicitly acknowledges the success leg of CALL_NAME and
-                # discards its value. The line exists so the source carries
-                # the fact that the success value is intentionally unused
-                # (rather than silently dropped by the absence of a bindOk).
-                if len(args) < 2:
-                    raise SyntaxError("ignoreOk requires: ignoreOk CALL_NAME TYPE")
-                continue
-
-            if verb == "ignoreValue":
-                # ignoreValue CALL_NAME TYPE
-                # Infallible analogue of ignoreOk: acknowledges that an
-                # infallible call's value is intentionally discarded. The line
-                # carries the discard fact so it is not hidden behavior.
-                if len(args) < 2:
-                    raise SyntaxError("ignoreValue requires: ignoreValue CALL_NAME TYPE")
+            if verb == "ignore":
+                # ignore value|ok source CALL type TYPE
+                # ignore error|void source CALL
+                # The parser has already validated the role words. At lowering
+                # time the row is an explicit disposition marker only.
                 continue
 
             # SOFT reserved verbs are pure metadata — codegen drops them
@@ -5694,62 +6364,69 @@ class Codegen:
                 binds[name] = ir.Constant(I32, idx)
                 continue
 
-            if verb == "branchIfError":
-                call_name, fail_label = args[0], args[1]
+            if verb == "branch" and args[0] == "error":
+                _variant, _source_kw, call_name, _target_kw, fail_label = args
                 err_cond = error_condition_for_call(call_name)
-                cont = builder.function.append_basic_block(f"after_{call_name}")
+                else_label = branch_else_by_line.get(_ln)
                 record_label_defers(fail_label, active_defers)
                 self._emit_trace_event(
                     builder, "branch.decision", "branch", op.name,
-                    call_name, fail_label, _ln)
-                builder.cbranch(err_cond, get_block(fail_label), cont)
-                builder.position_at_end(cont)
-                continue
-
-            if verb == "branchIf":
-                # Two valid forms:
-                #   branchIf BOOL_VALUE TRUE_LABEL          (fall through on false)
-                #   branchIf BOOL_VALUE TRUE_LABEL FALSE_LABEL  (legacy)
-                if len(args) == 2:
-                    cond_name, t_label = args[0], args[1]
-                    cond_val = resolve(cond_name)
-                    if cond_val.type != I1:
-                        cond_val = builder.icmp_signed("!=", cond_val, ir.Constant(cond_val.type, 0))
-                    cont = builder.function.append_basic_block(f"after_branchIf_{cond_name}")
-                    record_label_defers(t_label, active_defers)
-                    self._emit_trace_event(
-                        builder, "branch.decision", "branch", op.name,
-                        cond_name, t_label, _ln)
-                    builder.cbranch(cond_val, get_block(t_label), cont)
+                    call_name, fail_label if else_label is None else f"{fail_label}|{else_label}", _ln)
+                if else_label is None:
+                    cont = builder.function.append_basic_block(f"after_{call_name}")
+                    builder.cbranch(err_cond, get_block(fail_label), cont)
                     builder.position_at_end(cont)
                 else:
-                    cond_name, t_label, f_label = args[0], args[1], args[2]
-                    cond_val = resolve(cond_name)
-                    if cond_val.type != I1:
-                        cond_val = builder.icmp_signed("!=", cond_val, ir.Constant(cond_val.type, 0))
-                    record_label_defers(t_label, active_defers)
-                    record_label_defers(f_label, active_defers)
-                    self._emit_trace_event(
-                        builder, "branch.decision", "branch", op.name,
-                        cond_name, f"{t_label}|{f_label}", _ln)
-                    builder.cbranch(cond_val, get_block(t_label), get_block(f_label))
-                    dead = builder.function.append_basic_block(f"after_branchIf_{cond_name}")
+                    record_label_defers(else_label, active_defers)
+                    builder.cbranch(err_cond, get_block(fail_label), get_block(else_label))
+                    dead = builder.function.append_basic_block(f"after_branch_error_{call_name}")
                     builder.position_at_end(dead)
                     active_defers = []
                 continue
 
-            if verb == "branch":
-                record_label_defers(args[0], active_defers)
+            if verb == "branch" and args[0] == "if":
+                _variant, _condition_kw, cond_name, _target_kw, t_label = args
+                cond_val = resolve(cond_name)
+                if cond_val.type != I1:
+                    cond_val = builder.icmp_signed("!=", cond_val, ir.Constant(cond_val.type, 0))
+                else_label = branch_else_by_line.get(_ln)
+                record_label_defers(t_label, active_defers)
                 self._emit_trace_event(
                     builder, "branch.decision", "branch", op.name,
-                    "branch", args[0], _ln)
-                builder.branch(get_block(args[0]))
-                dead = builder.function.append_basic_block(f"after_branch_{args[0]}")
+                    cond_name, t_label if else_label is None else f"{t_label}|{else_label}", _ln)
+                if else_label is None:
+                    cont = builder.function.append_basic_block(f"after_branch_if_{cond_name}")
+                    builder.cbranch(cond_val, get_block(t_label), cont)
+                    builder.position_at_end(cont)
+                else:
+                    record_label_defers(else_label, active_defers)
+                    builder.cbranch(cond_val, get_block(t_label), get_block(else_label))
+                    dead = builder.function.append_basic_block(f"after_branch_if_{cond_name}")
+                    builder.position_at_end(dead)
+                    active_defers = []
+                continue
+
+            if verb == "branch" and args[0] == "else":
+                # Attached else rows are consumed by the preceding branch. If
+                # lowering reaches one directly, the source violated adjacency.
+                if _ln in attached_branch_else_lines:
+                    continue
+                raise ValueError(
+                    f"branch else: line {_ln}: must immediately follow branch if/error")
+
+            if verb == "jump":
+                _target_kw, target_label = args[0], args[1]
+                record_label_defers(target_label, active_defers)
+                self._emit_trace_event(
+                    builder, "branch.decision", "branch", op.name,
+                    "jump", target_label, _ln)
+                builder.branch(get_block(target_label))
+                dead = builder.function.append_basic_block(f"after_jump_{target_label}")
                 builder.position_at_end(dead)
                 active_defers = []
                 continue
 
-            if verb == "returnVoid":
+            if verb == "return" and args[0] == "void":
                 # `returnVoid` is the explicit "no caller-actionable value"
                 # return form for operations declared `output OP Void` /
                 # `output OP CVoid`. The user-op ABI still uses an i32 return
@@ -5760,27 +6437,21 @@ class Codegen:
                 # understand the ABI quirk on their own. Rejected on
                 # non-Void outputs so the verb cannot become a backdoor
                 # around the result-contract checker.
-                if args:
-                    raise ValueError(
-                        f"returnVoid: line {_ln}: takes no arguments "
-                        f"(found {len(args)}). Use `returnValue NAME` for "
-                        f"operations that produce a typed value."
-                    )
                 output_contract = _operation_output_contract(self.prog, op)
                 resolved_ok = resolve_alias(self.prog, output_contract.ok_type) \
                     if output_contract.ok_type else ""
                 if resolved_ok not in ("Void", "CVoid"):
                     declared = output_contract.ok_type or "<missing output>"
                     raise ValueError(
-                        f"returnVoid: line {_ln}: operation `{op.name}` "
+                        f"return void: line {_ln}: operation `{op.name}` "
                         f"declares `output {op.name} {declared}` — use "
-                        f"`returnValue NAME` for non-Void outputs. "
-                        f"`returnVoid` is only legal when output is `Void`."
+                        f"`return value NAME` for non-Void outputs. "
+                        f"`return void` is only legal when output is `Void`."
                     )
-                emit_defers("returnVoid")
+                emit_defers("return void")
                 self._emit_trace_event(
                     builder, "return.value", "return", op.name,
-                    "returnVoid", "", _ln,
+                    "return void", "", _ln,
                     value_name="", value_status="void")
                 self._emit_trace_event(
                     builder, "op.exit", "operation", op.name, op.name,
@@ -5794,23 +6465,24 @@ class Codegen:
                     # different shape, this branch keeps codegen honest by
                     # zero-initialising whatever the new shape is.
                     builder.ret(ir.Constant(target_type, None))
-                dead = builder.function.append_basic_block("after_returnVoid")
+                dead = builder.function.append_basic_block("after_return_void")
                 builder.position_at_end(dead)
                 continue
 
-            if verb in ("returnOk", "returnError", "returnValue"):
-                emit_defers(verb)
-                value_name = args[0] if args else ""
+            if verb == "return" and args[0] in ("value", "ok", "error"):
+                return_variant = args[0]
+                emit_defers(f"return {return_variant}")
+                value_name = args[1] if len(args) > 1 else ""
                 self._emit_trace_event(
                     builder, "return.value", "return", op.name,
-                    verb, value_name, _ln,
+                    f"return {return_variant}", value_name, _ln,
                     value_name=value_name, value_status="redacted")
                 self._emit_trace_event(
                     builder, "op.exit", "operation", op.name, op.name,
                     "", op.decl_line)
-                val = resolve(args[0])
+                val = resolve(value_name)
                 if val is SENTINEL:
-                    raise ValueError(f"{verb}: cannot return opaque input")
+                    raise ValueError(f"return {return_variant}: cannot return opaque input")
                 target_type = fn.function_type.return_type
                 if val.type != target_type:
                     # Integer-to-integer: sext or trunc as appropriate.
@@ -6104,6 +6776,25 @@ class Codegen:
                 raise ValueError(f"{call_name}: opaque-input symbol used as value arg `{arg_name}`")
             return v
 
+        def coerce_declared_argument(arg_name, value):
+            """Apply the explicit revised-syntax argument type when present."""
+            declared = call.get("arg_types", {}).get(arg_name)
+            if not declared:
+                return value
+            expected = llvm_type_for(self.prog, declared)
+            if expected is None or value.type == expected:
+                return value
+            if isinstance(value.type, ir.IntType) and isinstance(expected, ir.IntType):
+                if value.type.width < expected.width:
+                    extend = builder.zext if value.type.width == 1 else builder.sext
+                    return extend(value, expected, name=f"{call_name}_{arg_name}_as_{declared}")
+                return builder.trunc(value, expected, name=f"{call_name}_{arg_name}_as_{declared}")
+            if isinstance(value.type, ir.FloatType) and isinstance(expected, ir.DoubleType):
+                return builder.fpext(value, expected, name=f"{call_name}_{arg_name}_as_{declared}")
+            if isinstance(value.type, ir.DoubleType) and isinstance(expected, ir.FloatType):
+                return builder.fptrunc(value, expected, name=f"{call_name}_{arg_name}_as_{declared}")
+            return value
+
         def operand_pair():
             """Resolve two operand arguments for a binary math call. Accepts
             any pair of names — `left`/`right`, `a`/`b`, `value`/`step`,
@@ -6119,7 +6810,10 @@ class Codegen:
             b = resolve(usable[1][1])
             if a is SENTINEL or b is SENTINEL:
                 raise ValueError(f"{call_name}: opaque-input as operand for {target}")
-            return a, b
+            return (
+                coerce_declared_argument(usable[0][0], a),
+                coerce_declared_argument(usable[1][0], b),
+            )
 
         def operand_single():
             usable = [(k, v) for k, v in call["args"].items()
@@ -6130,7 +6824,7 @@ class Codegen:
             value = resolve(usable[0][1])
             if value is SENTINEL:
                 raise ValueError(f"{call_name}: opaque-input as operand for {target}")
-            return value
+            return coerce_declared_argument(usable[0][0], value)
 
         def coerce_i64_for_non_math_abi(v):
             if v.type == I64:
@@ -6929,8 +7623,74 @@ class Codegen:
             if template is None:
                 raise ValueError(
                     f"{call_name}: unknown htmlTemplate `{template_name}`")
+
+            def html_record_leaf_type(record_type, field_path):
+                current_type = record_type
+                for index, part in enumerate(field_path.split(".")):
+                    record = self.prog.records.get(current_type)
+                    if record is None:
+                        return None
+                    field_type = None
+                    for candidate_name, candidate_type in record.fields:
+                        if candidate_name == part:
+                            field_type = candidate_type
+                            break
+                    if field_type is None:
+                        return None
+                    if index == len(field_path.split(".")) - 1:
+                        return field_type
+                    nested = _record_type_for_json_body(self.prog, field_type)
+                    if nested is None:
+                        return None
+                    current_type = nested
+                return None
+
+            def html_arg_path_named(hole_path):
+                root_name, field_path = hole_path.split(".", 1)
+                if root_name not in call["args"]:
+                    raise ValueError(
+                        f"{call_name}: missing required arg `{root_name}` "
+                        f"for htmlTemplate `{template.name}`")
+                root_type = call.get("arg_types", {}).get(root_name)
+                if not root_type:
+                    raise ValueError(
+                        f"htmlBody {template.name}: record-field hole "
+                        f"`{hole_path}` requires argument `{root_name}` to "
+                        "declare a record type")
+                record_type = (
+                    root_type if root_type in self.prog.records
+                    else _record_type_for_json_body(self.prog, root_type)
+                )
+                if record_type is None:
+                    raise ValueError(
+                        f"htmlBody {template.name}: record-field hole "
+                        f"`{hole_path}` requires record argument `{root_name}`, "
+                        f"got `{root_type}`")
+                field_type = html_record_leaf_type(record_type, field_path)
+                if field_type is None:
+                    raise ValueError(
+                        f"htmlBody {template.name}: record `{record_type}` "
+                        f"has no string field path `{field_path}`")
+                source_name = call["args"][root_name]
+                source = record_values.get(source_name)
+                if source is not None and field_path in source.get("slots", {}):
+                    return (
+                        builder.load(
+                            source["slots"][field_path],
+                            name=f"{call_name}_{hole_path.replace('.', '_')}_field"),
+                        field_type,
+                    )
+                record_const = self.prog.record_json_constants.get(source_name)
+                if record_const is not None:
+                    raw_value = high_json_nested_field(
+                        record_const.get("fields", {}), field_path)
+                    return high_json_const_value(field_type, raw_value), field_type
+                raise ValueError(
+                    f"htmlBody {template.name}: record-field hole "
+                    f"`{hole_path}` cannot resolve record value `{source_name}`")
+
             self._emit_html_hydrate(builder, call_name, call, template,
-                                    arg_val_named)
+                                    arg_val_named, html_arg_path_named)
             return
 
         if target == "console.writeLine":
@@ -9344,9 +10104,9 @@ def _response_body_writer_slots(prog: Program) -> dict:
             claimed_arg = claim["arg"]
             forwards_claim = False
             for verb, args, _lineno in op.lines:
-                if verb != "arg" or len(args) < 3:
+                if verb != "argument" or len(args) < 4:
                     continue
-                call_name, arg_name, value_name = args[0], args[1], args[2]
+                call_name, arg_name, value_name = args[0], args[1], args[3]
                 target = call_targets.get(call_name)
                 accepted_slots = slots_by_target.get(target)
                 if (accepted_slots is not None
@@ -9446,11 +10206,11 @@ def _check_http_nullable_response_inputs(prog: Program, diags):
         call_targets = _operation_call_targets(op)
         nullable_binds = {}
         for verb, args, lineno in op.lines:
-            if verb not in ("bind", "bindOk") or len(args) < 3:
+            if verb != "bind" or len(args) < 4 or args[0] not in ("value", "ok"):
                 continue
-            call_name = args[2]
+            call_name = args[3]
             if call_targets.get(call_name) in NULLABLE_HTTP_REQUEST_READS:
-                nullable_binds[args[0]] = lineno
+                nullable_binds[args[1]] = lineno
         if not nullable_binds or _operation_has_null_body_opt_out(op):
             continue
 
@@ -9460,15 +10220,15 @@ def _check_http_nullable_response_inputs(prog: Program, diags):
             if verb == "call" and len(args) >= 2 and args[1] == "pointer.isNull":
                 pointer_is_null_calls.add(args[0])
                 continue
-            if (verb == "arg" and len(args) >= 3
+            if (verb == "argument" and len(args) >= 4
                     and args[0] in pointer_is_null_calls
                     and args[1] == "pointer"
-                    and args[2] in nullable_binds):
-                guarded.add(args[2])
+                    and args[3] in nullable_binds):
+                guarded.add(args[3])
                 continue
-            if verb != "arg" or len(args) < 3:
+            if verb != "argument" or len(args) < 4:
                 continue
-            call_name, arg_name, value_name = args[0], args[1], args[2]
+            call_name, arg_name, value_name = args[0], args[1], args[3]
             target = call_targets.get(call_name)
             accepted_slots = slots_by_writer.get(target)
             if (accepted_slots is not None
@@ -9490,7 +10250,7 @@ def _check_http_response_body_forwarders(prog: Program, diags):
         diags.append((claim["line"],
             f"SS3607 forwarderDeclarationNotHonored: "
             f"`responseBodyForwarder {op_name} {claim['arg']}` is not backed "
-            f"by an `arg <writerCall> <body-slot> {claim['arg']}` flow into "
+            f"by an `argument <writerCall> <body-slot> <type> {claim['arg']}` flow into "
             f"a known response body writer or declared forwarder"))
 
     declared_ops = set(declared)
@@ -9500,9 +10260,9 @@ def _check_http_response_body_forwarders(prog: Program, diags):
             continue
         call_targets = _operation_call_targets(op)
         for verb, args, lineno in op.lines:
-            if verb != "arg" or len(args) < 3:
+            if verb != "argument" or len(args) < 4:
                 continue
-            call_name, arg_name, value_name = args[0], args[1], args[2]
+            call_name, arg_name, value_name = args[0], args[1], args[3]
             target = call_targets.get(call_name)
             accepted_slots = slots_by_writer.get(target)
             if accepted_slots is None or arg_name not in accepted_slots:
@@ -9584,8 +10344,9 @@ def _strict_raise_first_fallible_contract(prog: Program, diags):
         ],
         direction=(
             "`languageMode strictExecutable` rejects plain `run` for known "
-            "fallible targets. Use `runChecked`, or the legacy explicit "
-            "`run` + `bindOk`/`ignoreOk` + `bindError` + `branchIfError` "
+            "fallible targets. Use `runChecked`, or the explicit "
+            "`run` + `bind ok`/`ignore ok`/`ignore void` + `bind error` "
+            "+ `branch error` "
             "shape."
         ),
     ))
@@ -9660,17 +10421,19 @@ def _strict_collect_calls(prog: Program, op: Operation) -> dict:
             continue
         if not args:
             continue
-        if verb == "arg" and len(args) >= 3 and args[0] in calls:
-            calls[args[0]]["args"].append((args[1], args[2], lineno))
-        elif verb == "bind" and len(args) >= 3 and args[2] in calls:
-            calls[args[2]]["binds"].append((args[0], args[1], lineno))
-        elif verb == "bindOk" and len(args) >= 3 and args[2] in calls:
-            calls[args[2]]["bind_oks"].append((args[0], args[1], lineno))
-        elif verb == "bindError" and len(args) >= 3 and args[2] in calls:
-            calls[args[2]]["bind_errors"].append((args[0], args[1], lineno))
-        elif verb == "branchIfError" and args[0] in calls:
-            label = args[1] if len(args) >= 2 else ""
-            calls[args[0]]["branch_errors"].append((label, lineno))
+        if verb == "argument" and len(args) >= 4 and args[0] in calls:
+            calls[args[0]]["args"].append((args[1], args[3], lineno))
+        elif verb == "bind" and len(args) >= 4 and args[3] in calls:
+            if args[0] == "value":
+                calls[args[3]]["binds"].append((args[1], args[2], lineno))
+            elif args[0] == "ok":
+                calls[args[3]]["bind_oks"].append((args[1], args[2], lineno))
+            elif args[0] == "error":
+                calls[args[3]]["bind_errors"].append((args[1], args[2], lineno))
+        elif (verb == "branch" and len(args) >= 5 and args[0] == "error"
+              and args[2] in calls):
+            label = args[4]
+            calls[args[2]]["branch_errors"].append((label, lineno))
         elif verb == "runChecked" and len(args) == 9 and args[0] in calls:
             call_info = calls[args[0]]
             call_info["bind_oks"].append((args[2], args[3], lineno))
@@ -9797,7 +10560,7 @@ def _strict_transfer_line(op: Operation, names: set, after_line: int = 0) -> int
     for verb, args, lineno in op.lines:
         if lineno <= after_line:
             continue
-        if verb in ("returnOk", "returnValue") and args and args[0] in names:
+        if verb == "return" and len(args) >= 2 and args[0] in ("ok", "value") and args[1] in names:
             return lineno
         if verb == "set" and args and args[-1] in names:
             return lineno
@@ -9890,11 +10653,11 @@ def _strict_validate_heap_resources(prog: Program, op: Operation,
                 continue
             if boundary_line and lineno >= boundary_line:
                 continue
-            if verb != "branchIfError" or len(args) < 2:
+            if verb != "branch" or len(args) < 5 or args[0] != "error":
                 continue
-            if args[0] == call_info["name"]:
+            if args[2] == call_info["name"]:
                 continue
-            failure_label = args[1]
+            failure_label = args[4]
             if _strict_label_has_cleanup(
                     prog, op, failure_label,
                     _STRICT_HEAP_CLEANUP_TARGETS, names):
@@ -9981,11 +10744,11 @@ def _strict_validate_sqlite_database_cleanup(prog: Program, op: Operation,
                 continue
             if stop_line is not None and lineno >= stop_line:
                 continue
-            if verb != "branchIfError" or len(args) < 2:
+            if verb != "branch" or len(args) < 5 or args[0] != "error":
                 continue
-            if args[0] == open_call["name"]:
+            if args[2] == open_call["name"]:
                 continue
-            failure_label = args[1]
+            failure_label = args[4]
             if _strict_label_has_cleanup(
                     prog, op, failure_label,
                     _STRICT_SQLITE_DATABASE_CLOSE_TARGETS, database_names):
@@ -10039,11 +10802,11 @@ def _strict_validate_sqlite_statement_cleanup(prog: Program, op: Operation,
         for verb, args, lineno in op.lines:
             if lineno <= prepare_call["line"] or lineno >= cleanup_line:
                 continue
-            if verb != "branchIfError" or len(args) < 2:
+            if verb != "branch" or len(args) < 5 or args[0] != "error":
                 continue
-            if args[0] == prepare_call["name"]:
+            if args[2] == prepare_call["name"]:
                 continue
-            failure_label = args[1]
+            failure_label = args[4]
             if _strict_label_has_cleanup(
                     prog, op, failure_label,
                     _STRICT_SQLITE_STATEMENT_FINALIZE_TARGETS, statement_names):
@@ -10232,11 +10995,11 @@ def _strict_raise_first_constant_string_violation(prog: Program, diags) -> None:
 
 def _check_strict_step_result_disposition(prog: Program, diags) -> None:
     """SS3912 — sqlite.stepStatement result must be bound, EXCEPT when
-    the call already has an executable error disposition (bindError +
-    branchIfError) that exits the segment. That pattern is the
+    the call already has an executable error disposition (`bind error` +
+    `branch error`) that exits the segment. That pattern is the
     legitimate DELETE/UPDATE shape: the user only cares whether the
     step errored, not whether it returned `row` vs `done`. SELECT
-    iteration still needs an actual `bindOk` so the loop knows when
+    iteration still needs an actual `bind ok` so the loop knows when
     to terminate.
     """
     for op_name, op in prog.operations.items():
@@ -10253,20 +11016,21 @@ def _check_strict_step_result_disposition(prog: Program, diags) -> None:
         for verb, args, _lineno in op.lines:
             if not args:
                 continue
-            if verb in ("bind", "bindOk") and len(args) >= 3:
-                if args[2] in step_calls:
-                    dispositions[args[2]] = "bind"
+            if verb == "bind" and len(args) >= 4:
+                if args[0] in ("value", "ok") and args[3] in step_calls:
+                    dispositions[args[3]] = "bind"
             elif (verb == "runChecked" and len(args) >= 9
                     and args[0] in step_calls):
                 dispositions[args[0]] = "runChecked"
-            elif (verb in ("ignoreOk", "ignoreValue")
-                    and args[0] in step_calls):
-                dispositions.setdefault(args[0], "ignore")
-            elif verb == "bindError" and len(args) >= 3:
-                if args[2] in step_calls:
-                    has_bind_error.add(args[2])
-            elif verb == "branchIfError" and args[0] in step_calls:
-                has_branch_if_error.add(args[0])
+            elif verb == "ignore" and len(args) >= 3 and args[2] in step_calls:
+                if args[0] in ("ok", "value", "void"):
+                    dispositions.setdefault(args[2], "ignore")
+            elif verb == "bind" and len(args) >= 4 and args[0] == "error":
+                if args[3] in step_calls:
+                    has_bind_error.add(args[3])
+            elif (verb == "branch" and len(args) >= 5 and args[0] == "error"
+                  and args[2] in step_calls):
+                has_branch_if_error.add(args[2])
         for call_name, lineno in step_calls.items():
             disposition = dispositions.get(call_name)
             if disposition in ("bind", "runChecked"):
@@ -10281,9 +11045,10 @@ def _check_strict_step_result_disposition(prog: Program, diags) -> None:
             diags.append((lineno,
                 f"SS3912 sqliteStepResultIgnored: in operation `{op_name}`, "
                 f"call `{call_name}` (target `sqlite.stepStatement`) does "
-                f"not bind its SqliteStepResult; bind it with `bindOk` or "
-                f"`runChecked` (SELECT iteration) or add `bindError` + "
-                f"`branchIfError` alongside `ignoreOk` (DELETE/UPDATE)"))
+                f"not bind its SqliteStepResult; bind it with `bind ok` or "
+                f"`runChecked` (SELECT iteration) or add `bind error` + "
+                f"`branch error` alongside `ignore ok` or `ignore void` "
+                f"(DELETE/UPDATE)"))
 
 
 def _strict_raise_first_step_disposition(prog: Program, diags) -> None:
@@ -10379,9 +11144,9 @@ def _check_strict_handler_writes_response(prog: Program, diags) -> None:
             if verb == "call" and len(args) >= 2:
                 if _strict_target(prog, args[1]) in writer_targets:
                     has_writer = True
-            elif verb in ("returnOk", "returnValue"):
+            elif verb == "return" and len(args) >= 2 and args[0] in ("ok", "value"):
                 return_lines.append(lineno)
-                if not (args and args[0] == "continueMiddlewareControl"):
+                if args[1] != "continueMiddlewareControl":
                     only_continue_returns = False
         if has_writer:
             continue
@@ -10842,6 +11607,14 @@ def lint(prog: Program, strict: bool = False):
                 if not err_name.endswith("Error"):
                     diags.append((lineno,
                         f"vagueErrorName: `{err_name}` should end with the Error role suffix"))
+            elif verb == "bind" and len(args) >= 4 and args[0] == "error":
+                call_name = args[3]
+                if call_name in calls:
+                    calls[call_name]["has_bindError"] = True
+                err_name = args[1]
+                if not err_name.endswith("Error"):
+                    diags.append((lineno,
+                        f"vagueErrorName: `{err_name}` should end with the Error role suffix"))
             elif verb == "branchIfError" and args:
                 call_name = args[0]
                 if call_name in calls:
@@ -10858,6 +11631,29 @@ def lint(prog: Program, strict: bool = False):
                 # branchIf 3-arg legacy form: also record the false-leg label
                 if len(args) >= 3:
                     label_references.append((args[2], lineno, "branchIf-false"))
+            elif verb == "branch" and len(args) >= 5 and args[0] == "if" and args[1] == "condition" and args[3] == "target":
+                label_references.append((args[4], lineno, "branch if"))
+                if args[4] in labels_declared:
+                    operation_has_loop = True
+            elif verb == "branch" and len(args) >= 5 and args[0] == "error" and args[1] == "source" and args[3] == "target":
+                call_name = args[2]
+                if call_name in calls:
+                    calls[call_name]["has_branchIfError"] = True
+                label_references.append((args[4], lineno, "branch error"))
+                branchIfError_targets.setdefault(args[4], []).append((call_name, lineno))
+                if not (args[4].endswith("Failed") or args[4].endswith("ed")):
+                    diags.append((lineno,
+                        f"roleSuffixMismatch: branch label `{args[4]}` should end with Failed or a past-tense -ed form"))
+                if args[4] in labels_declared:
+                    operation_has_loop = True
+            elif verb == "branch" and len(args) >= 3 and args[0] == "else" and args[1] == "target":
+                label_references.append((args[2], lineno, "branch else"))
+                if args[2] in labels_declared:
+                    operation_has_loop = True
+            elif verb == "jump" and len(args) >= 2 and args[0] == "target":
+                label_references.append((args[1], lineno, "jump"))
+                if args[1] in labels_declared:
+                    operation_has_loop = True
             elif verb == "branch" and args:
                 label_references.append((args[0], lineno, "branch"))
                 # A `branch` to a label that has already been declared earlier
@@ -11191,14 +11987,16 @@ def _operation_literal_values(op):
             values[args[0]] = args[2]
         elif verb == "storage" and len(args) >= 5:
             values[args[2]] = args[4]
+        elif verb == "memory" and len(args) >= 5 and args[1] in ("mutable", "immutable"):
+            values[args[2]] = args[4]
     return values
 
 
 def _operation_call_args(op):
     call_args = {}
     for verb, args, _ in op.lines:
-        if verb == "arg" and len(args) >= 3:
-            call_args.setdefault(args[0], {})[args[1]] = args[2]
+        if verb == "argument" and len(args) >= 4:
+            call_args.setdefault(args[0], {})[args[1]] = args[3]
     return call_args
 
 
@@ -11275,7 +12073,7 @@ def _check_effect_authority_coverage(prog: Program, diags):
         for authority_text in prog.hard_metadata.get(op_name, {}).get("authority", []):
             parts = authority_text.split()
             if len(parts) >= 2:
-                authority_facts.append({"effect": parts[0], "access": parts[1]})
+                authority_facts.append({"access": parts[0], "effect": parts[1]})
 
         for action, effect_path, lineno in declared_effects:
             capability_ok = any(
@@ -11724,8 +12522,9 @@ def _check_strict_checked_fallible_calls(prog: Program, diags):
     """Strict executable mode rejects unchecked fallible call sites.
 
     A result-shaped fallible call is checked when it uses `runChecked`, or
-    when it uses the legacy explicit shape: `run`, a success disposition
-    (`bindOk` or `ignoreOk`), `bindError`, and `branchIfError`.
+    when it uses the explicit shape: `run`, a success disposition
+    (`bind ok`, `ignore ok`, or `ignore void`), `bind error`, and
+    `branch error`.
     """
     for op_name, op in prog.operations.items():
         calls = {}
@@ -11756,24 +12555,30 @@ def _check_strict_checked_fallible_calls(prog: Program, diags):
                 if info is not None:
                     info["has_run_checked"] = True
                 continue
-            if verb in ("bind", "bindOk", "ignoreOk", "ignoreValue") and len(args) >= 1:
-                if verb in ("bind", "bindOk"):
-                    call_name = args[2] if len(args) >= 3 else ""
-                else:
-                    call_name = args[0]
+            if verb == "bind" and len(args) >= 4 and args[0] in ("value", "ok"):
+                call_name = args[3]
                 info = calls.get(call_name)
                 if info is not None:
                     info["has_value_disposition"] = True
-                    if verb in ("bindOk", "ignoreOk"):
+                    if args[0] == "ok":
                         info["has_success_disposition"] = True
                 continue
-            if verb == "bindError" and len(args) >= 3:
-                info = calls.get(args[2])
+            if verb == "ignore" and len(args) >= 3:
+                call_name = args[2]
+                info = calls.get(call_name)
+                if info is not None:
+                    if args[0] in ("value", "ok", "void"):
+                        info["has_value_disposition"] = True
+                    if args[0] in ("ok", "void"):
+                        info["has_success_disposition"] = True
+                continue
+            if verb == "bind" and len(args) >= 4 and args[0] == "error":
+                info = calls.get(args[3])
                 if info is not None:
                     info["has_bind_error"] = True
                 continue
-            if verb == "branchIfError" and len(args) >= 1:
-                info = calls.get(args[0])
+            if verb == "branch" and len(args) >= 5 and args[0] == "error":
+                info = calls.get(args[2])
                 if info is not None:
                     info["has_branch_if_error"] = True
 
@@ -11788,25 +12593,26 @@ def _check_strict_checked_fallible_calls(prog: Program, diags):
             missing = []
             if kind == "result":
                 if not info["has_success_disposition"]:
-                    missing.append("bindOk|ignoreOk")
+                    missing.append("bind ok|ignore ok|ignore void")
                 if not info["has_bind_error"]:
-                    missing.append("bindError")
+                    missing.append("bind error")
                 if not info["has_branch_if_error"]:
-                    missing.append("branchIfError")
+                    missing.append("branch error")
             else:
                 if not info["has_value_disposition"]:
-                    missing.append("bind|ignoreValue")
+                    missing.append("bind value|ignore value")
             if not missing:
                 continue
             if kind == "result":
                 advice = (
-                    "Use `runChecked`, or the legacy checked pattern: `run`, "
-                    "`bindOk`/`ignoreOk`, `bindError`, and `branchIfError`."
+                    "Use `runChecked`, or the checked pattern: `run`, "
+                    "`bind ok`/`ignore ok`/`ignore void`, `bind error`, "
+                    "and `branch error`."
                 )
             else:
                 advice = (
                     "Bind the returned status/pointer or explicitly discard it "
-                    "with `ignoreValue` after documenting why the failure is "
+                    "with `ignore value` after documenting why the failure is "
                     "non-actionable."
                 )
             diags.append((info["run_lineno"],
@@ -13053,6 +13859,9 @@ def _standard_library_roots(start_dir: str, explicit_std_paths=None):
 
 def _resolve_imports(source: str, source_path: str, explicit_std_paths=None,
                      return_origins: bool = False):
+    if _is_build_tape_path(source_path) and _looks_like_regular_build_plan(source):
+        source = _regular_build_plan_compat_source(source, source_path)
+
     src_dir = os.path.dirname(os.path.abspath(source_path))
     def find_project_root(start_dir: str) -> str:
         current = os.path.abspath(start_dir)
@@ -13117,7 +13926,7 @@ def _resolve_imports(source: str, source_path: str, explicit_std_paths=None,
                 dotted, registered_path, registry_main_files)
             if resolved is None:
                 raise SyntaxError(
-                    f"importModule: registered module `{dotted}` points at "
+                    f"import: registered module `{dotted}` points at "
                     f"`{registered_path}`, but no module source file could "
                     "be selected (expected main.sem, index.sem, the leaf "
                     "module file, or exactly one non-test .sem/.sscript)")
@@ -13128,7 +13937,7 @@ def _resolve_imports(source: str, source_path: str, explicit_std_paths=None,
         if dotted == "standard" or dotted.startswith("standard."):
             searched = ", ".join(stdlib_dirs) if stdlib_dirs else "(no valid std roots)"
             raise SyntaxError(
-                f"importModule: standard-library module `{dotted}` could not "
+                f"import: standard-library module `{dotted}` could not "
                 f"be resolved; searched {searched}. Set --std-path or "
                 "SEMANTICSCRIPT_STD_PATH to a std root containing module.sem.")
         rel_base = dotted.replace(".", os.sep)
@@ -13152,14 +13961,15 @@ def _resolve_imports(source: str, source_path: str, explicit_std_paths=None,
 
     header_skip = (
         "project ", "target ", "runtime ", "entry ", "module ",
+        "purpose module ", "invariant module ",
         # Module-contract docs are owned by the module itself; when an
         # import inlines into a parent program, the contract rows would
         # otherwise be attributed to whichever operation was last open
         # in the parent — codegen then errors with "unhandled verb:
         # modulePurpose". Strip at inline time so the inlined source
         # carries only operation bodies + types + capabilities.
-        "modulePurpose ", "moduleOwns ", "moduleDoesNotOwn ",
-        "moduleWarning ", "moduleInvariant ", "moduleSecurity ",
+        "moduleOwns ", "moduleDoesNotOwn ",
+        "moduleWarning ", "moduleSecurity ",
         "moduleObservability ", "moduleDependency ",
     )
 
@@ -13177,10 +13987,10 @@ def _resolve_imports(source: str, source_path: str, explicit_std_paths=None,
     def process(text: str, base_dir: str, is_root: bool, origin_path: str):
         for origin_line, line in enumerate(text.splitlines(), start=1):
             stripped = line.strip()
-            if stripped.startswith("importModule "):
+            if stripped.startswith("import "):
                 parts = stripped.split()
-                if len(parts) >= 2:
-                    dotted, _alias, _syntax = _parse_import_module_args(parts[1:])
+                if len(parts) >= 3:
+                    dotted = parts[2]
                     path = find_module_file(dotted, base_dir)
                     if path is not None and path not in seen:
                         seen.add(path)
@@ -13738,10 +14548,11 @@ def _operation_summary_for_agents(prog: Program, op: Operation) -> dict:
                 "siteId": _trace_site_id(prog, "label", op.name, args[0], "", lineno),
                 "sourceSpan": _json_source_span(prog, lineno),
             })
-        elif verb == "arg" and len(args) >= 3:
+        elif verb == "argument" and len(args) >= 4:
             call_args.setdefault(args[0], []).append({
                 "name": args[1],
-                "value": args[2],
+                "type": args[2],
+                "value": args[3],
                 "sourceSpan": _json_source_span(prog, lineno),
             })
         elif verb == "call" and len(args) >= 2:
@@ -13752,22 +14563,31 @@ def _operation_summary_for_agents(prog: Program, op: Operation) -> dict:
                 "args": [],
                 "sourceSpan": _json_source_span(prog, lineno),
             })
-        elif verb in ("branch", "branchIf", "branchIfError"):
-            name = args[0] if args else ""
+        elif verb == "branch":
+            name = args[2] if len(args) >= 3 and args[0] in ("if", "error") else args[0]
             target = args[-1] if args else ""
             branches.append({
-                "verb": verb,
+                "verb": f"branch {args[0]}" if args else verb,
                 "name": name,
                 "target": target,
                 "siteId": _trace_site_id(prog, "branch", op.name, name, target, lineno),
                 "sourceSpan": _json_source_span(prog, lineno),
             })
-        elif verb in ("returnOk", "returnError", "returnValue", "returnVoid"):
-            value = args[0] if args else ""
+        elif verb == "jump":
+            target = args[1] if len(args) >= 2 else ""
+            branches.append({
+                "verb": "jump",
+                "name": "jump",
+                "target": target,
+                "siteId": _trace_site_id(prog, "branch", op.name, "jump", target, lineno),
+                "sourceSpan": _json_source_span(prog, lineno),
+            })
+        elif verb == "return":
+            value = args[1] if len(args) > 1 else ""
             returns.append({
-                "verb": verb,
+                "verb": f"return {args[0]}" if args else verb,
                 "value": value,
-                "siteId": _trace_site_id(prog, "return", op.name, verb, value, lineno),
+                "siteId": _trace_site_id(prog, "return", op.name, f"return {args[0]}" if args else verb, value, lineno),
                 "sourceSpan": _json_source_span(prog, lineno),
             })
     for call in calls:
@@ -13903,15 +14723,20 @@ def _trace_map_for_agents(prog: Program, cg: Codegen, mod,
                 sites.append(_trace_site(prog, "label", op.name, args[0], "", lineno))
             elif verb == "call" and len(args) >= 2:
                 sites.append(_trace_site(prog, "call", op.name, args[0], args[1], lineno))
-            elif verb in ("branch", "branchIf", "branchIfError"):
-                name = args[0] if args else ""
+            elif verb == "branch":
+                name = args[2] if len(args) >= 3 and args[0] in ("if", "error") else args[0]
                 target = args[-1] if args else ""
                 sites.append(_trace_site(prog, "branch", op.name, name, target, lineno,
-                                         {"verb": verb}))
-            elif verb in ("returnOk", "returnError", "returnValue", "returnVoid"):
-                value = args[0] if args else ""
-                sites.append(_trace_site(prog, "return", op.name, verb, value, lineno,
-                                         {"verb": verb}))
+                                         {"verb": f"branch {args[0]}" if args else verb}))
+            elif verb == "jump":
+                target = args[1] if len(args) >= 2 else ""
+                sites.append(_trace_site(prog, "branch", op.name, "jump", target, lineno,
+                                         {"verb": "jump"}))
+            elif verb == "return":
+                value = args[1] if len(args) > 1 else ""
+                return_verb = f"return {args[0]}" if args else verb
+                sites.append(_trace_site(prog, "return", op.name, return_verb, value, lineno,
+                                         {"verb": return_verb}))
     for route in routes:
         sites.append({
             "siteId": route["siteId"],

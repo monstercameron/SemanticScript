@@ -3,7 +3,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 
-importModule http standard.http
+import http standard.http
 importConstant importedPlainTextContentType http plainTextContentType
 importCapability importedHttpResponseWriter http httpResponseWriter
 
@@ -11,16 +11,16 @@ storage module immutable okText CNullTerminatedByteString "OK"
 storage module immutable successCode ExitCode 0
 
 operation main
-output main ExitCode
+output operation main ExitCode
 effect main write console.stdout
-authority main console.stdout write
-memoryHeap main no
+authority main write console.stdout
+memory main heap no
 async main no
-purpose main "Smoke-test the canonical standard.http import path from its module folder."
+purpose operation main "Smoke-test the canonical standard.http import path from its module folder."
 
 call writeCall console.writeLine
-arg writeCall text okText
+argument writeCall text CNullTerminatedByteString okText
 run writeCall
-ignoreValue writeCall CSignedInt32
+ignore value source writeCall type CSignedInt32
 
-returnValue successCode
+return value successCode

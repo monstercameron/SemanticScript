@@ -7,19 +7,19 @@ entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Single console.writeLine of a string const."
-invariant main "Emits 'hello world' followed by newline."
+purpose operation main "Single console.writeLine of a string const."
+invariant operation main "Emits 'hello world' followed by newline."
 label startMain
-const greetingText CNullTerminatedByteString "hello world"
+storage module immutable greetingText CNullTerminatedByteString "hello world"
 call writeGreetingCall console.writeLine
-arg writeGreetingCall console console
-arg writeGreetingCall text greetingText
+argument writeGreetingCall console Console console
+argument writeGreetingCall text CNullTerminatedByteString greetingText
 run writeGreetingCall
-ignoreOk writeGreetingCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeGreetingCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

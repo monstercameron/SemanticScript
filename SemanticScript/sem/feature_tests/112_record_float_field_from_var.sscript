@@ -8,34 +8,34 @@ error MainError
 errorCase MainError Placeholder CSignedInt32
 
 record Sample layout row align 8
-purpose Sample "A single CFloat64 measurement."
+purpose operation Sample "A single CFloat64 measurement."
 field Sample value CFloat64
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Build value via float var + math.addF64, then fieldSet from the float var."
-invariant main "5.0 + 2.5 = 7.5, stored in Sample.value, read back, printed."
+purpose operation main "Build value via float var + math.addF64, then fieldSet from the float var."
+invariant operation main "5.0 + 2.5 = 7.5, stored in Sample.value, read back, printed."
 label startMain
-const fiveF CFloat64 5.0
-const twoAndHalfF CFloat64 2.5
-var liveF CFloat64 fiveF
+storage module immutable fiveF CFloat64 5.0
+storage module immutable twoAndHalfF CFloat64 2.5
+memory main mutable liveF CFloat64 fiveF
 call addCall math.addF64
-arg addCall left liveF
-arg addCall right twoAndHalfF
+argument addCall left CFloat64 liveF
+argument addCall right CFloat64 twoAndHalfF
 run addCall
-bind sumF CFloat64 addCall
-set liveF sumF
+bind value sumF CFloat64 addCall
+set memory liveF sumF
 new mySample Sample
 fieldSet mySample value liveF
 fieldGet finalF CFloat64 mySample value
 call writeCall console.writeFloatLine
-arg writeCall console console
-arg writeCall value finalF
+argument writeCall console Console console
+argument writeCall value CFloat64 finalF
 run writeCall
-ignoreOk writeCall Void
-const okExit ExitCode 0
-returnOk okExit
+ignore void source writeCall
+storage module immutable okExit ExitCode 0
+return ok okExit

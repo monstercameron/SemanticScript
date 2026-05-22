@@ -3,23 +3,23 @@ target console
 runtime native 1
 entry console main
 
-importModule sqlite standard.sqlite
+import sqlite standard.sqlite
 importConstant importedSqliteModuleVersionText sqlite sqliteModuleVersionText
 
 storage module immutable successCode ExitCode 0
 storage module immutable okText CNullTerminatedByteString "OK"
 
 operation main
-output main ExitCode
+output operation main ExitCode
 effect main write console.stdout
-authority main console.stdout write
-memoryHeap main no
+authority main write console.stdout
+memory main heap no
 async main no
-purpose main "Smoke-test that standard.sqlite imports and exposes its version constant."
+purpose operation main "Smoke-test that standard.sqlite imports and exposes its version constant."
 
 call writeOkCall console.writeLine
-arg writeOkCall text okText
+argument writeOkCall text CNullTerminatedByteString okText
 run writeOkCall
-ignoreValue writeOkCall CSignedInt32
+ignore value source writeOkCall type CSignedInt32
 
-returnValue successCode
+return value successCode

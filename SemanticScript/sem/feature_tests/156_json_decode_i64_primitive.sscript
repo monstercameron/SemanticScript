@@ -9,33 +9,33 @@ error MainError
 errorCase MainError DecodeFailed CSignedInt32
 errorCase MainError ConsoleWriteFailed CSignedInt32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "json.parse.I64 parses a JSON integer string into an i64."
-invariant main "Input 12345 decodes to integer 12345."
+purpose operation main "json.parse.I64 parses a JSON integer string into an i64."
+invariant operation main "Input 12345 decodes to integer 12345."
 label startMain
-const integerTextLiteral CNullTerminatedByteString "12345"
+storage module immutable integerTextLiteral CNullTerminatedByteString "12345"
 call parseIntCall json.parse.I64
-arg parseIntCall jsonText integerTextLiteral
+argument parseIntCall jsonText CNullTerminatedByteString integerTextLiteral
 run parseIntCall
-bindOk decodedInteger I64 parseIntCall
-bindError decodeError JsonDecodeError parseIntCall
-branchIfError parseIntCall decodeFailed
+bind ok decodedInteger I64 parseIntCall
+bind error decodeError JsonDecodeError parseIntCall
+branch error source parseIntCall target decodeFailed
 call writeDecodedCall console.writeIntegerLine
-arg writeDecodedCall console console
-arg writeDecodedCall value decodedInteger
+argument writeDecodedCall console Console console
+argument writeDecodedCall value I64 decodedInteger
 run writeDecodedCall
-ignoreOk writeDecodedCall Void
-bindError writeError ConsoleWriteError writeDecodedCall
-branchIfError writeDecodedCall consoleWriteFailed
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeDecodedCall
+bind error writeError ConsoleWriteError writeDecodedCall
+branch error source writeDecodedCall target consoleWriteFailed
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
 label decodeFailed
 makeError decodeFailure MainError.DecodeFailed decodeError
-returnError decodeFailure
+return error decodeFailure
 label consoleWriteFailed
 makeError writeFailure MainError.ConsoleWriteFailed writeError
-returnError writeFailure
+return error writeFailure

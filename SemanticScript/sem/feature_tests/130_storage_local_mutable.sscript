@@ -8,32 +8,32 @@ entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "storage local mutable behaves like a real mutable slot."
-invariant main "First print shows initial value, second shows post-set value."
+purpose operation main "storage local mutable behaves like a real mutable slot."
+invariant operation main "First print shows initial value, second shows post-set value."
 label startMain
-const initialValueLiteral I64 10
-const incrementStepValue I64 3
+storage module immutable initialValueLiteral I64 10
+storage module immutable incrementStepValue I64 3
 storage local mutable mutableLocalCounterValue I64 initialValueLiteral
 call writeInitialCall console.writeIntegerLine
-arg writeInitialCall console console
-arg writeInitialCall value mutableLocalCounterValue
+argument writeInitialCall console Console console
+argument writeInitialCall value I64 mutableLocalCounterValue
 run writeInitialCall
-ignoreOk writeInitialCall Void
+ignore void source writeInitialCall
 call addStepCall math.addI64
-arg addStepCall left mutableLocalCounterValue
-arg addStepCall right incrementStepValue
+argument addStepCall left I64 mutableLocalCounterValue
+argument addStepCall right I64 incrementStepValue
 run addStepCall
-bind addStepResult I64 addStepCall
-set local mutableLocalCounterValue addStepResult
+bind value addStepResult I64 addStepCall
+set memory mutableLocalCounterValue addStepResult
 call writeUpdatedCall console.writeIntegerLine
-arg writeUpdatedCall console console
-arg writeUpdatedCall value mutableLocalCounterValue
+argument writeUpdatedCall console Console console
+argument writeUpdatedCall value I64 mutableLocalCounterValue
 run writeUpdatedCall
-ignoreOk writeUpdatedCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeUpdatedCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

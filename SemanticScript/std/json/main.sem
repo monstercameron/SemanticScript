@@ -11,11 +11,11 @@
 # that intrinsic namespace.
 
 module standard.json
-modulePurpose standard.json "Standard-library namespace and contracts for JSON encode/decode, builder, finder, document CRUD, and typed stringify/parse intrinsics."
+purpose module standard.json "Standard-library namespace and contracts for JSON encode/decode, builder, finder, document CRUD, and typed stringify/parse intrinsics."
 moduleOwns standard.json "The official import path `standard.json`, semantic JSON type aliases, enum tokens, error domains, default constants, and the compiler-owned `json.*` intrinsic namespace contract."
 moduleDoesNotOwn standard.json "Application codecs, record-specific generated codecs, native JSON runtime memory internals, or caller-owned scratch-buffer allocation."
-moduleInvariant standard.json "The standard module entry is this file; new modules may import it as alias `json` before using compiler-owned targets in the `json.*` namespace."
-moduleInvariant standard.json "Document CRUD handles are capacity-bounded, cursor-addressed native runtime values; source code must use Result-aware access paths and defer cleanup for owned documents."
+invariant module standard.json "The standard module entry is this file; new modules may import it as alias `json` before using compiler-owned targets in the `json.*` namespace."
+invariant module standard.json "Document CRUD handles are capacity-bounded, cursor-addressed native runtime values; source code must use Result-aware access paths and defer cleanup for owned documents."
 
 type JsonBuilder COpaqueMemoryAddress
 type JsonDocument COpaqueMemoryAddress

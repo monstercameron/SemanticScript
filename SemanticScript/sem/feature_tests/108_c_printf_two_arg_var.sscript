@@ -7,34 +7,34 @@ entry console main
 error MainError
 errorCase MainError Placeholder CSignedInt32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main read memory.buffer
 effect main write console.stdout
 memory main heap auto
 async main no
-purpose main "Exercise 2-arg c.printf where the trailing arg is a *var* (alloca). The emitter must emit a `load` before the call and reference the loaded SSA name."
-invariant main "Output is 'counter=42\\n'."
+purpose operation main "Exercise 2-arg c.printf where the trailing arg is a *var* (alloca). The emitter must emit a `load` before the call and reference the loaded SSA name."
+invariant operation main "Output is 'counter=42\\n'."
 label startMain
-const triggerSize CByteCount 1
+storage module immutable triggerSize CByteCount 1
 call walkerTriggerCall c.malloc
-arg walkerTriggerCall size triggerSize
+argument walkerTriggerCall size CByteCount triggerSize
 run walkerTriggerCall
-bind walkerTriggerBuffer COpaqueMemoryAddress walkerTriggerCall
+bind value walkerTriggerBuffer COpaqueMemoryAddress walkerTriggerCall
 
-const fortyTwo CSignedInt64 42
-var counterStorage I64 0
-set counterStorage fortyTwo
+storage module immutable fortyTwo CSignedInt64 42
+memory main mutable counterStorage I64 0
+set memory counterStorage fortyTwo
 
-const formatStr CNullTerminatedByteString "counter=%lld\n"
+storage module immutable formatStr CNullTerminatedByteString "counter=%lld\n"
 call printCall c.printf
-arg printCall format formatStr
-arg printCall value counterStorage
+argument printCall format CNullTerminatedByteString formatStr
+argument printCall value I64 counterStorage
 run printCall
-ignoreOk printCall CSignedInt32
+ignore ok source printCall type CSignedInt32
 
 call freeCall c.free
-arg freeCall ptr walkerTriggerBuffer
+argument freeCall ptr COpaqueMemoryAddress walkerTriggerBuffer
 run freeCall
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

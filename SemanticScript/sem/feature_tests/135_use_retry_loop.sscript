@@ -7,40 +7,40 @@ runtime AgentRuntime 0.1
 entry console main
 error MainError
 errorCase MainError CallFailed CallError
-const oneStep I64 1
-const negativeThreeStart I64 -3
+storage module immutable oneStep I64 1
+storage module immutable negativeThreeStart I64 -3
 storage module mutable retryProgressCounter I64 negativeThreeStart
 retryPolicy fiveAttemptRetryPolicy
 retryMaxAttempts fiveAttemptRetryPolicy 5
 operation incrementAndReportProgress
-input incrementAndReportProgress unusedTrigger I64
-output incrementAndReportProgress I64
+input operation incrementAndReportProgress unusedTrigger I64
+output operation incrementAndReportProgress I64
 call incrementProgressCall math.addI64
-arg incrementProgressCall left retryProgressCounter
-arg incrementProgressCall right oneStep
+argument incrementProgressCall left I64 retryProgressCounter
+argument incrementProgressCall right I64 oneStep
 run incrementProgressCall
-bind nextProgressValue I64 incrementProgressCall
-set module retryProgressCounter nextProgressValue
-returnValue nextProgressValue
+bind value nextProgressValue I64 incrementProgressCall
+set storage retryProgressCounter nextProgressValue
+return value nextProgressValue
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "useRetry retries while the call returns a negative value; counter walks -2 -> -1 -> 0; result of the successful attempt prints."
-invariant main "Without retry, output would be -2 after a single attempt. With retry, the loop runs 3 times until the call returns 0 (not negative)."
+purpose operation main "useRetry retries while the call returns a negative value; counter walks -2 -> -1 -> 0; result of the successful attempt prints."
+invariant operation main "Without retry, output would be -2 after a single attempt. With retry, the loop runs 3 times until the call returns 0 (not negative)."
 label startMain
-const zeroValue I64 0
+storage module immutable zeroValue I64 0
 useRetry retryHelperCall fiveAttemptRetryPolicy
 call retryHelperCall incrementAndReportProgress
-arg retryHelperCall unusedTrigger zeroValue
+argument retryHelperCall unusedTrigger I64 zeroValue
 run retryHelperCall
-bind finalProgressResult I64 retryHelperCall
+bind value finalProgressResult I64 retryHelperCall
 call printResultCall console.writeIntegerLine
-arg printResultCall console console
-arg printResultCall value finalProgressResult
+argument printResultCall console Console console
+argument printResultCall value I64 finalProgressResult
 run printResultCall
-ignoreOk printResultCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source printResultCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

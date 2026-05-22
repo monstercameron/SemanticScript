@@ -20,6 +20,17 @@ from pathlib import Path
 
 VERSION = "0.1.0"
 ROOT = Path(__file__).resolve().parents[1]
+SYNTAX_PAYLOAD_VERSION = "sem.syntaxCutover.v1"
+CALL_DISPOSITION_VARIANTS = ("value", "ok", "error", "void")
+AUTHORITY_ACTIONS = frozenset({
+    "allocate",
+    "close",
+    "execute",
+    "open",
+    "read",
+    "send",
+    "write",
+})
 CLEAN_DIRECTORY_NAMES = frozenset({"build", ".semcache", "__pycache__"})
 CLEAN_FILE_SUFFIXES = frozenset({
     ".exe",
@@ -523,7 +534,7 @@ def _build_context_payload(path: Path) -> dict:
     if facts:
         project["sourceRoots"] = _row_values(facts, "sourceRoot", 1)
     return {
-        "schemaVersion": "sem.context.v0",
+        "schemaVersion": "sem.context.v1",
         "tool": {"name": "sem", "version": VERSION},
         "project": project,
         "sourceFiles": [str(source.resolve()) for source in source_files],
@@ -546,6 +557,28 @@ def _build_context_payload(path: Path) -> dict:
             "inventoryPath": str((ROOT.parent / "SYNTAX.md").resolve()),
             "statusCounts": syntax_counts,
             "languageModes": ["strictExecutable", "refinedSyntax"],
+            "schemaVersion": SYNTAX_PAYLOAD_VERSION,
+            "normalCommandsAutoMigrateOldSyntax": False,
+            "currentRows": {
+                "argument": "argument CALL PARAM TYPE VALUE",
+                "bind": ["bind value NAME TYPE CALL", "bind ok NAME TYPE CALL", "bind error NAME TYPE CALL"],
+                "branch": [
+                    "branch if condition CONDITION target LABEL",
+                    "branch error source CALL target LABEL",
+                    "branch else target LABEL",
+                ],
+                "jump": "jump target LABEL",
+                "return": ["return value VALUE", "return ok VALUE", "return error VALUE", "return void"],
+                "ignore": [
+                    "ignore value source CALL type TYPE",
+                    "ignore ok source CALL type TYPE",
+                    "ignore error source CALL",
+                    "ignore void source CALL",
+                ],
+                "input": "input operation OP NAME TYPE",
+                "output": "output operation OP TYPE",
+                "authority": "authority OP ACTION PATH",
+            },
         },
         "knownDeferredFeatures": {
             "xfailFeatureTests": _count_xfail_markers(),
@@ -602,77 +635,352 @@ def _operation_rows(operation, verb: str) -> list:
     ]
 
 
-def _operation_symbol(operation, semlint) -> dict:
-    calls = semlint.collect_operation_calls(operation)
-    inputs = []
-    outputs = []
-    effects = []
-    capabilities = []
-    authorities = []
+def _signature_input_payload(source_line, operation) -> dict | None:
+    args = source_line.args
+    if source_line.verb != "input":
+        return None
+    if len(args) >= 4 and args[0] == "operation" and args[1] == operation.name:
+        return {
+            "subjectKind": args[0],
+            "name": args[2],
+            "type": args[3],
+            "location": _line_payload(source_line),
+        }
+    if len(args) >= 3 and args[0] == operation.name:
+        return {
+            "subjectKind": "operation",
+            "name": args[1],
+            "type": args[2],
+            "location": _line_payload(source_line),
+        }
+    return None
+
+
+def _signature_output_payload(source_line, operation) -> dict | None:
+    args = source_line.args
+    if source_line.verb != "output":
+        return None
+    if len(args) >= 3 and args[0] == "operation" and args[1] == operation.name:
+        return {
+            "subjectKind": args[0],
+            "type": args[2],
+            "values": args[2:],
+            "location": _line_payload(source_line),
+        }
+    if len(args) >= 2 and args[0] == operation.name:
+        return {
+            "subjectKind": "operation",
+            "type": args[1],
+            "values": args[1:],
+            "location": _line_payload(source_line),
+        }
+    return None
+
+
+def _effect_payload(source_line, operation) -> dict | None:
+    args = source_line.args
+    if source_line.verb == "effect" and len(args) >= 3 and args[0] == operation.name:
+        return {
+            "action": args[1],
+            "path": args[2],
+            "location": _line_payload(source_line),
+        }
+    return None
+
+
+def _authority_payload(source_line, operation) -> dict | None:
+    args = source_line.args
+    if source_line.verb != "authority" or len(args) < 3 or args[0] != operation.name:
+        return None
+    if args[1] in AUTHORITY_ACTIONS:
+        action, path = args[1], args[2]
+    else:
+        path, action = args[1], args[2]
+    return {
+        "action": action,
+        "path": path,
+        "location": _line_payload(source_line),
+    }
+
+
+def _call_reference_from_line(source_line) -> str:
+    args = source_line.args
+    if not args:
+        return ""
+    verb = source_line.verb
+    if verb in {"argument", "run", "start", "await", "startInGroup", "timeout", "cancelOn"}:
+        return args[0]
+    if verb == "arg":
+        return args[0]
+    if verb == "bind":
+        if len(args) >= 4 and args[0] in {"value", "ok", "error"}:
+            return args[3]
+        if len(args) >= 3:
+            return args[2]
+    if verb in {"bindOk", "bindError"} and len(args) >= 3:
+        return args[2]
+    if verb == "ignore":
+        if len(args) >= 3 and args[0] in CALL_DISPOSITION_VARIANTS and args[1] == "source":
+            return args[2]
+    if verb in {"ignoreOk", "ignoreValue"}:
+        return args[0]
+    if verb == "branch" and len(args) >= 5 and args[0] == "error" and args[1] == "source":
+        return args[2]
+    if verb == "branchIfError":
+        return args[0]
+    return ""
+
+
+def _bind_variant_payload(source_line) -> tuple[str, dict] | None:
+    args = source_line.args
+    if source_line.verb == "bind":
+        if len(args) >= 4 and args[0] in {"value", "ok", "error"}:
+            return args[0], {
+                "name": args[1],
+                "type": args[2],
+                "source": args[3],
+                "location": _line_payload(source_line),
+            }
+        if len(args) >= 3:
+            return "value", {
+                "name": args[0],
+                "type": args[1],
+                "source": args[2],
+                "location": _line_payload(source_line),
+            }
+    if source_line.verb == "bindOk" and len(args) >= 3:
+        return "ok", {
+            "name": args[0],
+            "type": args[1],
+            "source": args[2],
+            "location": _line_payload(source_line),
+        }
+    if source_line.verb == "bindError" and len(args) >= 3:
+        return "error", {
+            "name": args[0],
+            "type": args[1],
+            "source": args[2],
+            "location": _line_payload(source_line),
+        }
+    return None
+
+
+def _ignore_variant_payload(source_line) -> tuple[str, dict] | None:
+    args = source_line.args
+    if source_line.verb == "ignore" and len(args) >= 3:
+        variant = args[0]
+        if variant in CALL_DISPOSITION_VARIANTS and args[1] == "source":
+            payload = {
+                "source": args[2],
+                "location": _line_payload(source_line),
+            }
+            if len(args) >= 5 and args[3] == "type":
+                payload["type"] = args[4]
+            return variant, payload
+    if source_line.verb == "ignoreOk" and len(args) >= 1:
+        payload = {"source": args[0], "location": _line_payload(source_line)}
+        if len(args) >= 2:
+            payload["type"] = args[1]
+        return "ok", payload
+    if source_line.verb == "ignoreValue" and len(args) >= 1:
+        variant = "void" if len(args) >= 2 and args[1] == "Void" else "value"
+        payload = {"source": args[0], "location": _line_payload(source_line)}
+        if variant == "value" and len(args) >= 2:
+            payload["type"] = args[1]
+        return variant, payload
+    return None
+
+
+def _branch_payload(source_line) -> dict | None:
+    args = source_line.args
+    if source_line.verb == "branch":
+        if len(args) >= 5 and args[0] == "if" and args[1] == "condition" and args[3] == "target":
+            return {
+                "kind": "branch if",
+                "condition": args[2],
+                "target": args[4],
+                "location": _line_payload(source_line),
+            }
+        if len(args) >= 5 and args[0] == "error" and args[1] == "source" and args[3] == "target":
+            return {
+                "kind": "branch error",
+                "source": args[2],
+                "target": args[4],
+                "location": _line_payload(source_line),
+            }
+        if len(args) >= 3 and args[0] == "else" and args[1] == "target":
+            return {
+                "kind": "branch else",
+                "target": args[2],
+                "location": _line_payload(source_line),
+            }
+        if len(args) >= 1:
+            return {
+                "kind": "jump",
+                "target": args[0],
+                "location": _line_payload(source_line),
+            }
+    if source_line.verb == "branchIf" and len(args) >= 2:
+        return {
+            "kind": "branch if",
+            "condition": args[0],
+            "target": args[1],
+            "location": _line_payload(source_line),
+        }
+    if source_line.verb == "branchIfError" and len(args) >= 2:
+        return {
+            "kind": "branch error",
+            "source": args[0],
+            "target": args[1],
+            "location": _line_payload(source_line),
+        }
+    if source_line.verb == "jump" and len(args) >= 2 and args[0] == "target":
+        return {
+            "kind": "jump",
+            "target": args[1],
+            "location": _line_payload(source_line),
+        }
+    return None
+
+
+def _return_payload(source_line) -> dict | None:
+    args = source_line.args
+    if source_line.verb == "return" and args and args[0] in CALL_DISPOSITION_VARIANTS:
+        payload = {
+            "variant": args[0],
+            "location": _line_payload(source_line),
+        }
+        if args[0] != "void" and len(args) >= 2:
+            payload["value"] = args[1]
+        return payload
+    legacy_variants = {
+        "returnValue": "value",
+        "returnOk": "ok",
+        "returnError": "error",
+        "returnVoid": "void",
+    }
+    if source_line.verb in legacy_variants:
+        payload = {
+            "variant": legacy_variants[source_line.verb],
+            "location": _line_payload(source_line),
+        }
+        if payload["variant"] != "void" and args:
+            payload["value"] = args[0]
+        return payload
+    return None
+
+
+def _operation_call_payloads(operation) -> list[dict]:
+    calls: dict[str, dict] = {}
+    order: dict[str, int] = {}
 
     for source_line in operation.lines:
         if not source_line.tokens:
             continue
         args = source_line.args
-        if source_line.verb == "input" and len(args) >= 3 and args[0] == operation.name:
-            inputs.append({
-                "name": args[1],
+        if source_line.verb == "call" and len(args) >= 2:
+            calls[args[0]] = {
+                "name": args[0],
+                "target": args[1],
+                "location": _line_payload(source_line),
+                "arguments": [],
+                "disposition": {
+                    "run": False,
+                    "start": False,
+                    "await": False,
+                    "bind": {variant: [] for variant in ("value", "ok", "error")},
+                    "ignore": {variant: [] for variant in CALL_DISPOSITION_VARIANTS},
+                    "branchError": [],
+                },
+            }
+            order[args[0]] = source_line.number
+
+    for source_line in operation.lines:
+        if not source_line.tokens:
+            continue
+        args = source_line.args
+        call_name = _call_reference_from_line(source_line)
+        call_payload = calls.get(call_name)
+        if call_payload is None:
+            continue
+        if source_line.verb == "argument" and len(args) >= 4:
+            call_payload["arguments"].append({
+                "parameter": args[1],
                 "type": args[2],
+                "value": args[3],
                 "location": _line_payload(source_line),
             })
-        elif source_line.verb == "output" and len(args) >= 2 and args[0] == operation.name:
-            outputs.append({
-                "type": args[1],
-                "values": args[1:],
+        elif source_line.verb == "arg" and len(args) >= 3:
+            call_payload["arguments"].append({
+                "parameter": args[1],
+                "type": "",
+                "value": args[2],
                 "location": _line_payload(source_line),
             })
-        elif source_line.verb == "effect" and len(args) >= 3 and args[0] == operation.name:
-            effects.append({
-                "access": args[1],
-                "path": args[2],
-                "location": _line_payload(source_line),
-            })
+        elif source_line.verb in {"run", "start", "await"}:
+            call_payload["disposition"][source_line.verb] = True
+        else:
+            bind_payload = _bind_variant_payload(source_line)
+            if bind_payload is not None:
+                variant, payload = bind_payload
+                call_payload["disposition"]["bind"][variant].append(payload)
+                continue
+            ignore_payload = _ignore_variant_payload(source_line)
+            if ignore_payload is not None:
+                variant, payload = ignore_payload
+                call_payload["disposition"]["ignore"][variant].append(payload)
+                continue
+            branch_payload = _branch_payload(source_line)
+            if branch_payload is not None and branch_payload["kind"] == "branch error":
+                call_payload["disposition"]["branchError"].append(branch_payload)
+
+    return [
+        calls[name]
+        for name in sorted(calls, key=lambda item: order.get(item, 0))
+    ]
+
+
+def _operation_symbol(operation, semlint, facts=None) -> dict:
+    inputs = []
+    outputs = []
+    effects = []
+    capabilities = []
+    authorities = []
+    control_flow = []
+    returns = []
+
+    for source_line in operation.lines:
+        if not source_line.tokens:
+            continue
+        args = source_line.args
+        input_payload = _signature_input_payload(source_line, operation)
+        output_payload = _signature_output_payload(source_line, operation)
+        effect_payload = _effect_payload(source_line, operation)
+        authority_payload = _authority_payload(source_line, operation)
+        branch_payload = _branch_payload(source_line)
+        return_payload = _return_payload(source_line)
+        if input_payload is not None:
+            inputs.append(input_payload)
+        elif output_payload is not None:
+            outputs.append(output_payload)
+        elif effect_payload is not None:
+            effects.append(effect_payload)
         elif source_line.verb == "useCapability" and len(args) >= 2 and args[0] == operation.name:
             capabilities.append({
                 "name": args[1],
                 "location": _line_payload(source_line),
             })
-        elif source_line.verb == "authority" and len(args) >= 3 and args[0] == operation.name:
-            authorities.append({
-                "path": args[1],
-                "access": args[2],
-                "location": _line_payload(source_line),
-            })
-
-    call_payloads = []
-    for call in sorted(calls.values(), key=lambda item: item.line.number):
-        call_payloads.append({
-            "name": call.name,
-            "target": call.target,
-            "location": _line_payload(call.line),
-            "args": [
-                {
-                    "name": arg_line.args[1],
-                    "value": arg_line.args[2],
-                    "location": _line_payload(arg_line),
-                }
-                for arg_line in call.arg_lines
-                if len(arg_line.args) >= 3
-            ],
-            "disposition": {
-                "run": bool(call.run_lines),
-                "start": bool(call.start_lines),
-                "await": bool(call.await_lines),
-                "bind": [line.args[0] for line in call.bind_lines if line.args],
-                "bindOk": [line.args[0] for line in call.bind_ok_lines if line.args],
-                "bindError": [line.args[0] for line in call.bind_error_lines if line.args],
-                "ignoreOk": bool(call.ignore_ok_lines),
-                "ignoreValue": bool(call.ignore_value_lines),
-                "branchIfError": [
-                    line.args[1] for line in call.branch_error_lines if len(line.args) >= 2
-                ],
-            },
-        })
+        elif authority_payload is not None:
+            authorities.append(authority_payload)
+        elif branch_payload is not None:
+            control_flow.append(branch_payload)
+        elif return_payload is not None:
+            returns.append(return_payload)
+    if facts is not None:
+        for source_line in facts.lines:
+            authority_payload = _authority_payload(source_line, operation)
+            if authority_payload is not None and authority_payload not in authorities:
+                authorities.append(authority_payload)
 
     return {
         "name": operation.name,
@@ -682,14 +990,16 @@ def _operation_symbol(operation, semlint) -> dict:
         "effects": effects,
         "capabilities": capabilities,
         "authorities": authorities,
-        "calls": call_payloads,
+        "calls": _operation_call_payloads(operation),
+        "controlFlow": control_flow,
+        "returns": returns,
     }
 
 
 def _symbol_payload_for_file(path: Path, semlint) -> tuple[dict, list[dict]]:
     facts = semlint.parse_file(path)
     operations = [
-        _operation_symbol(operation, semlint)
+        _operation_symbol(operation, semlint, facts)
         for operation in sorted(facts.operations.values(), key=lambda item: item.line.number)
     ]
     routes = [
@@ -705,17 +1015,20 @@ def _symbol_payload_for_file(path: Path, semlint) -> tuple[dict, list[dict]]:
     unresolved = []
     operation_names = set(facts.operations)
     for operation in facts.operations.values():
-        calls = semlint.collect_operation_calls(operation)
+        calls = {
+            source_line.args[0]
+            for source_line in operation.lines
+            if source_line.tokens and source_line.verb == "call" and len(source_line.args) >= 2
+        }
+        call_targets = {
+            source_line.args[0]: source_line.args[1]
+            for source_line in operation.lines
+            if source_line.tokens and source_line.verb == "call" and len(source_line.args) >= 2
+        }
         for source_line in operation.lines:
             if not source_line.tokens or not source_line.args:
                 continue
-            verb = source_line.verb
-            maybe_call = ""
-            if verb in {"arg", "run", "start", "await", "ignoreOk", "ignoreValue",
-                        "branchIfError", "startInGroup", "timeout", "cancelOn"}:
-                maybe_call = source_line.args[0]
-            elif verb in {"bind", "bindOk", "bindError"} and len(source_line.args) >= 3:
-                maybe_call = source_line.args[2]
+            maybe_call = _call_reference_from_line(source_line)
             if maybe_call and maybe_call not in calls:
                 unresolved.append({
                     "kind": "callAttachment",
@@ -723,13 +1036,16 @@ def _symbol_payload_for_file(path: Path, semlint) -> tuple[dict, list[dict]]:
                     "name": maybe_call,
                     "location": _line_payload(source_line),
                 })
-        for call in calls.values():
-            if "." not in call.target and call.target not in operation_names:
+        for call_name, call_target in call_targets.items():
+            if "." not in call_target and call_target not in operation_names:
                 unresolved.append({
                     "kind": "localCallTarget",
                     "operation": operation.name,
-                    "name": call.target,
-                    "location": _line_payload(call.line),
+                    "name": call_target,
+                    "location": _line_payload(next(
+                        line for line in operation.lines
+                        if line.tokens and line.verb == "call" and line.args[0] == call_name
+                    )),
                 })
     file_payload = {
         "path": str(path.resolve()),
@@ -764,8 +1080,33 @@ def _symbol_graph_payload(path: Path) -> dict:
         except OSError as exc:
             errors.append(str(exc))
     return {
-        "schemaVersion": "sem.symbols.v0",
+        "schemaVersion": "sem.symbols.v1",
         "tool": {"name": "sem", "version": VERSION},
+        "syntax": {
+            "schemaVersion": SYNTAX_PAYLOAD_VERSION,
+            "normalCommandsAutoMigrateOldSyntax": False,
+            "rowForms": [
+                "argument CALL PARAM TYPE VALUE",
+                "bind value NAME TYPE CALL",
+                "bind ok NAME TYPE CALL",
+                "bind error NAME TYPE CALL",
+                "branch if condition CONDITION target LABEL",
+                "branch error source CALL target LABEL",
+                "branch else target LABEL",
+                "jump target LABEL",
+                "return value VALUE",
+                "return ok VALUE",
+                "return error VALUE",
+                "return void",
+                "ignore value source CALL type TYPE",
+                "ignore ok source CALL type TYPE",
+                "ignore error source CALL",
+                "ignore void source CALL",
+                "input operation OP NAME TYPE",
+                "output operation OP TYPE",
+                "authority OP ACTION PATH",
+            ],
+        },
         "sourceFiles": [str(source.resolve()) for source in source_files],
         "files": files,
         "summary": {
@@ -1362,6 +1703,19 @@ def command_symbols(args: argparse.Namespace) -> int:
     return 0 if not payload["errors"] else 1
 
 
+def command_migrate_syntax(args: argparse.Namespace) -> int:
+    migration_path = ROOT / "tools" / "syntax_migration.py"
+    command = [sys.executable, str(migration_path)]
+    if args.write:
+        command.append("--write")
+    if args.diff:
+        command.append("--diff")
+    if args.json:
+        command.append("--json")
+    command.extend(args.paths)
+    return subprocess.call(command)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sem",
@@ -1500,6 +1854,19 @@ def build_parser() -> argparse.ArgumentParser:
                          help="emit machine-readable symbol graph")
     symbols.add_argument("path", nargs="?", default=".")
     symbols.set_defaults(func=command_symbols)
+
+    migrate_syntax = subparsers.add_parser(
+        "migrate-syntax",
+        help="explicitly convert legacy SemanticScript row syntax",
+    )
+    migrate_syntax.add_argument("--write", action="store_true",
+                                help="rewrite files in place")
+    migrate_syntax.add_argument("--diff", action="store_true",
+                                help="print unified diffs")
+    migrate_syntax.add_argument("--json", action="store_true",
+                                help="emit machine-readable migration results")
+    migrate_syntax.add_argument("paths", nargs="+")
+    migrate_syntax.set_defaults(func=command_migrate_syntax)
 
     return parser
 

@@ -23,6 +23,7 @@ import argparse
 import io
 import json
 import os
+import re
 import sys
 
 if sys.platform == "win32":
@@ -114,6 +115,8 @@ class CallFact:
     bind_error_lines: List[SourceLine] = field(default_factory=list)
     ignore_ok_lines: List[SourceLine] = field(default_factory=list)
     ignore_value_lines: List[SourceLine] = field(default_factory=list)
+    ignore_error_lines: List[SourceLine] = field(default_factory=list)
+    ignore_void_lines: List[SourceLine] = field(default_factory=list)
     branch_error_lines: List[SourceLine] = field(default_factory=list)
     timeout_lines: List[SourceLine] = field(default_factory=list)
     cancel_lines: List[SourceLine] = field(default_factory=list)
@@ -161,6 +164,14 @@ class ImportModuleFact:
 
 
 @dataclass
+class ResultTypeFact:
+    name: str
+    ok_type: str
+    error_type: str
+    line: SourceLine
+
+
+@dataclass
 class SingularImportFact:
     kind: str
     local_name: str
@@ -173,6 +184,14 @@ class SingularImportFact:
 class JsonBodyFact:
     name: str
     line: SourceLine
+    body_lines: List[Tuple[str, int]] = field(default_factory=list)
+
+
+@dataclass
+class HtmlTemplateFact:
+    name: str
+    line: SourceLine
+    body_line: Optional[SourceLine] = None
     body_lines: List[Tuple[str, int]] = field(default_factory=list)
 
 
@@ -192,8 +211,10 @@ class ProgramFacts:
     routes: List[RouteFact] = field(default_factory=list)
     imports: Set[str] = field(default_factory=set)
     module_imports: List[ImportModuleFact] = field(default_factory=list)
+    result_types: Dict[str, ResultTypeFact] = field(default_factory=dict)
     singular_imports: List[SingularImportFact] = field(default_factory=list)
     json_bodies: List[JsonBodyFact] = field(default_factory=list)
+    html_templates: Dict[str, HtmlTemplateFact] = field(default_factory=dict)
     records: Dict[str, List[Tuple[str, str]]] = field(default_factory=dict)
     record_json_names: Dict[Tuple[str, str], str] = field(default_factory=dict)
     record_json_omit_when: Dict[Tuple[str, str], str] = field(default_factory=dict)
@@ -503,8 +524,8 @@ _PARSER_CONTEXT_VERBS: Set[str] = {
     "pinsNullBodyFailurePath", "responseBodyForwarder", "rationale",
 }
 _PARSER_ACTION_VERBS: Set[str] = {
-    "set", "call", "arg", "timeout", "cancelOn", "run", "start", "await",
-    "bind", "bindOk", "bindError", "ignoreOk", "ignoreValue", "makeError",
+    "set", "call", "arg", "argument", "timeout", "cancelOn", "run", "start", "await",
+    "bind", "bindOk", "bindError", "ignore", "ignoreOk", "ignoreValue", "ignoreError", "makeError",
     "taskGroup", "startInGroup", "awaitGroup", "bindGroupError", "defer",
     "deferLog", "deferAwaitLog", "deferWhenExitLog", "new", "fieldGet",
     "fieldSet", "send", "receive", "lock", "unlock", "select", "selectCase",
@@ -515,13 +536,13 @@ _PARSER_ACTION_VERBS: Set[str] = {
 _PARSER_CONTROL_VERBS: Set[str] = {
     "label", "branch", "branchIf", "branchIfError", "branchIfGroupError",
     "branchIfChannelClosed", "branchSelected", "returnOk", "returnError",
-    "returnValue", "returnVoid",
+    "returnValue", "returnVoid", "return", "jump",
 }
 _PARSER_BODY_VERBS: Set[str] = (
     _PARSER_CONTEXT_VERBS
     | _PARSER_ACTION_VERBS
     | _PARSER_CONTROL_VERBS
-    | {"const", "var", "storage", "importModule"}
+    | {"const", "var", "let", "storage", "importModule", "import"}
 )
 _PARSER_CONTRACT_HEAVY_KINDS: Set[str] = {
     "record", "codec", "jsonCodec", "validator", "mapper", "adapter",
@@ -620,6 +641,13 @@ def parse_import_module_args(args: Sequence[str]) -> Tuple[str, Optional[str], s
     return args[0], None, "module-only"
 
 
+def parse_import_args(args: Sequence[str]) -> Tuple[str, Optional[str], str]:
+    """Return (module_path, alias, syntax_shape) for `import ALIAS MODULE`."""
+    if len(args) != 2:
+        return "", None, "malformed"
+    return args[1], args[0], "alias-module"
+
+
 SINGULAR_IMPORT_VERB_KINDS: Dict[str, str] = {
     "importOperation": "operation",
     "importType": "type",
@@ -629,11 +657,144 @@ SINGULAR_IMPORT_VERB_KINDS: Dict[str, str] = {
 }
 
 
+def input_parts(sourceLine: SourceLine) -> Optional[Tuple[str, str, str]]:
+    """Return (operation, input_name, type) for old or new input rows."""
+    if sourceLine.verb != "input":
+        return None
+    args = sourceLine.args
+    if len(args) >= 4 and args[0] == "operation":
+        return args[1], args[2], args[3]
+    if len(args) >= 3:
+        return args[0], args[1], args[2]
+    return None
+
+
+def output_parts(sourceLine: SourceLine) -> Optional[Tuple[str, str]]:
+    """Return (operation, output_type) for old or new output rows."""
+    if sourceLine.verb != "output":
+        return None
+    args = sourceLine.args
+    if len(args) >= 3 and args[0] == "operation":
+        return args[1], args[2]
+    if len(args) >= 2:
+        return args[0], args[1]
+    return None
+
+
+def bind_parts(sourceLine: SourceLine) -> Optional[Tuple[str, str, str, str]]:
+    """Return (variant, name, type, call) for bind rows."""
+    args = sourceLine.args
+    if sourceLine.verb == "bind":
+        if len(args) >= 4 and args[0] in {"value", "ok", "error"}:
+            return args[0], args[1], args[2], args[3]
+        if len(args) >= 3:
+            return "value", args[0], args[1], args[2]
+    if sourceLine.verb == "bindOk" and len(args) >= 3:
+        return "ok", args[0], args[1], args[2]
+    if sourceLine.verb == "bindError" and len(args) >= 3:
+        return "error", args[0], args[1], args[2]
+    return None
+
+
+def argument_parts(sourceLine: SourceLine) -> Optional[Tuple[str, str, Optional[str], str]]:
+    """Return (call, parameter, declared_type, value) for argument rows."""
+    args = sourceLine.args
+    if sourceLine.verb == "argument" and len(args) >= 4:
+        return args[0], args[1], args[2], args[3]
+    if sourceLine.verb == "arg" and len(args) >= 3:
+        return args[0], args[1], None, args[2]
+    return None
+
+
+def ignore_parts(sourceLine: SourceLine) -> Optional[Tuple[str, str, Optional[str]]]:
+    """Return (variant, call, type) for ignore rows."""
+    args = sourceLine.args
+    if sourceLine.verb == "ignore":
+        if len(args) >= 5 and args[0] in {"value", "ok"} and args[1] == "source" and args[3] == "type":
+            return args[0], args[2], args[4]
+        if len(args) >= 3 and args[0] in {"error", "void"} and args[1] == "source":
+            return args[0], args[2], None
+    if sourceLine.verb == "ignoreValue" and len(args) >= 2:
+        variant = "void" if args[1] in {"Void", "CVoid"} else "value"
+        return variant, args[0], args[1]
+    if sourceLine.verb == "ignoreOk" and len(args) >= 2:
+        return "ok", args[0], args[1]
+    if sourceLine.verb == "ignoreError" and args:
+        return "error", args[0], None
+    return None
+
+
+def branch_target_names_from_row(sourceLine: SourceLine) -> List[str]:
+    args = sourceLine.args
+    if sourceLine.verb == "jump" and len(args) >= 2 and args[0] == "target":
+        return [args[1]]
+    if sourceLine.verb == "branch":
+        if len(args) >= 5 and args[0] in {"if", "error"} and args[3] == "target":
+            return [args[4]]
+        if len(args) >= 3 and args[0] == "else" and args[1] == "target":
+            return [args[2]]
+        if args:
+            targets = [args[0]]
+            if len(args) >= 3 and sourceLine.verb == "branchIf":
+                targets.append(args[2])
+            return targets
+    if sourceLine.verb == "branchIf" and len(args) >= 2:
+        targets = [args[1]]
+        if len(args) >= 3:
+            targets.append(args[2])
+        return targets
+    if sourceLine.verb in {"branchIfError", "branchIfGroupError", "branchIfChannelClosed"} and len(args) >= 2:
+        return [args[1]]
+    if sourceLine.verb == "branchSelected" and len(args) >= 3:
+        return [args[2]]
+    return []
+
+
+def branch_error_source(sourceLine: SourceLine) -> Optional[str]:
+    args = sourceLine.args
+    if sourceLine.verb == "branch" and len(args) >= 5 and args[:2] == ["error", "source"] and args[3] == "target":
+        return args[2]
+    if sourceLine.verb == "branchIfError" and len(args) >= 2:
+        return args[0]
+    return None
+
+
+def return_parts(sourceLine: SourceLine) -> Optional[Tuple[str, Optional[str]]]:
+    args = sourceLine.args
+    if sourceLine.verb == "return":
+        if args and args[0] == "void":
+            return "void", None
+        if len(args) >= 2 and args[0] in {"value", "ok", "error"}:
+            return args[0], args[1]
+    legacy = {
+        "returnValue": "value",
+        "returnOk": "ok",
+        "returnError": "error",
+        "returnVoid": "void",
+    }.get(sourceLine.verb)
+    if legacy:
+        return legacy, args[0] if args else None
+    return None
+
+
+def memory_parts(sourceLine: SourceLine) -> Optional[Tuple[str, str, Sequence[str]]]:
+    args = sourceLine.args
+    if sourceLine.verb == "memory" and len(args) >= 2:
+        return args[0], args[1], args[2:]
+    if sourceLine.verb == "memoryHeap" and len(args) >= 2:
+        return args[0], "heap", args[1:]
+    if sourceLine.verb == "memoryArena" and len(args) >= 2:
+        return args[0], "arena", args[1:]
+    if sourceLine.verb == "memoryStackLimit" and len(args) >= 2:
+        return args[0], "stack", ("max", args[1])
+    return None
+
+
 def parse_file(path: Path) -> ProgramFacts:
     program = ProgramFacts(path=path)
     _register_builtin_surface(program)
     current_op: Optional[OperationFact] = None
-    active_html_body = False
+    active_html_body: Optional[HtmlTemplateFact] = None
     active_json_body: Optional[JsonBodyFact] = None
 
     with path.open("r", encoding="utf-8") as source_file:
@@ -647,12 +808,14 @@ def parse_file(path: Path) -> ProgramFacts:
                     active_json_body.body_lines.append(("", line_number))
                     continue
                 active_json_body = None
-            if active_html_body:
+            if active_html_body is not None:
                 if raw.strip() and raw[0].isspace():
+                    active_html_body.body_lines.append((raw, line_number))
                     continue
                 if not raw.strip():
+                    active_html_body.body_lines.append(("", line_number))
                     continue
-                active_html_body = False
+                active_html_body = None
             line = SourceLine(path=path, number=line_number, raw=raw,
                               tokens=tokenize_line(raw))
             program.lines.append(line)
@@ -671,6 +834,12 @@ def parse_file(path: Path) -> ProgramFacts:
             verb = line.verb
             args = line.args
 
+            if verb == "module" and args:
+                current_op = None
+                program.abstractions.setdefault(
+                    args[0], AbstractionFact("module", args[0], line))
+                continue
+
             if verb == "operation" and args:
                 current_op = OperationFact(name=args[0], line=line)
                 current_op.lines.append(line)
@@ -684,6 +853,12 @@ def parse_file(path: Path) -> ProgramFacts:
 
             if verb == "mode" and args:
                 program.modes.add(args[0])
+            elif verb == "import" and args:
+                moduleName, alias, syntax = parse_import_args(args)
+                if moduleName:
+                    program.imports.add(moduleName)
+                    program.module_imports.append(
+                        ImportModuleFact(moduleName, alias, line, syntax))
             elif verb == "importModule" and args:
                 moduleName, alias, syntax = parse_import_module_args(args)
                 if moduleName:
@@ -701,6 +876,12 @@ def parse_file(path: Path) -> ProgramFacts:
             elif verb == "const" and len(args) >= 3:
                 program.consts[args[0]] = ConstFact(
                     args[0], args[1], args[2], line)
+            elif (verb == "type" and len(args) >= 6
+                  and args[1] == "result" and args[2] == "ok"
+                  and args[4] == "error"):
+                program.result_types[args[0]] = ResultTypeFact(
+                    args[0], args[3], args[5], line)
+                program.type_aliases[args[0]] = args[1]
             elif verb == "type" and len(args) >= 2:
                 program.type_aliases[args[0]] = args[1]
             elif verb == "record" and args:
@@ -721,11 +902,27 @@ def parse_file(path: Path) -> ProgramFacts:
             elif verb == "route" and len(args) >= 4:
                 program.routes.append(
                     RouteFact(args[0], args[1], args[2], args[3], line))
+            elif verb == "html" and len(args) >= 2 and args[0] == "template":
+                program.html_templates.setdefault(
+                    args[1], HtmlTemplateFact(args[1], line))
+                program.abstractions.setdefault(
+                    args[1], AbstractionFact("htmlTemplate", args[1], line))
             elif verb == "htmlTemplate" and args:
+                program.html_templates.setdefault(
+                    args[0], HtmlTemplateFact(args[0], line))
                 program.abstractions.setdefault(
                     args[0], AbstractionFact(verb, args[0], line))
+            elif (verb == "html" and len(args) >= 3
+                  and args[0] == "body" and args[1] == "template"):
+                template = program.html_templates.setdefault(
+                    args[2], HtmlTemplateFact(args[2], line))
+                template.body_line = line
+                active_html_body = template
             elif verb == "htmlBody" and args:
-                active_html_body = True
+                template = program.html_templates.setdefault(
+                    args[0], HtmlTemplateFact(args[0], line))
+                template.body_line = line
+                active_html_body = template
             elif verb == "jsonBody":
                 json_body = JsonBodyFact(args[0] if args else "", line)
                 program.json_bodies.append(json_body)
@@ -736,7 +933,8 @@ def parse_file(path: Path) -> ProgramFacts:
             elif (verb in {"purpose", "invariant", "warning", "guarantee",
                            "failure", "security", "timing", "observability"}
                   and args):
-                program.hard_metadata.setdefault(args[0], set()).add(verb)
+                owner = args[1] if verb in {"purpose", "invariant"} and len(args) >= 3 and args[0] in {"module", "operation"} else args[0]
+                program.hard_metadata.setdefault(owner, set()).add(verb)
 
     return program
 
@@ -1275,7 +1473,7 @@ COLLECTION_TYPE_SUFFIXES: Tuple[str, ...] = (
 VERB_MINIMUM_ARITY: Dict[str, int] = {
     # Project structure
     "project": 1, "target": 1, "runtime": 2, "entry": 2, "mode": 1,
-    "module": 1, "section": 1, "importModule": 1,
+    "module": 1, "section": 1, "import": 2, "importModule": 1,
     "importOperation": 3, "importType": 3, "importError": 3,
     "importCapability": 3, "importConstant": 3,
     "buildProject": 1, "modulePath": 2, "languageVersion": 2,
@@ -1314,12 +1512,12 @@ VERB_MINIMUM_ARITY: Dict[str, int] = {
     "new": 2, "fieldSet": 3, "fieldGet": 4,
     "error": 1, "errorCase": 2, "enum": 1, "enumCase": 2,
     # HTML / SSX / JSON islands
-    "htmlTemplate": 1, "htmlArg": 3, "htmlBody": 1,
+    "html": 2, "htmlTemplate": 1, "htmlArg": 3, "htmlBody": 1,
     "jsonBody": 1,
     # Operations + narrative
     "operation": 1, "operationBody": 2,
-    "input": 2, "output": 2, "effect": 3,
-    "memory": 2, "memoryHeap": 2, "memoryArena": 2, "memoryStackLimit": 2,
+    "input": 4, "output": 3, "effect": 3,
+    "memory": 3, "memoryHeap": 2, "memoryArena": 2, "memoryStackLimit": 2,
     "memoryAllocationSource": 2,
     "async": 2,
     "purpose": 2, "invariant": 2, "warning": 2, "guarantee": 2, "failure": 2,
@@ -1333,15 +1531,15 @@ VERB_MINIMUM_ARITY: Dict[str, int] = {
     "literal": 2, "literalBytes": 2, "literalDigest": 3,
     "literalPreview": 2, "literalSource": 2, "literalTrust": 2,
     # Calls
-    "call": 2, "arg": 3, "timeout": 2, "cancelOn": 2,
+    "call": 2, "argument": 4, "arg": 3, "timeout": 2, "cancelOn": 2,
     "run": 1, "start": 1, "await": 1,
-    "bind": 3, "bindOk": 3, "bindError": 3,
-    "ignoreOk": 2, "ignoreValue": 2,
+    "bind": 4, "bindOk": 3, "bindError": 3,
+    "ignore": 3, "ignoreOk": 2, "ignoreValue": 2, "ignoreError": 1,
     "makeError": 2, "declareFailure": 2,
     # Control flow
-    "label": 1, "branch": 1, "branchIf": 2, "branchIfError": 2,
+    "label": 1, "branch": 3, "jump": 2, "branchIf": 2, "branchIfError": 2,
     "branchIfGroupError": 2, "branchIfChannelClosed": 2, "branchSelected": 3,
-    "returnOk": 1, "returnError": 1, "returnValue": 1,
+    "return": 1, "returnOk": 1, "returnError": 1, "returnValue": 1,
     # Capabilities + dependencies
     "capability": 3, "useCapability": 2, "authority": 3,
     "dependency": 1, "dependencyFunction": 1,
@@ -1376,14 +1574,14 @@ VERB_MINIMUM_ARITY: Dict[str, int] = {
     # Runtime bindings
     "runtimeBinding": 2, "intrinsicName": 2,
     # Constants
-    "const": 3, "var": 3,
+    "const": 3, "var": 3, "let": 3,
 }
 
 
 # Verbs that reference a `call NAME TARGET` declaration at args[0]. Used by
 # SS4101 reference-integrity checks.
 CALL_REFERENCE_VERBS_AT_ARG_ZERO: frozenset = frozenset({
-    "arg", "run", "start", "await",
+    "arg", "argument", "run", "start", "await",
     "ignoreOk", "ignoreValue", "branchIfError",
     "timeout", "cancelOn", "useRetry",
     "startInGroup",
@@ -1452,7 +1650,7 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "version", "publisher", "description", "copyright", "productName",
     "internalName", "originalFilename", "trademark", "comments", "metadata",
     # Imports & sections
-    "importModule", "importOperation", "importType", "importError",
+    "import", "importModule", "importOperation", "importType", "importError",
     "importCapability", "importConstant", "section",
     # Groups
     "group", "groupPurpose", "groupInput", "groupOutput", "groupError",
@@ -1482,12 +1680,12 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "literal", "literalBytes", "literalDigest", "literalPreview",
     "literalSource", "literalTrust",
     # Calls
-    "call", "arg", "timeout", "cancelOn", "run", "start", "await",
-    "bind", "bindOk", "bindError", "ignoreOk", "ignoreValue",
+    "call", "argument", "arg", "timeout", "cancelOn", "run", "start", "await",
+    "bind", "bindOk", "bindError", "ignore", "ignoreOk", "ignoreValue", "ignoreError",
     "makeError", "declareFailure",
     # Control flow
-    "label", "branch", "branchIf", "branchIfError",
-    "returnOk", "returnError", "returnValue", "returnVoid",
+    "label", "branch", "jump", "branchIf", "branchIfError",
+    "return", "returnOk", "returnError", "returnValue", "returnVoid",
     # Dependencies
     "dependency", "dependencyEffect", "dependencyExports",
     "dependencyFunction", "dependencyFunctionInput", "dependencyFunctionOutput",
@@ -1516,7 +1714,7 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     # Web
     "webServer", "serverHost", "serverPort", "route",
     "routeTimeout", "routeMiddleware",
-    "htmlTemplate", "htmlArg", "htmlBody", "jsonBody",
+    "html", "htmlTemplate", "htmlArg", "htmlBody", "jsonBody",
     # SS3604 coverage opt-outs — declare a route's intentional omission
     # of the cross-cutting timeout / middleware contract.
     "routeTimeoutOptOut", "routeMiddlewareOptOut",
@@ -1560,7 +1758,7 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "runtimeBinding", "runtimeBindingPrecondition", "runtimeBindingFailure",
     "intrinsicName",
     # Token literals that may appear standalone
-    "const", "var", "testCovers",
+    "const", "var", "let", "testCovers",
 })
 
 
@@ -1931,7 +2129,7 @@ def gather_extended(baseFacts: ProgramFacts) -> ExtendedFacts:
             continue
 
         if verb in NARRATIVE_EDGES and args:
-            owner = args[0]
+            owner = args[1] if verb in {"purpose", "invariant"} and len(args) >= 3 and args[0] in {"module", "operation"} else args[0]
             facts.operationNarrative.setdefault(owner, {})[verb] = sourceLine
 
         if verb == "capability" and args:
@@ -1949,16 +2147,8 @@ def gather_extended(baseFacts: ProgramFacts) -> ExtendedFacts:
             facts.operationAuthority.setdefault(args[0], []).append(sourceLine)
         elif verb == "label" and args and currentOperation:
             facts.labels[args[0]] = LabelFact(args[0], sourceLine, currentOperation)
-        elif verb == "branch" and args:
-            facts.labelReferences.add(args[0])
-        elif verb == "branchIf" and len(args) >= 2:
-            facts.labelReferences.add(args[1])
-            if len(args) >= 3:
-                facts.labelReferences.add(args[2])
-        elif verb in {"branchIfError", "branchIfGroupError", "branchIfChannelClosed"} and len(args) >= 2:
-            facts.labelReferences.add(args[1])
-        elif verb == "branchSelected" and len(args) >= 3:
-            facts.labelReferences.add(args[2])
+        elif verb in {"branch", "jump", "branchIf", "branchIfError", "branchIfGroupError", "branchIfChannelClosed", "branchSelected"}:
+            facts.labelReferences.update(branch_target_names_from_row(sourceLine))
         elif verb == "errorCase" and len(args) >= 2:
             facts.errorCases[(args[0], args[1])] = ErrorCaseFact(args[0], args[1], sourceLine)
         elif verb in {"makeError", "declareFailure"} and len(args) >= 2:
@@ -2002,6 +2192,12 @@ def gather_extended(baseFacts: ProgramFacts) -> ExtendedFacts:
             # storage SCOPE MUTABILITY NAME TYPE INIT
             scope, mutability, name = args[0], args[1], args[2]
             facts.storageSlots[name] = StorageFact(name, sourceLine, scope, mutability)
+        elif verb == "memory":
+            memory = memory_parts(sourceLine)
+            if memory is not None and memory[1] in {"mutable", "immutable"} and len(memory[2]) >= 2:
+                operationName, mutability, rest = memory
+                facts.storageSlots[rest[0]] = StorageFact(
+                    rest[0], sourceLine, f"memory.{operationName}", mutability)
         elif verb == "sharedState" and len(args) >= 4:
             scope, mutability, name = args[0], args[1], args[2]
             facts.storageSlots[name] = StorageFact(name, sourceLine, f"sharedState.{scope}", mutability)
@@ -2049,9 +2245,20 @@ def gather_extended(baseFacts: ProgramFacts) -> ExtendedFacts:
                 literalFact.hasBytes = True
         elif verb == "effect" and len(args) >= 3:
             facts.operationEffects.setdefault(args[0], []).append(sourceLine)
-        elif verb == "memoryHeap" and len(args) >= 2:
-            heapAllowed = args[1].lower() in {"yes", "true"}
-            facts.operationMemoryHeapAllowed[args[0]] = (sourceLine, heapAllowed)
+        elif verb in {"memory", "memoryHeap", "memoryArena", "memoryStackLimit"}:
+            memory = memory_parts(sourceLine)
+            if memory is None:
+                continue
+            operationName, subkind, rest = memory
+            if subkind == "heap" and rest:
+                heapAllowed = rest[0].lower() in {"yes", "true"}
+                facts.operationMemoryHeapAllowed[operationName] = (sourceLine, heapAllowed)
+            elif subkind == "stack" and len(rest) >= 2 and rest[0] == "max":
+                try:
+                    stackLimitBytes = int(rest[1])
+                    facts.operationMemoryStackLimitBytes[operationName] = (sourceLine, stackLimitBytes)
+                except ValueError:
+                    pass
         elif verb == "memoryAllocationSource" and len(args) >= 2:
             facts.operationMemoryAllocationSource.setdefault(args[0], []).append(sourceLine)
         elif verb == "memoryStackLimit" and len(args) >= 2:
@@ -2171,7 +2378,10 @@ def narrative_citations_for_operation(facts: ExtendedFacts, operationName: str) 
         if not narrativeLine:
             continue
         # `purpose foo "the text"` → args = ["foo", "the text"]
-        text = narrativeLine.args[1] if len(narrativeLine.args) >= 2 else ""
+        if edgeKind in {"purpose", "invariant"} and len(narrativeLine.args) >= 3 and narrativeLine.args[0] in {"module", "operation"}:
+            text = narrativeLine.args[2]
+        else:
+            text = narrativeLine.args[1] if len(narrativeLine.args) >= 2 else ""
         citations.append(Citation(
             span=span_of_line(narrativeLine, f"narrative.{edgeKind}"),
             edgeKind=edgeKind,
@@ -2198,16 +2408,24 @@ def collect_operation_calls(operation: OperationFact) -> Dict[str, CallFact]:
         if not args:
             continue
         target = None
+        bind = bind_parts(sourceLine)
+        argument = argument_parts(sourceLine)
+        ignore = ignore_parts(sourceLine)
+        branchErrorSource = branch_error_source(sourceLine)
         # Most call-attachment verbs use args[0] as the call name
-        if verb in {"arg", "run", "start", "await", "ignoreOk", "ignoreValue",
-                    "branchIfError", "startInGroup", "timeout", "cancelOn"}:
+        if argument is not None:
+            target = operationCalls.get(argument[0])
+        elif ignore is not None:
+            target = operationCalls.get(ignore[1])
+        elif branchErrorSource is not None:
+            target = operationCalls.get(branchErrorSource)
+        elif verb in {"run", "start", "await", "startInGroup", "timeout", "cancelOn"}:
             target = operationCalls.get(args[0])
-        # bind/bindOk/bindError name the call at args[2]
-        elif verb in {"bind", "bindOk", "bindError"} and len(args) >= 3:
-            target = operationCalls.get(args[2])
+        elif bind is not None:
+            target = operationCalls.get(bind[3])
         if target is None:
             continue
-        if verb == "arg":
+        if argument is not None:
             target.arg_lines.append(sourceLine)
         elif verb == "run":
             target.run_lines.append(sourceLine)
@@ -2215,17 +2433,21 @@ def collect_operation_calls(operation: OperationFact) -> Dict[str, CallFact]:
             target.start_lines.append(sourceLine)
         elif verb == "await":
             target.await_lines.append(sourceLine)
-        elif verb == "bind":
+        elif bind is not None and bind[0] == "value":
             target.bind_lines.append(sourceLine)
-        elif verb == "bindOk":
+        elif bind is not None and bind[0] == "ok":
             target.bind_ok_lines.append(sourceLine)
-        elif verb == "bindError":
+        elif bind is not None and bind[0] == "error":
             target.bind_error_lines.append(sourceLine)
-        elif verb == "ignoreOk":
+        elif ignore is not None and ignore[0] == "ok":
             target.ignore_ok_lines.append(sourceLine)
-        elif verb == "ignoreValue":
+        elif ignore is not None and ignore[0] == "value":
             target.ignore_value_lines.append(sourceLine)
-        elif verb == "branchIfError":
+        elif ignore is not None and ignore[0] == "error":
+            target.ignore_error_lines.append(sourceLine)
+        elif ignore is not None and ignore[0] == "void":
+            target.ignore_void_lines.append(sourceLine)
+        elif branchErrorSource is not None:
             target.branch_error_lines.append(sourceLine)
         elif verb == "startInGroup":
             target.group_start_lines.append(sourceLine)
@@ -2239,18 +2461,21 @@ def collect_operation_calls(operation: OperationFact) -> Dict[str, CallFact]:
 def operation_input_types(operation: OperationFact) -> Dict[str, str]:
     inputs: Dict[str, str] = {}
     for sourceLine in operation.lines:
-        if (not is_comment(sourceLine) and sourceLine.tokens
-                and sourceLine.verb == "input" and len(sourceLine.args) >= 3
-                and sourceLine.args[0] == operation.name):
-            inputs[sourceLine.args[1]] = sourceLine.args[2]
+        if is_comment(sourceLine) or not sourceLine.tokens:
+            continue
+        parsed = input_parts(sourceLine)
+        if parsed is not None and parsed[0] == operation.name:
+            inputs[parsed[1]] = parsed[2]
     return inputs
 
 
 def call_arg_values(callFact: CallFact) -> Dict[str, List[str]]:
     values: Dict[str, List[str]] = {}
     for argLine in callFact.arg_lines:
-        if len(argLine.args) >= 3:
-            values.setdefault(argLine.args[1], []).append(argLine.args[2])
+        parsed = argument_parts(argLine)
+        if parsed is not None:
+            _callName, argumentName, _declaredType, suppliedValue = parsed
+            values.setdefault(argumentName, []).append(suppliedValue)
     return values
 
 
@@ -2265,16 +2490,18 @@ def call_success_value_names(callFact: CallFact) -> Set[str]:
     """Names that carry a call's successful return value in this operation."""
     names: Set[str] = set()
     for bindLine in callFact.bind_lines + callFact.bind_ok_lines:
-        if bindLine.args:
-            names.add(bindLine.args[0])
+        parsed = bind_parts(bindLine)
+        if parsed is not None:
+            names.add(parsed[1])
     return names
 
 
 def call_success_value_lines(callFact: CallFact) -> List[Tuple[str, SourceLine]]:
     values: List[Tuple[str, SourceLine]] = []
     for bindLine in callFact.bind_lines + callFact.bind_ok_lines:
-        if bindLine.args:
-            values.append((bindLine.args[0], bindLine))
+        parsed = bind_parts(bindLine)
+        if parsed is not None:
+            values.append((parsed[1], bindLine))
     return values
 
 
@@ -2285,6 +2512,7 @@ def call_has_value_disposition(callFact: CallFact) -> bool:
         or callFact.bind_ok_lines
         or callFact.ignore_value_lines
         or callFact.ignore_ok_lines
+        or callFact.ignore_void_lines
     )
 
 
@@ -2292,7 +2520,8 @@ def call_consumes_any_value(callFact: CallFact, valueNames: Set[str]) -> bool:
     if not valueNames:
         return False
     for argLine in callFact.arg_lines:
-        if len(argLine.args) >= 3 and argLine.args[2] in valueNames:
+        parsed = argument_parts(argLine)
+        if parsed is not None and parsed[3] in valueNames:
             return True
     return False
 
@@ -2379,15 +2608,22 @@ def _line_declares_value(sourceLine: SourceLine, valueName: str) -> bool:
         return False
     verb = sourceLine.verb
     args = sourceLine.args
-    if verb in {"bind", "bindOk", "bindError", "const", "var", "literal",
+    bind = bind_parts(sourceLine)
+    if bind is not None:
+        return bind[1] == valueName
+    if verb in {"const", "var", "let", "literal",
                 "domainLiteral", "makeError", "declareFailure", "receive"}:
         return args[0] == valueName
     if verb == "storage" and len(args) >= 3:
         return args[2] == valueName
+    memory = memory_parts(sourceLine)
+    if memory is not None and memory[1] in {"mutable", "immutable"} and len(memory[2]) >= 2:
+        return memory[2][0] == valueName
     if verb == "sharedState" and len(args) >= 3:
         return args[2] == valueName
-    if verb == "input" and len(args) >= 2:
-        return args[1] == valueName
+    parsedInput = input_parts(sourceLine)
+    if parsedInput is not None:
+        return parsedInput[1] == valueName
     if verb == "read" and len(args) >= 2:
         return args[1] == valueName
     return False
@@ -2422,6 +2658,9 @@ def _literal_assignment(sourceLine: SourceLine) -> Optional[Tuple[str, str, str]
         return args[0], args[1], args[2]
     if sourceLine.verb == "storage" and len(args) >= 5:
         return args[2], args[3], args[4]
+    memory = memory_parts(sourceLine)
+    if memory is not None and memory[1] in {"mutable", "immutable"} and len(memory[2]) >= 3:
+        return memory[2][0], memory[2][1], memory[2][2]
     return None
 
 
@@ -3345,6 +3584,400 @@ def check_unknown_verbs(facts: ExtendedFacts) -> List[Diagnostic]:
     return diagnostics
 
 
+_CUTOVER_ACTIONS: Set[str] = {
+    "read", "write", "append", "allocate", "free", "open", "close",
+    "execute", "delete", "create", "update", "network", "observe",
+    "log", "connect", "send", "receive", "configure",
+}
+
+_REPLACED_VERB_FIXES: Dict[str, str] = {
+    "importModule": "import <alias> <module.path>",
+    "arg": "argument <call> <parameter> <type> <value>",
+    "bindOk": "bind ok <name> <type> <call>",
+    "bindError": "bind error <name> <type> <call>",
+    "branchIf": "branch if condition <condition> target <label>",
+    "branchIfError": "branch error source <call> target <label>",
+    "returnValue": "return value <value>",
+    "returnOk": "return ok <value>",
+    "returnError": "return error <value>",
+    "returnVoid": "return void",
+    "ignoreValue": "ignore value source <call> type <type>",
+    "ignoreOk": "ignore ok source <call> type <type>",
+    "ignoreError": "ignore error source <call>",
+    "memoryHeap": "memory <operation> heap yes|no",
+    "memoryArena": "memory <operation> arena <scope>",
+    "memoryStackLimit": "memory <operation> stack max <size>",
+    "const": "storage module immutable <name> <type> <value>",
+    "let": "memory <operation> mutable <name> <type> <value>",
+    "var": "memory <operation> mutable <name> <type> <value>",
+    "modulePurpose": "purpose module <module> \"...\"",
+    "moduleInvariant": "invariant module <module> \"...\"",
+    "htmlTemplate": "html template <name>",
+    "htmlArg": "# remove; html hydrate parameters are inferred from body holes",
+    "htmlBody": "html body template <template>",
+}
+
+
+def _syntax_cutover_diagnostic(
+    sourceLine: SourceLine,
+    subjectName: str,
+    intent: str,
+    rule: str,
+    shape: str,
+) -> Diagnostic:
+    return Diagnostic(
+        tier=Tier.T0_PARSE,
+        code="SS0003",
+        kind="grammar.syntaxCutover",
+        severity=Severity.ERROR,
+        subjectName=subjectName,
+        subjectKind="row",
+        gapEdge="newSyntax",
+        intentSlogan=intent,
+        primary=span_of_line(sourceLine, "syntaxCutoverSite"),
+        invariantRule=rule,
+        specAnchor="SYNTAX.md#syntax-cutover",
+        fixCandidates=[
+            FixCandidate(
+                name="rewriteToNewSyntax",
+                shape=shape,
+            ),
+        ],
+        confidence=Confidence.HIGH,
+        blocksCompile=True,
+        effort=Effort.TRIVIAL,
+        passProvenance="check_syntax_cutover_rows",
+        agentHint="run the explicit syntax converter or rewrite this row; the linter no longer treats old syntax as source",
+    )
+
+
+def check_syntax_cutover_rows(facts: ExtendedFacts) -> List[Diagnostic]:
+    diagnostics: List[Diagnostic] = []
+    for sourceLine in facts.base.lines:
+        if sourceLine.number == 0 or not sourceLine.tokens:
+            continue
+
+        stripped = sourceLine.raw.strip()
+        if stripped.startswith("#label"):
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, "#label", "sigil-prefixed labels are rejected",
+                "labels must use `label NAME`, not `#label NAME`",
+                "label <name>",
+            ))
+            continue
+        if is_comment(sourceLine):
+            continue
+
+        verb = sourceLine.verb
+        args = sourceLine.args
+        if verb.startswith("@") or verb.startswith("#"):
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, verb, "sigil-prefixed row verb is rejected",
+                "row verbs must be plain words; labels use `label NAME`",
+                "label <name>" if "label" in verb else "# remove the sigil prefix",
+            ))
+            continue
+        if "." in verb:
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, verb, "dotted fact-row verb is rejected",
+                "dotted path/value tokens are allowed, but row verbs cannot contain dots",
+                "# rewrite as a supported space-separated row",
+            ))
+            continue
+        if any("=" in token.text for token in sourceLine.tokens if not token.quoted):
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, verb, "equals-sign key/value rows are rejected",
+                "SemanticScript rows remain space-separated positional rows with role words",
+                "# rewrite without key=value fields",
+            ))
+            continue
+        if verb in _REPLACED_VERB_FIXES:
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, verb, f"`{verb}` was replaced by the syntax cutover",
+                f"`{verb}` is converter input only, not valid SemanticScript source",
+                _REPLACED_VERB_FIXES[verb],
+            ))
+            continue
+
+        if verb == "type" and len(args) >= 2 and args[1] == "Result":
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, "type Result", "old result type row is rejected",
+                "`type NAME Result OK ERROR` must become `type NAME result ok OK error ERROR`",
+                "type <name> result ok <okType> error <errorType>",
+            ))
+        elif verb == "input" and not (len(args) >= 4 and args[0] == "operation"):
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, "input", "input rows must be subject-qualified",
+                "`input OP NAME TYPE` was replaced by `input operation OP NAME TYPE`",
+                "input operation <operation> <name> <type>",
+            ))
+        elif verb == "output" and not (len(args) >= 3 and args[0] == "operation"):
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, "output", "output rows must be subject-qualified",
+                "`output OP TYPE` was replaced by `output operation OP TYPE`",
+                "output operation <operation> <type>",
+            ))
+        elif verb == "purpose" and not (len(args) >= 3 and args[0] in {"module", "operation"}):
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, "purpose", "purpose rows must name the subject kind",
+                "`purpose SUBJECT TEXT` was replaced by `purpose operation SUBJECT TEXT` or `purpose module SUBJECT TEXT`",
+                "purpose operation <operation> \"...\"",
+            ))
+        elif verb == "invariant" and not (len(args) >= 3 and args[0] in {"module", "operation"}):
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, "invariant", "invariant rows must name the subject kind",
+                "`invariant SUBJECT TEXT` was replaced by `invariant operation SUBJECT TEXT` or `invariant module SUBJECT TEXT`",
+                "invariant operation <operation> \"...\"",
+            ))
+        elif verb == "import" and len(args) != 2:
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, "import", "import rows require alias and module path",
+                "`import` must be `import ALIAS MODULE_PATH`",
+                "import <alias> <module.path>",
+            ))
+        elif verb == "bind" and not (len(args) >= 4 and args[0] in {"value", "ok", "error"}):
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, "bind", "bind rows require a variant word",
+                "`bind NAME TYPE CALL` was replaced by `bind value NAME TYPE CALL`",
+                "bind value <name> <type> <call>",
+            ))
+        elif verb == "branch":
+            validBranch = (
+                len(args) == 5 and args[0] == "if" and args[1] == "condition" and args[3] == "target"
+            ) or (
+                len(args) == 5 and args[0] == "error" and args[1] == "source" and args[3] == "target"
+            ) or (
+                len(args) == 3 and args[0] == "else" and args[1] == "target"
+            )
+            if not validBranch:
+                diagnostics.append(_syntax_cutover_diagnostic(
+                    sourceLine, "branch", "branch rows require if/error/else role-word shape",
+                    "bare `branch TARGET` was replaced by `jump target TARGET`; conditional branches use role words",
+                    "branch if condition <condition> target <label>",
+                ))
+        elif verb == "jump" and not (len(args) == 2 and args[0] == "target"):
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, "jump", "jump rows require `target` role word",
+                "`jump LABEL` is invalid; use `jump target LABEL`",
+                "jump target <label>",
+            ))
+        elif verb == "return":
+            validReturn = (
+                len(args) == 1 and args[0] == "void"
+            ) or (
+                len(args) == 2 and args[0] in {"value", "ok", "error"}
+            )
+            if not validReturn:
+                diagnostics.append(_syntax_cutover_diagnostic(
+                    sourceLine, "return", "return rows require value/ok/error/void variant",
+                    "`return` must be `return value|ok|error VALUE` or `return void`",
+                    "return value <value>",
+                ))
+        elif verb == "ignore":
+            validIgnore = (
+                len(args) == 5 and args[0] in {"value", "ok"} and args[1] == "source" and args[3] == "type"
+            ) or (
+                len(args) == 3 and args[0] in {"error", "void"} and args[1] == "source"
+            )
+            if not validIgnore:
+                diagnostics.append(_syntax_cutover_diagnostic(
+                    sourceLine, "ignore", "ignore rows require variant and role words",
+                    "`ignore` must use `source` and, for value/ok, `type` role words",
+                    "ignore value source <call> type <type>",
+                ))
+        elif verb == "argument" and len(args) != 4:
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, "argument", "argument rows require call, parameter, type, and value",
+                "`argument` must be `argument CALL PARAM TYPE VALUE`",
+                "argument <call> <parameter> <type> <value>",
+            ))
+        elif verb == "html":
+            validHtml = (
+                len(args) == 2 and args[0] == "template"
+            ) or (
+                len(args) == 3 and args[0] == "body" and args[1] == "template"
+            )
+            if not validHtml:
+                diagnostics.append(_syntax_cutover_diagnostic(
+                    sourceLine, "html", "html rows require root-specific role words",
+                    "`html` rows must be `html template` or `html body template`; holes infer hydrate arguments",
+                    "html body template <template>",
+                ))
+        elif verb == "memory":
+            validMemory = False
+            if len(args) >= 3 and args[1] in {"mutable", "immutable"}:
+                validMemory = len(args) >= 5
+            elif len(args) >= 3 and args[1] == "heap":
+                validMemory = len(args) == 3 and args[2] in {"yes", "no", "true", "false"}
+            elif len(args) >= 3 and args[1] == "arena":
+                validMemory = len(args) == 3
+            elif len(args) >= 4 and args[1] == "stack":
+                validMemory = args[2] == "max"
+            if not validMemory:
+                diagnostics.append(_syntax_cutover_diagnostic(
+                    sourceLine, "memory", "memory rows require a known subkind",
+                    "`memory` subkind must be heap, arena, stack, mutable, or immutable",
+                    "memory <operation> heap yes|no",
+                ))
+        elif verb == "set" and args and args[0] in {"local", "module"}:
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, "set", "`set local/module` was replaced",
+                "set targets must use declaration families: `memory` or `storage`",
+                "set memory <name> <value>",
+            ))
+        elif verb == "authority" and len(args) >= 3 and args[1] not in _CUTOVER_ACTIONS and args[2] in _CUTOVER_ACTIONS:
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, "authority", "authority action/path ordering is reversed",
+                "`authority OP PATH ACTION` was replaced by `authority OP ACTION PATH`",
+                f"authority {args[0]} {args[2]} {args[1]}",
+            ))
+
+    return diagnostics
+
+
+_HTML_HOLE_REFERENCE_RE = re.compile(
+    r"\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\}")
+_HTML_BRACE_CONTENT_RE = re.compile(r"\{([^{}\n]*)\}")
+_HTML_RAW_TEXT_RE = re.compile(
+    r"<(style|script)\b[^>]*>.*?</\1\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _html_line_for(template: HtmlTemplateFact, line_number: int, raw: str) -> SourceLine:
+    return SourceLine(
+        path=template.line.path,
+        number=line_number,
+        raw=raw,
+        tokens=tokenize_line(raw),
+    )
+
+
+def _html_hole_diagnostic(
+    sourceLine: SourceLine,
+    *,
+    subjectName: str,
+    intent: str,
+    rule: str,
+    shape: str,
+) -> Diagnostic:
+    return Diagnostic(
+        tier=Tier.T2_LOWERING,
+        code="SS3520",
+        kind="html.implicitHoleContract",
+        severity=Severity.ERROR,
+        subjectName=subjectName,
+        subjectKind="htmlTemplate",
+        gapEdge="htmlHole",
+        intentSlogan=intent,
+        primary=span_of_line(sourceLine, "htmlHoleSite"),
+        invariantRule=rule,
+        specAnchor="SYNTAX.md#html",
+        fixCandidates=[FixCandidate(name="rewriteHtmlHole", shape=shape)],
+        confidence=Confidence.HIGH,
+        blocksCompile=True,
+        effort=Effort.LOCAL,
+        passProvenance="check_html_implicit_holes",
+        agentHint="template holes are bare names or dotted record fields; hydrate calls must pass exactly those root names",
+    )
+
+
+def _html_body_text(template: HtmlTemplateFact) -> str:
+    if not template.body_lines:
+        return ""
+    return "\n".join(raw[1:] if raw[:1].isspace() else raw
+                     for raw, _line in template.body_lines) + "\n"
+
+
+def _html_hole_roots(template: HtmlTemplateFact) -> Tuple[Set[str], List[Diagnostic]]:
+    diagnostics: List[Diagnostic] = []
+    body = _html_body_text(template)
+    roots: Set[str] = set()
+    raw_spans = [(match.start(), match.end(), match.group(1).lower())
+                 for match in _HTML_RAW_TEXT_RE.finditer(body)]
+    for match in _HTML_HOLE_REFERENCE_RE.finditer(body):
+        raw_context = next(
+            (name for start, end, name in raw_spans
+             if start < match.start() < end),
+            None,
+        )
+        if raw_context is not None:
+            sourceLine = template.body_line or template.line
+            diagnostics.append(_html_hole_diagnostic(
+                sourceLine,
+                subjectName=template.name,
+                intent="raw text hole rejected",
+                rule=f"`{raw_context}` raw text cannot contain dynamic HTML holes",
+                shape=f"# move {{{match.group(1)}}} outside <{raw_context}>",
+            ))
+            continue
+        roots.add(match.group(1).split(".", 1)[0])
+
+    masked = list(body)
+    for start, end, _name in raw_spans:
+        for index in range(start, end):
+            masked[index] = " "
+    masked_body = "".join(masked)
+    hole_spans = {(match.start(), match.end())
+                  for match in _HTML_HOLE_REFERENCE_RE.finditer(masked_body)}
+    for match in _HTML_BRACE_CONTENT_RE.finditer(masked_body):
+        if (match.start(), match.end()) in hole_spans:
+            continue
+        content = match.group(1).strip()
+        if not content:
+            continue
+        sourceLine = template.body_line or template.line
+        diagnostics.append(_html_hole_diagnostic(
+            sourceLine,
+            subjectName=template.name,
+            intent="complex hole rejected",
+            rule="HTML dynamic holes must be a bare name or dotted record-field path",
+            shape="{name} or {record.field}",
+        ))
+    return roots, diagnostics
+
+
+def check_html_implicit_holes(facts: ExtendedFacts) -> List[Diagnostic]:
+    diagnostics: List[Diagnostic] = []
+    template_roots: Dict[str, Set[str]] = {}
+    for template in facts.base.html_templates.values():
+        roots, bodyDiagnostics = _html_hole_roots(template)
+        template_roots[template.name] = roots
+        diagnostics.extend(bodyDiagnostics)
+
+    for operation in facts.base.operations.values():
+        for callFact in collect_operation_calls(operation).values():
+            prefix = "html.hydrate."
+            if not callFact.target.startswith(prefix):
+                continue
+            templateName = callFact.target[len(prefix):]
+            if templateName not in template_roots:
+                continue
+            required = template_roots[templateName]
+            provided = {
+                parsed[1]
+                for parsed in (argument_parts(line) for line in callFact.arg_lines)
+                if parsed is not None
+            }
+            for missing in sorted(required - provided):
+                diagnostics.append(_html_hole_diagnostic(
+                    callFact.line,
+                    subjectName=templateName,
+                    intent="hydrate arg missing",
+                    rule=f"`html.hydrate.{templateName}` must pass hole root `{missing}`",
+                    shape=f"argument {callFact.name} {missing} String <value>",
+                ))
+            for extra in sorted(provided - required):
+                diagnostics.append(_html_hole_diagnostic(
+                    callFact.line,
+                    subjectName=templateName,
+                    intent="hydrate arg extra",
+                    rule=f"`html.hydrate.{templateName}` has no hole root `{extra}`",
+                    shape=f"# remove argument {callFact.name} {extra} ...",
+                ))
+    return diagnostics
+
+
 def check_vague_names(facts: ExtendedFacts) -> List[Diagnostic]:
     """Enforce the descriptive-identifier rule:
       * call names must end in `Call`
@@ -3393,8 +4026,9 @@ def check_vague_names(facts: ExtendedFacts) -> List[Diagnostic]:
                         fixShape=f"call <descriptiveNameCall> <target>",
                         agentHint="draft the new name from the call's target verb and the data it operates on",
                     ))
-            elif verb == "bindError" and len(args) >= 3:
-                errorBindingName = args[0]
+            bind = bind_parts(sourceLine)
+            if bind is not None and bind[0] == "error":
+                errorBindingName = bind[1]
                 if not errorBindingName.endswith("Error"):
                     diagnostics.append(_make_vague_name_diagnostic(
                         sourceLine=sourceLine,
@@ -3403,10 +4037,10 @@ def check_vague_names(facts: ExtendedFacts) -> List[Diagnostic]:
                         code="SS4002",
                         kind="namingDiscipline.bindErrorSuffix",
                         subjectName=errorBindingName,
-                        subjectKind="bindError",
+                        subjectKind="bind error",
                         intentSlogan="error binding lacks `Error` suffix",
-                        invariantRule="bindError values must end with `Error` so they read distinctly from success bindings",
-                        fixShape=f"bindError {errorBindingName}Error <type> <call>",
+                        invariantRule="`bind error` values must end with `Error` so they read distinctly from success bindings",
+                        fixShape=f"bind error {errorBindingName}Error <type> <call>",
                         agentHint="rename to `<context>Error` (e.g. `accountLookupError`)",
                     ))
             elif verb in {"makeError", "declareFailure"} and args:
@@ -3425,8 +4059,8 @@ def check_vague_names(facts: ExtendedFacts) -> List[Diagnostic]:
                         fixShape=f"{verb} {failureValueName}Failure <Error>.<Variant>",
                         agentHint="rename to `<context>Failure` (e.g. `accountLookupFailure`)",
                     ))
-            elif verb in {"bind", "bindOk"} and len(args) >= 3:
-                bindName = args[0]
+            elif bind is not None and bind[0] in {"value", "ok"}:
+                bindName = bind[1]
                 if bindName in VAGUE_NAME_BLACKLIST:
                     diagnostics.append(_make_vague_name_diagnostic(
                         sourceLine=sourceLine,
@@ -3435,10 +4069,10 @@ def check_vague_names(facts: ExtendedFacts) -> List[Diagnostic]:
                         code="SS4004",
                         kind="namingDiscipline.vagueName",
                         subjectName=bindName,
-                        subjectKind=verb,
-                        intentSlogan=f"{verb} name is in vague-name blacklist",
+                        subjectKind=f"bind {bind[0]}",
+                        intentSlogan=f"bind {bind[0]} name is in vague-name blacklist",
                         invariantRule="bound values should describe what they hold, not their position in the algorithm",
-                        fixShape=f"{verb} <descriptiveName> <type> <call>",
+                        fixShape=f"bind {bind[0]} <descriptiveName> <type> <call>",
                         agentHint="name after the meaning of the bound value, not its role as an intermediate",
                     ))
             elif verb == "const" and len(args) >= 1:
@@ -3510,9 +4144,10 @@ def check_unused_bind_slots(facts: ExtendedFacts) -> List[Diagnostic]:
         for lineIndex, sourceLine in enumerate(operation.lines):
             if is_comment(sourceLine) or not sourceLine.tokens:
                 continue
-            if sourceLine.verb in {"bind", "bindOk", "bindError"} and len(sourceLine.args) >= 3:
+            bind = bind_parts(sourceLine)
+            if bind is not None:
                 bindDeclarations.append((
-                    sourceLine.args[0], sourceLine.verb, sourceLine, lineIndex,
+                    bind[1], f"bind {bind[0]}", sourceLine, lineIndex,
                 ))
 
         for bindName, bindVerb, declarationLine, declarationIndex in bindDeclarations:
@@ -3521,8 +4156,9 @@ def check_unused_bind_slots(facts: ExtendedFacts) -> List[Diagnostic]:
                 if is_comment(laterLine) or not laterLine.tokens:
                     continue
                 # Skip the bind declarations themselves to avoid self-match
-                if laterLine.verb in {"bind", "bindOk", "bindError"} and len(laterLine.args) >= 1:
-                    if laterLine.args[0] == bindName:
+                laterBind = bind_parts(laterLine)
+                if laterBind is not None:
+                    if laterBind[1] == bindName:
                         continue
                 for token in laterLine.tokens:
                     if token.text == bindName:
@@ -3595,17 +4231,17 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
                     invariantRule=(
                         f"C-style fallible target `{callFact.target}` returns a "
                         "sentinel/status value; bind it for checking or explicitly "
-                        "discard it with `ignoreValue`"
+                        "discard it with `ignore value`"
                     ),
-                    specAnchor="SYNTAX.md#ignoreValue",
+                    specAnchor="SYNTAX.md#ignore",
                     citations=operationCitations,
                     fixCandidates=[
                         FixCandidate(
                             name="bindOrIgnoreStatus",
                             shape=(
-                                f"bind {callFact.name}Status <ReturnType> {callFact.name}\n"
+                                f"bind value {callFact.name}Status <ReturnType> {callFact.name}\n"
                                 f"# ...check status...\n"
-                                f"# or: ignoreValue {callFact.name} <ReturnType>"
+                                f"# or: ignore value source {callFact.name} type <ReturnType>"
                             ),
                             evidence=[span_of_line(callFact.line)],
                         ),
@@ -3615,15 +4251,17 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
                     passProvenance="check_hidden_failure",
                     agentHint=(
                         f"`{callFact.target}` is not Result-shaped; use a bound "
-                        "sentinel/status check or an explicit ignoreValue"
+                        "sentinel/status check or an explicit ignore value"
                     ),
                 ))
                 continue
             missingDisposition: List[str] = []
+            if callFact.ignore_error_lines:
+                continue
             if not callFact.bind_error_lines:
-                missingDisposition.append("bindError")
+                missingDisposition.append("bind error")
             if not callFact.branch_error_lines:
-                missingDisposition.append("branchIfError")
+                missingDisposition.append("branch error")
             if not missingDisposition:
                 continue
             diagnostics.append(Diagnostic(
@@ -3639,9 +4277,9 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
                 related=[span_of_line(operation.line, "enclosingOperation")],
                 invariantRule=(
                     f"calls to known-fallible target `{callFact.target}` must "
-                    f"have both `bindError` and `branchIfError`"
+                    f"have both `bind error` and `branch error`"
                 ),
-                specAnchor="SYNTAX.md#bindError",
+                specAnchor="SYNTAX.md#bind",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -3652,11 +4290,11 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
                         # `bindError` values end in `Error` per SS4002.
                         name="addBindErrorAndBranchAndConsume",
                         shape=(
-                            f"bindError {callFact.name}Error <ErrorType> {callFact.name}\n"
-                            f"branchIfError {callFact.name} <handlerLabel>\n"
+                            f"bind error {callFact.name}Error <ErrorType> {callFact.name}\n"
+                            f"branch error source {callFact.name} target <handlerLabel>\n"
                             f"# ...success continuation...\n"
                             f"label <handlerLabel>\n"
-                            f"returnError {callFact.name}Error"
+                            f"return error {callFact.name}Error"
                         ),
                         evidence=[span_of_line(callFact.line)],
                     ),
@@ -4046,26 +4684,13 @@ def _normalize_set_target_name(setLine: SourceLine) -> Optional[str]:
     args = setLine.args
     if not args:
         return None
-    if args[0] in {"local", "module", "sharedState"}:
+    if args[0] in {"local", "module", "memory", "storage", "sharedState"}:
         return args[1] if len(args) >= 2 else None
     return args[0]
 
 
 def _branch_target_names(sourceLine: SourceLine) -> List[str]:
-    verb = sourceLine.verb
-    args = sourceLine.args
-    if verb == "branch" and args:
-        return [args[0]]
-    if verb == "branchIf" and len(args) >= 2:
-        targets = [args[1]]
-        if len(args) >= 3:
-            targets.append(args[2])
-        return targets
-    if verb in {"branchIfError", "branchIfGroupError", "branchIfChannelClosed"} and len(args) >= 2:
-        return [args[1]]
-    if verb == "branchSelected" and len(args) >= 3:
-        return [args[2]]
-    return []
+    return branch_target_names_from_row(sourceLine)
 
 
 def _label_block_reads_name(
@@ -4633,6 +5258,10 @@ def check_enum_repr_comparison(facts: ExtendedFacts) -> List[Diagnostic]:
             moduleScopeValueTypes[args[2]] = args[3]
         elif verb == "enumCase" and len(args) >= 2:
             moduleScopeValueTypes[args[1]] = args[0]
+        else:
+            parsedMemory = memory_parts(sourceLine)
+            if parsedMemory is not None and parsedMemory[1] in {"mutable", "immutable"} and len(parsedMemory[2]) >= 3:
+                moduleScopeValueTypes[parsedMemory[2][0]] = parsedMemory[2][1]
 
     for operation in facts.base.operations.values():
         operationCitations = narrative_citations_for_operation(facts, operation.name)
@@ -6990,6 +7619,10 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
             moduleScopeValueNames.add(args[1])
         elif verb in {"storage", "sharedState"} and len(args) >= 5:
             moduleScopeValueNames.add(args[2])
+        else:
+            memory = memory_parts(sourceLine)
+            if memory is not None and memory[1] in {"mutable", "immutable"} and len(memory[2]) >= 3:
+                moduleScopeValueNames.add(memory[2][0])
 
     for operation in facts.base.operations.values():
         operationCalls = collect_operation_calls(operation)
@@ -7019,15 +7652,19 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
                 continue
             declarationVerb = declarationLine.verb
             declarationArgs = declarationLine.args
-            if (declarationVerb == "input" and len(declarationArgs) >= 3
-                    and declarationArgs[0] == operation.name):
-                declaredValueNames.add(declarationArgs[1])
-            elif declarationVerb in {"const", "var", "literal"} and declarationArgs:
+            parsedInput = input_parts(declarationLine)
+            parsedBind = bind_parts(declarationLine)
+            parsedMemory = memory_parts(declarationLine)
+            if parsedInput is not None and parsedInput[0] == operation.name:
+                declaredValueNames.add(parsedInput[1])
+            elif declarationVerb in {"const", "var", "let", "literal"} and declarationArgs:
                 declaredValueNames.add(declarationArgs[0])
             elif declarationVerb == "storage" and len(declarationArgs) >= 5:
                 declaredValueNames.add(declarationArgs[2])
-            elif declarationVerb in {"bind", "bindOk", "bindError"} and declarationArgs:
-                declaredValueNames.add(declarationArgs[0])
+            elif parsedMemory is not None and parsedMemory[1] in {"mutable", "immutable"} and len(parsedMemory[2]) >= 3:
+                declaredValueNames.add(parsedMemory[2][0])
+            elif parsedBind is not None:
+                declaredValueNames.add(parsedBind[1])
             elif declarationVerb == "read" and len(declarationArgs) >= 2:
                 declaredValueNames.add(declarationArgs[1])
             elif declarationVerb == "receive" and declarationArgs:
@@ -7042,8 +7679,20 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
 
             # Call references
             referencedCallName: Optional[str] = None
-            if verb in CALL_REFERENCE_VERBS_AT_ARG_ZERO and sourceLine.args:
+            parsedArgument = argument_parts(sourceLine)
+            parsedBind = bind_parts(sourceLine)
+            parsedIgnore = ignore_parts(sourceLine)
+            parsedBranchErrorSource = branch_error_source(sourceLine)
+            if parsedArgument is not None:
+                referencedCallName = parsedArgument[0]
+            elif parsedIgnore is not None:
+                referencedCallName = parsedIgnore[1]
+            elif parsedBranchErrorSource is not None:
+                referencedCallName = parsedBranchErrorSource
+            elif verb in CALL_REFERENCE_VERBS_AT_ARG_ZERO and sourceLine.args:
                 referencedCallName = sourceLine.args[0]
+            elif parsedBind is not None:
+                referencedCallName = parsedBind[3]
             elif verb in CALL_REFERENCE_VERBS_AT_ARG_TWO and len(sourceLine.args) >= 3:
                 referencedCallName = sourceLine.args[2]
             if referencedCallName and referencedCallName not in declaredCallNames:
@@ -7058,10 +7707,8 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
                     declarationShape=f"call {referencedCallName} <target>",
                 ))
 
-            if verb == "arg" and len(sourceLine.args) >= 3:
-                referencedValueName = sourceLine.args[2]
-                callReferenceName = sourceLine.args[0]
-                argumentName = sourceLine.args[1]
+            if parsedArgument is not None:
+                callReferenceName, argumentName, _argumentType, referencedValueName = parsedArgument
                 referencedOperationAsArgument = (
                     callTargetByCallName.get(callReferenceName) == "gui.controlOnEvent"
                     and argumentName == "handler"
@@ -7079,15 +7726,14 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
                         referencedKind="value",
                         verbThatReferenced=verb,
                         code="SS4105",
-                        declarationShape=f"const {referencedValueName} <type> <value>",
+                        declarationShape=f"memory {operation.name} immutable {referencedValueName} <type> <value>",
                     ))
 
             # Label references
             referencedLabelName: Optional[str] = None
-            if verb in LABEL_REFERENCE_VERBS_AT_ARG_ZERO and sourceLine.args:
-                referencedLabelName = sourceLine.args[0]
-            elif verb in LABEL_REFERENCE_VERBS_AT_ARG_ONE and len(sourceLine.args) >= 2:
-                referencedLabelName = sourceLine.args[1]
+            targets = branch_target_names_from_row(sourceLine)
+            if targets:
+                referencedLabelName = targets[0]
             elif verb == "branchSelected" and len(sourceLine.args) >= 3:
                 referencedLabelName = sourceLine.args[2]
             elif verb == "branchIf" and len(sourceLine.args) >= 3:
@@ -7162,7 +7808,7 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
         if not sourceLine.tokens or is_comment(sourceLine) or not sourceLine.args:
             continue
         if sourceLine.verb in {
-            "enum", "error", "domainLiteral", "policy", "errorPolicy",
+            "module", "enum", "error", "domainLiteral", "policy", "errorPolicy",
             "resource", "validator", "mapper", "adapter", "boundary",
         }:
             validAttachmentSubjects.add(sourceLine.args[0])
@@ -7182,7 +7828,19 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
             continue
         if sourceLine.verb not in OPERATION_ATTACHMENT_VERBS:
             continue
-        referencedSubjectName = sourceLine.args[0]
+        parsedInput = input_parts(sourceLine)
+        parsedOutput = output_parts(sourceLine)
+        parsedMemory = memory_parts(sourceLine)
+        if parsedInput is not None:
+            referencedSubjectName = parsedInput[0]
+        elif parsedOutput is not None:
+            referencedSubjectName = parsedOutput[0]
+        elif parsedMemory is not None:
+            referencedSubjectName = parsedMemory[0]
+        elif sourceLine.verb in {"purpose", "invariant"} and len(sourceLine.args) >= 3 and sourceLine.args[0] in {"module", "operation"}:
+            referencedSubjectName = sourceLine.args[1]
+        else:
+            referencedSubjectName = sourceLine.args[0]
         # Subject doesn't exist anywhere — true unresolved-attachment.
         if referencedSubjectName not in validAttachmentSubjects:
             diagnostics.append(Diagnostic(
@@ -7264,6 +7922,181 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
     return diagnostics
 
 
+def _operation_value_types(facts: ExtendedFacts, operation: OperationFact) -> Dict[str, str]:
+    valueTypes: Dict[str, str] = {
+        name: constFact.type_name
+        for name, constFact in facts.base.consts.items()
+    }
+    valueTypes.update({"true": "Bool", "false": "Bool"})
+    for sourceLine in facts.base.lines:
+        if not sourceLine.tokens or is_comment(sourceLine):
+            continue
+        if sourceLine.verb == "operation":
+            break
+        if sourceLine.verb == "storage" and len(sourceLine.args) >= 5:
+            valueTypes[sourceLine.args[2]] = sourceLine.args[3]
+        elif sourceLine.verb == "literal" and len(sourceLine.args) >= 2:
+            valueTypes[sourceLine.args[0]] = sourceLine.args[1]
+        elif sourceLine.verb == "domainLiteral" and len(sourceLine.args) >= 2:
+            valueTypes[sourceLine.args[0]] = sourceLine.args[1]
+        elif sourceLine.verb == "enumCase" and len(sourceLine.args) >= 2:
+            valueTypes[sourceLine.args[1]] = sourceLine.args[0]
+
+    for sourceLine in operation.lines:
+        if not sourceLine.tokens or is_comment(sourceLine):
+            continue
+        parsedInput = input_parts(sourceLine)
+        parsedBind = bind_parts(sourceLine)
+        parsedMemory = memory_parts(sourceLine)
+        if parsedInput is not None and parsedInput[0] == operation.name:
+            valueTypes[parsedInput[1]] = parsedInput[2]
+        elif parsedBind is not None:
+            valueTypes[parsedBind[1]] = parsedBind[2]
+        elif parsedMemory is not None and parsedMemory[1] in {"mutable", "immutable"} and len(parsedMemory[2]) >= 3:
+            valueTypes[parsedMemory[2][0]] = parsedMemory[2][1]
+        elif sourceLine.verb in {"const", "var", "let"} and len(sourceLine.args) >= 2:
+            valueTypes[sourceLine.args[0]] = sourceLine.args[1]
+        elif sourceLine.verb == "storage" and len(sourceLine.args) >= 5:
+            valueTypes[sourceLine.args[2]] = sourceLine.args[3]
+    return valueTypes
+
+
+def _is_branch_if_or_error(sourceLine: SourceLine) -> bool:
+    args = sourceLine.args
+    return (
+        sourceLine.verb == "branch"
+        and (
+            len(args) == 5 and args[0] == "if" and args[1] == "condition" and args[3] == "target"
+            or len(args) == 5 and args[0] == "error" and args[1] == "source" and args[3] == "target"
+        )
+    )
+
+
+def _is_branch_else(sourceLine: SourceLine) -> bool:
+    return (
+        sourceLine.verb == "branch"
+        and len(sourceLine.args) == 3
+        and sourceLine.args[0] == "else"
+        and sourceLine.args[1] == "target"
+    )
+
+
+def check_branch_semantics(facts: ExtendedFacts) -> List[Diagnostic]:
+    diagnostics: List[Diagnostic] = []
+    physicalByLine: Dict[int, SourceLine] = {
+        sourceLine.number: sourceLine for sourceLine in facts.base.lines
+    }
+    for operation in facts.base.operations.values():
+        operationCalls = collect_operation_calls(operation)
+        valueTypes = _operation_value_types(facts, operation)
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        for sourceLine in operation.lines:
+            if not sourceLine.tokens or is_comment(sourceLine):
+                continue
+            args = sourceLine.args
+            if sourceLine.verb == "branch" and len(args) == 5 and args[0] == "if":
+                conditionName = args[2]
+                conditionType = valueTypes.get(conditionName)
+                if conditionType is not None and conditionType != "Bool":
+                    diagnostics.append(Diagnostic(
+                        tier=Tier.T1_SPEC,
+                        code="SS4106",
+                        kind="controlFlow.branchConditionType",
+                        severity=Severity.ERROR,
+                        subjectName=conditionName,
+                        subjectKind="branchCondition",
+                        gapEdge="Bool",
+                        intentSlogan="branch if condition is not Bool",
+                        primary=span_of_line(sourceLine, "branchIfCondition"),
+                        related=[span_of_line(operation.line, "enclosingOperation")],
+                        invariantRule=(
+                            f"`branch if condition {conditionName} target {args[4]}` "
+                            f"requires `{conditionName}` to be Bool, got `{conditionType}`"
+                        ),
+                        specAnchor="SYNTAX.md#branch",
+                        citations=operationCitations,
+                        fixCandidates=[
+                            FixCandidate(
+                                name="bindBoolCondition",
+                                shape=f"bind value {conditionName}IsTrue Bool <comparisonCall>",
+                            ),
+                        ],
+                        confidence=Confidence.HIGH,
+                        blocksCompile=True,
+                        effort=Effort.LOCAL,
+                        passProvenance="check_branch_semantics",
+                        agentHint="branch conditions must be explicit Bool values; compare or validate before branching",
+                    ))
+            if sourceLine.verb == "branch" and len(args) == 5 and args[0] == "error":
+                callName = args[2]
+                callFact = operationCalls.get(callName)
+                if callFact is not None and callFact.target not in KNOWN_FALLIBLE_CALL_TARGETS:
+                    diagnostics.append(Diagnostic(
+                        tier=Tier.T1_SPEC,
+                        code="SS4107",
+                        kind="controlFlow.branchErrorSource",
+                        severity=Severity.ERROR,
+                        subjectName=callName,
+                        subjectKind="call",
+                        gapEdge="fallibleCall",
+                        intentSlogan="branch error source is not fallible",
+                        primary=span_of_line(sourceLine, "branchErrorSource"),
+                        related=[span_of_line(callFact.line, "callDeclaration")],
+                        invariantRule=(
+                            f"`branch error source {callName}` requires a result or fallible call; "
+                            f"`{callFact.target}` has no known error channel"
+                        ),
+                        specAnchor="SYNTAX.md#branch",
+                        citations=operationCitations,
+                        fixCandidates=[
+                            FixCandidate(
+                                name="removeErrorBranch",
+                                shape=f"# remove `branch error source {callName} target {args[4]}` or call a fallible target",
+                            ),
+                        ],
+                        confidence=Confidence.HIGH,
+                        blocksCompile=True,
+                        effort=Effort.TRIVIAL,
+                        passProvenance="check_branch_semantics",
+                        agentHint="use `branch error` only for result/fallible calls; ordinary calls use value checks plus `branch if`",
+                    ))
+
+            if _is_branch_else(sourceLine):
+                previousPhysical = physicalByLine.get(sourceLine.number - 1)
+                if previousPhysical is None or not _is_branch_if_or_error(previousPhysical):
+                    diagnostics.append(Diagnostic(
+                        tier=Tier.T1_SPEC,
+                        code="SS4108",
+                        kind="controlFlow.branchElseAdjacency",
+                        severity=Severity.ERROR,
+                        subjectName=args[2],
+                        subjectKind="label",
+                        gapEdge="immediatePredecessor",
+                        intentSlogan="branch else is not adjacent to branch if/error",
+                        primary=span_of_line(sourceLine, "branchElse"),
+                        related=[span_of_line(operation.line, "enclosingOperation")],
+                        invariantRule="`branch else target LABEL` must be the very next physical row after `branch if` or `branch error`",
+                        specAnchor="SYNTAX.md#branch",
+                        citations=operationCitations,
+                        fixCandidates=[
+                            FixCandidate(
+                                name="moveBranchElseAdjacent",
+                                shape="branch else target <alternateLabel>",
+                            ),
+                            FixCandidate(
+                                name="useJumpForUnconditionalTransfer",
+                                shape=f"jump target {args[2]}",
+                            ),
+                        ],
+                        confidence=Confidence.HIGH,
+                        blocksCompile=True,
+                        effort=Effort.TRIVIAL,
+                        passProvenance="check_branch_semantics",
+                        agentHint="a separated `branch else` is ambiguous; use `jump target` outside an adjacent branch chain",
+                    ))
+    return diagnostics
+
+
 def _unresolved_reference_diagnostic(
     sourceLine: SourceLine,
     operation: OperationFact,
@@ -7335,6 +8168,21 @@ def _resolve_type_to_canonical(
             visited.add(currentName)
             currentName = typeAliases[currentName]
     return PRIMITIVE_CANONICAL_BY_TYPE.get(currentName, currentName)
+
+
+def _resolve_type_alias_head(
+    typeName: Optional[str],
+    typeAliases: Dict[str, str],
+) -> Optional[str]:
+    """Chase declared type aliases without collapsing primitive families."""
+    if typeName is None:
+        return None
+    visited: Set[str] = set()
+    currentName = typeName
+    while currentName in typeAliases and currentName not in visited:
+        visited.add(currentName)
+        currentName = typeAliases[currentName]
+    return currentName
 
 
 def _resolve_type_head(
@@ -7509,10 +8357,11 @@ def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
     for operation in facts.base.operations.values():
         signature: Dict[str, str] = {}
         for sourceLine in operation.lines:
-            if (sourceLine.tokens and not is_comment(sourceLine)
-                    and sourceLine.verb == "input" and len(sourceLine.args) >= 3
-                    and sourceLine.args[0] == operation.name):
-                signature[sourceLine.args[1]] = sourceLine.args[2]
+            if not sourceLine.tokens or is_comment(sourceLine):
+                continue
+            parsedInput = input_parts(sourceLine)
+            if parsedInput is not None and parsedInput[0] == operation.name:
+                signature[parsedInput[1]] = parsedInput[2]
         userOperationSignatures[operation.name] = signature
     for importedSymbol in (
         list(importIndex.qualifiedSymbols.values())
@@ -7579,23 +8428,28 @@ def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
                 continue
             verb = sourceLine.verb
             args = sourceLine.args
-            if verb == "input" and len(args) >= 3 and args[0] == operation.name:
-                valueTypesInScope[args[1]] = args[2]
-            elif verb in {"const", "var"} and len(args) >= 2:
+            parsedInput = input_parts(sourceLine)
+            parsedBind = bind_parts(sourceLine)
+            parsedMemory = memory_parts(sourceLine)
+            if parsedInput is not None and parsedInput[0] == operation.name:
+                valueTypesInScope[parsedInput[1]] = parsedInput[2]
+            elif verb in {"const", "var", "let"} and len(args) >= 2:
                 valueTypesInScope[args[0]] = args[1]
-            elif verb in {"bind", "bindOk", "bindError"} and len(args) >= 3:
-                valueTypesInScope[args[0]] = args[1]
+            elif parsedMemory is not None and parsedMemory[1] in {"mutable", "immutable"} and len(parsedMemory[2]) >= 3:
+                valueTypesInScope[parsedMemory[2][0]] = parsedMemory[2][1]
+            elif parsedBind is not None:
+                valueTypesInScope[parsedBind[1]] = parsedBind[2]
             elif verb == "call" and len(args) >= 2:
                 callTargetByCallName[args[0]] = args[1]
 
-        # Second pass: every `arg CALL ARGNAME VALUE` against the target signature
+        # Second pass: every `argument CALL ARGNAME TYPE VALUE` against the target signature
         for sourceLine in operation.lines:
-            if (not sourceLine.tokens or is_comment(sourceLine)
-                    or sourceLine.verb != "arg" or len(sourceLine.args) < 3):
+            if not sourceLine.tokens or is_comment(sourceLine):
                 continue
-            callReferenceName, argumentName, suppliedValueName = (
-                sourceLine.args[0], sourceLine.args[1], sourceLine.args[2]
-            )
+            parsedArgument = argument_parts(sourceLine)
+            if parsedArgument is None:
+                continue
+            callReferenceName, argumentName, declaredArgumentType, suppliedValueName = parsedArgument
             targetName = callTargetByCallName.get(callReferenceName)
             if not targetName:
                 # Unresolved call — SS4101 already handles that.
@@ -7613,6 +8467,43 @@ def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
             if expectedType is None:
                 # Unknown signature → skip rather than guess.
                 continue
+
+            if declaredArgumentType is not None:
+                resolvedDeclaredArgument = _resolve_type_alias_head(
+                    declaredArgumentType, typeAliases)
+                resolvedExpectedArgument = _resolve_type_alias_head(
+                    expectedType, typeAliases)
+                if resolvedDeclaredArgument != resolvedExpectedArgument:
+                    diagnostics.append(Diagnostic(
+                        tier=Tier.T1_SPEC,
+                        code="SS4301",
+                        kind="typeIntegrity.argumentTypeMismatch",
+                        severity=Severity.ERROR,
+                        subjectName=declaredArgumentType,
+                        subjectKind="argumentType",
+                        gapEdge="matchingParameterType",
+                        intentSlogan="argument row type does not match target signature",
+                        primary=span_of_line(sourceLine, "argumentTypeMismatchSite"),
+                        related=[span_of_line(operation.line, "enclosingOperation")],
+                        invariantRule=(
+                            f"`argument {callReferenceName} {argumentName} {declaredArgumentType} {suppliedValueName}` "
+                            f"declares `{declaredArgumentType}`, but `{targetName}` expects `{expectedType}`"
+                        ),
+                        specAnchor="SYNTAX.md#argument",
+                        citations=operationCitations,
+                        fixCandidates=[
+                            FixCandidate(
+                                name="useExpectedArgumentType",
+                                shape=f"argument {callReferenceName} {argumentName} {expectedType} {suppliedValueName}",
+                            ),
+                        ],
+                        confidence=Confidence.HIGH,
+                        blocksCompile=True,
+                        effort=Effort.TRIVIAL,
+                        passProvenance="check_argument_type_mismatch",
+                        agentHint="the repeated type on `argument` must match the callee signature",
+                    ))
+                    continue
 
             actualType = valueTypesInScope.get(suppliedValueName)
             if actualType is None:
@@ -7635,23 +8526,23 @@ def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
                 kind="typeIntegrity.argumentTypeMismatch",
                 severity=Severity.ERROR,
                 subjectName=suppliedValueName,
-                subjectKind="argValue",
+                subjectKind="argumentValue",
                 gapEdge="matchingType",
                 intentSlogan="arg value type does not match target signature",
                 primary=span_of_line(sourceLine, "argTypeMismatchSite"),
                 related=[span_of_line(operation.line, "enclosingOperation")],
                 invariantRule=(
-                    f"`arg {callReferenceName} {argumentName} {suppliedValueName}` "
+                    f"`argument {callReferenceName} {argumentName} {declaredArgumentType or expectedType} {suppliedValueName}` "
                     f"expects type `{expectedType}` (canonical `{resolvedExpected}`); "
                     f"`{suppliedValueName}` is declared `{actualType}` "
                     f"(canonical `{resolvedActual}`)"
                 ),
-                specAnchor="SYNTAX.md#arg",
+                specAnchor="SYNTAX.md#argument",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
                         name="supplyValueOfExpectedType",
-                        shape=f"arg {callReferenceName} {argumentName} <valueOfType:{expectedType}>",
+                        shape=f"argument {callReferenceName} {argumentName} {expectedType} <valueOfType:{expectedType}>",
                     ),
                     FixCandidate(
                         name="declareAdapterCall",
@@ -7834,17 +8725,23 @@ def _is_integer_literal(token: str) -> bool:
 
 
 def _operation_success_output_type(
+    facts: ExtendedFacts,
     operation: OperationFact,
 ) -> Tuple[Optional[str], Optional[str], Optional[SourceLine]]:
     for sourceLine in operation.lines:
-        if (sourceLine.tokens and not is_comment(sourceLine)
-                and sourceLine.verb == "output" and len(sourceLine.args) >= 2
-                and sourceLine.args[0] == operation.name):
-            if sourceLine.args[1] == "Result":
+        if not sourceLine.tokens or is_comment(sourceLine):
+            continue
+        parsedOutput = output_parts(sourceLine)
+        if parsedOutput is not None and parsedOutput[0] == operation.name:
+            outputType = parsedOutput[1]
+            if outputType == "Result":
                 if len(sourceLine.args) >= 3:
-                    return sourceLine.args[2], "returnOk", sourceLine
+                    return sourceLine.args[2], "return ok", sourceLine
                 return None, None, sourceLine
-            return sourceLine.args[1], "returnValue", sourceLine
+            resultType = facts.base.result_types.get(outputType)
+            if resultType is not None:
+                return resultType.ok_type, "return ok", sourceLine
+            return outputType, "return value", sourceLine
     return None, None, None
 
 
@@ -7854,7 +8751,7 @@ def check_enum_return_uses_case(facts: ExtendedFacts) -> List[Diagnostic]:
     _enumReprs, enumCasesByType, enumCaseValuesByType, enumTypeByCase = _enum_context(facts)
 
     for operation in facts.base.operations.values():
-        outputType, expectedReturnVerb, outputLine = _operation_success_output_type(operation)
+        outputType, expectedReturnVerb, outputLine = _operation_success_output_type(facts, operation)
         if outputType is None or expectedReturnVerb is None:
             continue
         enumType = _resolve_type_head(outputType, typeAliases, {})
@@ -7865,9 +8762,12 @@ def check_enum_return_uses_case(facts: ExtendedFacts) -> List[Diagnostic]:
         operationCitations = narrative_citations_for_operation(facts, operation.name)
         for sourceLine in operation.lines:
             if (not sourceLine.tokens or is_comment(sourceLine)
-                    or sourceLine.verb != expectedReturnVerb or not sourceLine.args):
+                    or return_parts(sourceLine) != (expectedReturnVerb.split()[1], sourceLine.args[1] if sourceLine.verb == "return" and len(sourceLine.args) > 1 else (sourceLine.args[0] if sourceLine.args else None))):
                 continue
-            returnedValue = sourceLine.args[0]
+            parsedReturn = return_parts(sourceLine)
+            if parsedReturn is None or parsedReturn[1] is None:
+                continue
+            returnedValue = parsedReturn[1]
             if returnedValue in validCases:
                 continue
 
@@ -9454,20 +10354,23 @@ def check_middleware_return_type_is_middleware_control(facts: ExtendedFacts) -> 
         outputLine: Optional[SourceLine] = None
         declaredOutputType = ""
         for sourceLine in operationFact.lines:
-            if (is_comment(sourceLine) or not sourceLine.tokens
-                    or sourceLine.verb != "output"
-                    or len(sourceLine.args) < 2
-                    or sourceLine.args[0] != operationName):
+            if is_comment(sourceLine) or not sourceLine.tokens:
+                continue
+            parsedOutput = output_parts(sourceLine)
+            if parsedOutput is None or parsedOutput[0] != operationName:
                 continue
             outputLine = sourceLine
             # `output OP TYPE` or `output OP Result OK ERROR` — read
             # the OK type as the comparand. Middleware ops shouldn't
             # declare Result outputs (the dispatcher reads a raw i32),
             # but the rule still gets the right type either way.
-            if sourceLine.args[1] == "Result" and len(sourceLine.args) >= 3:
+            if parsedOutput[1] == "Result" and len(sourceLine.args) >= 3:
                 declaredOutputType = sourceLine.args[2]
             else:
-                declaredOutputType = sourceLine.args[1]
+                declaredOutputType = parsedOutput[1]
+                resultType = facts.base.result_types.get(declaredOutputType)
+                if resultType is not None:
+                    declaredOutputType = resultType.ok_type
             break
         if outputLine is None:
             # An op without an `output` line trips a different rule
@@ -9714,6 +10617,22 @@ def check_main_file_must_exist(facts: ExtendedFacts) -> List[Diagnostic]:
             sourceRootByProject[sourceLine.args[0]] = (sourceLine.args[1], sourceLine)
         elif sourceLine.verb == "mainFile" and len(sourceLine.args) >= 2:
             mainFileRows.append((sourceLine.args[0], sourceLine.args[1], sourceLine))
+
+    regular_plan = _regular_build_plan_payload(facts.base)
+    if regular_plan is not None:
+        payload, plan_line = regular_plan
+        project = _regular_build_plan_object(payload, "project") or {}
+        module = _regular_build_plan_main_module(payload) or {}
+        project_name = _regular_build_plan_text(project, "id") or "BuildPlan"
+        source_root = (
+            _regular_build_plan_text(project, "sourceRoot")
+            or _regular_build_plan_text(module, "sourceRoot")
+        )
+        main_file = _regular_build_plan_text(module, "mainFile")
+        if source_root:
+            sourceRootByProject[project_name] = (source_root, plan_line)
+        if main_file:
+            mainFileRows.append((project_name, main_file, plan_line))
 
     if not mainFileRows:
         # Not a build tape (or one that simply omits mainFile — semsc
@@ -10210,26 +11129,25 @@ def check_void_output_should_use_return_void(facts: ExtendedFacts) -> List[Diagn
         outputLine: Optional[SourceLine] = None
         outputType = ""
         for sourceLine in operationFact.lines:
-            if (is_comment(sourceLine) or not sourceLine.tokens
-                    or sourceLine.verb != "output"
-                    or len(sourceLine.args) < 2
-                    or sourceLine.args[0] != operationName):
+            if is_comment(sourceLine) or not sourceLine.tokens:
                 continue
-            outputLine = sourceLine
-            outputType = sourceLine.args[1]
-            break
+            parsedOutput = output_parts(sourceLine)
+            if parsedOutput is not None and parsedOutput[0] == operationName:
+                outputLine = sourceLine
+                outputType = parsedOutput[1]
+                break
         if outputType not in ("Void", "CVoid"):
             continue
         returnValueLine: Optional[SourceLine] = None
         returnValueName = ""
         for sourceLine in operationFact.lines:
-            if (is_comment(sourceLine) or not sourceLine.tokens
-                    or sourceLine.verb != "returnValue"
-                    or not sourceLine.args):
+            if is_comment(sourceLine) or not sourceLine.tokens:
                 continue
-            returnValueLine = sourceLine
-            returnValueName = sourceLine.args[0]
-            break
+            parsedReturn = return_parts(sourceLine)
+            if parsedReturn is not None and parsedReturn[0] == "value" and parsedReturn[1] is not None:
+                returnValueLine = sourceLine
+                returnValueName = parsedReturn[1]
+                break
         if returnValueLine is None:
             continue
         diagnostics.append(Diagnostic(
@@ -10242,25 +11160,25 @@ def check_void_output_should_use_return_void(facts: ExtendedFacts) -> List[Diagn
             gapEdge="returnVoid",
             intentSlogan=(
                 f"`output {operationName} {outputType}` should pair with "
-                f"`returnVoid`, not `returnValue {returnValueName}`"
+                f"`return void`, not `return value {returnValueName}`"
             ),
             primary=span_of_line(returnValueLine, "returnValueAtVoidOutput"),
             related=[span_of_line(outputLine, "voidOutputDeclaration")] if outputLine else [],
             invariantRule=(
-                f"operations declared `output OP {outputType}` must end with "
-                f"`returnVoid` so the source matches the semantic contract. "
-                f"`returnValue NAME` is the form for typed outputs; using it "
+                f"operations declared `output operation OP {outputType}` must end with "
+                f"`return void` so the source matches the semantic contract. "
+                f"`return value NAME` is the form for typed outputs; using it "
                 f"on a Void-output op leaks the user-op ABI's i32 zero "
                 f"sentinel into the source, which a future agent then has "
                 f"to recognise as a Void-ABI quirk instead of as a real "
                 f"value being returned."
             ),
-            specAnchor="SYNTAX.md#returnVoid",
+            specAnchor="SYNTAX.md#return",
             citations=narrative_citations_for_operation(facts, operationName),
             fixCandidates=[
                 FixCandidate(
                     name="replaceReturnValueWithReturnVoid",
-                    shape="returnVoid",
+                    shape="return void",
                     autoApplicable=True,
                     evidence=[span_of_line(returnValueLine, "currentReturnValue")],
                 ),
@@ -10269,7 +11187,7 @@ def check_void_output_should_use_return_void(facts: ExtendedFacts) -> List[Diagn
                     shape=(
                         f"# if `{operationName}` actually produces a "
                         f"caller-actionable value, change the output declaration:\n"
-                        f"output {operationName} <ConcreteType>"
+                        f"output operation {operationName} <ConcreteType>"
                     ),
                 ),
             ],
@@ -10486,7 +11404,8 @@ BUILD_TAPE_MIN_ARITY: Dict[str, int] = {
 }
 
 BUILD_TAPE_ALLOWED_NON_PROJECT_VERBS: Set[str] = {
-    "buildProject", "project", "target", "runtime", "entry", "importModule",
+    "buildProject", "project", "target", "runtime", "entry", "import",
+    "importModule",
     "moduleFolder",
     "version", "publisher", "description", "copyright", "productName",
     "internalName", "originalFilename", "trademark", "comments", "metadata",
@@ -10697,9 +11616,27 @@ def build_export_contract_tape(
                     "invariant", "warning", "guarantee", "security",
                     "observability",
                 }:
+                    edgeArgs: Sequence[str] = args
+                    parsedInput = input_parts(opLine)
+                    parsedOutput = output_parts(opLine)
+                    if parsedInput is not None:
+                        edgeArgs = [parsedInput[0], parsedInput[1], parsedInput[2]]
+                    elif parsedOutput is not None:
+                        edgeArgs = [parsedOutput[0], parsedOutput[1]]
                     add_edge(moduleName, exportVerb, symbolName,
-                             f"operation.{verb}", args, opLine)
-                    if (verb == "output" and len(args) >= 4
+                             f"operation.{verb}", edgeArgs, opLine)
+                    resultOutputType = parsedOutput[1] if parsedOutput is not None else ""
+                    resultTypeFact = facts.base.result_types.get(resultOutputType)
+                    if resultTypeFact is not None:
+                        failureType = resultTypeFact.error_type
+                        add_edge(moduleName, exportVerb, symbolName,
+                                 "operation.failureType", [failureType], opLine)
+                        for (errorName, caseName), caseFact in facts.errorCases.items():
+                            if errorName == failureType:
+                                add_edge(moduleName, exportVerb, symbolName,
+                                         "operation.failureCase",
+                                         [errorName, caseName], caseFact.line)
+                    elif (verb == "output" and len(args) >= 4
                             and args[1] == "Result"):
                         failureType = args[3]
                         add_edge(moduleName, exportVerb, symbolName,
@@ -10810,7 +11747,89 @@ def _is_build_tape(facts: ExtendedFacts) -> bool:
         line.verb in {"buildProject", "registerModule"}
         for line in facts.base.lines
         if line.tokens and not is_comment(line)
-    )
+    ) or _regular_build_plan_payload(facts.base) is not None
+
+
+def _json_body_storage_line_in_base(
+    facts: ProgramFacts,
+    json_body: JsonBodyFact,
+) -> Optional[SourceLine]:
+    for sourceLine in reversed(facts.lines):
+        if sourceLine.number >= json_body.line.number:
+            continue
+        if sourceLine.verb != "storage" or len(sourceLine.args) < 4:
+            continue
+        if sourceLine.args[2] == json_body.name:
+            return sourceLine
+    return None
+
+
+def _regular_build_plan_payload(
+    facts: ProgramFacts,
+) -> Optional[Tuple[Dict[str, object], SourceLine]]:
+    if "BuildPlan" not in facts.records:
+        return None
+    for json_body in facts.json_bodies:
+        storage_line = _json_body_storage_line_in_base(facts, json_body)
+        if storage_line is None or len(storage_line.args) < 4:
+            continue
+        if storage_line.args[3] != "BuildPlan":
+            continue
+        body_text = "\n".join(text for text, _line in json_body.body_lines)
+        try:
+            payload = json.loads(body_text, parse_constant=_reject_json_constant)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
+        if isinstance(payload, dict):
+            return payload, json_body.line
+    return None
+
+
+def _regular_build_plan_object(
+    payload: Dict[str, object],
+    key: str,
+) -> Optional[Dict[str, object]]:
+    value = payload.get(key)
+    return value if isinstance(value, dict) else None
+
+
+def _regular_build_plan_text(
+    section: Dict[str, object],
+    key: str,
+) -> Optional[str]:
+    value = section.get(key)
+    return value if isinstance(value, str) and value else None
+
+
+def _regular_build_plan_module_entries(
+    payload: Dict[str, object],
+) -> List[Tuple[str, Dict[str, object]]]:
+    modules = _regular_build_plan_object(payload, "modules")
+    if modules is not None:
+        entries: List[Tuple[str, Dict[str, object]]] = []
+        for module_key, module_spec in modules.items():
+            if isinstance(module_key, str) and isinstance(module_spec, dict):
+                entries.append((module_key, module_spec))
+        return entries
+    module = _regular_build_plan_object(payload, "module")
+    if module is not None:
+        return [("main", module)]
+    return []
+
+
+def _regular_build_plan_main_module(
+    payload: Dict[str, object],
+) -> Optional[Dict[str, object]]:
+    entries = _regular_build_plan_module_entries(payload)
+    if not entries:
+        return None
+    main_key = _regular_build_plan_text(payload, "mainModule")
+    if main_key:
+        for module_key, module_spec in entries:
+            if module_key == main_key:
+                return module_spec
+        return None
+    return entries[0][1]
 
 
 def _build_tape_diagnostic(
@@ -11163,6 +12182,194 @@ def check_project_build_tape_schema(facts: ExtendedFacts) -> List[Diagnostic]:
     if not _is_build_tape(facts):
         return diagnostics
 
+    regular_plan = _regular_build_plan_payload(facts.base)
+    if regular_plan is not None:
+        payload, plan_line = regular_plan
+        project = _regular_build_plan_object(payload, "project")
+        module_entries = _regular_build_plan_module_entries(payload)
+        main_module = _regular_build_plan_main_module(payload)
+        target = _regular_build_plan_object(payload, "target")
+        missing_sections = [
+            name for name, section in (
+                ("project", project),
+                ("modules", module_entries or None),
+                ("target", target),
+            )
+            if section is None
+        ]
+        if missing_sections:
+            diagnostics.append(_build_tape_diagnostic(
+                plan_line,
+                "SS2522",
+                "buildTape.missingRequiredRow",
+                "BuildPlan",
+                "BuildPlan",
+                "requiredBuildPlanSections",
+                "BuildPlan is missing required sections",
+                (
+                    "Regular-syntax build.sem must provide project, module, "
+                    "and target objects in its BuildPlan jsonBody."
+                ),
+                "jsonBody <plan>\n  {\"project\":{...},\"module\":{...},\"target\":{...}}",
+            ))
+            return diagnostics
+
+        required_text_fields = [
+            ("project", project, ("id", "name", "modulePath", "languageVersion", "projectVersion", "license")),
+            ("target", target, ("runtime", "profile", "runtimeChecks")),
+        ]
+        for section_name, section, keys in required_text_fields:
+            for key in keys:
+                if _regular_build_plan_text(section, key) is not None:
+                    continue
+                diagnostics.append(_build_tape_diagnostic(
+                    plan_line,
+                    "SS2522",
+                    "buildTape.missingRequiredRow",
+                    "BuildPlan",
+                    "BuildPlan",
+                    f"{section_name}.{key}",
+                    f"BuildPlan `{section_name}.{key}` is required",
+                    (
+                        "The regular build plan replaces the legacy build "
+                        "rows, so each field that drives compiler metadata "
+                        "must be present and non-empty."
+                    ),
+                    f"\"{key}\": \"<value>\"",
+                ))
+
+        if _regular_build_plan_object(payload, "modules") is not None:
+            if _regular_build_plan_text(payload, "mainModule") is None:
+                diagnostics.append(_build_tape_diagnostic(
+                    plan_line,
+                    "SS2522",
+                    "buildTape.missingRequiredRow",
+                    "BuildPlan",
+                    "BuildPlan",
+                    "mainModule",
+                    "BuildPlan `mainModule` is required when using `modules`",
+                    "A multi-module BuildPlan must name which module drives mainFile/mainOperation.",
+                    "\"mainModule\": \"main\"",
+                ))
+
+        for module_key, module_spec in module_entries:
+            for key in ("moduleName", "sourcePath", "mainFile"):
+                if _regular_build_plan_text(module_spec, key) is not None:
+                    continue
+                diagnostics.append(_build_tape_diagnostic(
+                    plan_line,
+                    "SS2522",
+                    "buildTape.missingRequiredRow",
+                    "BuildPlan",
+                    "BuildPlan",
+                    f"modules.{module_key}.{key}",
+                    f"BuildPlan `modules.{module_key}.{key}` is required",
+                    "Each BuildPlan module entry must be resolvable to one source file.",
+                    f"\"{key}\": \"<value>\"",
+                ))
+        if main_module is None:
+            diagnostics.append(_build_tape_diagnostic(
+                plan_line,
+                "SS2522",
+                "buildTape.missingRequiredRow",
+                "BuildPlan",
+                "BuildPlan",
+                "mainModule",
+                "BuildPlan mainModule does not name a declared module",
+                "The mainModule field must match one key under modules.",
+                "\"mainModule\": \"main\"",
+            ))
+
+        target_runtime = _regular_build_plan_text(target, "runtime") or ""
+        main_operation = (
+            _regular_build_plan_text(payload, "mainOperation")
+            or _regular_build_plan_text(main_module or {}, "mainOperation")
+        )
+        if target_runtime in {"nativeExe", "windowsGui"} and main_operation is None:
+            diagnostics.append(_build_tape_diagnostic(
+                plan_line,
+                "SS2522",
+                "buildTape.missingRequiredRow",
+                "BuildPlan",
+                "BuildPlan",
+                "mainOperation",
+                "BuildPlan `mainOperation` is required for executable targets",
+                "Native executable BuildPlan targets must name the entry operation.",
+                "\"mainOperation\": \"main\"",
+            ))
+        if target_runtime and target_runtime not in BUILD_TAPE_CHOICES["targetRuntime"]:
+            diagnostics.append(_build_tape_diagnostic(
+                plan_line,
+                "SS2525",
+                "buildTape.invalidChoiceValue",
+                target_runtime,
+                "target.runtime",
+                "closedEnumValue",
+                f"`{target_runtime}` is not valid for BuildPlan target.runtime",
+                (
+                    "BuildPlan target.runtime lowers to targetRuntime and "
+                    f"accepts only {', '.join(sorted(BUILD_TAPE_CHOICES['targetRuntime']))}."
+                ),
+                "\"runtime\": \"nativeExe\"",
+            ))
+        profile = _regular_build_plan_text(target, "profile") or ""
+        if profile and profile not in BUILD_TAPE_CHOICES["buildProfile"]:
+            diagnostics.append(_build_tape_diagnostic(
+                plan_line,
+                "SS2525",
+                "buildTape.invalidChoiceValue",
+                profile,
+                "target.profile",
+                "closedEnumValue",
+                "`target.profile` must be dev or prod",
+                "BuildPlan target.profile lowers to buildProfile.",
+                "\"profile\": \"dev\"",
+            ))
+        runtime_checks = _regular_build_plan_text(target, "runtimeChecks") or ""
+        if runtime_checks and runtime_checks not in BUILD_TAPE_CHOICES["runtimeChecks"]:
+            diagnostics.append(_build_tape_diagnostic(
+                plan_line,
+                "SS2525",
+                "buildTape.invalidChoiceValue",
+                runtime_checks,
+                "target.runtimeChecks",
+                "closedEnumValue",
+                "`target.runtimeChecks` must be off, traps, or panic",
+                "BuildPlan target.runtimeChecks lowers to runtimeChecks.",
+                "\"runtimeChecks\": \"panic\"",
+            ))
+        opt_level = target.get("optLevel")
+        if isinstance(opt_level, bool) or not isinstance(opt_level, int) or opt_level < 0 or opt_level > 3:
+            diagnostics.append(_build_tape_diagnostic(
+                plan_line,
+                "SS2525",
+                "buildTape.invalidChoiceValue",
+                str(opt_level),
+                "target.optLevel",
+                "llvmOptLevel",
+                "`target.optLevel` must be an integer 0..3",
+                "LLVM optimization levels exposed by BuildPlan are integers 0, 1, 2, or 3.",
+                "\"optLevel\": 2",
+            ))
+        folder_name = _regular_build_plan_text(target, "buildFolderName")
+        if folder_name:
+            normalized = folder_name.replace("\\", os.sep).replace("/", os.sep)
+            if (os.path.isabs(normalized)
+                    or os.path.dirname(normalized)
+                    or normalized in {"", ".", ".."}):
+                diagnostics.append(_build_tape_diagnostic(
+                    plan_line,
+                    "SS2526",
+                    "buildTape.invalidPathValue",
+                    folder_name,
+                    "target.buildFolderName",
+                    "managedBuildFolderName",
+                    "`target.buildFolderName` must be one folder name",
+                    "BuildPlan buildFolderName renames the managed folder only.",
+                    "\"buildFolderName\": \"build\"",
+                ))
+        return diagnostics
+
     buildProjects: List[Tuple[str, SourceLine]] = []
     rowsByProject: Dict[str, Set[str]] = {}
     singletonSeen: Dict[Tuple[str, str], SourceLine] = {}
@@ -11457,6 +12664,20 @@ def _collect_registered_modules(
 ) -> Tuple[Dict[str, Tuple[SourceLine, str]], List[str]]:
     registered: Dict[str, Tuple[SourceLine, str]] = {}
     mainFiles: List[str] = []
+    regular_plan = _regular_build_plan_payload(buildFacts)
+    if regular_plan is not None:
+        payload, plan_line = regular_plan
+        for _module_key, module in _regular_build_plan_module_entries(payload):
+            module_name = _regular_build_plan_text(module, "moduleName")
+            source_path = (
+                _regular_build_plan_text(module, "sourcePath")
+                or _regular_build_plan_text(module, "sourceRoot")
+            )
+            main_file = _regular_build_plan_text(module, "mainFile")
+            if module_name and source_path:
+                registered[module_name] = (plan_line, source_path)
+            if main_file and main_file not in mainFiles:
+                mainFiles.append(main_file)
     for sourceLine in buildFacts.lines:
         if not sourceLine.tokens or is_comment(sourceLine):
             continue
@@ -11637,6 +12858,10 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
         and sourceLine.args
     }
     currentIsBuildTape = buildFacts.path.resolve() == facts.base.path.resolve()
+    currentIsRegularBuildPlan = (
+        currentIsBuildTape
+        and _regular_build_plan_payload(buildFacts) is not None
+    )
 
     if currentIsBuildTape:
         for moduleName, (registrationLine, rawPath) in registeredModules.items():
@@ -12076,7 +13301,9 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
             ))
             continue
 
-        if verb == "module" and args and registeredNames and args[0] not in registeredNames:
+        if (verb == "module" and args and registeredNames
+                and args[0] not in registeredNames
+                and not currentIsRegularBuildPlan):
             diagnostics.append(Diagnostic(
                 tier=Tier.T1_SPEC,
                 code="SS2503",
@@ -12304,20 +13531,26 @@ def _line_qualified_references(sourceLine: SourceLine) -> List[Tuple[str, str]]:
     references: List[Tuple[str, str]] = []
     if verb == "call" and len(args) >= 2:
         references.append(("operation", args[1]))
-    elif verb == "input" and len(args) >= 3:
-        references.append(("type", args[2]))
-    elif verb == "output" and len(args) >= 2:
-        if args[1] == "Result":
+    elif verb == "input":
+        parsedInput = input_parts(sourceLine)
+        if parsedInput is not None:
+            references.append(("type", parsedInput[2]))
+    elif verb == "output":
+        parsedOutput = output_parts(sourceLine)
+        outputType = parsedOutput[1] if parsedOutput is not None else ""
+        if outputType == "Result":
             if len(args) >= 3:
                 references.append(("type", args[2]))
             if len(args) >= 4:
                 references.append(("error", args[3]))
-        else:
-            references.append(("type", args[1]))
-    elif verb in {"bind", "bindOk", "bindError"} and len(args) >= 2:
-        references.append(("type", args[1]))
-    elif verb in {"ignoreOk", "ignoreValue"} and len(args) >= 2:
-        references.append(("type", args[1]))
+        elif outputType:
+            references.append(("type", outputType))
+    elif bind_parts(sourceLine) is not None:
+        references.append(("type", bind_parts(sourceLine)[2]))  # type: ignore[index]
+    elif ignore_parts(sourceLine) is not None:
+        parsedIgnore = ignore_parts(sourceLine)
+        if parsedIgnore is not None and parsedIgnore[2] is not None:
+            references.append(("type", parsedIgnore[2]))
     elif verb == "useCapability" and len(args) >= 2:
         references.append(("capability", args[1]))
     elif verb == "makeError" and len(args) >= 2:
@@ -12325,8 +13558,10 @@ def _line_qualified_references(sourceLine: SourceLine) -> List[Tuple[str, str]]:
         parts = qualified.split(".")
         if len(parts) >= 3:
             references.append(("error", ".".join(parts[:2])))
-    elif verb == "arg" and len(args) >= 3:
-        references.append(("constant", args[2]))
+    elif argument_parts(sourceLine) is not None:
+        parsedArgument = argument_parts(sourceLine)
+        if parsedArgument is not None:
+            references.append(("constant", parsedArgument[3]))
     return references
 
 
@@ -12795,8 +14030,11 @@ def check_module_import_contracts(facts: ExtendedFacts) -> List[Diagnostic]:
 CHECKERS = [
     # Foundational basics — run first so reference / arity / duplicate
     # errors surface before any refinement-level diagnostic.
+    check_syntax_cutover_rows,
+    check_html_implicit_holes,
     check_argument_arity,
     check_unresolved_references,
+    check_branch_semantics,
     check_argument_type_mismatch,
     check_enum_return_uses_case,
     check_math_operand_width_drift,

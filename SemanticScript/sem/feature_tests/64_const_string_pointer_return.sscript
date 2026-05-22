@@ -8,48 +8,48 @@ error MainError
 errorCase MainError Placeholder CSignedInt32
 
 operation getOkLabel
-output getOkLabel Result CNullTerminatedByteString Void
+output operation getOkLabel Result CNullTerminatedByteString Void
 memory getOkLabel heap no
 async getOkLabel no
-purpose getOkLabel "Return a fixed string-const. Exercises pointer-returning user-op signature plus returnOk-of-string-const path that emits `ret i8* getelementptr inbounds`."
-invariant getOkLabel "Used by main to print the returned message."
+purpose operation getOkLabel "Return a fixed string-const. Exercises pointer-returning user-op signature plus returnOk-of-string-const path that emits `ret i8* getelementptr inbounds`."
+invariant operation getOkLabel "Used by main to print the returned message."
 label startGetOkLabel
-const okMessage CNullTerminatedByteString "ok"
-returnOk okMessage
+storage module immutable okMessage CNullTerminatedByteString "ok"
+return ok okMessage
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Print the first byte of the message returned by the pointer-returning user op getOkLabel via c.putchar, plus a 'k' and newline."
-invariant main "Uses c.putchar so the walker fires (the legacy string-replay path skips user-op definitions)."
+purpose operation main "Print the first byte of the message returned by the pointer-returning user op getOkLabel via c.putchar, plus a 'k' and newline."
+invariant operation main "Uses c.putchar so the walker fires (the legacy string-replay path skips user-op definitions)."
 label startMain
 call getMessageCall getOkLabel
 run getMessageCall
-bindOk theMessage CNullTerminatedByteString getMessageCall
-const zeroByteIndex I64 0
+bind ok theMessage CNullTerminatedByteString getMessageCall
+storage module immutable zeroByteIndex I64 0
 call firstByteCall pointer.loadByte
-arg firstByteCall buffer theMessage
-arg firstByteCall offset zeroByteIndex
+argument firstByteCall buffer CNullTerminatedByteString theMessage
+argument firstByteCall offset I64 zeroByteIndex
 run firstByteCall
-bind firstByteValue I8 firstByteCall
+bind value firstByteValue I8 firstByteCall
 call writeFirstCall c.putchar
-arg writeFirstCall c firstByteValue
+argument writeFirstCall c I8 firstByteValue
 run writeFirstCall
-const oneByteIndex I64 1
+storage module immutable oneByteIndex I64 1
 call secondByteCall pointer.loadByte
-arg secondByteCall buffer theMessage
-arg secondByteCall offset oneByteIndex
+argument secondByteCall buffer CNullTerminatedByteString theMessage
+argument secondByteCall offset I64 oneByteIndex
 run secondByteCall
-bind secondByteValue I8 secondByteCall
+bind value secondByteValue I8 secondByteCall
 call writeSecondCall c.putchar
-arg writeSecondCall c secondByteValue
+argument writeSecondCall c I8 secondByteValue
 run writeSecondCall
-const newlineByte CSignedInt32 10
+storage module immutable newlineByte CSignedInt32 10
 call writeNewlineCall c.putchar
-arg writeNewlineCall c newlineByte
+argument writeNewlineCall c CSignedInt32 newlineByte
 run writeNewlineCall
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

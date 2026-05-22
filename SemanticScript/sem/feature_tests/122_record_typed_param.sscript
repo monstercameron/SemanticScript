@@ -14,46 +14,46 @@ field Point x I64
 field Point y I64
 
 operation sumPoint
-input sumPoint p Point
-output sumPoint Result I64 Void
+input operation sumPoint p Point
+output operation sumPoint Result I64 Void
 memory sumPoint heap no
 async sumPoint no
-purpose sumPoint "Return p.x + p.y. Exercises a record-typed input parameter: callee reads each field via fieldGet directly on the param name."
-invariant sumPoint "Returns x + y."
+purpose operation sumPoint "Return p.x + p.y. Exercises a record-typed input parameter: callee reads each field via fieldGet directly on the param name."
+invariant operation sumPoint "Returns x + y."
 label startSumPoint
 fieldGet xVal I64 p x
 fieldGet yVal I64 p y
 call addCall math.addI64
-arg addCall left xVal
-arg addCall right yVal
+argument addCall left I64 xVal
+argument addCall right I64 yVal
 run addCall
-bind sumRes I64 addCall
-returnOk sumRes
+bind value sumRes I64 addCall
+return ok sumRes
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap auto
 async main no
-purpose main "Construct a Point {x:7,y:12} and call sumPoint(p). Expect 19."
-invariant main "Output is '19\\n'."
+purpose operation main "Construct a Point {x:7,y:12} and call sumPoint(p). Expect 19."
+invariant operation main "Output is '19\\n'."
 label startMain
 new myPoint Point
-const xInit I64 7
-const yInit I64 12
+storage module immutable xInit I64 7
+storage module immutable yInit I64 12
 fieldSet myPoint x xInit
 fieldSet myPoint y yInit
 call sumPointCall sumPoint
-arg sumPointCall p myPoint
+argument sumPointCall p Point myPoint
 run sumPointCall
-bind sumResult I64 sumPointCall
-var sumVar I64 xInit
-set sumVar sumResult
+bind value sumResult I64 sumPointCall
+memory main mutable sumVar I64 xInit
+set memory sumVar sumResult
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value sumVar
+argument writeCall console Console console
+argument writeCall value I64 sumVar
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

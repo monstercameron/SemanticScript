@@ -24,29 +24,29 @@ storage module immutable successfulExitCode ExitCode 0
 section program.helloViaCPrintfRefined.operations
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
-memoryHeap main no
+memory main heap no
 memoryStackLimit main 4KiB
 async main no
 operationBody main sourceTape
 
-purpose main "Smoke-test the c.printf call target end-to-end through the SemanticScript LLVM backend"
-invariant main "A single c.printf call writes the greeting plus a newline and returns the byte count"
+purpose operation main "Smoke-test the c.printf call target end-to-end through the SemanticScript LLVM backend"
+invariant operation main "A single c.printf call writes the greeting plus a newline and returns the byte count"
 
 label startMain
 
 call helloPrintfCall c.printf
-arg helloPrintfCall format helloFormatText
-arg helloPrintfCall value greetingArgument
+argument helloPrintfCall format CNullTerminatedByteString helloFormatText
+argument helloPrintfCall value CSignedInt32 greetingArgument
 run helloPrintfCall
-bindOk bytesWrittenByPrintf CSignedInt32 helloPrintfCall
-bindError helloPrintfError CSignedInt32 helloPrintfCall
-branchIfError helloPrintfCall helloPrintfFailed
+bind ok bytesWrittenByPrintf CSignedInt32 helloPrintfCall
+bind error helloPrintfError CSignedInt32 helloPrintfCall
+branch error source helloPrintfCall target helloPrintfFailed
 
-returnOk successfulExitCode
+return ok successfulExitCode
 
 label helloPrintfFailed
 makeError helloPrintfFailure MainError.ConsoleWriteFailed helloPrintfError
-returnError helloPrintfFailure
+return error helloPrintfFailure

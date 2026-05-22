@@ -7,31 +7,31 @@ runtime AgentRuntime 0.1
 entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
-const zeroInitialValue I64 0
-const newValueOneHundred I64 100
+storage module immutable zeroInitialValue I64 0
+storage module immutable newValueOneHundred I64 100
 storage module mutable counterAcrossOperations I64 zeroInitialValue
 operation setValueOperation
-input setValueOperation valueToStore I64
-output setValueOperation I64
-set module counterAcrossOperations valueToStore
-returnValue valueToStore
+input operation setValueOperation valueToStore I64
+output operation setValueOperation I64
+set storage counterAcrossOperations valueToStore
+return value valueToStore
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Cross-op: set via helper, then read in main, expect updated value."
-invariant main "Helper writes 100; main reads back 100."
+purpose operation main "Cross-op: set via helper, then read in main, expect updated value."
+invariant operation main "Helper writes 100; main reads back 100."
 label startMain
 call setHelperCall setValueOperation
-arg setHelperCall valueToStore newValueOneHundred
+argument setHelperCall valueToStore I64 newValueOneHundred
 run setHelperCall
-ignoreValue setHelperCall I64
+ignore value source setHelperCall type I64
 call writeUpdatedCall console.writeIntegerLine
-arg writeUpdatedCall console console
-arg writeUpdatedCall value counterAcrossOperations
+argument writeUpdatedCall console Console console
+argument writeUpdatedCall value I64 counterAcrossOperations
 run writeUpdatedCall
-ignoreOk writeUpdatedCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeUpdatedCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

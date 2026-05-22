@@ -9,6 +9,31 @@ from __future__ import annotations
 from typing import Optional
 
 
+CALL_CHANNEL_VALUE = "value"
+CALL_CHANNEL_OK = "ok"
+CALL_CHANNEL_ERROR = "error"
+CALL_CHANNEL_VOID = "void"
+
+CALL_CLASS_ORDINARY_VALUE = "ordinaryValue"
+CALL_CLASS_RESULT = "result"
+CALL_CLASS_FALLIBLE_ORDINARY = "fallibleOrdinary"
+CALL_CLASS_VOID = "void"
+
+CALL_CHANNELS: frozenset[str] = frozenset({
+    CALL_CHANNEL_VALUE,
+    CALL_CHANNEL_OK,
+    CALL_CHANNEL_ERROR,
+    CALL_CHANNEL_VOID,
+})
+
+CALL_CLASSES: frozenset[str] = frozenset({
+    CALL_CLASS_ORDINARY_VALUE,
+    CALL_CLASS_RESULT,
+    CALL_CLASS_FALLIBLE_ORDINARY,
+    CALL_CLASS_VOID,
+})
+
+
 SUPPORTED_HTTP_ROUTE_METHODS: frozenset[str] = frozenset({
     "GET",
     "HEAD",
@@ -135,7 +160,29 @@ def is_supported_route_method(method: str) -> bool:
 
 def fallibility_kind(target: str) -> Optional[str]:
     if target in RESULT_FALLIBLE_CALL_TARGETS:
-        return "result"
+        return CALL_CLASS_RESULT
     if target in EXPLICIT_DISPOSITION_FALLIBLE_CALL_TARGETS:
-        return "explicitDisposition"
+        return CALL_CLASS_FALLIBLE_ORDINARY
     return None
+
+
+def call_class(target: str, return_type: str = "") -> str:
+    """Classify a call using the syntax-cutover channel vocabulary."""
+    fallible = fallibility_kind(target)
+    if fallible is not None:
+        return fallible
+    if return_type == "Void":
+        return CALL_CLASS_VOID
+    return CALL_CLASS_ORDINARY_VALUE
+
+
+def disposition_channels_for_call(target: str, return_type: str = "") -> frozenset[str]:
+    """Return the legal disposition variants for a call target/output shape."""
+    kind = call_class(target, return_type)
+    if kind == CALL_CLASS_RESULT:
+        return frozenset({CALL_CHANNEL_OK, CALL_CHANNEL_ERROR})
+    if kind == CALL_CLASS_FALLIBLE_ORDINARY:
+        return frozenset({CALL_CHANNEL_VALUE, CALL_CHANNEL_ERROR})
+    if kind == CALL_CLASS_VOID:
+        return frozenset({CALL_CHANNEL_VOID})
+    return frozenset({CALL_CHANNEL_VALUE})

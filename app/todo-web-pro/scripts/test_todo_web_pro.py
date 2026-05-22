@@ -233,7 +233,7 @@ def main():
         # ---- duplicate register returns 409 ----
         status, body, _ = http_request(
             "POST", "/api/auth/register",
-            body='{"username":"alice","password":"another"}',
+            body='{"username":"alice","password":"another valid password"}',
             headers={"Content-Type": "application/json"},
         )
         assert_equal(status, 409, "duplicate username status")

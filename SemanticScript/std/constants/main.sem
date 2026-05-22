@@ -1,10 +1,10 @@
 # SemanticScript standard-library canonical module: standard.constants.
 
 module standard.constants
-modulePurpose standard.constants "Canonical standard-library module for standard constants."
+purpose module standard.constants "Canonical standard-library module for standard constants."
 moduleOwns standard.constants "The official import path `standard.constants` and this module's implementation body."
 moduleDoesNotOwn standard.constants "App-specific wrappers, compatibility aliases, or generated build artifacts."
-moduleInvariant standard.constants "The standard module entry is this file; tests live beside it as `main.test.sem`."
+invariant module standard.constants "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.constants constantsModuleVersionText
 storage module immutable constantsModuleVersionText CNullTerminatedByteString "standard.constants 0.1"
@@ -14,7 +14,7 @@ storage module immutable constantsModuleVersionText CNullTerminatedByteString "s
 # SEMANTICSCRIPT STANDARD LIBRARY: mathematical / numeric constants
 # ============================================================
 #
-# # rationale: C's <math.h> exposes M_PI, M_E, M_LN2, M_SQRT2, etc.
+# rationale: C's <math.h> exposes M_PI, M_E, M_LN2, M_SQRT2, etc.
 #   as preprocessor `#define`s. SemanticScript has no macros, so the
 #   pre-refined version exposed each constant as a zero-arg
 #   operation returning `Result CFloat64 Void`. The refined surface
@@ -22,18 +22,17 @@ storage module immutable constantsModuleVersionText CNullTerminatedByteString "s
 #   (AST Â§2.12.5) so constants are typed compile-time values, not
 #   callable operations. Every reference is constant-folded by LLVM.
 #
-# # invariant: every CFloat64 literal is the double-precision
+# invariant: every CFloat64 literal is the double-precision
 #   IEEE-754 nearest representable value of the named constant.
 #   Some constants (e.g. golden ratio) are mathematically irrational
 #   and are approximated to 17 significant decimal digits â€” the
 #   round-trip representation of an IEEE-754 binary64.
 #
-# # security: pure constants. No effects. No allocation.
+# security: pure constants. No effects. No allocation.
 #
-# # timing: zero â€” every reference inlines.
+# timing: zero â€” every reference inlines.
 #
-# # observability: nothing to observe at runtime.
-
+# observability: nothing to observe at runtime.
 
 error MainError
 errorCase MainError ConstantsSmokeAssertionFailed
@@ -121,54 +120,54 @@ domainLiteralTrust negativeOneFloat64 trustedStaticLiteral
 # ============================================================
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 useCapability main stdoutWriteCapability
 effect main write console.stdout
-memoryHeap main no
+memory main heap no
 async main no
-purpose main "Verify the headline constants round-trip to expected literals."
-invariant main "Pi resolves to 3.141592653589793; Euler's number to 2.718281828459045."
+purpose operation main "Verify the headline constants round-trip to expected literals."
+invariant operation main "Pi resolves to 3.141592653589793; Euler's number to 2.718281828459045."
 
 label startMain
 
-const piExpectedValue CFloat64 3.141592653589793
+storage module immutable piExpectedValue CFloat64 3.141592653589793
 call checkPiCall math.equalF64
-arg checkPiCall left mathematicalPiFloat64
-arg checkPiCall right piExpectedValue
+argument checkPiCall left F64 mathematicalPiFloat64
+argument checkPiCall right F64 piExpectedValue
 run checkPiCall
-bind piOk Bool checkPiCall
-branchIf piOk piHolds
-branch smokeAssertionFailed
+bind value piOk Bool checkPiCall
+branch if condition piOk target piHolds
+branch else target smokeAssertionFailed
 label piHolds
 
-const eulerExpectedValue CFloat64 2.718281828459045
+storage module immutable eulerExpectedValue CFloat64 2.718281828459045
 call checkEulerCall math.equalF64
-arg checkEulerCall left mathematicalEulerNumberFloat64
-arg checkEulerCall right eulerExpectedValue
+argument checkEulerCall left F64 mathematicalEulerNumberFloat64
+argument checkEulerCall right F64 eulerExpectedValue
 run checkEulerCall
-bind eulerOk Bool checkEulerCall
-branchIf eulerOk eulerHolds
-branch smokeAssertionFailed
+bind value eulerOk Bool checkEulerCall
+branch if condition eulerOk target eulerHolds
+branch else target smokeAssertionFailed
 label eulerHolds
 
-const successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText CNullTerminatedByteString "OK"
 call writeSuccessLineCall console.writeLine
-arg writeSuccessLineCall console console
-arg writeSuccessLineCall text successMessageText
+argument writeSuccessLineCall console Console console
+argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
 run writeSuccessLineCall
-ignoreOk writeSuccessLineCall CSignedInt32
-bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
-branchIfError writeSuccessLineCall consoleWriteFailedHandler
-const exitOkCode ExitCode 0
-returnOk exitOkCode
+ignore ok source writeSuccessLineCall type CSignedInt32
+bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branch error source writeSuccessLineCall target consoleWriteFailedHandler
+storage module immutable exitOkCode ExitCode 0
+return ok exitOkCode
 
 # Failure leg: surface the raw negative CSignedInt32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler
 makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
-returnError consoleWriteFailedFailure
+return error consoleWriteFailedFailure
 label smokeAssertionFailed
 makeError constantsSmokeFailure MainError.ConstantsSmokeAssertionFailed
-returnError constantsSmokeFailure
+return error constantsSmokeFailure

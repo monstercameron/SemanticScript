@@ -16,147 +16,147 @@ error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 
 operation writeStandardOutputLine
-input writeStandardOutputLine text String
-output writeStandardOutputLine Result Void ConsoleWriteError
+input operation writeStandardOutputLine text String
+output operation writeStandardOutputLine Result Void ConsoleWriteError
 effect writeStandardOutputLine write console.stdout
 memory writeStandardOutputLine heap no
 memory writeStandardOutputLine stack max 1KiB
 async writeStandardOutputLine no
 
-purpose writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
-invariant writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
+purpose operation writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
+invariant operation writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
 guarantee writeStandardOutputLine "On success the entire text plus a single newline byte is written exactly once"
 
 # group writeStandardOutputLineHelperBody
 label startWriteStandardOutputLine
 
 call writeStandardOutputLineConsoleWriteCall console.writeLine
-arg writeStandardOutputLineConsoleWriteCall console console
-arg writeStandardOutputLineConsoleWriteCall text text
+argument writeStandardOutputLineConsoleWriteCall console Console console
+argument writeStandardOutputLineConsoleWriteCall text String text
 run writeStandardOutputLineConsoleWriteCall
-ignoreOk writeStandardOutputLineConsoleWriteCall Void
-bindError writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
-branchIfError writeStandardOutputLineConsoleWriteCall writeStandardOutputLineConsoleWriteFailed
+ignore void source writeStandardOutputLineConsoleWriteCall
+bind error writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
+branch error source writeStandardOutputLineConsoleWriteCall target writeStandardOutputLineConsoleWriteFailed
 
-const writeStandardOutputLineSuccessSentinel ExitCode 0
-returnOk writeStandardOutputLineSuccessSentinel
+storage module immutable writeStandardOutputLineSuccessSentinel ExitCode 0
+return ok writeStandardOutputLineSuccessSentinel
 
 label writeStandardOutputLineConsoleWriteFailed
-returnError writeStandardOutputLineConsoleWriteError
+return error writeStandardOutputLineConsoleWriteError
 # endGroup writeStandardOutputLineHelperBody
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 memory main stack max 4KiB
 async main no
 
-purpose main "Print the IEEE-754 and NaN surprises from javascript/counterintuitive-numbers.js"
-invariant main "Each result line reflects Node's exact double-precision output"
+purpose operation main "Print the IEEE-754 and NaN surprises from javascript/counterintuitive-numbers.js"
+invariant operation main "Each result line reflects Node's exact double-precision output"
 
 label startMain
 
-const numbersTitleText String "Counterintuitive Numbers"
-const numbersTitleUnderlineText String "========================"
-const numbersFloatAdditionText String "0.1 + 0.2 => 0.30000000000000004"
-const numbersFloatAdditionEqualityText String "0.1 + 0.2 === 0.3 => false"
-const numbersObjectIsMinusZeroText String "Object.is(-0, 0) => false"
-const numbersDivByMinusZeroText String "1 / -0 => -Infinity"
-const numbersUnsafeIntegerOverflowText String "9007199254740992 + 1 => 9007199254740992"
-const numbersUnsafeIntegerEqualText String "largeInteger === largeIntegerPlusOne => true"
-const numbersNanInequalText String "NaN === NaN => false"
-const numbersIsNaNTrueText String "Number.isNaN(NaN) => true"
+storage module immutable numbersTitleText String "Counterintuitive Numbers"
+storage module immutable numbersTitleUnderlineText String "========================"
+storage module immutable numbersFloatAdditionText String "0.1 + 0.2 => 0.30000000000000004"
+storage module immutable numbersFloatAdditionEqualityText String "0.1 + 0.2 === 0.3 => false"
+storage module immutable numbersObjectIsMinusZeroText String "Object.is(-0, 0) => false"
+storage module immutable numbersDivByMinusZeroText String "1 / -0 => -Infinity"
+storage module immutable numbersUnsafeIntegerOverflowText String "9007199254740992 + 1 => 9007199254740992"
+storage module immutable numbersUnsafeIntegerEqualText String "largeInteger === largeIntegerPlusOne => true"
+storage module immutable numbersNanInequalText String "NaN === NaN => false"
+storage module immutable numbersIsNaNTrueText String "Number.isNaN(NaN) => true"
 
-var lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
+memory main mutable lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
 
 call writeNumbersTitleLineCall writeStandardOutputLine
-arg writeNumbersTitleLineCall text numbersTitleText
+argument writeNumbersTitleLineCall text String numbersTitleText
 run writeNumbersTitleLineCall
-ignoreOk writeNumbersTitleLineCall Void
-bindError writeNumbersTitleLineError ConsoleWriteError writeNumbersTitleLineCall
-set lastConsoleWriteErrorCode writeNumbersTitleLineError
-branchIfError writeNumbersTitleLineCall consoleWriteFailed
+ignore void source writeNumbersTitleLineCall
+bind error writeNumbersTitleLineError ConsoleWriteError writeNumbersTitleLineCall
+set memory lastConsoleWriteErrorCode writeNumbersTitleLineError
+branch error source writeNumbersTitleLineCall target consoleWriteFailed
 
 call writeNumbersTitleUnderlineLineCall writeStandardOutputLine
-arg writeNumbersTitleUnderlineLineCall text numbersTitleUnderlineText
+argument writeNumbersTitleUnderlineLineCall text String numbersTitleUnderlineText
 run writeNumbersTitleUnderlineLineCall
-ignoreOk writeNumbersTitleUnderlineLineCall Void
-bindError writeNumbersTitleUnderlineLineError ConsoleWriteError writeNumbersTitleUnderlineLineCall
-set lastConsoleWriteErrorCode writeNumbersTitleUnderlineLineError
-branchIfError writeNumbersTitleUnderlineLineCall consoleWriteFailed
+ignore void source writeNumbersTitleUnderlineLineCall
+bind error writeNumbersTitleUnderlineLineError ConsoleWriteError writeNumbersTitleUnderlineLineCall
+set memory lastConsoleWriteErrorCode writeNumbersTitleUnderlineLineError
+branch error source writeNumbersTitleUnderlineLineCall target consoleWriteFailed
 
 call writeNumbersFloatAdditionLineCall writeStandardOutputLine
-arg writeNumbersFloatAdditionLineCall text numbersFloatAdditionText
+argument writeNumbersFloatAdditionLineCall text String numbersFloatAdditionText
 run writeNumbersFloatAdditionLineCall
-ignoreOk writeNumbersFloatAdditionLineCall Void
-bindError writeNumbersFloatAdditionLineError ConsoleWriteError writeNumbersFloatAdditionLineCall
-set lastConsoleWriteErrorCode writeNumbersFloatAdditionLineError
-branchIfError writeNumbersFloatAdditionLineCall consoleWriteFailed
+ignore void source writeNumbersFloatAdditionLineCall
+bind error writeNumbersFloatAdditionLineError ConsoleWriteError writeNumbersFloatAdditionLineCall
+set memory lastConsoleWriteErrorCode writeNumbersFloatAdditionLineError
+branch error source writeNumbersFloatAdditionLineCall target consoleWriteFailed
 
 call writeNumbersFloatAdditionEqualityLineCall writeStandardOutputLine
-arg writeNumbersFloatAdditionEqualityLineCall text numbersFloatAdditionEqualityText
+argument writeNumbersFloatAdditionEqualityLineCall text String numbersFloatAdditionEqualityText
 run writeNumbersFloatAdditionEqualityLineCall
-ignoreOk writeNumbersFloatAdditionEqualityLineCall Void
-bindError writeNumbersFloatAdditionEqualityLineError ConsoleWriteError writeNumbersFloatAdditionEqualityLineCall
-set lastConsoleWriteErrorCode writeNumbersFloatAdditionEqualityLineError
-branchIfError writeNumbersFloatAdditionEqualityLineCall consoleWriteFailed
+ignore void source writeNumbersFloatAdditionEqualityLineCall
+bind error writeNumbersFloatAdditionEqualityLineError ConsoleWriteError writeNumbersFloatAdditionEqualityLineCall
+set memory lastConsoleWriteErrorCode writeNumbersFloatAdditionEqualityLineError
+branch error source writeNumbersFloatAdditionEqualityLineCall target consoleWriteFailed
 
 call writeNumbersObjectIsMinusZeroLineCall writeStandardOutputLine
-arg writeNumbersObjectIsMinusZeroLineCall text numbersObjectIsMinusZeroText
+argument writeNumbersObjectIsMinusZeroLineCall text String numbersObjectIsMinusZeroText
 run writeNumbersObjectIsMinusZeroLineCall
-ignoreOk writeNumbersObjectIsMinusZeroLineCall Void
-bindError writeNumbersObjectIsMinusZeroLineError ConsoleWriteError writeNumbersObjectIsMinusZeroLineCall
-set lastConsoleWriteErrorCode writeNumbersObjectIsMinusZeroLineError
-branchIfError writeNumbersObjectIsMinusZeroLineCall consoleWriteFailed
+ignore void source writeNumbersObjectIsMinusZeroLineCall
+bind error writeNumbersObjectIsMinusZeroLineError ConsoleWriteError writeNumbersObjectIsMinusZeroLineCall
+set memory lastConsoleWriteErrorCode writeNumbersObjectIsMinusZeroLineError
+branch error source writeNumbersObjectIsMinusZeroLineCall target consoleWriteFailed
 
 call writeNumbersDivByMinusZeroLineCall writeStandardOutputLine
-arg writeNumbersDivByMinusZeroLineCall text numbersDivByMinusZeroText
+argument writeNumbersDivByMinusZeroLineCall text String numbersDivByMinusZeroText
 run writeNumbersDivByMinusZeroLineCall
-ignoreOk writeNumbersDivByMinusZeroLineCall Void
-bindError writeNumbersDivByMinusZeroLineError ConsoleWriteError writeNumbersDivByMinusZeroLineCall
-set lastConsoleWriteErrorCode writeNumbersDivByMinusZeroLineError
-branchIfError writeNumbersDivByMinusZeroLineCall consoleWriteFailed
+ignore void source writeNumbersDivByMinusZeroLineCall
+bind error writeNumbersDivByMinusZeroLineError ConsoleWriteError writeNumbersDivByMinusZeroLineCall
+set memory lastConsoleWriteErrorCode writeNumbersDivByMinusZeroLineError
+branch error source writeNumbersDivByMinusZeroLineCall target consoleWriteFailed
 
 call writeNumbersUnsafeIntegerOverflowLineCall writeStandardOutputLine
-arg writeNumbersUnsafeIntegerOverflowLineCall text numbersUnsafeIntegerOverflowText
+argument writeNumbersUnsafeIntegerOverflowLineCall text String numbersUnsafeIntegerOverflowText
 run writeNumbersUnsafeIntegerOverflowLineCall
-ignoreOk writeNumbersUnsafeIntegerOverflowLineCall Void
-bindError writeNumbersUnsafeIntegerOverflowLineError ConsoleWriteError writeNumbersUnsafeIntegerOverflowLineCall
-set lastConsoleWriteErrorCode writeNumbersUnsafeIntegerOverflowLineError
-branchIfError writeNumbersUnsafeIntegerOverflowLineCall consoleWriteFailed
+ignore void source writeNumbersUnsafeIntegerOverflowLineCall
+bind error writeNumbersUnsafeIntegerOverflowLineError ConsoleWriteError writeNumbersUnsafeIntegerOverflowLineCall
+set memory lastConsoleWriteErrorCode writeNumbersUnsafeIntegerOverflowLineError
+branch error source writeNumbersUnsafeIntegerOverflowLineCall target consoleWriteFailed
 
 call writeNumbersUnsafeIntegerEqualLineCall writeStandardOutputLine
-arg writeNumbersUnsafeIntegerEqualLineCall text numbersUnsafeIntegerEqualText
+argument writeNumbersUnsafeIntegerEqualLineCall text String numbersUnsafeIntegerEqualText
 run writeNumbersUnsafeIntegerEqualLineCall
-ignoreOk writeNumbersUnsafeIntegerEqualLineCall Void
-bindError writeNumbersUnsafeIntegerEqualLineError ConsoleWriteError writeNumbersUnsafeIntegerEqualLineCall
-set lastConsoleWriteErrorCode writeNumbersUnsafeIntegerEqualLineError
-branchIfError writeNumbersUnsafeIntegerEqualLineCall consoleWriteFailed
+ignore void source writeNumbersUnsafeIntegerEqualLineCall
+bind error writeNumbersUnsafeIntegerEqualLineError ConsoleWriteError writeNumbersUnsafeIntegerEqualLineCall
+set memory lastConsoleWriteErrorCode writeNumbersUnsafeIntegerEqualLineError
+branch error source writeNumbersUnsafeIntegerEqualLineCall target consoleWriteFailed
 
 call writeNumbersNanInequalLineCall writeStandardOutputLine
-arg writeNumbersNanInequalLineCall text numbersNanInequalText
+argument writeNumbersNanInequalLineCall text String numbersNanInequalText
 run writeNumbersNanInequalLineCall
-ignoreOk writeNumbersNanInequalLineCall Void
-bindError writeNumbersNanInequalLineError ConsoleWriteError writeNumbersNanInequalLineCall
-set lastConsoleWriteErrorCode writeNumbersNanInequalLineError
-branchIfError writeNumbersNanInequalLineCall consoleWriteFailed
+ignore void source writeNumbersNanInequalLineCall
+bind error writeNumbersNanInequalLineError ConsoleWriteError writeNumbersNanInequalLineCall
+set memory lastConsoleWriteErrorCode writeNumbersNanInequalLineError
+branch error source writeNumbersNanInequalLineCall target consoleWriteFailed
 
 call writeNumbersIsNaNTrueLineCall writeStandardOutputLine
-arg writeNumbersIsNaNTrueLineCall text numbersIsNaNTrueText
+argument writeNumbersIsNaNTrueLineCall text String numbersIsNaNTrueText
 run writeNumbersIsNaNTrueLineCall
-ignoreOk writeNumbersIsNaNTrueLineCall Void
-bindError writeNumbersIsNaNTrueLineError ConsoleWriteError writeNumbersIsNaNTrueLineCall
-set lastConsoleWriteErrorCode writeNumbersIsNaNTrueLineError
-branchIfError writeNumbersIsNaNTrueLineCall consoleWriteFailed
+ignore void source writeNumbersIsNaNTrueLineCall
+bind error writeNumbersIsNaNTrueLineError ConsoleWriteError writeNumbersIsNaNTrueLineCall
+set memory lastConsoleWriteErrorCode writeNumbersIsNaNTrueLineError
+branch error source writeNumbersIsNaNTrueLineCall target consoleWriteFailed
 
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
 
 label consoleWriteFailed
 # rationale: lastConsoleWriteErrorCode holds whichever emit actually failed; its `set`
 # ran immediately before the corresponding branchIfError, so the typed
 # MainError.ConsoleWriteFailed value honestly names its cause (§12).
 makeError consoleWriteFailure MainError.ConsoleWriteFailed lastConsoleWriteErrorCode
-returnError consoleWriteFailure
+return error consoleWriteFailure

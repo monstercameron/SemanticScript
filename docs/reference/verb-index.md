@@ -206,25 +206,24 @@ Import `standard.html` with the canonical `html` alias before using this
 surface in app modules:
 
 ```text
-importModule html standard.html
+import html standard.html
 ```
 
 | Verb | Schema | Status |
 |---|---|---|
-| `htmlTemplate` | `htmlTemplate NAME` | lowered |
-| `htmlArg` | `htmlArg TEMPLATE ARG_NAME TYPE` | lowered |
-| `htmlBody` | `htmlBody TEMPLATE` followed by indented HTML/SSX lines | lowered |
+| `html template` | `html template NAME` | lowered |
+| `html body template` | `html body template TEMPLATE` followed by indented HTML/SSX lines | lowered |
 
 `html.hydrate.TemplateName` is a generated call target, not a standalone verb.
 It is exposed through the imported `standard.html` namespace and assembles the
-template body with explicit `arg` rows whose names match declared `htmlArg`
-inputs. Dynamic holes must be declared `htmlArg` references, written as
-`{htmlArg.name}` or the same reference with surrounding whitespace. Other brace
-holes are rejected outside raw `<style>` and `<script>` text.
-Hydration escapes `HtmlText` in text and quoted attribute sinks. `class`
-attributes require `HtmlClass`, URL attributes such as `href` / `src` require
-`SafeUrl`, and `HtmlFragment` / `HtmlTrustedFragment` / `HtmlDocument` values
-can only hydrate text-content positions where raw markup is intentional.
+template body with `argument` rows whose names match inferred hole roots.
+Dynamic holes are bare names or dotted record-field paths, written as
+`{name}` or `{record.field}`. Other brace holes are rejected outside raw
+`<style>` and `<script>` text, and bare-name holes inside raw text are rejected.
+Hydration escapes `String` in text and quoted attribute sinks. URL-bearing
+attributes such as `href` / `src` currently require static values. `HtmlFragment`
+/ `HtmlTrustedFragment` / `HtmlDocument` values can only hydrate text-content
+positions where raw markup is intentional.
 
 ## Native Windows GUI
 

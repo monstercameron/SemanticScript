@@ -27,75 +27,75 @@ storage module immutable successfulExitCode ExitCode 0
 section program.smokeCStringRefined.operations
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
-memoryHeap main no
+memory main heap no
 memoryStackLimit main 4KiB
 async main no
 operationBody main sourceTape
 
-purpose main "Exercise c.strlen and c.strcmp against printf to confirm pointer-typed args round-trip correctly"
-invariant main "Each c.* string call lowers to a direct extern with no SemanticScript-side wrapping"
+purpose operation main "Exercise c.strlen and c.strcmp against printf to confirm pointer-typed args round-trip correctly"
+invariant operation main "Each c.* string call lowers to a direct extern with no SemanticScript-side wrapping"
 
 label startMain
 
 call strlenProbeCall c.strlen
-arg strlenProbeCall text inputProbeText
+argument strlenProbeCall text CNullTerminatedByteString inputProbeText
 run strlenProbeCall
-bind probeTextLengthInBytes CByteCount strlenProbeCall
+bind value probeTextLengthInBytes CByteCount strlenProbeCall
 
 call printStrlenCall c.printf
-arg printStrlenCall format formatStrlenText
-arg printStrlenCall input inputProbeText
-arg printStrlenCall length probeTextLengthInBytes
+argument printStrlenCall format CNullTerminatedByteString formatStrlenText
+argument printStrlenCall input CNullTerminatedByteString inputProbeText
+argument printStrlenCall length CByteCount probeTextLengthInBytes
 run printStrlenCall
-ignoreOk printStrlenCall Void
-bindError printStrlenError CSignedInt32 printStrlenCall
-branchIfError printStrlenCall strlenWriteFailed
+ignore void source printStrlenCall
+bind error printStrlenError CSignedInt32 printStrlenCall
+branch error source printStrlenCall target strlenWriteFailed
 
 call strcmpEqualCall c.strcmp
-arg strcmpEqualCall left inputProbeText
-arg strcmpEqualCall right inputReferenceText
+argument strcmpEqualCall left CNullTerminatedByteString inputProbeText
+argument strcmpEqualCall right CNullTerminatedByteString inputReferenceText
 run strcmpEqualCall
-bind probeEqualToReferenceComparison CSignedInt32 strcmpEqualCall
+bind value probeEqualToReferenceComparison CSignedInt32 strcmpEqualCall
 
 call printStrcmpEqualCall c.printf
-arg printStrcmpEqualCall format formatStrcmpText
-arg printStrcmpEqualCall left inputProbeText
-arg printStrcmpEqualCall right inputReferenceText
-arg printStrcmpEqualCall comparison probeEqualToReferenceComparison
+argument printStrcmpEqualCall format CNullTerminatedByteString formatStrcmpText
+argument printStrcmpEqualCall left CNullTerminatedByteString inputProbeText
+argument printStrcmpEqualCall right CNullTerminatedByteString inputReferenceText
+argument printStrcmpEqualCall comparison CSignedInt32 probeEqualToReferenceComparison
 run printStrcmpEqualCall
-ignoreOk printStrcmpEqualCall Void
-bindError printStrcmpEqualError CSignedInt32 printStrcmpEqualCall
-branchIfError printStrcmpEqualCall strcmpEqualWriteFailed
+ignore void source printStrcmpEqualCall
+bind error printStrcmpEqualError CSignedInt32 printStrcmpEqualCall
+branch error source printStrcmpEqualCall target strcmpEqualWriteFailed
 
 call strcmpDifferentCall c.strcmp
-arg strcmpDifferentCall left inputProbeText
-arg strcmpDifferentCall right inputDistinctText
+argument strcmpDifferentCall left CNullTerminatedByteString inputProbeText
+argument strcmpDifferentCall right CNullTerminatedByteString inputDistinctText
 run strcmpDifferentCall
-bind probeDifferentFromDistinctComparison CSignedInt32 strcmpDifferentCall
+bind value probeDifferentFromDistinctComparison CSignedInt32 strcmpDifferentCall
 
 call printStrcmpDifferentCall c.printf
-arg printStrcmpDifferentCall format formatStrcmpText
-arg printStrcmpDifferentCall left inputProbeText
-arg printStrcmpDifferentCall right inputDistinctText
-arg printStrcmpDifferentCall comparison probeDifferentFromDistinctComparison
+argument printStrcmpDifferentCall format CNullTerminatedByteString formatStrcmpText
+argument printStrcmpDifferentCall left CNullTerminatedByteString inputProbeText
+argument printStrcmpDifferentCall right CNullTerminatedByteString inputDistinctText
+argument printStrcmpDifferentCall comparison CSignedInt32 probeDifferentFromDistinctComparison
 run printStrcmpDifferentCall
-ignoreOk printStrcmpDifferentCall Void
-bindError printStrcmpDifferentError CSignedInt32 printStrcmpDifferentCall
-branchIfError printStrcmpDifferentCall strcmpDifferentWriteFailed
+ignore void source printStrcmpDifferentCall
+bind error printStrcmpDifferentError CSignedInt32 printStrcmpDifferentCall
+branch error source printStrcmpDifferentCall target strcmpDifferentWriteFailed
 
-returnOk successfulExitCode
+return ok successfulExitCode
 
 label strlenWriteFailed
 makeError strlenWriteFailure MainError.ConsoleWriteFailed printStrlenError
-returnError strlenWriteFailure
+return error strlenWriteFailure
 
 label strcmpEqualWriteFailed
 makeError strcmpEqualWriteFailure MainError.ConsoleWriteFailed printStrcmpEqualError
-returnError strcmpEqualWriteFailure
+return error strcmpEqualWriteFailure
 
 label strcmpDifferentWriteFailed
 makeError strcmpDifferentWriteFailure MainError.ConsoleWriteFailed printStrcmpDifferentError
-returnError strcmpDifferentWriteFailure
+return error strcmpDifferentWriteFailure

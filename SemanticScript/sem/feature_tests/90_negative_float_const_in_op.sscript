@@ -8,39 +8,39 @@ error MainError
 errorCase MainError Placeholder CSignedInt32
 
 operation flipSign
-input flipSign value CFloat64
-output flipSign Result CFloat64 Void
+input operation flipSign value CFloat64
+output operation flipSign Result CFloat64 Void
 memory flipSign heap no
 async flipSign no
-purpose flipSign "Multiply a CFloat64 by -1.0. Exercises a negative float const passed as an arg in a user-op body."
-invariant flipSign "Returns -value."
+purpose operation flipSign "Multiply a CFloat64 by -1.0. Exercises a negative float const passed as an arg in a user-op body."
+invariant operation flipSign "Returns -value."
 label startFlipSign
-const negativeOne CFloat64 -1.0
+storage module immutable negativeOne CFloat64 -1.0
 call multCall math.multiplyF64
-arg multCall left value
-arg multCall right negativeOne
+argument multCall left CFloat64 value
+argument multCall right CFloat64 negativeOne
 run multCall
-bind flipped CFloat64 multCall
-returnOk flipped
+bind value flipped CFloat64 multCall
+return ok flipped
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "flipSign(3.5) == -3.5. Exercises negative float const + float user op + writeFloatLine."
-invariant main "Output is -3.500000."
+purpose operation main "flipSign(3.5) == -3.5. Exercises negative float const + float user op + writeFloatLine."
+invariant operation main "Output is -3.500000."
 label startMain
-const startValue CFloat64 3.5
+storage module immutable startValue CFloat64 3.5
 call flipCall flipSign
-arg flipCall value startValue
+argument flipCall value CFloat64 startValue
 run flipCall
-bindOk flippedValue CFloat64 flipCall
+bind ok flippedValue CFloat64 flipCall
 call writeCall console.writeFloatLine
-arg writeCall console console
-arg writeCall value flippedValue
+argument writeCall console Console console
+argument writeCall value CFloat64 flippedValue
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

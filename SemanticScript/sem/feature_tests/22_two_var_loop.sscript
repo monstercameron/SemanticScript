@@ -7,48 +7,48 @@ entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Two simultaneous loop vars: counter and value (odd numbers 1,3,5,7)."
-invariant main "Counter bounded; value increments by 2 each step."
+purpose operation main "Two simultaneous loop vars: counter and value (odd numbers 1,3,5,7)."
+invariant operation main "Counter bounded; value increments by 2 each step."
 label startMain
-const oneInitial I64 1
-const oneStep I64 1
-const twoStep I64 2
-const fourBound I64 4
-const zeroInitial I64 0
-var counter I64 zeroInitial
-var oddValue I64 oneInitial
+storage module immutable oneInitial I64 1
+storage module immutable oneStep I64 1
+storage module immutable twoStep I64 2
+storage module immutable fourBound I64 4
+storage module immutable zeroInitial I64 0
+memory main mutable counter I64 zeroInitial
+memory main mutable oddValue I64 oneInitial
 label loopHead
 call checkCall math.lessThanI64
-arg checkCall left counter
-arg checkCall right fourBound
+argument checkCall left I64 counter
+argument checkCall right I64 fourBound
 run checkCall
-bind shouldContinue Bool checkCall
-branchIf shouldContinue loopBody
-branch loopExit
+bind value shouldContinue Bool checkCall
+branch if condition shouldContinue target loopBody
+branch else target loopExit
 label loopBody
 call printCall console.writeIntegerLine
-arg printCall console console
-arg printCall value oddValue
+argument printCall console Console console
+argument printCall value I64 oddValue
 run printCall
-ignoreOk printCall Void
+ignore void source printCall
 call incCounterCall math.addI64
-arg incCounterCall left counter
-arg incCounterCall right oneStep
+argument incCounterCall left I64 counter
+argument incCounterCall right I64 oneStep
 run incCounterCall
-bind nextCounter I64 incCounterCall
-set counter nextCounter
+bind value nextCounter I64 incCounterCall
+set memory counter nextCounter
 call incOddCall math.addI64
-arg incOddCall left oddValue
-arg incOddCall right twoStep
+argument incOddCall left I64 oddValue
+argument incOddCall right I64 twoStep
 run incOddCall
-bind nextOdd I64 incOddCall
-set oddValue nextOdd
-branch loopHead
+bind value nextOdd I64 incOddCall
+set memory oddValue nextOdd
+jump target loopHead
 label loopExit
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

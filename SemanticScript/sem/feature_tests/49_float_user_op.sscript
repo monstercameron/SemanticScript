@@ -8,40 +8,40 @@ error MainError
 errorCase MainError Placeholder CSignedInt32
 
 operation doubleFloat
-input doubleFloat x CFloat64
-output doubleFloat Result CFloat64 Void
+input operation doubleFloat x CFloat64
+output operation doubleFloat Result CFloat64 Void
 memory doubleFloat heap no
 async doubleFloat no
-purpose doubleFloat "Return 2x as CFloat64."
-invariant doubleFloat "Float-typed user op."
+purpose operation doubleFloat "Return 2x as CFloat64."
+invariant operation doubleFloat "Float-typed user op."
 label startDoubleFloat
-const twoFloatLit CFloat64 2.0
+storage module immutable twoFloatLit CFloat64 2.0
 call mulCall math.multiplyF64
-arg mulCall left x
-arg mulCall right twoFloatLit
+argument mulCall left CFloat64 x
+argument mulCall right CFloat64 twoFloatLit
 run mulCall
-bind doubled CFloat64 mulCall
-returnOk doubled
+bind value doubled CFloat64 mulCall
+return ok doubled
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "doubleFloat(5.5) = 11.0."
-invariant main "Tests float user-op signature."
+purpose operation main "doubleFloat(5.5) = 11.0."
+invariant operation main "Tests float user-op signature."
 label startMain
-const fiveHalfFloat CFloat64 5.5
-var x CFloat64 fiveHalfFloat
+storage module immutable fiveHalfFloat CFloat64 5.5
+memory main mutable x CFloat64 fiveHalfFloat
 call dblCall doubleFloat
-arg dblCall x x
+argument dblCall x CFloat64 x
 run dblCall
-bindOk dblResult CFloat64 dblCall
+bind ok dblResult CFloat64 dblCall
 call writeCall console.writeFloatLine
-arg writeCall console console
-arg writeCall value dblResult
+argument writeCall console Console console
+argument writeCall value CFloat64 dblResult
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

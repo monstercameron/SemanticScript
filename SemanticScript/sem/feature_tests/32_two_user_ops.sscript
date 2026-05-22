@@ -8,62 +8,62 @@ error MainError
 errorCase MainError Placeholder CSignedInt32
 
 operation addThree
-input addThree x CSignedInt64
-output addThree Result CSignedInt64 Void
+input operation addThree x CSignedInt64
+output operation addThree Result CSignedInt64 Void
 memory addThree heap no
 async addThree no
-purpose addThree "Returns x + 3."
-invariant addThree "Constant offset."
+purpose operation addThree "Returns x + 3."
+invariant operation addThree "Constant offset."
 label startAddThree
-const threeLit I64 3
+storage module immutable threeLit I64 3
 call addCall math.addI64
-arg addCall left x
-arg addCall right threeLit
+argument addCall left I64 x
+argument addCall right I64 threeLit
 run addCall
-bind addResult I64 addCall
-returnOk addResult
+bind value addResult I64 addCall
+return ok addResult
 
 operation doubleIt
-input doubleIt y CSignedInt64
-output doubleIt Result CSignedInt64 Void
+input operation doubleIt y CSignedInt64
+output operation doubleIt Result CSignedInt64 Void
 memory doubleIt heap no
 async doubleIt no
-purpose doubleIt "Returns y * 2."
-invariant doubleIt "Doubles its input."
+purpose operation doubleIt "Returns y * 2."
+invariant operation doubleIt "Doubles its input."
 label startDoubleIt
-const twoLit I64 2
+storage module immutable twoLit I64 2
 call mulCall math.multiplyI64
-arg mulCall left y
-arg mulCall right twoLit
+argument mulCall left CSignedInt64 y
+argument mulCall right I64 twoLit
 run mulCall
-bind mulResult I64 mulCall
-returnOk mulResult
+bind value mulResult I64 mulCall
+return ok mulResult
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Chain user ops: doubleIt(addThree(4)) = (4+3)*2 = 14."
-invariant main "Outputs 14."
+purpose operation main "Chain user ops: doubleIt(addThree(4)) = (4+3)*2 = 14."
+invariant operation main "Outputs 14."
 label startMain
-const fourInitial I64 4
-var inputValue I64 fourInitial
+storage module immutable fourInitial I64 4
+memory main mutable inputValue I64 fourInitial
 call addOpCall addThree
-arg addOpCall x inputValue
+argument addOpCall x CSignedInt64 inputValue
 run addOpCall
-bindOk addOpResult I64 addOpCall
+bind ok addOpResult I64 addOpCall
 call dblOpCall doubleIt
-arg dblOpCall y addOpResult
+argument dblOpCall y CSignedInt64 addOpResult
 run dblOpCall
-bindOk dblOpResult I64 dblOpCall
-var resultVar I64 fourInitial
-set resultVar dblOpResult
+bind ok dblOpResult I64 dblOpCall
+memory main mutable resultVar I64 fourInitial
+set memory resultVar dblOpResult
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value resultVar
+argument writeCall console Console console
+argument writeCall value I64 resultVar
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

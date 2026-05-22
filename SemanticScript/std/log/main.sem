@@ -62,10 +62,10 @@
 # observe the underlying c.fputs return value via a custom call.
 
 module standard.log
-modulePurpose standard.log "Standard-library structured-logging package — single-file JSON-per-line audit trail backed by libc stdio. Pure SemanticScript implementation."
+purpose module standard.log "Standard-library structured-logging package — single-file JSON-per-line audit trail backed by libc stdio. Pure SemanticScript implementation."
 moduleOwns standard.log "The official import path `standard.log`, the LogFile type alias, the canonical log status sentinels, and the openLogFile / writeLogLine / closeLogFile / logEventStructured / logInfo / logWarn / logError operation contracts."
 moduleDoesNotOwn standard.log "Log rotation, multi-process log shipping, network sinks, structured tracing context propagation, or directory creation — apps are responsible for ensuring the parent directory exists before openLogFile is called."
-moduleInvariant standard.log "Single in-process FILE handle stored in `sharedLogFileHandle`; every writeLogLine fflushes so a crash loses at most one line; envelope helpers always emit a balanced JSON object terminated by '\\n'."
+invariant module standard.log "Single in-process FILE handle stored in `sharedLogFileHandle`; every writeLogLine fflushes so a crash loses at most one line; envelope helpers always emit a balanced JSON object terminated by '\\n'."
 moduleSecurity standard.log "JSON string escapes are applied to all caller-provided text via escapeJsonString so a log message can never break out of the message field and inject extra fields into the audit trail (log injection defence)."
 
 type LogFile CFileHandle
@@ -94,9 +94,9 @@ storage module immutable logModuleVersionText CNullTerminatedByteString "standar
 # SS_HTTP_ERR_CONFIG / SS_HTTP_ERR_ENGINE so an app that already
 # branches on those values from http calls can reuse the same control
 # flow for log calls without translating sentinels.
-storage module immutable logStatusOk          CSignedInt32 0
-storage module immutable logStatusErrConfig   CSignedInt32 1
-storage module immutable logStatusErrEngine   CSignedInt32 3
+storage module immutable logStatusOk CSignedInt32 0
+storage module immutable logStatusErrConfig CSignedInt32 1
+storage module immutable logStatusErrEngine CSignedInt32 3
 
 # Buffer caps. logLineMaximumByteCount is the snprintf buffer used by
 # the envelope formatters (logEventStructured and friends). 4 KiB is the
@@ -105,7 +105,7 @@ storage module immutable logStatusErrEngine   CSignedInt32 3
 # is the per-field cap used by escapeJsonString so the envelope's
 # message:"..." field cannot grow past the line buffer minus the
 # envelope chrome.
-storage module immutable logLineMaximumByteCount    CSignedInt64 4096
+storage module immutable logLineMaximumByteCount CSignedInt64 4096
 storage module immutable logMessageMaximumByteCount CSignedInt64 3072
 
 # Shared FILE* set by openLogFile and read by every writer. NULL until
@@ -114,17 +114,16 @@ storage module mutable sharedLogFileHandle LogFile 0
 
 # Internal scratch / formatting helpers.
 storage module immutable logAppendModeText CNullTerminatedByteString "ab"
-storage module immutable logNewlineText    CNullTerminatedByteString "\n"
+storage module immutable logNewlineText CNullTerminatedByteString "\n"
 # Envelope: {"level":"<l>","event":"<e>","message":"<m>"}
 storage module immutable logEnvelopeFormat CNullTerminatedByteString "{\"level\":\"%s\",\"event\":\"%s\",\"message\":\"%s\"}"
-storage module immutable logInfoLevelText  CNullTerminatedByteString "info"
-storage module immutable logWarnLevelText  CNullTerminatedByteString "warn"
+storage module immutable logInfoLevelText CNullTerminatedByteString "info"
+storage module immutable logWarnLevelText CNullTerminatedByteString "warn"
 storage module immutable logErrorLevelText CNullTerminatedByteString "error"
 storage module immutable logDefaultEventText CNullTerminatedByteString "app"
 
 # Sentinel pointer for "no file opened yet" comparisons.
 storage module immutable logZeroI64 CSignedInt64 0
-
 
 # ============================================================
 # Capabilities — scoped grants for the libc + filesystem effects the
@@ -133,46 +132,45 @@ storage module immutable logZeroI64 CSignedInt64 0
 # matching `effect OP ACCESS SCOPE` row in each operation below.
 # ============================================================
 capability logFilesystemOpen filesystem open
-purpose logFilesystemOpen "Authority to open the audit-log file via c.fopen."
+purpose operation logFilesystemOpen "Authority to open the audit-log file via c.fopen."
 
 capability logFilesystemClose filesystem close
-purpose logFilesystemClose "Authority to close the audit-log file via c.fclose."
+purpose operation logFilesystemClose "Authority to close the audit-log file via c.fclose."
 
 capability logFilesystemReadWrite filesystem readWrite
-purpose logFilesystemReadWrite "Authority to read and write the open audit-log file (c.fputs and friends)."
+purpose operation logFilesystemReadWrite "Authority to read and write the open audit-log file (c.fputs and friends)."
 
 capability logFileOpen file open
-purpose logFileOpen "Authority to acquire a file handle (the libc-layer half of `filesystem open`)."
+purpose operation logFileOpen "Authority to acquire a file handle (the libc-layer half of `filesystem open`)."
 
 capability logFileClose file close
-purpose logFileClose "Authority to release a file handle (the libc-layer half of `filesystem close`)."
+purpose operation logFileClose "Authority to release a file handle (the libc-layer half of `filesystem close`)."
 
 capability logFilesystemRead filesystem read
-purpose logFilesystemRead "Authority to read raw filesystem bytes (c.fopen in append modes needs this)."
+purpose operation logFilesystemRead "Authority to read raw filesystem bytes (c.fopen in append modes needs this)."
 
 capability logFilesystemWrite filesystem write
-purpose logFilesystemWrite "Authority to write raw filesystem bytes (c.fopen in append modes needs this)."
+purpose operation logFilesystemWrite "Authority to write raw filesystem bytes (c.fopen in append modes needs this)."
 
 capability logConsoleStdoutWrite console.stdout write
-purpose logConsoleStdoutWrite "Authority for c.fputs to a FILE* that points at the log stream (the libc registry models this as a console.stdout write)."
+purpose operation logConsoleStdoutWrite "Authority for c.fputs to a FILE* that points at the log stream (the libc registry models this as a console.stdout write)."
 
 capability logMemoryBufferReadWrite memory.buffer readWrite
-purpose logMemoryBufferReadWrite "Authority to read and write the in-op scratch buffers used by the envelope formatters."
+purpose operation logMemoryBufferReadWrite "Authority to read and write the in-op scratch buffers used by the envelope formatters."
 
 capability logHeapAllocate heap allocate
-purpose logHeapAllocate "Authority to c.malloc the per-line envelope buffer in logEventStructured + logInfo/Warn/Error."
+purpose operation logHeapAllocate "Authority to c.malloc the per-line envelope buffer in logEventStructured + logInfo/Warn/Error."
 
 capability logHeapFree heap free
-purpose logHeapFree "Authority to c.free the per-line envelope buffer at the matching defer in the same operations."
-
+purpose operation logHeapFree "Authority to c.free the per-line envelope buffer at the matching defer in the same operations."
 
 # ============================================================
 # openLogFile — open the audit-trail file in append mode.
 # ============================================================
 
 operation openLogFile
-input openLogFile filePath CNullTerminatedByteString
-output openLogFile CSignedInt32
+input operation openLogFile filePath CNullTerminatedByteString
+output operation openLogFile CSignedInt32
 # Effect order is `effect OP ACCESS SCOPE`. c.fopen in append mode triggers
 # multiple low-level effects; we declare each one so the lint's
 # missingEffectDeclaration walk against the libc_registry shape is silent.
@@ -190,61 +188,60 @@ useCapability openLogFile logFilesystemWrite
 useCapability openLogFile logMemoryBufferReadWrite
 memory openLogFile heap auto
 async openLogFile no
-purpose openLogFile "Open `filePath` in append mode and remember the FILE* in sharedLogFileHandle so subsequent writeLogLine calls have somewhere to write. Re-opening with the same or different path closes the prior handle first so the file table doesn't leak across re-init."
-invariant openLogFile "On success returns logStatusOk and sharedLogFileHandle holds a non-null FILE*. On c.fopen failure returns logStatusErrEngine and the handle stays as its prior value (NULL on first call) so writeLogLine continues to no-op silently rather than crashing."
+purpose operation openLogFile "Open `filePath` in append mode and remember the FILE* in sharedLogFileHandle so subsequent writeLogLine calls have somewhere to write. Re-opening with the same or different path closes the prior handle first so the file table doesn't leak across re-init."
+invariant operation openLogFile "On success returns logStatusOk and sharedLogFileHandle holds a non-null FILE*. On c.fopen failure returns logStatusErrEngine and the handle stays as its prior value (NULL on first call) so writeLogLine continues to no-op silently rather than crashing."
 
 label startOpenLogFile
 
 storage local immutable openLogPathNullCheckSentinel CNullTerminatedByteString ""
 call openLogPathIsNullCall pointer.isNull
-arg openLogPathIsNullCall pointer filePath
+argument openLogPathIsNullCall pointer COpaqueMemoryAddress filePath
 run openLogPathIsNullCall
-bind openLogPathIsNull Bool openLogPathIsNullCall
-branchIf openLogPathIsNull openLogPathMissing
+bind value openLogPathIsNull Bool openLogPathIsNullCall
+branch if condition openLogPathIsNull target openLogPathMissing
 
 # If a handle is already live, close it before replacing — keeps the
 # stdio file table from leaking across re-opens.
 call openLogPriorHandleCall pointer.isNull
-arg openLogPriorHandleCall pointer sharedLogFileHandle
+argument openLogPriorHandleCall pointer COpaqueMemoryAddress sharedLogFileHandle
 run openLogPriorHandleCall
-bind openLogPriorHandleIsNull Bool openLogPriorHandleCall
-branchIf openLogPriorHandleIsNull openLogNoPriorHandle
+bind value openLogPriorHandleIsNull Bool openLogPriorHandleCall
+branch if condition openLogPriorHandleIsNull target openLogNoPriorHandle
 
 call openLogCloseExistingCall c.fclose
-arg openLogCloseExistingCall stream sharedLogFileHandle
+argument openLogCloseExistingCall stream LogFile sharedLogFileHandle
 run openLogCloseExistingCall
-ignoreOk openLogCloseExistingCall CSignedInt32
+ignore ok source openLogCloseExistingCall type CSignedInt32
 
 label openLogNoPriorHandle
 
 call openLogFopenCall c.fopen
-arg openLogFopenCall filename filePath
-arg openLogFopenCall mode logAppendModeText
+argument openLogFopenCall filename CNullTerminatedByteString filePath
+argument openLogFopenCall mode CNullTerminatedByteString logAppendModeText
 run openLogFopenCall
-bind openLogFreshHandle LogFile openLogFopenCall
+bind value openLogFreshHandle LogFile openLogFopenCall
 
 call openLogFreshHandleIsNullCall pointer.isNull
-arg openLogFreshHandleIsNullCall pointer openLogFreshHandle
+argument openLogFreshHandleIsNullCall pointer COpaqueMemoryAddress openLogFreshHandle
 run openLogFreshHandleIsNullCall
-bind openLogFopenFailed Bool openLogFreshHandleIsNullCall
-branchIf openLogFopenFailed openLogFopenFailure
+bind value openLogFopenFailed Bool openLogFreshHandleIsNullCall
+branch if condition openLogFopenFailed target openLogFopenFailure
 
-set module sharedLogFileHandle openLogFreshHandle
-returnValue logStatusOk
+set storage sharedLogFileHandle openLogFreshHandle
+return value logStatusOk
 
 label openLogPathMissing
-returnValue logStatusErrConfig
+return value logStatusErrConfig
 
 label openLogFopenFailure
-returnValue logStatusErrEngine
-
+return value logStatusErrEngine
 
 # ============================================================
 # closeLogFile — release the shared handle on shutdown.
 # ============================================================
 
 operation closeLogFile
-output closeLogFile CSignedInt32
+output operation closeLogFile CSignedInt32
 effect closeLogFile close filesystem
 effect closeLogFile close file
 effect closeLogFile readWrite memory.buffer
@@ -253,37 +250,36 @@ useCapability closeLogFile logFileClose
 useCapability closeLogFile logMemoryBufferReadWrite
 memory closeLogFile heap auto
 async closeLogFile no
-purpose closeLogFile "Close sharedLogFileHandle and clear it back to NULL. Safe to call when no handle was ever opened — degrades to a no-op."
-invariant closeLogFile "After a successful close the shared handle is NULL again so subsequent writeLogLine calls silently no-op until openLogFile is called again."
+purpose operation closeLogFile "Close sharedLogFileHandle and clear it back to NULL. Safe to call when no handle was ever opened — degrades to a no-op."
+invariant operation closeLogFile "After a successful close the shared handle is NULL again so subsequent writeLogLine calls silently no-op until openLogFile is called again."
 
 label startCloseLogFile
 
 call closeLogHandleIsNullCall pointer.isNull
-arg closeLogHandleIsNullCall pointer sharedLogFileHandle
+argument closeLogHandleIsNullCall pointer COpaqueMemoryAddress sharedLogFileHandle
 run closeLogHandleIsNullCall
-bind closeLogHandleIsNull Bool closeLogHandleIsNullCall
-branchIf closeLogHandleIsNull closeLogAlreadyClosed
+bind value closeLogHandleIsNull Bool closeLogHandleIsNullCall
+branch if condition closeLogHandleIsNull target closeLogAlreadyClosed
 
 call closeLogFcloseCall c.fclose
-arg closeLogFcloseCall stream sharedLogFileHandle
+argument closeLogFcloseCall stream LogFile sharedLogFileHandle
 run closeLogFcloseCall
-ignoreOk closeLogFcloseCall CSignedInt32
+ignore ok source closeLogFcloseCall type CSignedInt32
 
 storage local immutable closeLogNullHandle LogFile 0
-set module sharedLogFileHandle closeLogNullHandle
-returnValue logStatusOk
+set storage sharedLogFileHandle closeLogNullHandle
+return value logStatusOk
 
 label closeLogAlreadyClosed
-returnValue logStatusOk
-
+return value logStatusOk
 
 # ============================================================
 # writeLogLine — append one pre-formatted line + '\n' + fflush.
 # ============================================================
 
 operation writeLogLine
-input writeLogLine linePayload CNullTerminatedByteString
-output writeLogLine CSignedInt32
+input operation writeLogLine linePayload CNullTerminatedByteString
+output operation writeLogLine CSignedInt32
 effect writeLogLine readWrite filesystem
 effect writeLogLine readWrite memory.buffer
 effect writeLogLine write console.stdout
@@ -292,48 +288,47 @@ useCapability writeLogLine logMemoryBufferReadWrite
 useCapability writeLogLine logConsoleStdoutWrite
 memory writeLogLine heap auto
 async writeLogLine no
-purpose writeLogLine "Append `linePayload` followed by a single '\\n' to sharedLogFileHandle and fflush. No handle and no payload are both silent no-ops returning logStatusOk so callers don't need to guard every log call."
-invariant writeLogLine "fflush is always called after the put so a crash loses at most the in-flight line; the file is never left with a partial half-line that breaks downstream `jq -c` or grep tooling."
+purpose operation writeLogLine "Append `linePayload` followed by a single '\\n' to sharedLogFileHandle and fflush. No handle and no payload are both silent no-ops returning logStatusOk so callers don't need to guard every log call."
+invariant operation writeLogLine "fflush is always called after the put so a crash loses at most the in-flight line; the file is never left with a partial half-line that breaks downstream `jq -c` or grep tooling."
 
 label startWriteLogLine
 
 call writeLogHandleIsNullCall pointer.isNull
-arg writeLogHandleIsNullCall pointer sharedLogFileHandle
+argument writeLogHandleIsNullCall pointer COpaqueMemoryAddress sharedLogFileHandle
 run writeLogHandleIsNullCall
-bind writeLogHandleIsNull Bool writeLogHandleIsNullCall
-branchIf writeLogHandleIsNull writeLogNoHandleNoOp
+bind value writeLogHandleIsNull Bool writeLogHandleIsNullCall
+branch if condition writeLogHandleIsNull target writeLogNoHandleNoOp
 
 call writeLogPayloadNullCheckCall pointer.isNull
-arg writeLogPayloadNullCheckCall pointer linePayload
+argument writeLogPayloadNullCheckCall pointer COpaqueMemoryAddress linePayload
 run writeLogPayloadNullCheckCall
-bind writeLogPayloadIsNull Bool writeLogPayloadNullCheckCall
-branchIf writeLogPayloadIsNull writeLogEmptyPayloadNoOp
+bind value writeLogPayloadIsNull Bool writeLogPayloadNullCheckCall
+branch if condition writeLogPayloadIsNull target writeLogEmptyPayloadNoOp
 
 call writeLogFputsLineCall c.fputs
-arg writeLogFputsLineCall string linePayload
-arg writeLogFputsLineCall stream sharedLogFileHandle
+argument writeLogFputsLineCall string CNullTerminatedByteString linePayload
+argument writeLogFputsLineCall stream LogFile sharedLogFileHandle
 run writeLogFputsLineCall
-ignoreOk writeLogFputsLineCall CSignedInt32
+ignore ok source writeLogFputsLineCall type CSignedInt32
 
 call writeLogFputsNewlineCall c.fputs
-arg writeLogFputsNewlineCall string logNewlineText
-arg writeLogFputsNewlineCall stream sharedLogFileHandle
+argument writeLogFputsNewlineCall string CNullTerminatedByteString logNewlineText
+argument writeLogFputsNewlineCall stream LogFile sharedLogFileHandle
 run writeLogFputsNewlineCall
-ignoreOk writeLogFputsNewlineCall CSignedInt32
+ignore ok source writeLogFputsNewlineCall type CSignedInt32
 
 call writeLogFflushCall c.fflush
-arg writeLogFflushCall stream sharedLogFileHandle
+argument writeLogFflushCall stream LogFile sharedLogFileHandle
 run writeLogFflushCall
-ignoreOk writeLogFflushCall CSignedInt32
+ignore ok source writeLogFflushCall type CSignedInt32
 
-returnValue logStatusOk
+return value logStatusOk
 
 label writeLogNoHandleNoOp
-returnValue logStatusOk
+return value logStatusOk
 
 label writeLogEmptyPayloadNoOp
-returnValue logStatusOk
-
+return value logStatusOk
 
 # ============================================================
 # escapeJsonString — backslash-escape a string for JSON embedding.
@@ -347,24 +342,24 @@ returnValue logStatusOk
 # breaks JSON parsing) and bounded (one byte in, one byte out).
 
 operation escapeJsonString
-input escapeJsonString sourceText CNullTerminatedByteString
-input escapeJsonString destinationBuffer COpaqueMemoryAddress
-input escapeJsonString destinationCapacity CSignedInt64
-output escapeJsonString CSignedInt32
+input operation escapeJsonString sourceText CNullTerminatedByteString
+input operation escapeJsonString destinationBuffer COpaqueMemoryAddress
+input operation escapeJsonString destinationCapacity CSignedInt64
+output operation escapeJsonString CSignedInt32
 effect escapeJsonString readWrite memory.buffer
 useCapability escapeJsonString logMemoryBufferReadWrite
 memory escapeJsonString heap auto
 async escapeJsonString no
-purpose escapeJsonString "Copy sourceText into destinationBuffer with `\"` and `\\` escaped. Stops cleanly when the destination would overflow so the buffer never gets a half-encoded escape sequence at its tail. Caller must size destinationCapacity >= worst-case `2 * len(sourceText) + 1`."
-invariant escapeJsonString "Output is always null-terminated; never writes past destinationCapacity - 1; control characters get folded to single spaces rather than \\uXXXX (see module-level note)."
+purpose operation escapeJsonString "Copy sourceText into destinationBuffer with `\"` and `\\` escaped. Stops cleanly when the destination would overflow so the buffer never gets a half-encoded escape sequence at its tail. Caller must size destinationCapacity >= worst-case `2 * len(sourceText) + 1`."
+invariant operation escapeJsonString "Output is always null-terminated; never writes past destinationCapacity - 1; control characters get folded to single spaces rather than \\uXXXX (see module-level note)."
 
 label startEscapeJsonString
 
 call escapeSourceIsNullCall pointer.isNull
-arg escapeSourceIsNullCall pointer sourceText
+argument escapeSourceIsNullCall pointer COpaqueMemoryAddress sourceText
 run escapeSourceIsNullCall
-bind escapeSourceIsNull Bool escapeSourceIsNullCall
-branchIf escapeSourceIsNull escapeJsonStringEmpty
+bind value escapeSourceIsNull Bool escapeSourceIsNullCall
+branch if condition escapeSourceIsNull target escapeJsonStringEmpty
 
 # Implementation uses c.snprintf with %s — that handles the common case
 # (no `"` or `\\` in the message) by simple copy. The escape contract
@@ -374,38 +369,37 @@ branchIf escapeSourceIsNull escapeJsonStringEmpty
 # etc.) that contain neither character, so snprintf is sufficient.
 storage local immutable escapePassthroughFormat CNullTerminatedByteString "%s"
 call escapeSnprintfCall c.snprintf
-arg escapeSnprintfCall buffer destinationBuffer
-arg escapeSnprintfCall size destinationCapacity
-arg escapeSnprintfCall format escapePassthroughFormat
-arg escapeSnprintfCall first sourceText
+argument escapeSnprintfCall buffer COpaqueMemoryAddress destinationBuffer
+argument escapeSnprintfCall size CSignedInt64 destinationCapacity
+argument escapeSnprintfCall format CNullTerminatedByteString escapePassthroughFormat
+argument escapeSnprintfCall first CNullTerminatedByteString sourceText
 run escapeSnprintfCall
-ignoreOk escapeSnprintfCall CSignedInt32
+ignore ok source escapeSnprintfCall type CSignedInt32
 
-returnValue logStatusOk
+return value logStatusOk
 
 label escapeJsonStringEmpty
 # Write a single null byte so the buffer is at least a valid C string.
 storage local immutable escapeEmptyText CNullTerminatedByteString ""
 storage local immutable escapeEmptyFormat CNullTerminatedByteString "%s"
 call escapeEmptySnprintfCall c.snprintf
-arg escapeEmptySnprintfCall buffer destinationBuffer
-arg escapeEmptySnprintfCall size destinationCapacity
-arg escapeEmptySnprintfCall format escapeEmptyFormat
-arg escapeEmptySnprintfCall first escapeEmptyText
+argument escapeEmptySnprintfCall buffer COpaqueMemoryAddress destinationBuffer
+argument escapeEmptySnprintfCall size CSignedInt64 destinationCapacity
+argument escapeEmptySnprintfCall format CNullTerminatedByteString escapeEmptyFormat
+argument escapeEmptySnprintfCall first CNullTerminatedByteString escapeEmptyText
 run escapeEmptySnprintfCall
-ignoreOk escapeEmptySnprintfCall CSignedInt32
-returnValue logStatusOk
-
+ignore ok source escapeEmptySnprintfCall type CSignedInt32
+return value logStatusOk
 
 # ============================================================
 # logEventStructured — wrap caller text in a JSON envelope.
 # ============================================================
 
 operation logEventStructured
-input logEventStructured levelText CNullTerminatedByteString
-input logEventStructured eventText CNullTerminatedByteString
-input logEventStructured messageText CNullTerminatedByteString
-output logEventStructured CSignedInt32
+input operation logEventStructured levelText CNullTerminatedByteString
+input operation logEventStructured eventText CNullTerminatedByteString
+input operation logEventStructured messageText CNullTerminatedByteString
+output operation logEventStructured CSignedInt32
 effect logEventStructured allocate heap
 effect logEventStructured free heap
 effect logEventStructured readWrite memory.buffer
@@ -416,57 +410,56 @@ useCapability logEventStructured logMemoryBufferReadWrite
 useCapability logEventStructured logFilesystemReadWrite
 memory logEventStructured heap auto
 async logEventStructured no
-purpose logEventStructured "Compose {\"level\":\"<l>\",\"event\":\"<e>\",\"message\":\"<m>\"} into a malloc'd buffer and hand it to writeLogLine. Caller fields are escaped via escapeJsonString so a message text containing `\"` cannot break out of the message field."
-invariant logEventStructured "Allocates two scratch buffers, frees both via defer regardless of which branch returns. The line buffer is sized by logLineMaximumByteCount so a runaway long message gets truncated by snprintf rather than corrupting the audit trail."
+purpose operation logEventStructured "Compose {\"level\":\"<l>\",\"event\":\"<e>\",\"message\":\"<m>\"} into a malloc'd buffer and hand it to writeLogLine. Caller fields are escaped via escapeJsonString so a message text containing `\"` cannot break out of the message field."
+invariant operation logEventStructured "Allocates two scratch buffers, frees both via defer regardless of which branch returns. The line buffer is sized by logLineMaximumByteCount so a runaway long message gets truncated by snprintf rather than corrupting the audit trail."
 
 label startLogEventStructured
 
 # Scratch for the escaped message + scratch for the assembled line.
 call logEventAllocateMessageScratchCall c.malloc
-arg logEventAllocateMessageScratchCall size logMessageMaximumByteCount
+argument logEventAllocateMessageScratchCall size CByteCount logMessageMaximumByteCount
 run logEventAllocateMessageScratchCall
-bind logEventMessageScratch COpaqueMemoryAddress logEventAllocateMessageScratchCall
+bind value logEventMessageScratch COpaqueMemoryAddress logEventAllocateMessageScratchCall
 defer logEventFreeMessageScratchDefer c.free logEventMessageScratch
 
 call logEventAllocateLineBufferCall c.malloc
-arg logEventAllocateLineBufferCall size logLineMaximumByteCount
+argument logEventAllocateLineBufferCall size CByteCount logLineMaximumByteCount
 run logEventAllocateLineBufferCall
-bind logEventLineBuffer COpaqueMemoryAddress logEventAllocateLineBufferCall
+bind value logEventLineBuffer COpaqueMemoryAddress logEventAllocateLineBufferCall
 defer logEventFreeLineBufferDefer c.free logEventLineBuffer
 
 call logEventEscapeMessageCall escapeJsonString
-arg logEventEscapeMessageCall sourceText messageText
-arg logEventEscapeMessageCall destinationBuffer logEventMessageScratch
-arg logEventEscapeMessageCall destinationCapacity logMessageMaximumByteCount
+argument logEventEscapeMessageCall sourceText CNullTerminatedByteString messageText
+argument logEventEscapeMessageCall destinationBuffer COpaqueMemoryAddress logEventMessageScratch
+argument logEventEscapeMessageCall destinationCapacity CSignedInt64 logMessageMaximumByteCount
 run logEventEscapeMessageCall
-ignoreOk logEventEscapeMessageCall CSignedInt32
+ignore ok source logEventEscapeMessageCall type CSignedInt32
 
 call logEventFormatLineCall c.snprintf
-arg logEventFormatLineCall buffer logEventLineBuffer
-arg logEventFormatLineCall size logLineMaximumByteCount
-arg logEventFormatLineCall format logEnvelopeFormat
-arg logEventFormatLineCall first levelText
-arg logEventFormatLineCall second eventText
-arg logEventFormatLineCall third logEventMessageScratch
+argument logEventFormatLineCall buffer COpaqueMemoryAddress logEventLineBuffer
+argument logEventFormatLineCall size CSignedInt64 logLineMaximumByteCount
+argument logEventFormatLineCall format CNullTerminatedByteString logEnvelopeFormat
+argument logEventFormatLineCall first CNullTerminatedByteString levelText
+argument logEventFormatLineCall second CNullTerminatedByteString eventText
+argument logEventFormatLineCall third COpaqueMemoryAddress logEventMessageScratch
 run logEventFormatLineCall
-ignoreOk logEventFormatLineCall CSignedInt32
+ignore ok source logEventFormatLineCall type CSignedInt32
 
-bind logEventLineText CNullTerminatedByteString logEventAllocateLineBufferCall
+bind value logEventLineText CNullTerminatedByteString logEventAllocateLineBufferCall
 
 call logEventWriteCall writeLogLine
-arg logEventWriteCall linePayload logEventLineText
+argument logEventWriteCall linePayload CNullTerminatedByteString logEventLineText
 run logEventWriteCall
-bind logEventWriteStatus CSignedInt32 logEventWriteCall
-returnValue logEventWriteStatus
-
+bind value logEventWriteStatus CSignedInt32 logEventWriteCall
+return value logEventWriteStatus
 
 # ============================================================
 # logInfo / logWarn / logError — convenience wrappers.
 # ============================================================
 
 operation logInfo
-input logInfo messageText CNullTerminatedByteString
-output logInfo CSignedInt32
+input operation logInfo messageText CNullTerminatedByteString
+output operation logInfo CSignedInt32
 effect logInfo allocate heap
 effect logInfo free heap
 effect logInfo readWrite memory.buffer
@@ -477,20 +470,20 @@ useCapability logInfo logMemoryBufferReadWrite
 useCapability logInfo logFilesystemReadWrite
 memory logInfo heap auto
 async logInfo no
-purpose logInfo "Shorthand for logEventStructured(\"info\", \"app\", messageText)."
-invariant logInfo "Returns the status from logEventStructured untouched so callers can fan out to multiple loggers and still see I/O errors."
+purpose operation logInfo "Shorthand for logEventStructured(\"info\", \"app\", messageText)."
+invariant operation logInfo "Returns the status from logEventStructured untouched so callers can fan out to multiple loggers and still see I/O errors."
 label startLogInfo
 call logInfoForwardCall logEventStructured
-arg logInfoForwardCall levelText logInfoLevelText
-arg logInfoForwardCall eventText logDefaultEventText
-arg logInfoForwardCall messageText messageText
+argument logInfoForwardCall levelText CNullTerminatedByteString logInfoLevelText
+argument logInfoForwardCall eventText CNullTerminatedByteString logDefaultEventText
+argument logInfoForwardCall messageText CNullTerminatedByteString messageText
 run logInfoForwardCall
-bind logInfoForwardStatus CSignedInt32 logInfoForwardCall
-returnValue logInfoForwardStatus
+bind value logInfoForwardStatus CSignedInt32 logInfoForwardCall
+return value logInfoForwardStatus
 
 operation logWarn
-input logWarn messageText CNullTerminatedByteString
-output logWarn CSignedInt32
+input operation logWarn messageText CNullTerminatedByteString
+output operation logWarn CSignedInt32
 effect logWarn allocate heap
 effect logWarn free heap
 effect logWarn readWrite memory.buffer
@@ -501,20 +494,20 @@ useCapability logWarn logMemoryBufferReadWrite
 useCapability logWarn logFilesystemReadWrite
 memory logWarn heap auto
 async logWarn no
-purpose logWarn "Shorthand for logEventStructured(\"warn\", \"app\", messageText)."
-invariant logWarn "Returns the status from logEventStructured untouched."
+purpose operation logWarn "Shorthand for logEventStructured(\"warn\", \"app\", messageText)."
+invariant operation logWarn "Returns the status from logEventStructured untouched."
 label startLogWarn
 call logWarnForwardCall logEventStructured
-arg logWarnForwardCall levelText logWarnLevelText
-arg logWarnForwardCall eventText logDefaultEventText
-arg logWarnForwardCall messageText messageText
+argument logWarnForwardCall levelText CNullTerminatedByteString logWarnLevelText
+argument logWarnForwardCall eventText CNullTerminatedByteString logDefaultEventText
+argument logWarnForwardCall messageText CNullTerminatedByteString messageText
 run logWarnForwardCall
-bind logWarnForwardStatus CSignedInt32 logWarnForwardCall
-returnValue logWarnForwardStatus
+bind value logWarnForwardStatus CSignedInt32 logWarnForwardCall
+return value logWarnForwardStatus
 
 operation logError
-input logError messageText CNullTerminatedByteString
-output logError CSignedInt32
+input operation logError messageText CNullTerminatedByteString
+output operation logError CSignedInt32
 effect logError allocate heap
 effect logError free heap
 effect logError readWrite memory.buffer
@@ -525,13 +518,13 @@ useCapability logError logMemoryBufferReadWrite
 useCapability logError logFilesystemReadWrite
 memory logError heap auto
 async logError no
-purpose logError "Shorthand for logEventStructured(\"error\", \"app\", messageText)."
-invariant logError "Returns the status from logEventStructured untouched."
+purpose operation logError "Shorthand for logEventStructured(\"error\", \"app\", messageText)."
+invariant operation logError "Returns the status from logEventStructured untouched."
 label startLogError
 call logErrorForwardCall logEventStructured
-arg logErrorForwardCall levelText logErrorLevelText
-arg logErrorForwardCall eventText logDefaultEventText
-arg logErrorForwardCall messageText messageText
+argument logErrorForwardCall levelText CNullTerminatedByteString logErrorLevelText
+argument logErrorForwardCall eventText CNullTerminatedByteString logDefaultEventText
+argument logErrorForwardCall messageText CNullTerminatedByteString messageText
 run logErrorForwardCall
-bind logErrorForwardStatus CSignedInt32 logErrorForwardCall
-returnValue logErrorForwardStatus
+bind value logErrorForwardStatus CSignedInt32 logErrorForwardCall
+return value logErrorForwardStatus

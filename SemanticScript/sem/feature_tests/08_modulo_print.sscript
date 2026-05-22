@@ -7,28 +7,28 @@ entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "math.moduloI64: 10 % 3 = 1."
-invariant main "Modulo emits correct srem-based remainder."
+purpose operation main "math.moduloI64: 10 % 3 = 1."
+invariant operation main "Modulo emits correct srem-based remainder."
 label startMain
-const tenInitial I64 10
-const threeDivisor I64 3
-var counter I64 tenInitial
+storage module immutable tenInitial I64 10
+storage module immutable threeDivisor I64 3
+memory main mutable counter I64 tenInitial
 call modCall math.moduloI64
-arg modCall left counter
-arg modCall right threeDivisor
+argument modCall left I64 counter
+argument modCall right I64 threeDivisor
 run modCall
-bind remainderResult I64 modCall
-var remainderVar I64 tenInitial
-set remainderVar remainderResult
+bind value remainderResult I64 modCall
+memory main mutable remainderVar I64 tenInitial
+set memory remainderVar remainderResult
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value remainderVar
+argument writeCall console Console console
+argument writeCall value I64 remainderVar
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

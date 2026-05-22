@@ -4,7 +4,7 @@ runtime native 1
 module app.todo_web_advanced
 
 webServer advancedTodoWebServer
-purpose advancedTodoWebServer "Exercise native HTTP route, method, request, and response edges for a Todo API demo"
+purpose operation advancedTodoWebServer "Exercise native HTTP route, method, request, and response edges for a Todo API demo"
 serverHost advancedTodoWebServer "127.0.0.1"
 serverPort advancedTodoWebServer 18081
 route advancedTodoWebServer GET "/" homeHandler
@@ -22,7 +22,7 @@ route advancedTodoWebServer GET "/debug/query" queryEchoHandler
 route advancedTodoWebServer POST "/debug/body" bodyEchoHandler
 
 timeoutBudget requestTimeoutBudget DurationMilliseconds 2000
-purpose requestTimeoutBudget "Document the timeout budget for each demo route path once route timeout enforcement is wired"
+purpose operation requestTimeoutBudget "Document the timeout budget for each demo route path once route timeout enforcement is wired"
 # invariant: Route metadata is currently path-scoped; /todos and /todos/1 cover every method variant declared on those paths.
 routeTimeout advancedTodoWebServer "/" requestTimeoutBudget
 routeTimeout advancedTodoWebServer "/health" requestTimeoutBudget
@@ -44,451 +44,451 @@ routeMiddleware advancedTodoWebServer "/debug/query" requestLogMiddleware
 routeMiddleware advancedTodoWebServer "/debug/body" requestLogMiddleware
 
 capability httpRequestReader http.request read
-purpose httpRequestReader "Authority to inspect HTTP request method and path values"
+purpose operation httpRequestReader "Authority to inspect HTTP request method and path values"
 # invariant: Capability paths are hierarchical: http.request read authorizes http.request.method and http.request.path reads.
 capability httpResponseWriter http.response write
-purpose httpResponseWriter "Authority to write HTTP response status and body values"
+purpose operation httpResponseWriter "Authority to write HTTP response status and body values"
 
-const okStatus CSignedInt32 200
-const createdStatus CSignedInt32 201
-const badRequestStatus CSignedInt32 400
+storage module immutable okStatus CSignedInt32 200
+storage module immutable createdStatus CSignedInt32 201
+storage module immutable badRequestStatus CSignedInt32 400
 
 operation writeTextResponse
-input writeTextResponse response HttpResponse
-input writeTextResponse status CSignedInt32
-input writeTextResponse body CNullTerminatedByteString
-output writeTextResponse CSignedInt32
+input operation writeTextResponse response HttpResponse
+input operation writeTextResponse status CSignedInt32
+input operation writeTextResponse body CNullTerminatedByteString
+output operation writeTextResponse CSignedInt32
 effect writeTextResponse write http.response
 memory writeTextResponse arena request
 async writeTextResponse no
 useCapability writeTextResponse httpResponseWriter
-purpose writeTextResponse "Write a plain text HTTP response through the native runtime adapter"
-invariant writeTextResponse "The response body pointer remains valid until the runtime sends the response"
+purpose operation writeTextResponse "Write a plain text HTTP response through the native runtime adapter"
+invariant operation writeTextResponse "The response body pointer remains valid until the runtime sends the response"
 responseBodyForwarder writeTextResponse body
 
 label startWriteTextResponse
 
 call writeTextResponseCall http.responseText
-arg writeTextResponseCall response response
-arg writeTextResponseCall status status
-arg writeTextResponseCall body body
+argument writeTextResponseCall response HttpResponse response
+argument writeTextResponseCall status CSignedInt32 status
+argument writeTextResponseCall body CNullTerminatedByteString body
 run writeTextResponseCall
-bind writeTextResponseStatus CSignedInt32 writeTextResponseCall
-returnValue writeTextResponseStatus
+bind value writeTextResponseStatus CSignedInt32 writeTextResponseCall
+return value writeTextResponseStatus
 
 operation homeHandler
-input homeHandler request HttpRequest
-input homeHandler response HttpResponse
-output homeHandler CSignedInt32
+input operation homeHandler request HttpRequest
+input operation homeHandler response HttpResponse
+output operation homeHandler CSignedInt32
 effect homeHandler write http.response
 memory homeHandler arena request
 async homeHandler no
 useCapability homeHandler httpResponseWriter
-purpose homeHandler "Return an index of advanced Todo Web demo routes"
-invariant homeHandler "The body lists every route family that the edge smoke test exercises"
+purpose operation homeHandler "Return an index of advanced Todo Web demo routes"
+invariant operation homeHandler "The body lists every route family that the edge smoke test exercises"
 observability homeHandler "This route is used by the smoke test as a server readiness check"
 
 label startHomeHandler
 
-const homeBody CNullTerminatedByteString "advanced todo web\nroutes: /health /todos /todos/1 /debug/method /debug/path /debug/header /debug/query /debug/body\n"
+storage module immutable homeBody CNullTerminatedByteString "advanced todo web\nroutes: /health /todos /todos/1 /debug/method /debug/path /debug/header /debug/query /debug/body\n"
 call homeResponseCall writeTextResponse
-arg homeResponseCall response response
-arg homeResponseCall status okStatus
-arg homeResponseCall body homeBody
+argument homeResponseCall response HttpResponse response
+argument homeResponseCall status CSignedInt32 okStatus
+argument homeResponseCall body CNullTerminatedByteString homeBody
 run homeResponseCall
-bind homeResponseStatus CSignedInt32 homeResponseCall
-returnValue homeResponseStatus
+bind value homeResponseStatus CSignedInt32 homeResponseCall
+return value homeResponseStatus
 
 operation healthHandler
-input healthHandler request HttpRequest
-input healthHandler response HttpResponse
-output healthHandler CSignedInt32
+input operation healthHandler request HttpRequest
+input operation healthHandler response HttpResponse
+output operation healthHandler CSignedInt32
 effect healthHandler write http.response
 memory healthHandler arena request
 async healthHandler no
 useCapability healthHandler httpResponseWriter
-purpose healthHandler "Return a minimal health response"
-invariant healthHandler "The health body stays short and static for readiness polling"
+purpose operation healthHandler "Return a minimal health response"
+invariant operation healthHandler "The health body stays short and static for readiness polling"
 
 label startHealthHandler
 
-const healthBody CNullTerminatedByteString "ok\n"
+storage module immutable healthBody CNullTerminatedByteString "ok\n"
 call healthResponseCall writeTextResponse
-arg healthResponseCall response response
-arg healthResponseCall status okStatus
-arg healthResponseCall body healthBody
+argument healthResponseCall response HttpResponse response
+argument healthResponseCall status CSignedInt32 okStatus
+argument healthResponseCall body CNullTerminatedByteString healthBody
 run healthResponseCall
-bind healthResponseStatus CSignedInt32 healthResponseCall
-returnValue healthResponseStatus
+bind value healthResponseStatus CSignedInt32 healthResponseCall
+return value healthResponseStatus
 
 operation listTodosHandler
-input listTodosHandler request HttpRequest
-input listTodosHandler response HttpResponse
-output listTodosHandler CSignedInt32
+input operation listTodosHandler request HttpRequest
+input operation listTodosHandler response HttpResponse
+output operation listTodosHandler CSignedInt32
 effect listTodosHandler write http.response
 memory listTodosHandler arena request
 async listTodosHandler no
 useCapability listTodosHandler httpResponseWriter
-purpose listTodosHandler "Return the static demo todo list"
-invariant listTodosHandler "The body names implemented and missing APIs instead of pretending state is dynamic"
+purpose operation listTodosHandler "Return the static demo todo list"
+invariant operation listTodosHandler "The body names implemented and missing APIs instead of pretending state is dynamic"
 warning listTodosHandler "The list is static until request storage and JSON decoding APIs are added"
 
 label startListTodosHandler
 
-const todoListBody CNullTerminatedByteString "todos\n1. wire native webserver [done]\n2. read request body at /debug/body [done]\n3. add path params [missing]\n"
+storage module immutable todoListBody CNullTerminatedByteString "todos\n1. wire native webserver [done]\n2. read request body at /debug/body [done]\n3. add path params [missing]\n"
 call todoListResponseCall writeTextResponse
-arg todoListResponseCall response response
-arg todoListResponseCall status okStatus
-arg todoListResponseCall body todoListBody
+argument todoListResponseCall response HttpResponse response
+argument todoListResponseCall status CSignedInt32 okStatus
+argument todoListResponseCall body CNullTerminatedByteString todoListBody
 run todoListResponseCall
-bind todoListResponseStatus CSignedInt32 todoListResponseCall
-returnValue todoListResponseStatus
+bind value todoListResponseStatus CSignedInt32 todoListResponseCall
+return value todoListResponseStatus
 
 operation createTodoHandler
-input createTodoHandler request HttpRequest
-input createTodoHandler response HttpResponse
-output createTodoHandler CSignedInt32
+input operation createTodoHandler request HttpRequest
+input operation createTodoHandler response HttpResponse
+output operation createTodoHandler CSignedInt32
 effect createTodoHandler write http.response
 memory createTodoHandler arena request
 async createTodoHandler no
 useCapability createTodoHandler httpResponseWriter
-purpose createTodoHandler "Exercise POST dispatch while documenting missing persistent storage"
-invariant createTodoHandler "The handler must not claim to persist the request body"
+purpose operation createTodoHandler "Exercise POST dispatch while documenting missing persistent storage"
+invariant operation createTodoHandler "The handler must not claim to persist the request body"
 warning createTodoHandler "Use /debug/body for request body echo; this route stays a storage placeholder"
 
 label startCreateTodoHandler
 
-const createTodoBody CNullTerminatedByteString "created todo placeholder; storage api missing\n"
+storage module immutable createTodoBody CNullTerminatedByteString "created todo placeholder; storage api missing\n"
 call createTodoResponseCall writeTextResponse
-arg createTodoResponseCall response response
-arg createTodoResponseCall status createdStatus
-arg createTodoResponseCall body createTodoBody
+argument createTodoResponseCall response HttpResponse response
+argument createTodoResponseCall status CSignedInt32 createdStatus
+argument createTodoResponseCall body CNullTerminatedByteString createTodoBody
 run createTodoResponseCall
-bind createTodoResponseStatus CSignedInt32 createTodoResponseCall
-returnValue createTodoResponseStatus
+bind value createTodoResponseStatus CSignedInt32 createTodoResponseCall
+return value createTodoResponseStatus
 
 operation optionsTodosHandler
-input optionsTodosHandler request HttpRequest
-input optionsTodosHandler response HttpResponse
-output optionsTodosHandler CSignedInt32
+input operation optionsTodosHandler request HttpRequest
+input operation optionsTodosHandler response HttpResponse
+output operation optionsTodosHandler CSignedInt32
 effect optionsTodosHandler write http.response
 memory optionsTodosHandler arena request
 async optionsTodosHandler no
 useCapability optionsTodosHandler httpResponseWriter
-purpose optionsTodosHandler "Exercise a non-GET metadata-style route for Todo collection capabilities"
-invariant optionsTodosHandler "The body names the missing responseHeader API"
-invariant optionsTodosHandler "The native runtime emits an Allow response header for this route"
+purpose operation optionsTodosHandler "Exercise a non-GET metadata-style route for Todo collection capabilities"
+invariant operation optionsTodosHandler "The body names the missing responseHeader API"
+invariant operation optionsTodosHandler "The native runtime emits an Allow response header for this route"
 warning optionsTodosHandler "Full CORS preflight response helpers are still future work"
 
 label startOptionsTodosHandler
 
-const allowHeaderName CNullTerminatedByteString "Allow"
-const allowHeaderValue CNullTerminatedByteString "GET, POST, OPTIONS"
+storage module immutable allowHeaderName CNullTerminatedByteString "Allow"
+storage module immutable allowHeaderValue CNullTerminatedByteString "GET, POST, OPTIONS"
 call allowHeaderCall http.responseHeader
-arg allowHeaderCall response response
-arg allowHeaderCall name allowHeaderName
-arg allowHeaderCall value allowHeaderValue
+argument allowHeaderCall response HttpResponse response
+argument allowHeaderCall name CNullTerminatedByteString allowHeaderName
+argument allowHeaderCall value CNullTerminatedByteString allowHeaderValue
 run allowHeaderCall
-ignoreValue allowHeaderCall CSignedInt32
+ignore value source allowHeaderCall type CSignedInt32
 
-const optionsTodosBody CNullTerminatedByteString "allow: GET,POST,OPTIONS\nheader: Allow\n"
+storage module immutable optionsTodosBody CNullTerminatedByteString "allow: GET,POST,OPTIONS\nheader: Allow\n"
 call optionsTodosResponseCall writeTextResponse
-arg optionsTodosResponseCall response response
-arg optionsTodosResponseCall status okStatus
-arg optionsTodosResponseCall body optionsTodosBody
+argument optionsTodosResponseCall response HttpResponse response
+argument optionsTodosResponseCall status CSignedInt32 okStatus
+argument optionsTodosResponseCall body CNullTerminatedByteString optionsTodosBody
 run optionsTodosResponseCall
-bind optionsTodosResponseStatus CSignedInt32 optionsTodosResponseCall
-returnValue optionsTodosResponseStatus
+bind value optionsTodosResponseStatus CSignedInt32 optionsTodosResponseCall
+return value optionsTodosResponseStatus
 
 operation showTodoOneHandler
-input showTodoOneHandler request HttpRequest
-input showTodoOneHandler response HttpResponse
-output showTodoOneHandler CSignedInt32
+input operation showTodoOneHandler request HttpRequest
+input operation showTodoOneHandler response HttpResponse
+output operation showTodoOneHandler CSignedInt32
 effect showTodoOneHandler write http.response
 memory showTodoOneHandler arena request
 async showTodoOneHandler no
 useCapability showTodoOneHandler httpResponseWriter
-purpose showTodoOneHandler "Return a fixed todo item through an exact route"
-invariant showTodoOneHandler "The route remains exact until path parameters are implemented"
+purpose operation showTodoOneHandler "Return a fixed todo item through an exact route"
+invariant operation showTodoOneHandler "The route remains exact until path parameters are implemented"
 warning showTodoOneHandler "This should become /todos/:todoId after path parameters are implemented"
 
 label startShowTodoOneHandler
 
-const showTodoOneBody CNullTerminatedByteString "todo 1: wire native webserver\n"
+storage module immutable showTodoOneBody CNullTerminatedByteString "todo 1: wire native webserver\n"
 call showTodoOneResponseCall writeTextResponse
-arg showTodoOneResponseCall response response
-arg showTodoOneResponseCall status okStatus
-arg showTodoOneResponseCall body showTodoOneBody
+argument showTodoOneResponseCall response HttpResponse response
+argument showTodoOneResponseCall status CSignedInt32 okStatus
+argument showTodoOneResponseCall body CNullTerminatedByteString showTodoOneBody
 run showTodoOneResponseCall
-bind showTodoOneResponseStatus CSignedInt32 showTodoOneResponseCall
-returnValue showTodoOneResponseStatus
+bind value showTodoOneResponseStatus CSignedInt32 showTodoOneResponseCall
+return value showTodoOneResponseStatus
 
 operation updateTodoOneHandler
-input updateTodoOneHandler request HttpRequest
-input updateTodoOneHandler response HttpResponse
-output updateTodoOneHandler CSignedInt32
+input operation updateTodoOneHandler request HttpRequest
+input operation updateTodoOneHandler response HttpResponse
+output operation updateTodoOneHandler CSignedInt32
 effect updateTodoOneHandler write http.response
 memory updateTodoOneHandler arena request
 async updateTodoOneHandler no
 useCapability updateTodoOneHandler httpResponseWriter
-purpose updateTodoOneHandler "Exercise PUT dispatch while documenting missing request storage"
-invariant updateTodoOneHandler "The handler returns a placeholder and does not mutate state"
+purpose operation updateTodoOneHandler "Exercise PUT dispatch while documenting missing request storage"
+invariant operation updateTodoOneHandler "The handler returns a placeholder and does not mutate state"
 warning updateTodoOneHandler "Cannot update state until storage and JSON decoding are available"
 
 label startUpdateTodoOneHandler
 
-const updateTodoOneBody CNullTerminatedByteString "updated todo placeholder; storage api missing\n"
+storage module immutable updateTodoOneBody CNullTerminatedByteString "updated todo placeholder; storage api missing\n"
 call updateTodoOneResponseCall writeTextResponse
-arg updateTodoOneResponseCall response response
-arg updateTodoOneResponseCall status okStatus
-arg updateTodoOneResponseCall body updateTodoOneBody
+argument updateTodoOneResponseCall response HttpResponse response
+argument updateTodoOneResponseCall status CSignedInt32 okStatus
+argument updateTodoOneResponseCall body CNullTerminatedByteString updateTodoOneBody
 run updateTodoOneResponseCall
-bind updateTodoOneResponseStatus CSignedInt32 updateTodoOneResponseCall
-returnValue updateTodoOneResponseStatus
+bind value updateTodoOneResponseStatus CSignedInt32 updateTodoOneResponseCall
+return value updateTodoOneResponseStatus
 
 operation deleteTodoOneHandler
-input deleteTodoOneHandler request HttpRequest
-input deleteTodoOneHandler response HttpResponse
-output deleteTodoOneHandler CSignedInt32
+input operation deleteTodoOneHandler request HttpRequest
+input operation deleteTodoOneHandler response HttpResponse
+output operation deleteTodoOneHandler CSignedInt32
 effect deleteTodoOneHandler write http.response
 memory deleteTodoOneHandler arena request
 async deleteTodoOneHandler no
 useCapability deleteTodoOneHandler httpResponseWriter
-purpose deleteTodoOneHandler "Exercise DELETE dispatch and document missing persistent todo storage"
-invariant deleteTodoOneHandler "The handler returns a placeholder and does not mutate state"
+purpose operation deleteTodoOneHandler "Exercise DELETE dispatch and document missing persistent todo storage"
+invariant operation deleteTodoOneHandler "The handler returns a placeholder and does not mutate state"
 warning deleteTodoOneHandler "No persistent state changes happen yet"
 
 label startDeleteTodoOneHandler
 
-const deleteTodoOneBody CNullTerminatedByteString "deleted todo placeholder; storage api missing\n"
+storage module immutable deleteTodoOneBody CNullTerminatedByteString "deleted todo placeholder; storage api missing\n"
 call deleteTodoOneResponseCall writeTextResponse
-arg deleteTodoOneResponseCall response response
-arg deleteTodoOneResponseCall status okStatus
-arg deleteTodoOneResponseCall body deleteTodoOneBody
+argument deleteTodoOneResponseCall response HttpResponse response
+argument deleteTodoOneResponseCall status CSignedInt32 okStatus
+argument deleteTodoOneResponseCall body CNullTerminatedByteString deleteTodoOneBody
 run deleteTodoOneResponseCall
-bind deleteTodoOneResponseStatus CSignedInt32 deleteTodoOneResponseCall
-returnValue deleteTodoOneResponseStatus
+bind value deleteTodoOneResponseStatus CSignedInt32 deleteTodoOneResponseCall
+return value deleteTodoOneResponseStatus
 
 operation methodEchoHandler
-input methodEchoHandler request HttpRequest
-input methodEchoHandler response HttpResponse
-output methodEchoHandler CSignedInt32
+input operation methodEchoHandler request HttpRequest
+input operation methodEchoHandler response HttpResponse
+output operation methodEchoHandler CSignedInt32
 effect methodEchoHandler read http.request.method
 effect methodEchoHandler write http.response
 memory methodEchoHandler arena request
 async methodEchoHandler no
 useCapability methodEchoHandler httpRequestReader
 useCapability methodEchoHandler httpResponseWriter
-purpose methodEchoHandler "Return the runtime-provided request method string"
-invariant methodEchoHandler "The response body is the request method pointer supplied by the runtime"
+purpose operation methodEchoHandler "Return the runtime-provided request method string"
+invariant operation methodEchoHandler "The response body is the request method pointer supplied by the runtime"
 
 label startMethodEchoHandler
 
 call methodReadCall http.requestMethod
-arg methodReadCall request request
+argument methodReadCall request HttpRequest request
 run methodReadCall
-bind requestMethod CNullTerminatedByteString methodReadCall
+bind value requestMethod CNullTerminatedByteString methodReadCall
 
 call methodEchoResponseCall writeTextResponse
-arg methodEchoResponseCall response response
-arg methodEchoResponseCall status okStatus
-arg methodEchoResponseCall body requestMethod
+argument methodEchoResponseCall response HttpResponse response
+argument methodEchoResponseCall status CSignedInt32 okStatus
+argument methodEchoResponseCall body CNullTerminatedByteString requestMethod
 run methodEchoResponseCall
-bind methodEchoResponseStatus CSignedInt32 methodEchoResponseCall
-returnValue methodEchoResponseStatus
+bind value methodEchoResponseStatus CSignedInt32 methodEchoResponseCall
+return value methodEchoResponseStatus
 
 operation pathEchoHandler
-input pathEchoHandler request HttpRequest
-input pathEchoHandler response HttpResponse
-output pathEchoHandler CSignedInt32
+input operation pathEchoHandler request HttpRequest
+input operation pathEchoHandler response HttpResponse
+output operation pathEchoHandler CSignedInt32
 effect pathEchoHandler read http.request.path
 effect pathEchoHandler write http.response
 memory pathEchoHandler arena request
 async pathEchoHandler no
 useCapability pathEchoHandler httpRequestReader
 useCapability pathEchoHandler httpResponseWriter
-purpose pathEchoHandler "Return the runtime-provided request path after query stripping"
-invariant pathEchoHandler "Query strings are not included in the echoed path"
+purpose operation pathEchoHandler "Return the runtime-provided request path after query stripping"
+invariant operation pathEchoHandler "Query strings are not included in the echoed path"
 
 label startPathEchoHandler
 
 call pathReadCall http.requestPath
-arg pathReadCall request request
+argument pathReadCall request HttpRequest request
 run pathReadCall
-bind requestPath CNullTerminatedByteString pathReadCall
+bind value requestPath CNullTerminatedByteString pathReadCall
 
 call pathEchoResponseCall writeTextResponse
-arg pathEchoResponseCall response response
-arg pathEchoResponseCall status okStatus
-arg pathEchoResponseCall body requestPath
+argument pathEchoResponseCall response HttpResponse response
+argument pathEchoResponseCall status CSignedInt32 okStatus
+argument pathEchoResponseCall body CNullTerminatedByteString requestPath
 run pathEchoResponseCall
-bind pathEchoResponseStatus CSignedInt32 pathEchoResponseCall
-returnValue pathEchoResponseStatus
+bind value pathEchoResponseStatus CSignedInt32 pathEchoResponseCall
+return value pathEchoResponseStatus
 
 operation headerEchoHandler
-input headerEchoHandler request HttpRequest
-input headerEchoHandler response HttpResponse
-output headerEchoHandler CSignedInt32
+input operation headerEchoHandler request HttpRequest
+input operation headerEchoHandler response HttpResponse
+output operation headerEchoHandler CSignedInt32
 effect headerEchoHandler read http.request.header
 effect headerEchoHandler write http.response
 memory headerEchoHandler arena request
 async headerEchoHandler no
 useCapability headerEchoHandler httpRequestReader
 useCapability headerEchoHandler httpResponseWriter
-purpose headerEchoHandler "Return the X-Sem-Test request header value"
-invariant headerEchoHandler "Missing X-Sem-Test returns 400 instead of forwarding a nullable header pointer into the response writer"
+purpose operation headerEchoHandler "Return the X-Sem-Test request header value"
+invariant operation headerEchoHandler "Missing X-Sem-Test returns 400 instead of forwarding a nullable header pointer into the response writer"
 
 label startHeaderEchoHandler
 
-const headerEchoName CNullTerminatedByteString "x-sem-test"
-const headerMissingBody CNullTerminatedByteString "missing header: x-sem-test\n"
+storage module immutable headerEchoName CNullTerminatedByteString "x-sem-test"
+storage module immutable headerMissingBody CNullTerminatedByteString "missing header: x-sem-test\n"
 call headerReadCall http.requestHeader
-arg headerReadCall request request
-arg headerReadCall name headerEchoName
+argument headerReadCall request HttpRequest request
+argument headerReadCall name CNullTerminatedByteString headerEchoName
 run headerReadCall
-bind requestHeaderValue CNullTerminatedByteString headerReadCall
+bind value requestHeaderValue CNullTerminatedByteString headerReadCall
 
 call headerMissingCheckCall pointer.isNull
-arg headerMissingCheckCall pointer requestHeaderValue
+argument headerMissingCheckCall pointer COpaqueMemoryAddress requestHeaderValue
 run headerMissingCheckCall
-bind headerMissing Bool headerMissingCheckCall
-branchIf headerMissing headerEchoMissing
+bind value headerMissing Bool headerMissingCheckCall
+branch if condition headerMissing target headerEchoMissing
 
 call headerEchoResponseCall writeTextResponse
-arg headerEchoResponseCall response response
-arg headerEchoResponseCall status okStatus
-arg headerEchoResponseCall body requestHeaderValue
+argument headerEchoResponseCall response HttpResponse response
+argument headerEchoResponseCall status CSignedInt32 okStatus
+argument headerEchoResponseCall body CNullTerminatedByteString requestHeaderValue
 run headerEchoResponseCall
-bind headerEchoResponseStatus CSignedInt32 headerEchoResponseCall
-returnValue headerEchoResponseStatus
+bind value headerEchoResponseStatus CSignedInt32 headerEchoResponseCall
+return value headerEchoResponseStatus
 
 label headerEchoMissing
 call headerMissingResponseCall writeTextResponse
-arg headerMissingResponseCall response response
-arg headerMissingResponseCall status badRequestStatus
-arg headerMissingResponseCall body headerMissingBody
+argument headerMissingResponseCall response HttpResponse response
+argument headerMissingResponseCall status CSignedInt32 badRequestStatus
+argument headerMissingResponseCall body CNullTerminatedByteString headerMissingBody
 run headerMissingResponseCall
-bind headerMissingResponseStatus CSignedInt32 headerMissingResponseCall
-returnValue headerMissingResponseStatus
+bind value headerMissingResponseStatus CSignedInt32 headerMissingResponseCall
+return value headerMissingResponseStatus
 
 operation queryEchoHandler
-input queryEchoHandler request HttpRequest
-input queryEchoHandler response HttpResponse
-output queryEchoHandler CSignedInt32
+input operation queryEchoHandler request HttpRequest
+input operation queryEchoHandler response HttpResponse
+output operation queryEchoHandler CSignedInt32
 effect queryEchoHandler read http.request.query
 effect queryEchoHandler write http.response
 memory queryEchoHandler arena request
 async queryEchoHandler no
 useCapability queryEchoHandler httpRequestReader
 useCapability queryEchoHandler httpResponseWriter
-purpose queryEchoHandler "Return the raw value of the name query parameter"
-invariant queryEchoHandler "Query values are raw split values; percent decoding is future work"
+purpose operation queryEchoHandler "Return the raw value of the name query parameter"
+invariant operation queryEchoHandler "Query values are raw split values; percent decoding is future work"
 
 label startQueryEchoHandler
 
-const queryEchoName CNullTerminatedByteString "name"
-const queryMissingBody CNullTerminatedByteString "missing query parameter: name\n"
+storage module immutable queryEchoName CNullTerminatedByteString "name"
+storage module immutable queryMissingBody CNullTerminatedByteString "missing query parameter: name\n"
 call queryReadCall http.requestQueryParam
-arg queryReadCall request request
-arg queryReadCall name queryEchoName
+argument queryReadCall request HttpRequest request
+argument queryReadCall name CNullTerminatedByteString queryEchoName
 run queryReadCall
-bind requestQueryValue CNullTerminatedByteString queryReadCall
+bind value requestQueryValue CNullTerminatedByteString queryReadCall
 
 call queryMissingCheckCall pointer.isNull
-arg queryMissingCheckCall pointer requestQueryValue
+argument queryMissingCheckCall pointer COpaqueMemoryAddress requestQueryValue
 run queryMissingCheckCall
-bind queryMissing Bool queryMissingCheckCall
-branchIf queryMissing queryEchoMissing
+bind value queryMissing Bool queryMissingCheckCall
+branch if condition queryMissing target queryEchoMissing
 
 call queryEchoResponseCall writeTextResponse
-arg queryEchoResponseCall response response
-arg queryEchoResponseCall status okStatus
-arg queryEchoResponseCall body requestQueryValue
+argument queryEchoResponseCall response HttpResponse response
+argument queryEchoResponseCall status CSignedInt32 okStatus
+argument queryEchoResponseCall body CNullTerminatedByteString requestQueryValue
 run queryEchoResponseCall
-bind queryEchoResponseStatus CSignedInt32 queryEchoResponseCall
-returnValue queryEchoResponseStatus
+bind value queryEchoResponseStatus CSignedInt32 queryEchoResponseCall
+return value queryEchoResponseStatus
 
 label queryEchoMissing
 call queryMissingResponseCall writeTextResponse
-arg queryMissingResponseCall response response
-arg queryMissingResponseCall status badRequestStatus
-arg queryMissingResponseCall body queryMissingBody
+argument queryMissingResponseCall response HttpResponse response
+argument queryMissingResponseCall status CSignedInt32 badRequestStatus
+argument queryMissingResponseCall body CNullTerminatedByteString queryMissingBody
 run queryMissingResponseCall
-bind queryMissingResponseStatus CSignedInt32 queryMissingResponseCall
-returnValue queryMissingResponseStatus
+bind value queryMissingResponseStatus CSignedInt32 queryMissingResponseCall
+return value queryMissingResponseStatus
 
 operation bodyEchoHandler
-input bodyEchoHandler request HttpRequest
-input bodyEchoHandler response HttpResponse
-output bodyEchoHandler CSignedInt32
+input operation bodyEchoHandler request HttpRequest
+input operation bodyEchoHandler response HttpResponse
+output operation bodyEchoHandler CSignedInt32
 effect bodyEchoHandler read http.request.body
 effect bodyEchoHandler write http.response
 memory bodyEchoHandler arena request
 async bodyEchoHandler no
 useCapability bodyEchoHandler httpRequestReader
 useCapability bodyEchoHandler httpResponseWriter
-purpose bodyEchoHandler "Return the request body text captured by the native runtime"
-invariant bodyEchoHandler "Missing request body returns 400 instead of forwarding a nullable body pointer into the response writer"
+purpose operation bodyEchoHandler "Return the request body text captured by the native runtime"
+invariant operation bodyEchoHandler "Missing request body returns 400 instead of forwarding a nullable body pointer into the response writer"
 
 label startBodyEchoHandler
 
-const bodyMissingBody CNullTerminatedByteString "missing request body\n"
+storage module immutable bodyMissingBody CNullTerminatedByteString "missing request body\n"
 call bodyReadCall http.requestBodyText
-arg bodyReadCall request request
+argument bodyReadCall request HttpRequest request
 run bodyReadCall
-bind requestBodyText CNullTerminatedByteString bodyReadCall
+bind value requestBodyText CNullTerminatedByteString bodyReadCall
 
 call bodyMissingCheckCall pointer.isNull
-arg bodyMissingCheckCall pointer requestBodyText
+argument bodyMissingCheckCall pointer COpaqueMemoryAddress requestBodyText
 run bodyMissingCheckCall
-bind bodyMissing Bool bodyMissingCheckCall
-branchIf bodyMissing bodyEchoMissing
+bind value bodyMissing Bool bodyMissingCheckCall
+branch if condition bodyMissing target bodyEchoMissing
 
 call bodyEchoResponseCall writeTextResponse
-arg bodyEchoResponseCall response response
-arg bodyEchoResponseCall status okStatus
-arg bodyEchoResponseCall body requestBodyText
+argument bodyEchoResponseCall response HttpResponse response
+argument bodyEchoResponseCall status CSignedInt32 okStatus
+argument bodyEchoResponseCall body CNullTerminatedByteString requestBodyText
 run bodyEchoResponseCall
-bind bodyEchoResponseStatus CSignedInt32 bodyEchoResponseCall
-returnValue bodyEchoResponseStatus
+bind value bodyEchoResponseStatus CSignedInt32 bodyEchoResponseCall
+return value bodyEchoResponseStatus
 
 label bodyEchoMissing
 call bodyMissingResponseCall writeTextResponse
-arg bodyMissingResponseCall response response
-arg bodyMissingResponseCall status badRequestStatus
-arg bodyMissingResponseCall body bodyMissingBody
+argument bodyMissingResponseCall response HttpResponse response
+argument bodyMissingResponseCall status CSignedInt32 badRequestStatus
+argument bodyMissingResponseCall body CNullTerminatedByteString bodyMissingBody
 run bodyMissingResponseCall
-bind bodyMissingResponseStatus CSignedInt32 bodyMissingResponseCall
-returnValue bodyMissingResponseStatus
+bind value bodyMissingResponseStatus CSignedInt32 bodyMissingResponseCall
+return value bodyMissingResponseStatus
 
 operation requestLogMiddleware
-input requestLogMiddleware request HttpRequest
-input requestLogMiddleware response HttpResponse
-output requestLogMiddleware MiddlewareControl
+input operation requestLogMiddleware request HttpRequest
+input operation requestLogMiddleware response HttpResponse
+output operation requestLogMiddleware MiddlewareControl
 effect requestLogMiddleware read http.request.path
 effect requestLogMiddleware write http.response
 memory requestLogMiddleware arena request
 async requestLogMiddleware no
 useCapability requestLogMiddleware httpRequestReader
 useCapability requestLogMiddleware httpResponseWriter
-purpose requestLogMiddleware "Document desired middleware shape for request logging"
-invariant requestLogMiddleware "The middleware returns continue status after inspecting the request path and setting a response marker header"
+purpose operation requestLogMiddleware "Document desired middleware shape for request logging"
+invariant operation requestLogMiddleware "The middleware returns continue status after inspecting the request path and setting a response marker header"
 warning requestLogMiddleware "Middleware execution is synchronous and path-scoped; method-scoped middleware remains future work"
 
 label startRequestLogMiddleware
 
-const middlewareHeaderName CNullTerminatedByteString "X-Sem-Middleware"
-const middlewareHeaderValue CNullTerminatedByteString "ran"
+storage module immutable middlewareHeaderName CNullTerminatedByteString "X-Sem-Middleware"
+storage module immutable middlewareHeaderValue CNullTerminatedByteString "ran"
 call middlewareHeaderCall http.responseHeader
-arg middlewareHeaderCall response response
-arg middlewareHeaderCall name middlewareHeaderName
-arg middlewareHeaderCall value middlewareHeaderValue
+argument middlewareHeaderCall response HttpResponse response
+argument middlewareHeaderCall name CNullTerminatedByteString middlewareHeaderName
+argument middlewareHeaderCall value CNullTerminatedByteString middlewareHeaderValue
 run middlewareHeaderCall
-ignoreValue middlewareHeaderCall CSignedInt32
+ignore value source middlewareHeaderCall type CSignedInt32
 
 call middlewarePathReadCall http.requestPath
-arg middlewarePathReadCall request request
+argument middlewarePathReadCall request HttpRequest request
 run middlewarePathReadCall
-ignoreValue middlewarePathReadCall CNullTerminatedByteString
+ignore value source middlewarePathReadCall type CNullTerminatedByteString
 
-returnValue continueMiddlewareControl
+return value continueMiddlewareControl

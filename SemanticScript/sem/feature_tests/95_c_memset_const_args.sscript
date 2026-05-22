@@ -7,41 +7,41 @@ entry console main
 error MainError
 errorCase MainError Placeholder CSignedInt32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main read memory.buffer
 effect main write memory.buffer
 effect main write console.stdout
 memory main heap auto
 async main no
-purpose main "Allocate 4 bytes, memset to 'X' (88), null-terminate, print. Uses CONST args for byteValue and n."
-invariant main "Exercises c.memset's const-arg path."
+purpose operation main "Allocate 4 bytes, memset to 'X' (88), null-terminate, print. Uses CONST args for byteValue and n."
+invariant operation main "Exercises c.memset's const-arg path."
 label startMain
-const bufferSize CByteCount 4
-const xByteValue CSignedInt64 88
-const threeBytes CSignedInt64 3
+storage module immutable bufferSize CByteCount 4
+storage module immutable xByteValue CSignedInt64 88
+storage module immutable threeBytes CSignedInt64 3
 call mallocCall c.malloc
-arg mallocCall size bufferSize
+argument mallocCall size CByteCount bufferSize
 run mallocCall
-bind targetBuffer COpaqueMemoryAddress mallocCall
+bind value targetBuffer COpaqueMemoryAddress mallocCall
 call memsetCall c.memset
-arg memsetCall dst targetBuffer
-arg memsetCall byteValue xByteValue
-arg memsetCall n threeBytes
+argument memsetCall dst COpaqueMemoryAddress targetBuffer
+argument memsetCall byteValue CSignedInt64 xByteValue
+argument memsetCall n CSignedInt64 threeBytes
 run memsetCall
-const lastPos CSignedInt64 3
-const nullByte CSignedInt32 0
+storage module immutable lastPos CSignedInt64 3
+storage module immutable nullByte CSignedInt32 0
 call nullStoreCall pointer.storeByte
-arg nullStoreCall buffer targetBuffer
-arg nullStoreCall offset lastPos
-arg nullStoreCall value nullByte
+argument nullStoreCall buffer COpaqueMemoryAddress targetBuffer
+argument nullStoreCall offset CSignedInt64 lastPos
+argument nullStoreCall value CSignedInt32 nullByte
 run nullStoreCall
 call putsCall c.puts
-arg putsCall text targetBuffer
+argument putsCall text COpaqueMemoryAddress targetBuffer
 run putsCall
-ignoreOk putsCall CSignedInt32
+ignore ok source putsCall type CSignedInt32
 call freeCall c.free
-arg freeCall ptr targetBuffer
+argument freeCall ptr COpaqueMemoryAddress targetBuffer
 run freeCall
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

@@ -7,40 +7,40 @@ entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "math.notEqualI64 returns true when args differ."
-invariant main "Picks 'different' branch."
+purpose operation main "math.notEqualI64 returns true when args differ."
+invariant operation main "Picks 'different' branch."
 label startMain
-const aInitial I64 1
-const bCompare I64 2
-var leftOp I64 aInitial
+storage module immutable aInitial I64 1
+storage module immutable bCompare I64 2
+memory main mutable leftOp I64 aInitial
 call neCall math.notEqualI64
-arg neCall left leftOp
-arg neCall right bCompare
+argument neCall left I64 leftOp
+argument neCall right I64 bCompare
 run neCall
-bind isDifferent Bool neCall
-branchIf isDifferent diffLabel
-branch sameLabel
+bind value isDifferent Bool neCall
+branch if condition isDifferent target diffLabel
+branch else target sameLabel
 label diffLabel
-const diffText CNullTerminatedByteString "different"
+storage module immutable diffText CNullTerminatedByteString "different"
 call writeDiffCall console.writeLine
-arg writeDiffCall console console
-arg writeDiffCall text diffText
+argument writeDiffCall console Console console
+argument writeDiffCall text CNullTerminatedByteString diffText
 run writeDiffCall
-ignoreOk writeDiffCall Void
-branch endLabel
+ignore void source writeDiffCall
+jump target endLabel
 label sameLabel
-const sameText CNullTerminatedByteString "same"
+storage module immutable sameText CNullTerminatedByteString "same"
 call writeSameCall console.writeLine
-arg writeSameCall console console
-arg writeSameCall text sameText
+argument writeSameCall console Console console
+argument writeSameCall text CNullTerminatedByteString sameText
 run writeSameCall
-ignoreOk writeSameCall Void
-branch endLabel
+ignore void source writeSameCall
+jump target endLabel
 label endLabel
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

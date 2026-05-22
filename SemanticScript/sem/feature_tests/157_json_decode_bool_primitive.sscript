@@ -10,56 +10,56 @@ errorCase MainError DecodeFailed CSignedInt32
 errorCase MainError RoundTripMismatch CSignedInt32
 errorCase MainError ConsoleWriteFailed CSignedInt32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "json.parse.Bool returns true for true input and false for false."
-invariant main "Output markers depend on parsed bool control flow."
+purpose operation main "json.parse.Bool returns true for true input and false for false."
+invariant operation main "Output markers depend on parsed bool control flow."
 label startMain
-const trueJsonToken CNullTerminatedByteString "true"
-const falseJsonToken CNullTerminatedByteString "false"
+storage module immutable trueJsonToken CNullTerminatedByteString "true"
+storage module immutable falseJsonToken CNullTerminatedByteString "false"
 call parseTrueCall json.parse.Bool
-arg parseTrueCall jsonText trueJsonToken
+argument parseTrueCall jsonText CNullTerminatedByteString trueJsonToken
 run parseTrueCall
-bindOk decodedTrueValue Bool parseTrueCall
-bindError trueDecodeError JsonDecodeError parseTrueCall
-branchIfError parseTrueCall decodeFailed
-branchIf decodedTrueValue trueOk
-branch roundTripMismatch
+bind ok decodedTrueValue Bool parseTrueCall
+bind error trueDecodeError JsonDecodeError parseTrueCall
+branch error source parseTrueCall target decodeFailed
+branch if condition decodedTrueValue target trueOk
+branch else target roundTripMismatch
 label trueOk
-const trueMarker CNullTerminatedByteString "parsedTrue"
+storage module immutable trueMarker CNullTerminatedByteString "parsedTrue"
 call writeTrueDecodedCall console.writeLine
-arg writeTrueDecodedCall console console
-arg writeTrueDecodedCall text trueMarker
+argument writeTrueDecodedCall console Console console
+argument writeTrueDecodedCall text CNullTerminatedByteString trueMarker
 run writeTrueDecodedCall
-ignoreOk writeTrueDecodedCall Void
-bindError writeTrueError ConsoleWriteError writeTrueDecodedCall
-branchIfError writeTrueDecodedCall consoleWriteFailed
+ignore void source writeTrueDecodedCall
+bind error writeTrueError ConsoleWriteError writeTrueDecodedCall
+branch error source writeTrueDecodedCall target consoleWriteFailed
 call parseFalseCall json.parse.Bool
-arg parseFalseCall jsonText falseJsonToken
+argument parseFalseCall jsonText CNullTerminatedByteString falseJsonToken
 run parseFalseCall
-bindOk decodedFalseValue Bool parseFalseCall
-bindError falseDecodeError JsonDecodeError parseFalseCall
-branchIfError parseFalseCall decodeFailed
-branchIf decodedFalseValue roundTripMismatch
-const falseMarker CNullTerminatedByteString "parsedFalse"
+bind ok decodedFalseValue Bool parseFalseCall
+bind error falseDecodeError JsonDecodeError parseFalseCall
+branch error source parseFalseCall target decodeFailed
+branch if condition decodedFalseValue target roundTripMismatch
+storage module immutable falseMarker CNullTerminatedByteString "parsedFalse"
 call writeFalseDecodedCall console.writeLine
-arg writeFalseDecodedCall console console
-arg writeFalseDecodedCall text falseMarker
+argument writeFalseDecodedCall console Console console
+argument writeFalseDecodedCall text CNullTerminatedByteString falseMarker
 run writeFalseDecodedCall
-ignoreOk writeFalseDecodedCall Void
-bindError writeFalseError ConsoleWriteError writeFalseDecodedCall
-branchIfError writeFalseDecodedCall consoleWriteFailed
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeFalseDecodedCall
+bind error writeFalseError ConsoleWriteError writeFalseDecodedCall
+branch error source writeFalseDecodedCall target consoleWriteFailed
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
 label decodeFailed
 makeError decodeFailure MainError.DecodeFailed trueDecodeError
-returnError decodeFailure
+return error decodeFailure
 label roundTripMismatch
 makeError mismatchFailure MainError.RoundTripMismatch trueDecodeError
-returnError mismatchFailure
+return error mismatchFailure
 label consoleWriteFailed
 makeError writeFailure MainError.ConsoleWriteFailed writeTrueError
-returnError writeFailure
+return error writeFailure

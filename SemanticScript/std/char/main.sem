@@ -1,10 +1,10 @@
 # SemanticScript standard-library canonical module: standard.char.
 
 module standard.char
-modulePurpose standard.char "Canonical standard-library module for character constants and helpers."
+purpose module standard.char "Canonical standard-library module for character constants and helpers."
 moduleOwns standard.char "The official import path `standard.char` and this module's implementation body."
 moduleDoesNotOwn standard.char "App-specific wrappers, compatibility aliases, or generated build artifacts."
-moduleInvariant standard.char "The standard module entry is this file; tests live beside it as `main.test.sem`."
+invariant module standard.char "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.char charModuleVersionText
 storage module immutable charModuleVersionText CNullTerminatedByteString "standard.char 0.1"
@@ -14,7 +14,7 @@ storage module immutable charModuleVersionText CNullTerminatedByteString "standa
 # SEMANTICSCRIPT STANDARD LIBRARY: canonical ASCII character codes
 # ============================================================
 #
-# # rationale: This module is pure data â€” names for specific ASCII
+# rationale: This module is pure data â€” names for specific ASCII
 #   byte values that programs need to spell without embedding magic
 #   integers. The pre-refined version exposed each value as a
 #   zero-argument operation returning `Result CSignedInt32 Void`,
@@ -26,17 +26,16 @@ storage module immutable charModuleVersionText CNullTerminatedByteString "standa
 #   a `domainLiteralSource` pointer back to the ASCII spec for
 #   provenance.
 #
-# # invariant: every literal is in [0, 127] (true ASCII). Values
+# invariant: every literal is in [0, 127] (true ASCII). Values
 #   outside that range belong elsewhere (Unicode codepoint modules
 #   that don't yet exist).
 #
-# # security: pure constants. No effects. No allocation. No I/O.
+# security: pure constants. No effects. No allocation. No I/O.
 #
-# # timing: zero â€” the LLVM optimizer inlines every reference.
+# timing: zero â€” the LLVM optimizer inlines every reference.
 #
-# # observability: nothing to observe at runtime; consumers see only
+# observability: nothing to observe at runtime; consumers see only
 #   the raw CSignedInt32 value.
-
 
 error MainError
 errorCase MainError CharSmokeAssertionFailed
@@ -129,83 +128,83 @@ domainLiteralTrust asciiBackslashCharacterCode trustedStaticLiteral
 # ============================================================
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 useCapability main stdoutWriteCapability
 effect main write console.stdout
-memoryHeap main no
+memory main heap no
 async main no
-purpose main "Verify a representative subset of the ASCII char-code constants resolves to the right values."
-invariant main "Newline is 10, NUL is 0, DEL is 127, SP is 32 â€” every smoke check must pass."
+purpose operation main "Verify a representative subset of the ASCII char-code constants resolves to the right values."
+invariant operation main "Newline is 10, NUL is 0, DEL is 127, SP is 32 â€” every smoke check must pass."
 
 label startMain
 
 # Newline literal must resolve to 10.
-const tenValue CSignedInt32 10
+storage module immutable tenValue CSignedInt32 10
 call checkNewlineCall math.equalI64
-arg checkNewlineCall left asciiNewlineCharacterCode
-arg checkNewlineCall right tenValue
+argument checkNewlineCall left I64 asciiNewlineCharacterCode
+argument checkNewlineCall right I64 tenValue
 run checkNewlineCall
-bind newlineOk Bool checkNewlineCall
-branchIf newlineOk newlineHolds
-branch smokeAssertionFailed
+bind value newlineOk Bool checkNewlineCall
+branch if condition newlineOk target newlineHolds
+branch else target smokeAssertionFailed
 label newlineHolds
 
 # NUL literal must resolve to 0.
-const zeroValue CSignedInt32 0
+storage module immutable zeroValue CSignedInt32 0
 call checkNullCall math.equalI64
-arg checkNullCall left asciiNullCharacterCode
-arg checkNullCall right zeroValue
+argument checkNullCall left I64 asciiNullCharacterCode
+argument checkNullCall right I64 zeroValue
 run checkNullCall
-bind nullOk Bool checkNullCall
-branchIf nullOk nullHolds
-branch smokeAssertionFailed
+bind value nullOk Bool checkNullCall
+branch if condition nullOk target nullHolds
+branch else target smokeAssertionFailed
 label nullHolds
 
 # DEL literal must resolve to 127.
-const oneHundredTwentySevenValue CSignedInt32 127
+storage module immutable oneHundredTwentySevenValue CSignedInt32 127
 call checkDeleteCall math.equalI64
-arg checkDeleteCall left asciiDeleteCharacterCode
-arg checkDeleteCall right oneHundredTwentySevenValue
+argument checkDeleteCall left I64 asciiDeleteCharacterCode
+argument checkDeleteCall right I64 oneHundredTwentySevenValue
 run checkDeleteCall
-bind deleteOk Bool checkDeleteCall
-branchIf deleteOk deleteHolds
-branch smokeAssertionFailed
+bind value deleteOk Bool checkDeleteCall
+branch if condition deleteOk target deleteHolds
+branch else target smokeAssertionFailed
 label deleteHolds
 
 # Space literal must resolve to 32.
-const thirtyTwoValue CSignedInt32 32
+storage module immutable thirtyTwoValue CSignedInt32 32
 call checkSpaceCall math.equalI64
-arg checkSpaceCall left asciiSpaceCharacterCode
-arg checkSpaceCall right thirtyTwoValue
+argument checkSpaceCall left I64 asciiSpaceCharacterCode
+argument checkSpaceCall right I64 thirtyTwoValue
 run checkSpaceCall
-bind spaceOk Bool checkSpaceCall
-branchIf spaceOk spaceHolds
-branch smokeAssertionFailed
+bind value spaceOk Bool checkSpaceCall
+branch if condition spaceOk target spaceHolds
+branch else target smokeAssertionFailed
 label spaceHolds
 
 # All assertions hold. Emit "OK" via console.writeLine â€” using the
 # higher-level writer (rather than three raw c.putchar calls) keeps
 # the success path uniform with the other stdlib smokes and gives us
 # a single point at which to surface ConsoleWriteFailed.
-const successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText CNullTerminatedByteString "OK"
 call writeSuccessLineCall console.writeLine
-arg writeSuccessLineCall console console
-arg writeSuccessLineCall text successMessageText
+argument writeSuccessLineCall console Console console
+argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
 run writeSuccessLineCall
-ignoreOk writeSuccessLineCall CSignedInt32
-bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
-branchIfError writeSuccessLineCall consoleWriteFailedHandler
-const exitOkCode ExitCode 0
-returnOk exitOkCode
+ignore ok source writeSuccessLineCall type CSignedInt32
+bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branch error source writeSuccessLineCall target consoleWriteFailedHandler
+storage module immutable exitOkCode ExitCode 0
+return ok exitOkCode
 
 # Failure leg: surface the raw negative CSignedInt32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler
 makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
-returnError consoleWriteFailedFailure
+return error consoleWriteFailedFailure
 
 label smokeAssertionFailed
 makeError charSmokeFailure MainError.CharSmokeAssertionFailed
-returnError charSmokeFailure
+return error charSmokeFailure

@@ -7,8 +7,8 @@ entry console main
 error MainError
 errorCase MainError Placeholder CSignedInt32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main read memory.buffer
 effect main write memory.buffer
 effect main allocate heap
@@ -16,35 +16,35 @@ effect main free heap
 effect main write console.stdout
 memory main heap yes
 async main no
-purpose main "Allocate 4 bytes, write 'X' (88) at offset 0, read it back, print."
-invariant main "Tests c.malloc + pointer.storeByte + pointer.loadByte + c.free."
+purpose operation main "Allocate 4 bytes, write 'X' (88) at offset 0, read it back, print."
+invariant operation main "Tests c.malloc + pointer.storeByte + pointer.loadByte + c.free."
 label startMain
-const bufferBytes CByteCount 4
-const zeroOffset I64 0
-const xByteValue CSignedInt32 88
+storage module immutable bufferBytes CByteCount 4
+storage module immutable zeroOffset I64 0
+storage module immutable xByteValue CSignedInt32 88
 call mallocCall c.malloc
-arg mallocCall size bufferBytes
+argument mallocCall size CByteCount bufferBytes
 run mallocCall
-bind heapBuffer COpaqueMemoryAddress mallocCall
+bind value heapBuffer COpaqueMemoryAddress mallocCall
 call storeCall pointer.storeByte
-arg storeCall buffer heapBuffer
-arg storeCall offset zeroOffset
-arg storeCall value xByteValue
+argument storeCall buffer COpaqueMemoryAddress heapBuffer
+argument storeCall offset I64 zeroOffset
+argument storeCall value CSignedInt32 xByteValue
 run storeCall
 call loadCall pointer.loadByte
-arg loadCall buffer heapBuffer
-arg loadCall offset zeroOffset
+argument loadCall buffer COpaqueMemoryAddress heapBuffer
+argument loadCall offset I64 zeroOffset
 run loadCall
-bind loadedByte I8 loadCall
-var loadedVar I64 zeroOffset
-set loadedVar loadedByte
+bind value loadedByte I8 loadCall
+memory main mutable loadedVar I64 zeroOffset
+set memory loadedVar loadedByte
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value loadedVar
+argument writeCall console Console console
+argument writeCall value I64 loadedVar
 run writeCall
-ignoreOk writeCall Void
+ignore void source writeCall
 call freeCall c.free
-arg freeCall ptr heapBuffer
+argument freeCall ptr COpaqueMemoryAddress heapBuffer
 run freeCall
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

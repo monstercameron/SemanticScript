@@ -18,13 +18,17 @@ const declarationVerbs = new Set([
   'buildDir', 'buildRoot', 'buildFolderName',
   'cpuBaseline', 'cpuTune', 'cpuFeature', 'cpuFeatureCheck', 'nativeOutput',
   'nativeHttpHost', 'nativeHttpPort', 'formatterSetting', 'linterSetting', 'docsOutput',
+  'iconRoleDefinition', 'icon', 'iconRole', 'iconPurpose',
+  'iconImage', 'iconImageGroup', 'iconImagePath', 'iconImageFormat',
+  'iconImageWidth', 'iconImageHeight', 'iconImageScale',
+  'iconImageDepth', 'iconImagePlatform', 'iconImagePurpose',
   'comptimeOperation', 'moduleFolder', 'modulePurpose', 'moduleOwns',
   'moduleDoesNotOwn', 'moduleDependency', 'moduleWarning', 'moduleInvariant',
   'moduleSecurity', 'moduleObservability', 'exportType', 'exportError',
   'exportOperation', 'exportCapability', 'exportConstant',
   'version', 'publisher', 'description', 'copyright', 'productName',
   'internalName', 'originalFilename', 'trademark', 'comments', 'metadata',
-  'importModule', 'importOperation', 'importType', 'importError',
+  'import', 'importModule', 'importOperation', 'importType', 'importError',
   'importCapability', 'importConstant',
   'type', 'typeParameter', 'typeInvariant', 'typeRepresentation', 'typeTrust',
   'typeMemory', 'typeLayout', 'typeLiteralEncoding', 'typeLiteralTerminator',
@@ -32,8 +36,8 @@ const declarationVerbs = new Set([
   'enum', 'enumCase', 'error',
   'errorCase', 'operation', 'webServer', 'serverHost', 'serverPort', 'route',
   'routeTimeout', 'routeMiddleware', 'routeTimeoutOptOut', 'routeMiddlewareOptOut',
-  'storage', 'sharedState', 'domainLiteral', 'jsonBody',
-  'literal', 'listLiteral', 'htmlTemplate', 'jsonCodec', 'policy', 'errorPolicy',
+  'storage', 'sharedState', 'domainLiteral', 'json', 'jsonBody',
+  'literal', 'listLiteral', 'html', 'htmlTemplate', 'jsonCodec', 'policy', 'errorPolicy',
   'validator', 'codec', 'schema', 'unknownFields', 'resource', 'resourceKey',
   'resourceValue', 'resourceKind', 'adapter', 'boundary', 'mapper', 'retryPolicy',
   'timeoutBudget', 'capability', 'authority', 'mutex', 'shared', 'channel',
@@ -79,8 +83,8 @@ const contextVerbs = new Set([
 ]);
 
 const actionVerbs = new Set([
-  'set', 'call', 'arg', 'run', 'runChecked', 'start', 'await', 'bind', 'bindOk',
-  'bindError', 'bindOwned', 'bindOkOwned', 'ignoreOk', 'ignoreValue',
+  'set', 'call', 'arg', 'argument', 'run', 'runChecked', 'start', 'await', 'bind', 'bindOk',
+  'bindError', 'bindOwned', 'bindOkOwned', 'ignore', 'ignoreOk', 'ignoreValue', 'ignoreError',
   'declareFailure', 'makeError', 'requireNonNull',
   'new', 'fieldGet', 'fieldSet', 'recordBuilder', 'recordSet', 'recordCopy',
   'recordBuild', 'read', 'timeout', 'cancelOn',
@@ -91,8 +95,8 @@ const actionVerbs = new Set([
 ]);
 
 const controlVerbs = new Set([
-  'label', 'branch', 'branchIf', 'branchIfError', 'branchSelected',
-  'branchIfGroupError', 'branchIfChannelClosed', 'returnOk', 'returnError',
+  'label', 'branch', 'jump', 'branchIf', 'branchIfError', 'branchSelected',
+  'branchIfGroupError', 'branchIfChannelClosed', 'return', 'returnOk', 'returnError',
   'returnValue', 'returnVoid',
 ]);
 
@@ -145,7 +149,7 @@ const primitiveTargets = new Map([
   ['pointer.offset', 'Returns buffer + offset without dereferencing.'],
   ['pointer.difference', 'Returns pointer distance as a signed integer.'],
   ['pointer.isNull', 'Returns Bool indicating whether a pointer is null.'],
-  ['scheduler.sleep', 'Async typed-duration sleep target. Use cancelOn, start, await, bindError, and branchIfError.'],
+  ['scheduler.sleep', 'Async typed-duration sleep target. Use cancelOn, start, await, bind error, and branch error.'],
   ['retryPolicy.delayForAttempt', 'Retry-policy delay calculation target. Fallible when policy or attempt state is invalid.'],
   ['metrics.computeIncrementI64', 'Metrics-owned counter increment calculation. Fallible target; bind success and error explicitly.'],
   ['http.responseText', 'Native HTTP writer: response, status, body, optional contentType -> CSignedInt32. Body must be non-null.'],
@@ -159,6 +163,11 @@ const primitiveTargets = new Map([
   ['http.requestBodyText', 'Native nullable body-text reader for bounded request bodies. Guard missing/empty bodies explicitly.'],
   ['http.requestBodyBytes', 'Native nullable body-bytes reader for bounded request bodies. Pair with http.requestBodyLength.'],
   ['http.requestBodyLength', 'Native body length reader: request -> CByteCount. Zero means no bytes.'],
+  ['http.requestCookie', 'Native nullable cookie reader: request, name -> string or NULL.'],
+  ['http.requestPathParam', 'Native route path-parameter reader: request, name -> string or NULL.'],
+  ['http.responseFile', 'Native static-file response writer.'],
+  ['http.ensureDirectory', 'Native helper for ensuring a filesystem directory exists.'],
+  ['http.nowMillis', 'Native helper returning current wall-clock milliseconds.'],
   ['http.multipartPartText', 'Native nullable multipart text-part reader: request, name -> string or NULL.'],
   ['http.multipartPartBytes', 'Native nullable multipart binary-part reader: request, name -> pointer or NULL. Pair with http.multipartPartLength.'],
   ['http.multipartPartLength', 'Native multipart part length reader: request, name -> CByteCount.'],
@@ -195,6 +204,33 @@ const primitiveTargets = new Map([
   ['math.leI64', 'Alias for math.lessThanOrEqualI64.'],
   ['math.gtI64', 'Alias for math.greaterThanI64.'],
   ['math.geI64', 'Alias for math.greaterThanOrEqualI64.'],
+  ['bcrypt.hashPassword', 'Native bcrypt password hashing target from standard.bcrypt.'],
+  ['bcrypt.verifyPassword', 'Native bcrypt password verification target from standard.bcrypt.'],
+  ['bcrypt.randomBytes', 'Native cryptographic random byte generation target from standard.bcrypt.'],
+  ['bcrypt.base64UrlEncode', 'Native base64url encoder target from standard.bcrypt.'],
+  ['sqlite.openDatabase', 'Native sqlite database open target.'],
+  ['sqlite.closeDatabase', 'Native sqlite database close target.'],
+  ['sqlite.exec', 'Native sqlite statement execution target.'],
+  ['sqlite.prepareStatement', 'Native sqlite prepared statement target.'],
+  ['sqlite.bindInt64', 'Native sqlite int64 binding target.'],
+  ['sqlite.bindText', 'Native sqlite text binding target.'],
+  ['sqlite.stepStatement', 'Native sqlite statement step target.'],
+  ['sqlite.columnInt64', 'Native sqlite int64 column reader target.'],
+  ['sqlite.columnText', 'Native sqlite text column reader target.'],
+  ['sqlite.lastInsertRowId', 'Native sqlite last insert rowid target.'],
+  ['json.createDocument', 'Native JSON document creation target.'],
+  ['json.createEmptyDocument', 'Native empty JSON document creation target.'],
+  ['json.documentRoot', 'Native JSON document root cursor target.'],
+  ['json.serializeDocument', 'Native JSON document serialization target.'],
+  ['json.objectFieldAt', 'Native JSON object field cursor target.'],
+  ['json.cursorString', 'Native JSON cursor string reader target.'],
+  ['json.cursorInt64', 'Native JSON cursor int64 reader target.'],
+  ['json.setObjectFieldString', 'Native JSON object string setter target.'],
+  ['json.setObjectFieldInt64', 'Native JSON object int64 setter target.'],
+  ['json.setObjectFieldBool', 'Native JSON object bool setter target.'],
+  ['json.setObjectFieldObject', 'Native JSON object child-object setter target.'],
+  ['json.setObjectFieldArray', 'Native JSON object child-array setter target.'],
+  ['json.appendArrayElementObject', 'Native JSON array object append target.'],
 ]);
 
 const generatedTargetPattern = /^(?:json\.(?:parse|stringify)\.[A-Z][A-Za-z0-9_]*|html\.hydrate\.[A-Z][A-Za-z0-9_]*)$/;
@@ -228,7 +264,7 @@ const generatedTargetHoverText = (text) => {
   }
 
   if (text.startsWith('html.hydrate.')) {
-    return 'Generated HTML template hydration target. It is declared by htmlTemplate/htmlArg/htmlBody rows and lowers explicit arg rows into one hydrated HtmlDocument or HtmlFragment value.';
+    return 'Generated HTML template hydration target. It is declared by `html template` and `html body template` rows and lowers explicit `argument` rows into one hydrated HtmlDocument or HtmlFragment value.';
   }
 
   return 'Generated SemanticScript target declared by metadata.';
@@ -244,12 +280,42 @@ const schemaValues = new Map([
   ['refinedSyntax', 'Language mode for research/metadata files that keep permissive lowercase rows.'],
   ['local', 'Storage scope for operation-local storage.'],
   ['module', 'Storage scope for module-owned storage.'],
+  ['operation', 'Qualifier for operation-owned metadata such as input operation NAME ARG TYPE.'],
+  ['template', 'Qualifier for HTML template declarations and body islands.'],
+  ['parameter', 'Qualifier for explicit HTML template parameter metadata.'],
+  ['body', 'Qualifier for HTML template body islands.'],
+  ['memory', 'Mutation target for operation-local memory slots.'],
+  ['storage', 'Mutation target for module or process storage slots.'],
+  ['source', 'Keyword naming a source call or value in phrase-shaped rows.'],
+  ['target', 'Keyword naming a branch, jump, work, or operation target.'],
+  ['condition', 'Keyword naming the boolean value in `branch if condition ...`.'],
+  ['type', 'Keyword naming an explicit type in phrase-shaped rows.'],
+  ['value', 'Keyword naming a plain result or returned value in phrase-shaped rows.'],
+  ['ok', 'Result success leg keyword.'],
+  ['if', 'Conditional branch keyword.'],
+  ['else', 'Fallback branch keyword.'],
+  ['void', 'Void result keyword.'],
   ['process', 'Storage scope for process-shared state.'],
   ['sharedState', 'Shared-state storage scope. Reads and writes require guard-token authority.'],
   ['immutable', 'Storage mutability: value cannot be changed after declaration.'],
   ['mutable', 'Storage mutability: value can change through explicit set lines.'],
   ['read', 'Effect or collection role mode: read.'],
   ['write', 'Effect or collection role mode: write.'],
+  ['append', 'Effect or authority mode: append.'],
+  ['open', 'Effect or authority mode: open.'],
+  ['close', 'Effect or authority mode: close.'],
+  ['allocate', 'Effect or authority mode: allocate.'],
+  ['free', 'Effect or authority mode: free.'],
+  ['observe', 'Effect or authority mode: observe.'],
+  ['execute', 'Effect or authority mode: execute.'],
+  ['connect', 'Effect or authority mode: connect.'],
+  ['send', 'Effect or authority mode: send.'],
+  ['receive', 'Effect or authority mode: receive.'],
+  ['delete', 'Effect or authority mode: delete.'],
+  ['configure', 'Effect or authority mode: configure.'],
+  ['create', 'Effect or authority mode: create.'],
+  ['update', 'Effect or authority mode: update.'],
+  ['network', 'Effect or authority mode: network.'],
   ['log', 'Effect mode: log/observability output.'],
   ['sourceTape', 'operationBody kind for normal explicit SemanticScript semantic tape.'],
   ['runtimeBinding', 'operationBody kind for a semantic signature implemented by runtime binding metadata.'],
@@ -265,11 +331,25 @@ const schemaValues = new Map([
   ['encode', 'Codec direction: typed record into bytes.'],
   ['github', 'Dependency fetch kind for a GitHub owner/repo/ref source.'],
   ['http', 'Dependency fetch kind for an HTTPS archive or API source. Plain HTTP URLs are rejected.'],
-  ['as', 'Legacy importModule alias separator. Prefer importModule ALIAS MODULE_PATH in new code.'],
+  ['as', 'Legacy importModule alias separator. Prefer import ALIAS MODULE_PATH in new code.'],
   ['dev', 'Build profile that keeps development diagnostics visible.'],
   ['prod', 'Build profile that hides source context and favors release defaults.'],
   ['auto', 'Toolchain policy: let the compiler choose from build.sem and platform context.'],
+  ['nativeExe', 'Native executable target runtime.'],
+  ['webServer', 'Native web server target runtime.'],
   ['windowsGui', 'Windows desktop GUI target runtime. Use entry console plus standard.gui gui.* calls.'],
+  ['applicationPrimary', 'Icon role for the primary application icon.'],
+  ['applicationSecondary', 'Icon role for secondary shell or notification surfaces.'],
+  ['documentType', 'Icon role for a registered document type.'],
+  ['png', 'Icon image format token: PNG source image.'],
+  ['ico', 'Icon image format token: ICO source image.'],
+  ['bits32', 'Icon image color depth token: 32-bit RGBA.'],
+  ['bits24', 'Icon image color depth token: 24-bit color.'],
+  ['bits8', 'Icon image color depth token: 8-bit indexed color.'],
+  ['any', 'Platform selector token: applies to every supported target platform.'],
+  ['windows', 'Platform selector token for Windows-specific resources.'],
+  ['macos', 'Platform selector token for macOS-specific resources.'],
+  ['linux', 'Platform selector token for Linux-specific resources.'],
   ['verticalStack', 'GUI window layout token: stack child controls vertically.'],
   ['horizontalStack', 'GUI window layout token: stack child controls horizontally.'],
   ['grid', 'GUI window layout token: arrange controls in a grid.'],
@@ -308,6 +388,8 @@ const schemaValues = new Map([
   ['column', 'Record layout kind: column layout.'],
   ['packed', 'Record layout kind: packed layout.'],
   ['heap', 'Heap allocator or memory policy marker.'],
+  ['arena', 'Arena allocator or memory policy marker.'],
+  ['request', 'Request-scoped arena or policy marker.'],
   ['inPlace', 'Collection mutation mode: mutates existing storage.'],
   ['boundsChecked', 'Collection index policy: bounds checked.'],
   ['denseZeroIndexed', 'List literal index policy: dense zero-based indexes.'],
@@ -452,6 +534,20 @@ const verbHoverText = new Map([
   ['formatterSetting', 'Build tape formatter setting: formatterSetting PROJECT KEY VALUE.'],
   ['linterSetting', 'Build tape linter setting: linterSetting PROJECT KEY VALUE.'],
   ['docsOutput', 'Build tape documentation output: docsOutput PROJECT "PATH".'],
+  ['iconRoleDefinition', 'Icon role taxonomy entry: iconRoleDefinition ROLE "text".'],
+  ['icon', 'Icon group declaration: icon GROUP.'],
+  ['iconRole', 'Icon group role assignment: iconRole GROUP ROLE.'],
+  ['iconPurpose', 'Icon group documentation: iconPurpose GROUP "text".'],
+  ['iconImage', 'Icon image declaration: iconImage IMAGE.'],
+  ['iconImageGroup', 'Icon image group edge: iconImageGroup IMAGE GROUP.'],
+  ['iconImagePath', 'Icon image source path: iconImagePath IMAGE "PATH".'],
+  ['iconImageFormat', 'Icon image format: iconImageFormat IMAGE png|ico.'],
+  ['iconImageWidth', 'Icon image width in pixels: iconImageWidth IMAGE PIXELS.'],
+  ['iconImageHeight', 'Icon image height in pixels: iconImageHeight IMAGE PIXELS.'],
+  ['iconImageScale', 'Icon image display scale: iconImageScale IMAGE SCALE.'],
+  ['iconImageDepth', 'Icon image color depth: iconImageDepth IMAGE bits32|bits24|bits8.'],
+  ['iconImagePlatform', 'Icon image platform selector: iconImagePlatform IMAGE any|windows|macos|linux.'],
+  ['iconImagePurpose', 'Icon image documentation: iconImagePurpose IMAGE "text".'],
   ['moduleFolder', 'Compatibility module registry alias. Prefer registerModule PROJECT MODULE_PATH "PATH".'],
   ['exportType', 'Module-local export contract: exportType MODULE_PATH TYPE. Belongs in the module source.'],
   ['exportError', 'Module-local export contract: exportError MODULE_PATH ERROR. Belongs in the module source.'],
@@ -480,6 +576,7 @@ const verbHoverText = new Map([
   ['dependencyFunctionOutput', 'Dependency function output metadata.'],
   ['dependencyFunctionEffect', 'Dependency function effect metadata.'],
   ['dependencyFunctionAsync', 'Dependency function async metadata.'],
+  ['import', 'Module import declaration: import LOCAL_ALIAS MODULE_PATH.'],
   ['importModule', 'Import declaration: importModule LOCAL_ALIAS MODULE_PATH. The older MODULE_PATH as ALIAS form may exist in legacy samples.'],
   ['importOperation', 'Singular import declaration: importOperation LOCAL_NAME MODULE_ALIAS EXPORTED_OPERATION.'],
   ['importType', 'Singular import declaration: importType LOCAL_NAME MODULE_ALIAS EXPORTED_TYPE.'],
@@ -507,9 +604,11 @@ const verbHoverText = new Map([
   ['routeMiddleware', 'Web server route middleware metadata keyed by exact route path. Native codegen invokes the middleware before the handler.'],
   ['routeTimeoutOptOut', 'Web server route timeout opt-out: routeTimeoutOptOut SERVER PATH "rationale". Used by semlint route coverage checks.'],
   ['routeMiddlewareOptOut', 'Web server route middleware opt-out: routeMiddlewareOptOut SERVER PATH "rationale". Used by semlint route coverage checks.'],
+  ['html', 'HTML template syntax family: html template NAME, html parameter template TEMPLATE NAME TYPE, or html body template TEMPLATE.'],
   ['htmlTemplate', 'First-class HTML/SSX template declaration: htmlTemplate NAME. The body starts at htmlBody NAME.'],
   ['htmlArg', 'HTML template hydration input: htmlArg TEMPLATE ARG_NAME TYPE. Body holes must reference declared args as {htmlArg.ARG_NAME}.'],
   ['htmlBody', 'Starts the indentation-sensitive HTML/SSX body island for a template. The island ends at the next non-empty column-0 SemanticScript line.'],
+  ['json', 'JSON syntax family: json body NAME starts an indentation-sensitive JSON literal island.'],
   ['jsonBody', 'Starts an indentation-sensitive JSON literal island bound to a preceding immutable storage binding with the same name.'],
   ['jsonCodec', 'Contract-heavy JSON codec declaration.'],
   ['codec', 'Contract-heavy codec declaration.'],
@@ -557,6 +656,7 @@ const verbHoverText = new Map([
   ['var', 'Body declaration statement: var NAME TYPE INITIAL_VALUE.'],
   ['label', 'Control-flow statement: label NAME. Labels are first-class basic blocks.'],
   ['call', 'Call lifecycle statement: call CALL_NAME TARGET_PATH.'],
+  ['argument', 'Call argument edge: argument CALL_NAME ARG_NAME ARG_TYPE VALUE_NAME.'],
   ['arg', 'Call lifecycle statement: arg CALL_NAME ARG_NAME VALUE_NAME.'],
   ['timeout', 'Call lifecycle statement: timeout CALL_NAME DURATION_VALUE.'],
   ['cancelOn', 'Call lifecycle statement: cancelOn CALL_NAME CANCELLATION_TOKEN.'],
@@ -571,6 +671,7 @@ const verbHoverText = new Map([
   ['bindOkOwned', 'Reserved strict ownership statement for fallible calls: bindOkOwned VALUE TYPE CALL cleanup TARGET. Do not use until parser and ownership-table support are committed.'],
   ['ignoreOk', 'Binding statement: ignoreOk CALL_NAME TYPE explicitly discards a fallible call success value.'],
   ['ignoreValue', 'Binding statement: ignoreValue CALL_NAME TYPE explicitly discards an infallible call result.'],
+  ['ignore', 'Phrase-shaped discard: ignore value|ok|error|void source CALL_NAME [type TYPE].'],
   ['requireNonNull', 'Reserved strict nullable-refinement statement: requireNonNull OUT TYPE INPUT else LABEL. Do not use until nullable ABI support is committed.'],
   ['makeError', 'Error construction: makeError NAME ERROR_TYPE.VARIANT [SOURCE_VALUE].'],
   ['new', 'Reserved record I/O statement: new VALUE_NAME RECORD_NAME. Parsed, not lowered by current compiler.'],
@@ -600,6 +701,7 @@ const verbHoverText = new Map([
   ['useRetry', 'Reserved policy attachment: useRetry CALL_NAME RETRY_POLICY_NAME.'],
   ['useCapability', 'Reserved policy attachment: useCapability OPERATION_OR_CALL CAPABILITY_NAME.'],
   ['set', 'Mutation statement: set VAR_NAME VALUE_NAME.'],
+  ['jump', 'Unconditional branch statement: jump target LABEL_NAME.'],
   ['branch', 'Control-flow statement: branch LABEL_NAME.'],
   ['branchIf', 'Control-flow statement: branchIf BOOL_VALUE LABEL_NAME. False leg falls through.'],
   ['branchIfError', 'Control-flow statement: branchIfError CALL_NAME LABEL_NAME.'],
@@ -609,6 +711,7 @@ const verbHoverText = new Map([
   ['returnError', 'Return typed error value from Result operation.'],
   ['returnValue', 'Return plain value.'],
   ['returnVoid', 'Return from a Void/CVoid operation without exposing the ABI zero sentinel.'],
+  ['return', 'Phrase-shaped return: return value VALUE, return ok VALUE, return error ERROR, or return void.'],
 ]);
 
 const refinedVerbHoverText = new Map([
@@ -1093,7 +1196,7 @@ const updateSegmentDecorations = (editor) => {
         ));
       }
 
-      if (indentedIslandVerbs.has(verbText)) {
+      if (startsIndentedIsland(tokenizeLine(line.text))) {
         insideIndentedIsland = true;
       }
     }
@@ -1132,6 +1235,165 @@ const tokenizeLine = (lineText) => {
   }
 
   return tokens;
+};
+
+const tokenAt = (tokens, index) => (tokens[index] ? tokens[index].text : '');
+
+const isHtmlTemplateDeclaration = (tokens) => (
+  tokenAt(tokens, 0) === 'html' && tokenAt(tokens, 1) === 'template'
+);
+
+const isHtmlParameterDeclaration = (tokens) => (
+  tokenAt(tokens, 0) === 'html' && tokenAt(tokens, 1) === 'parameter' && tokenAt(tokens, 2) === 'template'
+);
+
+const isHtmlBodyDeclaration = (tokens) => (
+  (tokenAt(tokens, 0) === 'html' && tokenAt(tokens, 1) === 'body' && tokenAt(tokens, 2) === 'template')
+  || tokenAt(tokens, 0) === 'htmlBody'
+);
+
+const isJsonBodyDeclaration = (tokens) => (
+  tokenAt(tokens, 0) === 'jsonBody'
+  || (tokenAt(tokens, 0) === 'json' && tokenAt(tokens, 1) === 'body')
+);
+
+const htmlTemplateNameIndex = (tokens) => {
+  if (isHtmlTemplateDeclaration(tokens)) {
+    return 2;
+  }
+
+  if (isHtmlParameterDeclaration(tokens) || isHtmlBodyDeclaration(tokens)) {
+    return 3;
+  }
+
+  return 1;
+};
+
+const jsonBodyNameIndex = (tokens) => (
+  tokenAt(tokens, 0) === 'json' && tokenAt(tokens, 1) === 'body' ? 2 : 1
+);
+
+const startsIndentedIsland = (tokens) => (
+  isJsonBodyDeclaration(tokens) || isHtmlBodyDeclaration(tokens)
+);
+
+const operationOwnerIndex = (tokens) => {
+  if (tokenAt(tokens, 1) === 'operation') {
+    return 2;
+  }
+
+  if (tokenAt(tokens, 1) === 'module') {
+    return null;
+  }
+
+  return 1;
+};
+
+const operationOwnerName = (tokens) => {
+  const index = operationOwnerIndex(tokens);
+  return index === null ? '' : tokenAt(tokens, index);
+};
+
+const branchLabelIndex = (tokens) => {
+  if (tokenAt(tokens, 0) === 'jump' && tokenAt(tokens, 1) === 'target') {
+    return 2;
+  }
+
+  if (tokenAt(tokens, 0) !== 'branch') {
+    return null;
+  }
+
+  if (tokenAt(tokens, 1) === 'if' && tokenAt(tokens, 2) === 'condition' && tokenAt(tokens, 4) === 'target') {
+    return 5;
+  }
+
+  if (tokenAt(tokens, 1) === 'error' && tokenAt(tokens, 2) === 'source' && tokenAt(tokens, 4) === 'target') {
+    return 5;
+  }
+
+  if (tokenAt(tokens, 1) === 'else' && tokenAt(tokens, 2) === 'target') {
+    return 3;
+  }
+
+  return 1;
+};
+
+const argumentParts = (tokens) => {
+  if (tokenAt(tokens, 0) === 'argument') {
+    return { callIndex: 1, roleIndex: 2, typeIndex: 3, valueIndex: 4 };
+  }
+
+  if (tokenAt(tokens, 0) === 'arg') {
+    return { callIndex: 1, roleIndex: 2, typeIndex: null, valueIndex: 3 };
+  }
+
+  return null;
+};
+
+const bindParts = (tokens) => {
+  const verb = tokenAt(tokens, 0);
+
+  if (verb === 'bind' && ['value', 'ok', 'error'].includes(tokenAt(tokens, 1))) {
+    return {
+      kind: tokenAt(tokens, 1) === 'error' ? 'bound error' : 'bound value',
+      nameIndex: 2,
+      typeIndex: 3,
+      callIndex: 4,
+    };
+  }
+
+  if (verb === 'bind' || verb === 'bindOk' || verb === 'bindError') {
+    return {
+      kind: verb === 'bindError' ? 'bound error' : 'bound value',
+      nameIndex: 1,
+      typeIndex: 2,
+      callIndex: 3,
+    };
+  }
+
+  return null;
+};
+
+const returnParts = (tokens) => {
+  const verb = tokenAt(tokens, 0);
+
+  if (verb === 'return') {
+    const mode = tokenAt(tokens, 1) || 'value';
+    return {
+      mode,
+      valueIndex: mode === 'void' ? null : 2,
+    };
+  }
+
+  if (verb === 'returnOk') {
+    return { mode: 'ok', valueIndex: 1 };
+  }
+
+  if (verb === 'returnError') {
+    return { mode: 'error', valueIndex: 1 };
+  }
+
+  if (verb === 'returnValue') {
+    return { mode: 'value', valueIndex: 1 };
+  }
+
+  if (verb === 'returnVoid') {
+    return { mode: 'void', valueIndex: null };
+  }
+
+  return null;
+};
+
+const ignoreCallIndex = (tokens) => {
+  if (tokenAt(tokens, 0) === 'ignore' && tokenAt(tokens, 2) === 'source') {
+    return 3;
+  }
+
+  if (tokenAt(tokens, 0) === 'ignoreOk' || tokenAt(tokens, 0) === 'ignoreValue' || tokenAt(tokens, 0) === 'ignoreError') {
+    return 1;
+  }
+
+  return null;
 };
 
 const isDomainTarget = (text) => {
@@ -1207,12 +1469,13 @@ const namedDeclarationVerbs = new Set([
   'project', 'operation', 'webServer', 'record', 'enum', 'error', 'codec',
   'jsonCodec', 'validator', 'mapper', 'adapter', 'boundary', 'policy',
   'errorPolicy', 'retryPolicy', 'timeoutBudget', 'resource', 'capability',
-  'mutex', 'shared', 'channel', 'section', 'domainLiteral', 'literal', 'jsonBody',
+  'mutex', 'shared', 'channel', 'section', 'domainLiteral', 'literal', 'json', 'jsonBody',
   'listLiteral', 'htmlTemplate', 'listType', 'arrayType', 'sliceType', 'smallListType',
   'mapType', 'collectionOperation', 'interval', 'workerPool', 'work',
   'buildProject', 'registerModule', 'modulePath', 'mainFile', 'mainOperation',
   'targetRuntime', 'buildProfile', 'optLevel', 'cpuBaseline', 'cpuTune',
   'cpuFeature', 'cpuFeatureCheck', 'nativeOutput',
+  'iconRoleDefinition', 'icon', 'iconImage',
 ]);
 
 const singleCallReferenceVerbs = new Set([
@@ -1285,8 +1548,8 @@ const buildOperationMetadataIndex = (document) => {
       continue;
     }
 
-    if (operationMetadataVerbs.has(verb) && tokens[1]) {
-      const entry = ensureOperationMetadataEntry(operations, tokens[1].text);
+    if (operationMetadataVerbs.has(verb) && operationOwnerName(tokens)) {
+      const entry = ensureOperationMetadataEntry(operations, operationOwnerName(tokens));
 
       if (!entry.section) {
         entry.section = currentSection;
@@ -1298,7 +1561,7 @@ const buildOperationMetadataIndex = (document) => {
       });
     }
 
-    if (indentedIslandVerbs.has(verb)) {
+    if (startsIndentedIsland(tokens)) {
       insideIndentedIsland = true;
     }
   }
@@ -1401,11 +1664,15 @@ const buildDocumentSymbolIndex = (document) => {
         break;
 
       case 'input':
-        addSymbolDeclaration(symbols, tokenText(tokens, 2), declarationBase('input parameter', tokens, lineIndex, {
-          name: tokenText(tokens, 2),
-          owner: tokenText(tokens, 1),
-          type: tokenText(tokens, 3),
-        }));
+        {
+          const ownerIndex = operationOwnerIndex(tokens);
+          const nameIndex = ownerIndex === null ? 2 : ownerIndex + 1;
+          addSymbolDeclaration(symbols, tokenText(tokens, nameIndex), declarationBase('input parameter', tokens, lineIndex, {
+            name: tokenText(tokens, nameIndex),
+            owner: ownerIndex === null ? '?' : tokenText(tokens, ownerIndex),
+            type: tokenText(tokens, nameIndex + 1),
+          }));
+        }
         break;
 
       case 'const':
@@ -1446,6 +1713,18 @@ const buildDocumentSymbolIndex = (document) => {
         }));
         break;
 
+      case 'memory':
+        if (tokens[2] && ['mutable', 'immutable'].includes(tokens[2].text)) {
+          addSymbolDeclaration(symbols, tokenText(tokens, 3), declarationBase('memory binding', tokens, lineIndex, {
+            name: tokenText(tokens, 3),
+            owner: tokenText(tokens, 1),
+            mutability: tokenText(tokens, 2),
+            type: tokenText(tokens, 4),
+            value: tokenTailText(tokens, 5),
+          }));
+        }
+        break;
+
       case 'domainLiteral':
       case 'literal':
       case 'jsonBody':
@@ -1455,6 +1734,16 @@ const buildDocumentSymbolIndex = (document) => {
           type: tokenText(tokens, 2),
           value: tokenTailText(tokens, 3),
         }));
+        break;
+
+      case 'json':
+        if (isJsonBodyDeclaration(tokens)) {
+          addSymbolDeclaration(symbols, tokenText(tokens, jsonBodyNameIndex(tokens)), declarationBase('json body', tokens, lineIndex, {
+            name: tokenText(tokens, jsonBodyNameIndex(tokens)),
+            type: 'JsonText island',
+            value: 'indented JSON',
+          }));
+        }
         break;
 
       case 'type':
@@ -1509,6 +1798,13 @@ const buildDocumentSymbolIndex = (document) => {
         break;
       }
 
+      case 'import':
+        addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase('module import', tokens, lineIndex, {
+          name: tokenText(tokens, 1),
+          details: tokenText(tokens, 2),
+        }));
+        break;
+
       case 'dependencyFetch':
         addSymbolDeclaration(symbols, tokenText(tokens, 2), declarationBase('dependency fetch', tokens, lineIndex, {
           name: tokenText(tokens, 2),
@@ -1519,6 +1815,15 @@ const buildDocumentSymbolIndex = (document) => {
 
       case 'dependencyCache':
       case 'dependencyLock':
+        addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase(readableVerbName(verb).toLowerCase(), tokens, lineIndex, {
+          name: tokenText(tokens, 1),
+          details: tokenTailText(tokens, 2),
+        }));
+        break;
+
+      case 'iconRoleDefinition':
+      case 'icon':
+      case 'iconImage':
         addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase(readableVerbName(verb).toLowerCase(), tokens, lineIndex, {
           name: tokenText(tokens, 1),
           details: tokenTailText(tokens, 2),
@@ -1539,6 +1844,21 @@ const buildDocumentSymbolIndex = (document) => {
           owner: tokenText(tokens, 1),
           type: tokenText(tokens, 3),
         }));
+        break;
+
+      case 'html':
+        if (isHtmlTemplateDeclaration(tokens)) {
+          addSymbolDeclaration(symbols, tokenText(tokens, 2), declarationBase('html template', tokens, lineIndex, {
+            name: tokenText(tokens, 2),
+            details: 'html template',
+          }));
+        } else if (isHtmlParameterDeclaration(tokens)) {
+          addSymbolDeclaration(symbols, tokenText(tokens, 4), declarationBase('html template argument', tokens, lineIndex, {
+            name: tokenText(tokens, 4),
+            owner: tokenText(tokens, 3),
+            type: tokenText(tokens, 5),
+          }));
+        }
         break;
 
       case 'enumCase':
@@ -1570,13 +1890,16 @@ const buildDocumentSymbolIndex = (document) => {
         break;
       }
 
-      case 'arg': {
-        const callDeclaration = calls.get(tokenText(tokens, 1));
+      case 'arg':
+      case 'argument': {
+        const parts = argumentParts(tokens);
+        const callDeclaration = parts ? calls.get(tokenText(tokens, parts.callIndex)) : null;
 
         if (callDeclaration) {
           callDeclaration.args.push({
-            role: tokenText(tokens, 2),
-            value: tokenText(tokens, 3),
+            role: tokenText(tokens, parts.roleIndex),
+            type: parts.typeIndex === null ? '' : tokenText(tokens, parts.typeIndex),
+            value: tokenText(tokens, parts.valueIndex),
             line: lineIndex + 1,
           });
         }
@@ -1586,20 +1909,20 @@ const buildDocumentSymbolIndex = (document) => {
       case 'bind':
       case 'bindOk':
       case 'bindError': {
-        const bindingKind = verb === 'bindError' ? 'bound error' : 'bound value';
-        addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase(bindingKind, tokens, lineIndex, {
-          name: tokenText(tokens, 1),
-          type: tokenText(tokens, 2),
-          sourceCall: tokenText(tokens, 3),
+        const parts = bindParts(tokens);
+        addSymbolDeclaration(symbols, tokenText(tokens, parts.nameIndex), declarationBase(parts.kind, tokens, lineIndex, {
+          name: tokenText(tokens, parts.nameIndex),
+          type: tokenText(tokens, parts.typeIndex),
+          sourceCall: tokenText(tokens, parts.callIndex),
         }));
 
-        const callDeclaration = calls.get(tokenText(tokens, 3));
+        const callDeclaration = calls.get(tokenText(tokens, parts.callIndex));
 
         if (callDeclaration) {
           callDeclaration.resultBindings.push({
             verb,
-            name: tokenText(tokens, 1),
-            type: tokenText(tokens, 2),
+            name: tokenText(tokens, parts.nameIndex),
+            type: tokenText(tokens, parts.typeIndex),
             line: lineIndex + 1,
           });
         }
@@ -1668,7 +1991,7 @@ const buildDocumentSymbolIndex = (document) => {
         break;
     }
 
-    if (indentedIslandVerbs.has(verb)) {
+    if (startsIndentedIsland(tokens)) {
       insideIndentedIsland = true;
     }
   }
@@ -1701,7 +2024,7 @@ const operationHoverNameForToken = (text, tokenIndex, tokens) => {
 
   const verb = tokens && tokens[0] ? tokens[0].text : '';
 
-  if (operationMetadataVerbs.has(verb) && tokenIndex === 1) {
+  if (operationMetadataVerbs.has(verb) && operationOwnerIndex(tokens) === tokenIndex) {
     return text;
   }
 
@@ -1747,8 +2070,33 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
     return 'semanticscriptDeclaredName';
   }
 
-  if (verb === 'jsonBody' && index === 1) {
+  if (verb === 'html') {
+    if (isHtmlTemplateDeclaration(tokens) && index === 2) {
+      return 'semanticscriptDeclaredName';
+    }
+
+    if (isHtmlBodyDeclaration(tokens) && index === htmlTemplateNameIndex(tokens)) {
+      return 'semanticscriptDeclaredName';
+    }
+
+    if (isHtmlParameterDeclaration(tokens)) {
+      if (index === 3) {
+        return 'semanticscriptDeclaredName';
+      }
+
+      if (index === 4) {
+        return 'semanticscriptArgumentName';
+      }
+    }
+  }
+
+  if (isJsonBodyDeclaration(tokens) && index === jsonBodyNameIndex(tokens)) {
     return 'semanticscriptConstName';
+  }
+
+  const returnInfo = returnParts(tokens);
+  if (returnInfo && index === returnInfo.valueIndex) {
+    return returnInfo.mode === 'error' ? 'semanticscriptErrorVariant' : 'semanticscriptConstName';
   }
 
   if (verb === 'htmlArg' && index === 2) {
@@ -1761,6 +2109,18 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
     }
 
     if (index === importModulePathIndex(tokens)) {
+      return 'namespace';
+    }
+
+    return null;
+  }
+
+  if (verb === 'import') {
+    if (index === 1) {
+      return 'semanticscriptDeclaredName';
+    }
+
+    if (index === 2) {
       return 'namespace';
     }
 
@@ -1797,11 +2157,17 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
     return 'semanticscriptMutableName';
   }
 
-  if (verb === 'set' && index === 1 && !['local', 'module', 'sharedState'].includes(text)) {
+  if (verb === 'memory' && index === 3 && tokens[2] && ['mutable', 'immutable'].includes(tokens[2].text)) {
+    return tokens[2].text === 'mutable'
+      ? 'semanticscriptMutableName'
+      : 'semanticscriptConstName';
+  }
+
+  if (verb === 'set' && index === 1 && !['local', 'module', 'sharedState', 'memory', 'storage'].includes(text)) {
     return 'semanticscriptMutableName';
   }
 
-  if (verb === 'set' && index === 2 && tokens[1] && ['local', 'module', 'sharedState'].includes(tokens[1].text)) {
+  if (verb === 'set' && index === 2 && tokens[1] && ['local', 'module', 'sharedState', 'memory', 'storage'].includes(tokens[1].text)) {
     return 'semanticscriptMutableName';
   }
 
@@ -1813,7 +2179,7 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
     return 'semanticscriptLabelName';
   }
 
-  if (branchLabelPositions.get(verb) === index) {
+  if (branchLabelIndex(tokens) === index) {
     return 'semanticscriptLabelName';
   }
 
@@ -1837,27 +2203,31 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
     return 'semanticscriptDeclaredName';
   }
 
-  if (verb === 'arg' && index === 1) {
+  if ((verb === 'arg' || verb === 'argument') && argumentParts(tokens) && index === argumentParts(tokens).callIndex) {
     return 'semanticscriptCallObject';
   }
 
-  if (verb === 'arg' && index === 2) {
+  if ((verb === 'arg' || verb === 'argument') && argumentParts(tokens) && index === argumentParts(tokens).roleIndex) {
     return 'semanticscriptArgumentName';
+  }
+
+  if (ignoreCallIndex(tokens) === index) {
+    return 'semanticscriptCallObject';
   }
 
   if (singleCallReferenceVerbs.has(verb) && index === 1) {
     return 'semanticscriptCallObject';
   }
 
-  if ((verb === 'bind' || verb === 'bindOk' || verb === 'bindError') && index === 3) {
+  if (bindParts(tokens) && index === bindParts(tokens).callIndex) {
     return 'semanticscriptCallObject';
   }
 
-  if ((verb === 'bind' || verb === 'bindOk') && index === 1) {
+  if (bindParts(tokens) && index === bindParts(tokens).nameIndex && bindParts(tokens).kind === 'bound value') {
     return 'semanticscriptConstName';
   }
 
-  if (verb === 'bindError' && index === 1) {
+  if (bindParts(tokens) && index === bindParts(tokens).nameIndex && bindParts(tokens).kind === 'bound error') {
     return 'semanticscriptMutableName';
   }
 
@@ -1865,7 +2235,7 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
     return 'semanticscriptMutableName';
   }
 
-  if (verb === 'input' && index === 2) {
+  if (verb === 'input' && index === (operationOwnerIndex(tokens) === null ? 2 : operationOwnerIndex(tokens) + 1)) {
     return 'semanticscriptArgumentName';
   }
 
@@ -1929,7 +2299,7 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
     return 'semanticscriptDeclaredName';
   }
 
-  if (operationReferenceVerbs.has(verb) && index === 1) {
+  if (operationReferenceVerbs.has(verb) && operationOwnerIndex(tokens) === index) {
     return 'semanticscriptDeclaredName';
   }
 
@@ -1977,7 +2347,14 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
     return 'semanticscriptEffectPath';
   }
 
-  if ((verb === 'capability' || verb === 'authority') && index === 2 && isLowerQualifiedName(text)) {
+  if (verb === 'authority' && (
+    (index === 2 && isLowerQualifiedName(text))
+    || (index === 3 && isLowerQualifiedName(text))
+  )) {
+    return 'semanticscriptEffectPath';
+  }
+
+  if (verb === 'capability' && index === 2 && isLowerQualifiedName(text)) {
     return 'semanticscriptEffectPath';
   }
 
@@ -2142,7 +2519,7 @@ const provideDocumentSemanticTokens = (document) => {
       }
     });
 
-    if (tokens[0] && indentedIslandVerbs.has(tokens[0].text)) {
+    if (startsIndentedIsland(tokens)) {
       insideIndentedIsland = true;
     }
   }
@@ -2186,7 +2563,7 @@ const getTokenAtPosition = (document, position) => {
 
 const getHtmlArgReferenceAtPosition = (document, position) => {
   const lineText = document.lineAt(position.line).text;
-  const referencePattern = /\{\s*htmlArg\.([A-Za-z_][A-Za-z0-9_]*)\s*\}/g;
+  const referencePattern = /\{\s*(?:htmlArg\.)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\}/g;
   let match;
 
   while ((match = referencePattern.exec(lineText)) !== null) {
@@ -2196,6 +2573,7 @@ const getHtmlArgReferenceAtPosition = (document, position) => {
     if (position.character >= start && position.character <= end) {
       return {
         text: match[1],
+        rootText: match[1].split('.')[0],
         range: new vscode.Range(position.line, start, position.line, end),
       };
     }
@@ -2226,9 +2604,9 @@ const htmlBodyTemplateAtLine = (document, targetLine) => {
 
     const tokens = tokenizeLine(lineText);
 
-    if (tokens[0] && tokens[0].text === 'htmlBody' && tokens[1]) {
+    if (isHtmlBodyDeclaration(tokens)) {
       insideHtmlBody = true;
-      templateName = tokens[1].text;
+      templateName = tokenText(tokens, htmlTemplateNameIndex(tokens));
 
       if (lineIndex === targetLine) {
         return templateName;
@@ -2346,6 +2724,13 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
         'Registered module imports make cross-module references explicit for agents and tooling.',
       ]);
 
+    case 'import':
+      return detailHover(`Module import: ${tokenText(tokens, 1)}`, [
+        `Local alias: ${inlineCode(tokenText(tokens, 1))}`,
+        `Module path: ${inlineCode(tokenText(tokens, 2))}`,
+        'Registered module imports make cross-module references explicit for agents and tooling.',
+      ]);
+
     case 'importOperation':
     case 'importType':
     case 'importError':
@@ -2393,9 +2778,39 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
         'Indented following lines are parsed as markup until the next non-empty column-0 SemanticScript line.',
       ]);
 
+    case 'html':
+      if (isHtmlTemplateDeclaration(tokens)) {
+        return detailHover(`HTML template: ${tokenText(tokens, 2)}`, [
+          `Declares first-class HTML/SSX template ${inlineCode(tokenText(tokens, 2))}.`,
+          'Follow with one `html body template` island for the same template name.',
+        ]);
+      }
+
+      if (isHtmlParameterDeclaration(tokens)) {
+        return detailHover(`HTML parameter: ${tokenText(tokens, 4)}`, [
+          `Template: ${inlineCode(tokenText(tokens, 3))}`,
+          `Parameter: ${inlineCode(tokenText(tokens, 4))}`,
+          `Type: ${inlineCode(tokenText(tokens, 5))}`,
+        ]);
+      }
+
+      if (isHtmlBodyDeclaration(tokens)) {
+        return detailHover(`HTML body: ${tokenText(tokens, htmlTemplateNameIndex(tokens))}`, [
+          `Starts the HTML/SSX body for template ${inlineCode(tokenText(tokens, htmlTemplateNameIndex(tokens)))}.`,
+          'Indented following lines are parsed as markup until the next non-empty column-0 SemanticScript line.',
+        ]);
+      }
+
+      break;
+
+    case 'json':
     case 'jsonBody':
-      return detailHover(`JSON body: ${tokenText(tokens, 1)}`, [
-        `Binds validated JSON text to immutable storage ${inlineCode(tokenText(tokens, 1))}.`,
+      if (!isJsonBodyDeclaration(tokens)) {
+        break;
+      }
+
+      return detailHover(`JSON body: ${tokenText(tokens, jsonBodyNameIndex(tokens))}`, [
+        `Binds validated JSON text to immutable storage ${inlineCode(tokenText(tokens, jsonBodyNameIndex(tokens)))}.`,
         'Indented following lines are parsed as strict JSON until the next non-empty column-0 SemanticScript line.',
       ]);
 
@@ -2458,10 +2873,14 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
       ]);
 
     case 'arg':
+    case 'argument': {
+      const parts = argumentParts(tokens);
       return detailHover(`Argument: ${tokenText(tokens, 2)}`, [
-        `Passes ${inlineCode(tokenText(tokens, 3))} into call ${inlineCode(tokenText(tokens, 1))}.`,
-        `Argument role: ${inlineCode(tokenText(tokens, 2))}`,
+        `Passes ${inlineCode(tokenText(tokens, parts.valueIndex))} into call ${inlineCode(tokenText(tokens, parts.callIndex))}.`,
+        `Argument role: ${inlineCode(tokenText(tokens, parts.roleIndex))}`,
+        parts.typeIndex === null ? '' : `Type: ${inlineCode(tokenText(tokens, parts.typeIndex))}`,
       ]);
+    }
 
     case 'run':
       return detailHover(`Run call: ${tokenText(tokens, 1)}`, [
@@ -2482,9 +2901,18 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
       ]);
 
     case 'bind':
-      return detailHover(`Bind result: ${tokenText(tokens, 1)}`, [
-        `Stores the infallible result of ${inlineCode(tokenText(tokens, 3))} into ${inlineCode(tokenText(tokens, 1))}.`,
-        `Type: ${inlineCode(tokenText(tokens, 2))}`,
+      {
+        const parts = bindParts(tokens);
+        return detailHover(`Bind result: ${tokenText(tokens, parts.nameIndex)}`, [
+          `Stores the result of ${inlineCode(tokenText(tokens, parts.callIndex))} into ${inlineCode(tokenText(tokens, parts.nameIndex))}.`,
+          `Type: ${inlineCode(tokenText(tokens, parts.typeIndex))}`,
+        ]);
+      }
+
+    case 'ignore':
+      return detailHover(`Ignore ${tokenText(tokens, 1)}: ${tokenText(tokens, ignoreCallIndex(tokens))}`, [
+        `Explicitly discards ${inlineCode(tokenText(tokens, 1))} from ${inlineCode(tokenText(tokens, ignoreCallIndex(tokens)))}.`,
+        tokenText(tokens, 4) === 'type' ? `Discarded type: ${inlineCode(tokenText(tokens, 5))}` : '',
       ]);
 
     case 'bindOk':
@@ -2516,8 +2944,32 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
       ]);
 
     case 'branch':
+      if (tokenText(tokens, 1) === 'if') {
+        return detailHover(`Conditional branch: ${tokenText(tokens, 5)}`, [
+          `Jumps to ${inlineCode(tokenText(tokens, 5))} when ${inlineCode(tokenText(tokens, 3))} is true.`,
+          'The false path continues to the next line unless followed by `branch else target ...`.',
+        ]);
+      }
+
+      if (tokenText(tokens, 1) === 'error') {
+        return detailHover(`Error branch: ${tokenText(tokens, 5)}`, [
+          `Jumps to ${inlineCode(tokenText(tokens, 5))} if call ${inlineCode(tokenText(tokens, 3))} failed.`,
+        ]);
+      }
+
+      if (tokenText(tokens, 1) === 'else') {
+        return detailHover(`Else branch: ${tokenText(tokens, 3)}`, [
+          `Jumps to ${inlineCode(tokenText(tokens, 3))} as the paired fallback path.`,
+        ]);
+      }
+
       return detailHover(`Branch: ${tokenText(tokens, 1)}`, [
         `Always jumps to ${inlineCode(tokenText(tokens, 1))}.`,
+      ]);
+
+    case 'jump':
+      return detailHover(`Jump: ${tokenText(tokens, 2)}`, [
+        `Always jumps to ${inlineCode(tokenText(tokens, 2))}.`,
       ]);
 
     case 'branchIf':
@@ -2551,6 +3003,15 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
         'Returns from an operation declared `output OP Void` or `output OP CVoid`.',
         'Codegen lowers this to the internal zero sentinel, but the source stays semantically explicit.',
       ]);
+
+    case 'return': {
+      const info = returnParts(tokens);
+      return detailHover(`Return ${info.mode}`, [
+        info.valueIndex === null
+          ? 'Returns from a Void/CVoid operation.'
+          : `Returns ${inlineCode(tokenText(tokens, info.valueIndex))} through the ${inlineCode(info.mode)} path.`,
+      ]);
+    }
 
     case 'makeError':
       return detailHover(`Construct error: ${tokenText(tokens, 1)}`, [
@@ -2862,8 +3323,9 @@ const tokenUseDescription = (tokens, tokenIndex, declaration) => {
       }
       break;
 
+    case 'json':
     case 'jsonBody':
-      if (tokenIndex === 1) {
+      if (isJsonBodyDeclaration(tokens) && tokenIndex === jsonBodyNameIndex(tokens)) {
         return `This token selects the immutable storage slot that receives the validated JSON literal.`;
       }
       break;
@@ -3006,6 +3468,17 @@ const tokenUseDescription = (tokens, tokenIndex, declaration) => {
       }
       break;
 
+    case 'return': {
+      const info = returnParts(tokens);
+      if (tokenIndex === 1) {
+        return `This token selects the ${inlineCode(info.mode)} return path.`;
+      }
+      if (tokenIndex === info.valueIndex) {
+        return `This token is returned through the ${inlineCode(info.mode)} path.`;
+      }
+      break;
+    }
+
     case 'makeError':
     case 'declareFailure':
       if (tokenIndex === 1) {
@@ -3138,15 +3611,15 @@ const provideHover = (document, position) => {
   const htmlArgReference = getHtmlArgReferenceAtPosition(document, position);
 
   if (htmlArgReference) {
-    const declaration = chooseHtmlArgDeclaration(document, htmlArgReference.text, position.line);
+    const declaration = chooseHtmlArgDeclaration(document, htmlArgReference.rootText, position.line);
     const templateName = declaration ? declaration.owner : htmlBodyTemplateAtLine(document, position.line);
 
     return markdownHover(
-      `HTML arg reference: ${htmlArgReference.text}`,
+      `HTML hole: ${htmlArgReference.text}`,
       [
         templateName ? `Template: ${inlineCode(templateName)}` : '',
         declaration && declaration.type ? `Declared type: ${inlineCode(declaration.type)}` : '',
-        'Dynamic HTML holes must resolve to a declared `htmlArg TEMPLATE NAME TYPE` row. The compiler checks sink context before lowering hydration.',
+        'Dynamic HTML holes resolve through hydrate `argument` rows. Bare names and dotted record-field paths are checked by sink context before lowering hydration.',
       ].filter(Boolean).join('\n\n')
     );
   }
@@ -3271,7 +3744,8 @@ const provideDefinition = (document, position) => {
   const htmlArgReference = getHtmlArgReferenceAtPosition(document, position);
 
   if (htmlArgReference) {
-    const declaration = chooseHtmlArgDeclaration(document, htmlArgReference.text, position.line);
+    const declaration = chooseHtmlArgDeclaration(document, htmlArgReference.rootText, position.line)
+      || chooseSymbolDeclaration(getDocumentSymbolIndex(document).symbols.get(htmlArgReference.rootText), null);
 
     if (declaration) {
       return new vscode.Location(document.uri, declarationRange(document, declaration));
@@ -3303,15 +3777,29 @@ const provideDefinition = (document, position) => {
 };
 
 const documentSymbolNameIndex = (verb, tokens) => {
+  if (verb === 'html') {
+    if (isHtmlTemplateDeclaration(tokens) || isHtmlBodyDeclaration(tokens)) {
+      return htmlTemplateNameIndex(tokens);
+    }
+
+    if (isHtmlParameterDeclaration(tokens)) {
+      return 4;
+    }
+  }
+
   switch (verb) {
     case 'input':
-      return 2;
+      return operationOwnerIndex(tokens) === null ? 2 : operationOwnerIndex(tokens) + 1;
+    case 'json':
+      return isJsonBodyDeclaration(tokens) ? jsonBodyNameIndex(tokens) : 1;
     case 'htmlArg':
       return 2;
     case 'dependencyFetch':
       return 2;
     case 'importModule':
       return importModuleAliasIndex(tokens);
+    case 'import':
+      return 1;
     case 'field':
     case 'enumCase':
     case 'errorCase':
@@ -3330,11 +3818,13 @@ const documentSymbolKind = (verb) => {
   switch (verb) {
     case 'operation':
       return vscode.SymbolKind.Function;
+    case 'html':
     case 'htmlTemplate':
       return vscode.SymbolKind.Class;
     case 'htmlArg':
       return vscode.SymbolKind.Field;
     case 'importModule':
+    case 'import':
       return vscode.SymbolKind.Module;
     case 'importOperation':
       return vscode.SymbolKind.Function;
@@ -3366,6 +3856,7 @@ const documentSymbolKind = (verb) => {
     case 'authority':
       return vscode.SymbolKind.Key;
     case 'const':
+    case 'json':
     case 'jsonBody':
       return vscode.SymbolKind.Constant;
     case 'var':
@@ -3392,8 +3883,24 @@ const symbolDetailText = (verb, tokens) => {
     return `${tokenText(tokens, 1)}: ${tokenText(tokens, 3)}`;
   }
 
+  if (verb === 'html') {
+    if (isHtmlParameterDeclaration(tokens)) {
+      return `${tokenText(tokens, 3)}: ${tokenText(tokens, 5)}`;
+    }
+
+    if (isHtmlBodyDeclaration(tokens)) {
+      return 'HTML island';
+    }
+
+    return 'HTML template';
+  }
+
   if (verb === 'importModule') {
     return tokenText(tokens, importModulePathIndex(tokens));
+  }
+
+  if (verb === 'import') {
+    return tokenText(tokens, 2);
   }
 
   if (['importOperation', 'importType', 'importError', 'importCapability', 'importConstant'].includes(verb)) {
@@ -3409,14 +3916,16 @@ const symbolDetailText = (verb, tokens) => {
   }
 
   if (verb === 'input') {
-    return `${tokenText(tokens, 1)}: ${tokenText(tokens, 3)}`;
+    const ownerIndex = operationOwnerIndex(tokens);
+    const nameIndex = ownerIndex === null ? 2 : ownerIndex + 1;
+    return `${ownerIndex === null ? '?' : tokenText(tokens, ownerIndex)}: ${tokenText(tokens, nameIndex + 1)}`;
   }
 
   if (verb === 'const' || verb === 'var') {
     return tokenText(tokens, 2);
   }
 
-  if (verb === 'jsonBody') {
+  if (isJsonBodyDeclaration(tokens)) {
     return 'JsonText island';
   }
 
@@ -3434,15 +3943,19 @@ const provideDocumentSymbols = (document) => {
     'buildRoot', 'buildFolderName', 'cpuBaseline', 'cpuTune',
     'cpuFeature', 'cpuFeatureCheck', 'nativeOutput', 'docsOutput',
     'dependencyFetch', 'dependencyCache', 'dependencyLock',
-    'importModule', 'importOperation', 'importType', 'importError',
+    'import', 'importModule', 'importOperation', 'importType', 'importError',
     'importCapability', 'importConstant',
+    'iconRoleDefinition', 'icon', 'iconRole', 'iconPurpose',
+    'iconImage', 'iconImageGroup', 'iconImagePath', 'iconImageFormat',
+    'iconImageWidth', 'iconImageHeight', 'iconImageScale',
+    'iconImageDepth', 'iconImagePlatform', 'iconImagePurpose',
     'exportOperation', 'exportType',
     'exportError', 'exportCapability', 'exportConstant',
     'operation', 'input', 'webServer', 'route', 'record', 'field',
     'enum', 'enumCase', 'error', 'errorCase', 'type', 'capability',
     'authority', 'timeoutBudget', 'storage', 'sharedState', 'const',
-    'var', 'call', 'label', 'jsonCodec', 'jsonBody', 'policy', 'retryPolicy',
-    'workerPool', 'work', 'interval', 'htmlTemplate', 'htmlArg',
+    'var', 'call', 'label', 'jsonCodec', 'json', 'jsonBody', 'policy', 'retryPolicy',
+    'workerPool', 'work', 'interval', 'html', 'htmlTemplate', 'htmlArg',
   ]);
   let insideIndentedIsland = false;
 
@@ -3493,7 +4006,7 @@ const provideDocumentSymbols = (document) => {
       selectionRange
     ));
 
-    if (indentedIslandVerbs.has(verb)) {
+    if (startsIndentedIsland(tokens)) {
       insideIndentedIsland = true;
     }
   }
@@ -3542,6 +4055,9 @@ const generatedCompletionItems = (document) => {
 
     if (tokens[0] && tokens[0].text === 'htmlTemplate' && tokens[1]) {
       const target = `html.hydrate.${tokens[1].text}`;
+      targets.set(target, generatedTargetHoverText(target));
+    } else if (isHtmlTemplateDeclaration(tokens) && tokens[2]) {
+      const target = `html.hydrate.${tokens[2].text}`;
       targets.set(target, generatedTargetHoverText(target));
     }
   }

@@ -8,23 +8,23 @@ entry console main
 error MainError
 errorCase MainError Placeholder CSignedInt32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Single-slot channel: when two sends happen before a receive, the receive sees the latest value."
-invariant main "Output is 99 (the second send) not 50 (the first send)."
+purpose operation main "Single-slot channel: when two sends happen before a receive, the receive sees the latest value."
+invariant operation main "Output is 99 (the second send) not 50 (the first send)."
 label startMain
-const firstSendValue I64 50
-const secondSendValue I64 99
+storage module immutable firstSendValue I64 50
+storage module immutable secondSendValue I64 99
 send overwriteChannel firstSendValue
 send overwriteChannel secondSendValue
 receive latestValue I64 overwriteChannel
 call writeLatestCall console.writeIntegerLine
-arg writeLatestCall console console
-arg writeLatestCall value latestValue
+argument writeLatestCall console Console console
+argument writeLatestCall value I64 latestValue
 run writeLatestCall
-ignoreOk writeLatestCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeLatestCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

@@ -12,23 +12,23 @@ literalSource externalAlphaLiteral "_modules/external_greeting_alpha.txt"
 literal externalBetaLiteral CNullTerminatedByteString
 literalSource externalBetaLiteral "_modules/external_greeting_beta.txt"
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Two literals from two distinct files; each must carry its own bytes."
-invariant main "Output is alpha line then beta line (no bleed)."
+purpose operation main "Two literals from two distinct files; each must carry its own bytes."
+invariant operation main "Output is alpha line then beta line (no bleed)."
 label startMain
 call writeAlphaCall console.writeLine
-arg writeAlphaCall console console
-arg writeAlphaCall text externalAlphaLiteral
+argument writeAlphaCall console Console console
+argument writeAlphaCall text CNullTerminatedByteString externalAlphaLiteral
 run writeAlphaCall
-ignoreOk writeAlphaCall Void
+ignore void source writeAlphaCall
 call writeBetaCall console.writeLine
-arg writeBetaCall console console
-arg writeBetaCall text externalBetaLiteral
+argument writeBetaCall console Console console
+argument writeBetaCall text CNullTerminatedByteString externalBetaLiteral
 run writeBetaCall
-ignoreOk writeBetaCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeBetaCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

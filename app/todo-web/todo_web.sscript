@@ -4,7 +4,7 @@ runtime native 1
 module app.todo_web
 
 webServer todoWebServer
-purpose todoWebServer "Serve the Todo Web HTTP interface on localhost with a single hello route"
+purpose operation todoWebServer "Serve the Todo Web HTTP interface on localhost with a single hello route"
 serverHost todoWebServer "127.0.0.1"
 serverPort todoWebServer 18080
 route todoWebServer GET "/" helloTodoWebHandler
@@ -12,28 +12,28 @@ routeTimeoutOptOut todoWebServer "/" "single fixed response; no per-route timeou
 routeMiddlewareOptOut todoWebServer "/" "single fixed response; no middleware needed"
 
 capability httpResponseWriter http.response write
-purpose httpResponseWriter "Authority to write the root HTTP response"
+purpose operation httpResponseWriter "Authority to write the root HTTP response"
 
 operation helloTodoWebHandler
-input helloTodoWebHandler request HttpRequest
-input helloTodoWebHandler response HttpResponse
-output helloTodoWebHandler CSignedInt32
+input operation helloTodoWebHandler request HttpRequest
+input operation helloTodoWebHandler response HttpResponse
+output operation helloTodoWebHandler CSignedInt32
 effect helloTodoWebHandler write http.response
 memory helloTodoWebHandler arena request
 async helloTodoWebHandler no
 useCapability helloTodoWebHandler httpResponseWriter
-purpose helloTodoWebHandler "Return a plain hello response for the Todo Web root route"
-invariant helloTodoWebHandler "Every successful request writes exactly one text response"
+purpose operation helloTodoWebHandler "Return a plain hello response for the Todo Web root route"
+invariant operation helloTodoWebHandler "Every successful request writes exactly one text response"
 
 label startHelloTodoWebHandler
 
-const helloStatusCode CSignedInt32 200
-const helloBody CNullTerminatedByteString "hello from todo web\n"
+storage module immutable helloStatusCode CSignedInt32 200
+storage module immutable helloBody CNullTerminatedByteString "hello from todo web\n"
 
 call writeHelloResponseCall http.responseText
-arg writeHelloResponseCall response response
-arg writeHelloResponseCall status helloStatusCode
-arg writeHelloResponseCall body helloBody
+argument writeHelloResponseCall response HttpResponse response
+argument writeHelloResponseCall status CSignedInt32 helloStatusCode
+argument writeHelloResponseCall body CNullTerminatedByteString helloBody
 run writeHelloResponseCall
-bind writeHelloResponseStatus CSignedInt32 writeHelloResponseCall
-returnValue writeHelloResponseStatus
+bind value writeHelloResponseStatus CSignedInt32 writeHelloResponseCall
+return value writeHelloResponseStatus

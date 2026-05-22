@@ -361,38 +361,38 @@ route todoWebProServer GET "*" notFoundPageHandler
 
 That route table is easy to index, diff, lint, and summarize.
 
-### HTML Has Typed Holes
+### HTML Infers Hydrate Holes
 
-`standard.html` templates declare their holes and the allowed trust context.
+`standard.html` templates infer hydrate arguments from `{name}` and
+`{record.field}` holes in the template body. Plain text/class-like values are
+`String`; generated markup stays explicit as `HtmlFragment` or `HtmlDocument`.
 
 ```semanticscript
-htmlTemplate StatusCardComponent
-htmlArg StatusCardComponent apiBaseUrlText HtmlText
-htmlArg StatusCardComponent statusBadgeClass HtmlClass
-htmlBody StatusCardComponent
+html template StatusCardComponent
+html body template StatusCardComponent
   <section class="rounded-xl border border-ink-200 bg-white p-4">
-  <div class="{htmlArg.statusBadgeClass}">Server online</div>
-  <p>API base: {htmlArg.apiBaseUrlText}</p>
+  <div class="{statusBadgeClass}">Server online</div>
+  <p>API base: {apiBaseUrlText}</p>
   </section>
 
 operation renderStatusCard
-input renderStatusCard apiBaseUrlText HtmlText
-input renderStatusCard statusBadgeClass HtmlClass
-output renderStatusCard HtmlFragment
+input operation renderStatusCard apiBaseUrlText String
+input operation renderStatusCard statusBadgeClass String
+output operation renderStatusCard HtmlFragment
 memory renderStatusCard arena request
 async renderStatusCard no
-purpose renderStatusCard "Render the status card with typed HTML holes."
+purpose operation renderStatusCard "Render the status card with inferred HTML holes."
 
 call hydrateStatusCardCall html.hydrate.StatusCardComponent
-arg hydrateStatusCardCall apiBaseUrlText apiBaseUrlText
-arg hydrateStatusCardCall statusBadgeClass statusBadgeClass
+argument hydrateStatusCardCall apiBaseUrlText String apiBaseUrlText
+argument hydrateStatusCardCall statusBadgeClass String statusBadgeClass
 run hydrateStatusCardCall
-bind statusCardFragment HtmlFragment hydrateStatusCardCall
-returnValue statusCardFragment
+bind value statusCardFragment HtmlFragment hydrateStatusCardCall
+return value statusCardFragment
 ```
 
-Text, class, URL, fragment, and document values are different roles. That is the
-point: the trust boundary is in the source, not just in a helper function name.
+String holes are escaped by sink context. Fragment and document values can only
+hydrate text-content positions where raw markup composition is intentional.
 
 ### Native Runtime Boundaries Stay Small
 

@@ -8,63 +8,63 @@ error MainError
 errorCase MainError Placeholder CSignedInt32
 
 operation sumTo
-input sumTo accumulator CSignedInt64
-input sumTo remaining CSignedInt64
-output sumTo Result CSignedInt64 Void
+input operation sumTo accumulator CSignedInt64
+input operation sumTo remaining CSignedInt64
+output operation sumTo Result CSignedInt64 Void
 memory sumTo heap no
 async sumTo no
-purpose sumTo "Tail-recursive accumulator: when `remaining` reaches 0, return `accumulator`; otherwise sumTo(accumulator + remaining, remaining - 1)."
-invariant sumTo "Computes sum(1..n) in O(n) recursion depth."
+purpose operation sumTo "Tail-recursive accumulator: when `remaining` reaches 0, return `accumulator`; otherwise sumTo(accumulator + remaining, remaining - 1)."
+invariant operation sumTo "Computes sum(1..n) in O(n) recursion depth."
 label startSumTo
-const zeroBase CSignedInt64 0
-const oneStep CSignedInt64 1
+storage module immutable zeroBase CSignedInt64 0
+storage module immutable oneStep CSignedInt64 1
 call doneCheckCall math.equalI64
-arg doneCheckCall left remaining
-arg doneCheckCall right zeroBase
+argument doneCheckCall left CSignedInt64 remaining
+argument doneCheckCall right I64 zeroBase
 run doneCheckCall
-bind isDone Bool doneCheckCall
-branchIf isDone baseCaseSumTo
+bind value isDone Bool doneCheckCall
+branch if condition isDone target baseCaseSumTo
 call newAccumCall math.addI64
-arg newAccumCall left accumulator
-arg newAccumCall right remaining
+argument newAccumCall left I64 accumulator
+argument newAccumCall right I64 remaining
 run newAccumCall
-bind newAccumulator CSignedInt64 newAccumCall
+bind value newAccumulator CSignedInt64 newAccumCall
 call decRemainingCall math.subtractI64
-arg decRemainingCall left remaining
-arg decRemainingCall right oneStep
+argument decRemainingCall left CSignedInt64 remaining
+argument decRemainingCall right CSignedInt64 oneStep
 run decRemainingCall
-bind nextRemaining CSignedInt64 decRemainingCall
+bind value nextRemaining CSignedInt64 decRemainingCall
 call recurseCall sumTo
-arg recurseCall accumulator newAccumulator
-arg recurseCall remaining nextRemaining
+argument recurseCall accumulator CSignedInt64 newAccumulator
+argument recurseCall remaining CSignedInt64 nextRemaining
 run recurseCall
-bindOk recursiveResult CSignedInt64 recurseCall
-returnOk recursiveResult
+bind ok recursiveResult CSignedInt64 recurseCall
+return ok recursiveResult
 label baseCaseSumTo
-returnOk accumulator
+return ok accumulator
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "sumTo(0, 10) == 0+10+9+...+1 == 55."
-invariant main "Verifies a 2-arg recursive accumulator can reach a base case 10 levels deep."
+purpose operation main "sumTo(0, 10) == 0+10+9+...+1 == 55."
+invariant operation main "Verifies a 2-arg recursive accumulator can reach a base case 10 levels deep."
 label startMain
-const zeroAccum CSignedInt64 0
-const tenInitial CSignedInt64 10
+storage module immutable zeroAccum CSignedInt64 0
+storage module immutable tenInitial CSignedInt64 10
 call computeCall sumTo
-arg computeCall accumulator zeroAccum
-arg computeCall remaining tenInitial
+argument computeCall accumulator CSignedInt64 zeroAccum
+argument computeCall remaining CSignedInt64 tenInitial
 run computeCall
-bindOk computedSum CSignedInt64 computeCall
-var sumStorage I64 0
-set sumStorage computedSum
+bind ok computedSum CSignedInt64 computeCall
+memory main mutable sumStorage I64 0
+set memory sumStorage computedSum
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value sumStorage
+argument writeCall console Console console
+argument writeCall value I64 sumStorage
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

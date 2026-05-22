@@ -1,140 +1,194 @@
-# Todo TUI project build tape.
-# This is the project-layout lab for the future SemanticScript project model.
-# semsc.py validates this build tape, reads build output/LLVM defaults from it,
-# then uses importModule to inline main.sem through the registered module path.
+# TodoTuiApp regular SemanticScript build plan.
+# Build configuration is ordinary typed record data; semsc lowers BuildPlan internally.
 
-buildProject todoTui
-project TodoTuiApp
-modulePath todoTui github.com/monstercameron/SemanticScript/app/todo
-languageVersion todoTui "1.0"
-projectVersion todoTui "1.0.0"
-projectLicense todoTui MIT
+module app.todoTui.build
+purpose module app.todoTui.build "Describe the TodoTuiApp build as ordinary typed SemanticScript data."
+moduleOwns app.todoTui.build "Build project metadata, module registration, target options, version metadata, and build constants."
+moduleDoesNotOwn app.todoTui.build "Runtime application behavior; registered app modules own operations, routes, exports, and UI/domain logic."
+invariant module app.todoTui.build "Build configuration is data first: records hold settings, and configure operation returns the selected BuildPlan."
 
-sourceRoot todoTui "."
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
-mainOperation todoTui main
-testPattern todoTui "*.test.sem"
-testRoot todoTui "."
+record BuildProject
+field BuildProject id String
+field BuildProject name String
+field BuildProject modulePath String
+field BuildProject languageVersion String
+field BuildProject projectVersion String
+field BuildProject license String
+field BuildProject sourceRoot String
+field BuildProject testPattern String
+field BuildProject testRoot String
 
-target console
-# rationale: `runtime native 1` is the SemanticScript-canonical contract for
-# native console executables, same as todo-web / http-api-gauntlet. The earlier
-# `AgentRuntime 0.1` was an exploratory placeholder before the native adapter
-# solidified; switching to `native 1` aligns this sample with the rest of the
-# repo and with the runtime the compiler actually lowers to.
-runtime native 1
-entry console main
+record BuildModule
+field BuildModule moduleName String
+field BuildModule sourcePath String
+field BuildModule mainFile String
 
-# Project metadata embedded directly into build/todo.exe at --emit-exe time. On
-# Windows the compiler generates a transient VERSIONINFO resource that the
-# linker bakes into the PE's resource section, visible via File Explorer
-# Properties, PowerShell `(Get-Item todo.exe).VersionInfo`, and version.dll.
-version "1.0.0.0"
-publisher "Earl Cameron"
-description "SemanticScript Todo TUI - keyboard-driven console todo app with JSON persistence."
-copyright "Copyright (c) 2026 Earl Cameron. Licensed under the project LICENSE."
-productName "Todo TUI"
-internalName "todo"
-originalFilename "todo.exe"
-comments "Built from app/todo/main.sem by the SemanticScript reference compiler."
-metadata "BuildSource" "app/todo/main.sem"
-metadata "RuntimeContract" "native 1"
+record BuildModules
+field BuildModules main BuildModule
 
-# === Icon registry ===
-# The icon group below is lowered to a Windows VERSIONINFO ICON resource at
-# `--emit-exe` time. The compiler walks every iconImage that belongs to the
-# `applicationPrimary` group, filters to `platform any|windows`, packs the
-# PNG files into a transient .ico (PNG-encoded ICONDIRENTRY entries — Vista+
-# supported, preserves alpha channel), and llvm-rc embeds the resource into
-# the PE's resource section. The icon then appears in Explorer thumbnails,
-# the taskbar, Alt-Tab, and the Properties dialog without any sidecar files.
-# Each fact about each image has its own row so a future linter rule can
-# validate every property independently — see SS44xx range for the
-# style-discipline diagnostics.
+record BuildTarget
+field BuildTarget runtime String
+field BuildTarget nativeRuntime String
+field BuildTarget nativeRuntimeVersion I64
+field BuildTarget profile String
+field BuildTarget optLevel I64
+field BuildTarget runtimeChecks String
+field BuildTarget persistLlvmIr String
+field BuildTarget emitLlvmIr String
+field BuildTarget emitOptimizedLlvmIr Bool
+field BuildTarget buildFolderName String
+field BuildTarget cpuBaseline String
+field BuildTarget cpuTune String
+field BuildTarget cpuFeatureCheck String
+field BuildTarget formatterLineWidth I64
+field BuildTarget linterMaxTier String
+field BuildTarget docsOutput String
+field BuildTarget nativeOutput String
+field BuildTarget keepResources Bool
+field BuildTarget comptimeOperation String
 
-iconRoleDefinition applicationPrimary   "Primary application icon — Explorer file view, taskbar, Start tile, Alt-Tab thumbnail."
+record BuildMetadata
+field BuildMetadata buildSource String
+field BuildMetadata runtimeContract String
+
+record BuildVersionInfo
+field BuildVersionInfo version String
+field BuildVersionInfo publisher String
+field BuildVersionInfo description String
+field BuildVersionInfo copyright String
+field BuildVersionInfo productName String
+field BuildVersionInfo internalName String
+field BuildVersionInfo originalFilename String
+field BuildVersionInfo comments String
+field BuildVersionInfo metadata BuildMetadata
+
+record BuildConstant
+field BuildConstant type String
+field BuildConstant value String
+
+record BuildConstants
+
+record BuildPlan
+field BuildPlan project BuildProject
+field BuildPlan modules BuildModules
+field BuildPlan mainModule String
+field BuildPlan mainOperation String
+field BuildPlan target BuildTarget
+field BuildPlan versionInfo BuildVersionInfo
+field BuildPlan constants BuildConstants
+
+storage module immutable todoTuiBuildPlan BuildPlan
+jsonBody todoTuiBuildPlan
+  {
+      "project": {
+          "name": "TodoTuiApp",
+          "id": "todoTui",
+          "modulePath": "github.com/monstercameron/SemanticScript/app/todo",
+          "languageVersion": "1.0",
+          "projectVersion": "1.0.0",
+          "license": "MIT",
+          "sourceRoot": ".",
+          "testPattern": "*.test.sem",
+          "testRoot": "."
+      },
+      "modules": {
+          "main": {
+              "moduleName": "app.todo",
+              "sourcePath": ".",
+              "mainFile": "main.sem"
+          }
+      },
+      "mainModule": "main",
+      "target": {
+          "runtime": "nativeExe",
+          "nativeRuntime": "native",
+          "nativeRuntimeVersion": 1,
+          "profile": "dev",
+          "optLevel": 2,
+          "runtimeChecks": "panic",
+          "persistLlvmIr": "yes",
+          "emitLlvmIr": "auto",
+          "emitOptimizedLlvmIr": false,
+          "buildFolderName": "build",
+          "cpuBaseline": "generic",
+          "cpuTune": "generic",
+          "cpuFeatureCheck": "auto",
+          "formatterLineWidth": 100,
+          "linterMaxTier": "T4",
+          "docsOutput": "docs",
+          "nativeOutput": "todo.exe",
+          "keepResources": false,
+          "comptimeOperation": "configureTodoTuiBuild"
+      },
+      "versionInfo": {
+          "version": "1.0.0.0",
+          "publisher": "Earl Cameron",
+          "description": "SemanticScript Todo TUI - keyboard-driven console todo app with JSON persistence.",
+          "copyright": "Copyright (c) 2026 Earl Cameron. Licensed under the project LICENSE.",
+          "productName": "Todo TUI",
+          "internalName": "todo",
+          "originalFilename": "todo.exe",
+          "comments": "Built from app/todo/main.sem by the SemanticScript reference compiler.",
+          "metadata": {
+              "buildSource": "app/todo/main.sem",
+              "runtimeContract": "native 1"
+          }
+      },
+      "constants": {},
+      "mainOperation": "main"
+  }
+
+# Icon registry is still row-shaped because those facts are individual resource edges.
+iconRoleDefinition applicationPrimary "Primary application icon — Explorer file view, taskbar, Start tile, Alt-Tab thumbnail."
 iconRoleDefinition applicationSecondary "Secondary application icon — notification badge, tray, secondary windows."
-iconRoleDefinition documentType         "Icon shown by file managers for files of a registered document type."
-
-icon         todoPrimaryIcon
-iconRole     todoPrimaryIcon applicationPrimary
-iconPurpose  todoPrimaryIcon "Stylized 'T' on a teal rounded-square background. Every Windows shell surface (Explorer list, taskbar, Start tile, Alt-Tab) reads this same icon group at the matching pixel size."
-
-iconImage         todoPrimaryAt16
-iconImageGroup    todoPrimaryAt16 todoPrimaryIcon
-iconImagePath     todoPrimaryAt16 "assets/icons/icon-16.png"
-iconImageFormat   todoPrimaryAt16 png
-iconImageWidth    todoPrimaryAt16 16
-iconImageHeight   todoPrimaryAt16 16
-iconImageScale    todoPrimaryAt16 1
-iconImageDepth    todoPrimaryAt16 bits32
+iconRoleDefinition documentType "Icon shown by file managers for files of a registered document type."
+icon todoPrimaryIcon
+iconRole todoPrimaryIcon applicationPrimary
+iconPurpose todoPrimaryIcon "Stylized 'T' on a teal rounded-square background. Every Windows shell surface (Explorer list, taskbar, Start tile, Alt-Tab) reads this same icon group at the matching pixel size."
+iconImage todoPrimaryAt16
+iconImageGroup todoPrimaryAt16 todoPrimaryIcon
+iconImagePath todoPrimaryAt16 "assets/icons/icon-16.png"
+iconImageFormat todoPrimaryAt16 png
+iconImageWidth todoPrimaryAt16 16
+iconImageHeight todoPrimaryAt16 16
+iconImageScale todoPrimaryAt16 1
+iconImageDepth todoPrimaryAt16 bits32
 iconImagePlatform todoPrimaryAt16 any
-iconImagePurpose  todoPrimaryAt16 "Smallest cell — Explorer details column, system tray, 16px hicolor theme on Linux."
-
-iconImage         todoPrimaryAt32
-iconImageGroup    todoPrimaryAt32 todoPrimaryIcon
-iconImagePath     todoPrimaryAt32 "assets/icons/icon-32.png"
-iconImageFormat   todoPrimaryAt32 png
-iconImageWidth    todoPrimaryAt32 32
-iconImageHeight   todoPrimaryAt32 32
-iconImageScale    todoPrimaryAt32 1
-iconImageDepth    todoPrimaryAt32 bits32
+iconImagePurpose todoPrimaryAt16 "Smallest cell — Explorer details column, system tray, 16px hicolor theme on Linux."
+iconImage todoPrimaryAt32
+iconImageGroup todoPrimaryAt32 todoPrimaryIcon
+iconImagePath todoPrimaryAt32 "assets/icons/icon-32.png"
+iconImageFormat todoPrimaryAt32 png
+iconImageWidth todoPrimaryAt32 32
+iconImageHeight todoPrimaryAt32 32
+iconImageScale todoPrimaryAt32 1
+iconImageDepth todoPrimaryAt32 bits32
 iconImagePlatform todoPrimaryAt32 any
-iconImagePurpose  todoPrimaryAt32 "Taskbar at 100% DPI, Alt-Tab thumbnail row, medium Explorer view."
-
-iconImage         todoPrimaryAt48
-iconImageGroup    todoPrimaryAt48 todoPrimaryIcon
-iconImagePath     todoPrimaryAt48 "assets/icons/icon-48.png"
-iconImageFormat   todoPrimaryAt48 png
-iconImageWidth    todoPrimaryAt48 48
-iconImageHeight   todoPrimaryAt48 48
-iconImageScale    todoPrimaryAt48 1
-iconImageDepth    todoPrimaryAt48 bits32
+iconImagePurpose todoPrimaryAt32 "Taskbar at 100% DPI, Alt-Tab thumbnail row, medium Explorer view."
+iconImage todoPrimaryAt48
+iconImageGroup todoPrimaryAt48 todoPrimaryIcon
+iconImagePath todoPrimaryAt48 "assets/icons/icon-48.png"
+iconImageFormat todoPrimaryAt48 png
+iconImageWidth todoPrimaryAt48 48
+iconImageHeight todoPrimaryAt48 48
+iconImageScale todoPrimaryAt48 1
+iconImageDepth todoPrimaryAt48 bits32
 iconImagePlatform todoPrimaryAt48 any
-iconImagePurpose  todoPrimaryAt48 "Windows large-icon Explorer view; required for Shell shell32 compatibility."
-
-iconImage         todoPrimaryAt256
-iconImageGroup    todoPrimaryAt256 todoPrimaryIcon
-iconImagePath     todoPrimaryAt256 "assets/icons/icon-256.png"
-iconImageFormat   todoPrimaryAt256 png
-iconImageWidth    todoPrimaryAt256 256
-iconImageHeight   todoPrimaryAt256 256
-iconImageScale    todoPrimaryAt256 1
-iconImageDepth    todoPrimaryAt256 bits32
+iconImagePurpose todoPrimaryAt48 "Windows large-icon Explorer view; required for Shell shell32 compatibility."
+iconImage todoPrimaryAt256
+iconImageGroup todoPrimaryAt256 todoPrimaryIcon
+iconImagePath todoPrimaryAt256 "assets/icons/icon-256.png"
+iconImageFormat todoPrimaryAt256 png
+iconImageWidth todoPrimaryAt256 256
+iconImageHeight todoPrimaryAt256 256
+iconImageScale todoPrimaryAt256 1
+iconImageDepth todoPrimaryAt256 bits32
 iconImagePlatform todoPrimaryAt256 any
-iconImagePurpose  todoPrimaryAt256 "Windows Extra Large Icons view, taskbar at 200% DPI, Properties dialog preview, Linux 256x256 hicolor."
+iconImagePurpose todoPrimaryAt256 "Windows Extra Large Icons view, taskbar at 200% DPI, Properties dialog preview, Linux 256x256 hicolor."
 
-targetRuntime todoTui nativeExe
-buildProfile todoTui dev
-optLevel todoTui 2
-runtimeChecks todoTui panic
-persistLlvmIr todoTui yes
-emitLlvmIr todoTui auto
-emitOptimizedLlvmIr todoTui no
-buildFolderName todoTui build
-cpuBaseline todoTui generic
-cpuTune todoTui generic
-cpuFeatureCheck todoTui auto
-formatterSetting todoTui lineWidth 100
-linterSetting todoTui maxTier T4
-docsOutput todoTui "docs"
-# Basenames resolve into the compiler-managed build directory, so this emits
-# app/todo/build/todo.exe while keeping the source-level executable name stable.
-nativeOutput todoTui "todo.exe"
-# keepResources controls whether the intermediate Windows resource files
-# (`.rc` / `.res` / `.ico`) are written to disk during the build. Default
-# is `no` — the resource bytes survive only inside todo.exe's PE resource
-# section. Set to `yes` to retain them under `<build_dir>/resources/` for
-# debugging, or override the directory with `resourcesDir todoTui "path"`.
-# CLI flags `--keep-resources` and `--resource-dir PATH` override these
-# values per-invocation.
-keepResources todoTui no
-
-# Future comptime hook. Reserved for 2.0; not executed by the current compiler.
-comptimeOperation todoTui configureTodoTuiBuild
-
-# Current compiler bridge: inline the executable module registered above. The
-# module source owns its imports and export contract; build.sem only registers
-# where the project modules live and selects the executable entry point.
-importModule app.todo
+operation configureTodoTuiBuild
+output operation configureTodoTuiBuild BuildPlan
+memory configureTodoTuiBuild heap no
+async configureTodoTuiBuild no
+purpose operation configureTodoTuiBuild "Return the typed build plan for TodoTuiApp."
+return value todoTuiBuildPlan

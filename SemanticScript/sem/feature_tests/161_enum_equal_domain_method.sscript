@@ -25,11 +25,11 @@ error MainError
 errorCase MainError Placeholder CSignedInt32
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 memory main heap no
 async main no
-purpose main "Verify enum.equal dispatch for both CSignedInt32 and CSignedInt64 reprs."
+purpose operation main "Verify enum.equal dispatch for both CSignedInt32 and CSignedInt64 reprs."
 
 label startMain
 storage local immutable equalText CNullTerminatedByteString "equal"
@@ -38,48 +38,48 @@ storage local immutable successfulExitCode ExitCode 0
 
 # Both arguments are SaveSucceeded — must compare equal via repr-CSignedInt32 path.
 call sameStatusCall SaveTodosStatus.equal
-arg sameStatusCall left SaveSucceeded
-arg sameStatusCall right SaveSucceeded
+argument sameStatusCall left SaveTodosStatus SaveSucceeded
+argument sameStatusCall right SaveTodosStatus SaveSucceeded
 run sameStatusCall
-bind sameStatusEqual Bool sameStatusCall
-branchIf sameStatusEqual sameStatusPath
-branch failSameStatus
+bind value sameStatusEqual Bool sameStatusCall
+branch if condition sameStatusEqual target sameStatusPath
+branch else target failSameStatus
 
 label sameStatusPath
 call writeEqualCall console.writeLine
-arg writeEqualCall console console
-arg writeEqualCall text equalText
+argument writeEqualCall console Console console
+argument writeEqualCall text CNullTerminatedByteString equalText
 run writeEqualCall
-ignoreValue writeEqualCall CSignedInt32
-branch checkDifferentMode
+ignore value source writeEqualCall type CSignedInt32
+jump target checkDifferentMode
 
 label failSameStatus
 call writeFailSameCall console.writeLine
-arg writeFailSameCall console console
-arg writeFailSameCall text notEqualText
+argument writeFailSameCall console Console console
+argument writeFailSameCall text CNullTerminatedByteString notEqualText
 run writeFailSameCall
-ignoreValue writeFailSameCall CSignedInt32
-returnOk successfulExitCode
+ignore value source writeFailSameCall type CSignedInt32
+return ok successfulExitCode
 
 label checkDifferentMode
 # ListMode != EditMode — must compare not-equal via repr-CSignedInt64 path.
 call differentModeCall ScreenMode.equal
-arg differentModeCall left ListMode
-arg differentModeCall right EditMode
+argument differentModeCall left ScreenMode ListMode
+argument differentModeCall right ScreenMode EditMode
 run differentModeCall
-bind differentModeEqual Bool differentModeCall
-branchIf differentModeEqual failDifferentMode
+bind value differentModeEqual Bool differentModeCall
+branch if condition differentModeEqual target failDifferentMode
 call writeNotEqualCall console.writeLine
-arg writeNotEqualCall console console
-arg writeNotEqualCall text notEqualText
+argument writeNotEqualCall console Console console
+argument writeNotEqualCall text CNullTerminatedByteString notEqualText
 run writeNotEqualCall
-ignoreValue writeNotEqualCall CSignedInt32
-returnOk successfulExitCode
+ignore value source writeNotEqualCall type CSignedInt32
+return ok successfulExitCode
 
 label failDifferentMode
 call writeFailDiffCall console.writeLine
-arg writeFailDiffCall console console
-arg writeFailDiffCall text equalText
+argument writeFailDiffCall console Console console
+argument writeFailDiffCall text CNullTerminatedByteString equalText
 run writeFailDiffCall
-ignoreValue writeFailDiffCall CSignedInt32
-returnOk successfulExitCode
+ignore value source writeFailDiffCall type CSignedInt32
+return ok successfulExitCode

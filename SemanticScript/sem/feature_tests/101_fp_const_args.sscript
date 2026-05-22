@@ -7,63 +7,63 @@ entry console main
 error MainError
 errorCase MainError Placeholder CSignedInt32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main read memory.buffer
 effect main write console.stdout
 memory main heap auto
 async main no
-purpose main "Pass CFloat64 consts directly to c.signbit, c.isfinite, and c.isinf — exercising the const-arg path on all four FP classifiers."
-invariant main "Output: signbit(-1.5)=1, isinf(2.0)=0 (finite), isfinite(2.5)=1."
+purpose operation main "Pass CFloat64 consts directly to c.signbit, c.isfinite, and c.isinf — exercising the const-arg path on all four FP classifiers."
+invariant operation main "Output: signbit(-1.5)=1, isinf(2.0)=0 (finite), isfinite(2.5)=1."
 label startMain
-const triggerSize CByteCount 1
+storage module immutable triggerSize CByteCount 1
 call walkerTriggerCall c.malloc
-arg walkerTriggerCall size triggerSize
+argument walkerTriggerCall size CByteCount triggerSize
 run walkerTriggerCall
-bind triggerBuffer COpaqueMemoryAddress walkerTriggerCall
+bind value triggerBuffer COpaqueMemoryAddress walkerTriggerCall
 
-const negOnePtFive CFloat64 -1.5
-const twoVal CFloat64 2.0
-const twoPtFiveVal CFloat64 2.5
+storage module immutable negOnePtFive CFloat64 -1.5
+storage module immutable twoVal CFloat64 2.0
+storage module immutable twoPtFiveVal CFloat64 2.5
 
 call sbCall c.signbit
-arg sbCall value negOnePtFive
+argument sbCall value CFloat64 negOnePtFive
 run sbCall
-bind sbRes CSignedInt64 sbCall
-var sbStore I64 0
-set sbStore sbRes
+bind value sbRes CSignedInt64 sbCall
+memory main mutable sbStore I64 0
+set memory sbStore sbRes
 call w1 console.writeIntegerLine
-arg w1 console console
-arg w1 value sbStore
+argument w1 console Console console
+argument w1 value I64 sbStore
 run w1
-ignoreOk w1 Void
+ignore void source w1
 
 call iiCall c.isinf
-arg iiCall value twoVal
+argument iiCall value CFloat64 twoVal
 run iiCall
-bind iiRes CSignedInt64 iiCall
-var iiStore I64 0
-set iiStore iiRes
+bind value iiRes CSignedInt64 iiCall
+memory main mutable iiStore I64 0
+set memory iiStore iiRes
 call w2 console.writeIntegerLine
-arg w2 console console
-arg w2 value iiStore
+argument w2 console Console console
+argument w2 value I64 iiStore
 run w2
-ignoreOk w2 Void
+ignore void source w2
 
 call ifCall c.isfinite
-arg ifCall value twoPtFiveVal
+argument ifCall value CFloat64 twoPtFiveVal
 run ifCall
-bind ifRes CSignedInt64 ifCall
-var ifStore I64 0
-set ifStore ifRes
+bind value ifRes CSignedInt64 ifCall
+memory main mutable ifStore I64 0
+set memory ifStore ifRes
 call w3 console.writeIntegerLine
-arg w3 console console
-arg w3 value ifStore
+argument w3 console Console console
+argument w3 value I64 ifStore
 run w3
-ignoreOk w3 Void
+ignore void source w3
 
 call freeCall c.free
-arg freeCall ptr triggerBuffer
+argument freeCall ptr COpaqueMemoryAddress triggerBuffer
 run freeCall
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

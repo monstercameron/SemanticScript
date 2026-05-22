@@ -2,12 +2,12 @@
 # SEMANTICSCRIPT STANDARD LIBRARY TESTS: bitwise operations
 # ============================================================
 #
-# # rationale: companion test file for std/bit/main.sem. Imports
+# rationale: companion test file for std/bit/main.sem. Imports
 #   the bit module and exercises every operation it exports â€”
 #   shift / set / clear / toggle / predicate â€” with multiple cases
 #   per op (identity, boundary, inverse, round-trip, property).
 #
-# # invariant: success prints "OK\n" and exits 0; any failed
+# invariant: success prints "OK\n" and exits 0; any failed
 #   assertion surfaces MainError.BitSmokeAssertionFailed.
 #
 # # pattern: this is the canonical main.test.sem form â€” same
@@ -20,7 +20,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 
-importModule standard.bit
+import bit standard.bit
 error MainError
 errorCase MainError BitSmokeAssertionFailed
 errorCase MainError ConsoleWriteFailed
@@ -34,129 +34,129 @@ capability stdoutWriteCapability console.stdout write
 # ============================================================
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 useCapability main stdoutWriteCapability
 effect main write console.stdout
-memoryHeap main no
+memory main heap no
 async main no
-purpose main "Smoke-test the bit operations end-to-end."
-invariant main "shift / set / clear / toggle / predicate all produce the expected values."
+purpose operation main "Smoke-test the bit operations end-to-end."
+invariant operation main "shift / set / clear / toggle / predicate all produce the expected values."
 
 label startMain
-const threeValue CSignedInt64 3
-const fourValue CSignedInt64 4
-const fortyEightValue CSignedInt64 48
-const zeroValue CSignedInt64 0
-const eightValue CSignedInt64 8
-const fifteenValue CSignedInt64 15
-const oneValue CSignedInt64 1
-const thirteenValue CSignedInt64 13
-const fiveValue CSignedInt64 5
-const sevenValue CSignedInt64 7
+storage module immutable threeValue CSignedInt64 3
+storage module immutable fourValue CSignedInt64 4
+storage module immutable fortyEightValue CSignedInt64 48
+storage module immutable zeroValue CSignedInt64 0
+storage module immutable eightValue CSignedInt64 8
+storage module immutable fifteenValue CSignedInt64 15
+storage module immutable oneValue CSignedInt64 1
+storage module immutable thirteenValue CSignedInt64 13
+storage module immutable fiveValue CSignedInt64 5
+storage module immutable sevenValue CSignedInt64 7
 
 # shiftSignedInt64BitsLeft(3, 4) == 48
 call assertShiftLeftCall shiftSignedInt64BitsLeft
-arg assertShiftLeftCall inputValue threeValue
-arg assertShiftLeftCall bitIndex fourValue
+argument assertShiftLeftCall inputValue CSignedInt64 threeValue
+argument assertShiftLeftCall bitIndex CSignedInt64 fourValue
 run assertShiftLeftCall
-bind shiftLeftResult CSignedInt64 assertShiftLeftCall
+bind value shiftLeftResult CSignedInt64 assertShiftLeftCall
 call checkShiftLeftCall math.equalI64
-arg checkShiftLeftCall left shiftLeftResult
-arg checkShiftLeftCall right fortyEightValue
+argument checkShiftLeftCall left I64 shiftLeftResult
+argument checkShiftLeftCall right I64 fortyEightValue
 run checkShiftLeftCall
-bind shiftLeftOk Bool checkShiftLeftCall
-branchIf shiftLeftOk shiftLeftHolds
-branch smokeAssertionFailed
+bind value shiftLeftOk Bool checkShiftLeftCall
+branch if condition shiftLeftOk target shiftLeftHolds
+branch else target smokeAssertionFailed
 label shiftLeftHolds
 
 # shiftSignedInt64BitsRight(48, 4) == 3
 call assertShiftRightCall shiftSignedInt64BitsRight
-arg assertShiftRightCall inputValue fortyEightValue
-arg assertShiftRightCall bitIndex fourValue
+argument assertShiftRightCall inputValue CSignedInt64 fortyEightValue
+argument assertShiftRightCall bitIndex CSignedInt64 fourValue
 run assertShiftRightCall
-bind shiftRightResult CSignedInt64 assertShiftRightCall
+bind value shiftRightResult CSignedInt64 assertShiftRightCall
 call checkShiftRightCall math.equalI64
-arg checkShiftRightCall left shiftRightResult
-arg checkShiftRightCall right threeValue
+argument checkShiftRightCall left I64 shiftRightResult
+argument checkShiftRightCall right I64 threeValue
 run checkShiftRightCall
-bind shiftRightOk Bool checkShiftRightCall
-branchIf shiftRightOk shiftRightHolds
-branch smokeAssertionFailed
+bind value shiftRightOk Bool checkShiftRightCall
+branch if condition shiftRightOk target shiftRightHolds
+branch else target smokeAssertionFailed
 label shiftRightHolds
 
 # isSignedInt64BitSet(48, 4) == true (48 == 0b110000, bit 4 is set)
 call assertBitSetCall isSignedInt64BitSet
-arg assertBitSetCall inputValue fortyEightValue
-arg assertBitSetCall bitIndex fourValue
+argument assertBitSetCall inputValue CSignedInt64 fortyEightValue
+argument assertBitSetCall bitIndex CSignedInt64 fourValue
 run assertBitSetCall
-bind bitSetResult Bool assertBitSetCall
-branchIf bitSetResult bitSetHolds
-branch smokeAssertionFailed
+bind value bitSetResult Bool assertBitSetCall
+branch if condition bitSetResult target bitSetHolds
+branch else target smokeAssertionFailed
 label bitSetHolds
 
 # setSignedInt64Bit(0, 3) == 8
 call assertSetBitCall setSignedInt64Bit
-arg assertSetBitCall inputValue zeroValue
-arg assertSetBitCall bitIndex threeValue
+argument assertSetBitCall inputValue CSignedInt64 zeroValue
+argument assertSetBitCall bitIndex CSignedInt64 threeValue
 run assertSetBitCall
-bind setBitResult CSignedInt64 assertSetBitCall
+bind value setBitResult CSignedInt64 assertSetBitCall
 call checkSetBitCall math.equalI64
-arg checkSetBitCall left setBitResult
-arg checkSetBitCall right eightValue
+argument checkSetBitCall left I64 setBitResult
+argument checkSetBitCall right I64 eightValue
 run checkSetBitCall
-bind setBitOk Bool checkSetBitCall
-branchIf setBitOk setBitHolds
-branch smokeAssertionFailed
+bind value setBitOk Bool checkSetBitCall
+branch if condition setBitOk target setBitHolds
+branch else target smokeAssertionFailed
 label setBitHolds
 
 # clearSignedInt64Bit(15, 1) == 13
 call assertClearBitCall clearSignedInt64Bit
-arg assertClearBitCall inputValue fifteenValue
-arg assertClearBitCall bitIndex oneValue
+argument assertClearBitCall inputValue CSignedInt64 fifteenValue
+argument assertClearBitCall bitIndex CSignedInt64 oneValue
 run assertClearBitCall
-bind clearBitResult CSignedInt64 assertClearBitCall
+bind value clearBitResult CSignedInt64 assertClearBitCall
 call checkClearBitCall math.equalI64
-arg checkClearBitCall left clearBitResult
-arg checkClearBitCall right thirteenValue
+argument checkClearBitCall left I64 clearBitResult
+argument checkClearBitCall right I64 thirteenValue
 run checkClearBitCall
-bind clearBitOk Bool checkClearBitCall
-branchIf clearBitOk clearBitHolds
-branch smokeAssertionFailed
+bind value clearBitOk Bool checkClearBitCall
+branch if condition clearBitOk target clearBitHolds
+branch else target smokeAssertionFailed
 label clearBitHolds
 
 # toggleSignedInt64Bit(5, 1) == 7
 call assertToggleBitCall toggleSignedInt64Bit
-arg assertToggleBitCall inputValue fiveValue
-arg assertToggleBitCall bitIndex oneValue
+argument assertToggleBitCall inputValue CSignedInt64 fiveValue
+argument assertToggleBitCall bitIndex CSignedInt64 oneValue
 run assertToggleBitCall
-bind toggleBitResult CSignedInt64 assertToggleBitCall
+bind value toggleBitResult CSignedInt64 assertToggleBitCall
 call checkToggleBitCall math.equalI64
-arg checkToggleBitCall left toggleBitResult
-arg checkToggleBitCall right sevenValue
+argument checkToggleBitCall left I64 toggleBitResult
+argument checkToggleBitCall right I64 sevenValue
 run checkToggleBitCall
-bind toggleBitOk Bool checkToggleBitCall
-branchIf toggleBitOk toggleBitHolds
-branch smokeAssertionFailed
+bind value toggleBitOk Bool checkToggleBitCall
+branch if condition toggleBitOk target toggleBitHolds
+branch else target smokeAssertionFailed
 label toggleBitHolds
 
-const successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText CNullTerminatedByteString "OK"
 call writeSuccessLineCall console.writeLine
-arg writeSuccessLineCall console console
-arg writeSuccessLineCall text successMessageText
+argument writeSuccessLineCall console Console console
+argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
 run writeSuccessLineCall
-ignoreOk writeSuccessLineCall CSignedInt32
-bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
-branchIfError writeSuccessLineCall consoleWriteFailedHandler
-const exitOkCode ExitCode 0
-returnOk exitOkCode
+ignore ok source writeSuccessLineCall type CSignedInt32
+bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branch error source writeSuccessLineCall target consoleWriteFailedHandler
+storage module immutable exitOkCode ExitCode 0
+return ok exitOkCode
 
 # Failure leg: surface the raw negative CSignedInt32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler
 makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
-returnError consoleWriteFailedFailure
+return error consoleWriteFailedFailure
 label smokeAssertionFailed
 makeError bitSmokeFailure MainError.BitSmokeAssertionFailed
-returnError bitSmokeFailure
+return error bitSmokeFailure
