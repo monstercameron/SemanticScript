@@ -10,7 +10,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SEM_PATH = REPO_ROOT / "SemanticScript" / "tools" / "sem.py"
 TINY_PATH = REPO_ROOT / "SemanticScript" / "tests" / "tiny.sem"
+AGENT_DEMO_TEST_PATH = REPO_ROOT / "SemanticScript" / "tests" / "agent_cli_demo.test.sem"
 TASKFORGE_PATH = REPO_ROOT / "apps" / "taskforge-web"
+TASKFORGE_MAIN_PATH = TASKFORGE_PATH / "main.sem"
 
 
 def _sem_json(*args: str) -> tuple[int, dict]:
@@ -48,6 +50,8 @@ class TestSemCommandContracts(unittest.TestCase):
         code, payload = _sem_json("skills", "list", "--json")
         self.assertEqual(code, 0)
         self.assertEqual(payload["schemaVersion"], "sem.skills.v1")
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["status"], "ok")
         self.assertIn("aliasIndex", payload)
         self.assertEqual(payload["aliasIndex"]["sem"], "language-core")
         self.assertTrue(any(skill["name"] == "language-core" for skill in payload["skills"]))
@@ -56,8 +60,27 @@ class TestSemCommandContracts(unittest.TestCase):
         code, payload = _sem_json("skills", "get", "sem", "--json")
         self.assertEqual(code, 0)
         self.assertEqual(payload["schemaVersion"], "sem.skills.v1")
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["status"], "ok")
         self.assertEqual(payload["skills"][0]["name"], "language-core")
         self.assertIn("sem", payload["skills"][0]["aliases"])
+        self.assertEqual(payload["contentMode"], "summary")
+        self.assertEqual(payload["skills"][0]["contentMode"], "summary")
+        self.assertIn("sectionIndex", payload["skills"][0])
+        self.assertNotIn("content", payload["skills"][0])
+
+    def test_skills_get_full_contract(self) -> None:
+        code, payload = _sem_json("skills", "get", "sem", "--full", "--json")
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["contentMode"], "full")
+        self.assertIn("content", payload["skills"][0])
+
+    def test_skills_get_reports_missing_names(self) -> None:
+        code, payload = _sem_json("skills", "get", "sem", "nope", "--json")
+        self.assertEqual(code, 1)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["status"], "partial")
+        self.assertIn("nope", payload["missingNames"])
 
     def test_check_json_contract(self) -> None:
         code, payload = _sem_json("check", "--json", str(TINY_PATH))
@@ -67,7 +90,7 @@ class TestSemCommandContracts(unittest.TestCase):
         self.assertIn("nextCommands", payload)
         self.assertIn("summary", payload)
         self.assertIn("targetReadiness", payload)
-        self.assertIn(payload["status"], {"ok", "ok-with-warnings", "diagnostics", "compiler-error"})
+        self.assertIn(payload["status"], {"ok", "ok-with-warnings", "diagnostics", "compiler-error", "tool-error"})
         if payload["diagnostics"]:
             diagnostic = payload["diagnostics"][0]
             self.assertIn("expected", diagnostic)
@@ -75,10 +98,22 @@ class TestSemCommandContracts(unittest.TestCase):
             self.assertIn("repair", diagnostic)
             self.assertIn("explain", diagnostic)
 
+    def test_taskforge_check_json_compacts_project_payload(self) -> None:
+        code, payload = _sem_json("check", "--json", str(TASKFORGE_PATH))
+        self.assertEqual(code, 1)
+        self.assertEqual(payload["view"]["mode"], "compact")
+        self.assertIn("diagnostics", payload["view"]["truncation"])
+        self.assertGreater(
+            payload["view"]["truncation"]["diagnostics"]["total"],
+            payload["view"]["truncation"]["diagnostics"]["returned"],
+        )
+
     def test_explain_json_contract(self) -> None:
         code, payload = _sem_json("explain", "--json", "SS3104")
         self.assertEqual(code, 0)
         self.assertEqual(payload["schemaVersion"], "sem.explain.v1")
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["status"], "ok")
         self.assertTrue(payload["found"])
         self.assertIn("whyItMatters", payload)
         self.assertIn("nextCommands", payload)
@@ -89,6 +124,13 @@ class TestSemCommandContracts(unittest.TestCase):
         self.assertEqual(payload["schemaVersion"], "sem.graph.v1")
         self.assertEqual(payload["kind"], "calls")
         self.assertIn("edges", payload)
+        self.assertIn("nextCommands", payload)
+        self.assertFalse(any("<" in item["command"] for item in payload["nextCommands"]))
+
+    def test_graph_summary_next_commands_are_concrete(self) -> None:
+        code, payload = _sem_json("graph", "--kind", "summary", "--json", str(TASKFORGE_MAIN_PATH))
+        self.assertEqual(code, 0)
+        self.assertFalse(any("<" in item["command"] for item in payload["nextCommands"]))
 
     def test_slice_json_contract(self) -> None:
         code, payload = _sem_json("slice", "--operation", "healthHandler", "--json", str(TASKFORGE_PATH))
@@ -96,21 +138,68 @@ class TestSemCommandContracts(unittest.TestCase):
         self.assertEqual(payload["schemaVersion"], "sem.slice.v1")
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["operation"]["name"], "healthHandler")
+        self.assertIn("inputPath", payload)
+        self.assertIn("nextCommands", payload)
+
+    def test_readme_route_slice_example_is_valid(self) -> None:
+        code, payload = _sem_json("slice", "--route", "POST:/api/todos", "--json", str(TASKFORGE_PATH))
+        self.assertEqual(code, 0)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["route"]["path"], "/api/todos")
+
+    def test_readme_symbol_slice_example_is_valid(self) -> None:
+        code, payload = _sem_json("slice", "--symbol", "serverPortNumber", "--json", str(TASKFORGE_PATH))
+        self.assertEqual(code, 0)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["symbolType"], "storage")
 
     def test_fix_json_contract(self) -> None:
         code, payload = _sem_json("fix", "--plan", "--json", str(TINY_PATH))
         self.assertEqual(code, 0)
         self.assertEqual(payload["schemaVersion"], "sem.fixPlan.v1")
+        self.assertEqual(payload["status"], "actionable")
         self.assertIn("repairs", payload)
         self.assertIn("preconditions", payload)
         self.assertIn("nextCommands", payload)
+
+    def test_taskforge_fix_json_compacts_project_payload(self) -> None:
+        code, payload = _sem_json("fix", "--plan", "--json", str(TASKFORGE_PATH))
+        self.assertEqual(code, 1)
+        self.assertEqual(payload["view"]["mode"], "compact")
+        self.assertIn("repairs", payload["view"]["truncation"])
 
     def test_size_json_contract(self) -> None:
         code, payload = _sem_json("size", "--json", str(TINY_PATH))
         self.assertEqual(code, 0)
         self.assertEqual(payload["schemaVersion"], "sem.size.v1")
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["status"], "ok")
+        self.assertIn("scope", payload)
         self.assertIn("summary", payload)
         self.assertIn("retainedHelpers", payload)
+        self.assertIn("nextCommands", payload)
+
+    def test_context_json_contract(self) -> None:
+        code, payload = _sem_json("context", "--json", str(TASKFORGE_PATH))
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["schemaVersion"], "sem.context.v1")
+        self.assertIn("project", payload)
+
+    def test_symbols_json_contract(self) -> None:
+        code, payload = _sem_json("symbols", "--json", str(TASKFORGE_PATH))
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["schemaVersion"], "sem.symbols.v1")
+        self.assertIn("summary", payload)
+
+    def test_fmt_check_contract(self) -> None:
+        proc = subprocess.run(
+            [sys.executable, str(SEM_PATH), "fmt", "--check", str(AGENT_DEMO_TEST_PATH)],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
 
     def test_dev_json_contract(self) -> None:
         code, payload = _sem_json("dev", "--json", str(TINY_PATH))
@@ -118,29 +207,46 @@ class TestSemCommandContracts(unittest.TestCase):
         self.assertEqual(payload["schemaVersion"], "sem.dev.v1")
         self.assertEqual(payload["mode"], "watch-plan")
         self.assertIn("watch", payload)
+        self.assertIn("nextCommands", payload)
+
+    def test_taskforge_dev_reports_blocked_project_watch_plan(self) -> None:
+        code, payload = _sem_json("dev", "--json", str(TASKFORGE_MAIN_PATH))
+        self.assertEqual(code, 1)
+        self.assertEqual(payload["schemaVersion"], "sem.dev.v1")
+        self.assertEqual(payload["status"], "blocked")
+        self.assertFalse(payload["ok"])
+        self.assertIn("components\\main.sem", "\n".join(payload["watch"]["files"]))
+        self.assertIn("pages\\main.sem", "\n".join(payload["watch"]["files"]))
+        self.assertEqual(payload["surfaceShift"]["from"], "source-file")
+        self.assertEqual(payload["surfaceShift"]["to"], "project")
+        self.assertIn("graph --kind routes", payload["actions"][2]["command"])
+        self.assertIn("routes are present", payload["restart"]["reason"])
+
+    def test_taskforge_check_and_dev_surface_shift_agree(self) -> None:
+        _, check_payload = _sem_json("check", "--json", str(TASKFORGE_MAIN_PATH))
+        _, dev_payload = _sem_json("dev", "--json", str(TASKFORGE_MAIN_PATH))
+        self.assertEqual(check_payload["surfaceShift"]["from"], "source-file")
+        self.assertEqual(check_payload["surfaceShift"]["to"], "project")
+        self.assertEqual(dev_payload["surfaceShift"]["from"], "source-file")
+        self.assertEqual(dev_payload["surfaceShift"]["to"], "project")
 
     def test_test_json_contract(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            source = Path(tmp) / "demo.test.sem"
-            source.write_text(
-                "project DemoTest\n"
-                "target console\n"
-                "runtime AgentRuntime 0.1\n"
-                "entry console main\n"
-                "operation main\n"
-                "output operation main ExitCode\n"
-                "memory main heap no\n"
-                "async main no\n"
-                "purpose operation main \"demo test\"\n"
-                "invariant operation main \"returns zero\"\n"
-                "return value 0\n",
-                encoding="utf-8",
-            )
-            code, payload = _sem_json("test", "--json", str(source))
+        code, payload = _sem_json("test", "--json", str(AGENT_DEMO_TEST_PATH))
         self.assertEqual(code, 0)
         self.assertEqual(payload["schemaVersion"], "sem.test.v1")
+        self.assertEqual(payload["status"], "passed")
         self.assertEqual(payload["discoveredTests"], 1)
         self.assertIn("nextCommands", payload)
+
+    def test_test_json_contract_reports_no_tests(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "main.sem"
+            source.write_text("module demo.agent\noperation main\nreturn void\n", encoding="utf-8")
+            code, payload = _sem_json("test", "--json", str(source))
+            self.assertEqual(code, 1)
+            self.assertEqual(payload["schemaVersion"], "sem.test.v1")
+            self.assertEqual(payload["status"], "no-tests")
+            self.assertEqual(payload["selectedTests"], 0)
 
     def test_patch_dry_run_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -170,7 +276,87 @@ class TestSemCommandContracts(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertEqual(payload["schemaVersion"], "sem.patch.v1")
             self.assertEqual(payload["mode"], "dry-run")
+            self.assertFalse(payload["applied"])
             self.assertIn("nextCommands", payload)
+
+    def test_patch_accepts_utf8_bom_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "main.sem"
+            source.write_text("module demo.agent\noperation main\nreturn void\n", encoding="utf-8")
+            plan = Path(tmp) / "plan.json"
+            plan.write_text(json.dumps({
+                "schemaVersion": "sem.fixPlan.v1",
+                "status": "actionable",
+                "planUsable": True,
+                "inputPath": str(source),
+                "preconditions": {"fileHashes": {}},
+                "repairs": [{"diagnostic": "SSTEST", "edits": []}],
+            }), encoding="utf-8-sig")
+            code, payload = _sem_json("patch", "--dry-run", "--json", str(plan))
+
+        self.assertEqual(code, 0)
+        self.assertTrue(payload["ok"])
+
+    def test_patch_dry_run_stale_contract_is_nonzero(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "main.sem"
+            source.write_text("module demo.agent\noperation main\nreturn void\n", encoding="utf-8")
+            source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+            plan = Path(tmp) / "plan.json"
+            plan.write_text(json.dumps({
+                "schemaVersion": "sem.fixPlan.v1",
+                "inputPath": str(source),
+                "preconditions": {"fileHashes": {str(source): source_hash}},
+                "repairs": [],
+            }), encoding="utf-8")
+            source.write_text("module demo.agent\noperation main\nreturn value changed\n", encoding="utf-8")
+            code, payload = _sem_json("patch", "--dry-run", "--json", str(plan))
+            self.assertEqual(code, 1)
+            self.assertFalse(payload["ok"])
+
+    def test_patch_missing_plan_returns_structured_error(self) -> None:
+        missing = str((REPO_ROOT / "missing-plan.json").resolve())
+        proc = subprocess.run(
+            [sys.executable, str(SEM_PATH), "patch", "--dry-run", "--json", missing],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertEqual(proc.returncode, 1)
+        payload = json.loads(proc.stdout)
+        self.assertEqual(payload["schemaVersion"], "sem.patch.v1")
+        self.assertFalse(payload["ok"])
+
+    def test_agent_demo_fixture_check_and_test_are_green(self) -> None:
+        check_code, check_payload = _sem_json("check", "--json", str(AGENT_DEMO_TEST_PATH))
+        test_code, test_payload = _sem_json("test", "--json", str(AGENT_DEMO_TEST_PATH))
+        self.assertEqual(check_code, 0)
+        self.assertEqual(check_payload["status"], "ok")
+        self.assertEqual(test_code, 0)
+        self.assertEqual(test_payload["status"], "passed")
+
+    def test_taskforge_test_reports_preflight_diagnostics(self) -> None:
+        check_code, check_payload = _sem_json("check", "--json", str(TASKFORGE_PATH))
+        test_code, test_payload = _sem_json("test", "--json", str(TASKFORGE_PATH))
+        self.assertEqual(check_code, 1)
+        self.assertIn(check_payload["status"], {"diagnostics", "compiler-error", "tool-error"})
+        self.assertEqual(test_code, 1)
+        self.assertEqual(test_payload["status"], "diagnostics")
+        self.assertFalse(test_payload["ok"])
+        self.assertFalse(test_payload["preflightCheck"]["ok"])
+        self.assertEqual(test_payload["executedTests"], 0)
+        self.assertEqual(test_payload["skippedTests"], 1)
+        self.assertIn("semantic preflight", test_payload["results"][0]["reason"])
+
+    def test_taskforge_test_skip_python_harnesses_still_reports_preflight_diagnostics(self) -> None:
+        test_code, test_payload = _sem_json("test", "--json", "--skip-python-harnesses", str(TASKFORGE_PATH))
+        self.assertEqual(test_code, 1)
+        self.assertEqual(test_payload["status"], "diagnostics")
+        self.assertFalse(test_payload["ok"])
+        self.assertEqual(test_payload["executedTests"], 0)
+        self.assertEqual(test_payload["skippedTests"], 1)
+        self.assertFalse(test_payload["preflightCheck"]["ok"])
 
 
 if __name__ == "__main__":

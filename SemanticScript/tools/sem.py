@@ -8,6 +8,8 @@ delegates to the reference tools without inventing a second build engine.
 from __future__ import annotations
 
 import argparse
+import copy
+import functools
 import hashlib
 import importlib.util
 import json
@@ -45,6 +47,16 @@ CLEAN_FILE_SUFFIXES = frozenset({
     ".vsix",
 })
 CLEAN_EXACT_RELATIVE_PATHS = frozenset({"apps/taskforge-tui/todos.json"})
+CHECK_DIAGNOSTIC_WINDOW = 40
+CHECK_TOOL_ERROR_WINDOW = 20
+CHECK_REFERENCE_WINDOW = 40
+FIX_REPAIR_WINDOW = 30
+GRAPH_NODE_WINDOW = 80
+GRAPH_EDGE_WINDOW = 160
+SLICE_CALL_WINDOW = 25
+SLICE_CALLER_WINDOW = 15
+SLICE_CONTROL_FLOW_WINDOW = 25
+SLICE_RETURN_WINDOW = 10
 SKILL_REGISTRY = (
     {
         "name": "language-core",
@@ -70,6 +82,12 @@ SKILL_REGISTRY = (
         "files": (
             "docs/agents.md",
             "docs/toolchain/agent-workflows.md",
+        ),
+    },
+    {
+        "name": "agent-tooling-research",
+        "description": "Long-form research and experiments on agent-first SemanticScript tooling.",
+        "files": (
             "experiments/agent-first-tooling-research/README.md",
         ),
     },
@@ -184,6 +202,18 @@ DIAGNOSTIC_EXPLAINERS = {
             "Use `sem inspect-ir` or trace output when the failure depends on runtime lowering."
         ],
     },
+    "SEMSC_PARSE": {
+        "title": "compiler parse failure",
+        "summary": "The reference compiler could not parse the requested SemanticScript surface.",
+        "whyItMatters": [
+            "Agents should not keep editing blindly when the parser has already lost the source structure.",
+            "Parse failures usually mean the next safe move is to restore a valid row shape before broader repairs."
+        ],
+        "commonFixes": [
+            "Inspect the cited source line and restore a valid current-row form from SYNTAX.md or `sem skills get sem --json`.",
+            "Run `sem check --json` again after fixing the malformed row so higher-level diagnostics are trustworthy."
+        ],
+    },
 }
 
 
@@ -199,6 +229,13 @@ def _file_sha256(path: Path) -> str:
         return hashlib.sha256(path.read_bytes()).hexdigest()
     except OSError:
         return ""
+
+
+def _file_sha256_with_error(path: Path) -> tuple[str, str]:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest(), ""
+    except OSError as exc:
+        return "", str(exc)
 
 
 def _safe_stem(path: Path) -> str:
@@ -562,13 +599,16 @@ def _env_header_exists(
 
 
 def _doctor_payload() -> dict:
-    python_ok = sys.version_info >= (3, 11)
+    python_ok = sys.version_info >= (3, 10)
+    python_detail = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    if python_ok and sys.version_info < (3, 11):
+        python_detail += " (compatible; 3.11+ recommended for release validation)"
     checks = [
         _doctor_check(
             "python",
             python_ok,
-            f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-            "Install Python 3.11 or newer and re-run from that interpreter.",
+            python_detail,
+            "Install Python 3.10 or newer. Use Python 3.11 or newer for release validation.",
         ),
         _doctor_check(
             "llvmlite",
@@ -767,7 +807,7 @@ def _build_context_payload(path: Path) -> dict:
     requested = path
     build_tape = _find_build_tape(path)
     source_for_facts = build_tape if build_tape is not None else path
-    facts = semlint.parse_file(source_for_facts) if source_for_facts.exists() else None
+    facts = semlint.parse_file(source_for_facts) if source_for_facts.is_file() else None
     source_files, _errors = _symbol_source_files(path)
     syntax_counts = _syntax_status_counts()
     project = {
@@ -874,6 +914,49 @@ def _symbol_source_files(path: Path) -> tuple[list[Path], list[str]]:
         seen.add(source)
         deduped.append(source)
     return deduped, errors
+
+
+def _requested_surface_kind(path: Path) -> str:
+    requested = path.resolve()
+    if requested.is_dir():
+        return "directory"
+    if requested.is_file() and requested.name.lower() in {"build.sem", "build.sscript"}:
+        return "build-tape"
+    if requested.is_file():
+        return "source-file"
+    return "path"
+
+
+def _scope_label_from_sources(source_files: list[str] | list[Path]) -> str:
+    return "project" if len(source_files) > 1 else "file"
+
+
+def _payload_scope(path: Path, **scopes: str) -> dict:
+    build_tape = _find_build_tape(path)
+    payload = {
+        "requestedSurface": _requested_surface_kind(path),
+        "requestedPath": str(path.resolve()),
+        "buildTape": str(build_tape.resolve()) if build_tape else "",
+    }
+    for name, value in scopes.items():
+        if value:
+            payload[name] = value
+    return payload
+
+
+def _surface_shift(path: Path, from_scope: str, to_scope: str, *, reason: str) -> dict:
+    build_tape = _find_build_tape(path)
+    requested = path.resolve()
+    if build_tape is None or not requested.is_file() or requested.name.lower() in {"build.sem", "build.sscript"}:
+        return {}
+    if not from_scope or not to_scope or from_scope == to_scope:
+        return {}
+    return {
+        "from": from_scope,
+        "to": to_scope,
+        "reason": reason,
+        "buildTape": str(build_tape.resolve()),
+    }
 
 
 def _source_ref(line) -> dict:
@@ -1564,6 +1647,157 @@ def _compiler_check_probe(source: Path, compiler_args: list[str]) -> dict:
     }
 
 
+def _normalize_compiler_diagnostic(diagnostic: dict) -> dict:
+    primary = diagnostic.get("primary", {}) or {}
+    suggested_fixes = list(diagnostic.get("suggestedFixes", []))
+    return {
+        "code": diagnostic.get("code", ""),
+        "severity": diagnostic.get("severity", "error"),
+        "source": "compiler",
+        "kind": diagnostic.get("phase", ""),
+        "message": diagnostic.get("message", ""),
+        "span": {
+            "file": str(Path(primary.get("path", "")).resolve()) if primary.get("path") else "",
+            "line": int(primary.get("line", 0) or 0),
+            "column": int(primary.get("column", 0) or 0),
+            "role": primary.get("role", ""),
+        },
+        "subjectName": "",
+        "subjectKind": "",
+        "gapEdge": "",
+        "expected": "SemanticScript source that parses, checks, and lowers successfully",
+        "actual": diagnostic.get("message", ""),
+        "help": diagnostic.get("agentHint", ""),
+        "invariantRule": "",
+        "specAnchor": "",
+        "blocksCompile": bool(diagnostic.get("blocksCompile", True)),
+        "confidence": "high",
+        "effort": "unknown",
+        "citations": [],
+        "fixCandidates": [
+            {
+                "name": f"compilerFix{index}",
+                "shape": suggestion,
+                "autoApplicable": False,
+            }
+            for index, suggestion in enumerate(suggested_fixes, start=1)
+        ],
+        "repair": {
+            "id": "",
+            "safe": False,
+            "fixSafety": "requires-human-review",
+        },
+        "compilerPhase": diagnostic.get("phase", ""),
+        "semanticStack": list(diagnostic.get("semanticStack", [])),
+        "loweringTrace": list(diagnostic.get("loweringTrace", [])),
+        "backendExcerpt": diagnostic.get("backendExcerpt", ""),
+        "direction": diagnostic.get("direction", ""),
+        "explain": {
+            "code": diagnostic.get("code", ""),
+            "command": f"sem explain {diagnostic.get('code', '')} --json".strip(),
+        },
+    }
+
+
+def _normalize_compiler_parse_error(stderr_text: str) -> dict | None:
+    match = re.match(r"^semsc: parse error in (.+): line (\d+): (.+)$", stderr_text.strip(), re.DOTALL)
+    if not match:
+        return None
+    path_text, line_text, message = match.groups()
+    return {
+        "code": "SEMSC_PARSE",
+        "severity": "error",
+        "source": "compiler",
+        "kind": "parse",
+        "message": message.strip(),
+        "span": {
+            "file": str(Path(path_text).resolve()),
+            "line": int(line_text),
+            "column": 1,
+            "role": "compilerError",
+        },
+        "subjectName": "",
+        "subjectKind": "",
+        "gapEdge": "",
+        "expected": "valid SemanticScript syntax that the parser accepts",
+        "actual": message.strip(),
+        "help": "Inspect the source row named by the parser failure and re-run sem check after correcting the syntax.",
+        "invariantRule": "",
+        "specAnchor": "",
+        "blocksCompile": True,
+        "confidence": "high",
+        "effort": "unknown",
+        "citations": [],
+        "fixCandidates": [],
+        "repair": {
+            "id": "",
+            "safe": False,
+            "fixSafety": "requires-human-review",
+        },
+        "compilerPhase": "parse",
+        "semanticStack": [],
+        "loweringTrace": [],
+        "backendExcerpt": "",
+        "direction": "The parser rejected the current row before semantic analysis or lowering could continue.",
+        "explain": {
+            "code": "SEMSC_PARSE",
+            "command": "",
+        },
+    }
+
+
+def _compiler_diagnostics_from_payload(payload) -> list[dict]:
+    diagnostics = []
+    if isinstance(payload, dict):
+        if payload.get("schema") == "semsc.diagnostic.v1":
+            diagnostics.append(_normalize_compiler_diagnostic(payload))
+    elif isinstance(payload, list):
+        for item in payload:
+            diagnostics.extend(_compiler_diagnostics_from_payload(item))
+    return diagnostics
+
+
+def _collect_compiler_diagnostics(compiler: dict) -> tuple[list[dict], list[str]]:
+    stderr_text = (compiler.get("stderr") or "").strip()
+    if compiler.get("ok", False):
+        return [], []
+    if not stderr_text:
+        return [], ["compiler failed without diagnostics output"]
+    try:
+        parsed = json.loads(stderr_text)
+    except json.JSONDecodeError:
+        parsed = None
+    if parsed is not None:
+        diagnostics = _compiler_diagnostics_from_payload(parsed)
+        if diagnostics:
+            return diagnostics, []
+
+    diagnostics = []
+    remainder = []
+    for line in stderr_text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            parsed_line = json.loads(stripped)
+        except json.JSONDecodeError:
+            remainder.append(line)
+            continue
+        line_diagnostics = _compiler_diagnostics_from_payload(parsed_line)
+        if line_diagnostics:
+            diagnostics.extend(line_diagnostics)
+        else:
+            remainder.append(line)
+    if diagnostics:
+        extra = "\n".join(item for item in remainder if item.strip()).strip()
+        return diagnostics, ([extra[:2000]] if extra else [])
+
+    parse_error = _normalize_compiler_parse_error(stderr_text)
+    if parse_error is not None:
+        return [parse_error], []
+    return [], [stderr_text[:2000]]
+
+
 def _append_next_command(entries: list[dict], seen: set[str], kind: str, command: str, reason: str) -> None:
     if not command or command in seen:
         return
@@ -1575,13 +1809,148 @@ def _append_next_command(entries: list[dict], seen: set[str], kind: str, command
     })
 
 
+def _is_project_surface(path: Path) -> bool:
+    resolved = path.resolve()
+    return _find_build_tape(path) is not None or resolved.is_dir()
+
+
+def _graph_followup_entry(
+    path: Path,
+    *,
+    project_kind: str = "summary",
+    file_kind: str = "calls",
+    project_reason: str,
+    file_reason: str,
+) -> dict:
+    resolved = str(path.resolve())
+    if _is_project_surface(path):
+        return {
+            "kind": "graph",
+            "command": f"sem graph --kind {project_kind} --json {resolved}",
+            "reason": project_reason,
+        }
+    return {
+        "kind": "graph",
+        "command": f"sem graph --kind {file_kind} --json {resolved}",
+        "reason": file_reason,
+    }
+
+
+def _compact_list(items: list, limit: int) -> tuple[list, dict | None]:
+    total = len(items)
+    if total <= limit:
+        return list(items), None
+    return list(items[:limit]), {
+        "returned": limit,
+        "total": total,
+        "truncated": total - limit,
+    }
+
+
+def _payload_view(payload: dict) -> dict:
+    return payload.setdefault("view", {"mode": "compact", "truncation": {}})
+
+
+def _record_truncation(payload: dict, field: str, window: dict | None) -> None:
+    if window is None:
+        return
+    view = _payload_view(payload)
+    view["truncation"][field] = window
+
+
+def _compact_check_payload_for_cli(path: Path, payload: dict, *, full: bool) -> dict:
+    compacted = copy.deepcopy(payload)
+    if full:
+        compacted["view"] = {"mode": "full", "truncation": {}}
+        return compacted
+    diagnostics, diagnostics_window = _compact_list(compacted.get("diagnostics", []), CHECK_DIAGNOSTIC_WINDOW)
+    compacted["diagnostics"] = diagnostics
+    _record_truncation(compacted, "diagnostics", diagnostics_window)
+    tool_errors, tool_errors_window = _compact_list(compacted.get("toolErrors", []), CHECK_TOOL_ERROR_WINDOW)
+    compacted["toolErrors"] = tool_errors
+    compacted["errors"] = list(tool_errors)
+    _record_truncation(compacted, "toolErrors", tool_errors_window)
+    unresolved, unresolved_window = _compact_list(compacted.get("unresolvedReferences", []), CHECK_REFERENCE_WINDOW)
+    compacted["unresolvedReferences"] = unresolved
+    _record_truncation(compacted, "unresolvedReferences", unresolved_window)
+    if "view" not in compacted:
+        compacted["view"] = {"mode": "full", "truncation": {}}
+    return compacted
+
+
+def _compact_fix_payload_for_cli(path: Path, payload: dict, *, full: bool) -> dict:
+    compacted = copy.deepcopy(payload)
+    if full:
+        compacted["view"] = {"mode": "full", "truncation": {}}
+        return compacted
+    repairs, repairs_window = _compact_list(compacted.get("repairs", []), FIX_REPAIR_WINDOW)
+    compacted["repairs"] = repairs
+    _record_truncation(compacted, "repairs", repairs_window)
+    if "view" not in compacted:
+        compacted["view"] = {"mode": "full", "truncation": {}}
+    return compacted
+
+
+def _compact_graph_payload_for_cli(path: Path, payload: dict, *, full: bool) -> dict:
+    compacted = copy.deepcopy(payload)
+    if full:
+        compacted["view"] = {"mode": "full", "truncation": {}}
+        return compacted
+    nodes, nodes_window = _compact_list(compacted.get("nodes", []), GRAPH_NODE_WINDOW)
+    edges, edges_window = _compact_list(compacted.get("edges", []), GRAPH_EDGE_WINDOW)
+    compacted["nodes"] = nodes
+    compacted["edges"] = edges
+    _record_truncation(compacted, "nodes", nodes_window)
+    _record_truncation(compacted, "edges", edges_window)
+    if "view" not in compacted:
+        compacted["view"] = {"mode": "full", "truncation": {}}
+    return compacted
+
+
+def _compact_slice_payload_for_cli(path: Path, payload: dict, *, full: bool) -> dict:
+    compacted = copy.deepcopy(payload)
+    if full:
+        compacted["view"] = {"mode": "full", "truncation": {}}
+        return compacted
+    called_operations, called_window = _compact_list(compacted.get("calledOperations", []), SLICE_CALL_WINDOW)
+    callers, callers_window = _compact_list(compacted.get("callers", []), SLICE_CALLER_WINDOW)
+    compacted["calledOperations"] = called_operations
+    compacted["callers"] = callers
+    _record_truncation(compacted, "calledOperations", called_window)
+    _record_truncation(compacted, "callers", callers_window)
+    operation = compacted.get("operation")
+    if isinstance(operation, dict):
+        calls, calls_window = _compact_list(operation.get("calls", []), SLICE_CALL_WINDOW)
+        control_flow, control_window = _compact_list(operation.get("controlFlow", []), SLICE_CONTROL_FLOW_WINDOW)
+        returns, returns_window = _compact_list(operation.get("returns", []), SLICE_RETURN_WINDOW)
+        operation["calls"] = [
+            {
+                "name": call.get("name", ""),
+                "target": call.get("target", ""),
+                "location": call.get("location", {}),
+            }
+            for call in calls
+        ]
+        operation["controlFlow"] = control_flow
+        operation["returns"] = returns
+        _record_truncation(compacted, "operation.calls", calls_window)
+        _record_truncation(compacted, "operation.controlFlow", control_window)
+        _record_truncation(compacted, "operation.returns", returns_window)
+    if "view" not in compacted:
+        compacted["view"] = {"mode": "full", "truncation": {}}
+    return compacted
+
+
 def _check_next_commands(path: Path, diagnostics: list[dict], status: str) -> list[dict]:
     resolved = str(path.resolve())
     entries: list[dict] = []
     seen: set[str] = set()
+    has_tests = bool(_discover_test_entries(path))
+    build_tape = _find_build_tape(path)
+    project_diag_with_file_entry = bool(build_tape is not None and path.resolve().is_file() and path.name.lower() not in {"build.sem", "build.sscript"})
     for diagnostic in diagnostics[:8]:
         code = diagnostic.get("code", "")
-        if code:
+        if code and _diagnostic_has_explainer(code):
             _append_next_command(
                 entries,
                 seen,
@@ -1605,14 +1974,29 @@ def _check_next_commands(path: Path, diagnostics: list[dict], status: str) -> li
             f"sem fix --plan --json {resolved}",
             "generate a reviewable repair plan for the current diagnostics",
         )
+    graph_entry = _graph_followup_entry(
+        path,
+        project_kind="summary",
+        file_kind="calls",
+        project_reason=(
+            "inspect the compact project graph before drilling into a file-local semantic neighborhood"
+            if project_diag_with_file_entry else
+            "inspect the compact project graph before editing shared behavior"
+        ),
+        file_reason=(
+            "inspect the local file graph before editing while keeping the current project-scoped diagnostics in view"
+            if project_diag_with_file_entry else
+            "inspect the local call graph before editing shared behavior"
+        ),
+    )
     _append_next_command(
         entries,
         seen,
-        "graph",
-        f"sem graph --kind calls --json {resolved}",
-        "inspect the local call graph before editing shared behavior",
+        graph_entry["kind"],
+        graph_entry["command"],
+        graph_entry["reason"],
     )
-    if status in {"ok", "ok-with-warnings"}:
+    if status in {"ok", "ok-with-warnings"} and has_tests:
         _append_next_command(
             entries,
             seen,
@@ -1652,34 +2036,77 @@ def _readiness_next_commands(path: Path, payload: dict) -> list[dict]:
     return entries
 
 
-def _fix_plan_next_commands(path: Path) -> list[dict]:
+def _fix_plan_next_commands(path: Path, *, patchable: bool, plan_usable: bool, status: str) -> list[dict]:
     resolved = str(path.resolve())
-    return [
-        {
-            "kind": "patch",
-            "command": "sem patch --dry-run --json <PLAN.json>",
-            "reason": "preview the exact edits before mutating source files",
-        },
-        {
-            "kind": "patch",
-            "command": "sem patch --apply --json <PLAN.json>",
-            "reason": "apply the reviewed repair plan with formatter and check verification",
-        },
-        {
+    entries = []
+    if status == "actionable" and patchable and plan_usable:
+        entries.extend([
+            {
+                "kind": "patch",
+                "command": "sem patch --dry-run --json <PLAN.json>",
+                "reason": "preview the exact edits before mutating source files",
+            },
+            {
+                "kind": "patch",
+                "command": "sem patch --apply --json <PLAN.json>",
+                "reason": "apply the reviewed repair plan with formatter and check verification",
+            },
+        ])
+    if status == "blocked":
+        entries.append({
             "kind": "check",
             "command": f"sem check --json {resolved}",
-            "reason": "recompute the current diagnostic set after reviewing the plan",
-        },
-        {
+            "reason": "resolve compiler-blocking diagnostics before trusting a machine patch plan",
+        })
+        entries.append({
+            "kind": "explain",
+            "command": "sem explain SEMSC_PARSE --json",
+            "reason": "load the compiler-parse recovery guidance before retrying repair planning",
+        })
+        return entries
+    if status == "suggestions-only":
+        entries.append({
+            "kind": "check",
+            "command": f"sem check --json {resolved}",
+            "reason": "recompute diagnostics after manually reviewing the suggestions-only plan",
+        })
+        entries.append(
+            _graph_followup_entry(
+                path,
+                project_kind="summary",
+                file_kind="calls",
+                project_reason="inspect the compact project graph because no machine-applicable patch was derived",
+                file_reason="inspect the surrounding call graph because no machine-applicable patch was derived",
+            )
+        )
+        return entries
+    entries.append({
+        "kind": "check",
+        "command": f"sem check --json {resolved}",
+        "reason": "recompute the current diagnostic set after reviewing the plan",
+    })
+    if _discover_test_entries(path):
+        entries.append({
             "kind": "test",
             "command": f"sem test --json {resolved}",
             "reason": "run test discovery once the repair plan is accepted",
-        },
-    ]
+        })
+    else:
+        entries.append(
+            _graph_followup_entry(
+                path,
+                project_kind="summary",
+                file_kind="calls",
+                project_reason="inspect the compact project graph when no tests are available for this surface",
+                file_reason="inspect the surrounding call graph when no tests are available for this surface",
+            )
+        )
+    return entries
 
 
 def _patch_next_commands(plan: dict, mode: str, ok: bool) -> list[dict]:
     input_path = str(Path(plan.get("inputPath", ".")).resolve())
+    input_resolved = Path(input_path)
     if not ok:
         return [
             {
@@ -1712,70 +2139,215 @@ def _patch_next_commands(plan: dict, mode: str, ok: bool) -> list[dict]:
             "command": f"sem check --json {input_path}",
             "reason": "re-run structured diagnostics after the patch landed",
         },
-        {
-            "kind": "test",
-            "command": f"sem test --json {input_path}",
-            "reason": "verify behavior after the patch and formatter normalization",
-        },
-        {
-            "kind": "graph",
-            "command": f"sem graph --kind calls --json {input_path}",
-            "reason": "inspect the post-patch call graph if shared behavior changed",
-        },
+        *([
+            {
+                "kind": "test",
+                "command": f"sem test --json {input_path}",
+                "reason": "verify behavior after the patch and formatter normalization",
+            }
+        ] if _discover_test_entries(input_resolved) else []),
+        _graph_followup_entry(
+            input_resolved,
+            project_kind="summary",
+            file_kind="calls",
+            project_reason="inspect the compact post-patch project graph if shared behavior changed",
+            file_reason="inspect the post-patch call graph if shared behavior changed",
+        ),
     ]
 
 
-def _test_next_commands(path: Path, failed: int) -> list[dict]:
+def _test_next_commands(path: Path, failed: int, *, source_ok: bool) -> list[dict]:
     resolved = str(path.resolve())
+    fix_reason = (
+        "generate candidate repairs for issues surfaced by the failing tests"
+        if failed else
+        "generate candidate repairs for source diagnostics that block a clean test loop"
+    )
     entries = [
         {
             "kind": "check",
             "command": f"sem check --json {resolved}",
             "reason": "inspect structured diagnostics for the same project surface",
         },
-        {
-            "kind": "graph",
-            "command": f"sem graph --kind calls --json {resolved}",
-            "reason": "inspect the call graph around failing semantic tests or app harnesses",
-        },
+        _graph_followup_entry(
+            path,
+            project_kind="summary",
+            file_kind="calls",
+            project_reason="inspect the compact project graph around failing semantic tests or app harnesses",
+            file_reason="inspect the call graph around failing semantic tests or app harnesses",
+        ),
     ]
-    if failed:
+    if failed or not source_ok:
         entries.insert(0, {
             "kind": "fix",
             "command": f"sem fix --plan --json {resolved}",
-            "reason": "generate candidate repairs for issues surfaced by the failing tests",
+            "reason": fix_reason,
         })
     return entries
 
 
-def _explain_next_commands(code: str) -> list[dict]:
-    return [
+def _explain_next_commands(code: str, *, repeatable: bool = True) -> list[dict]:
+    entries = [
         {
             "kind": "skills",
             "command": "sem skills get sem-diagnostics --json",
             "reason": "load the current diagnostic and repair workflow guidance for this tool version",
         },
-        {
+    ]
+    if repeatable:
+        entries.append({
             "kind": "related",
             "command": f"sem explain {code} --json",
             "reason": "re-use this command after following a related diagnostic edge from the current explainer",
+        })
+    return entries
+
+
+def _graph_next_commands(path: Path, kind: str, payload: dict | None = None) -> list[dict]:
+    resolved = str(path.resolve())
+    entries = [
+        {
+            "kind": "check",
+            "command": f"sem check --json {resolved}",
+            "reason": "pair the architecture view with the current structured diagnostics",
+        }
+    ]
+    payload = payload or {}
+    if kind == "summary":
+        if payload.get("summary", {}).get("routeCount", 0):
+            entries.append({
+                "kind": "graph",
+                "command": f"sem graph --kind routes --json {resolved}",
+                "reason": "expand the compact summary into concrete route anchors before drilling into one handler",
+            })
+        else:
+            entries.append({
+                "kind": "graph",
+                "command": f"sem graph --kind calls --json {resolved}",
+                "reason": "expand the compact summary into a concrete call graph once you know this surface has no routes",
+            })
+        return entries
+    if kind == "routes":
+        first_route = next((edge for edge in payload.get("edges", []) if edge.get("kind") == "route"), None)
+        if first_route is not None:
+            entries.append({
+                "kind": "slice",
+                "command": f"sem slice --route {first_route['method']}:{first_route['path']} --json {resolved}",
+                "reason": "zoom into one concrete route neighborhood before editing a handler",
+            })
+        return entries
+    if kind == "effects":
+        first_effect = next((edge for edge in payload.get("edges", []) if edge.get("kind") == "effect"), None)
+        if first_effect is not None:
+            entries.append({
+                "kind": "slice",
+                "command": f"sem slice --effect {first_effect['path']} --json {resolved}",
+                "reason": "zoom into one concrete effect neighborhood before editing authority or cleanup behavior",
+            })
+        return entries
+    if kind in {"capabilities", "auth"}:
+        first_capability = next((edge for edge in payload.get("edges", []) if edge.get("kind") == "useCapability"), None)
+        if first_capability is not None:
+            entries.append({
+                "kind": "slice",
+                "command": f"sem slice --capability {first_capability['capability']} --json {resolved}",
+                "reason": "zoom into one concrete capability neighborhood before editing authority coverage",
+            })
+            return entries
+    operation_name = ""
+    first_edge = next((edge for edge in payload.get("edges", []) if edge.get("fromOperation")), None)
+    if first_edge is not None:
+        operation_name = first_edge.get("fromOperation", "")
+    if not operation_name:
+        first_node = next((node for node in payload.get("nodes", []) if node.get("kind") == "operation"), None)
+        if first_node is not None:
+            operation_name = first_node.get("name", "")
+    if operation_name:
+        entries.append({
+            "kind": "slice",
+            "command": f"sem slice --operation {operation_name} --json {resolved}",
+            "reason": "zoom from graph structure into one concrete semantic neighborhood before editing",
+        })
+    return entries
+
+
+def _slice_next_commands(path: Path, payload: dict) -> list[dict]:
+    resolved = str(path.resolve())
+    anchor = payload.get("anchor", {})
+    operation_name = ""
+    if payload.get("operation"):
+        operation_name = payload["operation"].get("name", "")
+    if anchor.get("kind") == "route" and anchor.get("name"):
+        refresh_command = f"sem slice --route {anchor['name']} --json {resolved}"
+    elif operation_name:
+        refresh_command = f"sem slice --operation {operation_name} --json {resolved}"
+    else:
+        refresh_command = f"sem slice --{anchor.get('kind', 'operation')} {anchor.get('name', '')} --json {resolved}"
+    return [
+        {
+            "kind": "check",
+            "command": f"sem check --json {resolved}",
+            "reason": "pair the slice result with the current diagnostic set",
+        },
+        _graph_followup_entry(
+            path,
+            project_kind="summary",
+            file_kind="calls",
+            project_reason="inspect the compact project graph around the current slice anchor before expanding further",
+            file_reason="inspect the wider architecture around the current slice anchor",
+        ),
+        {
+            "kind": "slice",
+            "command": refresh_command,
+            "reason": "re-run the same anchor after related edits to refresh the local semantic neighborhood",
         },
     ]
 
 
-def _build_check_payload(path: Path, compiler_args: list[str]) -> dict:
+def _size_next_commands(path: Path) -> list[dict]:
+    resolved = str(path.resolve())
+    return [
+        _graph_followup_entry(
+            path,
+            project_kind="summary",
+            file_kind="calls",
+            project_reason="inspect the compact project graph that contributes to the current source footprint",
+            file_reason="inspect the call graph that contributes to the current source footprint",
+        ),
+        {
+            "kind": "check",
+            "command": f"sem check --json {resolved}",
+            "reason": "pair footprint facts with the current diagnostics and runtime readiness",
+        },
+    ]
+
+
+def _build_check_payload(path: Path, compiler_args: list[str], *, include_readiness: bool = True) -> dict:
     context = _build_context_payload(path)
     symbols = _symbol_graph_payload(path)
-    diagnostics, lint_errors = _collect_lint_diagnostics(path)
+    lint_diagnostics, lint_errors = _collect_lint_diagnostics(path)
     build_tape = _find_build_tape(path)
     compiler_source = build_tape if build_tape is not None else path
     compiler = _compiler_check_probe(compiler_source, compiler_args)
-    readiness = _readiness_payload(path)
+    compiler_diagnostics, compiler_errors = _collect_compiler_diagnostics(compiler)
+    diagnostics = list(lint_diagnostics) + list(compiler_diagnostics)
+    diagnostics.sort(key=lambda item: (
+        not item.get("blocksCompile", False),
+        item.get("severity", ""),
+        item.get("code", ""),
+        item.get("span", {}).get("file", ""),
+        item.get("span", {}).get("line", 0),
+        item.get("span", {}).get("column", 0),
+    ))
+    readiness = _readiness_payload(path) if include_readiness else None
     errors = sum(1 for item in diagnostics if item.get("severity") == "error" or item.get("blocksCompile"))
     warnings = sum(1 for item in diagnostics if item.get("severity") == "warning" and not item.get("blocksCompile"))
-    ok = bool(compiler["ok"] and errors == 0 and not lint_errors and not symbols["errors"])
+    transport_errors = lint_errors + compiler_errors + list(symbols["errors"])
+    ok = bool(compiler["ok"] and errors == 0 and not transport_errors)
     status = "ok"
-    if not ok:
+    if transport_errors and errors == 0:
+        status = "tool-error"
+    elif not ok:
         status = "diagnostics"
     elif warnings:
         status = "ok-with-warnings"
@@ -1789,14 +2361,27 @@ def _build_check_payload(path: Path, compiler_args: list[str]) -> dict:
         },
         "ok": ok,
         "status": status,
+        "scope": _payload_scope(
+            path,
+            compilerScope="project" if build_tape is not None else ("directory" if path.resolve().is_dir() else "file"),
+            contextScope=_scope_label_from_sources(context["sourceFiles"]),
+            diagnosticsScope="project" if build_tape is not None else ("directory" if path.resolve().is_dir() else "file"),
+        ),
+        "surfaceShift": _surface_shift(
+            path,
+            _requested_surface_kind(path),
+            "project" if build_tape is not None else ("directory" if path.resolve().is_dir() else "file"),
+            reason="diagnostic scope expanded from the requested entry surface to the effective compiler surface",
+        ),
         "project": context["project"],
         "sourceFiles": context["sourceFiles"],
         "diagnostics": diagnostics,
         "summary": {
-            "errors": errors + len(lint_errors),
+            "errors": errors + len(transport_errors),
             "warnings": warnings,
             "repairable": sum(1 for item in diagnostics if item.get("repair", {}).get("id")),
             "compileBlocking": sum(1 for item in diagnostics if item.get("blocksCompile")),
+            "toolErrors": len(transport_errors),
         },
         "compiler": {
             "attempted": compiler["attempted"],
@@ -1809,10 +2394,12 @@ def _build_check_payload(path: Path, compiler_args: list[str]) -> dict:
         "graphSummary": symbols["summary"],
         "runtimeFeatureFlags": context["runtimeFeatureFlags"],
         "supportedSyntax": context["supportedSyntax"],
-        "targetReadiness": readiness,
-        "errors": lint_errors + list(symbols["errors"]),
+        "errors": transport_errors,
+        "toolErrors": transport_errors,
     }
-    if not compiler["ok"] and payload["status"] == "diagnostics":
+    if include_readiness:
+        payload["targetReadiness"] = readiness
+    if not compiler["ok"] and payload["status"] in {"diagnostics", "tool-error"}:
         payload["status"] = "compiler-error"
     payload["nextCommands"] = _check_next_commands(path, diagnostics, payload["status"])
     return payload
@@ -1887,15 +2474,21 @@ def _graph_payload(path: Path, kind: str) -> dict:
     nodes = []
 
     if kind == "summary":
-        return {
+        payload = {
             "schemaVersion": "sem.graph.v1",
             "tool": {"name": "sem", "version": VERSION},
+            "ok": not (symbols["errors"] or bundle["errors"]),
+            "status": "ok" if not (symbols["errors"] or bundle["errors"]) else "partial",
+            "completeContext": not (symbols["errors"] or bundle["errors"]),
             "kind": "summary",
             "inputPath": str(path.resolve()),
+            "scope": _payload_scope(path, retrievalScope=_scope_label_from_sources(symbols["sourceFiles"])),
             "summary": symbols["summary"],
             "sourceFiles": symbols["sourceFiles"],
             "errors": list(symbols["errors"]) + list(bundle["errors"]),
         }
+        payload["nextCommands"] = _graph_next_commands(path, kind, payload)
+        return payload
 
     if kind == "calls":
         for file_payload in symbols["files"]:
@@ -1990,18 +2583,25 @@ def _graph_payload(path: Path, kind: str) -> dict:
         return {
             "schemaVersion": "sem.graph.v1",
             "tool": {"name": "sem", "version": VERSION},
+            "ok": False,
+            "status": "error",
+            "completeContext": False,
             "kind": kind,
             "inputPath": str(path.resolve()),
-            "ok": False,
+            "scope": _payload_scope(path, retrievalScope=_scope_label_from_sources(symbols["sourceFiles"])),
             "error": f"unsupported graph kind: {kind}",
             "supportedKinds": ["summary", "calls", "effects", "capabilities", "auth", "routes", "dataflow", "types", "ownership"],
         }
 
-    return {
+    payload = {
         "schemaVersion": "sem.graph.v1",
         "tool": {"name": "sem", "version": VERSION},
+        "ok": not (symbols["errors"] or bundle["errors"]),
+        "status": "ok" if not (symbols["errors"] or bundle["errors"]) else "partial",
+        "completeContext": not (symbols["errors"] or bundle["errors"]),
         "kind": kind,
         "inputPath": str(path.resolve()),
+        "scope": _payload_scope(path, retrievalScope=_scope_label_from_sources(symbols["sourceFiles"])),
         "sourceFiles": symbols["sourceFiles"],
         "summary": {
             "edgeCount": len(edges),
@@ -2012,13 +2612,15 @@ def _graph_payload(path: Path, kind: str) -> dict:
         "edges": edges,
         "errors": list(symbols["errors"]) + list(bundle["errors"]),
     }
+    payload["nextCommands"] = _graph_next_commands(path, kind, payload)
+    return payload
 
 
-def _find_related_paths(root: Path, needle: str) -> list[str]:
+def _find_related_paths(root: Path, needle: str, patterns: tuple[str, ...]) -> list[str]:
     if not needle:
         return []
     candidates = []
-    for pattern in ("**/*test*.py", "**/*.test.sem", "**/*.test.sscript", "**/README.md", "**/*.md"):
+    for pattern in patterns:
         for path in root.glob(pattern):
             if not path.is_file():
                 continue
@@ -2031,9 +2633,18 @@ def _find_related_paths(root: Path, needle: str) -> list[str]:
     return sorted(set(candidates))
 
 
+def _find_related_tests(root: Path, needle: str) -> list[str]:
+    return _find_related_paths(root, needle, ("**/*test*.py", "**/*.test.sem", "**/*.test.sscript"))
+
+
+def _find_related_docs(root: Path, needle: str) -> list[str]:
+    return _find_related_paths(root, needle, ("**/README.md", "**/*.md"))
+
+
 def _slice_operation_payload(path: Path, operation_name: str) -> dict:
     bundle = _collect_facts_bundle(path)
     symbols = _symbol_graph_payload(path)
+    slice_errors = list(bundle["errors"]) + list(symbols["errors"])
     lookup = _facts_operation_lookup(bundle)
     target = lookup.get(operation_name)
     if target is None:
@@ -2041,6 +2652,9 @@ def _slice_operation_payload(path: Path, operation_name: str) -> dict:
             "schemaVersion": "sem.slice.v1",
             "tool": {"name": "sem", "version": VERSION},
             "ok": False,
+            "completeContext": False,
+            "errors": slice_errors,
+            "scope": _payload_scope(path, retrievalScope=_scope_label_from_sources(symbols["sourceFiles"])),
             "anchor": {"kind": "operation", "name": operation_name},
             "error": f"unknown operation: {operation_name}",
         }
@@ -2062,12 +2676,15 @@ def _slice_operation_payload(path: Path, operation_name: str) -> dict:
                 routes.append(route)
     narratives = _narrative_entries_for_operation(operation_name, facts)
     project_root = _find_build_tape(path).parent if _find_build_tape(path) is not None else source.parent
-    related_tests = _find_related_paths(project_root, operation_name)
-    related_docs = _find_related_paths(ROOT.parent / "docs", operation_name)
+    related_tests = _find_related_tests(project_root, operation_name)
+    related_docs = _find_related_docs(ROOT.parent / "docs", operation_name)
     return {
         "schemaVersion": "sem.slice.v1",
         "tool": {"name": "sem", "version": VERSION},
         "ok": True,
+        "completeContext": not slice_errors,
+        "errors": slice_errors,
+        "scope": _payload_scope(path, retrievalScope=_scope_label_from_sources(symbols["sourceFiles"])),
         "anchor": {"kind": "operation", "name": operation_name},
         "files": [str(source.resolve())],
         "operation": operation_symbol,
@@ -2095,9 +2712,10 @@ def _slice_operation_payload(path: Path, operation_name: str) -> dict:
 
 def _slice_capability_payload(path: Path, capability_name: str) -> dict:
     symbols = _symbol_graph_payload(path)
+    bundle = _collect_facts_bundle(path)
+    slice_errors = list(bundle["errors"]) + list(symbols["errors"])
     uses = []
     declarations = []
-    bundle = _collect_facts_bundle(path)
     for item in bundle["files"]:
         facts = item["facts"]
         capability = facts.capabilities.get(capability_name)
@@ -2120,6 +2738,9 @@ def _slice_capability_payload(path: Path, capability_name: str) -> dict:
         "schemaVersion": "sem.slice.v1",
         "tool": {"name": "sem", "version": VERSION},
         "ok": bool(declarations or uses),
+        "completeContext": not slice_errors,
+        "errors": slice_errors,
+        "scope": _payload_scope(path, retrievalScope=_scope_label_from_sources(symbols["sourceFiles"])),
         "anchor": {"kind": "capability", "name": capability_name},
         "declarations": declarations,
         "uses": uses,
@@ -2128,6 +2749,7 @@ def _slice_capability_payload(path: Path, capability_name: str) -> dict:
 
 def _slice_effect_payload(path: Path, effect_query: str) -> dict:
     symbols = _symbol_graph_payload(path)
+    slice_errors = list(symbols["errors"])
     matches = []
     for file_payload in symbols["files"]:
         for operation in file_payload["operations"]:
@@ -2144,6 +2766,9 @@ def _slice_effect_payload(path: Path, effect_query: str) -> dict:
         "schemaVersion": "sem.slice.v1",
         "tool": {"name": "sem", "version": VERSION},
         "ok": bool(matches),
+        "completeContext": not slice_errors,
+        "errors": slice_errors,
+        "scope": _payload_scope(path, retrievalScope=_scope_label_from_sources(symbols["sourceFiles"])),
         "anchor": {"kind": "effect", "name": effect_query},
         "matches": matches,
     }
@@ -2152,9 +2777,11 @@ def _slice_effect_payload(path: Path, effect_query: str) -> dict:
 def _slice_type_payload(path: Path, type_name: str) -> dict:
     symbols = _symbol_graph_payload(path)
     bundle = _collect_facts_bundle(path)
+    slice_errors = list(bundle["errors"]) + list(symbols["errors"])
     matches = []
     record_fields = []
     result_types = []
+    alias_declarations = []
     for file_payload in symbols["files"]:
         for operation in file_payload["operations"]:
             for item in operation["inputs"]:
@@ -2173,6 +2800,13 @@ def _slice_type_payload(path: Path, type_name: str) -> dict:
                             matches.append({"kind": "bind", "operation": operation["name"], "callName": call["name"], "location": bind["location"], "name": bind["name"]})
     for item in bundle["files"]:
         facts = item["facts"]
+        for source_line in facts.lines:
+            if source_line.tokens and source_line.verb == "type" and source_line.args and source_line.args[0] == type_name:
+                alias_declarations.append({
+                    "name": type_name,
+                    "type": " ".join(source_line.args[1:]),
+                    "location": _line_payload(source_line),
+                })
         if type_name in facts.records:
             record_fields = [{"name": field_name, "type": field_type} for field_name, field_type in facts.records[type_name]]
         if type_name in facts.result_types:
@@ -2181,18 +2815,122 @@ def _slice_type_payload(path: Path, type_name: str) -> dict:
     return {
         "schemaVersion": "sem.slice.v1",
         "tool": {"name": "sem", "version": VERSION},
-        "ok": bool(matches or record_fields or result_types),
+        "ok": bool(matches or record_fields or result_types or alias_declarations),
+        "completeContext": not slice_errors,
+        "errors": slice_errors,
+        "scope": _payload_scope(path, retrievalScope=_scope_label_from_sources(symbols["sourceFiles"])),
         "anchor": {"kind": "type", "name": type_name},
         "uses": matches,
+        "aliasDeclarations": alias_declarations,
         "recordFields": record_fields,
         "resultTypes": result_types,
     }
 
 
+def _slice_symbol_payload(path: Path, symbol_name: str) -> dict:
+    operation_payload = _slice_operation_payload(path, symbol_name)
+    if operation_payload.get("ok"):
+        operation_payload["anchor"] = {"kind": "symbol", "name": symbol_name, "resolvedKind": "operation"}
+        operation_payload["symbolType"] = "operation"
+        return operation_payload
+
+    capability_payload = _slice_capability_payload(path, symbol_name)
+    if capability_payload.get("ok"):
+        capability_payload["anchor"] = {"kind": "symbol", "name": symbol_name, "resolvedKind": "capability"}
+        capability_payload["symbolType"] = "capability"
+        return capability_payload
+
+    type_payload = _slice_type_payload(path, symbol_name)
+    if type_payload.get("ok"):
+        type_payload["anchor"] = {"kind": "symbol", "name": symbol_name, "resolvedKind": "type"}
+        type_payload["symbolType"] = "type"
+        return type_payload
+
+    bundle = _collect_facts_bundle(path)
+    slice_errors = list(bundle["errors"])
+    declarations = []
+    declaration_sites = set()
+    resolved_kind = ""
+    for item in bundle["files"]:
+        facts = item["facts"]
+        if symbol_name in facts.consts:
+            const_fact = facts.consts[symbol_name]
+            declaration_sites.add((str(item["path"].resolve()), const_fact.line.number))
+            resolved_kind = resolved_kind or "const"
+            declarations.append({
+                "kind": "const",
+                "name": const_fact.name,
+                "type": const_fact.type_name,
+                "value": const_fact.value,
+                "location": _line_payload(const_fact.line),
+            })
+        for source_line in facts.lines:
+            if not source_line.tokens:
+                continue
+            args = source_line.args
+            if source_line.verb == "storage" and len(args) >= 4 and args[2] == symbol_name:
+                declaration_sites.add((str(item["path"].resolve()), source_line.number))
+                resolved_kind = resolved_kind or "storage"
+                declarations.append({
+                    "kind": "storage",
+                    "scope": args[0],
+                    "mutability": args[1],
+                    "name": args[2],
+                    "type": args[3],
+                    "value": " ".join(args[4:]),
+                    "location": _line_payload(source_line),
+                })
+            elif source_line.verb == "type" and args and args[0] == symbol_name:
+                declaration_sites.add((str(item["path"].resolve()), source_line.number))
+                resolved_kind = resolved_kind or "typeAlias"
+                declarations.append({
+                    "kind": "typeAlias",
+                    "name": args[0],
+                    "type": " ".join(args[1:]),
+                    "location": _line_payload(source_line),
+                })
+
+    uses = []
+    for item in bundle["files"]:
+        facts = item["facts"]
+        for operation in facts.operations.values():
+            for source_line in operation.lines:
+                if not source_line.tokens or symbol_name not in source_line.args:
+                    continue
+                site = (str(item["path"].resolve()), source_line.number)
+                if site in declaration_sites:
+                    continue
+                uses.append({
+                    "operation": operation.name,
+                    "verb": source_line.verb,
+                    "location": _line_payload(source_line),
+                    "raw": source_line.raw,
+                })
+
+    ok = bool(declarations or uses)
+    payload = {
+        "schemaVersion": "sem.slice.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "ok": ok,
+        "completeContext": not slice_errors,
+        "errors": slice_errors,
+        "scope": _payload_scope(path, retrievalScope=_scope_label_from_sources([item["path"] for item in bundle["files"]])),
+        "anchor": {"kind": "symbol", "name": symbol_name, "resolvedKind": resolved_kind},
+        "symbolType": resolved_kind,
+        "declarations": declarations,
+        "uses": uses,
+        "relatedDocs": _find_related_docs(ROOT.parent, symbol_name),
+        "relatedTests": _find_related_tests(ROOT.parent, symbol_name),
+    }
+    if not ok:
+        payload["error"] = f"unknown symbol: {symbol_name}"
+    return payload
+
+
 def _slice_payload(path: Path, args: argparse.Namespace) -> dict:
     if args.operation:
-        return _slice_operation_payload(path, args.operation)
-    if args.route:
+        payload = _slice_operation_payload(path, args.operation)
+    elif args.route:
         method, _, route_path = args.route.partition(":")
         symbols = _symbol_graph_payload(path)
         for file_payload in symbols["files"]:
@@ -2201,28 +2939,50 @@ def _slice_payload(path: Path, args: argparse.Namespace) -> dict:
                     payload = _slice_operation_payload(path, route["handler"])
                     payload["anchor"] = {"kind": "route", "name": args.route}
                     payload["route"] = route
-                    return payload
-        return {
+                    break
+            else:
+                continue
+            break
+        else:
+            payload = {
+                "schemaVersion": "sem.slice.v1",
+                "tool": {"name": "sem", "version": VERSION},
+                "ok": False,
+                "completeContext": not symbols["errors"],
+                "errors": list(symbols["errors"]),
+                "scope": _payload_scope(path, retrievalScope=_scope_label_from_sources(symbols["sourceFiles"])),
+                "anchor": {"kind": "route", "name": args.route},
+                "error": f"unknown route: {args.route}",
+            }
+    elif args.symbol:
+        payload = _slice_symbol_payload(path, args.symbol)
+    elif args.effect:
+        payload = _slice_effect_payload(path, args.effect)
+    elif args.capability:
+        payload = _slice_capability_payload(path, args.capability)
+    elif args.type_name:
+        payload = _slice_type_payload(path, args.type_name)
+    else:
+        payload = {
             "schemaVersion": "sem.slice.v1",
             "tool": {"name": "sem", "version": VERSION},
             "ok": False,
-            "anchor": {"kind": "route", "name": args.route},
-            "error": f"unknown route: {args.route}",
+            "error": "slice requires one of --operation, --route, --symbol, --effect, --capability, or --type",
         }
-    if args.symbol:
-        return _slice_operation_payload(path, args.symbol)
-    if args.effect:
-        return _slice_effect_payload(path, args.effect)
-    if args.capability:
-        return _slice_capability_payload(path, args.capability)
-    if args.type_name:
-        return _slice_type_payload(path, args.type_name)
-    return {
-        "schemaVersion": "sem.slice.v1",
-        "tool": {"name": "sem", "version": VERSION},
-        "ok": False,
-        "error": "slice requires one of --operation, --route, --symbol, --effect, --capability, or --type",
-    }
+    if payload.get("schemaVersion") == "sem.slice.v1":
+        payload.setdefault("inputPath", str(path.resolve()))
+        payload.setdefault(
+            "status",
+            "ok"
+            if payload.get("ok", False) and payload.get("completeContext", True) else
+            "partial"
+            if payload.get("ok", False) else
+            "not-found"
+            if payload.get("error", "").startswith("unknown ") else
+            "error",
+        )
+        payload.setdefault("nextCommands", _slice_next_commands(path, payload))
+    return payload
 
 
 def _size_payload(path: Path) -> dict:
@@ -2261,6 +3021,9 @@ def _size_payload(path: Path) -> dict:
         "schemaVersion": "sem.size.v1",
         "tool": {"name": "sem", "version": VERSION},
         "inputPath": str(path.resolve()),
+        "ok": not (bundle["errors"] or symbols["errors"]),
+        "status": "ok" if not (bundle["errors"] or symbols["errors"]) else "partial",
+        "scope": _payload_scope(path, retrievalScope=_scope_label_from_sources(symbols["sourceFiles"])),
         "summary": {
             "fileCount": len(source_sizes),
             "sourceBytes": total_bytes,
@@ -2277,6 +3040,7 @@ def _size_payload(path: Path) -> dict:
             "note": "Artifact-size and backend-retention accounting is not yet computed by this wrapper; this payload currently summarizes source and helper-family footprint.",
         },
         "errors": list(bundle["errors"]) + list(symbols["errors"]),
+        "nextCommands": _size_next_commands(path),
     }
 
 
@@ -2310,6 +3074,7 @@ def _runtime_requirements(symbols: dict) -> list[str]:
 def _readiness_payload(path: Path) -> dict:
     context = _build_context_payload(path)
     symbols = _symbol_graph_payload(path)
+    check_payload = _build_check_payload(path, [], include_readiness=False)
     doctor = _doctor_payload()
     checks = {check["name"]: check for check in doctor["checks"]}
     required_runtimes = _runtime_requirements(symbols)
@@ -2326,6 +3091,8 @@ def _readiness_payload(path: Path) -> dict:
     status = "supported"
     if blocking_checks or missing_runtimes:
         status = "blocked"
+    elif not check_payload.get("ok", False):
+        status = "blocked"
     elif partial_checks:
         status = "partial"
     payload = {
@@ -2333,6 +3100,12 @@ def _readiness_payload(path: Path) -> dict:
         "tool": {"name": "sem", "version": VERSION},
         "inputPath": str(path.resolve()),
         "status": status,
+        "ok": status == "supported",
+        "scope": _payload_scope(
+            path,
+            sourceCheckScope=check_payload["scope"]["diagnosticsScope"],
+            runtimeScope="project" if context["project"].get("buildTape") or path.resolve().is_dir() else "file",
+        ),
         "requestedTargets": list(context["project"].get("targets", [])) or ["host"],
         "requiredRuntimeAdapters": required_runtimes,
         "missingRuntimeAdapters": missing_runtimes,
@@ -2353,6 +3126,9 @@ def _readiness_payload(path: Path) -> dict:
             for name in partial_checks
         ],
         "doctorStatus": doctor["ok"],
+        "sourceOk": bool(check_payload.get("ok", False)),
+        "sourceStatus": check_payload.get("status", ""),
+        "sourceSummary": check_payload.get("summary", {}),
         "graphSummary": symbols["summary"],
         "runtimeFeatureFlags": runtime_flags,
         "note": (
@@ -2386,28 +3162,88 @@ def _interface_fingerprints(path: Path) -> dict:
 def _dev_payload(path: Path, trace: bool) -> dict:
     context = _build_context_payload(path)
     readiness = _readiness_payload(path)
-    symbols = _symbol_graph_payload(path)
-    rerun = ["check", "test", "graph"]
-    restart_on_success = symbols["summary"]["routeCount"] > 0
-    watch_files = list(context["sourceFiles"])
+    check_payload = _build_check_payload(path, [], include_readiness=False)
+    build_tape = _find_build_tape(path)
+    requested = path.resolve()
+    project_surface = build_tape if build_tape is not None else path
+    symbols = _symbol_graph_payload(project_surface)
+    watch_sources, watch_errors = _symbol_source_files(project_surface)
+    source_ok = bool(check_payload.get("ok", False))
+    has_tests = bool(_discover_test_entries(path)) and source_ok
+    rerun = ["check", "graph"]
+    if has_tests:
+        rerun.insert(1, "test")
+    route_count = symbols["summary"]["routeCount"]
+    restart_on_success = source_ok and route_count > 0
+    watch_files = sorted(set([str(item.resolve()) for item in watch_sources]))
     if context["project"].get("buildTape"):
         watch_files.append(context["project"]["buildTape"])
-    watch_files = sorted(set(watch_files))
+        watch_files = sorted(set(watch_files))
+    watch_scope = "project" if build_tape is not None or requested.is_dir() else "file"
+    graph_kind = "routes" if watch_scope == "project" and route_count > 0 else ("summary" if watch_scope == "project" else "calls")
+    graph_reason = (
+        "inspect route-level project changes while the watched files move"
+        if graph_kind == "routes" else
+        "inspect compact project graph changes while the watched files move"
+        if graph_kind == "summary" else
+        "inspect graph changes while the watched files move"
+    )
+    actions = [
+        {"kind": "check", "command": f"sem check --json {path}", "reason": "recompute project diagnostics for the watched surface"},
+        {"kind": "graph", "command": f"sem graph --kind {graph_kind} --json {project_surface if watch_scope == 'project' else path}", "reason": graph_reason},
+        {
+            "kind": "restart",
+            "enabled": restart_on_success,
+            "reason": (
+                "routes are present and the current source state is ready for process restart"
+                if restart_on_success else
+                "routes are present, but the current source state is not ready for restart"
+                if route_count > 0 else
+                "no route-hosting surface detected"
+            ),
+        },
+    ]
+    if not source_ok:
+        actions.insert(1, {"kind": "fix", "command": f"sem fix --plan --json {path}", "reason": "generate repair guidance before trying to restart or rerun tests"})
+    if has_tests:
+        actions.insert(1 if source_ok else 2, {"kind": "test", "command": f"sem test --json {path}", "reason": "rerun project tests once the watched surface is semantically clean"})
     return {
         "schemaVersion": "sem.dev.v1",
         "tool": {"name": "sem", "version": VERSION},
-        "ok": True,
+        "ok": source_ok and readiness.get("status") != "blocked",
+        "status": (
+            "ready"
+            if source_ok and readiness.get("status") == "supported" else
+            "blocked"
+            if readiness.get("status") == "blocked" or not source_ok else
+            "partial"
+        ),
         "mode": "watch-plan",
         "inputPath": str(path.resolve()),
+        "scope": _payload_scope(
+            path,
+            watchScope=watch_scope,
+            sourceCheckScope=check_payload["scope"]["diagnosticsScope"],
+        ),
+        "surfaceShift": _surface_shift(
+            path,
+            _requested_surface_kind(path),
+            watch_scope,
+            reason="watch planning expanded from the requested entry surface to the effective project surface",
+        ),
+        "sourceOk": source_ok,
+        "sourceStatus": check_payload.get("status", ""),
+        "sourceSummary": check_payload.get("summary", {}),
         "watch": {
             "planOnly": True,
             "files": watch_files,
             "rerun": rerun,
             "restartOnSuccess": restart_on_success,
+            "errors": watch_errors,
         },
         "restart": {
             "runnableCli": restart_on_success,
-            "reason": "routes detected in project graph" if restart_on_success else "no route-hosting surface detected",
+            "reason": actions[-1]["reason"],
         },
         "trace": {
             "enabled": True,
@@ -2418,12 +3254,8 @@ def _dev_payload(path: Path, trace: bool) -> dict:
         },
         "interfaceFingerprints": _interface_fingerprints(path),
         "targetReadiness": readiness,
-        "actions": [
-            {"kind": "check", "command": f"sem check --json {path}"},
-            {"kind": "test", "command": f"sem test --json {path}"},
-            {"kind": "graph", "command": f"sem graph --kind calls --json {path}"},
-            {"kind": "restart", "enabled": restart_on_success},
-        ],
+        "actions": actions,
+        "nextCommands": [item for item in actions if item.get("command")],
     }
 
 
@@ -2432,6 +3264,23 @@ def _discover_test_entries(path: Path) -> list[dict]:
     build_tape = _find_build_tape(path)
     if requested.is_file() and requested.suffix.lower() in {".sem", ".sscript"} and ".test." in requested.name:
         return [{"kind": "semantic", "path": requested, "name": requested.stem}]
+    if requested.is_file() and build_tape is None:
+        discovered = []
+        seen = set()
+        if requested.suffix.lower() in {".sem", ".sscript"}:
+            companion = requested.with_name(f"{requested.stem}.test{requested.suffix}")
+            if companion.is_file():
+                seen.add(companion.resolve())
+                discovered.append({"kind": "semantic", "path": companion.resolve(), "name": companion.stem})
+        for candidate in (
+            requested.parent / "scripts" / f"test_{requested.stem}.py",
+            requested.parent / "tests" / f"test_{requested.stem}.py",
+        ):
+            resolved = candidate.resolve()
+            if candidate.is_file() and resolved not in seen:
+                seen.add(resolved)
+                discovered.append({"kind": "python", "path": resolved, "name": resolved.stem})
+        return sorted(discovered, key=lambda item: (item["kind"], str(item["path"]).lower()))
     roots = []
     if build_tape is not None:
         roots.append(build_tape.parent.resolve())
@@ -2461,17 +3310,21 @@ def _discover_test_entries(path: Path) -> list[dict]:
 
 
 def _run_test_payload(path: Path, include_python_harnesses: bool = True) -> dict:
+    preflight = _build_check_payload(path, [], include_readiness=False)
+    preflight_ok = bool(preflight.get("ok", False))
     discovered = _discover_test_entries(path)
     results = []
     passed = 0
     failed = 0
     skipped = 0
+    selected = 0
     for entry in discovered:
         start = time.time()
         if entry["kind"] == "semantic":
             payload = _build_check_payload(entry["path"], [])
             ok = bool(payload["ok"])
             duration_ms = int((time.time() - start) * 1000)
+            selected += 1
             results.append({
                 "name": entry["name"],
                 "kind": entry["kind"],
@@ -2479,11 +3332,24 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True) -> dict
                 "status": "passed" if ok else "failed",
                 "durationMs": duration_ms,
                 "summary": payload["summary"],
+                "checkStatus": payload["status"],
+                "diagnostics": payload["diagnostics"],
+                "checkCommand": f"sem check --json {entry['path']}",
             })
             if ok:
                 passed += 1
             else:
                 failed += 1
+            continue
+        if entry["kind"] == "python" and not preflight_ok:
+            results.append({
+                "name": entry["name"],
+                "kind": entry["kind"],
+                "path": str(entry["path"]),
+                "status": "skipped",
+                "reason": "python harness execution deferred until semantic preflight is clean",
+            })
+            skipped += 1
             continue
         if entry["kind"] == "python" and not include_python_harnesses:
             results.append({
@@ -2495,6 +3361,7 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True) -> dict
             })
             skipped += 1
             continue
+        selected += 1
         proc = subprocess.run(
             [sys.executable, str(entry["path"])],
             cwd=str(ROOT.parent),
@@ -2517,19 +3384,38 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True) -> dict
             passed += 1
         else:
             failed += 1
+    status = "passed"
+    if not preflight_ok:
+        status = "diagnostics"
+    elif selected == 0:
+        status = "no-tests"
+    elif failed:
+        status = "failed"
     payload = {
         "schemaVersion": "sem.test.v1",
         "tool": {"name": "sem", "version": VERSION},
         "inputPath": str(path.resolve()),
-        "ok": failed == 0,
+        "ok": status == "passed" and preflight_ok,
+        "status": status,
+        "scope": _payload_scope(
+            path,
+            preflightScope=preflight["scope"]["diagnosticsScope"],
+            discoveryScope="project" if _find_build_tape(path) is not None or path.resolve().is_dir() else "file",
+        ),
+        "preflightCheck": {
+            "ok": preflight_ok,
+            "status": preflight.get("status", ""),
+            "summary": preflight.get("summary", {}),
+        },
         "discoveredTests": len(discovered),
-        "selectedTests": len(discovered),
+        "selectedTests": selected,
+        "executedTests": passed + failed,
         "passedTests": passed,
         "failedTests": failed,
         "skippedTests": skipped,
         "results": results,
     }
-    payload["nextCommands"] = _test_next_commands(path, failed)
+    payload["nextCommands"] = _test_next_commands(path, failed, source_ok=preflight_ok)
     return payload
 
 
@@ -2549,12 +3435,34 @@ def _skill_registry_payload() -> list[dict]:
     return payload
 
 
-def _skill_content(name: str) -> dict | None:
+def _markdown_heading_index(text: str) -> list[dict]:
+    headings = []
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        if line[: len(line) - len(line.lstrip())]:
+            continue
+        stripped = line.lstrip()
+        if not stripped.startswith("#"):
+            continue
+        level = len(stripped) - len(stripped.lstrip("#"))
+        title = stripped[level:].strip()
+        if not title:
+            continue
+        headings.append({
+            "line": line_number,
+            "level": level,
+            "title": title,
+        })
+    return headings
+
+
+def _skill_content(name: str, *, include_full_content: bool = False) -> dict | None:
     for entry in SKILL_REGISTRY:
         if entry["name"] != name:
             continue
         aliases = sorted(alias for alias, canonical in SKILL_ALIASES.items() if canonical == name)
         sections = []
+        file_summaries = []
+        total_bytes = 0
         for relative in entry["files"]:
             path = ROOT.parent / relative
             if not path.exists():
@@ -2563,17 +3471,43 @@ def _skill_content(name: str) -> dict | None:
                 text = path.read_text(encoding="utf-8")
             except OSError:
                 continue
-            sections.append(f"# Source: {relative}\n\n{text.strip()}\n")
-        return {
+            total_bytes += len(text.encode("utf-8"))
+            file_summary = {
+                "source": relative,
+                "path": str(path.resolve()),
+                "bytes": len(text.encode("utf-8")),
+                "lineCount": len(text.splitlines()),
+                "headings": _markdown_heading_index(text),
+            }
+            file_summaries.append(file_summary)
+            if include_full_content:
+                sections.append(f"# Source: {relative}\n\n{text.strip()}\n")
+        payload = {
             "name": entry["name"],
             "description": entry["description"],
             "files": [str((ROOT.parent / relative).resolve()) for relative in entry["files"]],
             "aliases": aliases,
-            "content": "\n".join(sections).strip() + ("\n" if sections else ""),
+            "contentMode": "full" if include_full_content else "summary",
+            "contentBytes": total_bytes,
+            "fileSummaries": file_summaries,
+            "sectionIndex": [
+                {
+                    "source": summary["source"],
+                    "line": heading["line"],
+                    "level": heading["level"],
+                    "title": heading["title"],
+                }
+                for summary in file_summaries
+                for heading in summary["headings"]
+            ],
         }
+        if include_full_content:
+            payload["content"] = "\n".join(sections).strip() + ("\n" if sections else "")
+        return payload
     return None
 
 
+@functools.lru_cache(maxsize=1)
 def _diagnostic_index_payload() -> dict[str, dict]:
     index: dict[str, dict] = {
         "SSRUN001": {
@@ -2628,6 +3562,14 @@ def _diagnostic_index_payload() -> dict[str, dict]:
     return index
 
 
+def _diagnostic_has_explainer(code: str) -> bool:
+    if not code:
+        return False
+    if code in DIAGNOSTIC_EXPLAINERS:
+        return True
+    return code in _diagnostic_index_payload()
+
+
 def _diagnostic_explain_payload(code: str) -> dict:
     index = _diagnostic_index_payload()
     entry = index.get(code)
@@ -2636,6 +3578,8 @@ def _diagnostic_explain_payload(code: str) -> dict:
         return {
             "schemaVersion": "sem.explain.v1",
             "tool": {"name": "sem", "version": VERSION},
+            "ok": False,
+            "status": "not-found",
             "code": code,
             "found": False,
             "title": curated.get("title", ""),
@@ -2644,11 +3588,13 @@ def _diagnostic_explain_payload(code: str) -> dict:
             "relatedCodes": [],
             "whyItMatters": curated.get("whyItMatters", []),
             "commonFixes": curated.get("commonFixes", []),
-            "nextCommands": _explain_next_commands(code),
+            "nextCommands": _explain_next_commands(code, repeatable=False),
         }
     return {
         "schemaVersion": "sem.explain.v1",
         "tool": {"name": "sem", "version": VERSION},
+        "ok": True,
+        "status": "ok",
         "code": code,
         "found": True,
         "title": curated.get("title", entry.get("title", code)),
@@ -2708,6 +3654,15 @@ def _repair_plan_for_diagnostic(path: Path, diagnostic: dict, bundle: dict) -> d
             f"sem fmt --check {path}",
         ],
     }
+    if code == "SS3104":
+        for suggestion in repair["suggestions"]:
+            if suggestion.get("name") == "inlineAuthority":
+                effect_path = diagnostic.get("actual", "")
+                if "declares `" in effect_path and effect_path.endswith("`"):
+                    effect_text = effect_path.split("declares `", 1)[1][:-1]
+                    parts = effect_text.split()
+                    if len(parts) == 3 and parts[0] == subject_name:
+                        suggestion["shape"] = f"authority {parts[0]} {parts[1]} {parts[2]}"
     operation_entry = lookup.get(subject_name)
     if operation_entry is None and subject_kind == "operation":
         return repair
@@ -2718,6 +3673,9 @@ def _repair_plan_for_diagnostic(path: Path, diagnostic: dict, bundle: dict) -> d
                 continue
             args = source_line.args
             if len(args) >= 3 and args[0] == subject_name:
+                for suggestion in repair["suggestions"]:
+                    if suggestion.get("name") == "inlineAuthority":
+                        suggestion["shape"] = f"authority {subject_name} {args[1]} {args[2]}"
                 repair["edits"].append({
                     "op": "insertAfterLine",
                     "file": str(source.resolve()),
@@ -2749,6 +3707,7 @@ def _repair_plan_for_diagnostic(path: Path, diagnostic: dict, bundle: dict) -> d
 def _build_fix_plan_payload(path: Path, compiler_args: list[str]) -> dict:
     check_payload = _build_check_payload(path, compiler_args)
     bundle = _collect_facts_bundle(path)
+    check_scope = check_payload.get("scope", {})
     file_hashes = {}
     for item in bundle["files"]:
         file_hashes[str(item["path"].resolve())] = _file_sha256(item["path"])
@@ -2757,58 +3716,173 @@ def _build_fix_plan_payload(path: Path, compiler_args: list[str]) -> dict:
         for diagnostic in check_payload["diagnostics"]
         if diagnostic.get("repair", {}).get("id") or diagnostic.get("code") in {"SS3101", "SS3102", "SS3104"}
     ]
+    patchable_repairs = [repair for repair in repairs if repair.get("edits")]
+    status = "actionable"
+    if check_payload["status"] == "compiler-error":
+        status = "blocked"
+    elif not repairs:
+        status = "no-repairs"
+    elif not patchable_repairs:
+        status = "suggestions-only"
+    plan_usable = status == "actionable"
     return {
         "schemaVersion": "sem.fixPlan.v1",
         "tool": {"name": "sem", "version": VERSION},
         "inputPath": str(path.resolve()),
-        "ok": True,
+        "ok": plan_usable,
+        "status": status,
+        "planUsable": plan_usable,
+        "scope": _payload_scope(
+            path,
+            diagnosticScope=check_scope.get("diagnosticsScope", "file"),
+            repairScope=_scope_label_from_sources(bundle["files"]),
+        ),
         "diagnosticCount": len(check_payload["diagnostics"]),
         "repairCount": len(repairs),
+        "patchableRepairCount": len(patchable_repairs),
         "repairs": repairs,
         "preconditions": {
             "fileHashes": file_hashes,
         },
         "checkSummary": check_payload["summary"],
-        "nextCommands": _fix_plan_next_commands(path),
+        "checkStatus": check_payload["status"],
+        "blockingReason": (
+            "compiler diagnostics are present and the current repair planner only trusts source-level repair plans after successful compiler validation"
+            if status == "blocked" else
+            "only human-review suggestions were derived; no concrete machine patch is available for the current diagnostics"
+            if status == "suggestions-only" else
+            "no actionable machine repair was derived from the current diagnostics"
+            if status == "no-repairs" else ""
+        ),
+        "nextCommands": _fix_plan_next_commands(
+            path,
+            patchable=bool(patchable_repairs),
+            plan_usable=plan_usable,
+            status=status,
+        ),
     }
 
 
 def _load_plan(path: Path) -> dict:
-    return json.loads(path.read_text(encoding="utf-8"))
+    return json.loads(path.read_text(encoding="utf-8-sig"))
+
+
+def _patch_error_payload(mode: str, error: str, *, details=None, next_commands=None) -> dict:
+    return {
+        "schemaVersion": "sem.patch.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "ok": False,
+        "mode": mode,
+        "applied": False,
+        "rolledBack": False,
+        "error": error,
+        "details": list(details or []),
+        "staleFiles": [],
+        "filesChanged": [],
+        "editCount": 0,
+        "verification": {"formatOk": None, "checkOk": None, "checkSummary": {}},
+        "nextCommands": list(next_commands or []),
+    }
+
+
+def _validate_patch_plan(plan: dict) -> list[str]:
+    errors = []
+    if not isinstance(plan, dict):
+        return ["patch plan must be a JSON object"]
+    if plan.get("schemaVersion") != "sem.fixPlan.v1":
+        errors.append("patch plan schemaVersion must be sem.fixPlan.v1")
+    if plan.get("planUsable") is False or plan.get("status") in {"blocked", "suggestions-only", "no-repairs"}:
+        errors.append("patch plan is not actionable; regenerate after resolving blocking diagnostics or review-only suggestions")
+    repairs = plan.get("repairs")
+    if not isinstance(repairs, list):
+        errors.append("patch plan repairs must be a list")
+        return errors
+    allowed_ops = {"insertAfterLine", "replaceLine"}
+    for repair_index, repair in enumerate(repairs):
+        edits = repair.get("edits", [])
+        if not isinstance(edits, list):
+            errors.append(f"repair[{repair_index}] edits must be a list")
+            continue
+        for edit_index, edit in enumerate(edits):
+            op = edit.get("op", "")
+            if op not in allowed_ops:
+                errors.append(f"repair[{repair_index}].edits[{edit_index}] unsupported op `{op}`")
+                continue
+            if not edit.get("file"):
+                errors.append(f"repair[{repair_index}].edits[{edit_index}] missing file")
+            if op == "insertAfterLine" and "afterLine" not in edit:
+                errors.append(f"repair[{repair_index}].edits[{edit_index}] missing afterLine")
+            if op == "replaceLine" and "line" not in edit:
+                errors.append(f"repair[{repair_index}].edits[{edit_index}] missing line")
+    return errors
 
 
 def _apply_insert_after_line(lines: list[str], after_line: int, text: str) -> list[str]:
     new_lines = list(lines)
-    insertion_index = max(0, min(len(new_lines), int(after_line)))
+    insertion_index = int(after_line)
     new_lines[insertion_index:insertion_index] = [text + "\n"]
     return new_lines
 
 
 def _apply_replace_line(lines: list[str], line_number: int, text: str) -> list[str]:
     new_lines = list(lines)
-    index = max(0, min(len(new_lines) - 1, int(line_number) - 1))
+    index = int(line_number) - 1
     new_lines[index] = text + "\n"
     return new_lines
 
 
+def _validate_edit_coordinate(lines: list[str], edit: dict) -> str:
+    op = edit.get("op", "")
+    if op == "insertAfterLine":
+        after_line = int(edit.get("afterLine", 0))
+        if after_line < 0 or after_line > len(lines):
+            return f"insertAfterLine afterLine {after_line} is outside 0..{len(lines)}"
+        return ""
+    if op == "replaceLine":
+        line_number = int(edit.get("line", 0))
+        if line_number < 1 or line_number > len(lines):
+            return f"replaceLine line {line_number} is outside 1..{len(lines)}"
+    return ""
+
+
 def _execute_patch_plan(plan: dict, mode: str) -> dict:
+    validation_errors = _validate_patch_plan(plan)
+    if validation_errors:
+        return _patch_error_payload(
+            mode,
+            "invalid patch plan",
+            details=validation_errors,
+            next_commands=[
+                {
+                    "kind": "fix",
+                    "command": f"sem fix --plan --json {Path(plan.get('inputPath', '.')).resolve()}",
+                    "reason": "regenerate the plan from the current SemanticScript diagnostics",
+                }
+            ],
+        )
     file_hashes = dict(plan.get("preconditions", {}).get("fileHashes", {}))
     stale = []
     for file_name, expected_hash in sorted(file_hashes.items()):
-        current_hash = _file_sha256(Path(file_name))
-        if expected_hash and current_hash and expected_hash != current_hash:
-            stale.append({
+        current_hash, read_error = _file_sha256_with_error(Path(file_name))
+        if expected_hash and expected_hash != current_hash:
+            entry = {
                 "file": file_name,
                 "expectedHash": expected_hash,
                 "actualHash": current_hash,
-            })
+            }
+            if read_error:
+                entry["detail"] = read_error
+            stale.append(entry)
     if stale:
         return {
             "schemaVersion": "sem.patch.v1",
             "tool": {"name": "sem", "version": VERSION},
             "ok": False,
             "mode": mode,
+            "applied": False,
+            "rolledBack": False,
             "error": "patch precondition failed; one or more target files changed since the plan was generated",
+            "details": [],
             "staleFiles": stale,
             "filesChanged": [],
             "editCount": 0,
@@ -2816,45 +3890,108 @@ def _execute_patch_plan(plan: dict, mode: str) -> dict:
             "nextCommands": _patch_next_commands(plan, mode, False),
         }
     changed_files = {}
+    original_texts = {}
     for repair in plan.get("repairs", []):
         for edit in repair.get("edits", []):
             target = Path(edit["file"]).resolve()
             current = changed_files.get(target)
             if current is None:
-                current = target.read_text(encoding="utf-8").splitlines(keepends=True)
+                try:
+                    original_text = target.read_text(encoding="utf-8")
+                except OSError as exc:
+                    return _patch_error_payload(
+                        mode,
+                        "unable to read patch target",
+                        details=[f"{target}: {exc}"],
+                        next_commands=_patch_next_commands(plan, mode, False),
+                    )
+                original_texts[target] = original_text
+                current = original_text.splitlines(keepends=True)
+            coordinate_error = _validate_edit_coordinate(current, edit)
+            if coordinate_error:
+                return _patch_error_payload(
+                    mode,
+                    "patch precondition failed; repair coordinates no longer match the current file shape",
+                    details=[f"{target}: {coordinate_error}"],
+                    next_commands=_patch_next_commands(plan, mode, False),
+                )
             if edit.get("op") == "insertAfterLine":
                 current = _apply_insert_after_line(current, int(edit.get("afterLine", 0)), edit.get("text", ""))
             elif edit.get("op") == "replaceLine":
                 current = _apply_replace_line(current, int(edit.get("line", 1)), edit.get("text", ""))
             changed_files[target] = current
 
+    details = []
     if mode == "apply":
-        for target, lines in changed_files.items():
-            target.write_text("".join(lines), encoding="utf-8", newline="\n")
+        try:
+            for target, lines in changed_files.items():
+                target.write_text("".join(lines), encoding="utf-8", newline="\n")
+        except OSError as exc:
+            for restore_target, original_text in original_texts.items():
+                try:
+                    restore_target.write_text(original_text, encoding="utf-8", newline="\n")
+                except OSError:
+                    pass
+            return _patch_error_payload(
+                mode,
+                "unable to write patched files",
+                details=[str(exc)],
+                next_commands=_patch_next_commands(plan, mode, False),
+            )
+
+    verification = {"formatOk": None, "checkOk": None, "checkSummary": {}, "rolledBack": False}
+    if mode == "apply":
         if changed_files:
             semfmt_path = ROOT / "formatter" / "semfmt.py"
-            subprocess.run(
+            format_proc = subprocess.run(
                 [sys.executable, str(semfmt_path), *[str(path) for path in changed_files]],
                 check=False,
                 capture_output=True,
                 text=True,
             )
-
-    verification = {"formatOk": True, "checkOk": None, "checkSummary": {}}
-    if mode == "apply":
-        input_path = Path(plan.get("inputPath", Path.cwd()))
-        check_payload = _build_check_payload(input_path, [])
-        verification["checkOk"] = bool(check_payload.get("ok", False))
-        verification["checkSummary"] = check_payload.get("summary", {})
+            verification["formatOk"] = format_proc.returncode == 0
+            if not verification["formatOk"]:
+                if format_proc.stderr.strip():
+                    details.append(format_proc.stderr[:2000])
+                if format_proc.stdout.strip():
+                    details.append(format_proc.stdout[:2000])
+        else:
+            verification["formatOk"] = True
+        if verification["formatOk"]:
+            input_path = Path(plan.get("inputPath", Path.cwd()))
+            check_payload = _build_check_payload(input_path, [])
+            verification["checkOk"] = bool(check_payload.get("ok", False))
+            verification["checkSummary"] = check_payload.get("summary", {})
+        else:
+            verification["checkOk"] = False
+        if changed_files and (not verification["formatOk"] or not verification["checkOk"]):
+            for target, original_text in original_texts.items():
+                try:
+                    target.write_text(original_text, encoding="utf-8", newline="\n")
+                except OSError as exc:
+                    details.append(f"rollback failed for {target}: {exc}")
+            verification["rolledBack"] = True
+    command_ok = mode != "apply" or (
+        bool(verification.get("formatOk", False))
+        and bool(verification.get("checkOk", False))
+        and not verification.get("rolledBack", False)
+    )
     return {
         "schemaVersion": "sem.patch.v1",
         "tool": {"name": "sem", "version": VERSION},
-        "ok": True,
+        "ok": command_ok,
         "mode": mode,
+        "scope": _payload_scope(
+            Path(plan.get("inputPath", Path.cwd())),
+            repairScope="file",
+        ),
+        "applied": mode == "apply" and not verification.get("rolledBack", False),
+        "rolledBack": verification.get("rolledBack", False),
+        "details": details,
         "filesChanged": [str(path) for path in sorted(changed_files, key=lambda item: str(item).lower())],
         "editCount": sum(len(repair.get("edits", [])) for repair in plan.get("repairs", [])),
         "verification": verification,
-        "nextCommands": _patch_next_commands(plan, mode, True),
+        "nextCommands": _patch_next_commands(plan, mode, command_ok),
     }
 
 
@@ -3304,6 +4441,7 @@ def command_run(args: argparse.Namespace) -> int:
 def command_check(args: argparse.Namespace) -> int:
     if getattr(args, "json", False):
         payload = _build_check_payload(Path(args.path), _strip_separator(list(args.compiler_args)))
+        payload = _compact_check_payload_for_cli(Path(args.path), payload, full=bool(getattr(args, "full", False)))
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0 if payload["ok"] else 1
     build_tape = _find_build_tape(Path(args.path))
@@ -3485,11 +4623,11 @@ def command_dev(args: argparse.Namespace) -> int:
     payload = _dev_payload(Path(args.path), bool(args.trace))
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
-        return 0
+        return 0 if payload["ok"] else 1
     print("watch plan only; use --json for machine-readable agent workflow facts")
     print(f"watch files: {len(payload['watch']['files'])}")
     print(f"rerun: {', '.join(payload['watch']['rerun'])}")
-    return 0
+    return 0 if payload["ok"] else 1
 
 
 def command_test(args: argparse.Namespace) -> int:
@@ -3497,6 +4635,7 @@ def command_test(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
+        print(f"status: {payload['status']}")
         print(f"discovered: {payload['discoveredTests']}")
         print(f"passed: {payload['passedTests']}")
         print(f"failed: {payload['failedTests']}")
@@ -3507,6 +4646,7 @@ def command_test(args: argparse.Namespace) -> int:
 def command_graph(args: argparse.Namespace) -> int:
     payload = _graph_payload(Path(args.path), args.kind)
     if args.json:
+        payload = _compact_graph_payload_for_cli(Path(args.path), payload, full=bool(getattr(args, "full", False)))
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0 if payload.get("ok", True) and not payload.get("errors") else 1
     summary = payload.get("summary", {})
@@ -3520,6 +4660,7 @@ def command_graph(args: argparse.Namespace) -> int:
 def command_slice(args: argparse.Namespace) -> int:
     payload = _slice_payload(Path(args.path), args)
     if args.json:
+        payload = _compact_slice_payload_for_cli(Path(args.path), payload, full=bool(getattr(args, "full", False)))
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0 if payload.get("ok") else 1
     anchor = payload.get("anchor", {})
@@ -3562,18 +4703,44 @@ def command_fix(args: argparse.Namespace) -> int:
         return 2
     payload = _build_fix_plan_payload(Path(args.path), _strip_separator(list(args.compiler_args)))
     if args.json:
+        payload = _compact_fix_payload_for_cli(Path(args.path), payload, full=bool(getattr(args, "full", False)))
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
         print(f"repairs: {len(payload['repairs'])}")
         for repair in payload["repairs"]:
             print(f"- {repair['diagnostic']} {repair['kind']} edits={len(repair['edits'])}")
-    return 0
+    return 0 if payload["ok"] else 1
 
 
 def command_patch(args: argparse.Namespace) -> int:
     mode = "apply" if args.apply else "dry-run"
-    plan = _load_plan(Path(args.plan_path))
-    payload = _execute_patch_plan(plan, mode)
+    try:
+        plan = _load_plan(Path(args.plan_path))
+    except (OSError, json.JSONDecodeError) as exc:
+        payload = _patch_error_payload(
+            mode,
+            f"unable to load patch plan: {exc}",
+            next_commands=[
+                {
+                    "kind": "fix",
+                    "command": "sem fix --plan --json <PATH>",
+                    "reason": "generate a fresh repair plan and save it to a JSON file before patching",
+                }
+            ],
+        )
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            print(payload["error"], file=sys.stderr)
+        return 1
+    try:
+        payload = _execute_patch_plan(plan, mode)
+    except OSError as exc:
+        payload = _patch_error_payload(
+            mode,
+            f"patch execution failed: {exc}",
+            next_commands=_patch_next_commands(plan, mode, False),
+        )
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
@@ -3581,9 +4748,7 @@ def command_patch(args: argparse.Namespace) -> int:
         print(f"files changed: {len(payload['filesChanged'])}")
         for path in payload["filesChanged"]:
             print(f"- {path}")
-    if payload["mode"] == "apply":
-        return 0 if payload["verification"]["checkOk"] else 1
-    return 0
+    return 0 if payload["ok"] else 1
 
 
 def command_skills(args: argparse.Namespace) -> int:
@@ -3591,8 +4756,17 @@ def command_skills(args: argparse.Namespace) -> int:
         payload = {
             "schemaVersion": "sem.skills.v1",
             "tool": {"name": "sem", "version": VERSION},
+            "ok": True,
+            "status": "ok",
             "skills": _skill_registry_payload(),
             "aliasIndex": dict(sorted(SKILL_ALIASES.items())),
+            "nextCommands": [
+                {
+                    "kind": "skills",
+                    "command": "sem skills get sem --json",
+                    "reason": "load the language-core guidance from the current tool version",
+                }
+            ],
         }
         if args.json:
             print(json.dumps(payload, indent=2, sort_keys=True))
@@ -3601,19 +4775,43 @@ def command_skills(args: argparse.Namespace) -> int:
                 print(f"{skill['name']}: {skill['description']}")
         return 0
     if args.skills_command == "get":
+        requested_names = list(args.names)
         names = [SKILL_ALIASES.get(name, name) for name in args.names]
         if args.all:
             names = [skill["name"] for skill in _skill_registry_payload()]
+            requested_names = list(names)
         entries = []
+        include_full_content = bool(args.full or not args.json)
         for name in names:
-            skill = _skill_content(name)
+            skill = _skill_content(name, include_full_content=include_full_content)
             if skill is not None:
                 entries.append(skill)
+        resolved_names = [skill["name"] for skill in entries]
+        missing_names = [name for name in names if name not in resolved_names]
         payload = {
             "schemaVersion": "sem.skills.v1",
             "tool": {"name": "sem", "version": VERSION},
+            "ok": not missing_names,
+            "status": (
+                "ok"
+                if entries and not missing_names else
+                "partial"
+                if entries else
+                "missing"
+            ),
             "skills": entries,
             "aliasIndex": dict(sorted(SKILL_ALIASES.items())),
+            "requestedNames": requested_names,
+            "resolvedNames": resolved_names,
+            "missingNames": missing_names,
+            "contentMode": "full" if include_full_content else "summary",
+            "nextCommands": [
+                {
+                    "kind": "check",
+                    "command": "sem check --json <PATH>",
+                    "reason": "run the current toolchain against the project after loading the matching skill",
+                }
+            ],
         }
         if args.json:
             print(json.dumps(payload, indent=2, sort_keys=True))
@@ -3621,7 +4819,7 @@ def command_skills(args: argparse.Namespace) -> int:
             for skill in entries:
                 print(f"== {skill['name']} ==")
                 print(skill["content"])
-        return 0 if entries else 1
+        return 0 if entries and not missing_names else 1
     print("sem skills requires a subcommand", file=sys.stderr)
     return 2
 
@@ -3686,6 +4884,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     check.add_argument("--json", action="store_true",
                        help="emit machine-readable check diagnostics and context")
+    check.add_argument("--full", action="store_true",
+                       help="disable compact JSON windows and emit the full machine payload")
     check.add_argument("path", nargs="?", default=".")
     check.add_argument("compiler_args", nargs=argparse.REMAINDER)
     check.set_defaults(func=command_check)
@@ -3806,6 +5006,8 @@ def build_parser() -> argparse.ArgumentParser:
                        help="graph view to emit")
     graph.add_argument("--json", action="store_true",
                        help="emit machine-readable graph payload")
+    graph.add_argument("--full", action="store_true",
+                       help="disable compact JSON windows and emit the full machine payload")
     graph.add_argument("path", nargs="?", default=".")
     graph.set_defaults(func=command_graph)
 
@@ -3815,11 +5017,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     slice_cmd.add_argument("--json", action="store_true",
                            help="emit machine-readable slice payload")
+    slice_cmd.add_argument("--full", action="store_true",
+                           help="disable compact JSON windows and emit the full machine payload")
     slice_cmd.add_argument("--operation")
     slice_cmd.add_argument("--route",
                            help="route anchor in METHOD:/path form, for example POST:/todos")
     slice_cmd.add_argument("--symbol",
-                           help="symbol anchor; currently resolves operations")
+                           help="symbol anchor; resolves operations, capabilities, type aliases, consts, and storage declarations")
     slice_cmd.add_argument("--effect")
     slice_cmd.add_argument("--capability")
     slice_cmd.add_argument("--type", dest="type_name")
@@ -3843,6 +5047,8 @@ def build_parser() -> argparse.ArgumentParser:
                      help="emit a reviewable repair plan instead of applying edits")
     fix.add_argument("--json", action="store_true",
                      help="emit machine-readable repair plans")
+    fix.add_argument("--full", action="store_true",
+                     help="disable compact JSON windows and emit the full machine payload")
     fix.add_argument("path", nargs="?", default=".")
     fix.add_argument("compiler_args", nargs=argparse.REMAINDER)
     fix.set_defaults(func=command_fix)
@@ -3883,7 +5089,7 @@ def build_parser() -> argparse.ArgumentParser:
     skills_get.add_argument("--all", action="store_true",
                             help="return every visible built-in skill")
     skills_get.add_argument("--full", action="store_true",
-                            help="compatibility flag; returns full content")
+                            help="include full raw skill bodies instead of the summary-first JSON shape")
     skills_get.add_argument("names", nargs="*")
     skills_get.set_defaults(func=command_skills)
 
