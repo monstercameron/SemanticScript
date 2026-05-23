@@ -3302,6 +3302,64 @@ def check_unused_labels(facts: ExtendedFacts) -> List[Diagnostic]:
     return diagnostics
 
 
+def _is_unreachable_operation_row_candidate(sourceLine: SourceLine) -> bool:
+    if is_comment(sourceLine) or not sourceLine.tokens:
+        return False
+    if sourceLine.verb in {"__typedComment__", "__groupAnchor__"}:
+        return False
+    return True
+
+
+def check_unreachable_operation_rows(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3630 - rows after terminal control-flow that are not reachable by
+    branch/jump edges are stale executable context. This catches old blocks
+    left behind after response fast paths or SQL flow rewrites.
+    """
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        reachableLineNumbers = source_line_reachable_numbers(operation)
+        for sourceLine in operation.lines:
+            if sourceLine.number in reachableLineNumbers:
+                continue
+            if not _is_unreachable_operation_row_candidate(sourceLine):
+                continue
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3630",
+                kind="controlFlow.unreachableRow",
+                severity=Severity.WARNING,
+                subjectName=(sourceLine.args[0] if sourceLine.args else sourceLine.verb),
+                subjectKind=sourceLine.verb,
+                gapEdge="controlReachability",
+                intentSlogan="unreachable operation row",
+                primary=span_of_line(sourceLine, "unreachableRow"),
+                related=[span_of_line(operation.line, "enclosingOperation")],
+                invariantRule=(
+                    "every executable operation row must be reachable from the "
+                    "operation entry through fallthrough, branch, jump, await, "
+                    "or runChecked edges"
+                ),
+                specAnchor="SYNTAX.md#control-flow",
+                fixCandidates=[
+                    FixCandidate(
+                        name="removeUnreachableBlock",
+                        shape="# remove the stale rows, or add an explicit branch/jump if this block is intended",
+                        evidence=[span_of_line(sourceLine)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=False,
+                effort=Effort.LOCAL,
+                passProvenance="check_unreachable_operation_rows",
+                agentHint=(
+                    "dead operation rows still consume compiler context and "
+                    "can hide obsolete resource or SQL paths"
+                ),
+            ))
+            break
+    return diagnostics
+
+
 def check_unused_capabilities(facts: ExtendedFacts) -> List[Diagnostic]:
     diagnostics: List[Diagnostic] = []
     exportedCapabilities = {
@@ -5316,6 +5374,13 @@ def check_dead_store(facts: ExtendedFacts) -> List[Diagnostic]:
 
 
 _DUPLICATE_LOCAL_IMMUTABLE_THRESHOLD = 3
+_LARGE_LOCAL_STATIC_LITERAL_MIN_BYTES = 512
+_LARGE_LOCAL_STATIC_LITERAL_TYPES = frozenset({
+    "CNullTerminatedByteString",
+    "String",
+    "JsonText",
+    "SqlText",
+})
 
 
 def _scan_op_local_immutables(
@@ -5447,6 +5512,82 @@ def check_duplicate_local_immutable_across_ops(facts: ExtendedFacts) -> List[Dia
                 agentHint=(
                     "delete the per-operation declarations and add one module-scope "
                     "row; references resolve to the module value without rename"
+                ),
+            ))
+    return diagnostics
+
+
+def _is_large_local_static_literal_type(
+    facts: ExtendedFacts,
+    typeName: str,
+) -> bool:
+    resolvedType = _resolve_type_alias_head(typeName, facts.base.type_aliases)
+    return resolvedType in _LARGE_LOCAL_STATIC_LITERAL_TYPES
+
+
+def check_large_local_static_literal(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3634 - large inline local string/blob literals in operations should be
+    hoisted to module storage. They are static data, not per-call context, and
+    they bloat hot handlers plus agent working context when left inline.
+    """
+    diagnostics: List[Diagnostic] = []
+    for operationName, operation in facts.base.operations.items():
+        for sourceLine in operation.lines:
+            if (is_comment(sourceLine) or not sourceLine.tokens
+                    or sourceLine.verb != "storage"
+                    or len(sourceLine.args) < 5):
+                continue
+            scope, mutability = sourceLine.args[0], sourceLine.args[1]
+            if scope != "local" or mutability != "immutable":
+                continue
+            name = sourceLine.args[2]
+            typeName = sourceLine.args[3]
+            valueTokenIndex = 5
+            if valueTokenIndex >= len(sourceLine.tokens):
+                continue
+            valueToken = sourceLine.tokens[valueTokenIndex]
+            if not valueToken.quoted:
+                continue
+            if not _is_large_local_static_literal_type(facts, typeName):
+                continue
+            literalBytes = len(valueToken.text.encode("utf-8"))
+            if literalBytes < _LARGE_LOCAL_STATIC_LITERAL_MIN_BYTES:
+                continue
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3634",
+                kind="performance.largeLocalStaticLiteral",
+                severity=Severity.WARNING,
+                subjectName=name,
+                subjectKind="storageSlot",
+                gapEdge="storage module immutable",
+                intentSlogan="large static literal declared in operation body",
+                primary=span_of_line(sourceLine, "storageDeclaration"),
+                related=[span_of_line(operation.line, "enclosingOperation")],
+                invariantRule=(
+                    f"`{operationName}` declares `{name}` as a {literalBytes}-byte "
+                    "inline local immutable literal; static literals at or above "
+                    f"{_LARGE_LOCAL_STATIC_LITERAL_MIN_BYTES} bytes belong at "
+                    "module scope so handlers do not carry large per-call context."
+                ),
+                specAnchor="docs/optimization-guide.md#hoist-shared-immutables-to-module-scope",
+                fixCandidates=[
+                    FixCandidate(
+                        name="hoistToModuleImmutable",
+                        shape=(
+                            f"storage module immutable {name} {typeName} "
+                            '"<same literal>"'
+                        ),
+                        evidence=[span_of_line(sourceLine)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=False,
+                effort=Effort.LOCAL,
+                passProvenance="check_large_local_static_literal",
+                agentHint=(
+                    "move the storage row above operations at module scope and "
+                    "keep operation references pointed at the same name"
                 ),
             ))
     return diagnostics
@@ -11997,6 +12138,28 @@ def _sql_first_verb_lint(sql_text: str) -> Optional[str]:
     return None
 
 
+def _strip_sql_leading_comments_lint(sql_text: str) -> str:
+    index = 0
+    while index < len(sql_text):
+        if sql_text[index].isspace():
+            index += 1
+            continue
+        if sql_text.startswith("--", index):
+            newline = sql_text.find("\n", index + 2)
+            if newline == -1:
+                return ""
+            index = newline + 1
+            continue
+        if sql_text.startswith("/*", index):
+            end = sql_text.find("*/", index + 2)
+            if end == -1:
+                return ""
+            index = end + 2
+            continue
+        break
+    return sql_text[index:].lstrip()
+
+
 def _scan_sql_text_lint(sql_text: str) -> Tuple[int, int, Optional[str]]:
     placeholder_count = 0
     statement_count = 0
@@ -12061,6 +12224,140 @@ def _scan_sql_text_lint(sql_text: str) -> Tuple[int, int, Optional[str]]:
     if has_statement_content:
         statement_count += 1
     return placeholder_count, statement_count, None
+
+
+SQL_STATEMENT_START_VERBS: frozenset = frozenset({
+    "ALTER", "BEGIN", "COMMIT", "CREATE", "DELETE", "DROP", "INSERT",
+    "PRAGMA", "REPLACE", "ROLLBACK", "SELECT", "UPDATE", "WITH",
+})
+
+_SQL_REDUNDANT_CASE_RE = re.compile(
+    r"\bCASE\s+WHEN\s+.+?\s+THEN\s+(?P<then>.*?)\s+ELSE\s+(?P<else>.*?)\s+END\b",
+    re.IGNORECASE,
+)
+
+_SQL_NARROW_EXISTENCE_RE = re.compile(
+    r"(?is)^SELECT\s+(?:1\b|EXISTS\s*\()"
+)
+
+_SQL_WRITE_TABLE_RE = re.compile(
+    r"(?is)^(?:INSERT\s+(?:OR\s+\w+\s+)?INTO|REPLACE\s+INTO|"
+    r"UPDATE)\s+([A-Za-z_][A-Za-z0-9_]*)\b"
+)
+
+_SQL_SELECT_TABLE_RE = re.compile(
+    r"(?is)^SELECT\b.+?\bFROM\s+([A-Za-z_][A-Za-z0-9_]*)\b"
+)
+
+_SQL_WRITE_STATEMENT_VERBS: frozenset = frozenset({
+    "DELETE",
+    "INSERT",
+    "REPLACE",
+    "UPDATE",
+})
+
+
+def _normalize_sql_expression_lint(expression: str) -> str:
+    return re.sub(r"\s+", " ", expression.strip()).lower()
+
+
+def _redundant_sql_cases_lint(sql_text: str) -> List[Tuple[str, str]]:
+    redundant_cases: List[Tuple[str, str]] = []
+    for match in _SQL_REDUNDANT_CASE_RE.finditer(sql_text):
+        then_expr = _normalize_sql_expression_lint(match.group("then"))
+        else_expr = _normalize_sql_expression_lint(match.group("else"))
+        if then_expr and then_expr == else_expr:
+            redundant_cases.append((match.group(0), then_expr))
+    return redundant_cases
+
+
+def _sql_select_is_narrow_existence_probe_lint(sql_text: str) -> bool:
+    return bool(_SQL_NARROW_EXISTENCE_RE.match(
+        _strip_sql_leading_comments_lint(sql_text)))
+
+
+def _sql_write_table_lint(sql_text: str) -> Optional[str]:
+    match = _SQL_WRITE_TABLE_RE.match(_strip_sql_leading_comments_lint(sql_text))
+    if match is None:
+        return None
+    return match.group(1).lower()
+
+
+def _sql_select_table_lint(sql_text: str) -> Optional[str]:
+    match = _SQL_SELECT_TABLE_RE.match(_strip_sql_leading_comments_lint(sql_text))
+    if match is None:
+        return None
+    return match.group(1).lower()
+
+
+def _sql_has_returning_lint(sql_text: str) -> bool:
+    return bool(re.search(r"(?is)\bRETURNING\b", sql_text))
+
+
+def _sql_uses_last_insert_rowid_lint(sql_text: str) -> bool:
+    return bool(re.search(r"(?is)\blast_insert_rowid\s*\(", sql_text))
+
+
+def _local_sql_body_texts(facts: ExtendedFacts) -> Dict[str, str]:
+    return {sql_body.name: _sql_body_text(sql_body)
+            for sql_body in facts.base.sql_bodies}
+
+
+def _sql_body_text_for_name_lint(
+    local_sql_bodies: Dict[str, str],
+    sql_name: str,
+) -> Optional[str]:
+    sql_text = local_sql_bodies.get(sql_name)
+    if sql_text is not None:
+        return sql_text
+    if "." in sql_name:
+        return local_sql_bodies.get(sql_name.rsplit(".", 1)[1])
+    return None
+
+
+def _sql_is_write_statement_lint(sql_text: str) -> bool:
+    return _sql_first_verb_lint(sql_text) in _SQL_WRITE_STATEMENT_VERBS
+
+
+def _sqlite_statement_has_column_reads(
+    operation_calls: Dict[str, CallFact],
+    statement_names: Set[str],
+) -> bool:
+    if not statement_names:
+        return False
+    for call_fact in operation_calls.values():
+        if not call_fact.target.startswith("sqlite.column"):
+            continue
+        if call_arg_value(call_fact, "statement") in statement_names:
+            return True
+    return False
+
+
+def _sqlite_statement_passed_to_helper(
+    operation_calls: Dict[str, CallFact],
+    statement_names: Set[str],
+) -> bool:
+    if not statement_names:
+        return False
+    ignored_targets = {
+        "sqlite.bindBlob",
+        "sqlite.bindDouble",
+        "sqlite.bindInt",
+        "sqlite.bindInt64",
+        "sqlite.bindNull",
+        "sqlite.bindText",
+        "sqlite.finalizeStatement",
+        "sqlite.resetStatement",
+        "sqlite.stepStatement",
+    }
+    for call_fact in operation_calls.values():
+        if (call_fact.target.startswith("sqlite.column")
+                or call_fact.target in ignored_targets):
+            continue
+        for values in call_arg_values(call_fact).values():
+            if any(value in statement_names for value in values):
+                return True
+    return False
 
 
 def _sql_body_diagnostic(
@@ -12233,9 +12530,957 @@ def check_sql_body_literals(facts: ExtendedFacts) -> List[Diagnostic]:
     return diagnostics
 
 
+def _inline_sql_literal_diagnostic(
+    source_line: SourceLine,
+    name: str,
+    type_name: str,
+    sql_text: str,
+) -> Diagnostic:
+    return Diagnostic(
+        tier=Tier.T3_REFINEMENT,
+        code="SS3628",
+        kind="sql.inlineLiteral",
+        severity=Severity.WARNING,
+        subjectName=name,
+        subjectKind="storage",
+        gapEdge="sqlBody",
+        intentSlogan="inline SQL literal",
+        primary=span_of_line(source_line, "sqlStorageLiteral"),
+        invariantRule=(
+            "executable SQL should use `SqlText` plus a `sql body` island "
+            "so tools can validate statement shape, placeholders, and SQL text "
+            "without string escaping"
+        ),
+        specAnchor="SYNTAX.md#sqlBody",
+        fixCandidates=[
+            FixCandidate(
+                name="moveSqlToBodyIsland",
+                shape=(
+                    f"storage module immutable {name} SqlText\n"
+                    f"sql body {name}\n"
+                    f"  {sql_text}"
+                ),
+            ),
+        ],
+        confidence=Confidence.HIGH,
+        blocksCompile=False,
+        effort=Effort.LOCAL,
+        passProvenance="check_inline_sql_literals",
+        agentHint=(
+            f"`{type_name}` inline SQL still compiles in permissive code, "
+            "but strict executable code expects SqlText bound by sql body or "
+            "a trusted external literalSource asset"
+        ),
+    )
+
+
+def check_inline_sql_literals(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3628 — SQL written as an escaped string literal should migrate to
+    `SqlText` plus a `sql body` island. This is a tooling/perf rule: body
+    islands let the compiler and linter scan SQL once instead of treating
+    it as arbitrary bytes.
+    """
+    diagnostics: List[Diagnostic] = []
+    for source_line in facts.base.lines:
+        if source_line.verb != "storage" or len(source_line.args) < 5:
+            continue
+        scope, mutability, name, type_name, value = source_line.args[:5]
+        if mutability != "immutable":
+            continue
+        if type_name not in {"CNullTerminatedByteString", "CString", "SqlText"}:
+            continue
+        first_verb = _sql_first_verb_lint(value)
+        if first_verb not in SQL_STATEMENT_START_VERBS:
+            continue
+        diagnostics.append(_inline_sql_literal_diagnostic(
+            source_line, name, type_name, value))
+    return diagnostics
+
+
+def check_redundant_sql_case_branches(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3629 — `CASE WHEN ... THEN X ELSE X END` inside SQL is dead work.
+    It burns SQLite parse/VM cycles and often means obsolete bind parameters
+    stayed behind after a refactor.
+    """
+    diagnostics: List[Diagnostic] = []
+    for sql_body in facts.base.sql_bodies:
+        for body_line, line_number in sql_body.body_lines:
+            if "CASE" not in body_line.upper():
+                continue
+            redundant_cases = _redundant_sql_cases_lint(body_line)
+            if not redundant_cases:
+                continue
+            _case_text, expression = redundant_cases[0]
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3629",
+                kind="sql.redundantCaseBranches",
+                severity=Severity.WARNING,
+                subjectName=sql_body.name,
+                subjectKind="sqlBody",
+                gapEdge="redundantCase",
+                intentSlogan="redundant SQL CASE",
+                primary=Span(
+                    facts.base.path,
+                    line_number,
+                    1,
+                    "sqlBodyLine",
+                ),
+                related=[span_of_line(sql_body.line, "sqlBodyDeclaration")],
+                invariantRule=(
+                    "`CASE WHEN ... THEN X ELSE X END` must be simplified to "
+                    "`X`; if both branches are the same, the condition and any "
+                    "bind parameters used only by it are dead work"
+                ),
+                specAnchor="docs/optimization-guide.md#sql-body",
+                fixCandidates=[
+                    FixCandidate(
+                        name="simplifyRedundantSqlCase",
+                        shape=f"# replace the redundant CASE expression with `{expression}`",
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=False,
+                effort=Effort.LOCAL,
+                passProvenance="check_redundant_sql_case_branches",
+                agentHint=(
+                    "After simplifying the SQL, re-check sqlite.bind* "
+                    "parameter indexes; numbered placeholders often need to "
+                    "be compacted."
+                ),
+            ))
+    return diagnostics
+
+
 # ==========================================================================
 # SS36xx — webserver discipline
 # ==========================================================================
+
+def check_sql_last_insert_rowid_function(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3639 - SQL bodies should not depend on last_insert_rowid().
+
+    The SQL function is connection-global mutable state. In generated handler
+    code it usually means a previous INSERT produced an id that should have
+    been returned directly with RETURNING and then passed as an explicit bind.
+    The native sqlite.lastInsertRowId call has the same hidden connection-state
+    dependency, so the rule catches both forms.
+    """
+    diagnostics: List[Diagnostic] = []
+    for sql_body in facts.base.sql_bodies:
+        sql_text = _sql_body_text(sql_body)
+        if not _sql_uses_last_insert_rowid_lint(sql_text):
+            continue
+        body_line = next((
+            line for line in sql_body.body_lines
+            if re.search(r"(?i)\blast_insert_rowid\s*\(", line[0])
+        ), None)
+        if body_line is None:
+            primary = span_of_line(sql_body.line, "sqlBodyDeclaration")
+        else:
+            _text, line_number = body_line
+            primary = Span(facts.base.path, line_number, 1, "lastInsertRowid")
+        diagnostics.append(Diagnostic(
+            tier=Tier.T3_REFINEMENT,
+            code="SS3639",
+            kind="sql.lastInsertRowidFunction",
+            severity=Severity.WARNING,
+            subjectName=sql_body.name,
+            subjectKind="sqlBody",
+            gapEdge="connectionGlobalGeneratedId",
+            intentSlogan="connection-global last_insert_rowid()",
+            primary=primary,
+            related=[span_of_line(sql_body.line, "sqlBodyDeclaration")],
+            invariantRule=(
+                "SQL bodies must not call `last_insert_rowid()` to recover "
+                "generated ids from a previous statement; use `RETURNING` on "
+                "the INSERT and bind the returned id explicitly into later "
+                "statements"
+            ),
+            specAnchor="docs/optimization-guide.md#sqlite-returning",
+            fixCandidates=[
+                FixCandidate(
+                    name="returnGeneratedId",
+                    shape=(
+                        "INSERT INTO table_name(...) VALUES (...) RETURNING id\n"
+                        "# read sqlite.column* from the INSERT statement and bind it explicitly"
+                    ),
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            blocksCompile=False,
+            effort=Effort.LOCAL,
+            passProvenance="check_sql_last_insert_rowid_function",
+            agentHint=(
+                "`last_insert_rowid()` hides a dependency on connection "
+                "state. Return the generated identifier from the write "
+                "statement and pass it through a named SemanticScript value."
+            ),
+        ))
+    for operation in facts.base.operations.values():
+        operation_calls = collect_operation_calls(operation)
+        for call_fact in operation_calls.values():
+            if call_fact.target != "sqlite.lastInsertRowId":
+                continue
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3639",
+                kind="sqlite.lastInsertRowIdCall",
+                severity=Severity.WARNING,
+                subjectName=call_fact.name,
+                subjectKind="call",
+                gapEdge="connectionGlobalGeneratedId",
+                intentSlogan="connection-global sqlite.lastInsertRowId",
+                primary=span_of_line(call_fact.line, "lastInsertRowIdCall"),
+                related=[],
+                invariantRule=(
+                    "Code must not call `sqlite.lastInsertRowId` to recover "
+                    "generated ids from a previous statement; use `RETURNING` "
+                    "on the INSERT and bind the returned id explicitly into "
+                    "later statements"
+                ),
+                specAnchor="docs/optimization-guide.md#sqlite-returning",
+                fixCandidates=[
+                    FixCandidate(
+                        name="returnGeneratedId",
+                        shape=(
+                            "INSERT INTO table_name(...) VALUES (...) RETURNING id\n"
+                            "# read sqlite.column* from the INSERT statement and bind it explicitly"
+                        ),
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=False,
+                effort=Effort.LOCAL,
+                passProvenance="check_sql_last_insert_rowid_function",
+                agentHint=(
+                    "`sqlite.lastInsertRowId` hides a dependency on connection "
+                    "state. Return the generated identifier from the write "
+                    "statement and pass it through a named SemanticScript value."
+                ),
+            ))
+    return diagnostics
+
+
+def check_wide_sql_existence_probe(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3631 - SQLite existence probes should select only existence.
+
+    When a statement is prepared, stepped, and never has any column read,
+    the caller is using it as a boolean row-exists probe. Selecting a full
+    row in that shape burns SQLite VM work and can keep obsolete column
+    dependencies alive after refactors.
+    """
+    diagnostics: List[Diagnostic] = []
+    local_sql_bodies = _local_sql_body_texts(facts)
+    for operation in facts.base.operations.values():
+        operation_calls = collect_operation_calls(operation)
+        for call_fact in operation_calls.values():
+            if call_fact.target != "sqlite.prepareStatement":
+                continue
+            sql_name = call_arg_value(call_fact, "sql")
+            if sql_name is None:
+                continue
+            sql_text = local_sql_bodies.get(sql_name)
+            if sql_text is None:
+                continue
+            if _sql_first_verb_lint(sql_text) != "SELECT":
+                continue
+            if _sql_select_is_narrow_existence_probe_lint(sql_text):
+                continue
+            statement_names = call_success_value_names(call_fact)
+            if _sqlite_statement_has_column_reads(operation_calls, statement_names):
+                continue
+            if _sqlite_statement_passed_to_helper(operation_calls, statement_names):
+                continue
+            sql_arg_line = next((
+                arg_line for arg_line in call_fact.arg_lines
+                if argument_parts(arg_line) is not None
+                and argument_parts(arg_line)[1] == "sql"
+            ), call_fact.line)
+            related = [span_of_line(call_fact.line, "prepareStatement")]
+            matching_body = next((
+                sql_body for sql_body in facts.base.sql_bodies
+                if sql_body.name == sql_name
+            ), None)
+            if matching_body is not None:
+                related.append(span_of_line(
+                    matching_body.line, "sqlBodyDeclaration"))
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3631",
+                kind="sql.wideExistenceProbe",
+                severity=Severity.WARNING,
+                subjectName=call_fact.name,
+                subjectKind="call",
+                gapEdge="unusedSqlProjection",
+                intentSlogan="wide SQL existence probe",
+                primary=Span(
+                    facts.base.path,
+                    sql_arg_line.number,
+                    sql_arg_line.column,
+                    "sqlArgument",
+                ),
+                related=related,
+                invariantRule=(
+                    "A prepared SELECT whose statement is only stepped and "
+                    "never read with sqlite.column* must use `SELECT 1` or "
+                    "`SELECT EXISTS(...)` so existence checks do not project "
+                    "unused row data"
+                ),
+                specAnchor="docs/optimization-guide.md#sql-existence-probes",
+                fixCandidates=[
+                    FixCandidate(
+                        name="selectOnlyExistence",
+                        shape=(
+                            "storage module immutable NAME SqlText\n"
+                            "sql body NAME\n"
+                            "  SELECT 1 FROM table_name WHERE key = ? LIMIT 1"
+                        ),
+                    ),
+                ],
+                confidence=Confidence.MEDIUM,
+                blocksCompile=False,
+                effort=Effort.LOCAL,
+                passProvenance="check_wide_sql_existence_probe",
+                agentHint=(
+                    "If the handler only compares sqlite.stepStatement to "
+                    "the row status, replace the SQL projection with a "
+                    "narrow existence query. If a helper reads the columns, "
+                    "keep the full projection and make the data flow visible."
+                ),
+            ))
+    return diagnostics
+
+
+def check_sql_write_then_read_returning_opportunity(
+    facts: ExtendedFacts,
+) -> List[Diagnostic]:
+    """SS3632 - SQLite writes followed by scalar reads should use RETURNING.
+
+    A write statement immediately followed by a select on the same table
+    usually means the handler paid for a second prepare/bind/step cycle to
+    retrieve data SQLite could have returned from the write.
+    """
+    diagnostics: List[Diagnostic] = []
+    local_sql_bodies = _local_sql_body_texts(facts)
+    for operation in facts.base.operations.values():
+        operation_calls = collect_operation_calls(operation)
+        prior_writes: Dict[str, Tuple[CallFact, str]] = {}
+        for call_fact in sorted(
+            operation_calls.values(),
+            key=lambda candidate: candidate.line.number,
+        ):
+            if call_fact.target != "sqlite.prepareStatement":
+                continue
+            sql_name = call_arg_value(call_fact, "sql")
+            if sql_name is None:
+                continue
+            sql_text = local_sql_bodies.get(sql_name)
+            if sql_text is None:
+                continue
+            write_table = _sql_write_table_lint(sql_text)
+            if write_table is not None:
+                if not _sql_has_returning_lint(sql_text):
+                    prior_writes.setdefault(write_table, (call_fact, sql_name))
+                continue
+            select_table = _sql_select_table_lint(sql_text)
+            if select_table is None or select_table not in prior_writes:
+                continue
+            write_call, write_sql_name = prior_writes[select_table]
+            sql_arg_line = next((
+                arg_line for arg_line in call_fact.arg_lines
+                if argument_parts(arg_line) is not None
+                and argument_parts(arg_line)[1] == "sql"
+            ), call_fact.line)
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3632",
+                kind="sql.writeThenReadReturningOpportunity",
+                severity=Severity.WARNING,
+                subjectName=call_fact.name,
+                subjectKind="call",
+                gapEdge="avoidableSqlRoundTrip",
+                intentSlogan="write followed by read",
+                primary=Span(
+                    facts.base.path,
+                    sql_arg_line.number,
+                    sql_arg_line.column,
+                    "selectSqlArgument",
+                ),
+                related=[
+                    span_of_line(write_call.line, "writePrepareStatement"),
+                    span_of_line(call_fact.line, "selectPrepareStatement"),
+                ],
+                invariantRule=(
+                    "When SQLite code writes a row and then selects from the "
+                    "same table in the same operation, prefer a write SQL "
+                    "with `RETURNING` so the handler avoids an extra "
+                    "prepare/bind/step/finalize round trip"
+                ),
+                specAnchor="docs/optimization-guide.md#sqlite-returning",
+                fixCandidates=[
+                    FixCandidate(
+                        name="foldReadIntoWriteReturning",
+                        shape=(
+                            f"# add RETURNING columns to `{write_sql_name}` "
+                            f"and read them from `{write_call.name}`"
+                        ),
+                    ),
+                ],
+                confidence=Confidence.MEDIUM,
+                blocksCompile=False,
+                effort=Effort.LOCAL,
+                passProvenance="check_sql_write_then_read_returning_opportunity",
+                agentHint=(
+                    "Keep a separate SELECT only when the read intentionally "
+                    "observes state changed by triggers or other statements; "
+                    "otherwise bind sqlite.column* from the write statement's "
+                    "RETURNING row."
+                ),
+            ))
+    return diagnostics
+
+
+def check_sqlite_multiple_writes_have_transaction(
+    facts: ExtendedFacts,
+) -> List[Diagnostic]:
+    """SS3635 - Multiple SQLite writes in one operation should be atomic.
+
+    A multi-write request path without an explicit BEGIN/COMMIT burns one
+    implicit transaction per write and can leave partial state committed when a
+    later step fails. The rule is intentionally local: if an operation owns two
+    or more prepared write steps, it must make the transaction boundary visible.
+    """
+    diagnostics: List[Diagnostic] = []
+    local_sql_bodies = _local_sql_body_texts(facts)
+    for operation in facts.base.operations.values():
+        operation_calls = collect_operation_calls(operation)
+        write_steps: List[Tuple[CallFact, CallFact, str]] = []
+        for prepare_call in operation_calls.values():
+            if prepare_call.target != "sqlite.prepareStatement":
+                continue
+            sql_name = call_arg_value(prepare_call, "sql")
+            if sql_name is None:
+                continue
+            sql_text = _sql_body_text_for_name_lint(local_sql_bodies, sql_name)
+            if sql_text is None or not _sql_is_write_statement_lint(sql_text):
+                continue
+            statement_names = call_success_value_names(prepare_call)
+            if not statement_names:
+                continue
+            for step_call in operation_calls.values():
+                if step_call.target != "sqlite.stepStatement":
+                    continue
+                if call_arg_value(step_call, "statement") not in statement_names:
+                    continue
+                write_steps.append((prepare_call, step_call, sql_name))
+
+        if len(write_steps) < 2:
+            continue
+
+        has_begin = False
+        has_commit = False
+        for call_fact in operation_calls.values():
+            if call_fact.target != "sqlite.exec":
+                continue
+            sql_name = call_arg_value(call_fact, "sql")
+            if sql_name is None:
+                continue
+            sql_text = _sql_body_text_for_name_lint(local_sql_bodies, sql_name)
+            if sql_text is None:
+                continue
+            verb = _sql_first_verb_lint(sql_text)
+            if verb in {"BEGIN", "SAVEPOINT"}:
+                has_begin = True
+            elif verb in {"COMMIT", "RELEASE"}:
+                has_commit = True
+
+        if has_begin and has_commit:
+            continue
+
+        first_prepare, first_step, first_sql_name = write_steps[0]
+        _second_prepare, second_step, second_sql_name = write_steps[1]
+        diagnostics.append(Diagnostic(
+            tier=Tier.T3_REFINEMENT,
+            code="SS3635",
+            kind="sqlite.multipleWritesWithoutTransaction",
+            severity=Severity.WARNING,
+            subjectName=operation.name,
+            subjectKind="operation",
+            gapEdge="transactionBoundary",
+            intentSlogan="multiple SQLite writes without transaction",
+            primary=span_of_line(second_step.line, "secondWriteStep"),
+            related=[
+                span_of_line(first_prepare.line, "firstWritePrepare"),
+                span_of_line(first_step.line, "firstWriteStep"),
+            ],
+            invariantRule=(
+                "An operation that steps two or more prepared INSERT/UPDATE/"
+                "DELETE/REPLACE statements must make a SQLite BEGIN and "
+                "COMMIT visible in the same operation so the writes execute "
+                "atomically and avoid per-statement implicit transactions"
+            ),
+            specAnchor="docs/optimization-guide.md#sqlite-transactions",
+            fixCandidates=[
+                FixCandidate(
+                    name="wrapWritesInTransaction",
+                    shape=(
+                        "call beginTxCall sqlite.exec\n"
+                        "argument beginTxCall sql SqlText sqlBeginTransaction\n"
+                        "# write statements\n"
+                        "call commitTxCall sqlite.exec\n"
+                        "argument commitTxCall sql SqlText sqlCommitTransaction"
+                    ),
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            blocksCompile=False,
+            effort=Effort.LOCAL,
+            passProvenance="check_sqlite_multiple_writes_have_transaction",
+            agentHint=(
+                f"`{first_sql_name}` and `{second_sql_name}` are both "
+                "stepped as writes. Add visible BEGIN/COMMIT rows, or split "
+                "the helper so a single caller-owned transaction is explicit."
+            ),
+        ))
+    return diagnostics
+
+
+_SQLITE_RETURNING_DRAIN_TARGETS: frozenset = frozenset({
+    "sqlite.finalizeStatement",
+    "sqlite.resetStatement",
+    "sqlite.stepStatement",
+})
+
+
+def check_sqlite_returning_statement_drained_before_commit(
+    facts: ExtendedFacts,
+) -> List[Diagnostic]:
+    """SS3636 - RETURNING statements must be drained before COMMIT.
+
+    SQLite keeps a statement active while a RETURNING row is available. If a
+    handler reads columns from that row and immediately commits, COMMIT can
+    fail with a busy/active-statement error. A second step, reset, or explicit
+    finalize before COMMIT completes the statement and keeps the transaction
+    path deterministic.
+    """
+    diagnostics: List[Diagnostic] = []
+    local_sql_bodies = _local_sql_body_texts(facts)
+    for operation in facts.base.operations.values():
+        operation_calls = collect_operation_calls(operation)
+        returning_statements: Dict[str, Tuple[CallFact, str]] = {}
+        for prepare_call in operation_calls.values():
+            if prepare_call.target != "sqlite.prepareStatement":
+                continue
+            sql_name = call_arg_value(prepare_call, "sql")
+            if sql_name is None:
+                continue
+            sql_text = _sql_body_text_for_name_lint(local_sql_bodies, sql_name)
+            if sql_text is None or not _sql_has_returning_lint(sql_text):
+                continue
+            for statement_name in call_success_value_names(prepare_call):
+                returning_statements[statement_name] = (prepare_call, sql_name)
+        if not returning_statements:
+            continue
+
+        commit_calls: List[CallFact] = []
+        for call_fact in operation_calls.values():
+            if call_fact.target != "sqlite.exec":
+                continue
+            sql_name = call_arg_value(call_fact, "sql")
+            if sql_name is None:
+                continue
+            sql_text = _sql_body_text_for_name_lint(local_sql_bodies, sql_name)
+            if sql_text is None:
+                continue
+            if _sql_first_verb_lint(sql_text) in {"COMMIT", "RELEASE"}:
+                commit_calls.append(call_fact)
+        if not commit_calls:
+            continue
+
+        for statement_name, (prepare_call, sql_name) in returning_statements.items():
+            column_reads = sorted(
+                (
+                    call_fact for call_fact in operation_calls.values()
+                    if call_fact.target.startswith("sqlite.column")
+                    and call_arg_value(call_fact, "statement") == statement_name
+                ),
+                key=lambda call_fact: call_fact.line.number,
+            )
+            if not column_reads:
+                continue
+            last_read = column_reads[-1]
+            for commit_call in sorted(
+                commit_calls,
+                key=lambda call_fact: call_fact.line.number,
+            ):
+                if commit_call.line.number <= last_read.line.number:
+                    continue
+                drained = any(
+                    drain_call.target in _SQLITE_RETURNING_DRAIN_TARGETS
+                    and call_arg_value(drain_call, "statement") == statement_name
+                    and last_read.line.number < drain_call.line.number < commit_call.line.number
+                    for drain_call in operation_calls.values()
+                )
+                if drained:
+                    continue
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS3636",
+                    kind="sqlite.returningStatementNotDrainedBeforeCommit",
+                    severity=Severity.WARNING,
+                    subjectName=commit_call.name,
+                    subjectKind="call",
+                    gapEdge="returningStatementDrain",
+                    intentSlogan="RETURNING statement not drained",
+                    primary=span_of_line(commit_call.line, "commitBeforeDrain"),
+                    related=[
+                        span_of_line(prepare_call.line, "returningPrepare"),
+                        span_of_line(last_read.line, "lastReturningColumnRead"),
+                    ],
+                    invariantRule=(
+                        "After reading columns from a SQLite statement whose "
+                        "SQL contains RETURNING, step it once more to DONE, "
+                        "reset it, or explicitly finalize it before COMMIT/"
+                        "RELEASE so the transaction cannot fail on an active "
+                        "RETURNING row"
+                    ),
+                    specAnchor="docs/optimization-guide.md#sqlite-returning",
+                    fixCandidates=[
+                        FixCandidate(
+                            name="drainReturningStatement",
+                            shape=(
+                                "call drainReturningCall sqlite.stepStatement\n"
+                                f"argument drainReturningCall statement SqliteStatement {statement_name}"
+                            ),
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    blocksCompile=False,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_sqlite_returning_statement_drained_before_commit",
+                    agentHint=(
+                        f"`{sql_name}` has RETURNING and `{statement_name}` "
+                        "has column reads before this commit. Add a second "
+                        "sqlite.stepStatement after the column reads, or "
+                        "reset/finalize the statement before committing."
+                    ),
+                ))
+                break
+    return diagnostics
+
+
+PROCESS_ENVIRONMENT_READ_TARGETS: frozenset = frozenset({
+    "c.getenv",
+    "c.getenv_s",
+    "c.getenvSafe",
+})
+
+
+def _storage_name_looks_like_cache(name: str) -> bool:
+    lowered = name.lower()
+    return "cache" in lowered or "cached" in lowered
+
+
+def _operation_has_environment_cache_guard(
+    operation: OperationFact,
+    first_getenv_line: int,
+) -> bool:
+    has_cache_write = any(
+        line.verb == "set"
+        and len(line.args) >= 3
+        and line.args[0] == "storage"
+        and _storage_name_looks_like_cache(line.args[1])
+        for line in operation.lines
+    )
+    has_pre_getenv_guard = any(
+        line.number < first_getenv_line
+        and line.verb == "branch"
+        and len(line.args) >= 5
+        and line.args[0] == "if"
+        for line in operation.lines
+    )
+    return has_cache_write and has_pre_getenv_guard
+
+
+def check_process_environment_read_cached(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3633 - process environment reads in non-entry operations should be
+    cached. Environment variables are deployment configuration, not request
+    payload; repeatedly calling getenv on auth/config hot paths adds runtime
+    work and makes behavior depend on mutable process state.
+    """
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        if operation.name == "main":
+            continue
+        operation_calls = collect_operation_calls(operation)
+        getenv_calls = [
+            call_fact for call_fact in operation_calls.values()
+            if call_fact.target in PROCESS_ENVIRONMENT_READ_TARGETS
+        ]
+        if not getenv_calls:
+            continue
+        first_getenv = min(getenv_calls, key=lambda call: call.line.number)
+        if _operation_has_environment_cache_guard(
+                operation, first_getenv.line.number):
+            continue
+        diagnostics.append(Diagnostic(
+            tier=Tier.T3_REFINEMENT,
+            code="SS3633",
+            kind="process.getenvUncached",
+            severity=Severity.WARNING,
+            subjectName=first_getenv.name,
+            subjectKind="call",
+            gapEdge="repeatedConfigurationLookup",
+            intentSlogan="uncached environment read",
+            primary=span_of_line(first_getenv.line, "getenvCall"),
+            related=[],
+            invariantRule=(
+                "Non-entry operations that read process environment should "
+                "cache the resolved value behind module storage and guard "
+                "the getenv path with a cached-ready branch"
+            ),
+            specAnchor="docs/optimization-guide.md#process-environment-cache",
+            fixCandidates=[
+                FixCandidate(
+                    name="cacheEnvironmentValue",
+                    shape=(
+                        "storage module mutable cachedConfig CNullTerminatedByteString \"\"\n"
+                        "storage module mutable cachedConfigReady CSignedInt32 0\n"
+                        "# branch to cached return before c.getenv; set both storage rows after resolution"
+                    ),
+                ),
+            ],
+            confidence=Confidence.MEDIUM,
+            blocksCompile=False,
+            effort=Effort.LOCAL,
+            passProvenance="check_process_environment_read_cached",
+            agentHint=(
+                "Keep direct getenv in CLI entry operations; for server "
+                "helpers, resolve once and return cached module storage."
+            ),
+        ))
+    return diagnostics
+
+
+REPEATED_REQUEST_TIME_READ_TARGETS: frozenset = frozenset({
+    "http.nowMillis",
+})
+
+
+def _operation_has_http_boundary(operation: OperationFact) -> bool:
+    input_types = set(operation_input_types(operation).values())
+    return bool(input_types & {"HttpRequest", "HttpResponse"})
+
+
+def check_repeated_request_time_reads(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3637 - request handlers should read wall-clock time once.
+
+    A single command or request path that asks the runtime for wall-clock time
+    more than once pays repeated native-call overhead and can persist subtly
+    different timestamps for rows that belong to the same logical operation.
+    """
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        if not _operation_has_http_boundary(operation):
+            continue
+        operation_calls = collect_operation_calls(operation)
+        time_calls = sorted(
+            (
+                call_fact for call_fact in operation_calls.values()
+                if call_fact.target in REPEATED_REQUEST_TIME_READ_TARGETS
+            ),
+            key=lambda call_fact: call_fact.line.number,
+        )
+        if len(time_calls) < 2:
+            continue
+        first_time_call = time_calls[0]
+        second_time_call = time_calls[1]
+        diagnostics.append(Diagnostic(
+            tier=Tier.T3_REFINEMENT,
+            code="SS3637",
+            kind="performance.repeatedRequestTimeRead",
+            severity=Severity.WARNING,
+            subjectName=second_time_call.name,
+            subjectKind="call",
+            gapEdge="repeatedWallClockRead",
+            intentSlogan="repeated request timestamp read",
+            primary=span_of_line(second_time_call.line, "secondTimeRead"),
+            related=[span_of_line(first_time_call.line, "firstTimeRead")],
+            invariantRule=(
+                "An operation should call `http.nowMillis` once, bind the "
+                "timestamp, and reuse that value for all rows and envelopes "
+                "created by the same logical request"
+            ),
+            specAnchor="docs/optimization-guide.md#request-timestamps",
+            fixCandidates=[
+                FixCandidate(
+                    name="reuseRequestTimestamp",
+                    shape=(
+                        "call requestNowCall http.nowMillis\n"
+                        "run requestNowCall\n"
+                        "bind value requestNow CSignedInt64 requestNowCall\n"
+                        "# pass requestNow to later SQL/JSON/log calls"
+                    ),
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            blocksCompile=False,
+            effort=Effort.LOCAL,
+            passProvenance="check_repeated_request_time_reads",
+            agentHint=(
+                f"`{first_time_call.name}` already reads the request time. "
+                f"Reuse its bound value instead of calling "
+                f"`{second_time_call.target}` again."
+            ),
+        ))
+    return diagnostics
+
+
+IDEMPOTENCY_SELECT_NAMES: frozenset = frozenset({
+    "sqlSelectIdempotency",
+})
+
+IDEMPOTENCY_RESPONSE_JSON_COLUMN_INDEXES: frozenset = frozenset({
+    "1",
+    "columnIndex1",
+    "runtime.columnIndex1",
+})
+
+
+def _sql_name_or_text_is_idempotency_select_lint(
+    local_sql_bodies: Dict[str, str],
+    sql_name: str,
+) -> bool:
+    unqualified_name = sql_name.rsplit(".", 1)[-1]
+    if unqualified_name in IDEMPOTENCY_SELECT_NAMES:
+        return True
+    sql_text = _sql_body_text_for_name_lint(local_sql_bodies, sql_name)
+    if sql_text is None:
+        return False
+    folded = re.sub(r"\s+", " ", sql_text).lower()
+    return (
+        _sql_first_verb_lint(sql_text) == "SELECT"
+        and " from idempotency_keys" in folded
+        and "response_json" in folded
+        and "response_status" in folded
+    )
+
+
+def _call_uses_response_json_column_lint(call_fact: CallFact) -> bool:
+    column_index = call_arg_value(call_fact, "columnIndex")
+    return column_index in IDEMPOTENCY_RESPONSE_JSON_COLUMN_INDEXES
+
+
+def check_idempotency_replay_uses_response_status(
+    facts: ExtendedFacts,
+) -> List[Diagnostic]:
+    """SS3638 - idempotency replay should use persisted response_status.
+
+    The idempotency table already stores both response_json and
+    response_status. Comparing replay JSON bodies with c.strcmp to recover the
+    HTTP status performs avoidable full-body scans and couples status routing
+    to exact envelope text.
+    """
+    diagnostics: List[Diagnostic] = []
+    local_sql_bodies = _local_sql_body_texts(facts)
+    for operation in facts.base.operations.values():
+        operation_calls = collect_operation_calls(operation)
+        idempotency_statements: Dict[str, CallFact] = {}
+        for prepare_call in operation_calls.values():
+            if prepare_call.target != "sqlite.prepareStatement":
+                continue
+            sql_name = call_arg_value(prepare_call, "sql")
+            if sql_name is None:
+                continue
+            if not _sql_name_or_text_is_idempotency_select_lint(
+                local_sql_bodies, sql_name
+            ):
+                continue
+            for statement_name in call_success_value_names(prepare_call):
+                idempotency_statements[statement_name] = prepare_call
+        if not idempotency_statements:
+            continue
+
+        replay_body_reads: Dict[str, Tuple[CallFact, CallFact]] = {}
+        for read_call in operation_calls.values():
+            if read_call.target != "sqlite.columnText":
+                continue
+            statement_name = call_arg_value(read_call, "statement")
+            if statement_name not in idempotency_statements:
+                continue
+            if not _call_uses_response_json_column_lint(read_call):
+                continue
+            prepare_call = idempotency_statements[statement_name]
+            for body_name in call_success_value_names(read_call):
+                replay_body_reads[body_name] = (read_call, prepare_call)
+        if not replay_body_reads:
+            continue
+
+        for compare_call in sorted(
+            operation_calls.values(),
+            key=lambda call_fact: call_fact.line.number,
+        ):
+            if compare_call.target != "c.strcmp":
+                continue
+            compared_names = {
+                name for name in (
+                    call_arg_value(compare_call, "left"),
+                    call_arg_value(compare_call, "right"),
+                )
+                if name is not None
+            }
+            replay_body_name = next(
+                (
+                    name for name in compared_names
+                    if name in replay_body_reads
+                ),
+                None,
+            )
+            if replay_body_name is None:
+                continue
+            read_call, prepare_call = replay_body_reads[replay_body_name]
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3638",
+                kind="performance.idempotencyReplayBodyClassification",
+                severity=Severity.WARNING,
+                subjectName=compare_call.name,
+                subjectKind="call",
+                gapEdge="replayStatusFromBody",
+                intentSlogan="idempotency replay body classified by strcmp",
+                primary=span_of_line(compare_call.line, "responseBodyCompare"),
+                related=[
+                    span_of_line(read_call.line, "responseJsonRead"),
+                    span_of_line(prepare_call.line, "idempotencySelect"),
+                ],
+                invariantRule=(
+                    "Idempotency replay code must read and branch on the "
+                    "stored `response_status` column instead of comparing "
+                    "stored `response_json` bodies to classify the response"
+                ),
+                specAnchor="docs/optimization-guide.md#idempotency-replay-status",
+                fixCandidates=[
+                    FixCandidate(
+                        name="usePersistedResponseStatus",
+                        shape=(
+                            "call readReplayStatusCall sqlite.columnInt64\n"
+                            "argument readReplayStatusCall columnIndex CSignedInt32 runtime.columnIndex2\n"
+                            "# branch on response_status instead of c.strcmp(response_json, ...)"
+                        ),
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=False,
+                effort=Effort.LOCAL,
+                passProvenance="check_idempotency_replay_uses_response_status",
+                agentHint=(
+                    f"`{replay_body_name}` comes from idempotency "
+                    "response_json. The same row includes response_status; "
+                    "read column 2 and branch on that scalar."
+                ),
+            ))
+    return diagnostics
+
 
 # --------------------------------------------------------------------------
 # SOURCE-OF-TRUTH note for native HTTP target sets
@@ -16721,6 +17966,7 @@ CHECKERS = [
     check_module_import_contracts,
     check_unused_calls,
     check_unused_labels,
+    check_unreachable_operation_rows,
     check_unused_capabilities,
     check_unused_error_cases,
     check_unused_mutable_storage,
@@ -16760,6 +18006,7 @@ CHECKERS = [
     check_literal_encoding_missing,
     # Style discipline (SS44xx) — info-severity hoist/rationale/dead-init signals
     check_duplicate_local_immutable_across_ops,
+    check_large_local_static_literal,
     check_magic_ascii_byte_literal,
     check_dead_storage_initializer,
     check_fixed_offset_parser_needs_rationale,
@@ -16797,6 +18044,16 @@ CHECKERS = [
     check_deprecated_json_finder_calls,
     check_json_body_literals,
     check_sql_body_literals,
+    check_inline_sql_literals,
+    check_redundant_sql_case_branches,
+    check_sql_last_insert_rowid_function,
+    check_wide_sql_existence_probe,
+    check_sql_write_then_read_returning_opportunity,
+    check_sqlite_multiple_writes_have_transaction,
+    check_sqlite_returning_statement_drained_before_commit,
+    check_process_environment_read_cached,
+    check_repeated_request_time_reads,
+    check_idempotency_replay_uses_response_status,
     check_invalid_route_method,
     check_middleware_missing_response_effect,
     check_unguarded_http_input,

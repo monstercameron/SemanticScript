@@ -113,6 +113,45 @@ label startMain
 
 
 # ==========================================================================
+# SS3630  controlFlow.unreachableRow
+# ==========================================================================
+
+class TestUnreachableOperationRows(unittest.TestCase):
+    def test_label_after_unconditional_return_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main ExitCode
+purpose main "smoke"
+storage module immutable success ExitCode 0
+storage module immutable failure ExitCode 1
+return value success
+label stalePath
+return value failure
+""")
+        self.assertIn("SS3630", _codes(diagnostics))
+        matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS3630")[0]
+        self.assertEqual(matchingDiagnostic.kind, "controlFlow.unreachableRow")
+        self.assertEqual(matchingDiagnostic.subjectName, "stalePath")
+
+    def test_failure_label_reached_by_branch_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main ExitCode
+purpose main "smoke"
+storage module immutable success ExitCode 0
+storage module immutable failure ExitCode 1
+call riskyCall runtime.risky
+run riskyCall
+bind error riskyError RuntimeError riskyCall
+branch error source riskyCall target failed
+return value success
+label failed
+return value failure
+""")
+        self.assertNotIn("SS3630", _codes(diagnostics))
+
+
+# ==========================================================================
 # SS0103  unusedDeclaration.capability
 # ==========================================================================
 
@@ -4169,6 +4208,518 @@ sql body selectSql
         self.assertTrue(matching.blocksCompile)
         self.assertEqual(matching.kind, "sql.sqlBodyDynamicHole")
 
+    def test_inline_sql_literal_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable selectSql CNullTerminatedByteString "SELECT 1"
+""")
+        self.assertIn("SS3628", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3628")[0]
+        self.assertEqual(matching.kind, "sql.inlineLiteral")
+        self.assertEqual(matching.subjectName, "selectSql")
+
+    def test_sql_body_redundant_case_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable selectSql SqlText
+sql body selectSql
+  SELECT CASE WHEN ?1 IS NULL THEN body ELSE body END FROM notes
+""")
+        self.assertIn("SS3629", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3629")[0]
+        self.assertEqual(matching.kind, "sql.redundantCaseBranches")
+        self.assertEqual(matching.subjectName, "selectSql")
+
+    def test_sql_body_last_insert_rowid_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable insertEventSql SqlText
+sql body insertEventSql
+  INSERT INTO events(message_id) SELECT message_id FROM messages WHERE rowid = last_insert_rowid()
+""")
+        self.assertIn("SS3639", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3639")[0]
+        self.assertEqual(matching.kind, "sql.lastInsertRowidFunction")
+        self.assertEqual(matching.subjectName, "insertEventSql")
+
+    def test_native_last_insert_rowid_call_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+operation main
+input operation main databaseHandle SqliteDatabase
+output operation main Void
+purpose operation main "smoke"
+call rowidCall sqlite.lastInsertRowId
+argument rowidCall database SqliteDatabase databaseHandle
+run rowidCall
+bind value insertedRowId SqliteRowId rowidCall
+""")
+        self.assertIn("SS3639", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3639")[0]
+        self.assertEqual(matching.kind, "sqlite.lastInsertRowIdCall")
+        self.assertEqual(matching.subjectName, "rowidCall")
+
+    def test_sql_body_returning_generated_id_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable insertMessageSql SqlText
+sql body insertMessageSql
+  INSERT INTO messages(message_id) VALUES ('msg_' || lower(hex(randomblob(8)))) RETURNING message_id
+""")
+        self.assertNotIn("SS3639", _codes(diagnostics))
+
+    def test_wide_sql_existence_probe_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable selectSql SqlText
+sql body selectSql
+  SELECT status, revision FROM auctions WHERE auction_id = ? LIMIT 1
+operation main
+input operation main databaseHandle SqliteDatabase
+input operation main auctionId CNullTerminatedByteString
+output operation main Void
+purpose operation main "smoke"
+call prepareCall sqlite.prepareStatement
+argument prepareCall database SqliteDatabase databaseHandle
+argument prepareCall sql SqlText selectSql
+run prepareCall
+bind ok statement SqliteStatement prepareCall
+call bindAuctionCall sqlite.bindText
+argument bindAuctionCall statement SqliteStatement statement
+argument bindAuctionCall parameterIndex CSignedInt32 1
+argument bindAuctionCall value CNullTerminatedByteString auctionId
+run bindAuctionCall
+ignore void source bindAuctionCall
+call stepCall sqlite.stepStatement
+argument stepCall statement SqliteStatement statement
+run stepCall
+bind ok stepStatus CSignedInt32 stepCall
+""")
+        self.assertIn("SS3631", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3631")[0]
+        self.assertEqual(matching.kind, "sql.wideExistenceProbe")
+        self.assertEqual(matching.subjectName, "prepareCall")
+
+    def test_sql_projection_with_column_read_is_not_existence_probe(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable selectSql SqlText
+sql body selectSql
+  SELECT status, revision FROM auctions WHERE auction_id = ? LIMIT 1
+operation main
+input operation main databaseHandle SqliteDatabase
+input operation main auctionId CNullTerminatedByteString
+output operation main Void
+purpose operation main "smoke"
+call prepareCall sqlite.prepareStatement
+argument prepareCall database SqliteDatabase databaseHandle
+argument prepareCall sql SqlText selectSql
+run prepareCall
+bind ok statement SqliteStatement prepareCall
+call bindAuctionCall sqlite.bindText
+argument bindAuctionCall statement SqliteStatement statement
+argument bindAuctionCall parameterIndex CSignedInt32 1
+argument bindAuctionCall value CNullTerminatedByteString auctionId
+run bindAuctionCall
+ignore void source bindAuctionCall
+call stepCall sqlite.stepStatement
+argument stepCall statement SqliteStatement statement
+run stepCall
+bind ok stepStatus CSignedInt32 stepCall
+call statusCall sqlite.columnInt64
+argument statusCall statement SqliteStatement statement
+argument statusCall columnIndex CSignedInt32 0
+run statusCall
+bind value status CSignedInt64 statusCall
+""")
+        self.assertNotIn("SS3631", _codes(diagnostics))
+
+    def test_sql_write_then_read_same_table_suggests_returning(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable upsertSql SqlText
+sql body upsertSql
+  INSERT INTO rate_limit_buckets(bucket_key, window_start, count) VALUES (?, ?, 1) ON CONFLICT(bucket_key, window_start) DO UPDATE SET count = count + 1
+storage module immutable selectSql SqlText
+sql body selectSql
+  SELECT count FROM rate_limit_buckets WHERE bucket_key = ? AND window_start = ? LIMIT 1
+operation main
+input operation main databaseHandle SqliteDatabase
+input operation main bucketKey CNullTerminatedByteString
+output operation main Void
+purpose operation main "smoke"
+call prepareUpsertCall sqlite.prepareStatement
+argument prepareUpsertCall database SqliteDatabase databaseHandle
+argument prepareUpsertCall sql SqlText upsertSql
+run prepareUpsertCall
+bind ok upsertStatement SqliteStatement prepareUpsertCall
+call stepUpsertCall sqlite.stepStatement
+argument stepUpsertCall statement SqliteStatement upsertStatement
+run stepUpsertCall
+ignore ok source stepUpsertCall type CSignedInt32
+call prepareSelectCall sqlite.prepareStatement
+argument prepareSelectCall database SqliteDatabase databaseHandle
+argument prepareSelectCall sql SqlText selectSql
+run prepareSelectCall
+bind ok selectStatement SqliteStatement prepareSelectCall
+""")
+        self.assertIn("SS3632", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3632")[0]
+        self.assertEqual(
+            matching.kind,
+            "sql.writeThenReadReturningOpportunity",
+        )
+        self.assertEqual(matching.subjectName, "prepareSelectCall")
+
+    def test_sql_write_with_returning_then_read_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable upsertSql SqlText
+sql body upsertSql
+  INSERT INTO rate_limit_buckets(bucket_key, window_start, count) VALUES (?, ?, 1) ON CONFLICT(bucket_key, window_start) DO UPDATE SET count = count + 1 RETURNING count
+storage module immutable selectSql SqlText
+sql body selectSql
+  SELECT count FROM rate_limit_buckets WHERE bucket_key = ? AND window_start = ? LIMIT 1
+operation main
+input operation main databaseHandle SqliteDatabase
+input operation main bucketKey CNullTerminatedByteString
+output operation main Void
+purpose operation main "smoke"
+call prepareUpsertCall sqlite.prepareStatement
+argument prepareUpsertCall database SqliteDatabase databaseHandle
+argument prepareUpsertCall sql SqlText upsertSql
+run prepareUpsertCall
+bind ok upsertStatement SqliteStatement prepareUpsertCall
+call stepUpsertCall sqlite.stepStatement
+argument stepUpsertCall statement SqliteStatement upsertStatement
+run stepUpsertCall
+bind ok upsertStatus CSignedInt32 stepUpsertCall
+call readReturnedCountCall sqlite.columnInt64
+argument readReturnedCountCall statement SqliteStatement upsertStatement
+argument readReturnedCountCall columnIndex CSignedInt32 0
+run readReturnedCountCall
+bind value count CSignedInt64 readReturnedCountCall
+call prepareSelectCall sqlite.prepareStatement
+argument prepareSelectCall database SqliteDatabase databaseHandle
+argument prepareSelectCall sql SqlText selectSql
+run prepareSelectCall
+bind ok selectStatement SqliteStatement prepareSelectCall
+""")
+        self.assertNotIn("SS3632", _codes(diagnostics))
+
+    def test_multiple_sql_writes_without_transaction_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable insertAuditSql SqlText
+sql body insertAuditSql
+  INSERT INTO audit_events(actor_id, action) VALUES (?, ?)
+storage module immutable insertRequestLogSql SqlText
+sql body insertRequestLogSql
+  INSERT INTO request_log(route, status) VALUES (?, ?)
+operation main
+input operation main databaseHandle SqliteDatabase
+output operation main Void
+purpose operation main "smoke"
+call prepareAuditCall sqlite.prepareStatement
+argument prepareAuditCall database SqliteDatabase databaseHandle
+argument prepareAuditCall sql SqlText insertAuditSql
+run prepareAuditCall
+bind ok auditStatement SqliteStatement prepareAuditCall
+call stepAuditCall sqlite.stepStatement
+argument stepAuditCall statement SqliteStatement auditStatement
+run stepAuditCall
+ignore ok source stepAuditCall type CSignedInt32
+call prepareRequestLogCall sqlite.prepareStatement
+argument prepareRequestLogCall database SqliteDatabase databaseHandle
+argument prepareRequestLogCall sql SqlText insertRequestLogSql
+run prepareRequestLogCall
+bind ok requestLogStatement SqliteStatement prepareRequestLogCall
+call stepRequestLogCall sqlite.stepStatement
+argument stepRequestLogCall statement SqliteStatement requestLogStatement
+run stepRequestLogCall
+ignore ok source stepRequestLogCall type CSignedInt32
+""")
+        self.assertIn("SS3635", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3635")[0]
+        self.assertEqual(
+            matching.kind,
+            "sqlite.multipleWritesWithoutTransaction",
+        )
+        self.assertEqual(matching.subjectName, "main")
+
+    def test_multiple_sql_writes_with_transaction_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable beginSql SqlText
+sql body beginSql
+  BEGIN IMMEDIATE
+storage module immutable commitSql SqlText
+sql body commitSql
+  COMMIT
+storage module immutable insertAuditSql SqlText
+sql body insertAuditSql
+  INSERT INTO audit_events(actor_id, action) VALUES (?, ?)
+storage module immutable insertRequestLogSql SqlText
+sql body insertRequestLogSql
+  INSERT INTO request_log(route, status) VALUES (?, ?)
+operation main
+input operation main databaseHandle SqliteDatabase
+output operation main Void
+purpose operation main "smoke"
+call beginTxCall sqlite.exec
+argument beginTxCall database SqliteDatabase databaseHandle
+argument beginTxCall sql SqlText beginSql
+run beginTxCall
+ignore void source beginTxCall
+call prepareAuditCall sqlite.prepareStatement
+argument prepareAuditCall database SqliteDatabase databaseHandle
+argument prepareAuditCall sql SqlText insertAuditSql
+run prepareAuditCall
+bind ok auditStatement SqliteStatement prepareAuditCall
+call stepAuditCall sqlite.stepStatement
+argument stepAuditCall statement SqliteStatement auditStatement
+run stepAuditCall
+ignore ok source stepAuditCall type CSignedInt32
+call prepareRequestLogCall sqlite.prepareStatement
+argument prepareRequestLogCall database SqliteDatabase databaseHandle
+argument prepareRequestLogCall sql SqlText insertRequestLogSql
+run prepareRequestLogCall
+bind ok requestLogStatement SqliteStatement prepareRequestLogCall
+call stepRequestLogCall sqlite.stepStatement
+argument stepRequestLogCall statement SqliteStatement requestLogStatement
+run stepRequestLogCall
+ignore ok source stepRequestLogCall type CSignedInt32
+call commitTxCall sqlite.exec
+argument commitTxCall database SqliteDatabase databaseHandle
+argument commitTxCall sql SqlText commitSql
+run commitTxCall
+ignore void source commitTxCall
+""")
+        self.assertNotIn("SS3635", _codes(diagnostics))
+
+    def test_returning_statement_commit_without_drain_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable commitSql SqlText
+sql body commitSql
+  COMMIT
+storage module immutable upsertSql SqlText
+sql body upsertSql
+  INSERT INTO rate_limit_buckets(bucket_key, count) VALUES (?, 1) ON CONFLICT(bucket_key) DO UPDATE SET count = count + 1 RETURNING count
+operation main
+input operation main databaseHandle SqliteDatabase
+output operation main Void
+purpose operation main "smoke"
+call prepareUpsertCall sqlite.prepareStatement
+argument prepareUpsertCall database SqliteDatabase databaseHandle
+argument prepareUpsertCall sql SqlText upsertSql
+run prepareUpsertCall
+bind ok upsertStatement SqliteStatement prepareUpsertCall
+call stepUpsertCall sqlite.stepStatement
+argument stepUpsertCall statement SqliteStatement upsertStatement
+run stepUpsertCall
+bind ok upsertStatus CSignedInt32 stepUpsertCall
+call readReturnedCountCall sqlite.columnInt64
+argument readReturnedCountCall statement SqliteStatement upsertStatement
+argument readReturnedCountCall columnIndex CSignedInt32 0
+run readReturnedCountCall
+bind value count CSignedInt64 readReturnedCountCall
+call commitTxCall sqlite.exec
+argument commitTxCall database SqliteDatabase databaseHandle
+argument commitTxCall sql SqlText commitSql
+run commitTxCall
+ignore void source commitTxCall
+""")
+        self.assertIn("SS3636", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3636")[0]
+        self.assertEqual(
+            matching.kind,
+            "sqlite.returningStatementNotDrainedBeforeCommit",
+        )
+        self.assertEqual(matching.subjectName, "commitTxCall")
+
+    def test_returning_statement_drained_before_commit_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable commitSql SqlText
+sql body commitSql
+  COMMIT
+storage module immutable upsertSql SqlText
+sql body upsertSql
+  INSERT INTO rate_limit_buckets(bucket_key, count) VALUES (?, 1) ON CONFLICT(bucket_key) DO UPDATE SET count = count + 1 RETURNING count
+operation main
+input operation main databaseHandle SqliteDatabase
+output operation main Void
+purpose operation main "smoke"
+call prepareUpsertCall sqlite.prepareStatement
+argument prepareUpsertCall database SqliteDatabase databaseHandle
+argument prepareUpsertCall sql SqlText upsertSql
+run prepareUpsertCall
+bind ok upsertStatement SqliteStatement prepareUpsertCall
+call stepUpsertCall sqlite.stepStatement
+argument stepUpsertCall statement SqliteStatement upsertStatement
+run stepUpsertCall
+bind ok upsertStatus CSignedInt32 stepUpsertCall
+call readReturnedCountCall sqlite.columnInt64
+argument readReturnedCountCall statement SqliteStatement upsertStatement
+argument readReturnedCountCall columnIndex CSignedInt32 0
+run readReturnedCountCall
+bind value count CSignedInt64 readReturnedCountCall
+call drainUpsertCall sqlite.stepStatement
+argument drainUpsertCall statement SqliteStatement upsertStatement
+run drainUpsertCall
+ignore ok source drainUpsertCall type CSignedInt32
+call commitTxCall sqlite.exec
+argument commitTxCall database SqliteDatabase databaseHandle
+argument commitTxCall sql SqlText commitSql
+run commitTxCall
+ignore void source commitTxCall
+""")
+        self.assertNotIn("SS3636", _codes(diagnostics))
+
+    def test_process_environment_read_without_cache_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation resolveSecret
+output operation resolveSecret CNullTerminatedByteString
+effect resolveSecret read process.environment
+purpose operation resolveSecret "smoke"
+storage module immutable secretEnvName CNullTerminatedByteString "APP_SECRET"
+call getenvSecretCall c.getenv
+argument getenvSecretCall name CNullTerminatedByteString secretEnvName
+run getenvSecretCall
+bind value secret CNullTerminatedByteString getenvSecretCall
+return value secret
+""")
+        self.assertIn("SS3633", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3633")[0]
+        self.assertEqual(matching.kind, "process.getenvUncached")
+        self.assertEqual(matching.subjectName, "getenvSecretCall")
+
+    def test_process_environment_read_with_cache_guard_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module mutable cachedSecret CNullTerminatedByteString ""
+storage module mutable cachedSecretReady CSignedInt32 0
+operation resolveSecret
+output operation resolveSecret CNullTerminatedByteString
+effect resolveSecret read process.environment
+purpose operation resolveSecret "smoke"
+storage module immutable secretEnvName CNullTerminatedByteString "APP_SECRET"
+call readyCall math.equalCSignedInt32
+argument readyCall left CSignedInt32 cachedSecretReady
+argument readyCall right CSignedInt32 1
+run readyCall
+bind value ready Bool readyCall
+branch if condition ready target returnCached
+call getenvSecretCall c.getenv
+argument getenvSecretCall name CNullTerminatedByteString secretEnvName
+run getenvSecretCall
+bind value secret CNullTerminatedByteString getenvSecretCall
+set storage cachedSecret secret
+set storage cachedSecretReady 1
+return value cachedSecret
+label returnCached
+return value cachedSecret
+""")
+        self.assertNotIn("SS3633", _codes(diagnostics))
+
+    def test_repeated_request_time_read_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import http standard.http
+operation main
+input operation main request HttpRequest
+output operation main Void
+purpose operation main "smoke"
+call requestNowCall http.nowMillis
+run requestNowCall
+bind value requestNow CSignedInt64 requestNowCall
+call laterNowCall http.nowMillis
+run laterNowCall
+bind value laterNow CSignedInt64 laterNowCall
+""")
+        self.assertIn("SS3637", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3637")[0]
+        self.assertEqual(matching.kind, "performance.repeatedRequestTimeRead")
+        self.assertEqual(matching.subjectName, "laterNowCall")
+
+    def test_single_request_time_read_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import http standard.http
+operation main
+input operation main request HttpRequest
+output operation main Void
+purpose operation main "smoke"
+call requestNowCall http.nowMillis
+run requestNowCall
+bind value requestNow CSignedInt64 requestNowCall
+return void
+""")
+        self.assertNotIn("SS3637", _codes(diagnostics))
+
+    def test_idempotency_replay_body_classification_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable selectIdem SqlText
+sql body selectIdem
+  SELECT request_hash, response_json, response_status FROM idempotency_keys WHERE scope = ? LIMIT 1
+storage module immutable conflictBody CNullTerminatedByteString "{}"
+operation main
+input operation main databaseHandle SqliteDatabase
+output operation main Void
+purpose operation main "smoke"
+call prepareIdemCall sqlite.prepareStatement
+argument prepareIdemCall database SqliteDatabase databaseHandle
+argument prepareIdemCall sql SqlText selectIdem
+run prepareIdemCall
+bind ok idemStatement SqliteStatement prepareIdemCall
+call readReplayBodyCall sqlite.columnText
+argument readReplayBodyCall statement SqliteStatement idemStatement
+argument readReplayBodyCall columnIndex CSignedInt32 1
+run readReplayBodyCall
+bind value replayBody CNullTerminatedByteString readReplayBodyCall
+call compareReplayBodyCall c.strcmp
+argument compareReplayBodyCall left CNullTerminatedByteString replayBody
+argument compareReplayBodyCall right CNullTerminatedByteString conflictBody
+run compareReplayBodyCall
+bind value compareResult CSignedInt32 compareReplayBodyCall
+""")
+        self.assertIn("SS3638", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3638")[0]
+        self.assertEqual(
+            matching.kind,
+            "performance.idempotencyReplayBodyClassification",
+        )
+        self.assertEqual(matching.subjectName, "compareReplayBodyCall")
+
+    def test_idempotency_replay_status_branch_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable selectIdem SqlText
+sql body selectIdem
+  SELECT request_hash, response_json, response_status FROM idempotency_keys WHERE scope = ? LIMIT 1
+operation main
+input operation main databaseHandle SqliteDatabase
+output operation main Void
+purpose operation main "smoke"
+call prepareIdemCall sqlite.prepareStatement
+argument prepareIdemCall database SqliteDatabase databaseHandle
+argument prepareIdemCall sql SqlText selectIdem
+run prepareIdemCall
+bind ok idemStatement SqliteStatement prepareIdemCall
+call readReplayStatusCall sqlite.columnInt64
+argument readReplayStatusCall statement SqliteStatement idemStatement
+argument readReplayStatusCall columnIndex CSignedInt32 2
+run readReplayStatusCall
+bind value replayStatus CSignedInt64 readReplayStatusCall
+call replayConflictCall math.equalI64
+argument replayConflictCall left I64 replayStatus
+argument replayConflictCall right I64 409
+run replayConflictCall
+bind value replayConflict Bool replayConflictCall
+""")
+        self.assertNotIn("SS3638", _codes(diagnostics))
+
+    def test_non_sql_method_literal_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable methods CNullTerminatedByteString "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+""")
+        self.assertNotIn("SS3628", _codes(diagnostics))
+
 
 class TestArgumentArity(unittest.TestCase):
     def test_operation_without_name_is_flagged(self) -> None:
@@ -4893,6 +5444,48 @@ purpose gamma "smoke"
 storage local immutable offset CSignedInt64 30
 """)
         self.assertNotIn("SS4401", _codes(diagnostics))
+
+
+# ==========================================================================
+# SS3634  performance.largeLocalStaticLiteral
+# ==========================================================================
+
+class TestLargeLocalStaticLiteral(unittest.TestCase):
+    def test_large_local_static_literal_is_flagged(self) -> None:
+        largeBody = "x" * 520
+        diagnostics = _lint_source(f"""project Test
+operation metrics
+output metrics Void
+purpose metrics "smoke"
+storage local immutable metricsFormat CNullTerminatedByteString "{largeBody}"
+""")
+        ss3634 = _diagnostics_with_code(diagnostics, "SS3634")
+        self.assertEqual(len(ss3634), 1)
+        diagnostic = ss3634[0]
+        self.assertEqual(diagnostic.subjectName, "metricsFormat")
+        self.assertEqual(diagnostic.subjectKind, "storageSlot")
+        self.assertEqual(diagnostic.gapEdge, "storage module immutable")
+        self.assertEqual(diagnostic.severity, semlint.Severity.WARNING)
+
+    def test_large_module_static_literal_is_not_flagged(self) -> None:
+        largeBody = "x" * 520
+        diagnostics = _lint_source(f"""project Test
+storage module immutable metricsFormat CNullTerminatedByteString "{largeBody}"
+operation metrics
+output metrics Void
+purpose metrics "smoke"
+returnVoid
+""")
+        self.assertNotIn("SS3634", _codes(diagnostics))
+
+    def test_small_local_static_literal_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation metrics
+output metrics Void
+purpose metrics "smoke"
+storage local immutable routeName CNullTerminatedByteString "/metrics"
+""")
+        self.assertNotIn("SS3634", _codes(diagnostics))
 
 
 # ==========================================================================

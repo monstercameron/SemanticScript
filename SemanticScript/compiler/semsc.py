@@ -1419,6 +1419,29 @@ def _sql_first_verb(sql_text: str) -> str | None:
     return None
 
 
+def _strip_sql_leading_comments(sql_text: str) -> str:
+    index = 0
+    length = len(sql_text)
+    while index < length:
+        if sql_text[index].isspace():
+            index += 1
+            continue
+        if sql_text.startswith("--", index):
+            newline = sql_text.find("\n", index + 2)
+            if newline == -1:
+                return ""
+            index = newline + 1
+            continue
+        if sql_text.startswith("/*", index):
+            end = sql_text.find("*/", index + 2)
+            if end == -1:
+                return ""
+            index = end + 2
+            continue
+        break
+    return sql_text[index:].lstrip()
+
+
 def _scan_sql_text(sql_text: str):
     placeholder_count = 0
     statement_count = 0
@@ -1510,6 +1533,66 @@ def _scan_sql_text(sql_text: str):
     if has_statement_content:
         statement_count += 1
     return placeholder_count, statement_count, None
+
+
+_SQL_REDUNDANT_CASE_RE = re.compile(
+    r"\bCASE\s+WHEN\s+.+?\s+THEN\s+(?P<then>.*?)\s+ELSE\s+(?P<else>.*?)\s+END\b",
+    re.IGNORECASE,
+)
+
+_SQL_NARROW_EXISTENCE_RE = re.compile(
+    r"(?is)^SELECT\s+(?:1\b|EXISTS\s*\()"
+)
+
+_SQL_WRITE_TABLE_RE = re.compile(
+    r"(?is)^(?:INSERT\s+(?:OR\s+\w+\s+)?INTO|REPLACE\s+INTO|"
+    r"UPDATE)\s+([A-Za-z_][A-Za-z0-9_]*)\b"
+)
+
+_SQL_SELECT_TABLE_RE = re.compile(
+    r"(?is)^SELECT\b.+?\bFROM\s+([A-Za-z_][A-Za-z0-9_]*)\b"
+)
+
+
+def _normalize_sql_expression(expression: str) -> str:
+    return re.sub(r"\s+", " ", expression.strip()).lower()
+
+
+def _redundant_sql_cases(sql_text: str) -> list:
+    redundant_cases = []
+    for match in _SQL_REDUNDANT_CASE_RE.finditer(sql_text):
+        then_expr = _normalize_sql_expression(match.group("then"))
+        else_expr = _normalize_sql_expression(match.group("else"))
+        if then_expr and then_expr == else_expr:
+            redundant_cases.append(match.group(0))
+    return redundant_cases
+
+
+def _sql_select_is_narrow_existence_probe(sql_text: str) -> bool:
+    return bool(_SQL_NARROW_EXISTENCE_RE.match(
+        _strip_sql_leading_comments(sql_text)))
+
+
+def _sql_write_table(sql_text: str) -> str | None:
+    match = _SQL_WRITE_TABLE_RE.match(_strip_sql_leading_comments(sql_text))
+    if match is None:
+        return None
+    return match.group(1).lower()
+
+
+def _sql_select_table(sql_text: str) -> str | None:
+    match = _SQL_SELECT_TABLE_RE.match(_strip_sql_leading_comments(sql_text))
+    if match is None:
+        return None
+    return match.group(1).lower()
+
+
+def _sql_has_returning(sql_text: str) -> bool:
+    return bool(re.search(r"(?is)\bRETURNING\b", sql_text))
+
+
+def _sql_uses_last_insert_rowid(sql_text: str) -> bool:
+    return bool(re.search(r"(?is)\blast_insert_rowid\s*\(", sql_text))
 
 
 def _json_record_key(record: Record, field_name: str) -> str:
@@ -12806,6 +12889,14 @@ def _strict_success_names(call_info: dict) -> set:
     }
 
 
+def _strict_call_arg_value(call_info: dict, arg_name: str) -> str | None:
+    value = None
+    for candidate_name, candidate_value, _line in call_info.get("args", []):
+        if candidate_name == arg_name:
+            value = candidate_value
+    return value
+
+
 def _strict_call_consumes_any(call_info: dict, names: set) -> bool:
     return any(value_name in names
                for _arg_name, value_name, _line in call_info.get("args", []))
@@ -13246,6 +13337,148 @@ def _strict_raise_first_simple(prog: Program, diags, default_code: str,
     ))
 
 
+def _strict_branch_else_targets_by_line(op: Operation) -> dict:
+    branch_else_by_line = {}
+    for index, (verb, args, lineno) in enumerate(op.lines[:-1]):
+        if verb != "branch" or not args or args[0] not in ("if", "error"):
+            continue
+        next_verb, next_args, _next_lineno = op.lines[index + 1]
+        if (next_verb == "branch" and len(next_args) >= 3
+                and next_args[:2] == ["else", "target"]):
+            branch_else_by_line[lineno] = next_args[2]
+    return branch_else_by_line
+
+
+def _strict_reachable_line_numbers(op: Operation) -> set:
+    if not op.lines:
+        return set()
+    branch_else_by_line = _strict_branch_else_targets_by_line(op)
+    label_indices = {
+        args[0]: index
+        for index, (verb, args, _lineno) in enumerate(op.lines)
+        if verb == "label" and args
+    }
+
+    def add_label_successor(successors, label_name):
+        target_index = label_indices.get(label_name)
+        if target_index is not None:
+            successors.append(target_index)
+
+    def add_fallthrough_successor(successors, index):
+        next_index = index + 1
+        if next_index < len(op.lines):
+            successors.append(next_index)
+
+    def successor_indices(index):
+        verb, args, lineno = op.lines[index]
+        successors = []
+        if verb == "await":
+            cursor = index + 1
+            found_wait_set = False
+            while cursor < len(op.lines):
+                candidate_verb, candidate_args, _candidate_lineno = op.lines[cursor]
+                if candidate_verb in {"__typedComment__", "__groupAnchor__"}:
+                    cursor += 1
+                    continue
+                if candidate_verb == "case":
+                    found_wait_set = True
+                    if len(candidate_args) >= 2:
+                        add_label_successor(successors, candidate_args[1])
+                    cursor += 1
+                    continue
+                if candidate_verb == "done":
+                    found_wait_set = True
+                    if candidate_args:
+                        add_label_successor(successors, candidate_args[0])
+                    break
+                break
+            if found_wait_set:
+                return successors
+        if verb in {"return", "returnOk", "returnError", "returnVoid"}:
+            return successors
+        if verb == "jump" and len(args) >= 2 and args[0] == "target":
+            add_label_successor(successors, args[1])
+            return successors
+        if verb == "branch":
+            if len(args) >= 5 and args[0] in {"if", "error"} and args[3] == "target":
+                add_label_successor(successors, args[4])
+                else_label = branch_else_by_line.get(lineno)
+                if else_label is None:
+                    add_fallthrough_successor(successors, index)
+                else:
+                    add_label_successor(successors, else_label)
+                return successors
+            if len(args) >= 3 and args[0] == "else" and args[1] == "target":
+                add_label_successor(successors, args[2])
+                return successors
+            if args:
+                add_label_successor(successors, args[0])
+                add_fallthrough_successor(successors, index)
+                return successors
+        if verb == "branchIf" and len(args) >= 2:
+            add_label_successor(successors, args[1])
+            if len(args) >= 3:
+                add_label_successor(successors, args[2])
+            else:
+                add_fallthrough_successor(successors, index)
+            return successors
+        if (verb in {"branchIfError", "branchIfGroupError", "branchIfChannelClosed"}
+                and len(args) >= 2):
+            add_label_successor(successors, args[1])
+            add_fallthrough_successor(successors, index)
+            return successors
+        if verb == "runChecked" and len(args) >= 9:
+            add_label_successor(successors, args[8])
+            add_fallthrough_successor(successors, index)
+            return successors
+        if verb == "branchSelected" and len(args) >= 3:
+            add_label_successor(successors, args[2])
+            add_fallthrough_successor(successors, index)
+            return successors
+        add_fallthrough_successor(successors, index)
+        return successors
+
+    reachable_indices = set()
+    stack = [0]
+    while stack:
+        current_index = stack.pop()
+        if current_index in reachable_indices:
+            continue
+        reachable_indices.add(current_index)
+        stack.extend(successor_indices(current_index))
+    return {op.lines[index][2] for index in reachable_indices}
+
+
+def _check_strict_unreachable_operation_rows(prog: Program, diags) -> None:
+    """SS3410 - strict executable code rejects dead operation rows because
+    they inflate generated IR and hide stale resource/SQL paths from agents.
+    """
+    for op_name, op in prog.operations.items():
+        reachable = _strict_reachable_line_numbers(op)
+        for verb, args, lineno in op.lines:
+            if lineno in reachable:
+                continue
+            if verb in {"__typedComment__", "__groupAnchor__"}:
+                continue
+            subject = args[0] if args else verb
+            diags.append((lineno,
+                f"SS3410 unreachableOperationRow: operation `{op_name}` "
+                f"contains unreachable `{verb}` row `{subject}`; remove "
+                "the stale block or route control flow to it with an "
+                "explicit branch/jump"))
+            break
+
+
+def _strict_raise_first_reachability(prog: Program, diags) -> None:
+    _strict_raise_first_simple(
+        prog, diags, "SS3410",
+        "strictExecutable control-flow reachability validation",
+        "Strict executable requires operation rows to be reachable from "
+        "the operation entry. Dead blocks waste generated code and often "
+        "hide obsolete resource, SQL, or response paths.",
+    )
+
+
 def _check_strict_forbidden_call_targets(prog: Program, diags) -> None:
     """SS3313 — reject stdlib targets that have no bounded form (strcat,
     strcpy, sprintf, gets, strncat)."""
@@ -13311,16 +13544,9 @@ def _check_strict_format_string_is_constant(prog: Program, diags) -> None:
 
 def _check_strict_sql_string_is_constant(prog: Program, diags) -> None:
     """SS3911 — sqlite.prepareStatement / sqlite.exec `sql` arg must be
-    a module-scope immutable byte string. Forces parameterised
-    statements: dynamic values go through sqlite.bind*, not into the
-    SQL text itself."""
-    module_constant_names = set()
-    for name, (typ, _value) in prog.consts.items():
-        if not _is_sql_constant_type(prog, typ):
-            continue
-        if name in prog.mutable_globals:
-            continue
-        module_constant_names.add(name)
+    a module-scope immutable SqlText value backed by a sql body island or
+    a trusted external literalSource asset. Forces parameterised statements:
+    dynamic values go through sqlite.bind*, not into the SQL text itself."""
     for op_name, op in prog.operations.items():
         call_targets = _strict_call_target_map(op)
         for verb, args, lineno in op.lines:
@@ -13336,16 +13562,86 @@ def _check_strict_sql_string_is_constant(prog: Program, diags) -> None:
                 continue
             if arg_name not in _STRICT_SQL_ARG_SLOTS:
                 continue
-            if value_name in module_constant_names:
+            const = _strict_sql_const(prog, value_name)
+            if const is None:
+                diags.append((lineno,
+                    f"SS3911 sqlMustBeStaticSqlText: in operation `{op_name}`, "
+                    f"call `{call_name}` (target `{target}`) uses "
+                    f"`{value_name}` as `sql`, but that name is not a "
+                    "module-scope SQL constant"))
+                continue
+            typ, _value = const
+            if not _strict_is_sql_text_type(prog, typ):
+                diags.append((lineno,
+                    f"SS3911 sqlMustBeSqlText: in operation `{op_name}`, "
+                    f"call `{call_name}` (target `{target}`) uses "
+                    f"`{value_name}` as `sql`; SQL text must be typed "
+                    "`SqlText`, not `CNullTerminatedByteString`"))
+                continue
+            if any(name in prog.mutable_globals for name in _strict_sql_names_for(value_name)):
+                diags.append((lineno,
+                    f"SS3911 sqlMustBeImmutable: in operation `{op_name}`, "
+                    f"call `{call_name}` (target `{target}`) uses mutable "
+                    f"`{value_name}` as `sql`; SQL text must be immutable"))
+                continue
+            if _strict_sql_source_is_body_or_external_literal(prog, value_name):
                 continue
             diags.append((lineno,
-                f"SS3911 sqlMustBeConstant: in operation `{op_name}`, "
+                f"SS3916 sqlMustUseBodyOrLiteralSource: in operation `{op_name}`, "
                 f"call `{call_name}` (target `{target}`) uses "
-                f"`{value_name}` as `sql`; SQL text must reference a "
-                f"`storage module immutable SqlText` or "
-                f"`CNullTerminatedByteString` "
-                f"row. Use `?` placeholders and `sqlite.bind*` for "
-                f"dynamic values"))
+                f"`{value_name}` as `sql`; inline SQL strings are rejected "
+                "in strictExecutable mode. Use `storage module immutable "
+                "NAME SqlText` plus `sql body NAME`, or a `literal NAME "
+                "SqlText` with `literalSource` for external .sql assets"))
+
+
+def _strict_sql_names_for(value_name: str) -> list:
+    names = [value_name]
+    if "." in value_name:
+        names.append(value_name.rsplit(".", 1)[1])
+    return names
+
+
+def _strict_sql_const(prog: Program, value_name: str):
+    for name in _strict_sql_names_for(value_name):
+        const = prog.consts.get(name)
+        if const is not None:
+            return const
+    return None
+
+
+def _strict_is_sql_text_type(prog: Program, typ: str) -> bool:
+    resolved = resolve_alias(prog, typ)
+    return typ == "SqlText" or resolved == "SqlText"
+
+
+def _strict_sql_source_is_body_or_external_literal(
+    prog: Program,
+    value_name: str,
+) -> bool:
+    names = set(_strict_sql_names_for(value_name))
+    for declaration in prog.storage_declarations:
+        if declaration.get("name") not in names:
+            continue
+        if not _strict_is_sql_text_type(prog, declaration.get("type", "")):
+            continue
+        if declaration.get("scope") != "module":
+            continue
+        if declaration.get("mutability") != "immutable":
+            continue
+        if declaration.get("has_sql_body"):
+            return True
+    for name in names:
+        const = prog.consts.get(name)
+        if const is None:
+            continue
+        typ, _value = const
+        if not _strict_is_sql_text_type(prog, typ):
+            continue
+        literal_source = prog.hard_metadata.get(name, {}).get("literalSource")
+        if literal_source:
+            return True
+    return False
 
 
 def _is_sql_constant_type(prog: Program, typ: str) -> bool:
@@ -13367,12 +13663,533 @@ def _sql_constant_usage(prog: Program):
             target = _strict_target(prog, target_info[0])
             if target not in _STRICT_SQL_STRING_TARGETS or arg_name not in _STRICT_SQL_ARG_SLOTS:
                 continue
-            yield op_name, call_name, target, value_name, lineno
+            yield op_name, op, call_name, target, value_name, lineno
+
+
+def _strict_sqlite_statement_has_column_reads(
+    calls: dict,
+    statement_names: set,
+) -> bool:
+    if not statement_names:
+        return False
+    for call_info in calls.values():
+        if not call_info["target"].startswith("sqlite.column"):
+            continue
+        if _strict_call_arg_value(call_info, "statement") in statement_names:
+            return True
+    return False
+
+
+def _strict_sqlite_statement_passed_to_helper(
+    calls: dict,
+    statement_names: set,
+) -> bool:
+    if not statement_names:
+        return False
+    ignored_targets = {
+        "sqlite.bindBlob",
+        "sqlite.bindDouble",
+        "sqlite.bindInt",
+        "sqlite.bindInt64",
+        "sqlite.bindNull",
+        "sqlite.bindText",
+        "sqlite.finalizeStatement",
+        "sqlite.resetStatement",
+        "sqlite.stepStatement",
+    }
+    for call_info in calls.values():
+        if (call_info["target"].startswith("sqlite.column")
+                or call_info["target"] in ignored_targets):
+            continue
+        if _strict_call_consumes_any(call_info, statement_names):
+            return True
+    return False
+
+
+def _strict_sql_usage_is_wide_existence_probe(
+    prog: Program,
+    op: Operation,
+    call_name: str,
+    sql_text: str,
+) -> bool:
+    if _sql_first_verb(sql_text) != "SELECT":
+        return False
+    if _sql_select_is_narrow_existence_probe(sql_text):
+        return False
+    calls = _strict_collect_calls(prog, op)
+    call_info = calls.get(call_name)
+    if call_info is None:
+        return False
+    statement_names = _strict_success_names(call_info)
+    if _strict_sqlite_statement_has_column_reads(calls, statement_names):
+        return False
+    if _strict_sqlite_statement_passed_to_helper(calls, statement_names):
+        return False
+    return bool(statement_names)
+
+
+def _check_sqlite_write_then_read_usage(prog: Program, diags) -> None:
+    for op_name, op in prog.operations.items():
+        calls = _strict_collect_calls(prog, op)
+        prior_writes = {}
+        for call_info in sorted(
+            calls.values(),
+            key=lambda candidate: candidate["line"],
+        ):
+            if call_info["target"] != "sqlite.prepareStatement":
+                continue
+            sql_name = _strict_call_arg_value(call_info, "sql")
+            if sql_name is None:
+                continue
+            const = _strict_sql_const(prog, sql_name)
+            if const is None:
+                continue
+            _typ, sql_text = const
+            if not isinstance(sql_text, str):
+                continue
+            write_table = _sql_write_table(sql_text)
+            if write_table is not None:
+                if not _sql_has_returning(sql_text):
+                    prior_writes.setdefault(write_table, (call_info, sql_name))
+                continue
+            select_table = _sql_select_table(sql_text)
+            if select_table is None or select_table not in prior_writes:
+                continue
+            write_call, write_sql_name = prior_writes[select_table]
+            diags.append((call_info["line"],
+                f"SS3918 sqliteWriteThenReadShouldUseReturning: operation "
+                f"`{op_name}` prepares write SQL `{write_sql_name}` with "
+                f"call `{write_call['name']}` and then prepares SELECT SQL "
+                f"`{sql_name}` against the same table `{select_table}`; "
+                "fold the read into the write with `RETURNING` to avoid an "
+                "extra prepare/bind/step/finalize round trip"))
+
+
+_STRICT_SQL_WRITE_STATEMENT_VERBS = frozenset({
+    "DELETE",
+    "INSERT",
+    "REPLACE",
+    "UPDATE",
+})
+
+
+def _strict_sql_text_for_name(prog: Program, sql_name: str) -> str | None:
+    const = _strict_sql_const(prog, sql_name)
+    if const is None:
+        return None
+    _typ, sql_text = const
+    if not isinstance(sql_text, str):
+        return None
+    return sql_text
+
+
+def _strict_sql_is_write_statement(sql_text: str) -> bool:
+    return _sql_first_verb(sql_text) in _STRICT_SQL_WRITE_STATEMENT_VERBS
+
+
+def _check_sqlite_multiple_writes_have_transaction(prog: Program, diags) -> None:
+    for op_name, op in prog.operations.items():
+        calls = _strict_collect_calls(prog, op)
+        write_steps = []
+        for prepare_call in calls.values():
+            if prepare_call["target"] != "sqlite.prepareStatement":
+                continue
+            sql_name = _strict_call_arg_value(prepare_call, "sql")
+            if sql_name is None:
+                continue
+            sql_text = _strict_sql_text_for_name(prog, sql_name)
+            if sql_text is None or not _strict_sql_is_write_statement(sql_text):
+                continue
+            statement_names = _strict_success_names(prepare_call)
+            if not statement_names:
+                continue
+            for step_call in calls.values():
+                if step_call["target"] != "sqlite.stepStatement":
+                    continue
+                if _strict_call_arg_value(step_call, "statement") not in statement_names:
+                    continue
+                write_steps.append((prepare_call, step_call, sql_name))
+
+        if len(write_steps) < 2:
+            continue
+
+        has_begin = False
+        has_commit = False
+        for call_info in calls.values():
+            if call_info["target"] != "sqlite.exec":
+                continue
+            sql_name = _strict_call_arg_value(call_info, "sql")
+            if sql_name is None:
+                continue
+            sql_text = _strict_sql_text_for_name(prog, sql_name)
+            if sql_text is None:
+                continue
+            verb = _sql_first_verb(sql_text)
+            if verb in {"BEGIN", "SAVEPOINT"}:
+                has_begin = True
+            elif verb in {"COMMIT", "RELEASE"}:
+                has_commit = True
+
+        if has_begin and has_commit:
+            continue
+
+        first_prepare, _first_step, first_sql_name = write_steps[0]
+        _second_prepare, second_step, second_sql_name = write_steps[1]
+        diags.append((second_step["line"],
+            f"SS3922 sqliteMultipleWritesRequireTransaction: operation "
+            f"`{op_name}` steps write SQL `{first_sql_name}` via "
+            f"`{first_prepare['name']}` and write SQL `{second_sql_name}` "
+            f"without a visible SQLite BEGIN/COMMIT pair; strictExecutable "
+            "multi-write operations must use an explicit transaction so "
+            "SQLite avoids per-statement implicit transactions and failures "
+            "cannot commit partial state"))
+
+
+_STRICT_SQLITE_RETURNING_DRAIN_TARGETS = frozenset({
+    "sqlite.finalizeStatement",
+    "sqlite.resetStatement",
+    "sqlite.stepStatement",
+})
+
+
+def _check_sqlite_returning_statement_drained_before_commit(
+    prog: Program,
+    diags,
+) -> None:
+    for op_name, op in prog.operations.items():
+        calls = _strict_collect_calls(prog, op)
+        returning_statements = {}
+        for prepare_call in calls.values():
+            if prepare_call["target"] != "sqlite.prepareStatement":
+                continue
+            sql_name = _strict_call_arg_value(prepare_call, "sql")
+            if sql_name is None:
+                continue
+            sql_text = _strict_sql_text_for_name(prog, sql_name)
+            if sql_text is None or not _sql_has_returning(sql_text):
+                continue
+            for statement_name in _strict_success_names(prepare_call):
+                returning_statements[statement_name] = (prepare_call, sql_name)
+        if not returning_statements:
+            continue
+
+        commit_calls = []
+        for call_info in calls.values():
+            if call_info["target"] != "sqlite.exec":
+                continue
+            sql_name = _strict_call_arg_value(call_info, "sql")
+            if sql_name is None:
+                continue
+            sql_text = _strict_sql_text_for_name(prog, sql_name)
+            if sql_text is None:
+                continue
+            if _sql_first_verb(sql_text) in {"COMMIT", "RELEASE"}:
+                commit_calls.append(call_info)
+        if not commit_calls:
+            continue
+
+        for statement_name, (prepare_call, sql_name) in returning_statements.items():
+            column_reads = sorted(
+                (
+                    call_info for call_info in calls.values()
+                    if call_info["target"].startswith("sqlite.column")
+                    and _strict_call_arg_value(call_info, "statement") == statement_name
+                ),
+                key=lambda call_info: call_info["line"],
+            )
+            if not column_reads:
+                continue
+            last_read = column_reads[-1]
+            for commit_call in sorted(
+                commit_calls,
+                key=lambda call_info: call_info["line"],
+            ):
+                if commit_call["line"] <= last_read["line"]:
+                    continue
+                drained = any(
+                    drain_call["target"] in _STRICT_SQLITE_RETURNING_DRAIN_TARGETS
+                    and _strict_call_arg_value(drain_call, "statement") == statement_name
+                    and last_read["line"] < drain_call["line"] < commit_call["line"]
+                    for drain_call in calls.values()
+                )
+                if drained:
+                    continue
+                diags.append((commit_call["line"],
+                    f"SS3923 sqliteReturningStatementMustBeDrained: "
+                    f"operation `{op_name}` reads columns from RETURNING SQL "
+                    f"`{sql_name}` prepared by `{prepare_call['name']}` and "
+                    f"then commits via `{commit_call['name']}` without a "
+                    "visible second step/reset/finalize on the statement; "
+                    "strictExecutable requires RETURNING statements to be "
+                    "drained before COMMIT so SQLite cannot reject the "
+                    "transaction because a row is still active"))
+                break
+
+
+def _check_strict_sqlite_last_insert_rowid_calls(prog: Program, diags) -> None:
+    for op_name, op in prog.operations.items():
+        calls = _strict_collect_calls(prog, op)
+        for call_info in calls.values():
+            if call_info["target"] != "sqlite.lastInsertRowId":
+                continue
+            diags.append((call_info["line"],
+                f"SS3926 sqliteLastInsertRowidShouldUseReturning: operation "
+                f"`{op_name}` calls `sqlite.lastInsertRowId` via "
+                f"`{call_info['name']}`; strict executable SQL must return "
+                "generated ids from the INSERT with `RETURNING` and pass "
+                "them to later statements as explicit binds instead of "
+                "reading connection-global mutable state"))
+
+
+_STRICT_PROCESS_ENVIRONMENT_READ_TARGETS = frozenset({
+    "c.getenv",
+    "c.getenv_s",
+    "c.getenvSafe",
+})
+
+_STRICT_REQUEST_TIME_READ_TARGETS = frozenset({
+    "http.nowMillis",
+})
+
+_STRICT_LARGE_LOCAL_STATIC_LITERAL_MIN_BYTES = 512
+_STRICT_LARGE_LOCAL_STATIC_LITERAL_TYPES = frozenset({
+    "CNullTerminatedByteString",
+    "String",
+    "JsonText",
+    "SqlText",
+})
+
+
+def _strict_storage_name_looks_like_cache(name: str) -> bool:
+    lowered = name.lower()
+    return "cache" in lowered or "cached" in lowered
+
+
+def _strict_operation_has_environment_cache_guard(
+    op: Operation,
+    first_getenv_line: int,
+) -> bool:
+    has_cache_write = any(
+        verb == "set"
+        and len(args) >= 3
+        and args[0] == "storage"
+        and _strict_storage_name_looks_like_cache(args[1])
+        for verb, args, _lineno in op.lines
+    )
+    has_pre_getenv_guard = any(
+        lineno < first_getenv_line
+        and verb == "branch"
+        and len(args) >= 5
+        and args[0] == "if"
+        for verb, args, lineno in op.lines
+    )
+    return has_cache_write and has_pre_getenv_guard
+
+
+def _check_strict_process_environment_reads_cached(prog: Program, diags) -> None:
+    for op_name, op in prog.operations.items():
+        if op_name == "main":
+            continue
+        calls = _strict_collect_calls(prog, op)
+        getenv_calls = [
+            call_info for call_info in calls.values()
+            if call_info["target"] in _STRICT_PROCESS_ENVIRONMENT_READ_TARGETS
+        ]
+        if not getenv_calls:
+            continue
+        first_getenv = min(
+            getenv_calls,
+            key=lambda call_info: call_info["line"],
+        )
+        if _strict_operation_has_environment_cache_guard(
+                op, first_getenv["line"]):
+            continue
+        diags.append((first_getenv["line"],
+            f"SS3920 getenvShouldBeCached: operation `{op_name}` calls "
+            f"`{first_getenv['target']}` via `{first_getenv['name']}` "
+            "without a visible module-storage cache guard; non-entry "
+            "strict executable operations must resolve process environment "
+            "configuration once and reuse cached storage on hot paths"))
+
+
+def _strict_operation_has_http_boundary(op: Operation) -> bool:
+    return any(
+        input_info.get("type") in {"HttpRequest", "HttpResponse"}
+        for input_info in _operation_inputs(op).values()
+    )
+
+
+def _check_strict_repeated_request_time_reads(prog: Program, diags) -> None:
+    for op_name, op in prog.operations.items():
+        if not _strict_operation_has_http_boundary(op):
+            continue
+        calls = _strict_collect_calls(prog, op)
+        time_calls = sorted(
+            (
+                call_info for call_info in calls.values()
+                if call_info["target"] in _STRICT_REQUEST_TIME_READ_TARGETS
+            ),
+            key=lambda call_info: call_info["line"],
+        )
+        if len(time_calls) < 2:
+            continue
+        first_time_call = time_calls[0]
+        second_time_call = time_calls[1]
+        diags.append((second_time_call["line"],
+            f"SS3924 repeatedRequestTimeRead: operation `{op_name}` calls "
+            f"`{first_time_call['target']}` via `{first_time_call['name']}` "
+            f"and again via `{second_time_call['name']}`; "
+            "strict executable request paths must read wall-clock time once "
+            "and reuse the bound timestamp so hot handlers avoid repeated "
+            "native calls and persist consistent row times"))
+
+
+_STRICT_IDEMPOTENCY_SELECT_NAMES = frozenset({
+    "sqlSelectIdempotency",
+})
+
+_STRICT_IDEMPOTENCY_RESPONSE_JSON_COLUMN_INDEXES = frozenset({
+    "1",
+    "columnIndex1",
+    "runtime.columnIndex1",
+})
+
+
+def _strict_sql_name_or_text_is_idempotency_select(
+    prog: Program,
+    sql_name: str,
+) -> bool:
+    unqualified_name = sql_name.rsplit(".", 1)[-1]
+    if unqualified_name in _STRICT_IDEMPOTENCY_SELECT_NAMES:
+        return True
+    sql_text = _strict_sql_text_for_name(prog, sql_name)
+    if sql_text is None:
+        return False
+    folded = re.sub(r"\s+", " ", sql_text).lower()
+    return (
+        _sql_first_verb(sql_text) == "SELECT"
+        and " from idempotency_keys" in folded
+        and "response_json" in folded
+        and "response_status" in folded
+    )
+
+
+def _strict_call_uses_response_json_column(call_info: dict) -> bool:
+    column_index = _strict_call_arg_value(call_info, "columnIndex")
+    return column_index in _STRICT_IDEMPOTENCY_RESPONSE_JSON_COLUMN_INDEXES
+
+
+def _check_strict_idempotency_replay_uses_response_status(
+    prog: Program,
+    diags,
+) -> None:
+    for op_name, op in prog.operations.items():
+        calls = _strict_collect_calls(prog, op)
+        idempotency_statements = {}
+        for prepare_call in calls.values():
+            if prepare_call["target"] != "sqlite.prepareStatement":
+                continue
+            sql_name = _strict_call_arg_value(prepare_call, "sql")
+            if sql_name is None:
+                continue
+            if not _strict_sql_name_or_text_is_idempotency_select(
+                prog, sql_name
+            ):
+                continue
+            for statement_name in _strict_success_names(prepare_call):
+                idempotency_statements[statement_name] = prepare_call
+        if not idempotency_statements:
+            continue
+
+        replay_body_reads = {}
+        for read_call in calls.values():
+            if read_call["target"] != "sqlite.columnText":
+                continue
+            statement_name = _strict_call_arg_value(read_call, "statement")
+            if statement_name not in idempotency_statements:
+                continue
+            if not _strict_call_uses_response_json_column(read_call):
+                continue
+            prepare_call = idempotency_statements[statement_name]
+            for body_name in _strict_success_names(read_call):
+                replay_body_reads[body_name] = (read_call, prepare_call)
+        if not replay_body_reads:
+            continue
+
+        for compare_call in sorted(
+            calls.values(),
+            key=lambda call_info: call_info["line"],
+        ):
+            if compare_call["target"] != "c.strcmp":
+                continue
+            compared_names = {
+                name for name in (
+                    _strict_call_arg_value(compare_call, "left"),
+                    _strict_call_arg_value(compare_call, "right"),
+                )
+                if name is not None
+            }
+            replay_body_name = next(
+                (
+                    name for name in compared_names
+                    if name in replay_body_reads
+                ),
+                None,
+            )
+            if replay_body_name is None:
+                continue
+            read_call, prepare_call = replay_body_reads[replay_body_name]
+            diags.append((compare_call["line"],
+                f"SS3925 idempotencyReplayShouldUseResponseStatus: "
+                f"operation `{op_name}` reads idempotency response_json "
+                f"as `{replay_body_name}` via `{read_call['name']}` and "
+                f"classifies it with `{compare_call['name']}`; "
+                f"`{prepare_call['name']}` also selects response_status, "
+                "so strict executable replay paths must branch on that "
+                "scalar instead of comparing full JSON response bodies"))
+
+
+def _strict_inline_string_literal(value) -> str | None:
+    if isinstance(value, tuple) and value and value[0] == "str":
+        return value[1]
+    return None
+
+
+def _strict_is_large_local_static_literal_type(
+    prog: Program,
+    type_name: str,
+) -> bool:
+    return resolve_alias(prog, type_name) in _STRICT_LARGE_LOCAL_STATIC_LITERAL_TYPES
+
+
+def _check_strict_large_local_static_literals(prog: Program, diags) -> None:
+    for op_name, op in prog.operations.items():
+        for verb, args, lineno in op.lines:
+            if (verb != "storage" or len(args) < 5
+                    or args[0] != "local" or args[1] != "immutable"):
+                continue
+            name = args[2]
+            type_name = args[3]
+            literal_value = _strict_inline_string_literal(args[4])
+            if literal_value is None:
+                continue
+            if not _strict_is_large_local_static_literal_type(prog, type_name):
+                continue
+            literal_bytes = len(literal_value.encode("utf-8"))
+            if literal_bytes < _STRICT_LARGE_LOCAL_STATIC_LITERAL_MIN_BYTES:
+                continue
+            diags.append((lineno,
+                f"SS3921 localStaticLiteralShouldBeModuleImmutable: "
+                f"operation `{op_name}` declares `{name}` as a "
+                f"{literal_bytes}-byte inline local immutable `{type_name}`; "
+                "large static literals are process constants and must be "
+                "hoisted to `storage module immutable` so hot handlers do "
+                "not carry large per-call context"))
 
 
 def _check_sqlite_sql_body_usage(prog: Program, diags) -> None:
-    for op_name, call_name, target, value_name, lineno in _sql_constant_usage(prog):
-        const = prog.consts.get(value_name)
+    for op_name, op, call_name, target, value_name, lineno in _sql_constant_usage(prog):
+        const = _strict_sql_const(prog, value_name)
         if const is None:
             continue
         _typ, value = const
@@ -13385,12 +14202,40 @@ def _check_sqlite_sql_body_usage(prog: Program, diags) -> None:
                 f"`{call_name}` (target `{target}`) uses SQL constant "
                 f"`{value_name}` with invalid SQL text: {scan_problem}"))
             continue
+        redundant_cases = _redundant_sql_cases(value)
+        if redundant_cases:
+            diags.append((lineno,
+                f"SS3915 redundantSqlCase: in operation `{op_name}`, call "
+                f"`{call_name}` (target `{target}`) uses SQL constant "
+                f"`{value_name}` with a CASE expression whose THEN and ELSE "
+                "branches are identical; simplify the SQL and remove any "
+                "bind parameters used only by the redundant condition"))
+            continue
+        if _sql_uses_last_insert_rowid(value):
+            diags.append((lineno,
+                f"SS3926 sqliteLastInsertRowidShouldUseReturning: in "
+                f"operation `{op_name}`, call `{call_name}` (target "
+                f"`{target}`) uses SQL constant `{value_name}` with "
+                "`last_insert_rowid()`; strict executable SQL must return "
+                "generated ids from the INSERT with `RETURNING` and pass "
+                "them to later statements as explicit binds"))
+            continue
         if target in _STRICT_SQL_PREPARE_TARGETS and statement_count != 1:
             diags.append((lineno,
                 f"SS3913 prepareSqlMustBeSingleStatement: in operation "
                 f"`{op_name}`, call `{call_name}` uses SQL constant "
                 f"`{value_name}` containing {statement_count} statements; "
                 "sqlite.prepareStatement accepts exactly one statement"))
+            continue
+        if (target in _STRICT_SQL_PREPARE_TARGETS
+                and _strict_sql_usage_is_wide_existence_probe(
+                    prog, op, call_name, value)):
+            diags.append((lineno,
+                f"SS3917 wideSqlExistenceProbe: in operation `{op_name}`, "
+                f"call `{call_name}` (target `{target}`) uses SQL constant "
+                f"`{value_name}` as a row-exists probe but the SELECT "
+                "projects columns that are never read; use `SELECT 1` or "
+                "`SELECT EXISTS(...)` for boolean existence checks"))
         if target in _STRICT_SQL_EXEC_TARGETS and placeholder_count:
             diags.append((lineno,
                 f"SS3914 execSqlCannotUsePlaceholders: in operation "
@@ -13405,7 +14250,58 @@ def _strict_raise_first_sql_usage_violation(prog: Program, diags) -> None:
         prog, diags, "SS3913",
         "strictExecutable sqlite SQL body validation",
         "Strict executable requires prepared SQL to contain exactly one "
-        "statement and sqlite.exec SQL to contain no bind placeholders.",
+        "statement, sqlite.exec SQL to contain no bind placeholders, and "
+        "SQL bodies to avoid dead constructs such as CASE expressions with "
+        "identical THEN/ELSE branches or full-row projections used only as "
+        "existence probes. Write/read round trips on the same table should "
+        "use SQLite RETURNING when the value is produced by the write, and "
+        "SQL should not depend on connection-global last_insert_rowid(). "
+        "Multi-write operations should make transaction boundaries visible. "
+        "RETURNING statements must be drained before transaction commit.",
+    )
+
+
+def _strict_raise_first_process_environment_violation(prog: Program, diags) -> None:
+    _strict_raise_first_simple(
+        prog, diags, "SS3920",
+        "strictExecutable process environment cache validation",
+        "Strict executable requires non-entry operations to cache process "
+        "environment configuration behind module storage. Request-path code "
+        "should not repeatedly call getenv for stable deployment settings.",
+    )
+
+
+def _strict_raise_first_request_time_violation(prog: Program, diags) -> None:
+    _strict_raise_first_simple(
+        prog, diags, "SS3924",
+        "strictExecutable request timestamp validation",
+        "Strict executable requires each operation to read request wall-clock "
+        "time once and reuse the bound timestamp for rows, events, logs, and "
+        "idempotency expiry calculations created by the same logical request.",
+    )
+
+
+def _strict_raise_first_idempotency_replay_violation(
+    prog: Program,
+    diags,
+) -> None:
+    _strict_raise_first_simple(
+        prog, diags, "SS3925",
+        "strictExecutable idempotency replay validation",
+        "Strict executable requires idempotency replay paths to branch on "
+        "stored response_status rather than compare stored response_json "
+        "bodies. The status column is fixed-width, faster, and decoupled "
+        "from envelope text formatting.",
+    )
+
+
+def _strict_raise_first_large_static_literal_violation(prog: Program, diags) -> None:
+    _strict_raise_first_simple(
+        prog, diags, "SS3921",
+        "strictExecutable static literal placement validation",
+        "Strict executable requires large static string/blob literals to live "
+        "at module scope. Operation bodies should carry request flow, not "
+        "large immutable data blocks.",
     )
 
 
@@ -13413,9 +14309,10 @@ def _strict_raise_first_constant_string_violation(prog: Program, diags) -> None:
     _strict_raise_first_simple(
         prog, diags, "SS3310",
         "strictExecutable constant-string validation",
-        "Strict executable requires every format string and SQL "
-        "statement to come from a `storage * immutable "
-        "CNullTerminatedByteString` row.",
+        "Strict executable requires every format string to come from a "
+        "static immutable string row, and every SQLite statement to come "
+        "from `SqlText` backed by a `sql body` island or trusted "
+        "`literalSource` asset.",
     )
 
 
@@ -13809,6 +14706,9 @@ def validate_strict_executable(prog: Program) -> None:
     http_contract_diags = []
     _check_http_contracts(prog, http_contract_diags)
     _strict_raise_first_http_contract(prog, http_contract_diags)
+    reachability_diags = []
+    _check_strict_unreachable_operation_rows(prog, reachability_diags)
+    _strict_raise_first_reachability(prog, reachability_diags)
     forbidden_call_diags = []
     _check_strict_forbidden_call_targets(prog, forbidden_call_diags)
     _strict_raise_first_forbidden_target(prog, forbidden_call_diags)
@@ -13818,7 +14718,29 @@ def validate_strict_executable(prog: Program) -> None:
     _strict_raise_first_constant_string_violation(prog, constant_string_diags)
     sql_usage_diags = []
     _check_sqlite_sql_body_usage(prog, sql_usage_diags)
+    _check_sqlite_write_then_read_usage(prog, sql_usage_diags)
+    _check_sqlite_multiple_writes_have_transaction(prog, sql_usage_diags)
+    _check_sqlite_returning_statement_drained_before_commit(
+        prog, sql_usage_diags)
+    _check_strict_sqlite_last_insert_rowid_calls(prog, sql_usage_diags)
     _strict_raise_first_sql_usage_violation(prog, sql_usage_diags)
+    process_environment_diags = []
+    _check_strict_process_environment_reads_cached(
+        prog, process_environment_diags)
+    _strict_raise_first_process_environment_violation(
+        prog, process_environment_diags)
+    request_time_diags = []
+    _check_strict_repeated_request_time_reads(prog, request_time_diags)
+    _strict_raise_first_request_time_violation(prog, request_time_diags)
+    idempotency_replay_diags = []
+    _check_strict_idempotency_replay_uses_response_status(
+        prog, idempotency_replay_diags)
+    _strict_raise_first_idempotency_replay_violation(
+        prog, idempotency_replay_diags)
+    large_static_literal_diags = []
+    _check_strict_large_local_static_literals(prog, large_static_literal_diags)
+    _strict_raise_first_large_static_literal_violation(
+        prog, large_static_literal_diags)
     step_disposition_diags = []
     _check_strict_step_result_disposition(prog, step_disposition_diags)
     _strict_raise_first_step_disposition(prog, step_disposition_diags)

@@ -107,9 +107,15 @@ purpose operation sqliteSampleStdoutWrite "Authority to write the selected row b
 # ----- constants -----
 
 storage module immutable sqliteSampleDatabasePath CNullTerminatedByteString ":memory:"
-storage module immutable sqliteSampleCreateTableStatement CNullTerminatedByteString "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)"
-storage module immutable sqliteSampleInsertStatement CNullTerminatedByteString "INSERT INTO notes (body) VALUES (?)"
-storage module immutable sqliteSampleSelectStatement CNullTerminatedByteString "SELECT id, body FROM notes WHERE id = ?"
+storage module immutable sqliteSampleCreateTableStatement SqlText
+sql body sqliteSampleCreateTableStatement
+  CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)
+storage module immutable sqliteSampleInsertStatement SqlText
+sql body sqliteSampleInsertStatement
+  INSERT INTO notes (body) VALUES (?)
+storage module immutable sqliteSampleSelectStatement SqlText
+sql body sqliteSampleSelectStatement
+  SELECT id, body FROM notes WHERE id = ?
 storage module immutable sqliteSampleInsertBodyText CNullTerminatedByteString "hello from sqlite syntax sample"
 storage module immutable sqliteSampleFirstBindParameterIndex CSignedInt32 1
 storage module immutable sqliteSampleIdentifierColumnIndex CSignedInt32 0
@@ -155,7 +161,7 @@ defer sampleDatabaseCloseDefer sqlite.closeDatabase sampleDatabase
 # result rows, so the prepare/step/finalize cycle is unnecessary.
 call createNotesTableCall sqlite.exec
 argument createNotesTableCall database SqliteDatabase sampleDatabase
-argument createNotesTableCall sql CNullTerminatedByteString sqliteSampleCreateTableStatement
+argument createNotesTableCall sql SqlText sqliteSampleCreateTableStatement
 run createNotesTableCall
 ignore void source createNotesTableCall
 bind error createNotesTableError SqliteDatabaseExecFailure createNotesTableCall
@@ -165,7 +171,7 @@ branch error source createNotesTableCall target sampleCreateTableFailed
 # (here it's only stepped once, but the cycle illustrates the shape).
 call prepareInsertCall sqlite.prepareStatement
 argument prepareInsertCall database SqliteDatabase sampleDatabase
-argument prepareInsertCall sql CNullTerminatedByteString sqliteSampleInsertStatement
+argument prepareInsertCall sql SqlText sqliteSampleInsertStatement
 run prepareInsertCall
 bind ok insertStatement SqliteStatement prepareInsertCall
 bind error insertPrepareError SqliteStatementPrepareFailure prepareInsertCall
@@ -201,7 +207,7 @@ bind value insertedRowId CSignedInt64 lastInsertRowIdCall
 
 call prepareSelectCall sqlite.prepareStatement
 argument prepareSelectCall database SqliteDatabase sampleDatabase
-argument prepareSelectCall sql CNullTerminatedByteString sqliteSampleSelectStatement
+argument prepareSelectCall sql SqlText sqliteSampleSelectStatement
 run prepareSelectCall
 bind ok selectStatement SqliteStatement prepareSelectCall
 bind error selectPrepareError SqliteStatementPrepareFailure prepareSelectCall

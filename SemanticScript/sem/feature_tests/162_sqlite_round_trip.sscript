@@ -47,9 +47,15 @@ invariant operation main "stdout matches the column text iff every sqlite.* call
 label startMain
 
 storage module immutable databasePath CNullTerminatedByteString ":memory:"
-storage module immutable createTableSql CNullTerminatedByteString "CREATE TABLE markers (body TEXT NOT NULL)"
-storage module immutable insertMarkerSql CNullTerminatedByteString "INSERT INTO markers (body) VALUES ('sqliteRoundTripOk')"
-storage module immutable selectMarkerSql CNullTerminatedByteString "SELECT body FROM markers"
+storage module immutable createTableSql SqlText
+sql body createTableSql
+  CREATE TABLE markers (body TEXT NOT NULL)
+storage module immutable insertMarkerSql SqlText
+sql body insertMarkerSql
+  INSERT INTO markers (body) VALUES ('sqliteRoundTripOk')
+storage module immutable selectMarkerSql SqlText
+sql body selectMarkerSql
+  SELECT body FROM markers
 storage module immutable firstColumnIndex CSignedInt32 0
 
 call openCall sqlite.openDatabase
@@ -64,7 +70,7 @@ defer databaseCloseDefer sqlite.closeDatabase roundTripDatabase
 
 call createTableCall sqlite.exec
 argument createTableCall database SqliteDatabase roundTripDatabase
-argument createTableCall sql CNullTerminatedByteString createTableSql
+argument createTableCall sql SqlText createTableSql
 run createTableCall
 ignore void source createTableCall
 bind error createTableError SqliteDatabaseExecFailure createTableCall
@@ -72,7 +78,7 @@ branch error source createTableCall target createTableFailed
 
 call insertMarkerCall sqlite.exec
 argument insertMarkerCall database SqliteDatabase roundTripDatabase
-argument insertMarkerCall sql CNullTerminatedByteString insertMarkerSql
+argument insertMarkerCall sql SqlText insertMarkerSql
 run insertMarkerCall
 ignore void source insertMarkerCall
 bind error insertMarkerError SqliteDatabaseExecFailure insertMarkerCall
@@ -80,7 +86,7 @@ branch error source insertMarkerCall target insertMarkerFailed
 
 call prepareSelectCall sqlite.prepareStatement
 argument prepareSelectCall database SqliteDatabase roundTripDatabase
-argument prepareSelectCall sql CNullTerminatedByteString selectMarkerSql
+argument prepareSelectCall sql SqlText selectMarkerSql
 run prepareSelectCall
 bind ok selectStatement SqliteStatement prepareSelectCall
 bind error prepareSelectError SqliteStatementPrepareFailure prepareSelectCall
@@ -91,7 +97,7 @@ defer selectStatementFinalizeDefer sqlite.finalizeStatement selectStatement
 call stepSelectCall sqlite.stepStatement
 argument stepSelectCall statement SqliteStatement selectStatement
 run stepSelectCall
-bind ok stepOutcome SqliteStepResult stepSelectCall
+ignore ok source stepSelectCall type SqliteStepResult
 bind error stepSelectError SqliteStatementStepFailure stepSelectCall
 branch error source stepSelectCall target stepFailed
 

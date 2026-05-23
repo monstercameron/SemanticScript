@@ -1399,10 +1399,12 @@ def test_strict_rejects_plain_run_for_fallible_sqlite_prepare():
         "async main no",
         "label start",
         "storage module immutable database SqliteDatabase 0",
-        "storage module immutable sqlText CNullTerminatedByteString \"select 1\"",
+        "storage module immutable sqlText SqlText",
+        "sql body sqlText",
+        "  select 1",
         "call prepareStatementCall sqlite.prepareStatement",
         "argument prepareStatementCall database SqliteDatabase database",
-        "argument prepareStatementCall sql CNullTerminatedByteString sqlText",
+        "argument prepareStatementCall sql SqlText sqlText",
         "run prepareStatementCall",
         "bind ok statement SqliteStatement prepareStatementCall",
         "return ok noResult",
@@ -1591,7 +1593,9 @@ def test_strict_executable_rejects_sqlite_open_setup_failure_without_close():
         "error MainError",
         "errorCase MainError OpenFailed",
         "errorCase MainError SchemaFailed",
-        "storage module immutable schemaSql CNullTerminatedByteString \"create table t(id integer)\"",
+        "storage module immutable schemaSql SqlText",
+        "sql body schemaSql",
+        "  create table t(id integer)",
         "operation main",
         "output operation main Result SqliteDatabase MainError",
         "purpose operation main \"SQLite setup failure must close fresh handle\"",
@@ -1608,7 +1612,7 @@ def test_strict_executable_rejects_sqlite_open_setup_failure_without_close():
         "branch error source openCall target openFailed",
         "call schemaCall sqlite.exec",
         "argument schemaCall database SqliteDatabase database",
-        "argument schemaCall sql CNullTerminatedByteString schemaSql",
+        "argument schemaCall sql SqlText schemaSql",
         "run schemaCall",
         "ignore void source schemaCall",
         "bind error schemaError MainError schemaCall",
@@ -1636,7 +1640,9 @@ def test_strict_executable_accepts_sqlite_open_setup_failure_close():
         "error MainError",
         "errorCase MainError OpenFailed",
         "errorCase MainError SchemaFailed",
-        "storage module immutable schemaSql CNullTerminatedByteString \"create table t(id integer)\"",
+        "storage module immutable schemaSql SqlText",
+        "sql body schemaSql",
+        "  create table t(id integer)",
         "operation main",
         "output operation main Result SqliteDatabase MainError",
         "purpose operation main \"SQLite setup failure closes fresh handle\"",
@@ -1653,7 +1659,7 @@ def test_strict_executable_accepts_sqlite_open_setup_failure_close():
         "branch error source openCall target openFailed",
         "call schemaCall sqlite.exec",
         "argument schemaCall database SqliteDatabase database",
-        "argument schemaCall sql CNullTerminatedByteString schemaSql",
+        "argument schemaCall sql SqlText schemaSql",
         "run schemaCall",
         "ignore void source schemaCall",
         "bind error schemaError MainError schemaCall",
@@ -1686,7 +1692,9 @@ def test_strict_executable_rejects_sqlite_prepare_without_finalize():
         "entry console main",
         "error MainError",
         "errorCase MainError PrepareFailed",
-        "storage module immutable selectSql CNullTerminatedByteString \"select 1\"",
+        "storage module immutable selectSql SqlText",
+        "sql body selectSql",
+        "  select 1",
         "operation main",
         "output operation main Result Void MainError",
         "purpose operation main \"SQLite statements must be finalized\"",
@@ -1696,7 +1704,7 @@ def test_strict_executable_rejects_sqlite_prepare_without_finalize():
         "storage module immutable database SqliteDatabase 0",
         "call prepareCall sqlite.prepareStatement",
         "argument prepareCall database SqliteDatabase database",
-        "argument prepareCall sql CNullTerminatedByteString selectSql",
+        "argument prepareCall sql SqlText selectSql",
         "run prepareCall",
         "bind ok statement SqliteStatement prepareCall",
         "bind error prepareError MainError prepareCall",
@@ -1721,10 +1729,46 @@ def test_strict_executable_accepts_sqlite_prepare_finalize_defer():
         "entry console main",
         "error MainError",
         "errorCase MainError PrepareFailed",
-        "storage module immutable selectSql CNullTerminatedByteString \"select 1\"",
+        "storage module immutable selectSql SqlText",
+        "sql body selectSql",
+        "  select 1",
         "operation main",
         "output operation main Result Void MainError",
         "purpose operation main \"SQLite statement finalize defer is lowered\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call prepareCall sqlite.prepareStatement",
+        "argument prepareCall database SqliteDatabase database",
+        "argument prepareCall sql SqlText selectSql",
+        "run prepareCall",
+        "bind ok statement SqliteStatement prepareCall",
+        "bind error prepareError MainError prepareCall",
+        "branch error source prepareCall target prepareFailed",
+        "defer finalizeStatementDefer sqlite.finalizeStatement statement",
+        "return ok noResult",
+        "label prepareFailed",
+        "return error prepareError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable owned resources: sqlite finalize defer passes",
+          proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_legacy_sql_string_literal():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictLegacySqlString",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError PrepareFailed",
+        "storage module immutable selectSql CNullTerminatedByteString \"select 1\"",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict SQLite SQL must use SqlText\"",
         "memory main heap yes",
         "async main no",
         "label start",
@@ -1742,8 +1786,767 @@ def test_strict_executable_accepts_sqlite_prepare_finalize_defer():
         "return error prepareError",
     ])
     proc = run_semsc_source(src, "--parse-only", "--quiet")
-    check("strictExecutable owned resources: sqlite finalize defer passes",
+    check("strictExecutable SQL: rejects CNullTerminatedByteString SQL",
+          proc.returncode == 3
+          and "SS3911" in proc.stderr
+          and "sqlMustBeSqlText" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_inline_sql_text_literal():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictInlineSqlText",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError PrepareFailed",
+        "storage module immutable selectSql SqlText \"select 1\"",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict SQLite SQL must use sql body\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call prepareCall sqlite.prepareStatement",
+        "argument prepareCall database SqliteDatabase database",
+        "argument prepareCall sql SqlText selectSql",
+        "run prepareCall",
+        "bind ok statement SqliteStatement prepareCall",
+        "bind error prepareError MainError prepareCall",
+        "branch error source prepareCall target prepareFailed",
+        "defer finalizeStatementDefer sqlite.finalizeStatement statement",
+        "return ok noResult",
+        "label prepareFailed",
+        "return error prepareError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable SQL: rejects inline SqlText SQL",
+          proc.returncode == 3
+          and "SS3916" in proc.stderr
+          and "sqlMustUseBodyOrLiteralSource" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_redundant_sql_case_branches():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictRedundantSqlCase",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError PrepareFailed",
+        "storage module immutable selectSql SqlText",
+        "sql body selectSql",
+        "  SELECT CASE WHEN ?1 IS NULL THEN body ELSE body END FROM notes WHERE body = ?1",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict SQLite SQL rejects dead CASE work\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call prepareCall sqlite.prepareStatement",
+        "argument prepareCall database SqliteDatabase database",
+        "argument prepareCall sql SqlText selectSql",
+        "run prepareCall",
+        "bind ok statement SqliteStatement prepareCall",
+        "bind error prepareError MainError prepareCall",
+        "branch error source prepareCall target prepareFailed",
+        "defer finalizeStatementDefer sqlite.finalizeStatement statement",
+        "return ok noResult",
+        "label prepareFailed",
+        "return error prepareError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable SQL: rejects redundant CASE branches",
+          proc.returncode == 3
+          and "SS3915" in proc.stderr
+          and "redundantSqlCase" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_wide_sql_existence_probe():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictWideSqlExistenceProbe",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError PrepareFailed",
+        "errorCase MainError StepFailed",
+        "storage module immutable selectSql SqlText",
+        "sql body selectSql",
+        "  SELECT status, revision FROM auctions WHERE auction_id = ? LIMIT 1",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict SQLite SQL rejects wide existence probes\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "storage module immutable auctionId CNullTerminatedByteString \"auc_test\"",
+        "call prepareCall sqlite.prepareStatement",
+        "argument prepareCall database SqliteDatabase database",
+        "argument prepareCall sql SqlText selectSql",
+        "run prepareCall",
+        "bind ok statement SqliteStatement prepareCall",
+        "bind error prepareError MainError prepareCall",
+        "branch error source prepareCall target prepareFailed",
+        "defer finalizeStatementDefer sqlite.finalizeStatement statement",
+        "call bindAuctionCall sqlite.bindText",
+        "argument bindAuctionCall statement SqliteStatement statement",
+        "argument bindAuctionCall parameterIndex CSignedInt32 1",
+        "argument bindAuctionCall value CNullTerminatedByteString auctionId",
+        "run bindAuctionCall",
+        "ignore void source bindAuctionCall",
+        "bind error bindAuctionError MainError bindAuctionCall",
+        "branch error source bindAuctionCall target prepareFailed",
+        "call stepCall sqlite.stepStatement",
+        "argument stepCall statement SqliteStatement statement",
+        "run stepCall",
+        "bind ok stepStatus CSignedInt32 stepCall",
+        "bind error stepError MainError stepCall",
+        "branch error source stepCall target stepFailed",
+        "return ok noResult",
+        "label prepareFailed",
+        "return error prepareError",
+        "label stepFailed",
+        "return error stepError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable SQL: rejects wide existence probes",
+          proc.returncode == 3
+          and "SS3917" in proc.stderr
+          and "wideSqlExistenceProbe" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_sql_write_then_read_round_trip():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictSqlReturningOpportunity",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError PrepareFailed",
+        "errorCase MainError StepFailed",
+        "storage module immutable upsertSql SqlText",
+        "sql body upsertSql",
+        "  INSERT INTO counters(name, count) VALUES ('login', 1) ON CONFLICT(name) DO UPDATE SET count = count + 1",
+        "storage module immutable selectSql SqlText",
+        "sql body selectSql",
+        "  SELECT count FROM counters WHERE name = 'login' LIMIT 1",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict SQLite SQL rejects write/read round trips\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call prepareUpsertCall sqlite.prepareStatement",
+        "argument prepareUpsertCall database SqliteDatabase database",
+        "argument prepareUpsertCall sql SqlText upsertSql",
+        "run prepareUpsertCall",
+        "bind ok upsertStatement SqliteStatement prepareUpsertCall",
+        "bind error prepareUpsertError MainError prepareUpsertCall",
+        "branch error source prepareUpsertCall target prepareUpsertFailed",
+        "defer finalizeUpsertDefer sqlite.finalizeStatement upsertStatement",
+        "call stepUpsertCall sqlite.stepStatement",
+        "argument stepUpsertCall statement SqliteStatement upsertStatement",
+        "run stepUpsertCall",
+        "ignore ok source stepUpsertCall type CSignedInt32",
+        "bind error stepUpsertError MainError stepUpsertCall",
+        "branch error source stepUpsertCall target stepUpsertFailed",
+        "call prepareSelectCall sqlite.prepareStatement",
+        "argument prepareSelectCall database SqliteDatabase database",
+        "argument prepareSelectCall sql SqlText selectSql",
+        "run prepareSelectCall",
+        "bind ok selectStatement SqliteStatement prepareSelectCall",
+        "bind error prepareSelectError MainError prepareSelectCall",
+        "branch error source prepareSelectCall target prepareSelectFailed",
+        "defer finalizeSelectDefer sqlite.finalizeStatement selectStatement",
+        "call stepSelectCall sqlite.stepStatement",
+        "argument stepSelectCall statement SqliteStatement selectStatement",
+        "run stepSelectCall",
+        "bind ok selectStatus CSignedInt32 stepSelectCall",
+        "bind error stepSelectError MainError stepSelectCall",
+        "branch error source stepSelectCall target stepSelectFailed",
+        "call readCountCall sqlite.columnInt64",
+        "argument readCountCall statement SqliteStatement selectStatement",
+        "argument readCountCall columnIndex CSignedInt32 0",
+        "run readCountCall",
+        "bind value count CSignedInt64 readCountCall",
+        "return ok noResult",
+        "label prepareUpsertFailed",
+        "return error prepareUpsertError",
+        "label stepUpsertFailed",
+        "return error stepUpsertError",
+        "label prepareSelectFailed",
+        "return error prepareSelectError",
+        "label stepSelectFailed",
+        "return error stepSelectError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable SQL: rejects write/read round trips",
+          proc.returncode == 3
+          and "SS3918" in proc.stderr
+          and "sqliteWriteThenReadShouldUseReturning" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_multiple_sql_writes_without_transaction():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictSqlTransaction",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError PrepareFailed",
+        "errorCase MainError StepFailed",
+        "storage module immutable insertAuditSql SqlText",
+        "sql body insertAuditSql",
+        "  INSERT INTO audit_events(actor_id, action) VALUES ('user_1', 'login')",
+        "storage module immutable insertLogSql SqlText",
+        "sql body insertLogSql",
+        "  INSERT INTO request_log(route, status) VALUES ('/login', 200)",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict SQLite SQL rejects multi-write non-transactions\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call prepareAuditCall sqlite.prepareStatement",
+        "argument prepareAuditCall database SqliteDatabase database",
+        "argument prepareAuditCall sql SqlText insertAuditSql",
+        "run prepareAuditCall",
+        "bind ok auditStatement SqliteStatement prepareAuditCall",
+        "bind error prepareAuditError MainError prepareAuditCall",
+        "branch error source prepareAuditCall target prepareAuditFailed",
+        "defer finalizeAuditDefer sqlite.finalizeStatement auditStatement",
+        "call stepAuditCall sqlite.stepStatement",
+        "argument stepAuditCall statement SqliteStatement auditStatement",
+        "run stepAuditCall",
+        "ignore ok source stepAuditCall type CSignedInt32",
+        "bind error stepAuditError MainError stepAuditCall",
+        "branch error source stepAuditCall target stepAuditFailed",
+        "call prepareLogCall sqlite.prepareStatement",
+        "argument prepareLogCall database SqliteDatabase database",
+        "argument prepareLogCall sql SqlText insertLogSql",
+        "run prepareLogCall",
+        "bind ok logStatement SqliteStatement prepareLogCall",
+        "bind error prepareLogError MainError prepareLogCall",
+        "branch error source prepareLogCall target prepareLogFailed",
+        "defer finalizeLogDefer sqlite.finalizeStatement logStatement",
+        "call stepLogCall sqlite.stepStatement",
+        "argument stepLogCall statement SqliteStatement logStatement",
+        "run stepLogCall",
+        "ignore ok source stepLogCall type CSignedInt32",
+        "bind error stepLogError MainError stepLogCall",
+        "branch error source stepLogCall target stepLogFailed",
+        "return ok noResult",
+        "label prepareAuditFailed",
+        "return error prepareAuditError",
+        "label stepAuditFailed",
+        "return error stepAuditError",
+        "label prepareLogFailed",
+        "return error prepareLogError",
+        "label stepLogFailed",
+        "return error stepLogError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable SQL: rejects multi-write non-transactions",
+          proc.returncode == 3
+          and "SS3922" in proc.stderr
+          and "sqliteMultipleWritesRequireTransaction" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_returning_commit_without_drain():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictSqlReturningDrain",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError ExecFailed",
+        "errorCase MainError PrepareFailed",
+        "errorCase MainError StepFailed",
+        "storage module immutable beginSql SqlText",
+        "sql body beginSql",
+        "  BEGIN IMMEDIATE",
+        "storage module immutable commitSql SqlText",
+        "sql body commitSql",
+        "  COMMIT",
+        "storage module immutable upsertSql SqlText",
+        "sql body upsertSql",
+        "  INSERT INTO counters(name, count) VALUES ('login', 1) ON CONFLICT(name) DO UPDATE SET count = count + 1 RETURNING count",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict SQLite SQL drains RETURNING before commit\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call beginCall sqlite.exec",
+        "argument beginCall database SqliteDatabase database",
+        "argument beginCall sql SqlText beginSql",
+        "run beginCall",
+        "ignore void source beginCall",
+        "bind error beginError MainError beginCall",
+        "branch error source beginCall target beginFailed",
+        "call prepareUpsertCall sqlite.prepareStatement",
+        "argument prepareUpsertCall database SqliteDatabase database",
+        "argument prepareUpsertCall sql SqlText upsertSql",
+        "run prepareUpsertCall",
+        "bind ok upsertStatement SqliteStatement prepareUpsertCall",
+        "bind error prepareUpsertError MainError prepareUpsertCall",
+        "branch error source prepareUpsertCall target prepareUpsertFailed",
+        "defer finalizeUpsertDefer sqlite.finalizeStatement upsertStatement",
+        "call stepUpsertCall sqlite.stepStatement",
+        "argument stepUpsertCall statement SqliteStatement upsertStatement",
+        "run stepUpsertCall",
+        "bind ok upsertStatus CSignedInt32 stepUpsertCall",
+        "bind error stepUpsertError MainError stepUpsertCall",
+        "branch error source stepUpsertCall target stepUpsertFailed",
+        "call readCountCall sqlite.columnInt64",
+        "argument readCountCall statement SqliteStatement upsertStatement",
+        "argument readCountCall columnIndex CSignedInt32 0",
+        "run readCountCall",
+        "bind value count CSignedInt64 readCountCall",
+        "call commitCall sqlite.exec",
+        "argument commitCall database SqliteDatabase database",
+        "argument commitCall sql SqlText commitSql",
+        "run commitCall",
+        "ignore void source commitCall",
+        "bind error commitError MainError commitCall",
+        "branch error source commitCall target commitFailed",
+        "return ok noResult",
+        "label beginFailed",
+        "return error beginError",
+        "label prepareUpsertFailed",
+        "return error prepareUpsertError",
+        "label stepUpsertFailed",
+        "return error stepUpsertError",
+        "label commitFailed",
+        "return error commitError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable SQL: rejects RETURNING commit without drain",
+          proc.returncode == 3
+          and "SS3923" in proc.stderr
+          and "sqliteReturningStatementMustBeDrained" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_accepts_returning_commit_after_drain():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictSqlReturningDrainAccepted",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError ExecFailed",
+        "errorCase MainError PrepareFailed",
+        "errorCase MainError StepFailed",
+        "storage module immutable beginSql SqlText",
+        "sql body beginSql",
+        "  BEGIN IMMEDIATE",
+        "storage module immutable commitSql SqlText",
+        "sql body commitSql",
+        "  COMMIT",
+        "storage module immutable upsertSql SqlText",
+        "sql body upsertSql",
+        "  INSERT INTO counters(name, count) VALUES ('login', 1) ON CONFLICT(name) DO UPDATE SET count = count + 1 RETURNING count",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict SQLite SQL accepts drained RETURNING before commit\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call beginCall sqlite.exec",
+        "argument beginCall database SqliteDatabase database",
+        "argument beginCall sql SqlText beginSql",
+        "run beginCall",
+        "ignore void source beginCall",
+        "bind error beginError MainError beginCall",
+        "branch error source beginCall target beginFailed",
+        "call prepareUpsertCall sqlite.prepareStatement",
+        "argument prepareUpsertCall database SqliteDatabase database",
+        "argument prepareUpsertCall sql SqlText upsertSql",
+        "run prepareUpsertCall",
+        "bind ok upsertStatement SqliteStatement prepareUpsertCall",
+        "bind error prepareUpsertError MainError prepareUpsertCall",
+        "branch error source prepareUpsertCall target prepareUpsertFailed",
+        "defer finalizeUpsertDefer sqlite.finalizeStatement upsertStatement",
+        "call stepUpsertCall sqlite.stepStatement",
+        "argument stepUpsertCall statement SqliteStatement upsertStatement",
+        "run stepUpsertCall",
+        "bind ok upsertStatus CSignedInt32 stepUpsertCall",
+        "bind error stepUpsertError MainError stepUpsertCall",
+        "branch error source stepUpsertCall target stepUpsertFailed",
+        "call readCountCall sqlite.columnInt64",
+        "argument readCountCall statement SqliteStatement upsertStatement",
+        "argument readCountCall columnIndex CSignedInt32 0",
+        "run readCountCall",
+        "bind value count CSignedInt64 readCountCall",
+        "call drainUpsertCall sqlite.stepStatement",
+        "argument drainUpsertCall statement SqliteStatement upsertStatement",
+        "run drainUpsertCall",
+        "bind ok drainStatus CSignedInt32 drainUpsertCall",
+        "bind error drainUpsertError MainError drainUpsertCall",
+        "branch error source drainUpsertCall target drainFailed",
+        "call commitCall sqlite.exec",
+        "argument commitCall database SqliteDatabase database",
+        "argument commitCall sql SqlText commitSql",
+        "run commitCall",
+        "ignore void source commitCall",
+        "bind error commitError MainError commitCall",
+        "branch error source commitCall target commitFailed",
+        "return ok noResult",
+        "label beginFailed",
+        "return error beginError",
+        "label prepareUpsertFailed",
+        "return error prepareUpsertError",
+        "label stepUpsertFailed",
+        "return error stepUpsertError",
+        "label drainFailed",
+        "return error drainUpsertError",
+        "label commitFailed",
+        "return error commitError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable SQL: accepts RETURNING commit after drain",
           proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_sql_last_insert_rowid():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictSqlLastInsertRowid",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError PrepareFailed",
+        "storage module immutable insertEventSql SqlText",
+        "sql body insertEventSql",
+        "  INSERT INTO events(message_id) SELECT message_id FROM messages WHERE rowid = last_insert_rowid()",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict SQL rejects connection-global generated id lookup\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call prepareEventCall sqlite.prepareStatement",
+        "argument prepareEventCall database SqliteDatabase database",
+        "argument prepareEventCall sql SqlText insertEventSql",
+        "run prepareEventCall",
+        "bind ok eventStatement SqliteStatement prepareEventCall",
+        "bind error prepareEventError MainError prepareEventCall",
+        "branch error source prepareEventCall target prepareFailed",
+        "defer finalizeEventDefer sqlite.finalizeStatement eventStatement",
+        "return ok noResult",
+        "label prepareFailed",
+        "return error prepareEventError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable SQL: rejects last_insert_rowid",
+          proc.returncode == 3
+          and "SS3926" in proc.stderr
+          and "sqliteLastInsertRowidShouldUseReturning" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_native_last_insert_rowid():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictNativeLastInsertRowid",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "operation main",
+        "output operation main Void",
+        "purpose operation main \"strict SQL rejects native connection-global generated id lookup\"",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call rowidCall sqlite.lastInsertRowId",
+        "argument rowidCall database SqliteDatabase database",
+        "run rowidCall",
+        "bind value insertedRowId SqliteRowId rowidCall",
+        "return void",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable SQL: rejects native lastInsertRowId",
+          proc.returncode == 3
+          and "SS3926" in proc.stderr
+          and "sqliteLastInsertRowidShouldUseReturning" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_accepts_returning_generated_id():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictSqlReturningGeneratedId",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError PrepareFailed",
+        "storage module immutable insertMessageSql SqlText",
+        "sql body insertMessageSql",
+        "  INSERT INTO messages(message_id) VALUES ('msg_' || lower(hex(randomblob(8)))) RETURNING message_id",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict SQL accepts returning generated id\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call prepareMessageCall sqlite.prepareStatement",
+        "argument prepareMessageCall database SqliteDatabase database",
+        "argument prepareMessageCall sql SqlText insertMessageSql",
+        "run prepareMessageCall",
+        "bind ok messageStatement SqliteStatement prepareMessageCall",
+        "bind error prepareMessageError MainError prepareMessageCall",
+        "branch error source prepareMessageCall target prepareFailed",
+        "defer finalizeMessageDefer sqlite.finalizeStatement messageStatement",
+        "return ok noResult",
+        "label prepareFailed",
+        "return error prepareMessageError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable SQL: accepts RETURNING generated id",
+          proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_uncached_getenv_in_helper():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictUncachedGetenv",
+        "entry console resolveSecret",
+        "capability processEnvironmentReader process.environment read",
+        "storage module immutable secretEnvName CNullTerminatedByteString \"APP_SECRET\"",
+        "operation resolveSecret",
+        "output operation resolveSecret CNullTerminatedByteString",
+        "effect resolveSecret read process.environment",
+        "memory resolveSecret heap no",
+        "async resolveSecret no",
+        "useCapability resolveSecret processEnvironmentReader",
+        "purpose operation resolveSecret \"strict helpers cache environment configuration\"",
+        "label start",
+        "call getenvSecretCall c.getenv",
+        "argument getenvSecretCall name CNullTerminatedByteString secretEnvName",
+        "run getenvSecretCall",
+        "bind value secret CNullTerminatedByteString getenvSecretCall",
+        "return value secret",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable process env: rejects uncached getenv",
+          proc.returncode == 3
+          and "SS3920" in proc.stderr
+          and "getenvShouldBeCached" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_repeated_request_time_read():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictRepeatedRequestTime",
+        "import http standard.http",
+        "entry console main",
+        "operation main",
+        "input operation main request HttpRequest",
+        "output operation main Void",
+        "purpose operation main \"strict handlers reuse request timestamps\"",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "call requestNowCall http.nowMillis",
+        "run requestNowCall",
+        "bind value requestNow CSignedInt64 requestNowCall",
+        "call laterNowCall http.nowMillis",
+        "run laterNowCall",
+        "bind value laterNow CSignedInt64 laterNowCall",
+        "return void",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable perf: rejects repeated request time reads",
+          proc.returncode == 3
+          and "SS3924" in proc.stderr
+          and "repeatedRequestTimeRead" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_accepts_single_request_time_read():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictSingleRequestTime",
+        "import http standard.http",
+        "entry console main",
+        "operation main",
+        "input operation main request HttpRequest",
+        "output operation main Void",
+        "purpose operation main \"strict handlers read request time once\"",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "call requestNowCall http.nowMillis",
+        "run requestNowCall",
+        "bind value requestNow CSignedInt64 requestNowCall",
+        "return void",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable perf: accepts single request time read",
+          proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_idempotency_replay_body_classification():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictIdempotencyReplayBodyCompare",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError PrepareFailed",
+        "storage module immutable selectIdem SqlText",
+        "sql body selectIdem",
+        "  SELECT request_hash, response_json, response_status FROM idempotency_keys WHERE scope = 'auction.bid' LIMIT 1",
+        "storage module immutable conflictBody CNullTerminatedByteString \"{}\"",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict idempotency replay uses response status\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call prepareIdemCall sqlite.prepareStatement",
+        "argument prepareIdemCall database SqliteDatabase database",
+        "argument prepareIdemCall sql SqlText selectIdem",
+        "run prepareIdemCall",
+        "bind ok idemStatement SqliteStatement prepareIdemCall",
+        "bind error prepareIdemError MainError prepareIdemCall",
+        "branch error source prepareIdemCall target prepareFailed",
+        "defer finalizeIdemDefer sqlite.finalizeStatement idemStatement",
+        "call readReplayBodyCall sqlite.columnText",
+        "argument readReplayBodyCall statement SqliteStatement idemStatement",
+        "argument readReplayBodyCall columnIndex CSignedInt32 1",
+        "run readReplayBodyCall",
+        "bind value replayBody CNullTerminatedByteString readReplayBodyCall",
+        "call compareReplayBodyCall c.strcmp",
+        "argument compareReplayBodyCall left CNullTerminatedByteString replayBody",
+        "argument compareReplayBodyCall right CNullTerminatedByteString conflictBody",
+        "run compareReplayBodyCall",
+        "bind value compareResult CSignedInt32 compareReplayBodyCall",
+        "return ok noResult",
+        "label prepareFailed",
+        "return error prepareIdemError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable perf: rejects idempotency replay body classification",
+          proc.returncode == 3
+          and "SS3925" in proc.stderr
+          and "idempotencyReplayShouldUseResponseStatus" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_accepts_idempotency_replay_status_branch():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictIdempotencyReplayStatus",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError PrepareFailed",
+        "storage module immutable selectIdem SqlText",
+        "sql body selectIdem",
+        "  SELECT request_hash, response_json, response_status FROM idempotency_keys WHERE scope = 'auction.bid' LIMIT 1",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict idempotency replay branches on response status\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call prepareIdemCall sqlite.prepareStatement",
+        "argument prepareIdemCall database SqliteDatabase database",
+        "argument prepareIdemCall sql SqlText selectIdem",
+        "run prepareIdemCall",
+        "bind ok idemStatement SqliteStatement prepareIdemCall",
+        "bind error prepareIdemError MainError prepareIdemCall",
+        "branch error source prepareIdemCall target prepareFailed",
+        "defer finalizeIdemDefer sqlite.finalizeStatement idemStatement",
+        "call readReplayStatusCall sqlite.columnInt64",
+        "argument readReplayStatusCall statement SqliteStatement idemStatement",
+        "argument readReplayStatusCall columnIndex CSignedInt32 2",
+        "run readReplayStatusCall",
+        "bind value replayStatus CSignedInt64 readReplayStatusCall",
+        "call replayConflictCall math.equalI64",
+        "argument replayConflictCall left I64 replayStatus",
+        "argument replayConflictCall right I64 409",
+        "run replayConflictCall",
+        "bind value replayConflict Bool replayConflictCall",
+        "return ok noResult",
+        "label prepareFailed",
+        "return error prepareIdemError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable perf: accepts idempotency replay status branch",
+          proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_large_local_static_literal():
+    large_body = "x" * 520
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictLargeLocalStaticLiteral",
+        "entry console main",
+        "operation main",
+        "output operation main Void",
+        "purpose operation main \"strict handlers hoist large static literals\"",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        f"storage local immutable metricsFormat CNullTerminatedByteString \"{large_body}\"",
+        "return void",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable perf: rejects large local static literals",
+          proc.returncode == 3
+          and "SS3921" in proc.stderr
+          and "localStaticLiteralShouldBeModuleImmutable" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_unreachable_operation_rows():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictUnreachableRows",
+        "entry console main",
+        "storage module immutable success ExitCode 0",
+        "storage module immutable failure ExitCode 1",
+        "operation main",
+        "output operation main ExitCode",
+        "purpose operation main \"strict mode rejects stale dead blocks\"",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "return value success",
+        "label stalePath",
+        "return value failure",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable control flow: rejects unreachable rows",
+          proc.returncode == 3
+          and "SS3410" in proc.stderr
+          and "unreachableOperationRow" in proc.stderr,
           f"rc={proc.returncode} stderr={proc.stderr!r}")
 
 
@@ -5824,6 +6627,24 @@ def main():
     test_strict_executable_accepts_sqlite_open_setup_failure_close()
     test_strict_executable_rejects_sqlite_prepare_without_finalize()
     test_strict_executable_accepts_sqlite_prepare_finalize_defer()
+    test_strict_executable_rejects_legacy_sql_string_literal()
+    test_strict_executable_rejects_inline_sql_text_literal()
+    test_strict_executable_rejects_redundant_sql_case_branches()
+    test_strict_executable_rejects_wide_sql_existence_probe()
+    test_strict_executable_rejects_sql_write_then_read_round_trip()
+    test_strict_executable_rejects_multiple_sql_writes_without_transaction()
+    test_strict_executable_rejects_returning_commit_without_drain()
+    test_strict_executable_accepts_returning_commit_after_drain()
+    test_strict_executable_rejects_sql_last_insert_rowid()
+    test_strict_executable_rejects_native_last_insert_rowid()
+    test_strict_executable_accepts_returning_generated_id()
+    test_strict_executable_rejects_uncached_getenv_in_helper()
+    test_strict_executable_rejects_repeated_request_time_read()
+    test_strict_executable_accepts_single_request_time_read()
+    test_strict_executable_rejects_idempotency_replay_body_classification()
+    test_strict_executable_accepts_idempotency_replay_status_branch()
+    test_strict_executable_rejects_large_local_static_literal()
+    test_strict_executable_rejects_unreachable_operation_rows()
     test_compile_hello_world_to_ir()
     test_compile_i32_comparison_to_i32_ir()
     test_compile_rejects_implicit_i32_to_i64_math()

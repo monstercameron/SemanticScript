@@ -290,7 +290,7 @@ jsonBody uncompleteOkBody
 # stub value. `literalBytes` and `literalTrust` document the size + trust
 # class for tooling.
 
-literal schemaSqlSource CNullTerminatedByteString
+literal schemaSqlSource SqlText
 literalSource schemaSqlSource "sql/schema.sql"
 literalBytes schemaSqlSource 2837
 literalTrust schemaSqlSource trustedStaticAsset
@@ -299,7 +299,7 @@ literalTrust schemaSqlSource trustedStaticAsset
 # load path BUT only executed when the build constant `applyDevSeed`
 # is "yes". Production deployments set applyDevSeed to "no" via
 # build.sem so the publicly-known demo credentials are never installed.
-literal devSeedSqlSource CNullTerminatedByteString
+literal devSeedSqlSource SqlText
 literalSource devSeedSqlSource "sql/dev-seed.sql"
 literalBytes devSeedSqlSource 1888
 literalTrust devSeedSqlSource trustedStaticAsset
@@ -322,26 +322,52 @@ storage module mutable sharedDatabaseReady CSignedInt32 0
 
 # ===== SQL statement constants =====
 
-storage module immutable sqlInsertUser CNullTerminatedByteString "INSERT INTO users (username, password_hash, display_name, created_at_ms, last_login_ms) VALUES (?, ?, ?, ?, ?)"
-storage module immutable sqlInsertSession CNullTerminatedByteString "INSERT INTO sessions (token, user_id, issued_at_ms, expires_at_ms, last_seen_ms) VALUES (?, ?, ?, ?, ?)"
-storage module immutable sqlSelectUserByUsername CNullTerminatedByteString "SELECT id, username, password_hash, display_name FROM users WHERE username = ? COLLATE NOCASE LIMIT 1"
-storage module immutable sqlSelectSessionByToken CNullTerminatedByteString "SELECT user_id, expires_at_ms FROM sessions WHERE token = ? LIMIT 1"
-storage module immutable sqlSelectUserById CNullTerminatedByteString "SELECT id, username, display_name FROM users WHERE id = ? LIMIT 1"
-storage module immutable sqlDeleteSessionByToken CNullTerminatedByteString "DELETE FROM sessions WHERE token = ?"
-storage module immutable sqlDeleteExpiredSessions CNullTerminatedByteString "DELETE FROM sessions WHERE expires_at_ms <= ?"
-storage module immutable sqlUpdateLastLogin CNullTerminatedByteString "UPDATE users SET last_login_ms = ? WHERE id = ?"
-storage module immutable sqlInsertTodo CNullTerminatedByteString "INSERT INTO todos (user_id, title, body, done, priority, created_at_ms, updated_at_ms) VALUES (?, ?, ?, 0, ?, ?, ?)"
-storage module immutable sqlSelectTodosByUser CNullTerminatedByteString "SELECT id, title, body, done, priority, created_at_ms, updated_at_ms, completed_at_ms FROM todos WHERE user_id = ? ORDER BY created_at_ms DESC LIMIT 100"
+storage module immutable sqlInsertUser SqlText
+sql body sqlInsertUser
+  INSERT INTO users (username, password_hash, display_name, created_at_ms, last_login_ms) VALUES (?, ?, ?, ?, ?)
+storage module immutable sqlInsertSession SqlText
+sql body sqlInsertSession
+  INSERT INTO sessions (token, user_id, issued_at_ms, expires_at_ms, last_seen_ms) VALUES (?, ?, ?, ?, ?)
+storage module immutable sqlSelectUserByUsername SqlText
+sql body sqlSelectUserByUsername
+  SELECT id, username, password_hash, display_name FROM users WHERE username = ? COLLATE NOCASE LIMIT 1
+storage module immutable sqlSelectSessionByToken SqlText
+sql body sqlSelectSessionByToken
+  SELECT user_id, expires_at_ms FROM sessions WHERE token = ? LIMIT 1
+storage module immutable sqlSelectUserById SqlText
+sql body sqlSelectUserById
+  SELECT id, username, display_name FROM users WHERE id = ? LIMIT 1
+storage module immutable sqlDeleteSessionByToken SqlText
+sql body sqlDeleteSessionByToken
+  DELETE FROM sessions WHERE token = ?
+storage module immutable sqlDeleteExpiredSessions SqlText
+sql body sqlDeleteExpiredSessions
+  DELETE FROM sessions WHERE expires_at_ms <= ?
+storage module immutable sqlUpdateLastLogin SqlText
+sql body sqlUpdateLastLogin
+  UPDATE users SET last_login_ms = ? WHERE id = ?
+storage module immutable sqlInsertTodo SqlText
+sql body sqlInsertTodo
+  INSERT INTO todos (user_id, title, body, done, priority, created_at_ms, updated_at_ms) VALUES (?, ?, ?, 0, ?, ?, ?)
+storage module immutable sqlSelectTodosByUser SqlText
+sql body sqlSelectTodosByUser
+  SELECT id, title, body, done, priority, created_at_ms, updated_at_ms, completed_at_ms FROM todos WHERE user_id = ? ORDER BY created_at_ms DESC LIMIT 100
 # sqlSelectTodoByIdAndUser was previously declared here for the
 # showTodoHandler stub that returns 501; SS3415 flagged it as dead
 # code. Re-add when showTodoHandler is implemented.
-storage module immutable sqlDeleteTodoByIdAndUser CNullTerminatedByteString "DELETE FROM todos WHERE id = ? AND user_id = ?"
-storage module immutable sqlCompleteTodoByIdAndUser CNullTerminatedByteString "UPDATE todos SET done = 1, completed_at_ms = ?, updated_at_ms = ? WHERE id = ? AND user_id = ?"
+storage module immutable sqlDeleteTodoByIdAndUser SqlText
+sql body sqlDeleteTodoByIdAndUser
+  DELETE FROM todos WHERE id = ? AND user_id = ?
+storage module immutable sqlCompleteTodoByIdAndUser SqlText
+sql body sqlCompleteTodoByIdAndUser
+  UPDATE todos SET done = 1, completed_at_ms = ?, updated_at_ms = ? WHERE id = ? AND user_id = ?
 # Inverse of sqlCompleteTodoByIdAndUser: marks a todo open again. We
 # clear completed_at_ms so the audit trail reflects the un-complete; the
 # bind order matches completeTodoHandler (?1 = updated_at_ms, ?2 = id,
 # ?3 = user_id) so callers can reuse the bindIndex1/2/3 constants.
-storage module immutable sqlUncompleteTodoByIdAndUser CNullTerminatedByteString "UPDATE todos SET done = 0, completed_at_ms = NULL, updated_at_ms = ? WHERE id = ? AND user_id = ?"
+storage module immutable sqlUncompleteTodoByIdAndUser SqlText
+sql body sqlUncompleteTodoByIdAndUser
+  UPDATE todos SET done = 0, completed_at_ms = NULL, updated_at_ms = ? WHERE id = ? AND user_id = ?
 
 # Transaction control statements used by registerHandler so the user
 # INSERT and session INSERT either both commit or both roll back; the
@@ -349,9 +375,15 @@ storage module immutable sqlUncompleteTodoByIdAndUser CNullTerminatedByteString 
 # fails — acceptable for v1", which is the race this closes.
 # `BEGIN IMMEDIATE` acquires the write lock upfront so a second writer
 # in the same process cannot race the pair under WAL mode.
-storage module immutable sqlBeginTransaction CNullTerminatedByteString "BEGIN IMMEDIATE"
-storage module immutable sqlCommitTransaction CNullTerminatedByteString "COMMIT"
-storage module immutable sqlRollbackTransaction CNullTerminatedByteString "ROLLBACK"
+storage module immutable sqlBeginTransaction SqlText
+sql body sqlBeginTransaction
+  BEGIN IMMEDIATE
+storage module immutable sqlCommitTransaction SqlText
+sql body sqlCommitTransaction
+  COMMIT
+storage module immutable sqlRollbackTransaction SqlText
+sql body sqlRollbackTransaction
+  ROLLBACK
 
 # Bind parameter indices.
 storage module immutable bindIndex1 CSignedInt32 1
@@ -434,7 +466,7 @@ branch error source openCall target databaseOpenFailed
 
 call applySchemaCall sqlite.exec
 argument applySchemaCall database SqliteDatabase freshDatabase
-argument applySchemaCall sql CNullTerminatedByteString schemaSqlSource
+argument applySchemaCall sql SqlText schemaSqlSource
 run applySchemaCall
 ignore void source applySchemaCall
 bind error schemaApplyError SqliteDatabaseExecFailure applySchemaCall
@@ -461,7 +493,7 @@ branch else target devSeedSkippedLabel
 label applyDevSeedRunStep
 call applyDevSeedCall sqlite.exec
 argument applyDevSeedCall database SqliteDatabase freshDatabase
-argument applyDevSeedCall sql CNullTerminatedByteString devSeedSqlSource
+argument applyDevSeedCall sql SqlText devSeedSqlSource
 run applyDevSeedCall
 ignore void source applyDevSeedCall
 bind error applyDevSeedError SqliteDatabaseExecFailure applyDevSeedCall
@@ -600,7 +632,7 @@ branch error source openDatabaseForSessionCall target requireSessionDatabaseUnav
 
 call prepareSessionLookupCall sqlite.prepareStatement
 argument prepareSessionLookupCall database SqliteDatabase sessionDatabase
-argument prepareSessionLookupCall sql CNullTerminatedByteString sqlSelectSessionByToken
+argument prepareSessionLookupCall sql SqlText sqlSelectSessionByToken
 run prepareSessionLookupCall
 bind ok sessionLookupStatement SqliteStatement prepareSessionLookupCall
 bind error sessionLookupPrepareError SqliteStatementPrepareFailure prepareSessionLookupCall
@@ -695,7 +727,7 @@ label startPruneExpiredSessionsBestEffort
 
 call preparePruneExpiredSessionsCall sqlite.prepareStatement
 argument preparePruneExpiredSessionsCall database SqliteDatabase database
-argument preparePruneExpiredSessionsCall sql CNullTerminatedByteString sqlDeleteExpiredSessions
+argument preparePruneExpiredSessionsCall sql SqlText sqlDeleteExpiredSessions
 run preparePruneExpiredSessionsCall
 bind ok pruneExpiredSessionsStatement SqliteStatement preparePruneExpiredSessionsCall
 bind error pruneExpiredSessionsPrepareError SqliteStatementPrepareFailure preparePruneExpiredSessionsCall
@@ -1020,7 +1052,7 @@ ignore value source pruneRegisterExpiredSessionsCall type CSignedInt32
 # COMMIT below makes the rollback a no-op after success.
 call beginRegisterTxCall sqlite.exec
 argument beginRegisterTxCall database SqliteDatabase registerDatabase
-argument beginRegisterTxCall sql CNullTerminatedByteString sqlBeginTransaction
+argument beginRegisterTxCall sql SqlText sqlBeginTransaction
 run beginRegisterTxCall
 ignore void source beginRegisterTxCall
 bind error beginRegisterTxError SqliteDatabaseExecFailure beginRegisterTxCall
@@ -1034,7 +1066,7 @@ defer rollbackRegisterTxDefer sqlite.exec registerDatabase sqlRollbackTransactio
 # INSERT INTO users.
 call prepareInsertUserCall sqlite.prepareStatement
 argument prepareInsertUserCall database SqliteDatabase registerDatabase
-argument prepareInsertUserCall sql CNullTerminatedByteString sqlInsertUser
+argument prepareInsertUserCall sql SqlText sqlInsertUser
 run prepareInsertUserCall
 bind ok insertUserStatement SqliteStatement prepareInsertUserCall
 bind error insertUserPrepareError SqliteStatementPrepareFailure prepareInsertUserCall
@@ -1164,7 +1196,7 @@ bind value sessionExpiresAt CSignedInt64 addExpiresCall
 # INSERT INTO sessions.
 call prepareInsertSessionCall sqlite.prepareStatement
 argument prepareInsertSessionCall database SqliteDatabase registerDatabase
-argument prepareInsertSessionCall sql CNullTerminatedByteString sqlInsertSession
+argument prepareInsertSessionCall sql SqlText sqlInsertSession
 run prepareInsertSessionCall
 bind ok insertSessionStatement SqliteStatement prepareInsertSessionCall
 bind error insertSessionPrepareError SqliteStatementPrepareFailure prepareInsertSessionCall
@@ -1262,7 +1294,7 @@ ignore value source writeCookieHeaderCall type CSignedInt32
 # closed the transaction, so the swallowed rollback is a no-op.
 call commitRegisterTxCall sqlite.exec
 argument commitRegisterTxCall database SqliteDatabase registerDatabase
-argument commitRegisterTxCall sql CNullTerminatedByteString sqlCommitTransaction
+argument commitRegisterTxCall sql SqlText sqlCommitTransaction
 run commitRegisterTxCall
 ignore void source commitRegisterTxCall
 bind error commitRegisterTxError SqliteDatabaseExecFailure commitRegisterTxCall
@@ -1460,7 +1492,7 @@ return value writeInsertBindFailedStatus
 label registerUsernameConflicted
 call rollbackRegisterConflictCall sqlite.exec
 argument rollbackRegisterConflictCall database SqliteDatabase registerDatabase
-argument rollbackRegisterConflictCall sql CNullTerminatedByteString sqlRollbackTransaction
+argument rollbackRegisterConflictCall sql SqlText sqlRollbackTransaction
 run rollbackRegisterConflictCall
 ignore void source rollbackRegisterConflictCall
 storage local immutable usernameConflictBody CNullTerminatedByteString "{\"error\":{\"code\":\"usernameConflict\",\"message\":\"username already taken\"}}\n"
@@ -1570,7 +1602,7 @@ branch error source openDbForMeCall target meDatabaseUnavailableFailed
 
 call prepareSelectUserCall sqlite.prepareStatement
 argument prepareSelectUserCall database SqliteDatabase meDatabase
-argument prepareSelectUserCall sql CNullTerminatedByteString sqlSelectUserById
+argument prepareSelectUserCall sql SqlText sqlSelectUserById
 run prepareSelectUserCall
 bind ok selectUserStatement SqliteStatement prepareSelectUserCall
 bind error selectUserPrepareError SqliteStatementPrepareFailure prepareSelectUserCall
@@ -1779,7 +1811,7 @@ branch error source openDbForLogoutCall target logoutCookieCleared
 
 call prepareLogoutCall sqlite.prepareStatement
 argument prepareLogoutCall database SqliteDatabase logoutDatabase
-argument prepareLogoutCall sql CNullTerminatedByteString sqlDeleteSessionByToken
+argument prepareLogoutCall sql SqlText sqlDeleteSessionByToken
 run prepareLogoutCall
 bind ok logoutStatement SqliteStatement prepareLogoutCall
 bind error logoutPrepareError SqliteStatementPrepareFailure prepareLogoutCall
@@ -1947,7 +1979,7 @@ branch error source readLoginPasswordCall target loginInvalidCredentialsRejected
 # SELECT the user row by username (case-insensitive — schema COLLATE NOCASE).
 call prepareSelectUserByUsernameCall sqlite.prepareStatement
 argument prepareSelectUserByUsernameCall database SqliteDatabase loginDatabase
-argument prepareSelectUserByUsernameCall sql CNullTerminatedByteString sqlSelectUserByUsername
+argument prepareSelectUserByUsernameCall sql SqlText sqlSelectUserByUsername
 run prepareSelectUserByUsernameCall
 bind ok selectUserByUsernameStatement SqliteStatement prepareSelectUserByUsernameCall
 bind error selectUserByUsernamePrepareError SqliteStatementPrepareFailure prepareSelectUserByUsernameCall
@@ -2064,7 +2096,7 @@ label loginPasswordMatchedLabel
 # makes that rollback a no-op on the success path.
 call beginLoginTxCall sqlite.exec
 argument beginLoginTxCall database SqliteDatabase loginDatabase
-argument beginLoginTxCall sql CNullTerminatedByteString sqlBeginTransaction
+argument beginLoginTxCall sql SqlText sqlBeginTransaction
 run beginLoginTxCall
 ignore void source beginLoginTxCall
 bind error beginLoginTxError SqliteDatabaseExecFailure beginLoginTxCall
@@ -2082,7 +2114,7 @@ bind value loginLastLoginNowMs CSignedInt64 loginStampNowMsCall
 
 call prepareUpdateLastLoginCall sqlite.prepareStatement
 argument prepareUpdateLastLoginCall database SqliteDatabase loginDatabase
-argument prepareUpdateLastLoginCall sql CNullTerminatedByteString sqlUpdateLastLogin
+argument prepareUpdateLastLoginCall sql SqlText sqlUpdateLastLogin
 run prepareUpdateLastLoginCall
 bind ok updateLastLoginStatement SqliteStatement prepareUpdateLastLoginCall
 bind error updateLastLoginPrepareError SqliteStatementPrepareFailure prepareUpdateLastLoginCall
@@ -2188,7 +2220,7 @@ bind value loginExpiresAt CSignedInt64 loginAddExpiresCall
 
 call prepareInsertLoginSessionCall sqlite.prepareStatement
 argument prepareInsertLoginSessionCall database SqliteDatabase loginDatabase
-argument prepareInsertLoginSessionCall sql CNullTerminatedByteString sqlInsertSession
+argument prepareInsertLoginSessionCall sql SqlText sqlInsertSession
 run prepareInsertLoginSessionCall
 bind ok insertLoginSessionStatement SqliteStatement prepareInsertLoginSessionCall
 bind error insertLoginSessionPrepareError SqliteStatementPrepareFailure prepareInsertLoginSessionCall
@@ -2253,7 +2285,7 @@ branch error source stepInsertLoginSessionCall target loginInsertSessionFailed
 # "no transaction is active" and the ignoreOk swallows it.
 call commitLoginTxCall sqlite.exec
 argument commitLoginTxCall database SqliteDatabase loginDatabase
-argument commitLoginTxCall sql CNullTerminatedByteString sqlCommitTransaction
+argument commitLoginTxCall sql SqlText sqlCommitTransaction
 run commitLoginTxCall
 ignore void source commitLoginTxCall
 bind error commitLoginTxError SqliteDatabaseExecFailure commitLoginTxCall
@@ -2590,7 +2622,7 @@ bind value createNowMs CSignedInt64 createNowCall
 # INSERT INTO todos.
 call prepareInsertTodoCall sqlite.prepareStatement
 argument prepareInsertTodoCall database SqliteDatabase createDatabase
-argument prepareInsertTodoCall sql CNullTerminatedByteString sqlInsertTodo
+argument prepareInsertTodoCall sql SqlText sqlInsertTodo
 run prepareInsertTodoCall
 bind ok insertTodoStatement SqliteStatement prepareInsertTodoCall
 bind error insertTodoPrepareError SqliteStatementPrepareFailure prepareInsertTodoCall
@@ -2905,7 +2937,7 @@ branch error source listOpenDbCall target listDbUnavailableFailed
 
 call prepareListCall sqlite.prepareStatement
 argument prepareListCall database SqliteDatabase listDatabase
-argument prepareListCall sql CNullTerminatedByteString sqlSelectTodosByUser
+argument prepareListCall sql SqlText sqlSelectTodosByUser
 run prepareListCall
 bind ok listStatement SqliteStatement prepareListCall
 bind error listPrepareError SqliteStatementPrepareFailure prepareListCall
@@ -3221,7 +3253,7 @@ branch error source deleteOpenDbCall target deleteDbUnavailableFailed
 
 call prepareDeleteCall sqlite.prepareStatement
 argument prepareDeleteCall database SqliteDatabase deleteDatabase
-argument prepareDeleteCall sql CNullTerminatedByteString sqlDeleteTodoByIdAndUser
+argument prepareDeleteCall sql SqlText sqlDeleteTodoByIdAndUser
 run prepareDeleteCall
 bind ok deleteStatement SqliteStatement prepareDeleteCall
 bind error deletePrepareError SqliteStatementPrepareFailure prepareDeleteCall
@@ -3383,7 +3415,7 @@ bind value completeNowMs CSignedInt64 completeNowCall
 
 call prepareCompleteCall sqlite.prepareStatement
 argument prepareCompleteCall database SqliteDatabase completeDatabase
-argument prepareCompleteCall sql CNullTerminatedByteString sqlCompleteTodoByIdAndUser
+argument prepareCompleteCall sql SqlText sqlCompleteTodoByIdAndUser
 run prepareCompleteCall
 bind ok completeStatement SqliteStatement prepareCompleteCall
 bind error completePrepareError SqliteStatementPrepareFailure prepareCompleteCall
@@ -3566,7 +3598,7 @@ bind value uncompleteNowMs CSignedInt64 uncompleteNowCall
 
 call prepareUncompleteCall sqlite.prepareStatement
 argument prepareUncompleteCall database SqliteDatabase uncompleteDatabase
-argument prepareUncompleteCall sql CNullTerminatedByteString sqlUncompleteTodoByIdAndUser
+argument prepareUncompleteCall sql SqlText sqlUncompleteTodoByIdAndUser
 run prepareUncompleteCall
 bind ok uncompleteStatement SqliteStatement prepareUncompleteCall
 bind error uncompletePrepareError SqliteStatementPrepareFailure prepareUncompleteCall
