@@ -266,6 +266,49 @@ bind value nextValue CSignedInt64 incrementCall
 set storage metricsSseSlowClientDropsTotal nextValue
 return value nextValue
 
+operation normalizeRequestLogDurationMillis
+input operation normalizeRequestLogDurationMillis rawDurationMillis CSignedInt64
+input operation normalizeRequestLogDurationMillis startedAt CSignedInt64
+input operation normalizeRequestLogDurationMillis finishedAt CSignedInt64
+output operation normalizeRequestLogDurationMillis CSignedInt64
+memory normalizeRequestLogDurationMillis heap no
+async normalizeRequestLogDurationMillis no
+purpose operation normalizeRequestLogDurationMillis "Return a positive persisted request duration using finished-started when available, otherwise a one-millisecond completed-request floor."
+invariant operation normalizeRequestLogDurationMillis "Durable completed request rows never persist duration_ms=0, which keeps latency checks from treating completed work as missing telemetry."
+label startNormalizeRequestLogDurationMillis
+call finishedAfterStartedCall math.greaterThanI64
+argument finishedAfterStartedCall left I64 finishedAt
+argument finishedAfterStartedCall right I64 startedAt
+run finishedAfterStartedCall
+bind value finishedAfterStarted Bool finishedAfterStartedCall
+branch if condition finishedAfterStarted target computeDurationFromTimestamps
+call rawDurationPositiveCall math.greaterThanI64
+argument rawDurationPositiveCall left I64 rawDurationMillis
+argument rawDurationPositiveCall right I64 0
+run rawDurationPositiveCall
+bind value rawDurationPositive Bool rawDurationPositiveCall
+branch if condition rawDurationPositive target returnRawDurationMillis
+branch else target returnMinimumDurationMillis
+label computeDurationFromTimestamps
+call computedDurationCall math.subtractI64
+argument computedDurationCall left I64 finishedAt
+argument computedDurationCall right I64 startedAt
+run computedDurationCall
+bind value computedDurationMillis CSignedInt64 computedDurationCall
+call computedDurationPositiveCall math.greaterThanI64
+argument computedDurationPositiveCall left I64 computedDurationMillis
+argument computedDurationPositiveCall right I64 0
+run computedDurationPositiveCall
+bind value computedDurationPositive Bool computedDurationPositiveCall
+branch if condition computedDurationPositive target returnComputedDurationMillis
+branch else target returnMinimumDurationMillis
+label returnComputedDurationMillis
+return value computedDurationMillis
+label returnRawDurationMillis
+return value rawDurationMillis
+label returnMinimumDurationMillis
+return value 1
+
 operation insertAcceptedAuditEvent
 input operation insertAcceptedAuditEvent database SqliteDatabase
 input operation insertAcceptedAuditEvent actorUserId CNullTerminatedByteString
@@ -513,6 +556,12 @@ bind ok requestLogStatement SqliteStatement prepareRequestLogCall
 bind error prepareRequestLogError SqliteStatementPrepareFailure prepareRequestLogCall
 branch error source prepareRequestLogCall target requestLogInsertFailed
 defer finalizeRequestLogDefer sqlite.finalizeStatement requestLogStatement
+call normalizeLogDurationCall normalizeRequestLogDurationMillis
+argument normalizeLogDurationCall rawDurationMillis CSignedInt64 durationMs
+argument normalizeLogDurationCall startedAt CSignedInt64 observedAt
+argument normalizeLogDurationCall finishedAt CSignedInt64 observedAt
+run normalizeLogDurationCall
+bind value normalizedLogDurationMillis CSignedInt64 normalizeLogDurationCall
 call bindLogMethodCall sqlite.bindText
 argument bindLogMethodCall statement SqliteStatement requestLogStatement
 argument bindLogMethodCall parameterIndex CSignedInt32 runtime.bindIndex1
@@ -552,7 +601,7 @@ ignore void source bindLogRoleCall
 call bindLogDurationCall sqlite.bindInt64
 argument bindLogDurationCall statement SqliteStatement requestLogStatement
 argument bindLogDurationCall parameterIndex CSignedInt32 runtime.bindIndex7
-argument bindLogDurationCall value CSignedInt64 durationMs
+argument bindLogDurationCall value CSignedInt64 normalizedLogDurationMillis
 run bindLogDurationCall
 ignore void source bindLogDurationCall
 call bindLogAuctionCall sqlite.bindText
@@ -649,6 +698,12 @@ bind ok requestLogStatement SqliteStatement prepareRequestLogCall
 bind error prepareRequestLogError SqliteStatementPrepareFailure prepareRequestLogCall
 branch error source prepareRequestLogCall target requestLogInsertFailed
 defer finalizeRequestLogDefer sqlite.finalizeStatement requestLogStatement
+call normalizeRequestLogDurationCall normalizeRequestLogDurationMillis
+argument normalizeRequestLogDurationCall rawDurationMillis CSignedInt64 durationMillis
+argument normalizeRequestLogDurationCall startedAt CSignedInt64 startedAt
+argument normalizeRequestLogDurationCall finishedAt CSignedInt64 finishedAt
+run normalizeRequestLogDurationCall
+bind value normalizedRequestLogDurationMillis CSignedInt64 normalizeRequestLogDurationCall
 call bindRequestLogMethodCall sqlite.bindText
 argument bindRequestLogMethodCall statement SqliteStatement requestLogStatement
 argument bindRequestLogMethodCall parameterIndex CSignedInt32 runtime.bindIndex1
@@ -688,7 +743,7 @@ ignore void source bindRequestLogRoleCall
 call bindRequestLogDurationCall sqlite.bindInt64
 argument bindRequestLogDurationCall statement SqliteStatement requestLogStatement
 argument bindRequestLogDurationCall parameterIndex CSignedInt32 runtime.bindIndex7
-argument bindRequestLogDurationCall value CSignedInt64 durationMillis
+argument bindRequestLogDurationCall value CSignedInt64 normalizedRequestLogDurationMillis
 run bindRequestLogDurationCall
 ignore void source bindRequestLogDurationCall
 call bindRequestLogAuctionCall sqlite.bindText
