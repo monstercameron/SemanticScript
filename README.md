@@ -481,6 +481,7 @@ Run a small compiler smoke:
 ```powershell
 python SemanticScript\compiler\semsc.py SemanticScript\tests\tiny.sem --parse-only
 python SemanticScript\linter\semlint.py SemanticScript\tests\tiny.sem --summary
+python SemanticScript\tools\sem.py check --json SemanticScript\tests\tiny.sem
 ```
 
 Build and test the app demos:
@@ -498,6 +499,61 @@ python SemanticScript/tests/test_compiler.py
 python SemanticScript/tests/test_stdlib.py
 npm --prefix vscode-semanticscript run check
 ```
+
+## Agent Workflow Interfaces
+
+The `sem` wrapper is the stable agent-facing surface. Use it before dropping to
+direct compiler, linter, or runtime internals.
+
+Versioned rule and environment discovery:
+
+```powershell
+python SemanticScript\tools\sem.py --version --json
+python SemanticScript\tools\sem.py skills list --json
+python SemanticScript\tools\sem.py skills get sem sem-agent --json
+python SemanticScript\tools\sem.py readiness --json apps\taskforge-web
+```
+
+Structured validation and architecture retrieval:
+
+```powershell
+python SemanticScript\tools\sem.py check --json apps\taskforge-web
+python SemanticScript\tools\sem.py graph --kind calls --json apps\taskforge-web
+python SemanticScript\tools\sem.py graph --kind effects --json apps\taskforge-web
+python SemanticScript\tools\sem.py slice --operation createTodoHandler --json apps\taskforge-web
+python SemanticScript\tools\sem.py slice --route POST:/todos --json apps\taskforge-web
+python SemanticScript\tools\sem.py explain SS3104 --json
+python SemanticScript\tools\sem.py size --json apps\taskforge-web
+```
+
+Repair, patch, and multi-step loop commands:
+
+```powershell
+python SemanticScript\tools\sem.py fix --plan --json apps\taskforge-web
+python SemanticScript\tools\sem.py patch --dry-run --json plan.json
+python SemanticScript\tools\sem.py patch --apply --json plan.json
+python SemanticScript\tools\sem.py dev --json apps\taskforge-web
+python SemanticScript\tools\sem.py test --json apps\taskforge-web
+```
+
+The current JSON contracts are versioned as:
+
+- `sem.version.v1`
+- `sem.skills.v1`
+- `sem.readiness.v1`
+- `sem.check.v1`
+- `sem.graph.v1`
+- `sem.slice.v1`
+- `sem.explain.v1`
+- `sem.fixPlan.v1`
+- `sem.patch.v1`
+- `sem.size.v1`
+- `sem.dev.v1`
+- `sem.test.v1`
+
+These commands are covered by focused unit and subprocess contract tests in
+`SemanticScript/tests/test_sem_cli.py` and
+`SemanticScript/tests/test_command_contracts.py`.
 
 ## Repository Layout
 
@@ -540,6 +596,8 @@ third_party/                       Vendored native dependencies and submodules
 - `docs/language/errors-effects-capabilities.md`: effects, capabilities, and
   typed failure paths.
 - `docs/toolchain/compiler.md`: compiler CLI and backend behavior.
+- `docs/toolchain/agent-workflows.md`: stable agent-facing command paths and
+  multi-step SemanticScript repair loop.
 - `docs/toolchain/formatter.md`: formatter CLI and canonical source style.
 - `docs/toolchain/linter.md`: linter CLI and diagnostic formats.
 - `docs/reference/compatibility.md`: public 1.0 compatibility contract.

@@ -52,6 +52,13 @@ class TestSemCommandContracts(unittest.TestCase):
         self.assertEqual(payload["aliasIndex"]["sem"], "language-core")
         self.assertTrue(any(skill["name"] == "language-core" for skill in payload["skills"]))
 
+    def test_skills_get_alias_contract(self) -> None:
+        code, payload = _sem_json("skills", "get", "sem", "--json")
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["schemaVersion"], "sem.skills.v1")
+        self.assertEqual(payload["skills"][0]["name"], "language-core")
+        self.assertIn("sem", payload["skills"][0]["aliases"])
+
     def test_check_json_contract(self) -> None:
         code, payload = _sem_json("check", "--json", str(TINY_PATH))
         self.assertEqual(code, 0)

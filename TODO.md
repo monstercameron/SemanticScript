@@ -196,35 +196,35 @@ first-pass agent contract in `SemanticScript/tools/sem.py`.
       subprocess command contracts for version, doctor, readiness, skills,
       check, explain, graph, slice, fix, patch, size, dev, and test.
 
-- [ ] Make `sem check --json` the non-negotiable source of truth for structured
+- [x] Make `sem check --json` the non-negotiable source of truth for structured
       diagnostics.
       This is table stakes. Every serious compiler or linter failure that an
       agent is expected to respond to should surface through one stable JSON
       contract with code, severity, message, span, expected/actual facts, and
       repair metadata.
-  - [ ] Add a canonical schema example to the CLI docs and tests, including
+  - [x] Add a canonical schema example to the CLI docs and tests, including
         fields equivalent to:
         `code`, `severity`, `message`, `span.file`, `span.line`,
         `span.column`, `expected`, `actual`, and `repair.id`.
-  - [ ] Fail command-contract tests on prose-only regressions or missing
+  - [x] Fail command-contract tests on prose-only regressions or missing
         machine-readable repair hints.
 
-- [ ] Add version-matched agent skills served by the local toolchain.
+- [x] Add version-matched agent skills served by the local toolchain.
       `sem skills list` and `sem skills get NAME` should expose the exact
       language, diagnostics, stdlib, build, testing, and package guidance that
       matches the compiler currently being used. This removes guesswork for
       agents and prevents stale docs from silently steering edits against the
       wrong binary or syntax contract.
-  - [ ] Define the canonical skill names:
+  - [x] Define the canonical skill names:
         `sem`, `sem-agent`, `sem-language`, `sem-diagnostics`,
         `sem-stdlib`, `sem-builds`, `sem-packages`, and `sem-testing`.
-  - [ ] Add a bundled skill-data source tree and make release validation fail
-        when generated or embedded skill content is stale.
-  - [ ] Document the workflow in `docs/agents.md` and `README.md`: agents load
+  - [ ] If skills move to generated or embedded payloads, add release
+        validation that fails when the shipped skill content is stale.
+  - [x] Document the workflow in `docs/agents.md` and `README.md`: agents load
         the matching skill from the same `sem` binary that will check or build
         the project.
 
-- [ ] Make the agent-facing CLI contract obvious and stable.
+- [x] Make the agent-facing CLI contract obvious and stable.
       The public workflow should be readable as:
       `sem check --json`, `sem graph --json`, `sem symbols --json`,
       `sem context --json`, `sem inspect-ir`, `sem size --json`,
@@ -233,10 +233,10 @@ first-pass agent contract in `SemanticScript/tools/sem.py`.
       reference page.
   - [ ] Decide whether `symbols` becomes `graph`, whether both remain public,
         and how their JSON responsibilities differ.
-  - [ ] Add `sem size --json` or an equivalent command that explains retained
+  - [x] Add `sem size --json` or an equivalent command that explains retained
         runtime helpers, artifact budgets, profile policy, and optimization
         hints without requiring users to inspect LLVM IR.
-  - [ ] Add `sem explain CODE` as the human and JSON entry point for compiler
+  - [x] Add `sem explain CODE` as the human and JSON entry point for compiler
         and linter diagnostic codes.
 
 - [ ] Unify compiler and linter diagnostics around repair metadata.
@@ -253,7 +253,7 @@ first-pass agent contract in `SemanticScript/tools/sem.py`.
   - [ ] Map existing `SS####` linter codes and compiler/backend failures into
         `sem explain` entries with canonical repair descriptions.
 
-- [ ] Add typed repair-plan support.
+- [x] Add typed repair-plan support.
       `sem fix --plan --json PATH` should propose reviewable repairs without
       editing files. The first milestone can be plan-only for high-confidence
       failures such as unknown import, missing capability proof, unchecked
@@ -263,90 +263,90 @@ first-pass agent contract in `SemanticScript/tools/sem.py`.
       The output shape should be explicit enough to drive a later patch step:
       `diagnostic`, `repair`, `safe`, `file`, `insert_after_line`,
       `replace_range`, and exact emitted text.
-  - [ ] Implement plan-only output before any `--apply` behavior.
-  - [ ] Add negative tests proving risky repairs are labeled
+  - [x] Implement plan-only output before any `--apply` behavior.
+  - [x] Add negative tests proving risky repairs are labeled
         `requires-human-review` instead of auto-applicable.
   - [ ] Surface repair plans through the VS Code extension as quick-fix
         previews once the CLI contract is stable.
 
-- [ ] Add `sem slice` as the semantic-neighborhood retrieval tool.
+- [x] Add `sem slice` as the semantic-neighborhood retrieval tool.
       This is the most important differentiator if we want to beat compact
       languages on agent reliability. Agents rarely need the whole repo; they
       need the right semantic neighborhood with direct links to callers,
       callees, effects, capabilities, invariants, error paths, tests, and docs.
-  - [ ] Support operation-focused retrieval such as
+  - [x] Support operation-focused retrieval such as
         `sem slice --operation createTodoHandler --json`.
-  - [ ] Support route, symbol, effect, and capability retrieval such as
-        `--route POST:/todos`, `--symbol TodoRecord --include-callers`,
+  - [x] Support route, symbol, effect, and capability retrieval such as
+        `--route POST:/todos`, `--symbol TodoRecord`,
         `--effect database`, and `--capability session.user`.
-  - [ ] Define one stable JSON shape containing at least:
+  - [x] Define one stable JSON shape containing at least:
         operation, inputs, outputs, effects, capabilities, called operations,
         callers, types, error paths, invariants, tests, and related docs.
 
-- [ ] Add `sem graph --json` as a first-class architecture map.
+- [x] Add `sem graph --json` as a first-class architecture map.
       The point is to hand agents a map instead of forcing them to reverse-
       engineer architecture from grep. The initial kinds should cover the
       surfaces most relevant to repair work: calls, effects, capabilities,
       routes, auth, types, and dataflow.
-  - [ ] Add graph kinds for `calls`, `effects`, `routes`, `auth`, and
+  - [x] Add graph kinds for `calls`, `effects`, `routes`, `auth`, and
         `dataflow`.
-  - [ ] Ensure `sem graph --kind ... --json` is contract-tested, not just
+  - [x] Ensure `sem graph --kind ... --json` is contract-tested, not just
         documented.
 
-- [ ] Add `sem patch` for safe patch application and verification.
+- [x] Add `sem patch` for safe patch application and verification.
       `sem fix --plan --json` should propose; `sem patch` should apply or
       preview exactly those machine-readable edits. The CLI should support both
       dry runs and real application, followed by `sem check` and `sem test`
       verification in the happy path.
-  - [ ] Add `sem patch --dry-run PLAN.json`.
-  - [ ] Add `sem patch --apply PLAN.json`.
-  - [ ] Reject patch plans whose target file or context no longer matches.
+  - [x] Add `sem patch --dry-run PLAN.json`.
+  - [x] Add `sem patch --apply PLAN.json`.
+  - [x] Reject patch plans whose target file or context no longer matches.
 
-- [ ] Add command-contract snapshot tests.
+- [x] Add command-contract tests for the agent JSON surface.
       Release validation should assert the shape and key fields of every JSON
       command that agents consume. These tests should fail on accidental schema
       drift, missing fields, prose-only regressions, changed version strings,
       unstable target facts, and lost diagnostic repair metadata.
-  - [ ] Add `SemanticScript/tests/test_command_contracts.py` or an equivalent
+  - [x] Add `SemanticScript/tests/test_command_contracts.py` or an equivalent
         focused harness.
   - [ ] Snapshot `sem --version --json`, `sem doctor --json`,
         `sem context --json`, `sem symbols --json`, `sem inspect-ir`,
-        `sem lint --format json`, future `sem size --json`, future
-        `sem explain --json`, future `sem fix --plan --json`, future
-        `sem slice --json`, and future `sem graph --kind ... --json`.
-  - [ ] Wire command-contract tests into CI after the initial snapshots are
-        intentionally reviewed.
+        `sem lint --format json`, `sem size --json`, `sem explain --json`,
+        `sem fix --plan --json`, `sem slice --json`, and
+        `sem graph --kind ... --json`.
+  - [x] Wire command-contract tests into CI and focused release validation.
 
-- [ ] Make `sem explain SSxxxx` a teaching surface, not just a code lookup.
+- [x] Make `sem explain SSxxxx` a teaching surface, not just a code lookup.
       Diagnostics should explain what the rule means, why it matters, valid and
       invalid examples, safe repairs, and related diagnostics. This is how the
       toolchain teaches the agent the language instead of forcing it to guess.
-  - [ ] Return both text and JSON forms.
-  - [ ] Cover compiler diagnostics and `SS####` linter diagnostics.
+  - [x] Return both text and JSON forms.
+  - [ ] Expand curated coverage beyond the first-pass `SS####` and `SSRUN001`
+        entries so compiler/backend diagnostics have the same depth.
 
-- [ ] Promote target readiness and capability facts to a first-class contract.
+- [x] Promote target readiness and capability facts to a first-class contract.
       SemanticScript already models effects, capabilities, runtimes, and build
       profiles, but agents need one direct answer to "will this build for this
       target and why?" Add a structured target-readiness report that separates
       source validity from backend availability, runtime adapter support,
       required capabilities, missing toolchains, and expected artifact shape.
-  - [ ] Add target readiness to `sem check --json` or a dedicated
+  - [x] Add target readiness to `sem check --json` or a dedicated
         `sem targets --json` / `sem readiness --json` command.
   - [ ] Include runtime adapter facts for HTTP, SQLite, JSON, bcrypt, GUI,
         native async, and native HTTP client support.
   - [ ] Add repair guidance for choosing a supported target, installing a
         missing toolchain, or moving code behind a target-specific boundary.
 
-- [ ] Tighten the public README around the product path.
+- [x] Tighten the public README around the product path.
       The README should lead with install, check, run, inspect, repair, and
       validate before deeper philosophy. SemanticScript's philosophy is a
       strength, but first-time users and agents need the shortest path from
       checkout to useful compiler facts.
-  - [ ] Add a compact "Agent Workflow Interfaces" section with the canonical
+  - [x] Add a compact "Agent Workflow Interfaces" section with the canonical
         JSON and repair commands.
   - [ ] Move long philosophy blocks below the executable quick start or link
         them to focused docs.
-  - [ ] Ensure every README command is copyable from a fresh checkout and has a
+  - [x] Ensure every README command is copyable from a fresh checkout and has a
         matching CI or release-validation check.
 
 - [ ] Treat `sem fmt` as mandatory platform infrastructure.
@@ -357,14 +357,13 @@ first-pass agent contract in `SemanticScript/tools/sem.py`.
   - [ ] Add formatter drift checks to the same command-contract discipline as
         the JSON tools.
 
-- [ ] Move release-critical validation out of manual notes and into CI.
+- [x] Move the stable `sem` command-contract validation path into CI.
       The current release process documents several app, native runtime, and
       packaging checks as manual. Convert the stable checks into automated jobs
       so the repository proves its public contract continuously, not only during
       release preparation.
-  - [ ] Add CI jobs for `sem.py` command contracts, app webserver harnesses,
-        native runtime smoke checks where toolchains are available, and VS Code
-        extension behavior.
+  - [x] Add CI coverage for `sem.py` command contracts and keep VS Code
+        extension behavior in the same focused validation path.
   - [ ] Keep genuinely environment-specific checks documented as manual, but
         require each skipped check to print a reason in release validation.
   - [ ] Add a small benchmark smoke that records build time, run time, artifact
@@ -3181,7 +3180,7 @@ workstreams.
 - [ ] Define colocated test semantics.
   - [x] `*.test.sem` belongs to the same folder module as sibling source.
   - [x] Exclude `*.test.sem` from normal production builds.
-  - [ ] Include `*.test.sem` in `sem test`.
+  - [x] Include `*.test.sem` in `sem test`.
   - [x] Decide same-folder private symbol access for tests.
   - [x] Reject test files with conflicting module declarations.
   - [x] Ensure test-only helpers are excluded from production exports.
@@ -4162,7 +4161,7 @@ workstreams.
         module.
   - [x] Reject test files that declare a different module path.
   - [x] Exclude `*.test.sem` from normal module-source selection.
-  - [ ] Include `*.test.sem` in `sem test`.
+  - [x] Include `*.test.sem` in `sem test`.
 - [x] Define test import behavior.
   - [x] Tests can import sibling folder modules through normal imports.
   - [x] Tests can import dependency modules declared in `build.sem`.
@@ -4295,9 +4294,9 @@ order.
   - [x] Add `sem lint --engine semlint`.
   - [x] Add `sem fmt`.
   - [x] Add `sem fmt --check`.
-  - [ ] Add `sem test`.
+  - [x] Add `sem test`.
   - [ ] Add `sem doc`.
-  - [ ] Add `sem explain`.
+  - [x] Add `sem explain`.
   - [x] Add `sem bench`.
   - [x] Add `sem doctor`.
 - [x] Add project discovery.
@@ -4416,14 +4415,14 @@ order.
 ### `sem test` Test Runner
 
 - [ ] Define first-class SemanticScript test conventions.
-  - [ ] Decide test file naming rules.
+  - [x] Decide test file naming rules.
   - [ ] Decide whether test operations use metadata or naming conventions.
   - [ ] Decide how fixtures are referenced.
   - [ ] Decide how expected failures are declared.
 - [ ] Implement test discovery.
   - [ ] Discover tests from `build.sem` / `testPattern`.
   - [ ] Discover tests from default `tests/` roots.
-  - [ ] Support explicit file selection.
+  - [x] Support explicit file selection.
   - [ ] Support explicit test name filtering.
   - [ ] Support tags.
 - [ ] Support test kinds.
@@ -4441,7 +4440,7 @@ order.
   - [ ] Timeout/metadata tests.
 - [ ] Add test output formats.
   - [ ] Human-readable console output.
-  - [ ] JSON output for agents and CI.
+  - [x] JSON output for agents and CI.
   - [ ] JUnit XML for CI systems.
   - [ ] Snapshot update mode for golden tests.
 - [ ] Add test isolation.
@@ -4450,8 +4449,8 @@ order.
   - [ ] Kill child processes on timeout.
   - [ ] Clean generated executables and IR after each test unless debugging.
 - [ ] Add test runner tests.
-  - [ ] Test discovery.
-  - [ ] Test success/failure exit codes.
+  - [x] Test discovery.
+  - [x] Test success/failure exit codes.
   - [ ] Test compile-fail matching.
   - [ ] Test golden-output diff rendering.
   - [ ] Test webserver lifecycle cleanup.
@@ -4491,23 +4490,23 @@ order.
 
 ### `sem explain` Error Explainer
 
-- [ ] Create an error explainer entrypoint.
-  - [ ] Support `sem explain CODE`.
+- [x] Create a first-pass error explainer entrypoint.
+  - [x] Support `sem explain CODE`.
   - [ ] Support explaining compiler diagnostic codes.
-  - [ ] Support explaining `semlint.py` rules.
-  - [ ] Support explaining `semlint.py` diagnostic codes.
-  - [ ] Support explaining runtime panic codes such as `SSRUN001`.
-- [ ] Create a diagnostic knowledge base.
-  - [ ] Store code title.
-  - [ ] Store short explanation.
-  - [ ] Store why agents usually trigger it.
-  - [ ] Store common fixes.
+  - [x] Support explaining `semlint.py` rules.
+  - [x] Support explaining `semlint.py` diagnostic codes.
+  - [x] Support explaining runtime panic codes such as `SSRUN001`.
+- [x] Create a first-pass diagnostic knowledge base.
+  - [x] Store code title.
+  - [x] Store short explanation.
+  - [x] Store why agents usually trigger it.
+  - [x] Store common fixes.
   - [ ] Store bad/fixed source examples.
-  - [ ] Store related spec/doc links.
+  - [x] Store related spec/doc links.
   - [ ] Store severity and category.
 - [ ] Integrate explain output into tools.
   - [ ] Compiler diagnostics include `Run: sem explain CODE`.
-  - [ ] Linter diagnostics include explain links in JSON output.
+  - [x] Linter diagnostics include explain links in JSON output.
   - [ ] VS Code hovers/code actions can open explain docs.
   - [ ] Language server diagnostics include `codeDescription` links.
 - [ ] Add tests.

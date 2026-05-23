@@ -13,6 +13,44 @@ cleanup, authority.
 Status: lowered = LLVM now; metadata = parsed/indexed only; sync-fallback =
 single-thread lowering; partial = mixed; refined = future/tooling surface.
 
+== stable tool loop ==
+Use the `sem` wrapper as the public agent contract before falling back to raw
+compiler/linter internals.
+
+Load matching rules:
+  python SemanticScript\tools\sem.py --version --json
+  python SemanticScript\tools\sem.py skills list --json
+  python SemanticScript\tools\sem.py skills get sem sem-agent --json
+
+Check and inspect:
+  python SemanticScript\tools\sem.py check --json PATH
+  python SemanticScript\tools\sem.py readiness --json PATH
+  python SemanticScript\tools\sem.py graph --kind calls --json PATH
+  python SemanticScript\tools\sem.py slice --operation NAME --json PATH
+  python SemanticScript\tools\sem.py explain SS3104 --json
+
+Repair and verify:
+  python SemanticScript\tools\sem.py fix --plan --json PATH
+  python SemanticScript\tools\sem.py patch --dry-run --json PLAN.json
+  python SemanticScript\tools\sem.py patch --apply --json PLAN.json
+  python SemanticScript\tools\sem.py test --json PATH
+
+Current JSON surfaces:
+  sem.version.v1
+  sem.skills.v1
+  sem.readiness.v1
+  sem.context.v1
+  sem.symbols.v1
+  sem.check.v1
+  sem.graph.v1
+  sem.slice.v1
+  sem.size.v1
+  sem.explain.v1
+  sem.fixPlan.v1
+  sem.patch.v1
+  sem.dev.v1
+  sem.test.v1
+
 Good:
   call totalCall math.addI64
   argument totalCall left I64 subtotalAmount

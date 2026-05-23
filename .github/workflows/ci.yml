@@ -43,6 +43,9 @@ jobs:
       - name: Compile Python sources
         run: python -m compileall -q SemanticScript python
 
+      - name: Print release version matrix
+        run: python SemanticScript/tools/release_versions.py
+
       - name: Run formatter unit tests
         run: python -m unittest SemanticScript/formatter/test_semfmt.py -v
 
@@ -51,6 +54,12 @@ jobs:
 
       - name: Run linter unit tests
         run: python -m unittest SemanticScript/linter/test_semlint.py -v
+
+      - name: Run sem CLI unit tests
+        run: python -m unittest SemanticScript.tests.test_sem_cli -v
+
+      - name: Run sem command-contract tests
+        run: python -m unittest SemanticScript.tests.test_command_contracts -v
 
       - name: Parse smoke fixtures
         run: |
@@ -61,6 +70,12 @@ jobs:
         run: |
           python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sscript --summary
           python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sem --summary
+
+      - name: Smoke agent-facing sem JSON commands
+        run: |
+          python SemanticScript/tools/sem.py --version --json
+          python SemanticScript/tools/sem.py skills list --json
+          python SemanticScript/tools/sem.py check --json SemanticScript/tests/tiny.sem
 
   vscode-validation:
     name: VS Code extension validation
