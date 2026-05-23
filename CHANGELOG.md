@@ -2,6 +2,9 @@
 
 ## 2026-05-23
 
+- `378a0f288bbf121b1a06fbf9ac70243435d369e4` - `experiments: align auction docs with executable contracts`
+  - Updates the Realtime Auction Arena README, server README, and API contract so protected metrics, production JWT secret validation, chat/audit routes, request logs, rate limits, and opt-in SSE replay match the executable server.
+  - Aligns source-level route/auth contract text with the bound `authReadyHandler`, `protectedMetricsHandler`, and admin-or-auctioneer command guard behavior.
 - `d3454aa89567136ef103e402adb80f1f712f5bcf` - `experiments: harden auction metrics and config contracts`
   - Routes readiness and metrics through auth-owned handlers so production JWT secret validation is enforced on readiness/login and `/metrics` is admin-only with 401/403/200 coverage.
   - Extends auction E2E/API docs and tests around protected metrics behavior, production auth readiness, and positive request-log duration assertions.
