@@ -33,7 +33,9 @@ Runtime model:
   continuations.
 - `SSAsyncTimer` wraps a one-shot libuv timer or a fallback monotonic deadline.
 - `SSAsyncCancelToken` is an optional ref-counted cancellation flag that native
-  async bindings can retain while a future is pending.
+  async bindings can retain while a future is pending. Destroyed token handles
+  are tombstoned rather than freed so stale opaque pointers cannot cancel a
+  later allocation at the same address.
 - `ss_async_queue_work` maps blocking work to `uv_queue_work` with libuv, and
   runs same-thread in fallback mode.
 - Generated `await` lowering should return to the event loop, not nested-run
@@ -43,7 +45,11 @@ Runtime model:
 and may drop old retained events when its capacity is exceeded, while
 `openProcessQueue` is command-queue oriented: `appendEvent` returns
 `eventStatusQueueFull` until consumers `acknowledgeEvent` enough received
-events to release strict capacity.
+events to release strict capacity. `openDurableStream` uses a local append log
+with cross-process file locking, committed checksummed records, fsync on append,
+and trailing torn-write recovery. Durable streams retain only the configured
+in-memory tail and report `eventStatusQueueFull` when a subscription cursor fell
+behind retained matching events.
 
 Current compiler integration lowers operations that declare
 `runtimeBindingAsyncStart` and `runtimeBindingAsyncAwait` through this ABI.

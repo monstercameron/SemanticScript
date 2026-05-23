@@ -79,7 +79,31 @@ When the timer fires, the runtime marks the future timeout/cancel flag and wakes
 the loop. `cancelOn CALL TOKEN` passes an optional native `SSAsyncCancelToken`;
 runtime bindings that keep a pending future retain the token, poll it before
 loop ticks, and publish a cancelled status before generated code resumes after
-`await`.
+`await`. Cancel-token handles are tombstoned on final release rather than freed,
+trading bounded handle reclamation for stale-pointer safety at the current C ABI
+boundary.
+
+The libuv backend owns one-shot timer close lifecycles. Timer start failures and
+explicit timer destruction both enqueue libuv close callbacks and drain them
+during loop destruction so runtime-owned timer handles do not leave the loop
+busy.
+
+## `standard.event` Durable Streams
+
+`standard.event` uses this async ABI for process streams, strict process queues,
+and durable streams. Durable streams are local files, not an external broker:
+each stream name maps to a hex-encoded `.sseventlog` under `SEM_EVENT_STORE_DIR`
+or the current working directory. Appends are serialized with a sibling lock
+file, written as checksummed committed records, flushed with `fsync` / `_commit`,
+and recovered by truncating only a trailing incomplete or uncommitted record.
+Corrupt headers remain fatal.
+
+Durable streams keep memory bounded by retaining only the configured
+`queueCapacity` tail. Reopening or receiving catches up from the log without
+retaining the full history. A subscription whose cursor is behind dropped
+matching retained events receives `eventStatusQueueFull`; filtered durable
+subscriptions scan the log for matching dropped records instead of assuming that
+all dropped records matched.
 
 `await WAIT_SET` with following `case CALL LABEL` rows and a `done LABEL` row is
 the source-level wait set. Current console lowering polls the futures, runs one

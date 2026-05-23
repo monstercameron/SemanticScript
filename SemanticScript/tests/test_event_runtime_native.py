@@ -61,7 +61,49 @@ class TestEventRuntimeNative(unittest.TestCase):
         result = compile_and_run(
             r'''
             #include "SemanticScript/std/event/native/sem_event_runtime.h"
+            #include <stdio.h>
+            #include <stdlib.h>
             #include <string.h>
+
+            static int store_path_for_name(const char *stream_name, char *out_path, size_t out_capacity) {
+                static const char hex_digits[] = "0123456789abcdef";
+                const char *store_dir = getenv("SEM_EVENT_STORE_DIR");
+                size_t offset = 0;
+                size_t dir_length;
+                size_t index;
+                int written;
+
+                if (!store_dir || !stream_name || !out_path || out_capacity == 0) return 0;
+                dir_length = strlen(store_dir);
+                written = snprintf(out_path, out_capacity, "%s%ssem_event_", store_dir,
+                    (dir_length > 0 && (store_dir[dir_length - 1] == '/' || store_dir[dir_length - 1] == '\\')) ? "" : "/");
+                if (written < 0 || (size_t)written >= out_capacity) return 0;
+                offset = (size_t)written;
+                for (index = 0; stream_name[index] != '\0'; index += 1) {
+                    unsigned char ch = (unsigned char)stream_name[index];
+                    if (offset + 2 >= out_capacity) return 0;
+                    out_path[offset] = hex_digits[(ch >> 4) & 0x0fU];
+                    out_path[offset + 1] = hex_digits[ch & 0x0fU];
+                    offset += 2;
+                }
+                if (offset + strlen(".sseventlog") >= out_capacity) return 0;
+                memcpy(out_path + offset, ".sseventlog", strlen(".sseventlog") + 1U);
+                return 1;
+            }
+
+            static int append_partial_store_record(const char *stream_name) {
+                char path[1024];
+                unsigned char partial_record[2] = { 0x45U, 0x56U };
+                FILE *file;
+                if (!store_path_for_name(stream_name, path, sizeof path)) return 0;
+                file = fopen(path, "ab");
+                if (!file) return 0;
+                if (fwrite(partial_record, 1U, sizeof partial_record, file) != sizeof partial_record) {
+                    fclose(file);
+                    return 0;
+                }
+                return fclose(file) == 0;
+            }
 
             int main(void) {
                 SSAsyncLoop *loop = 0;
@@ -213,6 +255,51 @@ class TestEventRuntimeNative(unittest.TestCase):
                     if (ss_event_close_stream(second_durable) != SS_EVENT_OK) return 62;
                 }
 
+                stream = ss_event_open_durable_stream("durable-bounded-native", 2);
+                if (!stream) return 80;
+                if (ss_event_append(stream, "bounded.one", "", "{}") != 1) return 81;
+                if (ss_event_append(stream, "bounded.two", "", "{}") != 2) return 82;
+                if (ss_event_append(stream, "bounded.three", "", "{}") != 3) return 83;
+                subscription = ss_event_subscribe(stream, "", "", 0, 2);
+                if (!subscription) return 84;
+                if (ss_event_receive(subscription, 0, 0, 0, 0, 0, 0) != SS_EVENT_ERR_QUEUE_FULL) return 85;
+                if (ss_event_close_subscription(subscription) != SS_EVENT_OK) return 86;
+                subscription = ss_event_subscribe(stream, "", "", 1, 2);
+                if (!subscription) return 87;
+                first_result = ss_event_receive(subscription, first_type, (int)sizeof first_type, 0, 0, 0, 0);
+                second_result = ss_event_receive(subscription, second_type, (int)sizeof second_type, 0, 0, 0, 0);
+                if (first_result != 2 || second_result != 3) return 88;
+                if (strcmp(first_type, "bounded.two") != 0 || strcmp(second_type, "bounded.three") != 0) return 89;
+                if (ss_event_close_subscription(subscription) != SS_EVENT_OK) return 90;
+                if (ss_event_close_stream(stream) != SS_EVENT_OK) return 91;
+
+                stream = ss_event_open_durable_stream("durable-filtered-gap-native", 1);
+                if (!stream) return 92;
+                if (ss_event_append(stream, "type.a", "", "{}") != 1) return 93;
+                if (ss_event_append(stream, "type.b", "", "{}") != 2) return 94;
+                subscription = ss_event_subscribe(stream, "type.a", "", 0, 1);
+                if (!subscription) return 95;
+                if (ss_event_receive(subscription, 0, 0, 0, 0, 0, 0) != SS_EVENT_ERR_QUEUE_FULL) return 96;
+                if (ss_event_close_subscription(subscription) != SS_EVENT_OK) return 97;
+                if (ss_event_close_stream(stream) != SS_EVENT_OK) return 98;
+
+                stream = ss_event_open_durable_stream("durable-torn-native", 8);
+                if (!stream) return 99;
+                if (ss_event_append(stream, "torn.one", "", "{}") != 1) return 100;
+                if (ss_event_close_stream(stream) != SS_EVENT_OK) return 101;
+                if (!append_partial_store_record("durable-torn-native")) return 102;
+                stream = ss_event_open_durable_stream("durable-torn-native", 8);
+                if (!stream) return 103;
+                subscription = ss_event_subscribe(stream, "", "", 0, 8);
+                if (!subscription) return 104;
+                first_result = ss_event_receive(subscription, first_type, (int)sizeof first_type, 0, 0, 0, 0);
+                if (first_result != 1 || strcmp(first_type, "torn.one") != 0) return 105;
+                if (ss_event_append(stream, "torn.two", "", "{}") != 2) return 106;
+                second_result = ss_event_receive(subscription, second_type, (int)sizeof second_type, 0, 0, 0, 0);
+                if (second_result != 2 || strcmp(second_type, "torn.two") != 0) return 107;
+                if (ss_event_close_subscription(subscription) != SS_EVENT_OK) return 108;
+                if (ss_event_close_stream(stream) != SS_EVENT_OK) return 109;
+
                 ss_async_loop_destroy(loop);
                 return 0;
             }
@@ -313,6 +400,115 @@ class TestEventRuntimeNative(unittest.TestCase):
             '''
         )
         self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_durable_cross_process_writers_allocate_unique_ids(self) -> None:
+        cc = c_compiler_command()
+        if cc is None:
+            raise unittest.SkipTest("no clang or zig compiler available")
+        with tempfile.TemporaryDirectory(prefix="ss_event_cross_process_") as temp_dir:
+            temp_path = Path(temp_dir)
+            store_path = temp_path / "store"
+            store_path.mkdir()
+            source_path = temp_path / "durable_cross_process.c"
+            exe_path = temp_path / ("durable_cross_process.exe" if os.name == "nt" else "durable_cross_process")
+            source_path.write_text(
+                textwrap.dedent(
+                    r'''
+                    #include "SemanticScript/std/event/native/sem_event_runtime.h"
+                    #include <stdlib.h>
+                    #include <string.h>
+
+                    enum { STREAM_CAPACITY = 256 };
+
+                    int main(int argc, char **argv) {
+                        const char *stream_name = "durable-cross-process-native";
+                        if (argc < 2) return 1;
+                        if (strcmp(argv[1], "write") == 0) {
+                            int count;
+                            int index;
+                            void *stream;
+                            if (argc < 3) return 2;
+                            count = atoi(argv[2]);
+                            stream = ss_event_open_durable_stream(stream_name, STREAM_CAPACITY);
+                            if (!stream) return 3;
+                            for (index = 0; index < count; index += 1) {
+                                long long event_id = ss_event_append(stream, "cross.process", "", "{}");
+                                if (event_id <= 0) return 4;
+                            }
+                            if (ss_event_close_stream(stream) != SS_EVENT_OK) return 5;
+                            return 0;
+                        }
+                        if (strcmp(argv[1], "verify") == 0) {
+                            int total;
+                            int expected;
+                            void *stream;
+                            void *subscription;
+                            if (argc < 3) return 6;
+                            total = atoi(argv[2]);
+                            stream = ss_event_open_durable_stream(stream_name, STREAM_CAPACITY);
+                            if (!stream) return 7;
+                            subscription = ss_event_subscribe(stream, "", "", 0, STREAM_CAPACITY);
+                            if (!subscription) return 8;
+                            for (expected = 1; expected <= total; expected += 1) {
+                                long long event_id = ss_event_receive(subscription, 0, 0, 0, 0, 0, 0);
+                                if (event_id != expected) return 9;
+                            }
+                            if (ss_event_close_subscription(subscription) != SS_EVENT_OK) return 10;
+                            if (ss_event_close_stream(stream) != SS_EVENT_OK) return 11;
+                            return 0;
+                        }
+                        return 12;
+                    }
+                    '''
+                ),
+                encoding="utf-8",
+                newline="\n",
+            )
+            command = [
+                *cc,
+                "-x",
+                "c",
+                str(source_path),
+                str(EVENT_RUNTIME),
+                str(ASYNC_RUNTIME),
+                "-I",
+                str(REPO_ROOT),
+                "-o",
+                str(exe_path),
+            ]
+            if os.name != "nt":
+                command.append("-pthread")
+            compile_result = subprocess.run(command, cwd=REPO_ROOT, text=True, capture_output=True, timeout=120)
+            if compile_result.returncode != 0:
+                raise AssertionError(f"compile failed\nstdout:\n{compile_result.stdout}\nstderr:\n{compile_result.stderr}")
+            env = os.environ.copy()
+            env["SEM_EVENT_STORE_DIR"] = str(store_path)
+            process_count = 4
+            events_per_process = 25
+            processes = [
+                subprocess.Popen(
+                    [str(exe_path), "write", str(events_per_process)],
+                    cwd=REPO_ROOT,
+                    env=env,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+                for _ in range(process_count)
+            ]
+            for process in processes:
+                stdout, stderr = process.communicate(timeout=30)
+                if process.returncode != 0:
+                    raise AssertionError(f"writer failed rc={process.returncode}\nstdout:\n{stdout}\nstderr:\n{stderr}")
+            verify_result = subprocess.run(
+                [str(exe_path), "verify", str(process_count * events_per_process)],
+                cwd=REPO_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertEqual(0, verify_result.returncode, verify_result.stderr)
 
 
 if __name__ == "__main__":

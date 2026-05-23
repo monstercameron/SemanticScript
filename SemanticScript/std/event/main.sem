@@ -15,7 +15,7 @@ purpose module standard.event "Standard-library namespace and contracts for asyn
 moduleOwns standard.event "The official import path `standard.event`, event stream handle types, status constants, reusable event capabilities, runtimeBinding operation wrappers, and the native adapter source declaration."
 moduleDoesNotOwn standard.event "Application event schemas, subscription topology metadata, durable storage policy, SSE response streaming, or compiler event-specific lowering."
 invariant module standard.event "Downstream modules import this module as alias `event`; all event I/O operations are async-only by contract and delegate through generic native runtimeBinding rows."
-moduleWarning standard.event "openProcessStream is process-local and replay-oriented; openProcessQueue is process-local and backpressure-oriented; openDurableStream stores an append-only local replay log keyed by stream name."
+moduleWarning standard.event "openProcessStream is process-local and replay-oriented; openProcessQueue is process-local and backpressure-oriented; openDurableStream stores a locked committed local replay log keyed by stream name and retains only the configured in-memory tail."
 
 nativeRuntimeSource standard.event "SemanticScript/std/event/native/sem_event_runtime.c"
 nativeRuntimeLinkArg standard.event posix "-pthread"
@@ -173,8 +173,8 @@ useCapability openDurableStream eventRuntimeHeapAllocator
 useCapability openDurableStream eventDurableStoreReader
 useCapability openDurableStream eventDurableStoreWriter
 operationBody openDurableStream runtimeBinding
-purpose operation openDurableStream "Open a named event stream backed by an append-only local replay log."
-invariant operation openDurableStream "Reopening the same durable stream name reloads persisted events and continues event ids after the highest stored id."
+purpose operation openDurableStream "Open a named event stream backed by a local committed replay log with cross-process writer locking."
+invariant operation openDurableStream "Reopening the same durable stream name recovers trailing torn writes, verifies committed record checksums, reloads at most queueCapacity retained events, and continues event ids after the highest committed id."
 runtimeBindingPrecondition openDurableStream "streamName is a non-null null-terminated string and queueCapacity is positive. SEM_EVENT_STORE_DIR may choose the storage directory; otherwise the current working directory is used."
 runtimeBinding openDurableStream native.ss_event_open_durable_stream
 runtimeBindingAsyncStart openDurableStream native.ss_event_open_durable_stream_start
@@ -277,7 +277,7 @@ useCapability receiveEvent eventSubscriptionReader
 useCapability receiveEvent eventOutputBufferWriter
 operationBody receiveEvent runtimeBinding
 purpose operation receiveEvent "Copy the next matching event into caller-owned buffers and return its EventId, waiting asynchronously until a future matching event, close, or timeout completes the receive."
-invariant operation receiveEvent "Async start registers a pending receive when no retained event is ready; append and close operations complete pending receives without busy-waiting."
+invariant operation receiveEvent "Async start registers a pending receive when no retained event is ready; append, close, timeout, and cancellation complete pending receives without busy-waiting or letting cancelled receives consume later events."
 runtimeBindingPrecondition receiveEvent "subscription is valid; output buffers with positive capacities are writable and include space for null terminators; zero capacities skip that output field."
 runtimeBinding receiveEvent native.ss_event_receive
 runtimeBindingAsyncStart receiveEvent native.ss_event_receive_start

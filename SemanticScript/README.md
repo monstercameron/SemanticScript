@@ -8,8 +8,8 @@ Primary language implementation workspace.
 - `compiler/` contains the Python reference compiler and C ABI registry.
 - `linter/` contains standalone source linters and linter tests.
 - `formatter/` contains the canonical formatter for revised `.sem` syntax.
-- `runtime/` contains native adapter libraries for HTTP, SQLite, JSON, bcrypt,
-  logging, terminal I/O, and desktop GUI work.
+- `runtime/` contains native adapter libraries for async futures/timers, HTTP,
+  SQLite, JSON, bcrypt, logging, terminal I/O, and desktop GUI work.
 - `sem/` contains runnable SemanticScript sample programs and feature tests.
 - `shared/` contains small source-of-truth modules used by multiple tools.
 - `std/` contains executable SemanticScript standard-library modules.
