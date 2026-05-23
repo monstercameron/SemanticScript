@@ -279,7 +279,7 @@ branch if condition eventsDatabaseMissing target eventsDatabaseUnavailable
 
 call prepareEventsAuctionCall sqlite.prepareStatement
 argument prepareEventsAuctionCall database SqliteDatabase eventsDatabase
-argument prepareEventsAuctionCall sql CNullTerminatedByteString sql.sqlSelectAuctionCommandState
+argument prepareEventsAuctionCall sql SqlText sql.sqlSelectAuctionExists
 run prepareEventsAuctionCall
 bind ok eventsAuctionStatement SqliteStatement prepareEventsAuctionCall
 bind error prepareEventsAuctionError SqliteStatementPrepareFailure prepareEventsAuctionCall
@@ -310,7 +310,7 @@ branch else target eventsNotFound
 label eventsAuctionExistsAccepted
 call prepareEventsCall sqlite.prepareStatement
 argument prepareEventsCall database SqliteDatabase eventsDatabase
-argument prepareEventsCall sql CNullTerminatedByteString sql.sqlSelectAuctionEventsAfter
+argument prepareEventsCall sql SqlText sql.sqlSelectAuctionEventsAfter
 run prepareEventsCall
 bind ok eventsStatement SqliteStatement prepareEventsCall
 bind error prepareEventsError SqliteStatementPrepareFailure prepareEventsCall

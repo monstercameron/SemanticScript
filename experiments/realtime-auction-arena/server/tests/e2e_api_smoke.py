@@ -161,6 +161,18 @@ def expect_json(path, status, ok=None, code=None, method="GET", body=None, heade
     return payload
 
 
+def assert_rate_limit_probe_bucket():
+    db_path = SERVER_DIR / "auction_arena.sqlite3"
+    with sqlite3.connect(db_path) as conn:
+        bucket = conn.execute(
+            "SELECT count, limit_count, reset_at FROM rate_limit_buckets WHERE bucket_key = 'rate-limit-probe'"
+        ).fetchone()
+    assert bucket is not None
+    assert bucket[0] == 11
+    assert bucket[1] == 10
+    assert bucket[2] > 0
+
+
 def tamper_token(token):
     replacement = "A" if token[-1] != "A" else "B"
     return token[:-1] + replacement
@@ -361,6 +373,7 @@ def test_auth_and_api_fail_closed():
         method="POST",
         body=json.dumps({"username": "rate-limit-probe", "password": "wrong-limited"}),
     )
+    assert_rate_limit_probe_bucket()
 
     before_login_seconds = int(time.time())
     login = expect_json(
@@ -886,6 +899,24 @@ def test_auth_and_api_fail_closed():
         True,
     )
     assert chat_created["data"]["message"]["status"] == "created"
+    replayed_chat = post_auction_command(
+        f"/api/v1/auctions/{auction_id}/chat/messages",
+        {"text": "e2e chat message"},
+        active_headers,
+        "idem_e2e_chat_create_001",
+        201,
+        True,
+    )
+    assert replayed_chat["data"]["message"]["status"] == "created"
+    post_auction_command(
+        f"/api/v1/auctions/{auction_id}/chat/messages",
+        {"text": "different e2e chat message"},
+        active_headers,
+        "idem_e2e_chat_create_001",
+        409,
+        False,
+        code="idempotency_conflict",
+    )
     expect_json(
         f"/api/v1/auctions/{auction_id}/chat/messages/msg_missing",
         401,
@@ -1185,12 +1216,6 @@ def test_auth_and_api_fail_closed():
 
         rate_limit_count = conn.execute("SELECT count(*) FROM rate_limit_buckets").fetchone()[0]
         assert rate_limit_count >= 1
-        bucket = conn.execute(
-            "SELECT count, limit_count, reset_at FROM rate_limit_buckets WHERE bucket_key = 'rate-limit-probe'"
-        ).fetchone()
-        assert bucket[0] == 11
-        assert bucket[1] == 10
-        assert bucket[2] > 0
         auth_audit_actions = set(
             conn.execute(
                 "SELECT action, outcome, error_code FROM audit_events WHERE action LIKE 'auth.login.%'"

@@ -6,6 +6,8 @@ invariant module app.realtime_auction_arena.server.persistence "Command writes m
 invariant module app.realtime_auction_arena.server.persistence "Schema readiness is false until migrations are applied, foreign keys are enabled, required indexes exist, seed rows are present, and the current schema version matches the server contract."
 moduleWarning app.realtime_auction_arena.server.persistence "Runtime integration remains in main.sem; this module owns only the durable schema and persistence contracts."
 
+import sqlite standard.sqlite
+
 record PersistencePlan
 field PersistencePlan schemaVersion I64
 field PersistencePlan databasePathEnv String
@@ -75,12 +77,28 @@ jsonBody persistenceTransactionPlan
       "broadcastRule": "SSE and Win32 polling observe only committed auction_events ordered by auction_id and sequence."
   }
 
-literal sqliteSchemaV1 CNullTerminatedByteString
+literal sqliteSchemaV1 SqlText
 literalSource sqliteSchemaV1 "sql/schema.sql"
 literalBytes sqliteSchemaV1 11038
 literalTrust sqliteSchemaV1 trustedStaticAsset
 
-storage module immutable sqliteReadinessProbeV1 CNullTerminatedByteString "PRAGMA foreign_keys;\nSELECT current_version FROM schema_versions WHERE singleton_id = 1;\nSELECT version FROM schema_migrations WHERE version = 1;\nSELECT 1 FROM users WHERE user_id = 'user_auctioneer_001' LIMIT 1;\nSELECT 1 FROM password_credentials WHERE user_id = 'user_auctioneer_001' LIMIT 1;\nSELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'request_log' LIMIT 1;\nSELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'rate_limit_buckets' LIMIT 1;\nSELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_bids_rejected_reason' LIMIT 1;\nSELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_audit_action_outcome_time' LIMIT 1;\nSELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_idempotency_scope_actor_auction_expiry' LIMIT 1;\nSELECT 1 FROM users LIMIT 1;\nSELECT 1 FROM auctions LIMIT 1;\nSELECT 1 FROM auction_events LIMIT 1;\nSELECT 1 FROM idempotency_keys LIMIT 1;\nSELECT 1 FROM request_log LIMIT 1;\n"
+storage module immutable sqliteReadinessProbeV1 SqlText
+sql body sqliteReadinessProbeV1
+  PRAGMA foreign_keys;
+  SELECT current_version FROM schema_versions WHERE singleton_id = 1;
+  SELECT version FROM schema_migrations WHERE version = 1;
+  SELECT 1 FROM users WHERE user_id = 'user_auctioneer_001' LIMIT 1;
+  SELECT 1 FROM password_credentials WHERE user_id = 'user_auctioneer_001' LIMIT 1;
+  SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'request_log' LIMIT 1;
+  SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'rate_limit_buckets' LIMIT 1;
+  SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_bids_rejected_reason' LIMIT 1;
+  SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_audit_action_outcome_time' LIMIT 1;
+  SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_idempotency_scope_actor_auction_expiry' LIMIT 1;
+  SELECT 1 FROM users LIMIT 1;
+  SELECT 1 FROM auctions LIMIT 1;
+  SELECT 1 FROM auction_events LIMIT 1;
+  SELECT 1 FROM idempotency_keys LIMIT 1;
+  SELECT 1 FROM request_log LIMIT 1;
 
 operation getPersistencePlan
 output operation getPersistencePlan PersistencePlan
@@ -104,14 +122,14 @@ purpose operation getPersistenceTransactionPlan "Return the durable command tran
 return value persistenceTransactionPlan
 
 operation getSqliteSchemaV1
-output operation getSqliteSchemaV1 CNullTerminatedByteString
+output operation getSqliteSchemaV1 SqlText
 memory getSqliteSchemaV1 heap no
 async getSqliteSchemaV1 no
 purpose operation getSqliteSchemaV1 "Return the schema initialization SQL as an executable artifact for the migration runner."
 return value sqliteSchemaV1
 
 operation getSqliteReadinessProbeV1
-output operation getSqliteReadinessProbeV1 CNullTerminatedByteString
+output operation getSqliteReadinessProbeV1 SqlText
 memory getSqliteReadinessProbeV1 heap no
 async getSqliteReadinessProbeV1 no
 purpose operation getSqliteReadinessProbeV1 "Return the readiness probe SQL contract used by main.sem once startup SQLite wiring lands."

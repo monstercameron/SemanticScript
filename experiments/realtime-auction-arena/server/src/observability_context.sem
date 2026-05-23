@@ -50,7 +50,7 @@ invariant operation insertAcceptedAuditEvent "The operation writes audit_events 
 label startInsertAcceptedAuditEvent
 call prepareAuditEventCall sqlite.prepareStatement
 argument prepareAuditEventCall database SqliteDatabase database
-argument prepareAuditEventCall sql CNullTerminatedByteString sql.sqlInsertAuditEvent
+argument prepareAuditEventCall sql SqlText sql.sqlInsertAuditEvent
 run prepareAuditEventCall
 bind ok auditEventStatement SqliteStatement prepareAuditEventCall
 bind error prepareAuditEventError SqliteStatementPrepareFailure prepareAuditEventCall
@@ -156,7 +156,7 @@ invariant operation insertObservedAuditEvent "Callers pass public-safe payload J
 label startInsertObservedAuditEvent
 call prepareObservedAuditCall sqlite.prepareStatement
 argument prepareObservedAuditCall database SqliteDatabase database
-argument prepareObservedAuditCall sql CNullTerminatedByteString sql.sqlInsertAuditEventWithError
+argument prepareObservedAuditCall sql SqlText sql.sqlInsertAuditEventWithError
 run prepareObservedAuditCall
 bind ok observedAuditStatement SqliteStatement prepareObservedAuditCall
 bind error prepareObservedAuditError SqliteStatementPrepareFailure prepareObservedAuditCall
@@ -269,7 +269,7 @@ invariant operation insertRequestLogEvent "IP and user-agent durable fields are 
 label startInsertRequestLogEvent
 call prepareRequestLogCall sqlite.prepareStatement
 argument prepareRequestLogCall database SqliteDatabase database
-argument prepareRequestLogCall sql CNullTerminatedByteString sql.sqlInsertRequestLog
+argument prepareRequestLogCall sql SqlText sql.sqlInsertRequestLog
 run prepareRequestLogCall
 bind ok requestLogStatement SqliteStatement prepareRequestLogCall
 bind error prepareRequestLogError SqliteStatementPrepareFailure prepareRequestLogCall
@@ -405,7 +405,7 @@ invariant operation insertRequestLogRow "The generated primary key avoids collis
 label startInsertRequestLogRow
 call prepareRequestLogCall sqlite.prepareStatement
 argument prepareRequestLogCall database SqliteDatabase database
-argument prepareRequestLogCall sql CNullTerminatedByteString sql.sqlInsertRequestLog
+argument prepareRequestLogCall sql SqlText sql.sqlInsertRequestLog
 run prepareRequestLogCall
 bind ok requestLogStatement SqliteStatement prepareRequestLogCall
 bind error prepareRequestLogError SqliteStatementPrepareFailure prepareRequestLogCall
@@ -539,7 +539,7 @@ purpose operation insertRejectedAuditEvent "Persist one rejected command audit r
 label startInsertRejectedAuditEvent
 call prepareRejectedAuditCall sqlite.prepareStatement
 argument prepareRejectedAuditCall database SqliteDatabase database
-argument prepareRejectedAuditCall sql CNullTerminatedByteString sql.sqlInsertAuditEventWithError
+argument prepareRejectedAuditCall sql SqlText sql.sqlInsertAuditEventWithError
 run prepareRejectedAuditCall
 bind ok rejectedAuditStatement SqliteStatement prepareRejectedAuditCall
 bind error prepareRejectedAuditError SqliteStatementPrepareFailure prepareRejectedAuditCall

@@ -13,6 +13,7 @@ import stdlib standard.stdlib
 import runtime app.realtime_auction_arena.server.runtime_constants
 import helpers app.realtime_auction_arena.server.http_helpers
 import chat app.realtime_auction_arena.server.chat
+import sql app.realtime_auction_arena.server.sql_queries
 
 exportOperation app.realtime_auction_arena.server.auth_context resolveJwtSigningSecret
 exportOperation app.realtime_auction_arena.server.auth_context insertAuthAuditEvent
@@ -41,7 +42,6 @@ exportConstant app.realtime_auction_arena.server.auth_context authLoginRateLimit
 exportConstant app.realtime_auction_arena.server.auth_context authLoginRateLimitCount
 exportConstant app.realtime_auction_arena.server.auth_context sqlDeleteExpiredAuthRateLimitBuckets
 exportConstant app.realtime_auction_arena.server.auth_context sqlUpsertLoginRateLimit
-exportConstant app.realtime_auction_arena.server.auth_context sqlSelectLoginRateLimit
 exportConstant app.realtime_auction_arena.server.auth_context sqlInsertAuthAuditEvent
 
 capability httpRequestReader http.request read
@@ -81,6 +81,8 @@ storage module mutable currentAuthPayloadTemplate JwtPayloadTemplate ""
 storage module mutable currentAuthIssuedAt CSignedInt64 0
 storage module mutable currentAuthNotBefore CSignedInt64 0
 storage module mutable currentAuthExpiresAt CSignedInt64 0
+storage module mutable cachedJwtSigningSecret JwtSecret ""
+storage module mutable cachedJwtSigningSecretReady CSignedInt32 0
 
 storage module immutable authAuctioneerTimedAccessPayloadFormat CNullTerminatedByteString "{\"iss\":\"realtime-auction-arena\",\"aud\":\"api-v1\",\"sub\":\"user_auctioneer_001\",\"role\":\"auctioneer\",\"scopes\":[\"auctions:write\",\"bids:read\",\"chat:moderate\"],\"iat\":%lld,\"nbf\":%lld,\"exp\":%lld,\"jti\":\"%%s\"}"
 storage module immutable authBidderTimedAccessPayloadFormat CNullTerminatedByteString "{\"iss\":\"realtime-auction-arena\",\"aud\":\"api-v1\",\"sub\":\"user_bidder_demo\",\"role\":\"bidder\",\"scopes\":[\"auctions:read\",\"bids:write\",\"chat:write\"],\"iat\":%lld,\"nbf\":%lld,\"exp\":%lld,\"jti\":\"%%s\"}"
@@ -95,10 +97,15 @@ storage module immutable authAuditErrorNone CNullTerminatedByteString ""
 storage module immutable authAuditOutcomeRejectedCode CSignedInt64 4
 storage module immutable authLoginRateLimitWindowMillis CSignedInt64 60000
 storage module immutable authLoginRateLimitCount CSignedInt64 10
-storage module immutable sqlDeleteExpiredAuthRateLimitBuckets CNullTerminatedByteString "DELETE FROM rate_limit_buckets WHERE reset_at <= ?"
-storage module immutable sqlUpsertLoginRateLimit CNullTerminatedByteString "INSERT INTO rate_limit_buckets(bucket_key, scope, actor_user_id, route_pattern, window_start, window_ms, count, denied_count, limit_count, reset_at, updated_at) VALUES (?, 'auth.login', '', '/api/v1/auth/login', ?, 60000, 1, 0, 10, ?, ?) ON CONFLICT(bucket_key, window_start) DO UPDATE SET count = count + 1, updated_at = excluded.updated_at"
-storage module immutable sqlSelectLoginRateLimit CNullTerminatedByteString "SELECT count FROM rate_limit_buckets WHERE bucket_key = ? AND window_start = ? LIMIT 1"
-storage module immutable sqlInsertAuthAuditEvent CNullTerminatedByteString "INSERT INTO audit_events(audit_event_id, schema_version, actor_user_id, actor_role, request_id, action, outcome, error_code, payload_json, created_at) VALUES ('aud_' || lower(hex(randomblob(8))), 1, ?, ?, ?, ?, ?, ?, ?, ?)"
+storage module immutable sqlDeleteExpiredAuthRateLimitBuckets SqlText
+sql body sqlDeleteExpiredAuthRateLimitBuckets
+  DELETE FROM rate_limit_buckets WHERE reset_at <= ?
+storage module immutable sqlUpsertLoginRateLimit SqlText
+sql body sqlUpsertLoginRateLimit
+  INSERT INTO rate_limit_buckets(bucket_key, scope, actor_user_id, route_pattern, window_start, window_ms, count, denied_count, limit_count, reset_at, updated_at) VALUES (?, 'auth.login', '', '/api/v1/auth/login', ?, 60000, 1, 0, 10, ?, ?) ON CONFLICT(bucket_key, window_start) DO UPDATE SET count = count + 1, updated_at = excluded.updated_at RETURNING count
+storage module immutable sqlInsertAuthAuditEvent SqlText
+sql body sqlInsertAuthAuditEvent
+  INSERT INTO audit_events(audit_event_id, schema_version, actor_user_id, actor_role, request_id, action, outcome, error_code, payload_json, created_at) VALUES ('aud_' || lower(hex(randomblob(8))), 1, ?, ?, ?, ?, ?, ?, ?, ?)
 
 operation resolveJwtSigningSecret
 output operation resolveJwtSigningSecret JwtSecret
@@ -111,6 +118,12 @@ useCapability resolveJwtSigningSecret memoryBufferReadWriteCapability
 purpose operation resolveJwtSigningSecret "Return AUCTION_ARENA_JWT_SECRET when configured, otherwise the deterministic local demo secret."
 invariant operation resolveJwtSigningSecret "The returned secret is never logged or included in an HTTP response."
 label startResolveJwtSigningSecret
+call cachedJwtSecretReadyCall math.equalCSignedInt32
+argument cachedJwtSecretReadyCall left CSignedInt32 cachedJwtSigningSecretReady
+argument cachedJwtSecretReadyCall right CSignedInt32 runtime.authActiveFlag
+run cachedJwtSecretReadyCall
+bind value cachedJwtSecretReady Bool cachedJwtSecretReadyCall
+branch if condition cachedJwtSecretReady target returnCachedJwtSigningSecret
 call getenvJwtSecretCall c.getenv
 argument getenvJwtSecretCall name CNullTerminatedByteString runtime.authJwtSecretEnvName
 run getenvJwtSecretCall
@@ -130,9 +143,15 @@ argument envJwtSecretTooShortCall right I64 32
 run envJwtSecretTooShortCall
 bind value envJwtSecretTooShort Bool envJwtSecretTooShortCall
 branch if condition envJwtSecretTooShort target returnDemoJwtSecret
-return value envJwtSecret
+set storage cachedJwtSigningSecret envJwtSecret
+set storage cachedJwtSigningSecretReady runtime.authActiveFlag
+return value cachedJwtSigningSecret
 label returnDemoJwtSecret
-return value runtime.demoJwtSigningSecret
+set storage cachedJwtSigningSecret runtime.demoJwtSigningSecret
+set storage cachedJwtSigningSecretReady runtime.authActiveFlag
+return value cachedJwtSigningSecret
+label returnCachedJwtSigningSecret
+return value cachedJwtSigningSecret
 
 operation insertAuthAuditEvent
 input operation insertAuthAuditEvent database SqliteDatabase
@@ -154,7 +173,7 @@ invariant operation insertAuthAuditEvent "Payloads are caller-supplied redacted 
 label startInsertAuthAuditEvent
 call prepareAuthAuditCall sqlite.prepareStatement
 argument prepareAuthAuditCall database SqliteDatabase database
-argument prepareAuthAuditCall sql CNullTerminatedByteString sqlInsertAuthAuditEvent
+argument prepareAuthAuditCall sql SqlText sqlInsertAuthAuditEvent
 run prepareAuthAuditCall
 bind ok authAuditStatement SqliteStatement prepareAuthAuditCall
 bind error prepareAuthAuditError SqliteStatementPrepareFailure prepareAuthAuditCall
@@ -245,9 +264,17 @@ argument rateResetAtCall left I64 loginRateWindowStart
 argument rateResetAtCall right I64 authLoginRateLimitWindowMillis
 run rateResetAtCall
 bind value loginRateResetAt CSignedInt64 rateResetAtCall
+call beginLoginRateTxCall sqlite.exec
+argument beginLoginRateTxCall database SqliteDatabase database
+argument beginLoginRateTxCall sql SqlText sql.sqlBeginTransaction
+run beginLoginRateTxCall
+ignore void source beginLoginRateTxCall
+bind error beginLoginRateTxError SqliteDatabaseExecFailure beginLoginRateTxCall
+branch error source beginLoginRateTxCall target loginRateLimitUnavailable
+defer rollbackLoginRateTxDefer sqlite.exec database sql.sqlRollbackTransaction
 call prepareCleanupLoginRateCall sqlite.prepareStatement
 argument prepareCleanupLoginRateCall database SqliteDatabase database
-argument prepareCleanupLoginRateCall sql CNullTerminatedByteString sqlDeleteExpiredAuthRateLimitBuckets
+argument prepareCleanupLoginRateCall sql SqlText sqlDeleteExpiredAuthRateLimitBuckets
 run prepareCleanupLoginRateCall
 bind ok cleanupLoginRateStatement SqliteStatement prepareCleanupLoginRateCall
 bind error cleanupLoginRateError SqliteStatementPrepareFailure prepareCleanupLoginRateCall
@@ -268,7 +295,7 @@ branch error source stepCleanupLoginRateCall target loginRateLimitUnavailable
 
 call prepareUpsertLoginRateCall sqlite.prepareStatement
 argument prepareUpsertLoginRateCall database SqliteDatabase database
-argument prepareUpsertLoginRateCall sql CNullTerminatedByteString sqlUpsertLoginRateLimit
+argument prepareUpsertLoginRateCall sql SqlText sqlUpsertLoginRateLimit
 run prepareUpsertLoginRateCall
 bind ok upsertLoginRateStatement SqliteStatement prepareUpsertLoginRateCall
 bind error upsertLoginRateError SqliteStatementPrepareFailure prepareUpsertLoginRateCall
@@ -301,38 +328,11 @@ ignore void source bindUpsertLoginRateUpdatedCall
 call stepUpsertLoginRateCall sqlite.stepStatement
 argument stepUpsertLoginRateCall statement SqliteStatement upsertLoginRateStatement
 run stepUpsertLoginRateCall
-ignore ok source stepUpsertLoginRateCall type CSignedInt32
+bind ok upsertLoginRateStepStatus CSignedInt32 stepUpsertLoginRateCall
 bind error stepUpsertLoginRateError SqliteStatementStepFailure stepUpsertLoginRateCall
 branch error source stepUpsertLoginRateCall target loginRateLimitUnavailable
-
-call prepareSelectLoginRateCall sqlite.prepareStatement
-argument prepareSelectLoginRateCall database SqliteDatabase database
-argument prepareSelectLoginRateCall sql CNullTerminatedByteString sqlSelectLoginRateLimit
-run prepareSelectLoginRateCall
-bind ok selectLoginRateStatement SqliteStatement prepareSelectLoginRateCall
-bind error selectLoginRateError SqliteStatementPrepareFailure prepareSelectLoginRateCall
-branch error source prepareSelectLoginRateCall target loginRateLimitUnavailable
-defer finalizeSelectLoginRateDefer sqlite.finalizeStatement selectLoginRateStatement
-call bindSelectLoginRateKeyCall sqlite.bindText
-argument bindSelectLoginRateKeyCall statement SqliteStatement selectLoginRateStatement
-argument bindSelectLoginRateKeyCall parameterIndex CSignedInt32 runtime.bindIndex1
-argument bindSelectLoginRateKeyCall value CNullTerminatedByteString bucketKey
-run bindSelectLoginRateKeyCall
-ignore void source bindSelectLoginRateKeyCall
-call bindSelectLoginRateWindowCall sqlite.bindInt64
-argument bindSelectLoginRateWindowCall statement SqliteStatement selectLoginRateStatement
-argument bindSelectLoginRateWindowCall parameterIndex CSignedInt32 runtime.bindIndex2
-argument bindSelectLoginRateWindowCall value CSignedInt64 loginRateWindowStart
-run bindSelectLoginRateWindowCall
-ignore void source bindSelectLoginRateWindowCall
-call stepSelectLoginRateCall sqlite.stepStatement
-argument stepSelectLoginRateCall statement SqliteStatement selectLoginRateStatement
-run stepSelectLoginRateCall
-bind ok selectLoginRateStepStatus CSignedInt32 stepSelectLoginRateCall
-bind error stepSelectLoginRateError SqliteStatementStepFailure stepSelectLoginRateCall
-branch error source stepSelectLoginRateCall target loginRateLimitUnavailable
 call loginRateRowFoundCall math.equalCSignedInt32
-argument loginRateRowFoundCall left CSignedInt32 selectLoginRateStepStatus
+argument loginRateRowFoundCall left CSignedInt32 upsertLoginRateStepStatus
 argument loginRateRowFoundCall right CSignedInt32 runtime.sqliteRowStepStatus
 run loginRateRowFoundCall
 bind value loginRateRowFound Bool loginRateRowFoundCall
@@ -340,10 +340,23 @@ branch if condition loginRateRowFound target loginRateRowAccepted
 branch else target loginRateLimitUnavailable
 label loginRateRowAccepted
 call readLoginRateCountCall sqlite.columnInt64
-argument readLoginRateCountCall statement SqliteStatement selectLoginRateStatement
+argument readLoginRateCountCall statement SqliteStatement upsertLoginRateStatement
 argument readLoginRateCountCall columnIndex CSignedInt32 runtime.columnIndex0
 run readLoginRateCountCall
 bind value loginRateCount CSignedInt64 readLoginRateCountCall
+call drainUpsertLoginRateCall sqlite.stepStatement
+argument drainUpsertLoginRateCall statement SqliteStatement upsertLoginRateStatement
+run drainUpsertLoginRateCall
+ignore ok source drainUpsertLoginRateCall type CSignedInt32
+bind error drainUpsertLoginRateError SqliteStatementStepFailure drainUpsertLoginRateCall
+branch error source drainUpsertLoginRateCall target loginRateLimitUnavailable
+call commitLoginRateTxCall sqlite.exec
+argument commitLoginRateTxCall database SqliteDatabase database
+argument commitLoginRateTxCall sql SqlText sql.sqlCommitTransaction
+run commitLoginRateTxCall
+ignore void source commitLoginRateTxCall
+bind error commitLoginRateTxError SqliteDatabaseExecFailure commitLoginRateTxCall
+branch error source commitLoginRateTxCall target loginRateLimitUnavailable
 call loginRateExceededCall math.greaterThanI64
 argument loginRateExceededCall left I64 loginRateCount
 argument loginRateExceededCall right I64 authLoginRateLimitCount
