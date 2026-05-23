@@ -1,15 +1,15 @@
 # Native Async Runtime
 
-`SemanticScript/runtime/native_async/` is the opt-in libuv experiment for
-post-1.0 async lowering. The 1.0 compiler still lowers `start` and `await`
-synchronously by default. The native HTTP client prototype can link this adapter
-as a stub today; real libuv behavior must be selected explicitly with
+`SemanticScript/runtime/native_async/` is the async runtime adapter used by
+native async runtime bindings. The default backend is a deterministic
+same-thread fallback; real libuv behavior must be selected explicitly with
 `SEM_ASYNC_WITH_LIBUV=ON` while the continuation-frame compiler backend is still
 experimental.
 
 ## Backend Choice
 
-The experiment uses libuv 1.x as the portable event-loop backend:
+The experiment uses libuv 1.x as the portable event-loop backend when the real
+backend is enabled:
 
 - timers map to `uv_timer_t`;
 - blocking or CPU work maps to `uv_queue_work`;
@@ -20,7 +20,7 @@ The experiment uses libuv 1.x as the portable event-loop backend:
 
 ## Build
 
-Stub build:
+Same-thread fallback build:
 
 ```powershell
 cmake -S SemanticScript/runtime/native_async -B SemanticScript/runtime/native_async/build
@@ -35,9 +35,12 @@ cmake -S SemanticScript/runtime/native_async -B SemanticScript/runtime/native_as
 cmake --build SemanticScript/runtime/native_async/build
 ```
 
-If libuv is missing, CMake fails when `SEM_ASYNC_WITH_LIBUV=ON`. The stub build
-keeps source-only and CI builds working on machines that do not have native
-async prerequisites.
+If libuv is missing, CMake can fetch pinned libuv source when
+`SEM_ASYNC_FETCH_LIBUV=ON` or fail fast when that option is disabled. The default
+build keeps source-only and CI builds runnable by executing queued work
+immediately on the caller thread and driving one-shot timers from monotonic time
+during `ss_async_loop_run_once`. That fallback is a deterministic compatibility
+path, not the nonblocking production backend.
 
 ## Await Model
 
@@ -73,9 +76,10 @@ uses the same frame/resume mechanism rather than blocking the loop.
 
 `timeout CALL DURATION` attaches a one-shot `SSAsyncTimer` to the call's future.
 When the timer fires, the runtime marks the future timeout/cancel flag and wakes
-the loop. `cancelOn CALL TOKEN` records the cancellation token watched by the
-future; hard interruption depends on the backend, but the future must publish a
-cancelled status before generated code resumes after `await`.
+the loop. `cancelOn CALL TOKEN` passes an optional native `SSAsyncCancelToken`;
+runtime bindings that keep a pending future retain the token, poll it before
+loop ticks, and publish a cancelled status before generated code resumes after
+`await`.
 
 `await WAIT_SET` with following `case CALL LABEL` rows and a `done LABEL` row is
 the source-level wait set. Current console lowering polls the futures, runs one
@@ -93,10 +97,12 @@ policy fires.
 
 ## Worker Pool
 
-The first backend maps blocking or CPU work to `uv_queue_work` on libuv's default
-worker pool. The worker callback must not touch generated SemanticScript frame
-state directly. The after-work callback runs on the libuv loop thread, marks the
-future ready, and schedules/resumes the generated continuation.
+The libuv backend maps blocking or CPU work to `uv_queue_work` on libuv's
+default worker pool. The worker callback must not touch generated
+SemanticScript frame state directly. The after-work callback runs on the libuv
+loop thread, marks the future ready, and schedules/resumes the generated
+continuation. The fallback backend runs work and after-work callbacks
+same-thread.
 
 Worker-pool sizing uses libuv's `UV_THREADPOOL_SIZE` environment variable for
 the experiment. A SemanticScript-owned pool can be added later if the runtime

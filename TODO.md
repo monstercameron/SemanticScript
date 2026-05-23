@@ -3,6 +3,189 @@
 This file tracks the release-readiness gaps found in the 2026-05-18 project
 review. A task is only done when the linked command or artifact is clean.
 
+## P0 - True Nonblocking Async Runtime
+
+This is a product target, not a documentation cleanup item. The current
+synchronous fallback is useful compatibility behavior, but it is not the real
+async system. The real backend is done only when `await` yields the current
+SemanticScript operation to a runtime-owned event loop, resumes through a
+generated continuation frame, and does not block the caller's C stack while the
+future is pending.
+
+- [ ] Promote `asyncRuntime PROJECT libuv` from experiment to true nonblocking
+      backend.
+  - [ ] Keep `asyncRuntime PROJECT none` as the deterministic synchronous
+        fallback and name it explicitly in diagnostics/docs.
+  - [ ] Make `asyncRuntime PROJECT libuv` fail fast if continuation-frame
+        lowering is not enabled for a source shape that uses async.
+  - [ ] Add a compiler/backend mode flag that distinguishes synchronous
+        fallback, blocking prototype, and real continuation async.
+  - [ ] Add `sem check --json` readiness facts for selected async backend,
+        available native runtime libraries, and unsupported lowering paths.
+  - [ ] Add release notes that say adapter-level futures and blocking await
+        helpers are not sufficient to claim true async support.
+- [ ] Define the hard nonblocking contract.
+  - [ ] `await CALL` stores the next state in a heap frame, registers a resume
+        continuation with the awaited future, and returns to the event loop.
+  - [ ] `await WAIT_SET` stores selected-case state in the frame and resumes the
+        parent operation when one case is ready; it must not spin or nested-run
+        the loop in production lowering.
+  - [ ] Generated async code must not call `ss_async_future_await` on the
+        production path; that helper remains only for compatibility demos and
+        blocking console experiments.
+  - [ ] The original C stack frame must not remain active while an async
+        operation is suspended.
+  - [ ] Native webserver and GUI adapters must not nested-run libuv inside their
+        own handler/message loops.
+  - [ ] Async operations must have an explicit lifecycle: completed, cancelled,
+        timed out, detached, or failed with a typed runtime status.
+- [ ] Implement compiler continuation-frame lowering in `semsc.py`.
+  - [ ] Allocate one heap frame per async operation invocation.
+  - [ ] Generate a frame struct containing state discriminator, spilled locals,
+        pending future handles, result slots, error slots, cleanup flags, and
+        caller continuation metadata.
+  - [ ] Generate a resume function per async operation with a state switch for
+        entry and every `await` point.
+  - [ ] Spill every local live across `await` into the frame before yielding.
+  - [ ] Materialize future results and errors after resume, not before yield.
+  - [ ] Preserve `bind value`, `bind ok`, `bind error`, `branch error`, and
+        `ignore` behavior after async materialization.
+  - [ ] Lower async user-operation `start CALL` to create a child frame/future
+        without running the whole child to completion on the caller stack.
+  - [ ] Lower async native `runtimeBindingAsyncStart` /
+        `runtimeBindingAsyncAwait` operations so `start` creates/returns a
+        future and `await` registers continuation state instead of blocking.
+  - [ ] Ensure generated code rejects an async-only runtime binding reached by
+        `run CALL` with an actionable diagnostic.
+  - [ ] Ensure generated code rejects `await CALL` when the call was never
+        started, already awaited, consumed by a wait-set case, or detached.
+  - [ ] Ensure generated code rejects loop/reentry shapes that would restart the
+        same future name instead of creating a fresh future.
+- [ ] Replace wait-set polling with continuation scheduling.
+  - [ ] Keep source syntax `await WAIT_SET`, `case CALL LABEL`, and
+        `done LABEL` unchanged.
+  - [ ] Register one continuation against each unconsumed future in the wait
+        set.
+  - [ ] Select exactly one ready case per resume turn and store the selected
+        call in the frame.
+  - [ ] Mark selected cases consumed before jumping to the handler label.
+  - [ ] Resume the done label only after every case in the current wait-set
+        batch is consumed.
+  - [ ] Preserve existing validation that case labels are private handler
+        targets and must re-enter the wait-set until all cases are consumed.
+- [ ] Make cleanup correct across suspension.
+  - [ ] Run ordinary `defer` and `deferLog` cleanup on normal return, error
+        return, timeout, and cancellation.
+  - [ ] Implement `deferAwaitLog` with the same frame/resume mechanism instead
+        of blocking the event loop.
+  - [ ] Track which defers were registered before each suspension point.
+  - [ ] Free or release every completed future on all return paths.
+  - [ ] Prove cancelled timers, queued work requests, pending event receives,
+        and HTTP fetch futures do not leak handles or frame memory.
+- [ ] Make timeout and cancellation real future boundaries.
+  - [ ] Attach `timeout CALL DURATION` to the call future through a runtime
+        timer owned by the async loop.
+  - [ ] Attach `cancelOn CALL TOKEN` to the call future and retain/release the
+        token safely while work is pending.
+  - [ ] Resume the waiting operation with a typed timeout or cancellation status
+        without blocking the loop.
+  - [ ] Define race ordering when completion, timeout, and cancellation happen
+        in the same loop turn.
+  - [ ] Add deterministic tests for completion-before-timeout,
+        timeout-before-completion, cancellation-before-start, and
+        cancellation-while-pending.
+- [ ] Finish the native async runtime ABI.
+  - [x] Add a loop-owned ready queue so continuations resume on the event-loop
+        thread, not from arbitrary worker/timer callbacks.
+  - [x] Add `ss_async_future_on_ready` coverage that proves callbacks are queued
+        safely when a future is already ready and when it completes later.
+  - [ ] Add future reference/lifetime rules so a future cannot be destroyed
+        while a continuation is registered.
+  - [ ] Add cancellation-safe timer destruction and work request cleanup tests.
+  - [ ] Add runtime shutdown semantics for pending futures, detached tasks, and
+        open timers.
+  - [ ] Add debug/provenance hooks for future creation, completion, resume,
+        cancellation, timeout, and destruction.
+- [ ] Make structured concurrency truly asynchronous.
+  - [ ] Replace `taskGroup` direct-dispatch fallback in the libuv backend with a
+        group object that owns child futures.
+  - [ ] Lower `startInGroup` to start child futures without blocking the parent.
+  - [ ] Lower `awaitGroup` to suspend the parent until all children complete or
+        group policy fires.
+  - [ ] Implement group error aggregation and `bindGroupError` materialization.
+  - [ ] Implement sibling cancellation policy for failure/timeout cases.
+  - [ ] Add tests proving sibling work overlaps and parent resumes only after
+        the group reaches its policy-defined terminal state.
+- [ ] Make worker pools truly asynchronous.
+  - [ ] Map `workerPool`, `work`, `workArg`, `submitWork`, and `awaitWork` to
+        runtime futures in the libuv backend.
+  - [ ] Ensure worker callbacks never touch generated SemanticScript frame state
+        directly.
+  - [ ] Ensure after-work callbacks publish results on the loop thread and then
+        schedule the awaiting continuation.
+  - [ ] Define worker-pool sizing and backpressure beyond libuv's global
+        `UV_THREADPOOL_SIZE` if product scheduling needs it.
+  - [ ] Add tests proving submitted work does not run inline on the caller stack
+        under the real async backend.
+- [ ] Make channels, select, locks, and intervals real runtime features.
+  - [ ] Replace single-slot channel fallback with bounded async queues in the
+        libuv backend.
+  - [ ] Implement send/receive suspension and wakeup without busy-waiting.
+  - [ ] Implement channel close and `branchIfChannelClosed` semantics.
+  - [ ] Implement async `select` over channel readiness, futures, timers, and
+        cancellation tokens.
+  - [ ] Implement mutex acquire/release with suspension or documented
+        loop-thread affinity rules.
+  - [ ] Implement `interval`, `startInterval`, and `awaitIntervalTick` with
+        loop timers and no synchronous fallthrough in the real backend.
+- [ ] Integrate `standard.event` with the real async model.
+  - [ ] Keep `ss_event_receive_start` as the pending receive registration point.
+  - [ ] Replace generated `ss_event_receive_await` blocking waits with
+        continuation registration/resume.
+  - [ ] Ensure append/close completes pending receives by scheduling their
+        waiters on the loop thread.
+  - [ ] Add tests proving two subscribers can await one event without blocking
+        the emitter or each other.
+  - [ ] Add cancellation and timeout tests for pending receives under the real
+        backend.
+- [ ] Integrate native HTTP client with the real async model.
+  - [ ] Replace generated `ss_http_client_fetch_text_await` blocking waits with
+        continuation registration/resume.
+  - [ ] Decide whether the production HTTP backend remains `uv_queue_work` plus
+        libcurl easy API or moves to libcurl `multi_socket` plus `uv_poll_t`.
+  - [ ] If using `multi_socket`, drive DNS, connect, TLS handshake, write, and
+        response read phases from the event loop.
+  - [ ] Add tests proving two outbound fetches can overlap and complete out of
+        order without blocking the parent operation.
+  - [ ] Add tests proving response body ownership and cleanup are safe after
+        resumed await.
+- [ ] Define event-loop ownership per target.
+  - [ ] Console MVP: one runtime-owned loop for the process, one async root
+        operation, clean loop shutdown after root completion.
+  - [ ] Webserver: do not allow nonblocking route-handler async until the native
+        HTTP server adapter has an event-loop handler model.
+  - [ ] GUI: do not allow libuv nested-run inside a GUI message loop; define
+        pump integration or explicitly reject the combination.
+  - [ ] Long-lived streaming/SSE: define how handler lifetimes, cancellation,
+        backpressure, and async subscriptions interact before claiming support.
+- [ ] Add executable tests and diagnostics proving the backend is nonblocking.
+  - [ ] Add compiler tests that inspect IR for frame allocation, resume switch,
+        `ss_async_future_on_ready`, and absence of `ss_async_future_await` on
+        real async paths.
+  - [ ] Add runtime tests for future continuation ordering, ready-before-await,
+        await-before-ready, cancellation, timeout, and destruction.
+  - [ ] Add feature tests where a parent starts two delayed operations and the
+        shorter one completes first through a wait set.
+  - [ ] Add feature tests where a parent starts child work and continues to the
+        next source row before the child completes.
+  - [ ] Add feature tests for async cleanup after suspension.
+  - [ ] Add app smoke tests that fail if async work is actually serialized by
+        blocking waits.
+  - [ ] Add benchmark coverage for thousands of timers/futures to catch hidden
+        busy-waiting and per-await nested loop runs.
+  - [ ] Add linter/compiler diagnostics that clearly say when source is using
+        synchronous fallback rather than the true nonblocking backend.
+
 ## P0 - Todo Web Native Webserver Effort
 
 - [x] Add a granular root TODO section for the Todo Web native webserver work.

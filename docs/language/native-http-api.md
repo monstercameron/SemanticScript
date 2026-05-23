@@ -22,6 +22,9 @@ Current implementation status:
   calls.
 - Response text, response bytes, one-shot SSE event bodies, and custom response
   headers are available through native runtime calls.
+- `standard.http` exposes blocking SSE stream wrappers and
+  `serverIsShuttingDown` as ordinary stdlib operations backed by generic native
+  `runtimeBinding` hooks.
 - `routeMiddleware` executes one path-scoped middleware operation before the
   route handler. Middleware operations return the built-in `MiddlewareControl`
   enum, so they can either continue to the route handler or short-circuit after
@@ -57,6 +60,10 @@ Rules:
 - `serverPort SERVER PORT` sets the bind port.
 - `route SERVER METHOD PATH HANDLER` maps one HTTP method/path pair to one
   operation.
+- `routeNotFound SERVER HANDLER` registers a JSON/HTML/application fallback for
+  unmatched paths.
+- `routeMethodNotAllowed SERVER HANDLER` registers the fallback used when a
+  request path matches a route pattern but the HTTP method does not.
 - The first backend should support exact static paths. Path parameters can be
   added after the exact-route dispatcher is stable.
 - Current checked methods are `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`,
@@ -172,6 +179,13 @@ Initial call targets:
 | `http.multipartPartLength` | `request HttpRequest`, `name CNullTerminatedByteString` | `CByteCount` | `ss_http_multipart_part_length` |
 | `http.multipartPartFilename` | `request HttpRequest`, `name CNullTerminatedByteString` | `CNullTerminatedByteString` | `ss_http_multipart_part_filename` |
 | `http.multipartPartContentType` | `request HttpRequest`, `name CNullTerminatedByteString` | `CNullTerminatedByteString` | `ss_http_multipart_part_content_type` |
+| `http.openSseStream` | `response HttpResponse`, `status HttpStatusCode` | `CSignedInt32` | `standard.http` runtimeBinding wrapper over `ss_http_sse_open` |
+| `http.writeSseEvent` | `response HttpResponse`, `event SseEventName`, `data SseEventData` | `CSignedInt32` | `standard.http` runtimeBinding wrapper over `ss_http_sse_write_event` |
+| `http.writeSseEventWithId` | `response HttpResponse`, `id SseEventId`, `event SseEventName`, `data SseEventData` | `CSignedInt32` | `standard.http` runtimeBinding wrapper over `ss_http_sse_write_event_with_id` |
+| `http.writeSseHeartbeat` | `response HttpResponse`, `comment SseHeartbeatComment` | `CSignedInt32` | `standard.http` runtimeBinding wrapper over `ss_http_sse_heartbeat` |
+| `http.closeSseStream` | `response HttpResponse` | `CSignedInt32` | `standard.http` runtimeBinding wrapper over `ss_http_sse_close` |
+| `http.clientDisconnected` | `response HttpResponse` | `Bool` | `standard.http` runtimeBinding wrapper over `ss_http_client_disconnected` |
+| `http.serverIsShuttingDown` | none | `Bool` | `standard.http` runtimeBinding wrapper over `ss_http_server_is_shutting_down` |
 
 Current request-body behavior is deliberately bounded: the blocking adapter
 buffers at most 64 KiB of headers plus body per request and returns `413` for
@@ -194,11 +208,25 @@ with `pointer.isNull` and branch to an explicit response. Routes that
 intentionally pin the adapter's null-body 500 path for regression coverage
 should use `pinsNullBodyFailurePath OP "rationale"` rather than a prose warning.
 
-Current SSE behavior is one-shot event-stream body formatting through
-`http.responseSseEvent`. It emits a valid `text/event-stream` payload with a
-fixed `Content-Length` and then the blocking adapter closes the connection.
-Long-lived SSE streams, incremental writes, flush, cancellation, and keep-alive
-heartbeats remain future streaming APIs.
+`http.responseSseEvent` remains the one-shot event-stream body formatter. It
+emits a valid `text/event-stream` payload with a fixed `Content-Length` and then
+the blocking adapter closes the connection.
+
+Streaming SSE is exposed through `standard.http`, not compiler-specific
+`http.sse*` targets. Import `standard.http` and call `http.openSseStream`,
+`http.writeSseEvent`, `http.writeSseEventWithId`, `http.writeSseHeartbeat`,
+`http.closeSseStream`, and `http.clientDisconnected`. Those operations are
+standard-library wrappers over native `runtimeBinding` hooks. Route-level
+fanout, async subscriber queues, request cancellation, and nonblocking
+slow-client handling are still application or future runtime work.
+
+Graceful shutdown drain state is exposed through `standard.http`, not through
+application-specific compiler lowering. Import `standard.http` and call
+`http.serverIsShuttingDown` from a handler or middleware that declares
+`effect OP read http.server` and uses a capability covering `http.server read`.
+The operation returns only the process drain flag. Application code owns whether
+that flag makes readiness fail, command routes reject, SSE subscribers drain, or
+read-only routes remain available.
 
 Current query behavior is raw splitting by `&` and `=`. The blocking adapter's
 lookup returns the first matching duplicate key today. Percent decoding,
@@ -209,8 +237,8 @@ Future targets:
 
 | Target | Purpose |
 |---|---|
-| `http.responseStreamStart` / `http.responseStreamWrite` / `http.responseStreamEnd` | Long-lived streaming responses for SSE and large downloads. |
-| `http.requestShutdown` | Coordinate graceful server shutdown. |
+| Async stream fanout / cancellation hooks | Nonblocking subscriber queues and request-cancellation-aware long-lived SSE. |
+| Request/connection cancellation token | Let long-running handlers and SSE fanout observe client disconnects and shutdown cancellation. |
 
 ## Minimal Example
 

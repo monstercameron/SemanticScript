@@ -23,6 +23,7 @@ build-tape project and should not contain `build.sem`.
 ```text
 std/
   module.sem              # top-level `standard` relay
+  event/main.sem          # imported as standard.event
   html/main.sem           # imported as standard.html
   json/main.sem           # imported as standard.json
   sqlite/main.sem         # imported as standard.sqlite

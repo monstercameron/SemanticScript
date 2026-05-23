@@ -78,6 +78,9 @@ The current adapter does:
   `http.responseText`, `http.responseBytes`, `http.responseSseEvent`,
   `http.responseHeader`, `http.responseFile`, `http.requestPath`,
   `http.requestPathParam`, and `http.requestMethod`;
+- expose `standard.http` runtimeBinding hooks for blocking SSE stream open,
+  event writes with optional ids, heartbeat/close/disconnect checks, and
+  `serverIsShuttingDown` drain-state reads;
 - start with synchronous handlers and add async continuation support later.
 
 The current adapter is blocking and single-threaded. It accepts and dispatches
@@ -105,6 +108,9 @@ Done for the current native adapter:
    utility calls.
 7. One path-scoped `routeMiddleware` callback can run before each matching
    route handler.
+8. `standard.http` exposes blocking SSE primitives, including id-bearing event
+   frames, and handler-visible graceful-shutdown drain state through generic
+   native runtimeBinding hooks.
 
 Remaining work:
 
@@ -112,7 +118,8 @@ Remaining work:
 2. Teach `--emit-exe` to link H2O outputs behind that backend flag.
 3. Add structured request body decoders and long-lived streaming body APIs.
 4. Enforce `routeTimeout` metadata without unsafe handler preemption.
-5. Add graceful shutdown hooks.
+5. Add request/connection cancellation tokens for shutdown-aware long-running
+   handlers and SSE fanout.
 6. Add method-scoped middleware and richer persistent server state.
 7. Add HTTP/2 over TLS once certificate and ALPN setup are wired.
 
