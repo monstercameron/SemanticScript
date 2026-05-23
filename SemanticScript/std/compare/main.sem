@@ -213,8 +213,8 @@ run detectFloatLessThanCall
 bind value floatLeftLessThan Bool detectFloatLessThanCall
 branch if condition floatLeftLessThan target returnFloatLessThan
 call detectFloatGreaterThanCall math.greaterThanF64
-argument detectFloatGreaterThanCall left CSignedInt64 leftValue
-argument detectFloatGreaterThanCall right CSignedInt64 rightValue
+argument detectFloatGreaterThanCall left F64 leftValue
+argument detectFloatGreaterThanCall right F64 rightValue
 run detectFloatGreaterThanCall
 bind value floatLeftGreaterThan Bool detectFloatGreaterThanCall
 branch if condition floatLeftGreaterThan target returnFloatGreaterThan

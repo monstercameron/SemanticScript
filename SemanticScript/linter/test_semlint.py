@@ -5153,6 +5153,39 @@ run addCall
 """)
         self.assertNotIn("SS4301", _codes(diagnostics))
 
+    def test_float_builtin_with_integer_arg_type_is_flagged(self) -> None:
+        # Regression: math.greaterThanF64 is a float-domain builtin; an
+        # `argument` row annotated with an integer C-ABI type (CSignedInt64)
+        # is a real type-context bug (found in std/compare + std/convert).
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+const leftValue CFloat64 zeroValue
+const rightValue CFloat64 zeroValue
+call gtCall math.greaterThanF64
+argument gtCall left CSignedInt64 leftValue
+argument gtCall right CSignedInt64 rightValue
+run gtCall
+""")
+        self.assertIn("SS4301", _codes(diagnostics))
+
+    def test_float_builtin_with_cfloat64_arg_type_not_flagged(self) -> None:
+        # CFloat64 and F64 are the same machine double; an `argument` row
+        # spelled CFloat64 against an F64 builtin signature must NOT flag.
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+const leftValue CFloat64 zeroValue
+const rightValue CFloat64 zeroValue
+call gtCall math.greaterThanF64
+argument gtCall left CFloat64 leftValue
+argument gtCall right CFloat64 rightValue
+run gtCall
+""")
+        self.assertNotIn("SS4301", _codes(diagnostics))
+
     def test_type_alias_resolves_through_to_base(self) -> None:
         # `type AccountId UuidV7; type UuidV7 CSignedInt64` — passing an
         # AccountId where I64 is expected should resolve via aliases.
@@ -7580,6 +7613,54 @@ mainFile sampleProject "{mainFileName}"
             )
             diagnostics = semlint.lint_path(modulePath)
             self.assertNotIn("SS3614", _codes(diagnostics))
+
+
+# ==========================================================================
+# SS2515  module.standardLibraryDefinesSmokeMain
+# ==========================================================================
+
+class TestStdlibModuleNoSmokeMain(unittest.TestCase):
+    _STDLIB_MODULE_WITH_MAIN = (
+        "module standard.demo\n"
+        "exportConstant standard.demo demoModuleVersionText\n"
+        "storage module immutable demoModuleVersionText "
+        "CNullTerminatedByteString \"standard.demo 0.1\"\n"
+        "operation main\n"
+        "output operation main ExitCode\n"
+        "memory main heap no\n"
+        "async main no\n"
+        "purpose operation main \"smoke\"\n"
+        "label startMain\n"
+        "storage module immutable exitOkCode ExitCode 0\n"
+        "return value exitOkCode\n"
+    )
+
+    def test_stdlib_implementation_module_with_main_is_flagged(self) -> None:
+        diagnostics = _lint_source_at("main.sem", self._STDLIB_MODULE_WITH_MAIN)
+        self.assertIn("SS2515", _codes(diagnostics))
+
+    def test_colocated_test_file_with_main_is_not_flagged(self) -> None:
+        # The smoke main legitimately lives in main.test.sem.
+        diagnostics = _lint_source_at("main.test.sem", self._STDLIB_MODULE_WITH_MAIN)
+        self.assertNotIn("SS2515", _codes(diagnostics))
+
+    def test_non_standard_module_with_main_is_not_flagged(self) -> None:
+        # App modules under app.* legitimately declare the entry `main`.
+        appModule = self._STDLIB_MODULE_WITH_MAIN.replace(
+            "standard.demo", "app.demo"
+        )
+        diagnostics = _lint_source_at("main.sem", appModule)
+        self.assertNotIn("SS2515", _codes(diagnostics))
+
+    def test_stdlib_module_without_main_is_not_flagged(self) -> None:
+        moduleOnly = (
+            "module standard.demo\n"
+            "exportConstant standard.demo demoModuleVersionText\n"
+            "storage module immutable demoModuleVersionText "
+            "CNullTerminatedByteString \"standard.demo 0.1\"\n"
+        )
+        diagnostics = _lint_source_at("main.sem", moduleOnly)
+        self.assertNotIn("SS2515", _codes(diagnostics))
 
 
 if __name__ == "__main__":

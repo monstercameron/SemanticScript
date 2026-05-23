@@ -293,6 +293,33 @@ branch if condition selfCompareOk target selfCompareHolds
 branch else target smokeAssertionFailed
 label selfCompareHolds
 
+# Regression (high byte >= 128): fill the buffer with unsigned 200 (0xC8)
+# and confirm findByteValueInMemoryRange locates it at offset 0. Before the
+# fix, the loaded byte sign-extended to -56 and never matched targetValue
+# 200, so find wrongly returned -1 even though fill had just written it.
+storage module immutable highByteFillValue CSignedInt32 200
+storage module immutable oneByteFillCount CByteCount 1
+call fillHighByteCall fillMemoryBytesWithValue
+argument fillHighByteCall byteBuffer COpaqueMemoryAddress workBuffer
+argument fillHighByteCall targetValue CSignedInt32 highByteFillValue
+argument fillHighByteCall byteCount CByteCount oneByteFillCount
+run fillHighByteCall
+ignore value source fillHighByteCall type CByteCount
+call findHighByteCall findByteValueInMemoryRange
+argument findHighByteCall byteBuffer CNullTerminatedByteString workBuffer
+argument findHighByteCall targetValue CSignedInt32 highByteFillValue
+argument findHighByteCall byteCount CByteCount oneByteFillCount
+run findHighByteCall
+bind value findHighByteResult CSignedInt64 findHighByteCall
+call checkFindHighByteCall math.equalI64
+argument checkFindHighByteCall left I64 findHighByteResult
+argument checkFindHighByteCall right I64 integerZeroBoundaryForMemoryLocal
+run checkFindHighByteCall
+bind value findHighByteOk Bool checkFindHighByteCall
+branch if condition findHighByteOk target findHighByteHolds
+branch else target smokeAssertionFailed
+label findHighByteHolds
+
 storage module immutable successMessageText CNullTerminatedByteString "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console

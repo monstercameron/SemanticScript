@@ -9,6 +9,8 @@ invariant module standard.stdlib "The standard module entry is this file; tests 
 exportConstant standard.stdlib stdlibModuleVersionText
 storage module immutable stdlibModuleVersionText CNullTerminatedByteString "standard.stdlib 0.1"
 
+exportOperation standard.stdlib parseDecimalCStringToSignedInt64
+
 # Canonical standard-library implementation body.
 # ============================================================
 # SEMANTICSCRIPT STANDARD LIBRARY: <stdlib.h>-style numeric utilities
@@ -85,7 +87,7 @@ operation parseDecimalCStringToSignedInt64
 input operation parseDecimalCStringToSignedInt64 inputText CNullTerminatedByteString
 output operation parseDecimalCStringToSignedInt64 CSignedInt64
 memory parseDecimalCStringToSignedInt64 heap no
-memoryStackLimit parseDecimalCStringToSignedInt64 1024
+memory parseDecimalCStringToSignedInt64 stack max 1024
 async parseDecimalCStringToSignedInt64 no
 purpose operation parseDecimalCStringToSignedInt64 "Parse a NUL-terminated decimal numeric string into an i64 (atoi/atol shape). Skips ASCII whitespace, accepts optional sign, accumulates digits until a non-digit byte."
 invariant operation parseDecimalCStringToSignedInt64 "Empty / junk inputs return 0; trailing non-digit text is silently discarded."
@@ -212,7 +214,7 @@ operation parseHexCStringToSignedInt64
 input operation parseHexCStringToSignedInt64 inputText CNullTerminatedByteString
 output operation parseHexCStringToSignedInt64 CSignedInt64
 memory parseHexCStringToSignedInt64 heap no
-memoryStackLimit parseHexCStringToSignedInt64 1024
+memory parseHexCStringToSignedInt64 stack max 1024
 async parseHexCStringToSignedInt64 no
 purpose operation parseHexCStringToSignedInt64 "Parse a NUL-terminated hex numeric string into an i64 (strtol(s, NULL, 16) shape). Skips whitespace, accepts optional sign, accepts optional 0x / 0X prefix, accumulates hex digits."
 invariant operation parseHexCStringToSignedInt64 "Empty / junk inputs return 0; trailing non-hex text is silently discarded."
@@ -361,13 +363,9 @@ argument computeHexDecValueCall right I64 asciiZeroByteCode
 run computeHexDecValueCall
 bind value hexDigitDecValue I64 computeHexDecValueCall
 set memory currentHexDigitValue hexDigitDecValue
-# Read the just-set value to satisfy the dead-store check across
-# the parallel branches below (path A: digit, path B: upper hex,
-# path C: lower hex). The branchIf condition is always true on
-# this path because hex digit values 0..9 are non-zero except for
-# digit '0'; both outcomes go to hexAccumulateDigit anyway.
-branch if condition currentHexDigitValue target hexAccumulateDigit
-branch else target hexAccumulateDigit
+# Decimal-digit path resolved: the value is in currentHexDigitValue, so
+# fall through to the shared accumulator via an unconditional jump.
+jump target hexAccumulateDigit
 label hexInspectUppercaseRange
 call detectHexUpperABelowCall math.lessThanI64
 argument detectHexUpperABelowCall left I64 currentHexDigitByte
@@ -387,8 +385,7 @@ argument computeHexUpperValueCall right I64 hexUppercaseOffsetForLetters
 run computeHexUpperValueCall
 bind value hexDigitUpperValue I64 computeHexUpperValueCall
 set memory currentHexDigitValue hexDigitUpperValue
-branch if condition currentHexDigitValue target hexAccumulateDigit
-branch else target hexAccumulateDigit
+jump target hexAccumulateDigit
 label hexInspectLowercaseRange
 call detectHexLowerABelowCall math.lessThanI64
 argument detectHexLowerABelowCall left I64 currentHexDigitByte

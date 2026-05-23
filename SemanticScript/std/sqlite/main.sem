@@ -11,6 +11,7 @@
 # enum, constant, and capability contracts for that intrinsic namespace.
 
 module standard.sqlite
+nativeRuntimeSource standard.sqlite "SemanticScript/runtime/native_sqlite/sem_sqlite_runtime.c"
 purpose module standard.sqlite "Standard-library namespace and contracts for native SQLite database intrinsics."
 moduleOwns standard.sqlite "The official import path `standard.sqlite`, semantic SQLite type aliases, enum tokens, reusable database capabilities, and the compiler-owned `sqlite.*` intrinsic namespace contract."
 moduleDoesNotOwn standard.sqlite "Application schemas, migrations, query text, transaction policy, native SQLite runtime internals, or caller-owned statement lifetimes."
@@ -65,6 +66,30 @@ exportConstant standard.sqlite floatSqliteColumnType
 exportConstant standard.sqlite textSqliteColumnType
 exportConstant standard.sqlite blobSqliteColumnType
 exportConstant standard.sqlite nullSqliteColumnType
+exportOperation standard.sqlite openDatabase
+exportOperation standard.sqlite closeDatabase
+exportOperation standard.sqlite errorMessage
+exportOperation standard.sqlite lastInsertRowId
+exportOperation standard.sqlite changedRowCount
+exportOperation standard.sqlite prepareStatement
+exportOperation standard.sqlite finalizeStatement
+exportOperation standard.sqlite resetStatement
+exportOperation standard.sqlite stepStatement
+exportOperation standard.sqlite bindInt64
+exportOperation standard.sqlite bindDouble
+exportOperation standard.sqlite bindText
+exportOperation standard.sqlite bindBlob
+exportOperation standard.sqlite bindNull
+exportOperation standard.sqlite columnCount
+exportOperation standard.sqlite columnType
+exportOperation standard.sqlite columnName
+exportOperation standard.sqlite columnInt64
+exportOperation standard.sqlite columnDouble
+exportOperation standard.sqlite columnText
+exportOperation standard.sqlite columnBlob
+exportOperation standard.sqlite columnByteCount
+exportOperation standard.sqlite libraryVersion
+exportOperation standard.sqlite execStatus
 typeInvariant SqliteDatabase "Opaque SQLite database handle created by sqlite.openDatabase and closed by sqlite.closeDatabase."
 typeInvariant SqliteStatement "Opaque prepared-statement handle created by sqlite.prepareStatement and finalized by sqlite.finalizeStatement."
 typeInvariant SqliteRowId "Signed 64-bit row identifier returned by sqlite.lastInsertRowId and column readers."
@@ -80,3 +105,16 @@ capability sqliteDatabaseReadWriter database readWrite
 purpose operation sqliteDatabaseReadWriter "Authority to execute read-or-write SQL — prepareStatement of any statement plus sqlite.exec for DDL — against an open SqliteDatabase handle."
 
 storage module immutable sqliteModuleVersionText SqliteText "standard.sqlite 0.1"
+
+operation execStatus
+input operation execStatus database SqliteDatabase
+input operation execStatus sql SqlText
+output operation execStatus CSignedInt32
+effect execStatus readWrite database
+memory execStatus heap no
+async execStatus no
+useCapability execStatus sqliteDatabaseReadWriter
+operationBody execStatus runtimeBinding
+purpose operation execStatus "Execute one SQLite SQL script without bind parameters and return the native SQLite adapter status code."
+runtimeBindingPrecondition execStatus "database is an open SQLite handle and sql is a null-terminated SQL script that does not require bind parameters."
+runtimeBinding execStatus native.ss_sqlite_exec

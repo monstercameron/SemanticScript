@@ -295,6 +295,18 @@ branch if condition controlDelResult target controlDelHolds
 branch else target smokeAssertionFailed
 label controlDelHolds
 
+# Regression: isAsciiControlCode(-1) == false. A 0xFF byte loaded via
+# pointer.loadByte sign-extends to -1; the pre-fix `<= 31` check (with no
+# lower floor) misclassified it as a control character.
+storage module immutable negativeOneByteCode CSignedInt32 -1
+call controlNegativeCall isAsciiControlCode
+argument controlNegativeCall characterCode CSignedInt32 negativeOneByteCode
+run controlNegativeCall
+bind value controlNegativeResult Bool controlNegativeCall
+branch if condition controlNegativeResult target smokeAssertionFailed
+branch else target controlNegativeHolds
+label controlNegativeHolds
+
 # isAsciiPrintableCode(0) == false (NUL not printable)
 call printNonCall isAsciiPrintableCode
 argument printNonCall characterCode CSignedInt32 nullByteCode

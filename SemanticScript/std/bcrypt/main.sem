@@ -88,3 +88,8 @@ exportConstant standard.bcrypt bcryptMaximumCost
 exportConstant standard.bcrypt bcryptHashBufferRequiredBytes
 exportConstant standard.bcrypt sessionTokenEntropyByteCount
 exportConstant standard.bcrypt sessionTokenBufferRequiredBytes
+
+exportOperation standard.bcrypt hashPassword
+exportOperation standard.bcrypt verifyPassword
+exportOperation standard.bcrypt randomBytes
+exportOperation standard.bcrypt base64UrlEncode

@@ -528,7 +528,7 @@ def _register_builtin_surface(program: ProgramFacts) -> None:
 # the currently-open operation. The closed sets here are intentionally
 # narrow; this module's checker passes interpret unknown verbs as SS0001.
 _PARSER_CONTEXT_VERBS: Set[str] = {
-    "input", "output", "effect", "memory", "async", "purpose", "invariant",
+    "input", "output", "effect", "memory", "async", "operationBody", "purpose", "invariant",
     "warning", "precondition",
     "guarantee", "failure", "security", "timing", "observability",
     "memoryHeap", "memoryArena", "memoryStackLimit",
@@ -1258,6 +1258,17 @@ PRIMITIVE_CANONICAL_BY_TYPE: Dict[str, str] = _build_primitive_canonical_map()
 # dotted target → ordered list of (argName, declaredType). Targets not in
 # this map fall through to user-op signature lookup; targets in neither
 # table are SKIPPED to avoid false positives on unknowns.
+# Width-preserving C-ABI spelling aliases: the LLVM-style name and the
+# C-ABI name for the same machine type. Used to compare an `argument` row's
+# declared type against a builtin signature without false-flagging `CFloat64`
+# vs `F64` (same double) or `CSignedInt64` vs `I64` (same 64-bit int). Width
+# is preserved on purpose — `CSignedInt32` is NOT folded into `I64`.
+_C_ABI_WIDTH_ALIAS: Dict[str, str] = {
+    "F64": "CFloat64",
+    "I64": "CSignedInt64",
+}
+
+
 BUILTIN_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
     # Console writes
     "console.writeLine":          [("console", "Console"), ("text", "CNullTerminatedByteString")],
@@ -1283,6 +1294,14 @@ BUILTIN_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
     "math.greaterThanCSignedInt32":        [("left", "CSignedInt32"), ("right", "CSignedInt32")],
     "math.greaterThanOrEqualCSignedInt32": [("left", "CSignedInt32"), ("right", "CSignedInt32")],
     "math.checkedMultiplyI64":    [("left", "I64"), ("right", "I64")],
+    # Bitwise / shift primitives (single-instruction LLVM lowerings).
+    "math.bitwiseAndI64":         [("left", "I64"), ("right", "I64")],
+    "math.bitwiseOrI64":          [("left", "I64"), ("right", "I64")],
+    "math.bitwiseXorI64":         [("left", "I64"), ("right", "I64")],
+    "math.shiftLeftI64":          [("left", "I64"), ("right", "I64")],
+    "math.shiftRightLogicalI64":  [("left", "I64"), ("right", "I64")],
+    "math.shiftRightArithmeticI64": [("left", "I64"), ("right", "I64")],
+    "math.bitwiseNotI64":         [("value", "I64")],
     "math.signExtendCSignedInt32ToCSignedInt64": [("inputValue", "CSignedInt32")],
     "math.truncateCSignedInt64ToCSignedInt32":   [("inputValue", "I64")],
     # Float arithmetic
@@ -1291,7 +1310,11 @@ BUILTIN_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
     "math.multiplyF64":           [("left", "F64"), ("right", "F64")],
     "math.divideF64":             [("left", "F64"), ("right", "F64")],
     "math.equalF64":              [("left", "F64"), ("right", "F64")],
+    "math.notEqualF64":           [("left", "F64"), ("right", "F64")],
     "math.lessThanF64":           [("left", "F64"), ("right", "F64")],
+    "math.lessThanOrEqualF64":    [("left", "F64"), ("right", "F64")],
+    "math.greaterThanF64":        [("left", "F64"), ("right", "F64")],
+    "math.greaterThanOrEqualF64": [("left", "F64"), ("right", "F64")],
     # Numeric conversion
     "math.intToFloat":            [("inputValue", "I64")],
     "math.floatToInt":            [("inputValue", "F64")],
@@ -1639,7 +1662,8 @@ VERB_MINIMUM_ARITY: Dict[str, int] = {
     "smallListType": 2, "smallListInlineCapacity": 2, "smallListSpillAllocator": 2,
     "mapType": 1, "mapKey": 2, "mapValue": 2,
     # Runtime bindings
-    "runtimeBinding": 2, "intrinsicName": 2,
+    "runtimeBinding": 2, "runtimeBindingAsyncStart": 2,
+    "runtimeBindingAsyncAwait": 2, "intrinsicName": 2,
     # Constants
     "const": 3, "var": 3, "let": 3,
 }
@@ -1676,7 +1700,8 @@ OPERATION_ATTACHMENT_VERBS: frozenset = frozenset({
     "security", "timing", "observability",
     "memory", "memoryHeap", "memoryArena",
     "memoryAllocationSource", "memoryStackLimit",
-    "operationBody", "useCapability", "authority",
+    "operationBody", "runtimeBindingAsyncStart", "runtimeBindingAsyncAwait",
+    "useCapability", "authority",
     # SS36xx explicit contract verbs — args[0] is the owning operation.
     "pinsNullBodyFailurePath",
     "responseBodyForwarder",
@@ -1783,6 +1808,7 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "trustBoundaryOutput", "trustBoundaryValidator", "trustBoundarySource",
     # Web
     "webServer", "serverHost", "serverPort", "route",
+    "routeNotFound", "routeMethodNotAllowed",
     "routeTimeout", "routeMiddleware",
     "html", "htmlTemplate", "htmlArg", "htmlBody", "jsonBody", "sql", "sqlBody",
     # SS3604 coverage opt-outs — declare a route's intentional omission
@@ -1826,7 +1852,7 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "listLiteralIndexPolicy", "listLiteralItem",
     # Runtime bindings
     "runtimeBinding", "runtimeBindingPrecondition", "runtimeBindingFailure",
-    "intrinsicName",
+    "runtimeBindingAsyncStart", "runtimeBindingAsyncAwait", "intrinsicName",
     # Token literals that may appear standalone
     "const", "var", "let", "testCovers",
 })
@@ -10870,6 +10896,16 @@ def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
                     declaredArgumentType, typeAliases)
                 resolvedExpectedArgument = _resolve_type_alias_head(
                     expectedType, typeAliases)
+                # Fold the width-preserving C-ABI spellings so the LLVM-style
+                # name (`I64`, `F64`) and the C-ABI name (`CSignedInt64`,
+                # `CFloat64`) for the same type compare equal. This is
+                # intentionally narrow — it does NOT fold different widths
+                # (CSignedInt32 stays distinct from I64), so a float builtin
+                # annotated with an integer type still mismatches.
+                resolvedDeclaredArgument = _C_ABI_WIDTH_ALIAS.get(
+                    resolvedDeclaredArgument, resolvedDeclaredArgument)
+                resolvedExpectedArgument = _C_ABI_WIDTH_ALIAS.get(
+                    resolvedExpectedArgument, resolvedExpectedArgument)
                 if resolvedDeclaredArgument != resolvedExpectedArgument:
                     diagnostics.append(Diagnostic(
                         tier=Tier.T1_SPEC,
@@ -13562,6 +13598,13 @@ HTTP_RESPONSE_BODY_WRITERS: frozenset = frozenset({
     "http.responseSseEvent",
 })
 
+HTTP_RESPONSE_BODY_ARG_SLOTS: Dict[str, frozenset] = {
+    "http.responseHtml": frozenset({"body"}),
+    "http.responseText": frozenset({"body"}),
+    "http.responseBytes": frozenset({"body"}),
+    "http.responseSseEvent": frozenset({"event", "data"}),
+}
+
 # Non-body response writers (headers etc.). Together with the body
 # writers, these form the full response-side surface.
 HTTP_RESPONSE_OTHER_WRITERS: frozenset = frozenset({
@@ -13604,6 +13647,26 @@ LEGACY_HTTP_NULL_GUARD_OPT_OUT_MARKERS: Tuple[str, ...] = (
 )
 
 
+def _operation_has_runtime_binding_response_write(operationFact: OperationFact) -> bool:
+    hasRuntimeBindingBody = False
+    hasResponseWriteEffect = False
+    for sourceLine in operationFact.lines:
+        if is_comment(sourceLine) or not sourceLine.tokens:
+            continue
+        if (sourceLine.verb == "operationBody"
+                and len(sourceLine.args) >= 2
+                and sourceLine.args[0] == operationFact.name
+                and sourceLine.args[1] == "runtimeBinding"):
+            hasRuntimeBindingBody = True
+        elif (sourceLine.verb == "effect"
+                and len(sourceLine.args) >= 3
+                and sourceLine.args[0] == operationFact.name
+                and sourceLine.args[1] == "write"
+                and sourceLine.args[2].startswith("http.response")):
+            hasResponseWriteEffect = True
+    return hasRuntimeBindingBody and hasResponseWriteEffect
+
+
 def _collect_transitive_response_body_writers(facts: ExtendedFacts) -> Set[str]:
     """Return HTTP_RESPONSE_BODY_WRITERS expanded with every user op that
     declares `responseBodyForwarder OP bodyArgName` and actually forwards
@@ -13629,6 +13692,13 @@ def _collect_transitive_response_body_writers(facts: ExtendedFacts) -> Set[str]:
                 or len(sourceLine.args) < 2):
             continue
         declaredForwarderArgNameByOp[sourceLine.args[0]] = sourceLine.args[1]
+    writerSlotsByTarget: Dict[str, frozenset] = dict(HTTP_RESPONSE_BODY_ARG_SLOTS)
+    for operationName, declaredBodyArgName in declaredForwarderArgNameByOp.items():
+        operationFact = facts.base.operations.get(operationName)
+        if (operationFact is not None
+                and _operation_has_runtime_binding_response_write(operationFact)):
+            writers.add(operationName)
+            writerSlotsByTarget[operationName] = frozenset({declaredBodyArgName})
     if not declaredForwarderArgNameByOp:
         return writers
     changed = True
@@ -13651,16 +13721,24 @@ def _collect_transitive_response_body_writers(facts: ExtendedFacts) -> Set[str]:
             forwardsDeclaredArg = False
             for sourceLine in operationFact.lines:
                 if (is_comment(sourceLine) or not sourceLine.tokens
-                        or sourceLine.verb != "arg"
+                        or sourceLine.verb not in {"arg", "argument"}
                         or len(sourceLine.args) < 3):
                     continue
-                if (sourceLine.args[1] == "body"
-                        and sourceLine.args[2] == declaredBodyArgName
-                        and callTargetsByCallName.get(sourceLine.args[0]) in writers):
+                forwardedValue = (
+                    sourceLine.args[3]
+                    if sourceLine.verb == "argument" and len(sourceLine.args) >= 4
+                    else sourceLine.args[2]
+                )
+                target = callTargetsByCallName.get(sourceLine.args[0])
+                acceptedSlots = writerSlotsByTarget.get(target, frozenset({"body"}))
+                if (sourceLine.args[1] in acceptedSlots
+                        and forwardedValue == declaredBodyArgName
+                        and target in writers):
                     forwardsDeclaredArg = True
                     break
             if forwardsDeclaredArg:
                 writers.add(operationName)
+                writerSlotsByTarget[operationName] = frozenset({declaredBodyArgName})
                 changed = True
     return writers
 
@@ -13679,6 +13757,7 @@ def check_response_body_forwarder_declaration_honored(facts: ExtendedFacts) -> L
     # other op whose declaration ALSO honors its claim (fixed point).
     runtimeWriters: Set[str] = set(HTTP_RESPONSE_BODY_WRITERS)
     declaredForwarderRows: List[Tuple[SourceLine, str, str]] = []  # (line, op, argName)
+    writerSlotsByTarget: Dict[str, frozenset] = dict(HTTP_RESPONSE_BODY_ARG_SLOTS)
     for sourceLine in facts.base.lines:
         if (is_comment(sourceLine) or not sourceLine.tokens
                 or sourceLine.verb != "responseBodyForwarder"
@@ -13688,6 +13767,12 @@ def check_response_body_forwarder_declaration_honored(facts: ExtendedFacts) -> L
             (sourceLine, sourceLine.args[0], sourceLine.args[1])
         )
     honoredForwarders: Set[str] = set()
+    for _sourceLine, operationName, declaredBodyArgName in declaredForwarderRows:
+        operationFact = facts.base.operations.get(operationName)
+        if (operationFact is not None
+                and _operation_has_runtime_binding_response_write(operationFact)):
+            honoredForwarders.add(operationName)
+            writerSlotsByTarget[operationName] = frozenset({declaredBodyArgName})
     changed = True
     while changed:
         changed = False
@@ -13706,13 +13791,21 @@ def check_response_body_forwarder_declaration_honored(facts: ExtendedFacts) -> L
             acceptedWriters = runtimeWriters | honoredForwarders
             for innerLine in operationFact.lines:
                 if (is_comment(innerLine) or not innerLine.tokens
-                        or innerLine.verb != "arg"
+                        or innerLine.verb not in {"arg", "argument"}
                         or len(innerLine.args) < 3):
                     continue
-                if (innerLine.args[1] == "body"
-                        and innerLine.args[2] == declaredBodyArgName
-                        and callTargetsByCallName.get(innerLine.args[0]) in acceptedWriters):
+                forwardedValue = (
+                    innerLine.args[3]
+                    if innerLine.verb == "argument" and len(innerLine.args) >= 4
+                    else innerLine.args[2]
+                )
+                target = callTargetsByCallName.get(innerLine.args[0])
+                acceptedSlots = writerSlotsByTarget.get(target, frozenset({"body"}))
+                if (innerLine.args[1] in acceptedSlots
+                        and forwardedValue == declaredBodyArgName
+                        and target in acceptedWriters):
                     honoredForwarders.add(operationName)
+                    writerSlotsByTarget[operationName] = frozenset({declaredBodyArgName})
                     changed = True
                     break
     for sourceLine, operationName, declaredBodyArgName in declaredForwarderRows:
@@ -14391,6 +14484,11 @@ def check_route_handler_input_names(facts: ExtendedFacts) -> List[Diagnostic]:
     for routeFact in facts.base.routes:
         bindingSitesByOp.setdefault(routeFact.handler, []).append(routeFact.line)
     for sourceLine in facts.base.lines:
+        if (not is_comment(sourceLine) and sourceLine.tokens
+                and sourceLine.verb in {"routeNotFound", "routeMethodNotAllowed"}
+                and len(sourceLine.args) >= 2):
+            bindingSitesByOp.setdefault(sourceLine.args[1], []).append(sourceLine)
+            continue
         if (is_comment(sourceLine) or not sourceLine.tokens
                 or sourceLine.verb != "routeMiddleware"
                 or len(sourceLine.args) < 3):
@@ -17618,6 +17716,84 @@ def _find_import_cycle(
     return dfs(startModule, [])
 
 
+def check_stdlib_module_no_smoke_main(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS2515 - a `module standard.*` implementation file must not declare
+    `operation main`.
+
+    The standard library is always imported, never run directly, so a smoke
+    `main` does not belong in the implementation module. Worse, a stray `main`
+    in the imported module silently breaks the colocated `main.test.sem`: the
+    test declares `entry console main`, but entry resolution only sees
+    operations in the test compilation unit, not in the imported module, so
+    codegen fails with `entry references unknown operation: main`. The smoke
+    `main` (and its test-only MainError / capability scaffolding) belongs in
+    `main.test.sem` next to the module, matching the canonical std/errno
+    layout.
+    """
+    diagnostics: List[Diagnostic] = []
+    # Test files legitimately carry the smoke main — only guard the
+    # implementation module itself.
+    if facts.base.path.name.endswith(".test.sem"):
+        return diagnostics
+    declaresStandardModule = any(
+        sourceLine.verb == "module"
+        and sourceLine.args
+        and sourceLine.args[0].startswith("standard.")
+        for sourceLine in facts.base.lines
+        if sourceLine.tokens and not is_comment(sourceLine)
+    )
+    if not declaresStandardModule:
+        return diagnostics
+    for sourceLine in facts.base.lines:
+        if not sourceLine.tokens or is_comment(sourceLine):
+            continue
+        if sourceLine.verb != "operation":
+            continue
+        if not sourceLine.args or sourceLine.args[0] != "main":
+            continue
+        diagnostics.append(Diagnostic(
+            tier=Tier.T1_SPEC,
+            code="SS2515",
+            kind="module.standardLibraryDefinesSmokeMain",
+            severity=Severity.ERROR,
+            subjectName="main",
+            subjectKind="operation",
+            gapEdge="moduleEntryPurity",
+            intentSlogan=(
+                "standard-library module declares `operation main`; the smoke "
+                "main belongs in the colocated main.test.sem"
+            ),
+            primary=span_of_line(sourceLine, "smokeMainInModule"),
+            invariantRule=(
+                "A `module standard.*` implementation file is imported, never "
+                "run, and must not declare `operation main`. The smoke `main` "
+                "(plus its test-only MainError and capability rows) lives in "
+                "the colocated `main.test.sem`, which imports the module."
+            ),
+            specAnchor="SYNTAX.md#module",
+            fixCandidates=[
+                FixCandidate(
+                    name="moveSmokeMainToTest",
+                    shape=(
+                        "# move `operation main` and its MainError/capability "
+                        "rows into main.test.sem (which imports this module)"
+                    ),
+                    evidence=[span_of_line(sourceLine)],
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            blocksCompile=False,
+            effort=Effort.LOCAL,
+            passProvenance="check_stdlib_module_no_smoke_main",
+            agentHint=(
+                "a smoke main in the imported module silently fails the "
+                "colocated test's `entry console main` resolution"
+            ),
+        ))
+        break
+    return diagnostics
+
+
 def check_module_import_contracts(facts: ExtendedFacts) -> List[Diagnostic]:
     diagnostics: List[Diagnostic] = []
     if _is_build_tape(facts):
@@ -17963,6 +18139,7 @@ CHECKERS = [
     check_unknown_verbs,
     check_project_build_tape_schema,
     check_registered_module_contract,
+    check_stdlib_module_no_smoke_main,
     check_module_import_contracts,
     check_unused_calls,
     check_unused_labels,

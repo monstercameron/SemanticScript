@@ -6,8 +6,9 @@
  *
  * The runtime deliberately exposes only generic primitives the language can
  * represent cleanly today: issue an HS256 token from caller-owned claim text,
- * verify a token signature, and format token envelopes from caller-supplied
- * fields. Applications own session state, claim policy, and user data.
+ * verify a token signature, read flat top-level JWT claims after signature
+ * verification, and format token envelopes from caller-supplied fields.
+ * Applications own session state, claim policy, and user data.
  */
 
 #ifdef __cplusplus
@@ -34,6 +35,19 @@ int ss_jwt_hs256_sign_json_payload_with_random_jti(
 int ss_jwt_hs256_verify_token(
     const char *token,
     const char *secret
+);
+
+const char *ss_jwt_read_string_claim(
+    const char *token,
+    const char *claim_name,
+    char *out_claim_buffer,
+    int out_claim_capacity
+);
+
+long long ss_jwt_read_int64_claim(
+    const char *token,
+    const char *claim_name,
+    long long missing_default
 );
 
 int ss_jwt_format_bearer_login_envelope(

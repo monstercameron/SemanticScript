@@ -6,15 +6,18 @@
 #
 #   importModule http standard.http
 #
-# The `http.*` call targets are compiler/runtime-owned intrinsics. This module
-# owns the official standard-library import path, semantic type names, and
-# reusable capability contracts for that intrinsic namespace.
+# The legacy `http.response*` and `http.request*` call targets are
+# compiler/runtime-owned intrinsics. Streaming SSE is exposed as ordinary
+# standard-library operations that delegate to generic native runtimeBinding
+# symbols, so the compiler does not need SSE-specific lowering.
 
 module standard.http
+nativeRuntimeSource standard.http "SemanticScript/runtime/native_http/sem_http_runtime.c"
+nativeRuntimeLinkArg standard.http windows "-lws2_32"
 purpose module standard.http "Standard-library namespace and contracts for native HTTP server request and response intrinsics."
-moduleOwns standard.http "The official import path `standard.http`, semantic HTTP type aliases, reusable HTTP capabilities, and the compiler-owned `http.*` intrinsic namespace contract."
+moduleOwns standard.http "The official import path `standard.http`, semantic HTTP type aliases, reusable HTTP capabilities, SSE stream operation wrappers, handler-visible server drain-state wrappers, and the compiler-owned legacy `http.*` intrinsic namespace contract."
 moduleDoesNotOwn standard.http "Application routes, handler implementations, middleware order, native HTTP runtime implementation, or generated route dispatch."
-invariant module standard.http "The standard module entry is this file; new modules may import it as alias `http` before using compiler-owned targets in the `http.*` namespace."
+invariant module standard.http "The standard module entry is this file; new modules may import it as alias `http`; SSE operation bodies delegate through runtimeBinding rows rather than compiler target branches."
 
 type HttpStatusCode CSignedInt32
 type HttpHeaderName CNullTerminatedByteString
@@ -24,6 +27,11 @@ type HttpTextBody CNullTerminatedByteString
 type HttpByteBody COpaqueMemoryAddress
 type HttpBodyLength CByteCount
 type HttpRequestValue CNullTerminatedByteString
+type SseEventName CNullTerminatedByteString
+type SseEventId CSignedInt64
+type SseEventData CNullTerminatedByteString
+type SseHeartbeatComment CNullTerminatedByteString
+type HttpClientResponseBody CNullTerminatedByteString
 
 exportType standard.http HttpStatusCode
 exportType standard.http HttpHeaderName
@@ -33,12 +41,37 @@ exportType standard.http HttpTextBody
 exportType standard.http HttpByteBody
 exportType standard.http HttpBodyLength
 exportType standard.http HttpRequestValue
+exportType standard.http SseEventName
+exportType standard.http SseEventId
+exportType standard.http SseEventData
+exportType standard.http SseHeartbeatComment
 exportCapability standard.http httpRequestReader
+exportCapability standard.http httpResponseReader
 exportCapability standard.http httpResponseWriter
+exportCapability standard.http httpServerStateReader
 exportConstant standard.http httpModuleVersionText
 exportConstant standard.http plainTextContentType
 exportConstant standard.http htmlContentType
 exportConstant standard.http jsonContentType
+exportConstant standard.http sseContentType
+exportConstant standard.http sseCacheControlHeaderName
+exportConstant standard.http sseCacheControlHeaderValue
+exportConstant standard.http sseAccelBufferingHeaderName
+exportConstant standard.http sseAccelBufferingHeaderValue
+exportConstant standard.http sseDefaultHeartbeatComment
+exportOperation standard.http openSseStream
+exportOperation standard.http writeSseEvent
+exportOperation standard.http writeSseEventWithId
+exportOperation standard.http writeSseHeartbeat
+exportOperation standard.http closeSseStream
+exportOperation standard.http clientDisconnected
+exportOperation standard.http serverIsShuttingDown
+exportOperation standard.http clientGet
+exportOperation standard.http clientPost
+exportOperation standard.http escapeHtml
+exportCapability standard.http httpClientCaller
+exportCapability standard.http httpEscapeBufferWriter
+exportType standard.http HttpClientResponseBody
 
 typeInvariant HttpStatusCode "HTTP response status code passed to native response writers."
 typeInvariant HttpHeaderName "Header name passed to native response header writers."
@@ -48,6 +81,11 @@ typeInvariant HttpTextBody "Null-terminated text body passed to native text resp
 typeInvariant HttpByteBody "Opaque byte buffer passed to native byte response writers with an explicit length."
 typeInvariant HttpBodyLength "Byte count paired with HttpByteBody."
 typeInvariant HttpRequestValue "Request-derived string value returned by native request readers; nullable readers must be guarded before response-body use."
+typeInvariant SseEventName "Server-Sent Event name without CR, LF, or colon."
+typeInvariant SseEventId "Server-Sent Event id emitted as a decimal cursor value; negative ids are rejected by the native stream writer."
+typeInvariant SseEventData "Server-Sent Event data payload; native framing splits embedded newlines into data lines."
+typeInvariant SseHeartbeatComment "Server-Sent Event heartbeat comment without CR or LF."
+typeInvariant HttpClientResponseBody "Null-terminated outbound-HTTP response body; heap-owned by the caller (free via c.free). Null on transport error or non-2xx."
 
 capability httpRequestReader http.request read
 purpose operation httpRequestReader "Authority to read fields off the incoming HttpRequest (method, path, headers, cookies, query params, body, multipart parts)."
@@ -55,7 +93,354 @@ purpose operation httpRequestReader "Authority to read fields off the incoming H
 capability httpResponseWriter http.response write
 purpose operation httpResponseWriter "Authority to write headers and a body to the HttpResponse handed to the route handler (http.responseHtml/Text/Bytes/SseEvent/File and http.responseHeader)."
 
+capability httpResponseReader http.response read
+purpose operation httpResponseReader "Authority to inspect native response stream state such as SSE disconnect status."
+
+capability httpClientCaller http.client read
+purpose operation httpClientCaller "Authority to make outbound blocking HTTP/1.1 client requests to other services."
+capability httpEscapeBufferWriter memory.buffer readWrite
+purpose operation httpEscapeBufferWriter "Authority to write escaped HTML into a caller-provided scratch buffer."
+capability httpServerStateReader http.server read
+purpose operation httpServerStateReader "Authority to inspect native HTTP server process state such as graceful-shutdown drain mode."
+
 storage module immutable httpModuleVersionText HttpTextBody "standard.http 0.1"
 storage module immutable plainTextContentType HttpContentType "text/plain; charset=utf-8"
 storage module immutable htmlContentType HttpContentType "text/html; charset=utf-8"
 storage module immutable jsonContentType HttpContentType "application/json; charset=utf-8"
+storage module immutable sseContentType HttpContentType "text/event-stream; charset=utf-8"
+storage module immutable sseCacheControlHeaderName HttpHeaderName "Cache-Control"
+storage module immutable sseCacheControlHeaderValue HttpHeaderValue "no-cache, no-transform"
+storage module immutable sseAccelBufferingHeaderName HttpHeaderName "X-Accel-Buffering"
+storage module immutable sseAccelBufferingHeaderValue HttpHeaderValue "no"
+storage module immutable sseDefaultHeartbeatComment SseHeartbeatComment "heartbeat"
+storage module immutable disconnectedCode CSignedInt32 1
+storage module immutable shuttingDownCode CSignedInt32 1
+
+operation openSseStream
+input operation openSseStream response HttpResponse
+input operation openSseStream status HttpStatusCode
+output operation openSseStream CSignedInt32
+effect openSseStream write http.response
+memory openSseStream arena request
+async openSseStream no
+useCapability openSseStream httpResponseWriter
+purpose operation openSseStream "Open a streaming text/event-stream response with standard cache/proxy headers."
+invariant operation openSseStream "Application code owns replay/fanout semantics; this wrapper only sets generic SSE transport headers and delegates to the native stream primitive."
+label startOpenSseStream
+call cacheHeaderCall http.responseHeader
+argument cacheHeaderCall response HttpResponse response
+argument cacheHeaderCall name HttpHeaderName sseCacheControlHeaderName
+argument cacheHeaderCall value HttpHeaderValue sseCacheControlHeaderValue
+run cacheHeaderCall
+ignore value source cacheHeaderCall type CSignedInt32
+call accelHeaderCall http.responseHeader
+argument accelHeaderCall response HttpResponse response
+argument accelHeaderCall name HttpHeaderName sseAccelBufferingHeaderName
+argument accelHeaderCall value HttpHeaderValue sseAccelBufferingHeaderValue
+run accelHeaderCall
+ignore value source accelHeaderCall type CSignedInt32
+call openCall openSseStreamNative
+argument openCall response HttpResponse response
+argument openCall status HttpStatusCode status
+run openCall
+bind value openStatus CSignedInt32 openCall
+return value openStatus
+
+operation openSseStreamNative
+input operation openSseStreamNative response HttpResponse
+input operation openSseStreamNative status HttpStatusCode
+output operation openSseStreamNative CSignedInt32
+effect openSseStreamNative write http.response
+memory openSseStreamNative arena request
+async openSseStreamNative no
+useCapability openSseStreamNative httpResponseWriter
+operationBody openSseStreamNative runtimeBinding
+purpose operation openSseStreamNative "Low-level runtimeBinding hook used by standard.http openSseStream after semantic header setup."
+runtimeBindingPrecondition openSseStreamNative "response is the active route response and status is a valid HTTP status code."
+runtimeBinding openSseStreamNative native.ss_http_sse_open
+
+operation writeSseEvent
+input operation writeSseEvent response HttpResponse
+input operation writeSseEvent event SseEventName
+input operation writeSseEvent data SseEventData
+output operation writeSseEvent CSignedInt32
+effect writeSseEvent write http.response
+memory writeSseEvent arena request
+async writeSseEvent no
+useCapability writeSseEvent httpResponseWriter
+responseBodyForwarder writeSseEvent data
+purpose operation writeSseEvent "Write one framed SSE event to an already opened stream."
+invariant operation writeSseEvent "Event id/cursor policy is application-owned; use data payloads that include replay cursor data until the stdlib id helper is added."
+label startWriteSseEvent
+call writeCall writeSseEventNative
+argument writeCall response HttpResponse response
+argument writeCall event SseEventName event
+argument writeCall data SseEventData data
+run writeCall
+bind value writeStatus CSignedInt32 writeCall
+return value writeStatus
+
+operation writeSseEventNative
+input operation writeSseEventNative response HttpResponse
+input operation writeSseEventNative event SseEventName
+input operation writeSseEventNative data SseEventData
+output operation writeSseEventNative CSignedInt32
+effect writeSseEventNative write http.response
+memory writeSseEventNative arena request
+async writeSseEventNative no
+useCapability writeSseEventNative httpResponseWriter
+operationBody writeSseEventNative runtimeBinding
+responseBodyForwarder writeSseEventNative data
+purpose operation writeSseEventNative "Low-level runtimeBinding hook used by standard.http writeSseEvent."
+runtimeBindingPrecondition writeSseEventNative "response has an open SSE stream, event contains no CR/LF/colon, and data is non-null."
+runtimeBinding writeSseEventNative native.ss_http_sse_write_event
+
+operation writeSseEventWithId
+input operation writeSseEventWithId response HttpResponse
+input operation writeSseEventWithId id SseEventId
+input operation writeSseEventWithId event SseEventName
+input operation writeSseEventWithId data SseEventData
+output operation writeSseEventWithId CSignedInt32
+effect writeSseEventWithId write http.response
+memory writeSseEventWithId arena request
+async writeSseEventWithId no
+useCapability writeSseEventWithId httpResponseWriter
+responseBodyForwarder writeSseEventWithId data
+purpose operation writeSseEventWithId "Write one framed SSE event with an explicit decimal id to an already opened stream."
+invariant operation writeSseEventWithId "Cursor policy remains application-owned; this helper only emits the reusable SSE id/event/data wire shape."
+label startWriteSseEventWithId
+call writeCall writeSseEventWithIdNative
+argument writeCall response HttpResponse response
+argument writeCall id SseEventId id
+argument writeCall event SseEventName event
+argument writeCall data SseEventData data
+run writeCall
+bind value writeStatus CSignedInt32 writeCall
+return value writeStatus
+
+operation writeSseEventWithIdNative
+input operation writeSseEventWithIdNative response HttpResponse
+input operation writeSseEventWithIdNative id SseEventId
+input operation writeSseEventWithIdNative event SseEventName
+input operation writeSseEventWithIdNative data SseEventData
+output operation writeSseEventWithIdNative CSignedInt32
+effect writeSseEventWithIdNative write http.response
+memory writeSseEventWithIdNative arena request
+async writeSseEventWithIdNative no
+useCapability writeSseEventWithIdNative httpResponseWriter
+operationBody writeSseEventWithIdNative runtimeBinding
+responseBodyForwarder writeSseEventWithIdNative data
+purpose operation writeSseEventWithIdNative "Low-level runtimeBinding hook used by standard.http writeSseEventWithId."
+runtimeBindingPrecondition writeSseEventWithIdNative "response has an open SSE stream, id is non-negative, event contains no CR/LF/colon, and data is non-null."
+runtimeBinding writeSseEventWithIdNative native.ss_http_sse_write_event_with_id
+
+operation writeSseHeartbeat
+input operation writeSseHeartbeat response HttpResponse
+input operation writeSseHeartbeat comment SseHeartbeatComment
+output operation writeSseHeartbeat CSignedInt32
+effect writeSseHeartbeat write http.response
+memory writeSseHeartbeat arena request
+async writeSseHeartbeat no
+useCapability writeSseHeartbeat httpResponseWriter
+responseBodyForwarder writeSseHeartbeat comment
+purpose operation writeSseHeartbeat "Write one SSE comment heartbeat to an already opened stream."
+label startWriteSseHeartbeat
+call heartbeatCall writeSseHeartbeatNative
+argument heartbeatCall response HttpResponse response
+argument heartbeatCall comment SseHeartbeatComment comment
+run heartbeatCall
+bind value heartbeatStatus CSignedInt32 heartbeatCall
+return value heartbeatStatus
+
+operation writeSseHeartbeatNative
+input operation writeSseHeartbeatNative response HttpResponse
+input operation writeSseHeartbeatNative comment SseHeartbeatComment
+output operation writeSseHeartbeatNative CSignedInt32
+effect writeSseHeartbeatNative write http.response
+memory writeSseHeartbeatNative arena request
+async writeSseHeartbeatNative no
+useCapability writeSseHeartbeatNative httpResponseWriter
+operationBody writeSseHeartbeatNative runtimeBinding
+responseBodyForwarder writeSseHeartbeatNative comment
+purpose operation writeSseHeartbeatNative "Low-level runtimeBinding hook used by standard.http writeSseHeartbeat."
+runtimeBindingPrecondition writeSseHeartbeatNative "response has an open SSE stream and comment contains no CR or LF."
+runtimeBinding writeSseHeartbeatNative native.ss_http_sse_heartbeat
+
+operation closeSseStream
+input operation closeSseStream response HttpResponse
+output operation closeSseStream CSignedInt32
+effect closeSseStream write http.response
+memory closeSseStream arena request
+async closeSseStream no
+useCapability closeSseStream httpResponseWriter
+purpose operation closeSseStream "Mark the SSE stream complete; the current blocking adapter closes the socket after the handler returns."
+label startCloseSseStream
+call closeCall closeSseStreamNative
+argument closeCall response HttpResponse response
+run closeCall
+bind value closeStatus CSignedInt32 closeCall
+return value closeStatus
+
+operation closeSseStreamNative
+input operation closeSseStreamNative response HttpResponse
+output operation closeSseStreamNative CSignedInt32
+effect closeSseStreamNative write http.response
+memory closeSseStreamNative arena request
+async closeSseStreamNative no
+useCapability closeSseStreamNative httpResponseWriter
+operationBody closeSseStreamNative runtimeBinding
+purpose operation closeSseStreamNative "Low-level runtimeBinding hook used by standard.http closeSseStream."
+runtimeBindingPrecondition closeSseStreamNative "response has an open SSE stream."
+runtimeBinding closeSseStreamNative native.ss_http_sse_close
+
+operation clientDisconnected
+input operation clientDisconnected response HttpResponse
+output operation clientDisconnected Bool
+effect clientDisconnected read http.response
+memory clientDisconnected arena request
+async clientDisconnected no
+useCapability clientDisconnected httpResponseReader
+purpose operation clientDisconnected "Return true after the native stream writer has observed a client disconnect or write failure."
+label startClientDisconnected
+call disconnectedCall clientDisconnectedNative
+argument disconnectedCall response HttpResponse response
+run disconnectedCall
+bind value disconnectedStatus CSignedInt32 disconnectedCall
+call disconnectedMatchesCall math.equalCSignedInt32
+argument disconnectedMatchesCall left CSignedInt32 disconnectedStatus
+argument disconnectedMatchesCall right CSignedInt32 disconnectedCode
+run disconnectedMatchesCall
+bind value disconnected Bool disconnectedMatchesCall
+return value disconnected
+
+operation clientDisconnectedNative
+input operation clientDisconnectedNative response HttpResponse
+output operation clientDisconnectedNative CSignedInt32
+effect clientDisconnectedNative read http.response
+memory clientDisconnectedNative arena request
+async clientDisconnectedNative no
+useCapability clientDisconnectedNative httpResponseReader
+operationBody clientDisconnectedNative runtimeBinding
+purpose operation clientDisconnectedNative "Low-level runtimeBinding hook used by standard.http clientDisconnected."
+runtimeBindingPrecondition clientDisconnectedNative "response is the active route response."
+runtimeBinding clientDisconnectedNative native.ss_http_client_disconnected
+
+operation serverIsShuttingDown
+output operation serverIsShuttingDown Bool
+effect serverIsShuttingDown read http.server
+memory serverIsShuttingDown arena request
+async serverIsShuttingDown no
+useCapability serverIsShuttingDown httpServerStateReader
+purpose operation serverIsShuttingDown "Return true after the native HTTP server has entered graceful-shutdown drain mode."
+invariant operation serverIsShuttingDown "This exposes only reusable transport drain state; applications own which routes reject, drain, or remain live."
+label startServerIsShuttingDown
+call shutdownCall serverIsShuttingDownNative
+run shutdownCall
+bind value shutdownStatus CSignedInt32 shutdownCall
+call shutdownMatchesCall math.equalCSignedInt32
+argument shutdownMatchesCall left CSignedInt32 shutdownStatus
+argument shutdownMatchesCall right CSignedInt32 shuttingDownCode
+run shutdownMatchesCall
+bind value shuttingDown Bool shutdownMatchesCall
+return value shuttingDown
+
+operation serverIsShuttingDownNative
+output operation serverIsShuttingDownNative CSignedInt32
+effect serverIsShuttingDownNative read http.server
+memory serverIsShuttingDownNative arena request
+async serverIsShuttingDownNative no
+useCapability serverIsShuttingDownNative httpServerStateReader
+operationBody serverIsShuttingDownNative runtimeBinding
+purpose operation serverIsShuttingDownNative "Low-level runtimeBinding hook used by standard.http serverIsShuttingDown."
+runtimeBindingPrecondition serverIsShuttingDownNative "native HTTP server signal handlers have initialized process shutdown state."
+runtimeBinding serverIsShuttingDownNative native.ss_http_server_is_shutting_down
+
+# ============================================================
+# Outbound HTTP/1.1 client (fetcher suite)
+# ============================================================
+# Lets a SemanticScript app call another service over HTTP. The native runtime
+# owns only the minimal socket primitive (ss_http_client_fetch); these wrappers
+# provide the typed, ergonomic GET/POST surface. Returned bodies are heap-owned
+# by the caller (free via c.free) and are null on transport error or non-2xx.
+
+storage module immutable httpClientMethodGet CNullTerminatedByteString "GET"
+storage module immutable httpClientMethodPost CNullTerminatedByteString "POST"
+storage module immutable httpClientEmptyBody CNullTerminatedByteString ""
+
+operation clientGet
+input operation clientGet host CNullTerminatedByteString
+input operation clientGet port CSignedInt32
+input operation clientGet path CNullTerminatedByteString
+input operation clientGet headerLine CNullTerminatedByteString
+output operation clientGet HttpClientResponseBody
+effect clientGet read http.client
+memory clientGet heap yes
+async clientGet no
+useCapability clientGet httpClientCaller
+purpose operation clientGet "Issue a blocking HTTP GET to host:port path with an optional header line; return the response body on 2xx, else null."
+label startClientGet
+call clientGetCall clientFetchNative
+argument clientGetCall method CNullTerminatedByteString httpClientMethodGet
+argument clientGetCall host CNullTerminatedByteString host
+argument clientGetCall port CSignedInt32 port
+argument clientGetCall path CNullTerminatedByteString path
+argument clientGetCall headerLine CNullTerminatedByteString headerLine
+argument clientGetCall body CNullTerminatedByteString httpClientEmptyBody
+run clientGetCall
+bind value clientGetBody HttpClientResponseBody clientGetCall
+return value clientGetBody
+
+operation clientPost
+input operation clientPost host CNullTerminatedByteString
+input operation clientPost port CSignedInt32
+input operation clientPost path CNullTerminatedByteString
+input operation clientPost headerLine CNullTerminatedByteString
+input operation clientPost body CNullTerminatedByteString
+output operation clientPost HttpClientResponseBody
+effect clientPost read http.client
+memory clientPost heap yes
+async clientPost no
+useCapability clientPost httpClientCaller
+purpose operation clientPost "Issue a blocking HTTP POST (JSON body) to host:port path with an optional header line; return the response body on 2xx, else null."
+label startClientPost
+call clientPostCall clientFetchNative
+argument clientPostCall method CNullTerminatedByteString httpClientMethodPost
+argument clientPostCall host CNullTerminatedByteString host
+argument clientPostCall port CSignedInt32 port
+argument clientPostCall path CNullTerminatedByteString path
+argument clientPostCall headerLine CNullTerminatedByteString headerLine
+argument clientPostCall body CNullTerminatedByteString body
+run clientPostCall
+bind value clientPostBody HttpClientResponseBody clientPostCall
+return value clientPostBody
+
+operation clientFetchNative
+input operation clientFetchNative method CNullTerminatedByteString
+input operation clientFetchNative host CNullTerminatedByteString
+input operation clientFetchNative port CSignedInt32
+input operation clientFetchNative path CNullTerminatedByteString
+input operation clientFetchNative headerLine CNullTerminatedByteString
+input operation clientFetchNative body CNullTerminatedByteString
+output operation clientFetchNative HttpClientResponseBody
+effect clientFetchNative read http.client
+memory clientFetchNative heap yes
+async clientFetchNative no
+useCapability clientFetchNative httpClientCaller
+operationBody clientFetchNative runtimeBinding
+purpose operation clientFetchNative "Low-level runtimeBinding hook used by standard.http clientGet/clientPost."
+runtimeBindingPrecondition clientFetchNative "method/host/path are non-null; returns a heap-owned 2xx response body or null."
+runtimeBinding clientFetchNative native.ss_http_client_fetch
+
+operation escapeHtml
+input operation escapeHtml input CNullTerminatedByteString
+input operation escapeHtml scratch COpaqueMemoryAddress
+input operation escapeHtml capacity CSignedInt32
+output operation escapeHtml CNullTerminatedByteString
+effect escapeHtml readWrite memory.buffer
+memory escapeHtml arena request
+async escapeHtml no
+useCapability escapeHtml httpEscapeBufferWriter
+operationBody escapeHtml runtimeBinding
+purpose operation escapeHtml "Escape HTML special characters (& < > \" ') from input into the caller-provided scratch buffer; returns the bounded, null-terminated escaped string."
+runtimeBindingPrecondition escapeHtml "scratch points to at least capacity writable bytes; input is non-null."
+runtimeBinding escapeHtml native.ss_http_html_escape

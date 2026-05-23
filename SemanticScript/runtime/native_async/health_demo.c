@@ -40,7 +40,7 @@ int main(void) {
 
     status = ss_async_loop_init(&frame.loop);
     if (status == SS_ASYNC_ERR_RUNTIME_UNAVAILABLE) {
-        puts("sem_async_health_demo: libuv backend not enabled");
+        puts("sem_async_health_demo: async runtime unavailable");
         return 0;
     }
     if (status != SS_ASYNC_OK) {

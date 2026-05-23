@@ -9,6 +9,9 @@ invariant module standard.string "The standard module entry is this file; tests 
 exportConstant standard.string stringModuleVersionText
 storage module immutable stringModuleVersionText CNullTerminatedByteString "standard.string 0.1"
 
+exportOperation standard.string findFirstCharacterInCString
+exportOperation standard.string countInitialCStringBytesInAcceptSet
+
 # Canonical standard-library implementation body.
 # ============================================================
 # SEMANTICSCRIPT STANDARD LIBRARY: pure-SemanticScript C-string operations
@@ -72,7 +75,7 @@ output operation stringByteLength CByteCount
 useCapability stringByteLength memoryBufferReadCapability
 effect stringByteLength read memory.buffer
 memory stringByteLength heap no
-memoryStackLimit stringByteLength 1024
+memory stringByteLength stack max 1024
 async stringByteLength no
 purpose operation stringByteLength "Pure-SemanticScript stringByteLength: walk bytes from s until a NUL, return the count."
 invariant operation stringByteLength "Walks forward from offset 0 until the first NUL byte; returns that offset as the byte count."
@@ -111,7 +114,7 @@ output operation compareCString CSignedInt32
 useCapability compareCString memoryBufferReadCapability
 effect compareCString read memory.buffer
 memory compareCString heap no
-memoryStackLimit compareCString 1024
+memory compareCString stack max 1024
 async compareCString no
 purpose operation compareCString "Pure-SemanticScript compareCString: returns 0 on equal C-strings, signed diff of first mismatching byte otherwise."
 invariant operation compareCString "Walks both strings byte-by-byte; returns at the first differing byte or at the first NUL on either side."
@@ -169,7 +172,7 @@ output operation compareCStringPrefixBytes CSignedInt32
 useCapability compareCStringPrefixBytes memoryBufferReadCapability
 effect compareCStringPrefixBytes read memory.buffer
 memory compareCStringPrefixBytes heap no
-memoryStackLimit compareCStringPrefixBytes 1024
+memory compareCStringPrefixBytes stack max 1024
 async compareCStringPrefixBytes no
 purpose operation compareCStringPrefixBytes "Pure-SemanticScript compareCStringPrefixBytes: compare up to n bytes of a and b. Returns 0 if equal-in-first-n-or-both-NUL, signed diff at first mismatch, 0 if n==0."
 invariant operation compareCStringPrefixBytes "At most maxByteCount bytes inspected; equality on the prefix yields 0 even if the full strings differ beyond."
@@ -232,7 +235,7 @@ output operation findFirstCharacterInCString CSignedInt64
 useCapability findFirstCharacterInCString memoryBufferReadCapability
 effect findFirstCharacterInCString read memory.buffer
 memory findFirstCharacterInCString heap no
-memoryStackLimit findFirstCharacterInCString 1024
+memory findFirstCharacterInCString stack max 1024
 async findFirstCharacterInCString no
 purpose operation findFirstCharacterInCString "Pure-SemanticScript findFirstCharacterInCString: find first byte equal to c; return offset or -1 if not found before NUL."
 invariant operation findFirstCharacterInCString "Walks forward from offset 0; returns the first offset where the byte equals targetCharacter, or -1."
@@ -280,7 +283,7 @@ output operation findLastCharacterInCString CSignedInt64
 useCapability findLastCharacterInCString memoryBufferReadCapability
 effect findLastCharacterInCString read memory.buffer
 memory findLastCharacterInCString heap no
-memoryStackLimit findLastCharacterInCString 1024
+memory findLastCharacterInCString stack max 1024
 async findLastCharacterInCString no
 purpose operation findLastCharacterInCString "Pure-SemanticScript findLastCharacterInCString: track the last-seen offset of c while walking; return it (or -1)."
 invariant operation findLastCharacterInCString "Walks forward and remembers the most recent match; returns the last offset where the byte equals targetCharacter, or -1."
@@ -331,7 +334,7 @@ output operation findSubstringInCString CSignedInt64
 useCapability findSubstringInCString memoryBufferReadCapability
 effect findSubstringInCString read memory.buffer
 memory findSubstringInCString heap no
-memoryStackLimit findSubstringInCString 1024
+memory findSubstringInCString stack max 1024
 async findSubstringInCString no
 purpose operation findSubstringInCString "Pure-SemanticScript naive substring search. Returns offset of needle in haystack, or -1 if absent. Special case: needle empty -> 0."
 invariant operation findSubstringInCString "For each starting offset in haystack, walks needle forward; returns the first start where every needle byte matches."
@@ -414,10 +417,7 @@ argument innerIncCall right I64 oneI64e
 run innerIncCall
 bind value matchNext I64 innerIncCall
 set memory matchOffset matchNext
-# Read matchOffset between the two parallel sets to this slot so
-# the linter's flow-insensitive dead-store check sees an observation.
-branch if condition matchOffset target strstrInner
-branch else target strstrInner
+jump target strstrInner
 
 label strstrAdvance
 set memory matchOffset zeroI64e
@@ -443,7 +443,7 @@ output operation countInitialCStringBytesInAcceptSet CByteCount
 useCapability countInitialCStringBytesInAcceptSet memoryBufferReadCapability
 effect countInitialCStringBytesInAcceptSet read memory.buffer
 memory countInitialCStringBytesInAcceptSet heap no
-memoryStackLimit countInitialCStringBytesInAcceptSet 1024
+memory countInitialCStringBytesInAcceptSet stack max 1024
 async countInitialCStringBytesInAcceptSet no
 purpose operation countInitialCStringBytesInAcceptSet "Length of the longest prefix of s consisting entirely of bytes that appear somewhere in accept. Pure SemanticScript: O(len(s) * len(accept))."
 invariant operation countInitialCStringBytesInAcceptSet "Walks forward while the current byte appears in acceptSet; stops at the first byte outside the set or NUL."
@@ -493,10 +493,7 @@ argument spnAIncCall right I64 oneI64f
 run spnAIncCall
 bind value spnANext I64 spnAIncCall
 set memory aIdx spnANext
-# Read aIdx to satisfy the dead-store check across the parallel
-# sets on the matched-vs-not-matched branches.
-branch if condition aIdx target spnALoop
-branch else target spnALoop
+jump target spnALoop
 
 label spnAdvanceS
 set memory aIdx zeroI64f
@@ -521,7 +518,7 @@ effect copyCStringToDestinationBuffer read memory.buffer
 useCapability copyCStringToDestinationBuffer memoryBufferWriteCapability
 effect copyCStringToDestinationBuffer write memory.buffer
 memory copyCStringToDestinationBuffer heap no
-memoryStackLimit copyCStringToDestinationBuffer 1024
+memory copyCStringToDestinationBuffer stack max 1024
 async copyCStringToDestinationBuffer no
 purpose operation copyCStringToDestinationBuffer "Pure-SemanticScript strcpy: copy each byte of src to dest including the terminating NUL. Returns count of bytes written (= stringByteLength(src) + 1). Caller is responsible for dest being large enough."
 invariant operation copyCStringToDestinationBuffer "Copies bytes (and the NUL terminator) from source to destination; returns the byte count not including the terminator."
@@ -578,7 +575,7 @@ effect appendCStringToDestinationBuffer read memory.buffer
 useCapability appendCStringToDestinationBuffer memoryBufferWriteCapability
 effect appendCStringToDestinationBuffer write memory.buffer
 memory appendCStringToDestinationBuffer heap no
-memoryStackLimit appendCStringToDestinationBuffer 1024
+memory appendCStringToDestinationBuffer stack max 1024
 async appendCStringToDestinationBuffer no
 purpose operation appendCStringToDestinationBuffer "Pure-SemanticScript appendCStringToDestinationBuffer: find the NUL in dest, then copy src (including its NUL) starting at that offset. Returns the resulting length (= stringByteLength(dest)+stringByteLength(src))."
 invariant operation appendCStringToDestinationBuffer "First walks destination to its NUL, then copies source bytes plus a new NUL at that offset; returns the destination byte count after the append."
@@ -669,7 +666,7 @@ effect copyCStringPrefixToDestinationBuffer read memory.buffer
 useCapability copyCStringPrefixToDestinationBuffer memoryBufferWriteCapability
 effect copyCStringPrefixToDestinationBuffer write memory.buffer
 memory copyCStringPrefixToDestinationBuffer heap no
-memoryStackLimit copyCStringPrefixToDestinationBuffer 1024
+memory copyCStringPrefixToDestinationBuffer stack max 1024
 async copyCStringPrefixToDestinationBuffer no
 purpose operation copyCStringPrefixToDestinationBuffer "Pure-SemanticScript copyCStringPrefixToDestinationBuffer. Up to n bytes copied from src to dest; remainder NUL-padded. Returns n."
 invariant operation copyCStringPrefixToDestinationBuffer "Copies up to byteCount bytes from source; pads with NUL bytes if source is shorter; matches strncpy semantics."
@@ -745,7 +742,7 @@ output operation countInitialCStringBytesNotInRejectSet CByteCount
 useCapability countInitialCStringBytesNotInRejectSet memoryBufferReadCapability
 effect countInitialCStringBytesNotInRejectSet read memory.buffer
 memory countInitialCStringBytesNotInRejectSet heap no
-memoryStackLimit countInitialCStringBytesNotInRejectSet 1024
+memory countInitialCStringBytesNotInRejectSet stack max 1024
 async countInitialCStringBytesNotInRejectSet no
 purpose operation countInitialCStringBytesNotInRejectSet "Length of leading prefix of s NOT containing any byte in reject. Pure SemanticScript: O(len(s) * len(reject))."
 invariant operation countInitialCStringBytesNotInRejectSet "Walks forward while the current byte does NOT appear in rejectSet; stops at the first byte in the set or NUL."
@@ -795,9 +792,7 @@ argument cspnAIncCall right I64 oneCs
 run cspnAIncCall
 bind value cspnANext I64 cspnAIncCall
 set memory aIdxCs cspnANext
-# Read aIdxCs to satisfy the dead-store check across the parallel sets.
-branch if condition aIdxCs target cspnALoop
-branch else target cspnALoop
+jump target cspnALoop
 
 label cspnAdvanceS
 set memory aIdxCs zeroCs
@@ -819,7 +814,7 @@ output operation findFirstCStringByteInAcceptSet CSignedInt64
 useCapability findFirstCStringByteInAcceptSet memoryBufferReadCapability
 effect findFirstCStringByteInAcceptSet read memory.buffer
 memory findFirstCStringByteInAcceptSet heap no
-memoryStackLimit findFirstCStringByteInAcceptSet 1024
+memory findFirstCStringByteInAcceptSet stack max 1024
 async findFirstCStringByteInAcceptSet no
 purpose operation findFirstCStringByteInAcceptSet "Offset of the first byte of s that appears anywhere in accept, or -1 if absent before the NUL."
 invariant operation findFirstCStringByteInAcceptSet "Walks forward and returns the first offset where the byte appears in acceptSet, or -1."
@@ -870,9 +865,7 @@ argument pbAIncCall right I64 oneIPb
 run pbAIncCall
 bind value pbANext I64 pbAIncCall
 set memory pbAidx pbANext
-# Read pbAidx to satisfy the dead-store check across parallel sets.
-branch if condition pbAidx target pbALoop
-branch else target pbALoop
+jump target pbALoop
 
 label pbAdvanceS
 set memory pbAidx zeroPb
@@ -897,7 +890,7 @@ useCapability duplicateCStringIntoOwnedMemory heapAllocationCapability
 effect duplicateCStringIntoOwnedMemory read memory.buffer
 effect duplicateCStringIntoOwnedMemory allocate heap
 memory duplicateCStringIntoOwnedMemory heap yes
-memoryStackLimit duplicateCStringIntoOwnedMemory 1024
+memory duplicateCStringIntoOwnedMemory stack max 1024
 memoryAllocationSource duplicateCStringIntoOwnedMemory mallocCall
 async duplicateCStringIntoOwnedMemory no
 purpose operation duplicateCStringIntoOwnedMemory "Allocate a heap copy of s. Caller owns the returned pointer (must c.free). Returns NULL on allocation failure."
@@ -949,7 +942,7 @@ effect appendCStringPrefixToDestinationBuffer read memory.buffer
 useCapability appendCStringPrefixToDestinationBuffer memoryBufferWriteCapability
 effect appendCStringPrefixToDestinationBuffer write memory.buffer
 memory appendCStringPrefixToDestinationBuffer heap no
-memoryStackLimit appendCStringPrefixToDestinationBuffer 1024
+memory appendCStringPrefixToDestinationBuffer stack max 1024
 async appendCStringPrefixToDestinationBuffer no
 purpose operation appendCStringPrefixToDestinationBuffer "Append at most n bytes from src to dest's existing NUL-terminated content. Always writes a NUL terminator after the appended bytes."
 invariant operation appendCStringPrefixToDestinationBuffer "Walks destination to its NUL, then copies up to byteCount source bytes plus a final NUL; returns destination byte count after append."
@@ -1040,7 +1033,7 @@ output operation cstringBeginsWithPrefix CSignedInt32
 useCapability cstringBeginsWithPrefix memoryBufferReadCapability
 effect cstringBeginsWithPrefix read memory.buffer
 memory cstringBeginsWithPrefix heap no
-memoryStackLimit cstringBeginsWithPrefix 1024
+memory cstringBeginsWithPrefix stack max 1024
 async cstringBeginsWithPrefix no
 purpose operation cstringBeginsWithPrefix "1 if s starts with prefix; 0 otherwise. Pure SemanticScript via byte-by-byte compare."
 invariant operation cstringBeginsWithPrefix "Returns true when every byte of prefixText matches the corresponding byte in inputText starting at offset 0."
@@ -1100,7 +1093,7 @@ output operation cstringEndsWithSuffix CSignedInt32
 useCapability cstringEndsWithSuffix memoryBufferReadCapability
 effect cstringEndsWithSuffix read memory.buffer
 memory cstringEndsWithSuffix heap no
-memoryStackLimit cstringEndsWithSuffix 1024
+memory cstringEndsWithSuffix stack max 1024
 async cstringEndsWithSuffix no
 purpose operation cstringEndsWithSuffix "1 if s ends with suffix; 0 otherwise. Implemented as: stringByteLength(suffix) <= stringByteLength(s), then compare last stringByteLength(suffix) bytes of s with suffix."
 invariant operation cstringEndsWithSuffix "Computes both lengths via stringByteLength, then matches suffixText against inputText starting at the offset (inputLength - suffixLength)."

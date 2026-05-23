@@ -151,6 +151,14 @@ EXPLICIT_DISPOSITION_FALLIBLE_CALL_TARGETS: frozenset[str] = frozenset({
     "http.responseHeader",
     "http.responseFile",
     "http.ensureDirectory",
+    "http.openSseStream",
+    "http.writeSseEvent",
+    "http.writeSseHeartbeat",
+    "http.closeSseStream",
+    "openSseStream",
+    "writeSseEvent",
+    "writeSseHeartbeat",
+    "closeSseStream",
 })
 
 

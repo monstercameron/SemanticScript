@@ -1112,6 +1112,21 @@ def test_strict_web_contracts_accept_lowercase_route_method():
           f"rc={proc.returncode} stderr={proc.stderr!r}")
 
 
+def test_strict_web_contracts_accept_route_fallback_handlers():
+    src = _strict_http_route_source().replace(
+        'route strictServer GET "/health" healthHandler',
+        "\n".join([
+            'route strictServer GET "/health" healthHandler',
+            "routeNotFound strictServer healthHandler",
+            "routeMethodNotAllowed strictServer healthHandler",
+        ]),
+    )
+    proc = run_semsc_source(src, "--parse-only", "--strict", "--quiet")
+    check("strict HTTP: route fallback handlers use the native HTTP ABI",
+          proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
 def test_native_http_rejects_invalid_parameter_route_patterns_at_startup():
     invalid_paths = [
         "/echo/:",
@@ -3268,7 +3283,7 @@ def test_standard_library_module_relay_exposes_standard_modules():
     relay_text = relay_path.read_text(encoding="utf-8")
     canonical_modules = (
         "array", "assert", "bit", "bool", "char", "compare", "constants",
-        "convert", "ctype", "errno", "errno_more", "gui", "html", "http",
+        "convert", "ctype", "errno", "errno_more", "event", "gui", "html", "http",
         "inttypes", "iso646", "json", "limits", "math", "math_float",
         "memory", "numeric", "process", "random", "signal", "signal_more",
         "sqlite", "sort", "stddef", "stdio", "stdlib", "string", "time",
@@ -5402,6 +5417,132 @@ def test_webserver_hydrated_html_response_headers_escaping_and_failure():
                     server_proc.wait(timeout=3)
 
 
+def test_webserver_standard_http_sse_stream_wrappers():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as port_socket:
+        port_socket.bind(("127.0.0.1", 0))
+        port = port_socket.getsockname()[1]
+
+    source = "\n".join([
+        "project StandardHttpSseStream",
+        "target webServer",
+        "runtime native 1",
+        "import http standard.http",
+        "webServer sseServer",
+        "serverHost sseServer \"127.0.0.1\"",
+        f"serverPort sseServer {port}",
+        "route sseServer GET \"/events\" eventsHandler",
+        "storage module immutable okStatus HttpStatusCode 200",
+        "storage module immutable eventName SseEventName \"auction.tick\"",
+        "storage module immutable eventData SseEventData \"{\\\"ok\\\":true}\"",
+        "storage module immutable heartbeatComment SseHeartbeatComment \"heartbeat\"",
+        "operation eventsHandler",
+        "input operation eventsHandler request HttpRequest",
+        "input operation eventsHandler response HttpResponse",
+        "output operation eventsHandler CSignedInt32",
+        "effect eventsHandler write http.response",
+        "memory eventsHandler arena request",
+        "async eventsHandler no",
+        "purpose operation eventsHandler \"Exercise standard.http SSE stream wrappers\"",
+        "label startEventsHandler",
+        "call openCall http.openSseStream",
+        "argument openCall response HttpResponse response",
+        "argument openCall status HttpStatusCode okStatus",
+        "run openCall",
+        "ignore value source openCall type CSignedInt32",
+        "call heartbeatCall http.writeSseHeartbeat",
+        "argument heartbeatCall response HttpResponse response",
+        "argument heartbeatCall comment SseHeartbeatComment heartbeatComment",
+        "run heartbeatCall",
+        "ignore value source heartbeatCall type CSignedInt32",
+        "call eventCall http.writeSseEvent",
+        "argument eventCall response HttpResponse response",
+        "argument eventCall event SseEventName eventName",
+        "argument eventCall data SseEventData eventData",
+        "run eventCall",
+        "ignore value source eventCall type CSignedInt32",
+        "call closeCall http.closeSseStream",
+        "argument closeCall response HttpResponse response",
+        "run closeCall",
+        "bind value closeStatus CSignedInt32 closeCall",
+        "return value closeStatus",
+    ])
+
+    def request_events():
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+        try:
+            connection.request("GET", "/events")
+            response = connection.getresponse()
+            body = response.read().decode("utf-8", errors="replace")
+            headers = {key.lower(): value for key, value in response.getheaders()}
+            return response.status, body, headers
+        finally:
+            connection.close()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "sse_webserver.sem"
+        exe_path = Path(tmpdir) / ("sse_webserver.exe" if os.name == "nt" else "sse_webserver")
+        build_dir = Path(tmpdir) / "build"
+        src_path.write_text(source, encoding="utf-8", newline="\n")
+        compile_proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-exe", str(exe_path),
+             "--build-dir", str(build_dir), "--quiet"],
+            capture_output=True, text=True, timeout=300,
+        )
+        check("webserver SSE: fixture compiles",
+              compile_proc.returncode == 0 and exe_path.exists(),
+              f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+        if compile_proc.returncode != 0 or not exe_path.exists():
+            return
+
+        server_proc = subprocess.Popen(
+            [str(exe_path)], stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True)
+        try:
+            deadline = time.time() + 10
+            last_error = None
+            stream_response = None
+            while time.time() < deadline:
+                if server_proc.poll() is not None:
+                    break
+                try:
+                    stream_response = request_events()
+                    break
+                except (OSError, http.client.HTTPException) as exc:
+                    last_error = exc
+                    time.sleep(0.1)
+            if stream_response is None:
+                stdout, stderr = server_proc.communicate(timeout=1)
+                check("webserver SSE: fixture starts",
+                      False,
+                      f"rc={server_proc.returncode} stdout={stdout!r} stderr={stderr!r} last={last_error!r}")
+                return
+
+            status, body, headers = stream_response
+            check("webserver SSE: status and content-type",
+                  status == 200
+                  and headers.get("content-type") == "text/event-stream; charset=utf-8",
+                  f"status={status} headers={headers}")
+            check("webserver SSE: stream has no content-length",
+                  "content-length" not in headers,
+                  headers)
+            check("webserver SSE: std wrapper owns cache/proxy headers",
+                  headers.get("cache-control") == "no-cache, no-transform"
+                  and headers.get("x-accel-buffering") == "no",
+                  headers)
+            check("webserver SSE: std wrapper emits heartbeat and event",
+                  body == ": heartbeat\n\nevent: auction.tick\ndata: {\"ok\":true}\n\n",
+                  body)
+        finally:
+            if server_proc.poll() is None:
+                server_proc.terminate()
+                try:
+                    server_proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    server_proc.kill()
+                    server_proc.wait(timeout=3)
+
+
 def test_webserver_module_state_persists_across_sequential_requests():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as port_socket:
         port_socket.bind(("127.0.0.1", 0))
@@ -5696,6 +5837,303 @@ def test_standard_net_fetch_lowers_and_reports_runtime_link_inputs():
           source_names == {"sem_async_runtime.c", "sem_http_client_runtime.c"}
           and http_client.get("owner") == "standard.net/runtime",
           f"component={http_client!r}")
+
+
+def test_standard_event_lowers_through_generic_runtime_bindings():
+    src = "\n".join([
+        "project StandardEventRuntime",
+        "import event standard.event",
+        "entry console main",
+        "storage module immutable streamName EventStreamName \"compiler.test.events\"",
+        "storage module immutable eventName EventTypeName \"compiler.test.created\"",
+        "storage module immutable eventKey EventKey \"test\"",
+        "storage module immutable eventPayload EventPayloadJson \"{}\"",
+        "storage module immutable queueCapacity EventQueueCapacity 8",
+        "storage module immutable queueStreamName EventStreamName \"compiler.test.queue\"",
+        "storage module immutable afterEventId EventId 0",
+        "storage module immutable nullBuffer EventOutputBuffer 0",
+        "storage module immutable nullCapacity EventBufferCapacity 0",
+        "storage module immutable cancellationToken COpaqueMemoryAddress 0",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main open event.stream",
+        "effect main read event.stream",
+        "effect main write event.stream",
+        "effect main close event.stream",
+        "effect main open event.subscription",
+        "effect main read event.subscription",
+        "effect main write event.subscription",
+        "effect main close event.subscription",
+        "effect main allocate heap",
+        "effect main free heap",
+        "effect main write memory.buffer",
+        "effect main read filesystem",
+        "effect main write filesystem",
+        "memory main heap yes",
+        "async main yes",
+        "authority main open event.stream",
+        "authority main read event.stream",
+        "authority main write event.stream",
+        "authority main close event.stream",
+        "authority main open event.subscription",
+        "authority main read event.subscription",
+        "authority main write event.subscription",
+        "authority main close event.subscription",
+        "authority main allocate heap",
+        "authority main free heap",
+        "authority main write memory.buffer",
+        "authority main read filesystem",
+        "authority main write filesystem",
+        "purpose operation main \"exercise standard.event generic runtimeBinding lowering\"",
+        "label start",
+        "call openCall event.openProcessStream",
+        "argument openCall streamName EventStreamName streamName",
+        "argument openCall queueCapacity EventQueueCapacity queueCapacity",
+        "timeout openCall 1000ms",
+        "cancelOn openCall cancellationToken",
+        "start openCall",
+        "await openCall",
+        "bind value stream EventStreamHandle openCall",
+        "call subscribeCall event.subscribeStream",
+        "argument subscribeCall stream EventStreamHandle stream",
+        "argument subscribeCall eventType EventTypeName eventName",
+        "argument subscribeCall eventKey EventKey eventKey",
+        "argument subscribeCall afterEventId EventId afterEventId",
+        "argument subscribeCall queueCapacity EventQueueCapacity queueCapacity",
+        "timeout subscribeCall 1000ms",
+        "cancelOn subscribeCall cancellationToken",
+        "start subscribeCall",
+        "await subscribeCall",
+        "bind value subscription EventSubscriptionHandle subscribeCall",
+        "call receiveCall event.receiveEvent",
+        "argument receiveCall subscription EventSubscriptionHandle subscription",
+        "argument receiveCall outEventType EventOutputBuffer nullBuffer",
+        "argument receiveCall outEventTypeCapacity EventBufferCapacity nullCapacity",
+        "argument receiveCall outEventKey EventOutputBuffer nullBuffer",
+        "argument receiveCall outEventKeyCapacity EventBufferCapacity nullCapacity",
+        "argument receiveCall outPayloadJson EventOutputBuffer nullBuffer",
+        "argument receiveCall outPayloadCapacity EventBufferCapacity nullCapacity",
+        "timeout receiveCall 1000ms",
+        "cancelOn receiveCall cancellationToken",
+        "start receiveCall",
+        "call appendCall event.appendEvent",
+        "argument appendCall stream EventStreamHandle stream",
+        "argument appendCall eventType EventTypeName eventName",
+        "argument appendCall eventKey EventKey eventKey",
+        "argument appendCall payloadJson EventPayloadJson eventPayload",
+        "timeout appendCall 1000ms",
+        "cancelOn appendCall cancellationToken",
+        "start appendCall",
+        "await appendCall",
+        "bind value appendedEvent EventId appendCall",
+        "await receiveCall",
+        "bind value receivedEvent EventId receiveCall",
+        "call closeSubscriptionCall event.closeSubscription",
+        "argument closeSubscriptionCall subscription EventSubscriptionHandle subscription",
+        "timeout closeSubscriptionCall 1000ms",
+        "cancelOn closeSubscriptionCall cancellationToken",
+        "start closeSubscriptionCall",
+        "await closeSubscriptionCall",
+        "bind value closeSubscriptionStatus EventStatusCode closeSubscriptionCall",
+        "call closeStreamCall event.closeStream",
+        "argument closeStreamCall stream EventStreamHandle stream",
+        "timeout closeStreamCall 1000ms",
+        "cancelOn closeStreamCall cancellationToken",
+        "start closeStreamCall",
+        "await closeStreamCall",
+        "bind value closeStreamStatus EventStatusCode closeStreamCall",
+        "call openQueueCall event.openProcessQueue",
+        "argument openQueueCall streamName EventStreamName queueStreamName",
+        "argument openQueueCall queueCapacity EventQueueCapacity queueCapacity",
+        "timeout openQueueCall 1000ms",
+        "cancelOn openQueueCall cancellationToken",
+        "start openQueueCall",
+        "await openQueueCall",
+        "bind value queueStream EventStreamHandle openQueueCall",
+        "call closeQueueCall event.closeStream",
+        "argument closeQueueCall stream EventStreamHandle queueStream",
+        "timeout closeQueueCall 1000ms",
+        "cancelOn closeQueueCall cancellationToken",
+        "start closeQueueCall",
+        "await closeQueueCall",
+        "bind value closeQueueStatus EventStatusCode closeQueueCall",
+        "call openDurableCall event.openDurableStream",
+        "argument openDurableCall streamName EventStreamName streamName",
+        "argument openDurableCall queueCapacity EventQueueCapacity queueCapacity",
+        "timeout openDurableCall 1000ms",
+        "cancelOn openDurableCall cancellationToken",
+        "start openDurableCall",
+        "await openDurableCall",
+        "bind value durableStream EventStreamHandle openDurableCall",
+        "call closeDurableStreamCall event.closeStream",
+        "argument closeDurableStreamCall stream EventStreamHandle durableStream",
+        "timeout closeDurableStreamCall 1000ms",
+        "cancelOn closeDurableStreamCall cancellationToken",
+        "start closeDurableStreamCall",
+        "await closeDurableStreamCall",
+        "bind value closeDurableStreamStatus EventStatusCode closeDurableStreamCall",
+        "return value receivedEvent",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "event_runtime.sem"
+        ir_path = Path(tmpdir) / "event_runtime.ll"
+        inspect_path = Path(tmpdir) / "event_runtime.inspect.json"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-ir", str(ir_path),
+             "--inspect-ir", str(inspect_path)],
+            capture_output=True, text=True,
+        )
+        ir_text = ir_path.read_text(encoding="utf-8") if ir_path.exists() else ""
+        try:
+            inspect_payload = json.loads(inspect_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            inspect_payload = {}
+    components = {
+        item.get("component"): item
+        for item in inspect_payload.get("runtimeLink", {}).get("components", [])
+    }
+    declared_native = components.get("declared_native", {})
+    async_component = components.get("native_async", {})
+    declared_sources = {Path(source).name for source in declared_native.get("sources", [])}
+    check("standard.event: generic runtimeBinding codegen succeeds",
+          proc.returncode == 0 and bool(ir_text),
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+    for symbol in (
+        "ss_event_open_process_stream",
+        "ss_event_open_process_stream_start",
+        "ss_event_open_process_stream_await",
+        "ss_event_open_process_queue",
+        "ss_event_open_process_queue_start",
+        "ss_event_open_process_queue_await",
+        "ss_event_open_durable_stream",
+        "ss_event_open_durable_stream_start",
+        "ss_event_open_durable_stream_await",
+        "ss_event_subscribe",
+        "ss_event_subscribe_start",
+        "ss_event_subscribe_await",
+        "ss_event_append",
+        "ss_event_append_start",
+        "ss_event_append_await",
+        "ss_event_receive",
+        "ss_event_receive_start",
+        "ss_event_receive_await",
+        "ss_event_close_subscription",
+        "ss_event_close_subscription_start",
+        "ss_event_close_subscription_await",
+        "ss_event_close_stream",
+        "ss_event_close_stream_start",
+        "ss_event_close_stream_await",
+    ):
+        check(f"standard.event: IR calls {symbol}",
+              symbol in ir_text,
+              f"missing {symbol}")
+    check("standard.event: async start/await uses generic async runtimeBinding ABI",
+          "ss_event_receive_start" in ir_text
+          and "ss_event_receive_await" in ir_text
+          and async_component.get("component") == "native_async",
+          f"async_component={async_component!r}")
+    check("standard.event: native adapter is linked by declared metadata",
+          "sem_event_runtime.c" in declared_sources
+          and declared_native.get("owner") == "standard-library/runtimeBinding",
+          f"declared_native={declared_native!r}")
+
+
+def test_standard_event_runtime_bindings_reject_run_rows():
+    src = "\n".join([
+        "project StandardEventRunRejected",
+        "import event standard.event",
+        "entry console main",
+        "storage module immutable streamName EventStreamName \"compiler.test.events.run\"",
+        "storage module immutable queueCapacity EventQueueCapacity 8",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main open event.stream",
+        "effect main write event.stream",
+        "effect main allocate heap",
+        "memory main heap yes",
+        "async main yes",
+        "authority main open event.stream",
+        "authority main write event.stream",
+        "authority main allocate heap",
+        "purpose operation main \"prove event runtimeBinding operations are async-only from source\"",
+        "call openCall event.openProcessStream",
+        "argument openCall streamName EventStreamName streamName",
+        "argument openCall queueCapacity EventQueueCapacity queueCapacity",
+        "run openCall",
+        "bind value stream EventStreamHandle openCall",
+        "storage local immutable ok ExitCode 0",
+        "return value ok",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "event_run_rejected.sem"
+        ir_path = Path(tmpdir) / "event_run_rejected.ll"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"), str(src_path), "--emit-ir", str(ir_path)],
+            capture_output=True, text=True,
+        )
+    check("standard.event: run rows are rejected for async-only runtimeBinding ops",
+          proc.returncode != 0 and "async-only runtimeBinding" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_standard_http_shutdown_lowers_through_generic_runtime_binding():
+    src = "\n".join([
+        "project StandardHttpShutdownRuntime",
+        "import http standard.http",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main read http.server",
+        "memory main arena request",
+        "async main no",
+        "authority main read http.server",
+        "purpose operation main \"exercise standard.http shutdown generic runtimeBinding lowering\"",
+        "label start",
+        "call shutdownCall http.serverIsShuttingDown",
+        "run shutdownCall",
+        "bind value shuttingDown Bool shutdownCall",
+        "branch if condition shuttingDown target draining",
+        "storage local immutable ok ExitCode 0",
+        "return value ok",
+        "label draining",
+        "storage local immutable drainingExit ExitCode 1",
+        "return value drainingExit",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "http_shutdown_runtime.sem"
+        ir_path = Path(tmpdir) / "http_shutdown_runtime.ll"
+        inspect_path = Path(tmpdir) / "http_shutdown_runtime.inspect.json"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-ir", str(ir_path),
+             "--inspect-ir", str(inspect_path)],
+            capture_output=True, text=True,
+        )
+        ir_text = ir_path.read_text(encoding="utf-8") if ir_path.exists() else ""
+        try:
+            inspect_payload = json.loads(inspect_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            inspect_payload = {}
+    components = {
+        item.get("component"): item
+        for item in inspect_payload.get("runtimeLink", {}).get("components", [])
+    }
+    declared_native = components.get("declared_native", {})
+    declared_sources = {Path(source).name for source in declared_native.get("sources", [])}
+    check("standard.http shutdown: generic runtimeBinding codegen succeeds",
+          proc.returncode == 0 and bool(ir_text),
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+    check("standard.http shutdown: IR calls native drain-state ABI",
+          "ss_http_server_is_shutting_down" in ir_text,
+          "missing ss_http_server_is_shutting_down")
+    check("standard.http shutdown: native adapter is linked by declared metadata",
+          "sem_http_runtime.c" in declared_sources
+          and declared_native.get("owner") == "standard-library/runtimeBinding",
+          f"declared_native={declared_native!r}")
 
 
 def test_native_runtime_link_registry_is_unique_and_owned():
@@ -6605,6 +7043,7 @@ def main():
     test_strict_requires_effect_capability_or_authority()
     test_strict_web_contracts_reject_invalid_route_method()
     test_strict_web_contracts_accept_lowercase_route_method()
+    test_strict_web_contracts_accept_route_fallback_handlers()
     test_native_http_rejects_invalid_parameter_route_patterns_at_startup()
     test_strict_executable_mode_rejects_http_contracts_without_lint_flag()
     test_strict_web_contracts_reject_middleware_i32_output()
@@ -6702,10 +7141,13 @@ def main():
     test_web_codegen_rejects_unsupported_http_target()
     test_web_codegen_response_html_sets_fixed_content_type()
     test_webserver_hydrated_html_response_headers_escaping_and_failure()
+    test_webserver_standard_http_sse_stream_wrappers()
     test_webserver_module_state_persists_across_sequential_requests()
     test_sqlite_codegen_emits_runtime_externs_and_calls()
     test_sqlite_codegen_rejects_unsupported_target()
     test_standard_net_fetch_lowers_and_reports_runtime_link_inputs()
+    test_standard_event_lowers_through_generic_runtime_bindings()
+    test_standard_http_shutdown_lowers_through_generic_runtime_binding()
     test_native_runtime_link_registry_is_unique_and_owned()
     test_stdlib_intrinsic_contracts_have_runtime_status_coverage()
     test_sqlite_syntax_sample_runs_end_to_end()

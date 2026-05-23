@@ -55,6 +55,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import sys
 from dataclasses import dataclass, field
 from llvmlite import ir
@@ -478,6 +479,8 @@ class WebServer:
         self.routes = []          # list[(method, path, handler_op)]
         self.middleware = []      # list[(route_name, middleware_op)]
         self.timeouts = {}        # route_name -> duration_value
+        self.not_found_handler = None
+        self.method_not_allowed_handler = None
 
 
 class HtmlTemplate:
@@ -623,6 +626,9 @@ BODY_VERBS_CODEGEN = {
 BODY_VERBS_RESERVED_SOFT = {
     "guarantee", "failure", "security", "timing", "observability",
     "memoryAllocationSource",
+    "operationBody", "runtimeBinding", "runtimeBindingPrecondition",
+    "runtimeBindingFailure", "runtimeBindingAsyncStart",
+    "runtimeBindingAsyncAwait", "intrinsicName",
     "useCapability",
     # `precondition OP "text"` — structured form of "Caller guarantees X"
     # text that was historically written into `invariant` prose. Carries
@@ -3162,6 +3168,23 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
             raise SyntaxError(f"route references unknown webServer: {args[0]}")
         ws.routes.append((args[1], _unwrap(args[2]), args[3]))
         return
+    if verb == "routeNotFound":
+        if len(args) < 2:
+            raise SyntaxError("routeNotFound requires: routeNotFound SERVER HANDLER_OPERATION")
+        ws = prog.web_servers.get(args[0])
+        if ws is None:
+            raise SyntaxError(f"routeNotFound references unknown webServer: {args[0]}")
+        ws.not_found_handler = args[1]
+        return
+    if verb == "routeMethodNotAllowed":
+        if len(args) < 2:
+            raise SyntaxError(
+                "routeMethodNotAllowed requires: routeMethodNotAllowed SERVER HANDLER_OPERATION")
+        ws = prog.web_servers.get(args[0])
+        if ws is None:
+            raise SyntaxError(f"routeMethodNotAllowed references unknown webServer: {args[0]}")
+        ws.method_not_allowed_handler = args[1]
+        return
     if verb == "routeTimeout":
         ws = prog.web_servers[args[0]]
         ws.timeouts[args[1]] = args[2]
@@ -3316,6 +3339,12 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
         if len(args) < 2:
             raise SyntaxError("testCovers requires: testCovers TEST_NAME TARGET_NAME")
         prog.test_covers.append((args[0], args[1]))
+        return
+    if verb in {"nativeRuntimeSource", "nativeRuntimeLinkArg"}:
+        if len(args) < 2:
+            raise SyntaxError(f"{verb} requires: {verb} MODULE VALUE")
+        prog.hard_metadata.setdefault(args[0], {}).setdefault(
+            verb, []).append([_unwrap(t) for t in args[1:]])
         return
 
     # ----- operations -----
@@ -3487,7 +3516,9 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
 # Verbs that carry the operation name as their first arg for §9 checkability.
 HEADER_VERBS_WITH_OWNERSHIP = {
     "input", "output", "effect", "memory", "async",
-    "memoryAllocationSource",
+    "memoryAllocationSource", "operationBody", "runtimeBinding",
+    "runtimeBindingPrecondition", "runtimeBindingFailure",
+    "runtimeBindingAsyncStart", "runtimeBindingAsyncAwait", "intrinsicName",
     "purpose", "invariant", "warning", "precondition",
     "guarantee", "failure", "security", "timing", "observability",
     # `pinsNullBodyFailurePath OP "rationale"` — first arg is the owning
@@ -3943,6 +3974,21 @@ _STRICT_RESPONSE_WRITER_TARGETS = frozenset({
     "http.responseFile",
 })
 
+HTTP_INTRINSIC_TARGETS = (
+    NULLABLE_HTTP_REQUEST_READS
+    | HTTP_RESPONSE_BODY_WRITERS
+    | frozenset({
+        "http.requestMethod",
+        "http.requestPath",
+        "http.requestBodyLength",
+        "http.multipartPartLength",
+        "http.responseHeader",
+        "http.responseFile",
+        "http.nowMillis",
+        "http.ensureDirectory",
+    })
+)
+
 _STRICT_OVERFLOW_SENSITIVE_TARGETS = frozenset({
     "math.addI64",
     "math.subtractI64",
@@ -3982,6 +4028,18 @@ _BINOP_TO_LLVM = {
     "math.multiplyI64": "mul",
     "math.divideI64":   "sdiv",
     "math.moduloI64":   "srem",
+    # Bitwise / shift primitives. Single-instruction LLVM lowerings so the
+    # stdlib `bit` module no longer emits O(k) multiply/divide loops to
+    # emulate shifts and masks. `left` is the value, `right` is the other
+    # operand (shift count for the shift ops). Shift counts must be in
+    # [0, 63]; a count >= 64 is LLVM poison (matches the bit module's
+    # documented "bitIndex must be in [0, 63]" contract).
+    "math.bitwiseAndI64":        "and_",
+    "math.bitwiseOrI64":         "or_",
+    "math.bitwiseXorI64":        "xor",
+    "math.shiftLeftI64":         "shl",
+    "math.shiftRightLogicalI64": "lshr",
+    "math.shiftRightArithmeticI64": "ashr",
 }
 
 # Floating-point binary ops keep their operands at their declared width (F64 by
@@ -5337,7 +5395,16 @@ class Codegen:
                 f"and indexed by tooling. Use `--parse-only` to verify "
                 f"the AST of an `entry {mode}` program.")
         if opname not in self.prog.operations:
-            raise ValueError(f"entry references unknown operation: {opname}")
+            raise ValueError(
+                f"entry references unknown operation: {opname}. "
+                f"Entry resolution only sees operations declared in the entry "
+                f"compilation unit, not ones pulled in by `import`. If "
+                f"`{opname}` lives in an imported module, move the entry "
+                f"operation into this file. For standard-library smoke tests "
+                f"this usually means the `main` was left in the imported "
+                f"`module standard.*` file instead of the colocated "
+                f"main.test.sem (see semlint SS2515)."
+            )
         self._require_operation_output_contract(self.prog.operations[opname])
 
         # ---- pass 1: pre-declare every non-main user operation as an LLVM
@@ -5421,11 +5488,20 @@ class Codegen:
         fn = ir.Function(self.module, fnty, name=op.name)
         for i, (pname, _, _) in enumerate(params):
             fn.args[i].name = pname
+        async_native_start = None
+        async_native_await = None
+        for verb, args, _ln in op.lines:
+            if verb == "runtimeBindingAsyncStart" and len(args) >= 2:
+                async_native_start = args[1]
+            elif verb == "runtimeBindingAsyncAwait" and len(args) >= 2:
+                async_native_await = args[1]
         self._user_ops[op.name] = {
             "fn": fn,
             "params": params,
             "return_type": return_type,
             "return_type_name": return_type_name,
+            "async_native_start": async_native_start,
+            "async_native_await": async_native_await,
         }
 
     # Refined-syntax operations marked `operationBody NAME runtimeBinding`
@@ -5685,6 +5761,12 @@ class Codegen:
             raise ValueError(f"webServer `{server.name}` is missing serverPort")
         for method, path, handler_name in server.routes:
             self._validate_web_route_handler(server.name, method, path, handler_name)
+        if server.not_found_handler is not None:
+            self._validate_web_route_handler(
+                server.name, "NOT_FOUND", "*", server.not_found_handler)
+        if server.method_not_allowed_handler is not None:
+            self._validate_web_route_handler(
+                server.name, "METHOD_NOT_ALLOWED", "*", server.method_not_allowed_handler)
         middleware_by_path = {}
         for path, middleware_name in server.middleware:
             route_path = _unwrap(path)
@@ -5694,10 +5776,9 @@ class Codegen:
         handler_fnty = ir.FunctionType(I32, [I8P, I8P])
         handler_ptr_ty = handler_fnty.as_pointer()
         route_ty = ir.LiteralStructType([I8P, I8P, handler_ptr_ty, handler_ptr_ty])
-        # Trailing field is the optional `not_found_handler` function
-        # pointer (NULL when the program didn't declare routeNotFound).
+        # Trailing fields are optional fallback function pointers.
         config_ty = ir.LiteralStructType(
-            [I8P, I16, route_ty.as_pointer(), I64, handler_ptr_ty])
+            [I8P, I16, route_ty.as_pointer(), I64, handler_ptr_ty, handler_ptr_ty])
         server_run = self._runtime_func("ss_http_server_run", I32, [config_ty.as_pointer()])
 
         fnty = ir.FunctionType(I32, [])
@@ -5750,22 +5831,33 @@ class Codegen:
         builder.store(ir.Constant(I64, route_count), builder.gep(
             config_slot, [zero_i32, ir.Constant(I32, 3)], inbounds=True))
 
-        # not_found_handler slot — populated by convention: if the app
-        # declared a route at the wildcard path "*", use its handler as
-        # the dispatcher's fallback. Keeps the compiler thin — no
-        # special verb needed; the app just writes
-        # `route SERVER GET "*" myNotFoundHandler` and the runtime
-        # pulls it out of the route table at config-build time.
+        # not_found_handler slot. Prefer explicit routeNotFound, but keep
+        # the wildcard route convention for compatibility.
         nf_ptr = ir.Constant(handler_ptr_ty, None)
-        for _method, _path, handler_name in server.routes:
-            if _path == "*":
-                nf_fn = self._user_ops[handler_name]["fn"]
-                nf_ptr = nf_fn
-                if nf_ptr.type != handler_ptr_ty:
-                    nf_ptr = builder.bitcast(nf_ptr, handler_ptr_ty)
-                break
+        if server.not_found_handler is not None:
+            nf_fn = self._user_ops[server.not_found_handler]["fn"]
+            nf_ptr = nf_fn
+            if nf_ptr.type != handler_ptr_ty:
+                nf_ptr = builder.bitcast(nf_ptr, handler_ptr_ty)
+        else:
+            for _method, _path, handler_name in server.routes:
+                if _path == "*":
+                    nf_fn = self._user_ops[handler_name]["fn"]
+                    nf_ptr = nf_fn
+                    if nf_ptr.type != handler_ptr_ty:
+                        nf_ptr = builder.bitcast(nf_ptr, handler_ptr_ty)
+                    break
         builder.store(nf_ptr, builder.gep(
             config_slot, [zero_i32, ir.Constant(I32, 4)], inbounds=True))
+
+        mna_ptr = ir.Constant(handler_ptr_ty, None)
+        if server.method_not_allowed_handler is not None:
+            mna_fn = self._user_ops[server.method_not_allowed_handler]["fn"]
+            mna_ptr = mna_fn
+            if mna_ptr.type != handler_ptr_ty:
+                mna_ptr = builder.bitcast(mna_ptr, handler_ptr_ty)
+        builder.store(mna_ptr, builder.gep(
+            config_slot, [zero_i32, ir.Constant(I32, 5)], inbounds=True))
 
         rc = builder.call(server_run, [config_slot], name="ss_http_server_status")
         builder.ret(rc)
@@ -6137,6 +6229,207 @@ class Codegen:
                         f"`{pname}` for `{user_op_call_target(call_obj)}`")
                 values.append(coerce_to_type(value, llty))
             return values
+
+        def parse_timeout_ms_literal(raw_value):
+            text = str(raw_value)
+            match = re.match(r"^([0-9]+)(ms|s|m)?$", text)
+            if match is None:
+                return None
+            amount = int(match.group(1))
+            unit = match.group(2) or "ms"
+            if unit == "ms":
+                return amount
+            if unit == "s":
+                return amount * 1000
+            if unit == "m":
+                return amount * 60000
+            return None
+
+        def timeout_ms_value_for_call(call_name, call_obj):
+            raw_timeout = call_obj.get("timeout")
+            if raw_timeout is None:
+                return ir.Constant(I64, 0)
+            parsed_timeout = parse_timeout_ms_literal(raw_timeout)
+            if parsed_timeout is not None:
+                return ir.Constant(I64, parsed_timeout)
+            try:
+                timeout_value = resolve(raw_timeout)
+            except ValueError:
+                raise ValueError(
+                    f"timeout: `{call_name}` uses unsupported timeout value "
+                    f"`{raw_timeout}`; use a literal like `1000ms` or an integer symbol")
+            if timeout_value is SENTINEL:
+                raise ValueError(
+                    f"timeout: `{call_name}` uses opaque timeout symbol `{raw_timeout}`")
+            return coerce_to_type(timeout_value, I64)
+
+        def cancel_token_value_for_call(call_name, call_obj):
+            raw_cancel = call_obj.get("cancel_on")
+            if raw_cancel is None:
+                return ir.Constant(I8P, None)
+            try:
+                cancel_value = resolve(raw_cancel)
+            except ValueError:
+                raise ValueError(
+                    f"cancelOn: `{call_name}` uses unresolved cancellation token "
+                    f"`{raw_cancel}`")
+            if cancel_value is SENTINEL:
+                return ir.Constant(I8P, None)
+            return coerce_to_type(cancel_value, I8P)
+
+        def native_symbol_from_async_metadata(raw_symbol, row_name, target):
+            if not raw_symbol:
+                return None
+            if not str(raw_symbol).startswith("native."):
+                raise ValueError(
+                    f"{row_name}: `{target}` uses unsupported async runtime "
+                    f"binding `{raw_symbol}`; expected native.SYMBOL")
+            symbol = str(raw_symbol)[len("native."):]
+            if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", symbol):
+                raise ValueError(
+                    f"{row_name}: `{target}` uses invalid native async symbol "
+                    f"`{symbol}`")
+            return symbol
+
+        def async_native_binding_info(call_obj):
+            target = user_op_call_target(call_obj)
+            op_info = self._user_ops.get(target)
+            if op_info is None or not operation_async_enabled:
+                return None
+            start_symbol = native_symbol_from_async_metadata(
+                op_info.get("async_native_start"),
+                "runtimeBindingAsyncStart",
+                target)
+            await_symbol = native_symbol_from_async_metadata(
+                op_info.get("async_native_await"),
+                "runtimeBindingAsyncAwait",
+                target)
+            if start_symbol is None and await_symbol is None:
+                return None
+            if start_symbol is None or await_symbol is None:
+                raise ValueError(
+                    f"async runtimeBinding `{target}` must declare both "
+                    "runtimeBindingAsyncStart and runtimeBindingAsyncAwait")
+            return target, op_info, start_symbol, await_symbol
+
+        def async_native_binding_metadata_target(call_obj):
+            if call_obj is None:
+                return None
+            target = user_op_call_target(call_obj)
+            op_info = self._user_ops.get(target)
+            if op_info is None:
+                return None
+            if op_info.get("async_native_start") or op_info.get("async_native_await"):
+                return target
+            return None
+
+        def result_error_condition(result, call_name):
+            if isinstance(result.type, ir.PointerType):
+                return builder.icmp_unsigned(
+                    "==", result, ir.Constant(result.type, None),
+                    name=f"{call_name}_async_result_is_null")
+            if isinstance(result.type, ir.IntType):
+                return builder.icmp_signed(
+                    "<", result, ir.Constant(result.type, 0),
+                    name=f"{call_name}_async_result_is_negative")
+            return ir.Constant(I1, 0)
+
+        def emit_async_native_binding_start(call_name):
+            call_obj = calls[call_name]
+            binding = async_native_binding_info(call_obj)
+            if binding is None:
+                return False
+            target, op_info, start_symbol, _await_symbol = binding
+            if call_obj.get("async_awaited"):
+                raise ValueError(
+                    f"start: `{call_name}` was already awaited or consumed "
+                    "by an await wait-set case")
+
+            arg_values = user_op_argument_values(call_name, call_obj, op_info)
+            loop = ensure_async_loop()
+            timeout_value = timeout_ms_value_for_call(call_name, call_obj)
+            cancel_value = cancel_token_value_for_call(call_name, call_obj)
+            param_tys = [I8P] + [param[1] for param in op_info["params"]] + [
+                I64,
+                I8P,
+                I8P.as_pointer(),
+            ]
+            start_fn = self._runtime_func(start_symbol, I32, param_tys)
+            self.provenance.record_external(start_symbol, call_obj)
+
+            with builder.goto_entry_block():
+                future_slot = builder.alloca(I8P, name=f"{call_name}_native_future_out")
+                status_slot = builder.alloca(I32, name=f"{call_name}_native_start_status_out")
+            builder.store(ir.Constant(I8P, None), future_slot)
+            start_status = builder.call(
+                start_fn,
+                [loop] + arg_values + [timeout_value, cancel_value, future_slot],
+                name=f"{call_name}_native_start_status")
+            builder.store(start_status, status_slot)
+            call_obj["future_slot"] = future_slot
+            call_obj["start_status_slot"] = status_slot
+            call_obj["start_status"] = start_status
+            call_obj["result"] = builder.load(
+                future_slot, name=f"{call_name}_native_future")
+            call_obj["error_value"] = start_status
+            call_obj["error_cond"] = builder.icmp_unsigned(
+                "!=", start_status, ir.Constant(I32, 0),
+                name=f"{call_name}_native_start_is_error")
+            return True
+
+        def emit_async_native_binding_await(call_name):
+            call_obj = calls[call_name]
+            binding = async_native_binding_info(call_obj)
+            if binding is None:
+                return False
+            _target, op_info, _start_symbol, await_symbol = binding
+            if call_obj.get("async_awaited"):
+                raise ValueError(
+                    f"await: `{call_name}` was already awaited or consumed "
+                    "by an await wait-set case")
+            future_slot = call_obj.get("future_slot")
+            if future_slot is None:
+                raise ValueError(
+                    f"await: `{call_name}` targets async runtimeBinding "
+                    f"`{user_op_call_target(call_obj)}` but was not started")
+
+            loop = ensure_async_loop()
+            future = builder.load(future_slot, name=f"{call_name}_native_await_future")
+            await_fn = self._runtime_func(
+                await_symbol,
+                op_info["return_type"],
+                [I8P, I8P])
+            self.provenance.record_external(await_symbol, call_obj)
+            result = builder.call(
+                await_fn, [loop, future], name=f"{call_name}_native_async_result")
+            builder.store(ir.Constant(I8P, None), future_slot)
+
+            start_status = call_obj.get("start_status")
+            if start_status is None and call_obj.get("start_status_slot") is not None:
+                start_status = builder.load(
+                    call_obj["start_status_slot"],
+                    name=f"{call_name}_native_start_status_reload")
+            if start_status is None:
+                start_status = ir.Constant(I32, 0)
+            start_failed = builder.icmp_unsigned(
+                "!=", start_status, ir.Constant(I32, 0),
+                name=f"{call_name}_native_start_failed_at_await")
+            result_failed = result_error_condition(result, call_name)
+            call_obj["result"] = result
+            if isinstance(result.type, ir.IntType):
+                call_obj["error_value"] = builder.select(
+                    start_failed,
+                    coerce_to_type(start_status, result.type),
+                    result,
+                    name=f"{call_name}_native_async_error_value")
+            else:
+                call_obj["error_value"] = start_status
+            call_obj["error_cond"] = builder.or_(
+                start_failed,
+                result_failed,
+                name=f"{call_name}_native_async_is_error")
+            call_obj["async_awaited"] = True
+            return True
 
         def emit_async_fetch_start(call_name):
             call_obj = calls[call_name]
@@ -8007,11 +8300,21 @@ class Codegen:
                 calls[call_name]["arg_lines"][arg_name] = _ln
                 continue
 
-            if verb in ("timeout", "cancelOn"):
+            if verb == "timeout" and len(args) >= 2:
+                calls[args[0]]["timeout"] = args[1]
+                continue
+
+            if verb == "cancelOn" and len(args) >= 2:
+                calls[args[0]]["cancel_on"] = args[1]
                 continue
 
             if verb == "run":
                 call_name = args[0]
+                async_only_target = async_native_binding_metadata_target(calls.get(call_name))
+                if async_only_target is not None:
+                    raise ValueError(
+                        f"run: `{call_name}` targets async-only runtimeBinding "
+                        f"operation `{async_only_target}`; use start/await")
                 policy_name = retry_attachments.get(call_name)
                 if policy_name is None:
                     trace_call_event("call.start", call_name)
@@ -8096,6 +8399,11 @@ class Codegen:
                     raise ValueError(
                         f"line {_ln}: runChecked references unknown call "
                         f"`{call_name}`")
+                async_only_target = async_native_binding_metadata_target(calls.get(call_name))
+                if async_only_target is not None:
+                    raise ValueError(
+                        f"runChecked: `{call_name}` targets async-only "
+                        f"runtimeBinding operation `{async_only_target}`; use start/await")
                 if call_name in retry_attachments:
                     raise ValueError(
                         f"runChecked: call `{call_name}` has useRetry policy "
@@ -8139,7 +8447,9 @@ class Codegen:
                 call_name = args[0]
                 if verb == "start":
                     trace_call_event("call.start", call_name)
-                    lowered_async = emit_async_fetch_start(call_name)
+                    lowered_async = emit_async_native_binding_start(call_name)
+                    if not lowered_async:
+                        lowered_async = emit_async_fetch_start(call_name)
                     if not lowered_async:
                         lowered_async = emit_async_user_op_start(call_name)
                     trace_call_event("call.end", call_name)
@@ -8152,7 +8462,9 @@ class Codegen:
                             "but was not lowered to an async future")
                 if verb == "await":
                     trace_call_event("call.await", call_name)
-                    lowered_async = emit_async_fetch_await(call_name)
+                    lowered_async = emit_async_native_binding_await(call_name)
+                    if not lowered_async:
+                        lowered_async = emit_async_fetch_await(call_name)
                     if not lowered_async:
                         lowered_async = emit_async_user_op_await(call_name)
                     trace_call_event("call.await.end", call_name)
@@ -8831,7 +9143,8 @@ class Codegen:
                     self.prog,
                     self.prog.import_aliases[qualified_parts[0]],
                     "operation")
-                and source_target not in self.prog.operation_aliases):
+                and source_target not in self.prog.operation_aliases
+                and target not in HTTP_INTRINSIC_TARGETS):
             raise ValueError(
                 f"{call_name}: qualified import target `{source_target}` is "
                 "not an exported operation")
@@ -9852,6 +10165,17 @@ class Codegen:
             v = resolve(usable[0][1])
             v = require_i64(v, "math.truncateCSignedInt64ToCSignedInt32 input")
             call["result"] = builder.trunc(v, I32, name=f"{call_name}_res")
+            return
+
+        if target == "math.bitwiseNotI64":
+            # One's-complement of an i64: every bit flipped. Lowered as
+            # `xor value, -1` (all-ones), a single LLVM instruction.
+            usable = [(k, v) for k, v in call["args"].items()
+                      if v not in opaque_inputs]
+            v = resolve(usable[0][1])
+            v = require_i64(v, "math.bitwiseNotI64 input")
+            call["result"] = builder.xor(
+                v, ir.Constant(I64, -1), name=f"{call_name}_res")
             return
 
         if target == "math.intToFloat":
@@ -11468,7 +11792,7 @@ class Codegen:
         # _native_bcrypt_link_inputs).
         # ------------------------------------------------------------
 
-        if target == "bcrypt.hashPassword":
+        if target in ("bcrypt.hashPassword", "hashPassword"):
             plaintext = arg_val_named("plaintext")
             cost = arg_val_named("cost")
             out_buffer = arg_val_named("outBuffer")
@@ -11492,7 +11816,7 @@ class Codegen:
                 name=f"{call_name}_status")
             return
 
-        if target == "bcrypt.verifyPassword":
+        if target in ("bcrypt.verifyPassword", "verifyPassword"):
             plaintext = arg_val_named("plaintext")
             expected_hash = arg_val_named("expectedHash")
             if isinstance(plaintext.type, ir.IntType):
@@ -11507,7 +11831,7 @@ class Codegen:
                 name=f"{call_name}_matchOrErr")
             return
 
-        if target == "bcrypt.randomBytes":
+        if target in ("bcrypt.randomBytes", "randomBytes"):
             out_buffer = arg_val_named("outBuffer")
             byte_count = arg_val_named("byteCount")
             if isinstance(out_buffer.type, ir.IntType):
@@ -11524,7 +11848,7 @@ class Codegen:
                 name=f"{call_name}_status")
             return
 
-        if target == "bcrypt.base64UrlEncode":
+        if target in ("bcrypt.base64UrlEncode", "base64UrlEncode"):
             input_buffer = arg_val_named("inputBuffer")
             input_count = arg_val_named("inputCount")
             output_buffer = arg_val_named("outputBuffer")
@@ -11920,7 +12244,7 @@ class Codegen:
                 "!=", status_value, ir.Constant(I32, 0),
                 name=f"{call_name}_isError")
 
-        if target == "sqlite.openDatabase":
+        if target in ("sqlite.openDatabase", "openDatabase"):
             path = arg_val_named("path")
             mode = arg_val_named("mode")
             if isinstance(path.type, ir.IntType):
@@ -11951,7 +12275,7 @@ class Codegen:
             call["handle_slot"] = db_slot
             return
 
-        if target == "sqlite.closeDatabase":
+        if target in ("sqlite.closeDatabase", "closeDatabase"):
             database = arg_val_named("database")
             if isinstance(database.type, ir.IntType):
                 database = builder.inttoptr(database, I8P)
@@ -11965,7 +12289,7 @@ class Codegen:
             call["error_cond"] = _sqlite_simple_status_error_cond(status)
             return
 
-        if target == "sqlite.errorMessage":
+        if target in ("sqlite.errorMessage", "errorMessage"):
             database = arg_val_named("database")
             if isinstance(database.type, ir.IntType):
                 database = builder.inttoptr(database, I8P)
@@ -11976,7 +12300,7 @@ class Codegen:
                 errmsg_fn, [database], name=f"{call_name}_message")
             return
 
-        if target == "sqlite.lastInsertRowId":
+        if target in ("sqlite.lastInsertRowId", "lastInsertRowId"):
             database = arg_val_named("database")
             if isinstance(database.type, ir.IntType):
                 database = builder.inttoptr(database, I8P)
@@ -11988,7 +12312,7 @@ class Codegen:
                 last_rowid_fn, [database], name=f"{call_name}_rowid")
             return
 
-        if target == "sqlite.changedRowCount":
+        if target in ("sqlite.changedRowCount", "changedRowCount"):
             database = arg_val_named("database")
             if isinstance(database.type, ir.IntType):
                 database = builder.inttoptr(database, I8P)
@@ -12000,7 +12324,7 @@ class Codegen:
                 changes_fn, [database], name=f"{call_name}_changes")
             return
 
-        if target == "sqlite.exec":
+        if target in ("sqlite.exec", "exec"):
             database = arg_val_named("database")
             sql = arg_val_named("sql")
             if isinstance(database.type, ir.IntType):
@@ -12017,7 +12341,7 @@ class Codegen:
             call["error_cond"] = _sqlite_simple_status_error_cond(status)
             return
 
-        if target == "sqlite.prepareStatement":
+        if target in ("sqlite.prepareStatement", "prepareStatement"):
             database = arg_val_named("database")
             sql = arg_val_named("sql")
             if isinstance(database.type, ir.IntType):
@@ -12049,7 +12373,7 @@ class Codegen:
             call["handle_slot"] = stmt_slot
             return
 
-        if target == "sqlite.finalizeStatement":
+        if target in ("sqlite.finalizeStatement", "finalizeStatement"):
             statement = arg_val_named("statement")
             if isinstance(statement.type, ir.IntType):
                 statement = builder.inttoptr(statement, I8P)
@@ -12064,7 +12388,7 @@ class Codegen:
             call["error_cond"] = _sqlite_simple_status_error_cond(status)
             return
 
-        if target == "sqlite.resetStatement":
+        if target in ("sqlite.resetStatement", "resetStatement"):
             statement = arg_val_named("statement")
             if isinstance(statement.type, ir.IntType):
                 statement = builder.inttoptr(statement, I8P)
@@ -12079,7 +12403,7 @@ class Codegen:
             call["error_cond"] = _sqlite_simple_status_error_cond(status)
             return
 
-        if target == "sqlite.stepStatement":
+        if target in ("sqlite.stepStatement", "stepStatement"):
             statement = arg_val_named("statement")
             if isinstance(statement.type, ir.IntType):
                 statement = builder.inttoptr(statement, I8P)
@@ -12107,6 +12431,11 @@ class Codegen:
             "sqlite.bindText",
             "sqlite.bindBlob",
             "sqlite.bindNull",
+            "bindInt64",
+            "bindDouble",
+            "bindText",
+            "bindBlob",
+            "bindNull",
         ):
             statement = arg_val_named("statement")
             parameter_index = arg_val_named("parameterIndex")
@@ -12118,7 +12447,7 @@ class Codegen:
                     builder.trunc(parameter_index, I32)
                     if parameter_index.type.width > 32
                     else builder.sext(parameter_index, I32))
-            if target == "sqlite.bindNull":
+            if target in ("sqlite.bindNull", "bindNull"):
                 bind_fn = self._runtime_func(
                     "ss_sqlite_statement_bind_null", I32, [I8P, I32])
                 self.provenance.record_external(
@@ -12126,7 +12455,7 @@ class Codegen:
                 status = builder.call(
                     bind_fn, [statement, parameter_index],
                     name=f"{call_name}_status")
-            elif target == "sqlite.bindInt64":
+            elif target in ("sqlite.bindInt64", "bindInt64"):
                 value = arg_val_named("value")
                 if isinstance(value.type, ir.IntType) and value.type.width != 64:
                     value = (
@@ -12140,7 +12469,7 @@ class Codegen:
                 status = builder.call(
                     bind_fn, [statement, parameter_index, value],
                     name=f"{call_name}_status")
-            elif target == "sqlite.bindDouble":
+            elif target in ("sqlite.bindDouble", "bindDouble"):
                 value = arg_val_named("value")
                 bind_fn = self._runtime_func(
                     "ss_sqlite_statement_bind_double", I32, [I8P, I32, F64])
@@ -12149,7 +12478,7 @@ class Codegen:
                 status = builder.call(
                     bind_fn, [statement, parameter_index, value],
                     name=f"{call_name}_status")
-            elif target == "sqlite.bindText":
+            elif target in ("sqlite.bindText", "bindText"):
                 value = arg_val_named("value")
                 if isinstance(value.type, ir.IntType):
                     value = builder.inttoptr(value, I8P)
@@ -12194,11 +12523,19 @@ class Codegen:
             "sqlite.columnText",
             "sqlite.columnBlob",
             "sqlite.columnByteCount",
+            "columnCount",
+            "columnType",
+            "columnName",
+            "columnInt64",
+            "columnDouble",
+            "columnText",
+            "columnBlob",
+            "columnByteCount",
         ):
             statement = arg_val_named("statement")
             if isinstance(statement.type, ir.IntType):
                 statement = builder.inttoptr(statement, I8P)
-            if target == "sqlite.columnCount":
+            if target in ("sqlite.columnCount", "columnCount"):
                 fn = self._runtime_func(
                     "ss_sqlite_statement_column_count", I32, [I8P])
                 self.provenance.record_external(
@@ -12213,28 +12550,28 @@ class Codegen:
                     builder.trunc(column_index, I32)
                     if column_index.type.width > 32
                     else builder.sext(column_index, I32))
-            if target == "sqlite.columnType":
+            if target in ("sqlite.columnType", "columnType"):
                 fn = self._runtime_func(
                     "ss_sqlite_statement_column_type", I32, [I8P, I32])
                 self.provenance.record_external(
                     "ss_sqlite_statement_column_type", call)
                 call["result"] = builder.call(
                     fn, [statement, column_index], name=f"{call_name}_type")
-            elif target == "sqlite.columnName":
+            elif target in ("sqlite.columnName", "columnName"):
                 fn = self._runtime_func(
                     "ss_sqlite_statement_column_name", I8P, [I8P, I32])
                 self.provenance.record_external(
                     "ss_sqlite_statement_column_name", call)
                 call["result"] = builder.call(
                     fn, [statement, column_index], name=f"{call_name}_name")
-            elif target == "sqlite.columnInt64":
+            elif target in ("sqlite.columnInt64", "columnInt64"):
                 fn = self._runtime_func(
                     "ss_sqlite_statement_column_int64", I64, [I8P, I32])
                 self.provenance.record_external(
                     "ss_sqlite_statement_column_int64", call)
                 call["result"] = builder.call(
                     fn, [statement, column_index], name=f"{call_name}_int")
-            elif target == "sqlite.columnDouble":
+            elif target in ("sqlite.columnDouble", "columnDouble"):
                 fn = self._runtime_func(
                     "ss_sqlite_statement_column_double", F64, [I8P, I32])
                 self.provenance.record_external(
@@ -12242,14 +12579,14 @@ class Codegen:
                 call["result"] = builder.call(
                     fn, [statement, column_index],
                     name=f"{call_name}_double")
-            elif target == "sqlite.columnText":
+            elif target in ("sqlite.columnText", "columnText"):
                 fn = self._runtime_func(
                     "ss_sqlite_statement_column_text", I8P, [I8P, I32])
                 self.provenance.record_external(
                     "ss_sqlite_statement_column_text", call)
                 call["result"] = builder.call(
                     fn, [statement, column_index], name=f"{call_name}_text")
-            elif target == "sqlite.columnBlob":
+            elif target in ("sqlite.columnBlob", "columnBlob"):
                 fn = self._runtime_func(
                     "ss_sqlite_statement_column_blob", I8P, [I8P, I32])
                 self.provenance.record_external(
@@ -12266,7 +12603,7 @@ class Codegen:
                     name=f"{call_name}_byteCount")
             return
 
-        if target == "sqlite.libraryVersion":
+        if target in ("sqlite.libraryVersion", "libraryVersion"):
             version_fn = self._runtime_func(
                 "ss_sqlite_library_version", I8P, [])
             self.provenance.record_external(
@@ -12517,6 +12854,21 @@ def _declared_response_body_forwarders(prog: Program) -> dict:
     return forwarders
 
 
+def _operation_is_response_runtime_binding(op: Operation) -> bool:
+    has_runtime_binding_body = False
+    has_response_write_effect = False
+    for verb, args, _lineno in op.lines:
+        if verb == "operationBody" and len(args) >= 2:
+            if args[0] == op.name and args[1] == "runtimeBinding":
+                has_runtime_binding_body = True
+        elif verb == "effect" and len(args) >= 3:
+            if (args[0] == op.name
+                    and args[1] == "write"
+                    and str(args[2]).startswith("http." + "response")):
+                has_response_write_effect = True
+    return has_runtime_binding_body and has_response_write_effect
+
+
 def _response_body_writer_slots(prog: Program) -> dict:
     """Return writer target -> response-body argument names.
 
@@ -12528,6 +12880,10 @@ def _response_body_writer_slots(prog: Program) -> dict:
     """
     slots_by_target = dict(HTTP_RESPONSE_NULLABLE_SLOTS)
     declared = _declared_response_body_forwarders(prog)
+    for op_name, claim in declared.items():
+        op = prog.operations.get(op_name)
+        if op is not None and _operation_is_response_runtime_binding(op):
+            slots_by_target[op_name] = frozenset({claim["arg"]})
     changed = True
     while changed:
         changed = False
@@ -12587,6 +12943,12 @@ def _check_http_route_handler_input_shape(prog: Program, diags):
     for lineno, args in _source_rows(prog, "route"):
         if len(args) >= 4:
             binding_sites.setdefault(args[3], []).append(lineno)
+    for lineno, args in _source_rows(prog, "routeNotFound"):
+        if len(args) >= 2:
+            binding_sites.setdefault(args[1], []).append(lineno)
+    for lineno, args in _source_rows(prog, "routeMethodNotAllowed"):
+        if len(args) >= 2:
+            binding_sites.setdefault(args[1], []).append(lineno)
     for lineno, args in _source_rows(prog, "routeMiddleware"):
         if len(args) >= 3:
             binding_sites.setdefault(args[2], []).append(lineno)
@@ -14403,6 +14765,12 @@ def _check_strict_handler_writes_response(prog: Program, diags) -> None:
     for _lineno, args in _source_rows(prog, "route"):
         if len(args) >= 4:
             handler_ops.add(args[3])
+    for _lineno, args in _source_rows(prog, "routeNotFound"):
+        if len(args) >= 2:
+            handler_ops.add(args[1])
+    for _lineno, args in _source_rows(prog, "routeMethodNotAllowed"):
+        if len(args) >= 2:
+            handler_ops.add(args[1])
     middleware_ops = set()
     for _lineno, args in _source_rows(prog, "routeMiddleware"):
         if len(args) >= 3:
@@ -16573,23 +16941,32 @@ def emit_executable(module_ir: str, exe_path: str, opt_level: int = 2,
     import subprocess
     import tempfile
 
-    clang = os.environ.get("SEMSC_CLANG")
-    if not clang:
+    clang_env = os.environ.get("SEMSC_CLANG")
+    clang_cmd = []
+    if clang_env:
+        clang_cmd = [clang_env] if os.path.exists(clang_env) else shlex.split(
+            clang_env, posix=os.name != "nt")
+    if not clang_cmd:
         # Try common Windows install locations + PATH lookup.
         for candidate in ("clang", "C:/Program Files/LLVM/bin/clang.exe"):
             if os.path.isabs(candidate):
                 if os.path.exists(candidate):
-                    clang = candidate
+                    clang_cmd = [candidate]
                     break
             else:
                 from shutil import which
                 resolved = which(candidate)
                 if resolved:
-                    clang = resolved
+                    clang_cmd = [resolved]
                     break
-    if not clang:
+        if not clang_cmd:
+            from shutil import which
+            zig = which("zig")
+            if zig:
+                clang_cmd = [zig, "cc"]
+    if not clang_cmd:
         raise RuntimeError(
-            "could not find a clang executable; set SEMSC_CLANG=/path/to/clang")
+            "could not find clang or zig cc; set SEMSC_CLANG=/path/to/clang")
 
     remove_link_ir = link_ir_path is None
     if link_ir_path is not None:
@@ -16611,7 +16988,7 @@ def emit_executable(module_ir: str, exe_path: str, opt_level: int = 2,
         exe_dir = os.path.dirname(os.path.abspath(exe_path))
         if exe_dir:
             os.makedirs(exe_dir, exist_ok=True)
-        cmd = [clang, f"-O{opt_level}"]
+        cmd = list(clang_cmd) + [f"-O{opt_level}"]
         if cpu_config is not None and cpu_config.clang_args:
             cmd.extend(cpu_config.clang_args)
         cmd.extend(["-o", exe_path, ll_path])
@@ -17932,6 +18309,10 @@ _NATIVE_BCRYPT_TARGETS = frozenset({
     "bcrypt.verifyPassword",
     "bcrypt.randomBytes",
     "bcrypt.base64UrlEncode",
+    "hashPassword",
+    "verifyPassword",
+    "randomBytes",
+    "base64UrlEncode",
 })
 
 
@@ -18043,7 +18424,10 @@ def _native_async_link_inputs(prog: Program):
         return [], []
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     async_dir = os.path.join(repo_root, "SemanticScript", "runtime", "native_async")
-    return [os.path.join(async_dir, "sem_async_runtime.c")], []
+    extra_link_args = []
+    if os.name != "nt":
+        extra_link_args.append("-pthread")
+    return [os.path.join(async_dir, "sem_async_runtime.c")], extra_link_args
 
 
 _NATIVE_HTTP_CLIENT_TARGETS = frozenset({
@@ -18070,10 +18454,13 @@ def _native_http_client_link_inputs(prog: Program):
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     async_dir = os.path.join(repo_root, "SemanticScript", "runtime", "native_async")
     client_dir = os.path.join(repo_root, "SemanticScript", "runtime", "native_http_client")
+    extra_link_args = []
+    if os.name != "nt":
+        extra_link_args.append("-pthread")
     return [
         os.path.join(async_dir, "sem_async_runtime.c"),
         os.path.join(client_dir, "sem_http_client_runtime.c"),
-    ], []
+    ], extra_link_args
 
 
 _NATIVE_RUNTIME_LINK_REGISTRY = (
@@ -18148,7 +18535,9 @@ def _native_runtime_link_inputs(prog: Program):
         for source_path in sources:
             if source_path not in aggregate_sources:
                 aggregate_sources.append(source_path)
-        aggregate_args.extend(link_args)
+        for link_arg in link_args:
+            if link_arg not in aggregate_args:
+                aggregate_args.append(link_arg)
         components.append({
             "component": entry["component"],
             "owner": entry.get("owner", ""),

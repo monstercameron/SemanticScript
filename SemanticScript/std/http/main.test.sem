@@ -6,6 +6,7 @@ entry console main
 import http standard.http
 importConstant importedPlainTextContentType http plainTextContentType
 importCapability importedHttpResponseWriter http httpResponseWriter
+importCapability importedHttpServerStateReader http httpServerStateReader
 
 storage module immutable okText CNullTerminatedByteString "OK"
 storage module immutable successCode ExitCode 0
@@ -16,11 +17,15 @@ effect main write console.stdout
 authority main write console.stdout
 memory main heap no
 async main no
-purpose operation main "Smoke-test the canonical standard.http import path from its module folder."
+purpose operation main "Smoke-test the canonical standard.http import path, response capability, and shutdown drain-state capability from its module folder."
 
 call writeCall console.writeLine
 argument writeCall text CNullTerminatedByteString okText
 run writeCall
-ignore value source writeCall type CSignedInt32
+ignore ok source writeCall type CSignedInt32
+bind error writeCallError CSignedInt32 writeCall
+branch error source writeCall target writeFailed
 
 return value successCode
+label writeFailed
+return value writeCallError

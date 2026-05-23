@@ -112,7 +112,7 @@ invariant operation convertSignedInt64ToFloat64 "Loss-of-precision possible for 
 guarantee convertSignedInt64ToFloat64 "Total."
 label startConvertSignedInt64ToFloat64
 call sitoffpCall math.intToFloat
-argument sitoffpCall value CSignedInt32 inputValue
+argument sitoffpCall value CSignedInt64 inputValue
 run sitoffpCall
 bind value asDoubleResult CFloat64 sitoffpCall
 return value asDoubleResult
@@ -128,7 +128,7 @@ warning convertFloat64ToSignedInt64 "NaN inputs produce an unspecified i64 â€
 guarantee convertFloat64ToSignedInt64 "Total over the in-range CFloat64 domain."
 label startConvertFloat64ToSignedInt64
 call fptosiCall math.floatToInt
-argument fptosiCall value CSignedInt32 inputValue
+argument fptosiCall value CFloat64 inputValue
 run fptosiCall
 bind value asIntegerResult CSignedInt64 fptosiCall
 return value asIntegerResult

@@ -11,8 +11,8 @@
 # symbols; it does not special-case jwt.* call names.
 
 module standard.jwt
-purpose module standard.jwt "Standard-library namespace and contracts for HS256 JWT signing/verification and token-bearing formatting helpers."
-moduleOwns standard.jwt "The official import path `standard.jwt`, JWT access-token trust types, generic claim payload signing, HS256 status codes, runtimeBinding operation wrappers, and the native adapter source declaration."
+purpose module standard.jwt "Standard-library namespace and contracts for HS256 JWT signing, signature verification, flat claim reading, and token-bearing formatting helpers."
+moduleOwns standard.jwt "The official import path `standard.jwt`, JWT access-token trust types, generic claim payload signing, flat JWT claim readers, HS256 status codes, runtimeBinding operation wrappers, and the native adapter source declaration."
 moduleDoesNotOwn standard.jwt "Application session state, secret management, claim policy, refresh-token persistence, or route-specific response contracts."
 invariant module standard.jwt "Downstream modules import this module as alias `jwt` before calling exported JWT operations; the operation bodies delegate through generic native runtimeBinding rows."
 moduleSecurity standard.jwt "JWT secrets must come from deployment configuration before production. Source literals are acceptable only for local demos and tests."
@@ -29,13 +29,17 @@ purpose operation jwtMemoryBufferWrite "Authority to write JWT outputs and auth 
 type JwtAccessToken CNullTerminatedByteString
 type JwtSecret CNullTerminatedByteString
 type JwtPayloadTemplate CNullTerminatedByteString
+type JwtClaimName CNullTerminatedByteString
 type JwtOutputBuffer COpaqueMemoryAddress
+type JwtClaimBuffer COpaqueMemoryAddress
 type AuthEnvelopeBuffer COpaqueMemoryAddress
 
 exportType standard.jwt JwtAccessToken
 exportType standard.jwt JwtSecret
 exportType standard.jwt JwtPayloadTemplate
+exportType standard.jwt JwtClaimName
 exportType standard.jwt JwtOutputBuffer
+exportType standard.jwt JwtClaimBuffer
 exportType standard.jwt AuthEnvelopeBuffer
 
 typeInvariant JwtAccessToken "Null-terminated compact JWT string in header.payload.signature form."
@@ -43,7 +47,9 @@ typeTrust JwtAccessToken trusted
 typeInvariant JwtSecret "Server-side HMAC secret. Must not be logged or sent to clients."
 typeTrust JwtSecret secret
 typeInvariant JwtPayloadTemplate "Caller-owned JSON claim payload template with exactly one literal %s placeholder for a generated jti and no other printf directives."
+typeInvariant JwtClaimName "Top-level JWT claim name used by generic claim readers after signature verification."
 typeInvariant JwtOutputBuffer "Caller-owned byte buffer for compact JWT output."
+typeInvariant JwtClaimBuffer "Caller-owned byte buffer for decoded string claim output."
 typeInvariant AuthEnvelopeBuffer "Caller-owned byte buffer for JSON auth envelopes containing generated tokens."
 
 storage module immutable jwtModuleVersionText CNullTerminatedByteString "standard.jwt 0.1"
@@ -56,6 +62,7 @@ storage module immutable jwtStatusMalformedError CSignedInt32 -3
 storage module immutable jwtStatusOutputTooSmallError CSignedInt32 -4
 storage module immutable jwtAccessTokenBufferRequiredBytes CSignedInt32 512
 storage module immutable jwtAuthEnvelopeBufferRequiredBytes CSignedInt32 2048
+storage module immutable jwtClaimBufferRequiredBytes CSignedInt32 128
 
 exportConstant standard.jwt jwtModuleVersionText
 exportConstant standard.jwt jwtStatusOk
@@ -67,9 +74,12 @@ exportConstant standard.jwt jwtStatusMalformedError
 exportConstant standard.jwt jwtStatusOutputTooSmallError
 exportConstant standard.jwt jwtAccessTokenBufferRequiredBytes
 exportConstant standard.jwt jwtAuthEnvelopeBufferRequiredBytes
+exportConstant standard.jwt jwtClaimBufferRequiredBytes
 
 exportOperation standard.jwt hs256SignJsonPayloadWithRandomJti
 exportOperation standard.jwt hs256VerifyToken
+exportOperation standard.jwt readStringClaim
+exportOperation standard.jwt readInt64Claim
 exportOperation standard.jwt formatBearerLoginEnvelope
 exportOperation standard.jwt formatBearerRefreshEnvelope
 
@@ -104,6 +114,39 @@ purpose operation hs256VerifyToken "Return jwtStatusMatch only when the compact 
 invariant operation hs256VerifyToken "This verifier checks compact-token shape and signature only; callers own claim validation."
 runtimeBindingPrecondition hs256VerifyToken "token and secret are null-terminated strings; token is expected to use compact JWT header.payload.signature shape."
 runtimeBinding hs256VerifyToken native.ss_jwt_hs256_verify_token
+
+operation readStringClaim
+input operation readStringClaim token JwtAccessToken
+input operation readStringClaim claimName JwtClaimName
+input operation readStringClaim outBuffer JwtClaimBuffer
+input operation readStringClaim outCapacity CSignedInt32
+output operation readStringClaim CNullTerminatedByteString
+effect readStringClaim read memory.buffer
+effect readStringClaim write memory.buffer
+memory readStringClaim heap no
+async readStringClaim no
+useCapability readStringClaim jwtMemoryBufferRead
+useCapability readStringClaim jwtMemoryBufferWrite
+operationBody readStringClaim runtimeBinding
+purpose operation readStringClaim "Decode a top-level string claim from a compact JWT into caller-owned scratch after the caller has verified signature trust."
+invariant operation readStringClaim "This helper reads payload shape only and does not authorize a token; callers must verify the signature and enforce claim policy."
+runtimeBindingPrecondition readStringClaim "token, claimName, and outBuffer are non-null; outCapacity is positive and large enough for the decoded string claim."
+runtimeBinding readStringClaim native.ss_jwt_read_string_claim
+
+operation readInt64Claim
+input operation readInt64Claim token JwtAccessToken
+input operation readInt64Claim claimName JwtClaimName
+input operation readInt64Claim missingDefault CSignedInt64
+output operation readInt64Claim CSignedInt64
+effect readInt64Claim read memory.buffer
+memory readInt64Claim heap no
+async readInt64Claim no
+useCapability readInt64Claim jwtMemoryBufferRead
+operationBody readInt64Claim runtimeBinding
+purpose operation readInt64Claim "Decode a top-level integer claim from a compact JWT or return the caller-supplied missing default."
+invariant operation readInt64Claim "This helper reads payload shape only and does not authorize a token; callers must verify the signature and enforce claim policy."
+runtimeBindingPrecondition readInt64Claim "token and claimName are non-null; missingDefault is returned for malformed, missing, or non-integer claims."
+runtimeBinding readInt64Claim native.ss_jwt_read_int64_claim
 
 operation formatBearerLoginEnvelope
 input operation formatBearerLoginEnvelope accessToken JwtAccessToken

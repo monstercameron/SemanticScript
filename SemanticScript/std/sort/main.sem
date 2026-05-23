@@ -25,8 +25,9 @@ storage module immutable sortModuleVersionText CNullTerminatedByteString "standa
 # security: bounds enforcement is the caller's responsibility;
 #   no capacity contract is encoded at this layer.
 #
-# timing: bubble sort O(n^2); insertion sort O(n^2) worst case
-#   but O(n) on nearly-sorted input.
+# timing: bubble sort O(n^2) worst case but O(n) on already-sorted /
+#   nearly-sorted input via the per-pass no-swap early exit; insertion
+#   sort O(n^2) worst case but O(n) on nearly-sorted input.
 
 # Pure-module file: smoke + extended tests live in
 # std/sort/main.test.sem.
@@ -53,6 +54,10 @@ guarantee sortBytesWithBubbleSortInPlace "Total."
 label startSortBytesWithBubbleSortInPlace
 memory sortBytesWithBubbleSortInPlace mutable bubbleOuterIndex I64 0
 memory sortBytesWithBubbleSortInPlace mutable bubbleArrayLength I64 0
+# Per-pass swap flag: when a full inner pass performs no swaps the buffer
+# is already sorted and the outer loop exits early, giving O(n) on
+# already-sorted / nearly-sorted input instead of an unconditional O(n^2).
+memory sortBytesWithBubbleSortInPlace mutable bubbleSwappedThisPass I64 0
 set memory bubbleArrayLength byteCount
 label bubbleOuterHead
 call detectBubbleOuterDoneCall math.greaterThanOrEqualI64
@@ -61,6 +66,7 @@ argument detectBubbleOuterDoneCall right I64 bubbleArrayLength
 run detectBubbleOuterDoneCall
 bind value bubbleOuterDone Bool detectBubbleOuterDoneCall
 branch if condition bubbleOuterDone target bubbleSortComplete
+set memory bubbleSwappedThisPass integerZeroBoundaryForSort
 memory sortBytesWithBubbleSortInPlace mutable bubbleInnerIndex I64 0
 label bubbleInnerHead
 call computeBubbleInnerLengthCall math.subtractI64
@@ -132,6 +138,7 @@ argument storeBubbleLeftAtRightCall buffer COpaqueMemoryAddress byteBuffer
 argument storeBubbleLeftAtRightCall offset CByteCount bubbleRightIndex
 argument storeBubbleLeftAtRightCall value CSignedInt64 bubbleLeftRawByte
 run storeBubbleLeftAtRightCall
+set memory bubbleSwappedThisPass integerOneStepValue
 jump target bubbleInnerAdvance
 label bubbleInnerAdvance
 call advanceBubbleInnerCall math.addI64
@@ -142,6 +149,13 @@ bind value nextBubbleInner I64 advanceBubbleInnerCall
 set memory bubbleInnerIndex nextBubbleInner
 jump target bubbleInnerHead
 label bubbleOuterAdvance
+# A pass with no swaps means the buffer is sorted; stop early.
+call detectNoSwapsThisPassCall math.equalI64
+argument detectNoSwapsThisPassCall left I64 bubbleSwappedThisPass
+argument detectNoSwapsThisPassCall right I64 integerZeroBoundaryForSort
+run detectNoSwapsThisPassCall
+bind value bubbleNoSwapsThisPass Bool detectNoSwapsThisPassCall
+branch if condition bubbleNoSwapsThisPass target bubbleSortComplete
 call advanceBubbleOuterCall math.addI64
 argument advanceBubbleOuterCall left I64 bubbleOuterIndex
 argument advanceBubbleOuterCall right I64 integerOneStepValue

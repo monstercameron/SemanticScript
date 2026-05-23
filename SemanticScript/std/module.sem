@@ -20,6 +20,7 @@ import convert standard.convert
 import ctype standard.ctype
 import errno standard.errno
 import errno_more standard.errno_more
+import event standard.event
 import gui standard.gui
 import html standard.html
 import http standard.http

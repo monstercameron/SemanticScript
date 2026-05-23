@@ -355,40 +355,230 @@ invariant operation escapeJsonString "Output is always null-terminated; never wr
 
 label startEscapeJsonString
 
+# Real per-byte escaper (the log-injection defence promised by
+# moduleSecurity). Copy sourceText into destinationBuffer escaping `"`
+# -> \" and `\` -> \\, folding control bytes (< 0x20) to a single space,
+# and stopping before destinationCapacity would overflow so the tail is
+# always a clean NUL — never a half-written escape. A no-op `%s` snprintf
+# (the previous implementation) let any `"` in the text close the JSON
+# string and inject sibling fields into the audit trail.
+storage local immutable escapeZeroValue CSignedInt64 0
+storage local immutable escapeOneStep CSignedInt64 1
+storage local immutable escapeTwoStep CSignedInt64 2
+storage local immutable escapeQuoteByteCode CSignedInt64 34
+storage local immutable escapeBackslashByteCode CSignedInt64 92
+storage local immutable escapeSpaceByteCode CSignedInt64 32
+storage local immutable escapeByteRoleAdjustment CSignedInt64 256
+
+# Null source behaves as the empty string: jump straight to the NUL write.
 call escapeSourceIsNullCall pointer.isNull
 argument escapeSourceIsNullCall pointer COpaqueMemoryAddress sourceText
 run escapeSourceIsNullCall
 bind value escapeSourceIsNull Bool escapeSourceIsNullCall
-branch if condition escapeSourceIsNull target escapeJsonStringEmpty
 
-# Implementation uses c.snprintf with %s — that handles the common case
-# (no `"` or `\\` in the message) by simple copy. The escape contract
-# is documented; a production refine could swap the snprintf for a
-# real per-byte loop. For the taskforge-web app the message texts are
-# operation-internal constants ("user.login.success", "todo.created.id-N",
-# etc.) that contain neither character, so snprintf is sufficient.
-storage local immutable escapePassthroughFormat CNullTerminatedByteString "%s"
-call escapeSnprintfCall c.snprintf
-argument escapeSnprintfCall buffer COpaqueMemoryAddress destinationBuffer
-argument escapeSnprintfCall size CSignedInt64 destinationCapacity
-argument escapeSnprintfCall format CNullTerminatedByteString escapePassthroughFormat
-argument escapeSnprintfCall first CNullTerminatedByteString sourceText
-run escapeSnprintfCall
-ignore ok source escapeSnprintfCall type CSignedInt32
+memory escapeJsonString mutable escapeSourceCursor I64 0
+memory escapeJsonString mutable escapeDestCursor I64 0
+# Reserve one byte for the terminating NUL: writes must keep
+# escapeDestCursor <= destinationCapacity - 1.
+call escapeCapacityLimitCall math.subtractI64
+argument escapeCapacityLimitCall left I64 destinationCapacity
+argument escapeCapacityLimitCall right I64 escapeOneStep
+run escapeCapacityLimitCall
+bind value escapeCapacityLimit I64 escapeCapacityLimitCall
+branch if condition escapeSourceIsNull target escapeTerminate
 
+label escapeLoopHead
+call escapeLoadSrcCall pointer.loadByte
+argument escapeLoadSrcCall buffer COpaqueMemoryAddress sourceText
+argument escapeLoadSrcCall offset CByteCount escapeSourceCursor
+run escapeLoadSrcCall
+bind value escapeRawSrcByte I8 escapeLoadSrcCall
+call escapeSrcIsNulCall math.equalI64
+argument escapeSrcIsNulCall left I64 escapeRawSrcByte
+argument escapeSrcIsNulCall right I64 escapeZeroValue
+run escapeSrcIsNulCall
+bind value escapeSrcIsNul Bool escapeSrcIsNulCall
+branch if condition escapeSrcIsNul target escapeTerminate
+# Normalize to unsigned 0..255 so high bytes don't sign-extend.
+call escapeShiftByteCall math.addI64
+argument escapeShiftByteCall left I64 escapeRawSrcByte
+argument escapeShiftByteCall right I64 escapeByteRoleAdjustment
+run escapeShiftByteCall
+bind value escapeShiftedByte I64 escapeShiftByteCall
+call escapeNormByteCall math.moduloI64
+argument escapeNormByteCall left I64 escapeShiftedByte
+argument escapeNormByteCall right I64 escapeByteRoleAdjustment
+run escapeNormByteCall
+bind value escapeNormByte I64 escapeNormByteCall
+call escapeIsQuoteCall math.equalI64
+argument escapeIsQuoteCall left I64 escapeNormByte
+argument escapeIsQuoteCall right I64 escapeQuoteByteCode
+run escapeIsQuoteCall
+bind value escapeIsQuote Bool escapeIsQuoteCall
+branch if condition escapeIsQuote target escapeEmitQuote
+call escapeIsBackslashCall math.equalI64
+argument escapeIsBackslashCall left I64 escapeNormByte
+argument escapeIsBackslashCall right I64 escapeBackslashByteCode
+run escapeIsBackslashCall
+bind value escapeIsBackslash Bool escapeIsBackslashCall
+branch if condition escapeIsBackslash target escapeEmitBackslash
+call escapeIsControlCall math.lessThanI64
+argument escapeIsControlCall left I64 escapeNormByte
+argument escapeIsControlCall right I64 escapeSpaceByteCode
+run escapeIsControlCall
+bind value escapeIsControl Bool escapeIsControlCall
+branch if condition escapeIsControl target escapeEmitSpace
+branch else target escapeEmitPlain
+
+# Plain byte (one output byte): need destCursor < capacityLimit.
+label escapeEmitPlain
+call escapePlainRoomCall math.lessThanI64
+argument escapePlainRoomCall left I64 escapeDestCursor
+argument escapePlainRoomCall right I64 escapeCapacityLimit
+run escapePlainRoomCall
+bind value escapePlainHasRoom Bool escapePlainRoomCall
+branch if condition escapePlainHasRoom target escapeWritePlain
+branch else target escapeTerminate
+label escapeWritePlain
+call escapeStorePlainCall pointer.storeByte
+argument escapeStorePlainCall buffer COpaqueMemoryAddress destinationBuffer
+argument escapeStorePlainCall offset CByteCount escapeDestCursor
+argument escapeStorePlainCall value CSignedInt64 escapeNormByte
+run escapeStorePlainCall
+call escapePlainAdvanceCall math.addI64
+argument escapePlainAdvanceCall left I64 escapeDestCursor
+argument escapePlainAdvanceCall right I64 escapeOneStep
+run escapePlainAdvanceCall
+bind value escapeDestAfterPlain I64 escapePlainAdvanceCall
+set memory escapeDestCursor escapeDestAfterPlain
+jump target escapeAdvanceSource
+
+# Control byte folded to a single space (one output byte).
+label escapeEmitSpace
+call escapeSpaceRoomCall math.lessThanI64
+argument escapeSpaceRoomCall left I64 escapeDestCursor
+argument escapeSpaceRoomCall right I64 escapeCapacityLimit
+run escapeSpaceRoomCall
+bind value escapeSpaceHasRoom Bool escapeSpaceRoomCall
+branch if condition escapeSpaceHasRoom target escapeWriteSpace
+branch else target escapeTerminate
+label escapeWriteSpace
+call escapeStoreSpaceCall pointer.storeByte
+argument escapeStoreSpaceCall buffer COpaqueMemoryAddress destinationBuffer
+argument escapeStoreSpaceCall offset CByteCount escapeDestCursor
+argument escapeStoreSpaceCall value CSignedInt64 escapeSpaceByteCode
+run escapeStoreSpaceCall
+call escapeSpaceAdvanceCall math.addI64
+argument escapeSpaceAdvanceCall left I64 escapeDestCursor
+argument escapeSpaceAdvanceCall right I64 escapeOneStep
+run escapeSpaceAdvanceCall
+bind value escapeDestAfterSpace I64 escapeSpaceAdvanceCall
+set memory escapeDestCursor escapeDestAfterSpace
+jump target escapeAdvanceSource
+
+# Quote -> \" (two output bytes): need destCursor + 2 <= capacityLimit.
+label escapeEmitQuote
+call escapeQuoteRoomEndCall math.addI64
+argument escapeQuoteRoomEndCall left I64 escapeDestCursor
+argument escapeQuoteRoomEndCall right I64 escapeTwoStep
+run escapeQuoteRoomEndCall
+bind value escapeQuoteRoomEnd I64 escapeQuoteRoomEndCall
+call escapeQuoteRoomCall math.lessThanOrEqualI64
+argument escapeQuoteRoomCall left I64 escapeQuoteRoomEnd
+argument escapeQuoteRoomCall right I64 escapeCapacityLimit
+run escapeQuoteRoomCall
+bind value escapeQuoteHasRoom Bool escapeQuoteRoomCall
+branch if condition escapeQuoteHasRoom target escapeWriteQuote
+branch else target escapeTerminate
+label escapeWriteQuote
+call escapeStoreQuoteBackslashCall pointer.storeByte
+argument escapeStoreQuoteBackslashCall buffer COpaqueMemoryAddress destinationBuffer
+argument escapeStoreQuoteBackslashCall offset CByteCount escapeDestCursor
+argument escapeStoreQuoteBackslashCall value CSignedInt64 escapeBackslashByteCode
+run escapeStoreQuoteBackslashCall
+call escapeQuoteAdvanceFirstCall math.addI64
+argument escapeQuoteAdvanceFirstCall left I64 escapeDestCursor
+argument escapeQuoteAdvanceFirstCall right I64 escapeOneStep
+run escapeQuoteAdvanceFirstCall
+bind value escapeDestAfterQuoteBackslash I64 escapeQuoteAdvanceFirstCall
+set memory escapeDestCursor escapeDestAfterQuoteBackslash
+call escapeStoreQuoteCharCall pointer.storeByte
+argument escapeStoreQuoteCharCall buffer COpaqueMemoryAddress destinationBuffer
+argument escapeStoreQuoteCharCall offset CByteCount escapeDestCursor
+argument escapeStoreQuoteCharCall value CSignedInt64 escapeQuoteByteCode
+run escapeStoreQuoteCharCall
+call escapeQuoteAdvanceSecondCall math.addI64
+argument escapeQuoteAdvanceSecondCall left I64 escapeDestCursor
+argument escapeQuoteAdvanceSecondCall right I64 escapeOneStep
+run escapeQuoteAdvanceSecondCall
+bind value escapeDestAfterQuoteChar I64 escapeQuoteAdvanceSecondCall
+set memory escapeDestCursor escapeDestAfterQuoteChar
+jump target escapeAdvanceSource
+
+# Backslash -> \\ (two output bytes): need destCursor + 2 <= capacityLimit.
+label escapeEmitBackslash
+call escapeBackslashRoomEndCall math.addI64
+argument escapeBackslashRoomEndCall left I64 escapeDestCursor
+argument escapeBackslashRoomEndCall right I64 escapeTwoStep
+run escapeBackslashRoomEndCall
+bind value escapeBackslashRoomEnd I64 escapeBackslashRoomEndCall
+call escapeBackslashRoomCall math.lessThanOrEqualI64
+argument escapeBackslashRoomCall left I64 escapeBackslashRoomEnd
+argument escapeBackslashRoomCall right I64 escapeCapacityLimit
+run escapeBackslashRoomCall
+bind value escapeBackslashHasRoom Bool escapeBackslashRoomCall
+branch if condition escapeBackslashHasRoom target escapeWriteBackslash
+branch else target escapeTerminate
+label escapeWriteBackslash
+call escapeStoreBackslashFirstCall pointer.storeByte
+argument escapeStoreBackslashFirstCall buffer COpaqueMemoryAddress destinationBuffer
+argument escapeStoreBackslashFirstCall offset CByteCount escapeDestCursor
+argument escapeStoreBackslashFirstCall value CSignedInt64 escapeBackslashByteCode
+run escapeStoreBackslashFirstCall
+call escapeBackslashAdvanceFirstCall math.addI64
+argument escapeBackslashAdvanceFirstCall left I64 escapeDestCursor
+argument escapeBackslashAdvanceFirstCall right I64 escapeOneStep
+run escapeBackslashAdvanceFirstCall
+bind value escapeDestAfterBackslashFirst I64 escapeBackslashAdvanceFirstCall
+set memory escapeDestCursor escapeDestAfterBackslashFirst
+call escapeStoreBackslashSecondCall pointer.storeByte
+argument escapeStoreBackslashSecondCall buffer COpaqueMemoryAddress destinationBuffer
+argument escapeStoreBackslashSecondCall offset CByteCount escapeDestCursor
+argument escapeStoreBackslashSecondCall value CSignedInt64 escapeBackslashByteCode
+run escapeStoreBackslashSecondCall
+call escapeBackslashAdvanceSecondCall math.addI64
+argument escapeBackslashAdvanceSecondCall left I64 escapeDestCursor
+argument escapeBackslashAdvanceSecondCall right I64 escapeOneStep
+run escapeBackslashAdvanceSecondCall
+bind value escapeDestAfterBackslashSecond I64 escapeBackslashAdvanceSecondCall
+set memory escapeDestCursor escapeDestAfterBackslashSecond
+jump target escapeAdvanceSource
+
+label escapeAdvanceSource
+call escapeAdvanceSourceCursorCall math.addI64
+argument escapeAdvanceSourceCursorCall left I64 escapeSourceCursor
+argument escapeAdvanceSourceCursorCall right I64 escapeOneStep
+run escapeAdvanceSourceCursorCall
+bind value escapeNextSourceCursor I64 escapeAdvanceSourceCursorCall
+set memory escapeSourceCursor escapeNextSourceCursor
+jump target escapeLoopHead
+
+label escapeTerminate
+# Only write the NUL when the buffer has at least one byte; a zero
+# capacity must not be touched.
+call escapeCanTerminateCall math.greaterThanI64
+argument escapeCanTerminateCall left I64 destinationCapacity
+argument escapeCanTerminateCall right I64 escapeZeroValue
+run escapeCanTerminateCall
+bind value escapeCanTerminate Bool escapeCanTerminateCall
+branch if condition escapeCanTerminate target escapeWriteTerminator
 return value logStatusOk
-
-label escapeJsonStringEmpty
-# Write a single null byte so the buffer is at least a valid C string.
-storage local immutable escapeEmptyText CNullTerminatedByteString ""
-storage local immutable escapeEmptyFormat CNullTerminatedByteString "%s"
-call escapeEmptySnprintfCall c.snprintf
-argument escapeEmptySnprintfCall buffer COpaqueMemoryAddress destinationBuffer
-argument escapeEmptySnprintfCall size CSignedInt64 destinationCapacity
-argument escapeEmptySnprintfCall format CNullTerminatedByteString escapeEmptyFormat
-argument escapeEmptySnprintfCall first CNullTerminatedByteString escapeEmptyText
-run escapeEmptySnprintfCall
-ignore ok source escapeEmptySnprintfCall type CSignedInt32
+label escapeWriteTerminator
+call escapeStoreNulCall pointer.storeByte
+argument escapeStoreNulCall buffer COpaqueMemoryAddress destinationBuffer
+argument escapeStoreNulCall offset CByteCount escapeDestCursor
+argument escapeStoreNulCall value CSignedInt64 escapeZeroValue
+run escapeStoreNulCall
 return value logStatusOk
 
 # ============================================================

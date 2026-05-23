@@ -237,8 +237,23 @@ argument loadByteForContainsCall buffer COpaqueMemoryAddress byteBuffer
 argument loadByteForContainsCall offset CByteCount containsSearchCursor
 run loadByteForContainsCall
 bind value containsRawByte I8 loadByteForContainsCall
+# Normalize the sign-extended byte to unsigned [0,255] before the
+# comparison, matching this module's unsigned-byte contract (sum / min /
+# max all normalize the same way). Without this, a byte >= 128 loads as a
+# negative I8 and would never match a targetValue in [128,255] — including
+# the value returned by findMaximumSignedByteInBuffer.
+call shiftByteForContainsCall math.addI64
+argument shiftByteForContainsCall left I64 containsRawByte
+argument shiftByteForContainsCall right I64 byteRoleAdjustmentValue
+run shiftByteForContainsCall
+bind value shiftedContainsByte I64 shiftByteForContainsCall
+call normalizeContainsByteCall math.moduloI64
+argument normalizeContainsByteCall left I64 shiftedContainsByte
+argument normalizeContainsByteCall right I64 byteRoleAdjustmentValue
+run normalizeContainsByteCall
+bind value normalizedContainsByte I64 normalizeContainsByteCall
 call detectContainsMatchCall math.equalI64
-argument detectContainsMatchCall left I64 containsRawByte
+argument detectContainsMatchCall left I64 normalizedContainsByte
 argument detectContainsMatchCall right I64 targetValue
 run detectContainsMatchCall
 bind value containsMatchFound Bool detectContainsMatchCall
@@ -282,8 +297,22 @@ argument loadByteForCountCall buffer COpaqueMemoryAddress byteBuffer
 argument loadByteForCountCall offset CByteCount countSearchCursor
 run loadByteForCountCall
 bind value countSearchRawByte I8 loadByteForCountCall
+# Normalize the sign-extended byte to unsigned [0,255] before the
+# comparison, matching this module's unsigned-byte contract (sum / min /
+# max normalize the same way). Without this, bytes >= 128 are never
+# counted against a targetValue in [128,255].
+call shiftByteForCountCall math.addI64
+argument shiftByteForCountCall left I64 countSearchRawByte
+argument shiftByteForCountCall right I64 byteRoleAdjustmentValue
+run shiftByteForCountCall
+bind value shiftedCountByte I64 shiftByteForCountCall
+call normalizeCountByteCall math.moduloI64
+argument normalizeCountByteCall left I64 shiftedCountByte
+argument normalizeCountByteCall right I64 byteRoleAdjustmentValue
+run normalizeCountByteCall
+bind value normalizedCountByte I64 normalizeCountByteCall
 call detectCountMatchCall math.equalI64
-argument detectCountMatchCall left I64 countSearchRawByte
+argument detectCountMatchCall left I64 normalizedCountByte
 argument detectCountMatchCall right I64 targetValue
 run detectCountMatchCall
 bind value countMatchFound Bool detectCountMatchCall

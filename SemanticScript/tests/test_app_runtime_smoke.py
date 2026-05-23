@@ -77,6 +77,31 @@ class TestAppRuntimeSmoke(unittest.TestCase):
             self.assertEqual(0, result.returncode, result.stderr.decode("utf-8", errors="replace"))
             self.assertTrue((Path(temp_dir) / "todos.json").exists())
 
+    def test_event_stream_smoke_app_uses_async_event_runtime(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="ss_event_stream_smoke_") as temp_dir:
+            ir_path = Path(temp_dir) / "event_stream_smoke.ll"
+            run_command([
+                sys.executable,
+                str(SEMSC),
+                "apps/event-stream-smoke/main.sem",
+                "--emit-ir",
+                str(ir_path),
+                "--quiet",
+            ])
+            ir_text = ir_path.read_text(encoding="utf-8")
+        self.assertIn("ss_event_append", ir_text)
+        self.assertIn("ss_event_receive", ir_text)
+        self.assertIn("ss_event_append_start", ir_text)
+        self.assertIn("ss_event_receive_start", ir_text)
+        self.assertIn("ss_event_receive_await", ir_text)
+        self.assertIn("ss_async_queue_work", ir_text)
+        app_text = (APPS_ROOT / "event-stream-smoke" / "main.sem").read_text(encoding="utf-8")
+        self.assertNotIn("run appendSmokeEventCall", app_text)
+        self.assertNotIn("run firstReceiveCall", app_text)
+        self.assertNotIn("run secondReceiveCall", app_text)
+        self.assertLess(app_text.index("start firstReceiveCall"), app_text.index("start appendSmokeEventCall"))
+        self.assertLess(app_text.index("start secondReceiveCall"), app_text.index("start appendSmokeEventCall"))
+
     def test_http_runtime_gauntlet_native_http_smoke(self) -> None:
         run_command([
             sys.executable,

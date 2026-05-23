@@ -1,0 +1,317 @@
+# ============================================================
+# SEMANTICSCRIPT STANDARD LIBRARY: async event stream namespace
+# ============================================================
+#
+# Import this module with:
+#
+#   importModule event standard.event
+#
+# The `event.*` operations are ordinary SemanticScript operation wrappers over
+# generic native runtimeBinding symbols. The compiler does not special-case event
+# call names.
+
+module standard.event
+purpose module standard.event "Standard-library namespace and contracts for async-only event stream runtime operations."
+moduleOwns standard.event "The official import path `standard.event`, event stream handle types, status constants, reusable event capabilities, runtimeBinding operation wrappers, and the native adapter source declaration."
+moduleDoesNotOwn standard.event "Application event schemas, subscription topology metadata, durable storage policy, SSE response streaming, or compiler event-specific lowering."
+invariant module standard.event "Downstream modules import this module as alias `event`; all event I/O operations are async-only by contract and delegate through generic native runtimeBinding rows."
+moduleWarning standard.event "openProcessStream is process-local and replay-oriented; openProcessQueue is process-local and backpressure-oriented; openDurableStream stores an append-only local replay log keyed by stream name."
+
+nativeRuntimeSource standard.event "SemanticScript/std/event/native/sem_event_runtime.c"
+nativeRuntimeLinkArg standard.event posix "-pthread"
+
+type EventStreamHandle COpaqueMemoryAddress
+type EventSubscriptionHandle COpaqueMemoryAddress
+type EventStreamName CNullTerminatedByteString
+type EventTypeName CNullTerminatedByteString
+type EventKey CNullTerminatedByteString
+type EventPayloadJson CNullTerminatedByteString
+type EventOutputBuffer COpaqueMemoryAddress
+type EventBufferCapacity CSignedInt32
+type EventQueueCapacity CSignedInt32
+type EventId CSignedInt64
+type EventStatusCode CSignedInt32
+
+exportType standard.event EventStreamHandle
+exportType standard.event EventSubscriptionHandle
+exportType standard.event EventStreamName
+exportType standard.event EventTypeName
+exportType standard.event EventKey
+exportType standard.event EventPayloadJson
+exportType standard.event EventOutputBuffer
+exportType standard.event EventBufferCapacity
+exportType standard.event EventQueueCapacity
+exportType standard.event EventId
+exportType standard.event EventStatusCode
+
+typeInvariant EventStreamHandle "Opaque handle returned by event.openProcessStream, event.openProcessQueue, or event.openDurableStream and closed by event.closeStream."
+typeTrust EventStreamHandle trustedRuntimeHandle
+typeInvariant EventSubscriptionHandle "Opaque handle returned by event.subscribeStream and closed by event.closeSubscription."
+typeTrust EventSubscriptionHandle trustedRuntimeHandle
+typeInvariant EventStreamName "Null-terminated logical stream name used when opening a process-local event stream."
+typeInvariant EventTypeName "Stable null-terminated event wire name such as auction.bid.accepted."
+typeInvariant EventKey "Null-terminated stream key used for per-key ordering and replay filtering; empty means no key filter."
+typeInvariant EventPayloadJson "Caller-encoded JSON event payload text that already passed the app-owned codec/trust boundary."
+typeTrust EventPayloadJson trustedAfterCallerCodec
+typeInvariant EventOutputBuffer "Caller-owned writable buffer passed to event.receiveEvent; null with zero capacity means the caller intentionally skips that output field."
+typeInvariant EventBufferCapacity "Positive byte capacity for an EventOutputBuffer, or zero when the matching buffer is null and intentionally skipped."
+typeInvariant EventQueueCapacity "Positive retained-event bound for a process stream or subscription."
+typeInvariant EventId "Positive event id on append/receive success; zero means no queued event; negative values are EventStatusCode failures."
+typeInvariant EventStatusCode "Zero success or negative event runtime status."
+
+capability eventStreamReader event.stream read
+purpose operation eventStreamReader "Authority to subscribe to and receive events from a runtime event stream."
+capability eventStreamWriter event.stream write
+purpose operation eventStreamWriter "Authority to append events to a runtime event stream."
+capability eventStreamOpener event.stream open
+purpose operation eventStreamOpener "Authority to open runtime event streams."
+capability eventStreamController event.stream close
+purpose operation eventStreamController "Authority to close runtime event streams."
+capability eventSubscriptionReader event.subscription read
+purpose operation eventSubscriptionReader "Authority to read events from an opened subscription."
+capability eventSubscriptionOpener event.subscription open
+purpose operation eventSubscriptionOpener "Authority to open runtime event subscriptions."
+capability eventSubscriptionController event.subscription write
+purpose operation eventSubscriptionController "Authority to acknowledge runtime event subscriptions."
+capability eventSubscriptionCloser event.subscription close
+purpose operation eventSubscriptionCloser "Authority to close runtime event subscriptions."
+capability eventRuntimeHeapAllocator heap allocate
+purpose operation eventRuntimeHeapAllocator "Authority for event runtime calls that allocate stream, subscription, or retained event handles."
+capability eventRuntimeHeapFree heap free
+purpose operation eventRuntimeHeapFree "Authority for event runtime calls that release stream, subscription, or retained event handles."
+capability eventOutputBufferWriter memory.buffer write
+purpose operation eventOutputBufferWriter "Authority to write received event fields into caller-owned output buffers."
+capability eventDurableStoreReader filesystem read
+purpose operation eventDurableStoreReader "Authority to load durable event replay logs."
+capability eventDurableStoreWriter filesystem write
+purpose operation eventDurableStoreWriter "Authority to create and append durable event replay logs."
+
+exportCapability standard.event eventStreamReader
+exportCapability standard.event eventStreamWriter
+exportCapability standard.event eventStreamOpener
+exportCapability standard.event eventStreamController
+exportCapability standard.event eventSubscriptionReader
+exportCapability standard.event eventSubscriptionOpener
+exportCapability standard.event eventSubscriptionController
+exportCapability standard.event eventSubscriptionCloser
+exportCapability standard.event eventRuntimeHeapAllocator
+exportCapability standard.event eventRuntimeHeapFree
+exportCapability standard.event eventOutputBufferWriter
+exportCapability standard.event eventDurableStoreReader
+exportCapability standard.event eventDurableStoreWriter
+
+storage module immutable eventModuleVersionText CNullTerminatedByteString "standard.event 0.1"
+storage module immutable eventStatusOk EventStatusCode 0
+storage module immutable eventStatusNoEvent EventStatusCode 0
+storage module immutable eventStatusConfigError EventStatusCode -1
+storage module immutable eventStatusRuntimeUnavailable EventStatusCode -2
+storage module immutable eventStatusEngineError EventStatusCode -3
+storage module immutable eventStatusQueueFull EventStatusCode -4
+storage module immutable eventStatusOutputTooSmall EventStatusCode -5
+storage module immutable eventStatusSubscriptionClosed EventStatusCode -6
+storage module immutable eventStatusCancelled EventStatusCode -7
+storage module immutable eventStatusTimedOut EventStatusCode -8
+storage module immutable eventDefaultQueueCapacity EventQueueCapacity 256
+
+exportConstant standard.event eventModuleVersionText
+exportConstant standard.event eventStatusOk
+exportConstant standard.event eventStatusNoEvent
+exportConstant standard.event eventStatusConfigError
+exportConstant standard.event eventStatusRuntimeUnavailable
+exportConstant standard.event eventStatusEngineError
+exportConstant standard.event eventStatusQueueFull
+exportConstant standard.event eventStatusOutputTooSmall
+exportConstant standard.event eventStatusSubscriptionClosed
+exportConstant standard.event eventStatusCancelled
+exportConstant standard.event eventStatusTimedOut
+exportConstant standard.event eventDefaultQueueCapacity
+
+exportOperation standard.event openProcessStream
+exportOperation standard.event openProcessQueue
+exportOperation standard.event openDurableStream
+exportOperation standard.event closeStream
+exportOperation standard.event appendEvent
+exportOperation standard.event subscribeStream
+exportOperation standard.event receiveEvent
+exportOperation standard.event acknowledgeEvent
+exportOperation standard.event closeSubscription
+
+operation openProcessStream
+input operation openProcessStream streamName EventStreamName
+input operation openProcessStream queueCapacity EventQueueCapacity
+output operation openProcessStream EventStreamHandle
+effect openProcessStream open event.stream
+effect openProcessStream write event.stream
+effect openProcessStream allocate heap
+memory openProcessStream heap yes
+async openProcessStream yes
+useCapability openProcessStream eventStreamOpener
+useCapability openProcessStream eventStreamWriter
+useCapability openProcessStream eventRuntimeHeapAllocator
+operationBody openProcessStream runtimeBinding
+purpose operation openProcessStream "Open a process-local event stream handle with a bounded retained-event capacity."
+invariant operation openProcessStream "This operation is async-only by standard.event contract; callers start and await it with explicit timeout/cancellation."
+runtimeBindingPrecondition openProcessStream "streamName is a non-null null-terminated string and queueCapacity is positive."
+runtimeBinding openProcessStream native.ss_event_open_process_stream
+runtimeBindingAsyncStart openProcessStream native.ss_event_open_process_stream_start
+runtimeBindingAsyncAwait openProcessStream native.ss_event_open_process_stream_await
+
+operation openDurableStream
+input operation openDurableStream streamName EventStreamName
+input operation openDurableStream queueCapacity EventQueueCapacity
+output operation openDurableStream EventStreamHandle
+effect openDurableStream open event.stream
+effect openDurableStream write event.stream
+effect openDurableStream allocate heap
+effect openDurableStream write filesystem
+effect openDurableStream read filesystem
+memory openDurableStream heap yes
+async openDurableStream yes
+useCapability openDurableStream eventStreamOpener
+useCapability openDurableStream eventStreamWriter
+useCapability openDurableStream eventRuntimeHeapAllocator
+useCapability openDurableStream eventDurableStoreReader
+useCapability openDurableStream eventDurableStoreWriter
+operationBody openDurableStream runtimeBinding
+purpose operation openDurableStream "Open a named event stream backed by an append-only local replay log."
+invariant operation openDurableStream "Reopening the same durable stream name reloads persisted events and continues event ids after the highest stored id."
+runtimeBindingPrecondition openDurableStream "streamName is a non-null null-terminated string and queueCapacity is positive. SEM_EVENT_STORE_DIR may choose the storage directory; otherwise the current working directory is used."
+runtimeBinding openDurableStream native.ss_event_open_durable_stream
+runtimeBindingAsyncStart openDurableStream native.ss_event_open_durable_stream_start
+runtimeBindingAsyncAwait openDurableStream native.ss_event_open_durable_stream_await
+
+operation openProcessQueue
+input operation openProcessQueue streamName EventStreamName
+input operation openProcessQueue queueCapacity EventQueueCapacity
+output operation openProcessQueue EventStreamHandle
+effect openProcessQueue open event.stream
+effect openProcessQueue write event.stream
+effect openProcessQueue allocate heap
+memory openProcessQueue heap yes
+async openProcessQueue yes
+useCapability openProcessQueue eventStreamOpener
+useCapability openProcessQueue eventStreamWriter
+useCapability openProcessQueue eventRuntimeHeapAllocator
+operationBody openProcessQueue runtimeBinding
+purpose operation openProcessQueue "Open a process-local bounded queue stream whose append operation returns eventStatusQueueFull instead of dropping retained events when capacity is exhausted."
+invariant operation openProcessQueue "Consumers must acknowledge received events to release strict queue capacity; this shape is for command queues where producer backpressure is required."
+runtimeBindingPrecondition openProcessQueue "streamName is a non-null null-terminated string and queueCapacity is positive."
+runtimeBinding openProcessQueue native.ss_event_open_process_queue
+runtimeBindingAsyncStart openProcessQueue native.ss_event_open_process_queue_start
+runtimeBindingAsyncAwait openProcessQueue native.ss_event_open_process_queue_await
+
+operation closeStream
+input operation closeStream stream EventStreamHandle
+output operation closeStream EventStatusCode
+effect closeStream close event.stream
+effect closeStream free heap
+memory closeStream heap yes
+async closeStream yes
+useCapability closeStream eventStreamController
+useCapability closeStream eventRuntimeHeapFree
+operationBody closeStream runtimeBinding
+purpose operation closeStream "Close an event stream handle, detach live subscriptions, and release runtime-owned retained events."
+invariant operation closeStream "Closing a stream invalidates future subscription receives rather than leaving hidden listeners active."
+runtimeBindingPrecondition closeStream "stream is a valid EventStreamHandle returned by openProcessStream."
+runtimeBinding closeStream native.ss_event_close_stream
+runtimeBindingAsyncStart closeStream native.ss_event_close_stream_start
+runtimeBindingAsyncAwait closeStream native.ss_event_close_stream_await
+
+operation appendEvent
+input operation appendEvent stream EventStreamHandle
+input operation appendEvent eventType EventTypeName
+input operation appendEvent eventKey EventKey
+input operation appendEvent payloadJson EventPayloadJson
+output operation appendEvent EventId
+effect appendEvent write event.stream
+effect appendEvent allocate heap
+memory appendEvent heap yes
+async appendEvent yes
+useCapability appendEvent eventStreamWriter
+useCapability appendEvent eventRuntimeHeapAllocator
+operationBody appendEvent runtimeBinding
+purpose operation appendEvent "Append one caller-encoded event payload to a runtime stream and return its assigned EventId."
+invariant operation appendEvent "Payload encoding, schema version, and trust validation belong to the caller; this low-level adapter stores opaque JSON text."
+runtimeBindingPrecondition appendEvent "stream is valid; eventType and payloadJson are non-null null-terminated strings; eventKey may be an empty string."
+runtimeBinding appendEvent native.ss_event_append
+runtimeBindingAsyncStart appendEvent native.ss_event_append_start
+runtimeBindingAsyncAwait appendEvent native.ss_event_append_await
+
+operation subscribeStream
+input operation subscribeStream stream EventStreamHandle
+input operation subscribeStream eventType EventTypeName
+input operation subscribeStream eventKey EventKey
+input operation subscribeStream afterEventId EventId
+input operation subscribeStream queueCapacity EventQueueCapacity
+output operation subscribeStream EventSubscriptionHandle
+effect subscribeStream read event.stream
+effect subscribeStream open event.subscription
+effect subscribeStream allocate heap
+memory subscribeStream heap yes
+async subscribeStream yes
+useCapability subscribeStream eventStreamReader
+useCapability subscribeStream eventSubscriptionOpener
+useCapability subscribeStream eventRuntimeHeapAllocator
+operationBody subscribeStream runtimeBinding
+purpose operation subscribeStream "Open a bounded subscription over a stream with event-type, key, and after-event cursor filters."
+invariant operation subscribeStream "The returned handle is explicit caller-owned lifecycle state; no hidden listener is registered without a closeSubscription path."
+runtimeBindingPrecondition subscribeStream "stream is valid; eventType and eventKey may be empty strings to mean wildcard; afterEventId is non-negative; queueCapacity is positive."
+runtimeBinding subscribeStream native.ss_event_subscribe
+runtimeBindingAsyncStart subscribeStream native.ss_event_subscribe_start
+runtimeBindingAsyncAwait subscribeStream native.ss_event_subscribe_await
+
+operation receiveEvent
+input operation receiveEvent subscription EventSubscriptionHandle
+input operation receiveEvent outEventType EventOutputBuffer
+input operation receiveEvent outEventTypeCapacity EventBufferCapacity
+input operation receiveEvent outEventKey EventOutputBuffer
+input operation receiveEvent outEventKeyCapacity EventBufferCapacity
+input operation receiveEvent outPayloadJson EventOutputBuffer
+input operation receiveEvent outPayloadCapacity EventBufferCapacity
+output operation receiveEvent EventId
+effect receiveEvent read event.subscription
+effect receiveEvent write memory.buffer
+memory receiveEvent heap no
+async receiveEvent yes
+useCapability receiveEvent eventSubscriptionReader
+useCapability receiveEvent eventOutputBufferWriter
+operationBody receiveEvent runtimeBinding
+purpose operation receiveEvent "Copy the next matching event into caller-owned buffers and return its EventId, waiting asynchronously until a future matching event, close, or timeout completes the receive."
+invariant operation receiveEvent "Async start registers a pending receive when no retained event is ready; append and close operations complete pending receives without busy-waiting."
+runtimeBindingPrecondition receiveEvent "subscription is valid; output buffers with positive capacities are writable and include space for null terminators; zero capacities skip that output field."
+runtimeBinding receiveEvent native.ss_event_receive
+runtimeBindingAsyncStart receiveEvent native.ss_event_receive_start
+runtimeBindingAsyncAwait receiveEvent native.ss_event_receive_await
+
+operation acknowledgeEvent
+input operation acknowledgeEvent subscription EventSubscriptionHandle
+input operation acknowledgeEvent eventId EventId
+output operation acknowledgeEvent EventStatusCode
+effect acknowledgeEvent write event.subscription
+memory acknowledgeEvent heap no
+async acknowledgeEvent yes
+useCapability acknowledgeEvent eventSubscriptionController
+operationBody acknowledgeEvent runtimeBinding
+purpose operation acknowledgeEvent "Acknowledge a received event id for the subscription cursor."
+invariant operation acknowledgeEvent "Acknowledgement is explicit so replay position and at-least-once delivery policy remain reviewable."
+runtimeBindingPrecondition acknowledgeEvent "subscription is valid and eventId is non-negative."
+runtimeBinding acknowledgeEvent native.ss_event_acknowledge
+runtimeBindingAsyncStart acknowledgeEvent native.ss_event_acknowledge_start
+runtimeBindingAsyncAwait acknowledgeEvent native.ss_event_acknowledge_await
+
+operation closeSubscription
+input operation closeSubscription subscription EventSubscriptionHandle
+output operation closeSubscription EventStatusCode
+effect closeSubscription close event.subscription
+effect closeSubscription free heap
+memory closeSubscription heap yes
+async closeSubscription yes
+useCapability closeSubscription eventSubscriptionCloser
+useCapability closeSubscription eventRuntimeHeapFree
+operationBody closeSubscription runtimeBinding
+purpose operation closeSubscription "Close a subscription handle and detach it from live stream fanout."
+invariant operation closeSubscription "Request-scoped subscriptions must pair this operation with request cancellation or shutdown cleanup."
+runtimeBindingPrecondition closeSubscription "subscription is a valid EventSubscriptionHandle returned by subscribeStream."
+runtimeBinding closeSubscription native.ss_event_close_subscription
+runtimeBindingAsyncStart closeSubscription native.ss_event_close_subscription_start
+runtimeBindingAsyncAwait closeSubscription native.ss_event_close_subscription_await

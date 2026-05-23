@@ -134,7 +134,7 @@ int main(void) {
 
     status = ss_async_loop_init(&frame.loop);
     if (status == SS_ASYNC_ERR_RUNTIME_UNAVAILABLE) {
-        puts("manual timer order demo: libuv backend not enabled");
+        puts("manual timer order demo: async runtime unavailable");
         return status;
     }
     if (status != SS_ASYNC_OK) {

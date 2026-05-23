@@ -87,7 +87,7 @@ output operation writeByteToStandardOutput CSignedInt32
 useCapability writeByteToStandardOutput stdoutWriteCapability
 effect writeByteToStandardOutput write console.stdout
 memory writeByteToStandardOutput heap no
-memoryStackLimit writeByteToStandardOutput 1024
+memory writeByteToStandardOutput stack max 1024
 async writeByteToStandardOutput no
 purpose operation writeByteToStandardOutput "Writes one byte to stdout via libc putchar. The only operation in std that crosses out to the host OS for I/O â€” every higher-level write bottoms out through here."
 invariant operation writeByteToStandardOutput "Returns the libc putchar return value (typically the character itself, or negative on EOF/error)."
@@ -115,7 +115,7 @@ output operation writeCStringToStandardOutput CByteCount
 useCapability writeCStringToStandardOutput stdoutWriteCapability
 effect writeCStringToStandardOutput write console.stdout
 memory writeCStringToStandardOutput heap no
-memoryStackLimit writeCStringToStandardOutput 1024
+memory writeCStringToStandardOutput stack max 1024
 async writeCStringToStandardOutput no
 purpose operation writeCStringToStandardOutput "Writes every byte of inputText to stdout (byte-by-byte through writeByteToStandardOutput) until the NUL terminator is reached. Returns the byte count, NOT including the terminator."
 invariant operation writeCStringToStandardOutput "Walks the string forward; stops at the first byte equal to 0."
@@ -155,7 +155,7 @@ output operation writeCStringLineToStandardOutput CByteCount
 useCapability writeCStringLineToStandardOutput stdoutWriteCapability
 effect writeCStringLineToStandardOutput write console.stdout
 memory writeCStringLineToStandardOutput heap no
-memoryStackLimit writeCStringLineToStandardOutput 1024
+memory writeCStringLineToStandardOutput stack max 1024
 async writeCStringLineToStandardOutput no
 purpose operation writeCStringLineToStandardOutput "Writes inputText followed by a newline to stdout. Returns the total byte count (string length + 1 for the LF)."
 invariant operation writeCStringLineToStandardOutput "Always emits exactly one trailing newline byte after the string contents."
@@ -188,7 +188,7 @@ effect writeSignedInt64DecimalToStandardOutput write console.stdout
 effect writeSignedInt64DecimalToStandardOutput allocate heap
 effect writeSignedInt64DecimalToStandardOutput free heap
 memory writeSignedInt64DecimalToStandardOutput heap yes
-memoryStackLimit writeSignedInt64DecimalToStandardOutput 4096
+memory writeSignedInt64DecimalToStandardOutput stack max 4096
 memoryAllocationSource writeSignedInt64DecimalToStandardOutput allocateDecimalScratchCall
 async writeSignedInt64DecimalToStandardOutput no
 purpose operation writeSignedInt64DecimalToStandardOutput "Pure-SemanticScript itoa-then-print. Extracts decimal digits from inputValue, buffers them in reverse on a 32-byte heap scratch, emits forward, then a newline. Negative inputs print with a leading '-'."
@@ -339,7 +339,7 @@ effect writeUnsignedInt64DecimalToStandardOutput write console.stdout
 effect writeUnsignedInt64DecimalToStandardOutput allocate heap
 effect writeUnsignedInt64DecimalToStandardOutput free heap
 memory writeUnsignedInt64DecimalToStandardOutput heap yes
-memoryStackLimit writeUnsignedInt64DecimalToStandardOutput 4096
+memory writeUnsignedInt64DecimalToStandardOutput stack max 4096
 memoryAllocationSource writeUnsignedInt64DecimalToStandardOutput allocateUnsignedScratchCall
 async writeUnsignedInt64DecimalToStandardOutput no
 purpose operation writeUnsignedInt64DecimalToStandardOutput "Print inputValue as an unsigned decimal integer (no sign), followed by a newline. Negative inputs print as their unsigned two's-complement interpretation."
@@ -455,7 +455,7 @@ effect writeSignedInt64HexToStandardOutput write console.stdout
 effect writeSignedInt64HexToStandardOutput allocate heap
 effect writeSignedInt64HexToStandardOutput free heap
 memory writeSignedInt64HexToStandardOutput heap yes
-memoryStackLimit writeSignedInt64HexToStandardOutput 4096
+memory writeSignedInt64HexToStandardOutput stack max 4096
 memoryAllocationSource writeSignedInt64HexToStandardOutput allocateHexScratchCall
 async writeSignedInt64HexToStandardOutput no
 purpose operation writeSignedInt64HexToStandardOutput "Print inputValue in lowercase hexadecimal (no '0x' prefix, no leading zeros) followed by a newline."
@@ -504,11 +504,8 @@ argument addAsciiZeroToNibbleCall right I64 asciiZeroByteCodeAsInt64
 run addAsciiZeroToNibbleCall
 bind value nibbleAsDigitChar I64 addAsciiZeroToNibbleCall
 set memory hexNibbleAsciiValue nibbleAsDigitChar
-# Self-branch on the value to flag it as read between the two
-# parallel `set` sites the linter's flow-insensitive analysis
-# would otherwise treat as shadowing dead stores.
-branch if condition hexNibbleAsciiValue target storeHexNibble
-branch else target storeHexNibble
+# Digit nibble resolved; jump to the shared store site.
+jump target storeHexNibble
 label computeNibbleAsciiAsLetter
 call addAsciiLowerAOffsetCall math.addI64
 argument addAsciiLowerAOffsetCall left I64 currentHexNibble
@@ -516,8 +513,7 @@ argument addAsciiLowerAOffsetCall right I64 asciiLowercaseAOffsetForHex
 run addAsciiLowerAOffsetCall
 bind value nibbleAsLetterChar I64 addAsciiLowerAOffsetCall
 set memory hexNibbleAsciiValue nibbleAsLetterChar
-branch if condition hexNibbleAsciiValue target storeHexNibble
-branch else target storeHexNibble
+jump target storeHexNibble
 label storeHexNibble
 call storeHexNibbleCall pointer.storeByte
 argument storeHexNibbleCall buffer COpaqueMemoryAddress hexScratchBuffer

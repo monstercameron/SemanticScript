@@ -59,7 +59,7 @@ input operation copyMemoryBytes sourceBuffer CNullTerminatedByteString
 input operation copyMemoryBytes byteCount CByteCount
 output operation copyMemoryBytes CByteCount
 memory copyMemoryBytes heap no
-memoryStackLimit copyMemoryBytes 1024
+memory copyMemoryBytes stack max 1024
 async copyMemoryBytes no
 purpose operation copyMemoryBytes "Copies byteCount bytes from sourceBuffer to destinationBuffer (forward walk). Returns byteCount."
 invariant operation copyMemoryBytes "Forward copy â€” caller must guarantee non-overlapping regions; use moveMemoryBytesAllowOverlap when they may overlap."
@@ -99,7 +99,7 @@ input operation moveMemoryBytesAllowOverlap sourceBuffer CNullTerminatedByteStri
 input operation moveMemoryBytesAllowOverlap byteCount CByteCount
 output operation moveMemoryBytesAllowOverlap CByteCount
 memory moveMemoryBytesAllowOverlap heap no
-memoryStackLimit moveMemoryBytesAllowOverlap 1024
+memory moveMemoryBytesAllowOverlap stack max 1024
 async moveMemoryBytesAllowOverlap no
 purpose operation moveMemoryBytesAllowOverlap "Overlap-safe memmove. When destinationBuffer > sourceBuffer in memory, copies bytes backwards so overlapping regions don't clobber unread source bytes."
 invariant operation moveMemoryBytesAllowOverlap "Equivalent in result to copyMemoryBytes when regions don't overlap; correct under overlap when they do."
@@ -179,7 +179,7 @@ input operation fillMemoryBytesWithValue targetValue CSignedInt32
 input operation fillMemoryBytesWithValue byteCount CByteCount
 output operation fillMemoryBytesWithValue CByteCount
 memory fillMemoryBytesWithValue heap no
-memoryStackLimit fillMemoryBytesWithValue 1024
+memory fillMemoryBytesWithValue stack max 1024
 async fillMemoryBytesWithValue no
 purpose operation fillMemoryBytesWithValue "Writes byteCount copies of targetValue into byteBuffer."
 invariant operation fillMemoryBytesWithValue "Writes exactly byteCount bytes; never reads from byteBuffer; the low 8 bits of targetValue are stored at each offset."
@@ -213,7 +213,7 @@ input operation zeroMemoryBytes byteBuffer COpaqueMemoryAddress
 input operation zeroMemoryBytes byteCount CByteCount
 output operation zeroMemoryBytes CByteCount
 memory zeroMemoryBytes heap no
-memoryStackLimit zeroMemoryBytes 1024
+memory zeroMemoryBytes stack max 1024
 async zeroMemoryBytes no
 purpose operation zeroMemoryBytes "Writes byteCount zeros into byteBuffer (bzero shape). Delegates to fillMemoryBytesWithValue."
 guarantee zeroMemoryBytes "Total."
@@ -235,7 +235,7 @@ input operation compareMemoryByteRanges rightBuffer CNullTerminatedByteString
 input operation compareMemoryByteRanges byteCount CByteCount
 output operation compareMemoryByteRanges CSignedInt64
 memory compareMemoryByteRanges heap no
-memoryStackLimit compareMemoryByteRanges 1024
+memory compareMemoryByteRanges stack max 1024
 async compareMemoryByteRanges no
 purpose operation compareMemoryByteRanges "Compares the first byteCount bytes of two buffers; returns 0 on full match, otherwise the signed difference of the first mismatched pair (leftByte - rightByte)."
 invariant operation compareMemoryByteRanges "Sign of the result matches the sign of the first byte difference."
@@ -288,7 +288,7 @@ input operation findByteValueInMemoryRange targetValue CSignedInt32
 input operation findByteValueInMemoryRange byteCount CByteCount
 output operation findByteValueInMemoryRange CSignedInt64
 memory findByteValueInMemoryRange heap no
-memoryStackLimit findByteValueInMemoryRange 1024
+memory findByteValueInMemoryRange stack max 1024
 async findByteValueInMemoryRange no
 purpose operation findByteValueInMemoryRange "Returns the offset of the first byte in [0, byteCount) that equals targetValue, or -1 if not present."
 invariant operation findByteValueInMemoryRange "Result is in [-1, byteCount); -1 only when target is absent."
@@ -307,8 +307,23 @@ argument loadByteForFindCall buffer COpaqueMemoryAddress byteBuffer
 argument loadByteForFindCall offset CByteCount findByteCursor
 run loadByteForFindCall
 bind value findCurrentByte I8 loadByteForFindCall
+# Normalize the sign-extended byte to unsigned [0,255] before the match,
+# matching memchr semantics and fillMemoryBytesWithValue (which stores the
+# low 8 bits). Without this, a byte >= 128 loads as a negative I8 and would
+# never match a targetValue in [128,255] — so fill(0xC8) then find(200)
+# would wrongly report "not found".
+call shiftFindByteCall math.addI64
+argument shiftFindByteCall left I64 findCurrentByte
+argument shiftFindByteCall right I64 byteRoleAdjustmentValue
+run shiftFindByteCall
+bind value shiftedFindByte I64 shiftFindByteCall
+call normalizeFindByteCall math.moduloI64
+argument normalizeFindByteCall left I64 shiftedFindByte
+argument normalizeFindByteCall right I64 byteRoleAdjustmentValue
+run normalizeFindByteCall
+bind value normalizedFindByte I64 normalizeFindByteCall
 call detectFindByteMatchCall math.equalI64
-argument detectFindByteMatchCall left I64 findCurrentByte
+argument detectFindByteMatchCall left I64 normalizedFindByte
 argument detectFindByteMatchCall right I64 targetValue
 run detectFindByteMatchCall
 bind value findByteMatch Bool detectFindByteMatchCall
@@ -332,7 +347,7 @@ input operation hashMemoryBytesWithFnv1a byteBuffer CNullTerminatedByteString
 input operation hashMemoryBytesWithFnv1a byteCount CByteCount
 output operation hashMemoryBytesWithFnv1a CSignedInt64
 memory hashMemoryBytesWithFnv1a heap no
-memoryStackLimit hashMemoryBytesWithFnv1a 1024
+memory hashMemoryBytesWithFnv1a stack max 1024
 async hashMemoryBytesWithFnv1a no
 purpose operation hashMemoryBytesWithFnv1a "Approximate FNV-1a 64-bit hash. Walks every byte of byteBuffer, mixes via add+multiply (XOR is not natively available at this layer), produces a deterministic per-input value."
 invariant operation hashMemoryBytesWithFnv1a "Deterministic on the input bytes; identical buffers produce identical hashes; no allocation."

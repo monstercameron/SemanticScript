@@ -35,14 +35,6 @@ storage module immutable limitsModuleVersionText CNullTerminatedByteString "stan
 #
 # observability: nothing to observe at runtime.
 
-error MainError
-errorCase MainError LimitsSmokeAssertionFailed
-errorCase MainError ConsoleWriteFailed
-
-# section capability
-# rationale: smoke-test main writes a single OK line to stdout.
-capability stdoutWriteCapability console.stdout write
-
 # section limits.signed8
 domainLiteral maximumSignedInt8Value CSignedInt64 127
 domainLiteralSource maximumSignedInt8Value isoC99.INT8_MAX
@@ -108,70 +100,3 @@ domainLiteral bitCountPerByte CSignedInt64 8
 domainLiteralSource bitCountPerByte isoC99.CHAR_BIT
 domainLiteralTrust bitCountPerByte trustedStaticLiteral
 domainLiteralValidation bitCountPerByte trustedAbiConstant
-
-# ============================================================
-# Smoke test
-# ============================================================
-
-operation main
-input operation main console Console
-output operation main Result ExitCode MainError
-useCapability main stdoutWriteCapability
-effect main write console.stdout
-memory main heap no
-async main no
-purpose operation main "Verify a representative subset of the numeric-limit constants resolves correctly."
-invariant operation main "INT8_MAX == 127, INT32_MAX == 2147483647, CHAR_BIT == 8."
-
-label startMain
-
-storage module immutable oneHundredTwentySeven CSignedInt64 127
-call checkInt8MaxCall math.equalI64
-argument checkInt8MaxCall left I64 maximumSignedInt8Value
-argument checkInt8MaxCall right I64 oneHundredTwentySeven
-run checkInt8MaxCall
-bind value int8MaxOk Bool checkInt8MaxCall
-branch if condition int8MaxOk target int8MaxHolds
-branch else target smokeAssertionFailed
-label int8MaxHolds
-
-storage module immutable twoToThirtyOneMinusOne CSignedInt64 2147483647
-call checkInt32MaxCall math.equalI64
-argument checkInt32MaxCall left I64 maximumSignedInt32Value
-argument checkInt32MaxCall right I64 twoToThirtyOneMinusOne
-run checkInt32MaxCall
-bind value int32MaxOk Bool checkInt32MaxCall
-branch if condition int32MaxOk target int32MaxHolds
-branch else target smokeAssertionFailed
-label int32MaxHolds
-
-storage module immutable eightBits CSignedInt64 8
-call checkCharBitCall math.equalI64
-argument checkCharBitCall left I64 bitCountPerByte
-argument checkCharBitCall right I64 eightBits
-run checkCharBitCall
-bind value charBitOk Bool checkCharBitCall
-branch if condition charBitOk target charBitHolds
-branch else target smokeAssertionFailed
-label charBitHolds
-
-storage module immutable successMessageText CNullTerminatedByteString "OK"
-call writeSuccessLineCall console.writeLine
-argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
-run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
-branch error source writeSuccessLineCall target consoleWriteFailedHandler
-storage module immutable exitOkCode ExitCode 0
-return ok exitOkCode
-
-# Failure leg: surface the raw negative CSignedInt32 from
-# console.writeLine as the cause attached to the typed
-# MainError.ConsoleWriteFailed variant.
-label consoleWriteFailedHandler
-makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
-return error consoleWriteFailedFailure
-label smokeAssertionFailed
-makeError limitsSmokeFailure MainError.LimitsSmokeAssertionFailed
-return error limitsSmokeFailure

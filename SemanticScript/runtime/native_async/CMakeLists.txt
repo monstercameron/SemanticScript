@@ -8,6 +8,11 @@ option(SEM_ASYNC_FETCH_LIBUV "Fetch and build libuv when SEM_ASYNC_WITH_LIBUV is
 add_library(sem_async_runtime STATIC sem_async_runtime.c)
 target_include_directories(sem_async_runtime PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
+if(NOT WIN32)
+  find_package(Threads REQUIRED)
+  target_link_libraries(sem_async_runtime PUBLIC Threads::Threads)
+endif()
+
 if(SEM_ASYNC_WITH_LIBUV)
   find_package(PkgConfig QUIET)
   if(PkgConfig_FOUND)

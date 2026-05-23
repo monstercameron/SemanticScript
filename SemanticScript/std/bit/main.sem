@@ -14,30 +14,29 @@ storage module immutable bitModuleVersionText CNullTerminatedByteString "standar
 # SEMANTICSCRIPT STANDARD LIBRARY: bitwise operations on CSignedInt64
 # ============================================================
 #
-# rationale: SemanticScript's math.* surface has no native bitwise
-#   primitives (and/or/xor/not/shift), so this module implements
-#   them via multiplication, division, and modulo. Each bit op is
-#   pure-SemanticScript â€” no libc, no special LLVM intrinsics â€” and constant-
-#   folds when both operands are compile-time constants.
+# rationale: each operation lowers to a single LLVM bitwise / shift
+#   instruction through the math.* primitives shiftLeftI64 (shl),
+#   shiftRightArithmeticI64 (ashr), shiftRightLogicalI64 (lshr),
+#   bitwiseAndI64 (and), bitwiseOrI64 (or), bitwiseXorI64 (xor), and
+#   bitwiseNotI64 (xor -1). The earlier revision emulated these with
+#   O(bitIndex) multiply/divide-by-two loops; the primitives make every
+#   operation O(1) and branchless.
 #
-# invariant: shifts are unsigned-equivalent (multiplication /
-#   division by 2^k). isSignedInt64BitSet checks the k-th bit of
-#   the abstract base-2 representation, equivalent to ((n >> k) & 1).
-#   setSignedInt64Bit / clearSignedInt64Bit / toggleSignedInt64Bit
-#   preserve every other bit.
+# invariant: predicate / mutation ops operate on the true 64-bit
+#   two's-complement pattern. isSignedInt64BitSet checks the k-th bit via
+#   ((inputValue >> k) & 1) using a logical shift, so it is correct for
+#   negative inputs (e.g. isSignedInt64BitSet(-1, k) == true for every
+#   k in [0, 63]). set / clear / toggle preserve every other bit.
 #
-# security: pure value-level math; no allocation; no branches
-#   over secret-dependent bit patterns beyond the standard k-step
-#   power-of-two loop.
+# security: pure value-level bit math; no allocation; no branches over
+#   secret-dependent bit patterns.
 #
-# timing: O(k) where k is bitIndex (loop bound). Acceptable for
-#   bitIndex up to 63; not for hot inner loops. Future revisions
-#   should expose LLVM `shl`/`lshr`/`and`/`or`/`xor` intrinsics.
+# timing: O(1) per operation â€” one shift plus at most one logical op.
 #
 # observability: no logs, no metrics.
 #
-# warning: bitIndex must be in [0, 63]. Values outside this
-#   range silently wrap (multiplication by 2^64 overflows back).
+# warning: bitIndex must be in [0, 63]. A shift count >= 64 is LLVM
+#   poison (undefined), not a wrap; callers must mask the index first.
 #
 # Operations exposed:
 #   shiftSignedInt64BitsLeft(inputValue, bitIndex)   -> CSignedInt64
@@ -47,19 +46,13 @@ storage module immutable bitModuleVersionText CNullTerminatedByteString "standar
 #   clearSignedInt64Bit(inputValue, bitIndex)        -> CSignedInt64
 #   toggleSignedInt64Bit(inputValue, bitIndex)       -> CSignedInt64
 
-# This is a pure-module (library) file: it exports operations
-# consumed by other programs (notably std/bit/main.test.sem which
-# importModules it and runs the smoke). The project / target /
-# runtime / entry block is retained so the module can still be
-# linted standalone â€” the entry just points at the first exported
-# operation rather than a `main` smoke.
+# Pure-module file: smoke + extended tests live in
+# std/bit/main.test.sem.
 
 domainLiteral integerZeroComparisonValue CSignedInt64 0
 domainLiteralTrust integerZeroComparisonValue trustedStaticLiteral
-domainLiteral integerOneStepValue CSignedInt64 1
-domainLiteralTrust integerOneStepValue trustedStaticLiteral
-domainLiteral integerTwoBaseValue CSignedInt64 2
-domainLiteralTrust integerTwoBaseValue trustedStaticLiteral
+domainLiteral integerOneBitMaskSeed CSignedInt64 1
+domainLiteralTrust integerOneBitMaskSeed trustedStaticLiteral
 
 # section bit.shift
 
@@ -69,39 +62,16 @@ input operation shiftSignedInt64BitsLeft bitIndex CSignedInt64
 output operation shiftSignedInt64BitsLeft CSignedInt64
 memory shiftSignedInt64BitsLeft heap no
 async shiftSignedInt64BitsLeft no
-purpose operation shiftSignedInt64BitsLeft "Returns inputValue << bitIndex, computed as inputValue * 2^bitIndex."
-invariant operation shiftSignedInt64BitsLeft "For bitIndex in [0, 63] and non-overflowing values, equivalent to LLVM's shl."
-warning shiftSignedInt64BitsLeft "Overflow wraps modulo 2^64; bitIndex < 0 is undefined."
-guarantee shiftSignedInt64BitsLeft "Terminates after bitIndex iterations."
+purpose operation shiftSignedInt64BitsLeft "Returns inputValue << bitIndex via a single LLVM shl."
+invariant operation shiftSignedInt64BitsLeft "For bitIndex in [0, 63], equivalent to inputValue * 2^bitIndex modulo 2^64."
+warning shiftSignedInt64BitsLeft "bitIndex must be in [0, 63]; a count >= 64 is LLVM poison (undefined)."
+guarantee shiftSignedInt64BitsLeft "O(1) â€” one shl instruction."
 label startShiftSignedInt64BitsLeft
-memory shiftSignedInt64BitsLeft mutable leftShiftPowerAccumulator I64 1
-memory shiftSignedInt64BitsLeft mutable leftShiftIteration I64 0
-label leftShiftLoop
-call detectLeftShiftDoneCall math.greaterThanOrEqualI64
-argument detectLeftShiftDoneCall left I64 leftShiftIteration
-argument detectLeftShiftDoneCall right I64 bitIndex
-run detectLeftShiftDoneCall
-bind value leftShiftDone Bool detectLeftShiftDoneCall
-branch if condition leftShiftDone target applyLeftShiftMultiplication
-call doubleLeftShiftPowerCall math.multiplyI64
-argument doubleLeftShiftPowerCall left I64 leftShiftPowerAccumulator
-argument doubleLeftShiftPowerCall right I64 integerTwoBaseValue
-run doubleLeftShiftPowerCall
-bind value doubledLeftShiftPower I64 doubleLeftShiftPowerCall
-set memory leftShiftPowerAccumulator doubledLeftShiftPower
-call incrementLeftShiftIterationCall math.addI64
-argument incrementLeftShiftIterationCall left I64 leftShiftIteration
-argument incrementLeftShiftIterationCall right I64 integerOneStepValue
-run incrementLeftShiftIterationCall
-bind value nextLeftShiftIteration I64 incrementLeftShiftIterationCall
-set memory leftShiftIteration nextLeftShiftIteration
-jump target leftShiftLoop
-label applyLeftShiftMultiplication
-call multiplyInputByPowerCall math.multiplyI64
-argument multiplyInputByPowerCall left I64 inputValue
-argument multiplyInputByPowerCall right I64 leftShiftPowerAccumulator
-run multiplyInputByPowerCall
-bind value shiftedLeftResult CSignedInt64 multiplyInputByPowerCall
+call shiftLeftCall math.shiftLeftI64
+argument shiftLeftCall left I64 inputValue
+argument shiftLeftCall right I64 bitIndex
+run shiftLeftCall
+bind value shiftedLeftResult CSignedInt64 shiftLeftCall
 return value shiftedLeftResult
 
 operation shiftSignedInt64BitsRight
@@ -110,39 +80,16 @@ input operation shiftSignedInt64BitsRight bitIndex CSignedInt64
 output operation shiftSignedInt64BitsRight CSignedInt64
 memory shiftSignedInt64BitsRight heap no
 async shiftSignedInt64BitsRight no
-purpose operation shiftSignedInt64BitsRight "Returns inputValue >> bitIndex, computed as inputValue / 2^bitIndex (arithmetic for signed values via LLVM sdiv)."
-invariant operation shiftSignedInt64BitsRight "For bitIndex in [0, 63] equivalent to LLVM's ashr semantics on the round-toward-zero domain."
-warning shiftSignedInt64BitsRight "sdiv rounds toward zero, not toward minus-infinity â€” differs from C's >> on negative operands when bitIndex > 0."
-guarantee shiftSignedInt64BitsRight "Terminates after bitIndex iterations."
+purpose operation shiftSignedInt64BitsRight "Returns inputValue >> bitIndex via a single LLVM ashr (arithmetic / sign-propagating)."
+invariant operation shiftSignedInt64BitsRight "Arithmetic shift: matches C's `>>` on signed operands â€” floor-divides toward minus-infinity, replicating the sign bit into the vacated high bits."
+warning shiftSignedInt64BitsRight "bitIndex must be in [0, 63]; a count >= 64 is LLVM poison. Use a logical right shift (math.shiftRightLogicalI64) when the sign bit should not propagate."
+guarantee shiftSignedInt64BitsRight "O(1) â€” one ashr instruction."
 label startShiftSignedInt64BitsRight
-memory shiftSignedInt64BitsRight mutable rightShiftDivisorAccumulator I64 1
-memory shiftSignedInt64BitsRight mutable rightShiftIteration I64 0
-label rightShiftLoop
-call detectRightShiftDoneCall math.greaterThanOrEqualI64
-argument detectRightShiftDoneCall left I64 rightShiftIteration
-argument detectRightShiftDoneCall right I64 bitIndex
-run detectRightShiftDoneCall
-bind value rightShiftDone Bool detectRightShiftDoneCall
-branch if condition rightShiftDone target applyRightShiftDivision
-call doubleRightShiftDivisorCall math.multiplyI64
-argument doubleRightShiftDivisorCall left I64 rightShiftDivisorAccumulator
-argument doubleRightShiftDivisorCall right I64 integerTwoBaseValue
-run doubleRightShiftDivisorCall
-bind value doubledRightShiftDivisor I64 doubleRightShiftDivisorCall
-set memory rightShiftDivisorAccumulator doubledRightShiftDivisor
-call incrementRightShiftIterationCall math.addI64
-argument incrementRightShiftIterationCall left I64 rightShiftIteration
-argument incrementRightShiftIterationCall right I64 integerOneStepValue
-run incrementRightShiftIterationCall
-bind value nextRightShiftIteration I64 incrementRightShiftIterationCall
-set memory rightShiftIteration nextRightShiftIteration
-jump target rightShiftLoop
-label applyRightShiftDivision
-call divideInputByDivisorCall math.divideI64
-argument divideInputByDivisorCall left I64 inputValue
-argument divideInputByDivisorCall right I64 rightShiftDivisorAccumulator
-run divideInputByDivisorCall
-bind value shiftedRightResult CSignedInt64 divideInputByDivisorCall
+call shiftRightCall math.shiftRightArithmeticI64
+argument shiftRightCall left I64 inputValue
+argument shiftRightCall right I64 bitIndex
+run shiftRightCall
+bind value shiftedRightResult CSignedInt64 shiftRightCall
 return value shiftedRightResult
 
 # section bit.predicate
@@ -154,17 +101,17 @@ output operation isSignedInt64BitSet Bool
 memory isSignedInt64BitSet heap no
 async isSignedInt64BitSet no
 purpose operation isSignedInt64BitSet "Returns true when the k-th bit of inputValue is set, equivalent to ((inputValue >> bitIndex) & 1) != 0."
-invariant operation isSignedInt64BitSet "Pure function: same inputs always produce the same Bool."
-guarantee isSignedInt64BitSet "Total."
+invariant operation isSignedInt64BitSet "Pure function over the two's-complement bit pattern; correct for negative inputs because the shift is logical."
+guarantee isSignedInt64BitSet "Total. O(1)."
 label startIsSignedInt64BitSet
-call shiftDownToTargetBitCall shiftSignedInt64BitsRight
-argument shiftDownToTargetBitCall inputValue CSignedInt64 inputValue
-argument shiftDownToTargetBitCall bitIndex CSignedInt64 bitIndex
+call shiftDownToTargetBitCall math.shiftRightLogicalI64
+argument shiftDownToTargetBitCall left I64 inputValue
+argument shiftDownToTargetBitCall right I64 bitIndex
 run shiftDownToTargetBitCall
 bind value shiftedDownInput CSignedInt64 shiftDownToTargetBitCall
-call extractLowBitCall math.moduloI64
+call extractLowBitCall math.bitwiseAndI64
 argument extractLowBitCall left I64 shiftedDownInput
-argument extractLowBitCall right I64 integerTwoBaseValue
+argument extractLowBitCall right I64 integerOneBitMaskSeed
 run extractLowBitCall
 bind value lowestBitValue I64 extractLowBitCall
 call detectLowBitIsOneCall math.notEqualI64
@@ -182,47 +129,21 @@ input operation setSignedInt64Bit bitIndex CSignedInt64
 output operation setSignedInt64Bit CSignedInt64
 memory setSignedInt64Bit heap no
 async setSignedInt64Bit no
-purpose operation setSignedInt64Bit "Returns inputValue with the k-th bit forced to 1. No change if the bit is already set."
-invariant operation setSignedInt64Bit "isSignedInt64BitSet(setSignedInt64Bit(x, k), k) == true."
-guarantee setSignedInt64Bit "Total."
+purpose operation setSignedInt64Bit "Returns inputValue with the k-th bit forced to 1, computed as inputValue OR (1 << bitIndex). No change if the bit is already set."
+invariant operation setSignedInt64Bit "isSignedInt64BitSet(setSignedInt64Bit(x, k), k) == true; every other bit is preserved."
+guarantee setSignedInt64Bit "Total. O(1) â€” branchless OR with a single-bit mask."
 label startSetSignedInt64Bit
-call detectBitAlreadySetCall isSignedInt64BitSet
-argument detectBitAlreadySetCall inputValue CSignedInt64 inputValue
-argument detectBitAlreadySetCall bitIndex CSignedInt64 bitIndex
-run detectBitAlreadySetCall
-bind value bitAlreadySet Bool detectBitAlreadySetCall
-branch if condition bitAlreadySet target returnInputUnchangedForSet
-memory setSignedInt64Bit mutable setBitPowerAccumulator I64 1
-memory setSignedInt64Bit mutable setBitIteration I64 0
-label setBitPowerLoop
-call detectSetBitDoneCall math.greaterThanOrEqualI64
-argument detectSetBitDoneCall left I64 setBitIteration
-argument detectSetBitDoneCall right I64 bitIndex
-run detectSetBitDoneCall
-bind value setBitDone Bool detectSetBitDoneCall
-branch if condition setBitDone target applySetBitAddition
-call doubleSetBitPowerCall math.multiplyI64
-argument doubleSetBitPowerCall left I64 setBitPowerAccumulator
-argument doubleSetBitPowerCall right I64 integerTwoBaseValue
-run doubleSetBitPowerCall
-bind value doubledSetBitPower I64 doubleSetBitPowerCall
-set memory setBitPowerAccumulator doubledSetBitPower
-call incrementSetBitIterationCall math.addI64
-argument incrementSetBitIterationCall left I64 setBitIteration
-argument incrementSetBitIterationCall right I64 integerOneStepValue
-run incrementSetBitIterationCall
-bind value nextSetBitIteration I64 incrementSetBitIterationCall
-set memory setBitIteration nextSetBitIteration
-jump target setBitPowerLoop
-label applySetBitAddition
-call addBitPowerToInputCall math.addI64
-argument addBitPowerToInputCall left I64 inputValue
-argument addBitPowerToInputCall right I64 setBitPowerAccumulator
-run addBitPowerToInputCall
-bind value setBitResultValue CSignedInt64 addBitPowerToInputCall
+call buildSetMaskCall math.shiftLeftI64
+argument buildSetMaskCall left I64 integerOneBitMaskSeed
+argument buildSetMaskCall right I64 bitIndex
+run buildSetMaskCall
+bind value setBitMask CSignedInt64 buildSetMaskCall
+call applySetMaskCall math.bitwiseOrI64
+argument applySetMaskCall left I64 inputValue
+argument applySetMaskCall right I64 setBitMask
+run applySetMaskCall
+bind value setBitResultValue CSignedInt64 applySetMaskCall
 return value setBitResultValue
-label returnInputUnchangedForSet
-return value inputValue
 
 operation clearSignedInt64Bit
 input operation clearSignedInt64Bit inputValue CSignedInt64
@@ -230,46 +151,24 @@ input operation clearSignedInt64Bit bitIndex CSignedInt64
 output operation clearSignedInt64Bit CSignedInt64
 memory clearSignedInt64Bit heap no
 async clearSignedInt64Bit no
-purpose operation clearSignedInt64Bit "Returns inputValue with the k-th bit forced to 0. No change if the bit is already clear."
-invariant operation clearSignedInt64Bit "isSignedInt64BitSet(clearSignedInt64Bit(x, k), k) == false."
-guarantee clearSignedInt64Bit "Total."
+purpose operation clearSignedInt64Bit "Returns inputValue with the k-th bit forced to 0, computed as inputValue AND NOT(1 << bitIndex). No change if the bit is already clear."
+invariant operation clearSignedInt64Bit "isSignedInt64BitSet(clearSignedInt64Bit(x, k), k) == false; every other bit is preserved."
+guarantee clearSignedInt64Bit "Total. O(1) â€” branchless AND with an inverted single-bit mask."
 label startClearSignedInt64Bit
-call detectBitAlreadyClearCall isSignedInt64BitSet
-argument detectBitAlreadyClearCall inputValue CSignedInt64 inputValue
-argument detectBitAlreadyClearCall bitIndex CSignedInt64 bitIndex
-run detectBitAlreadyClearCall
-bind value bitCurrentlySet Bool detectBitAlreadyClearCall
-branch if condition bitCurrentlySet target subtractBitPowerFromInputComputePath
-return value inputValue
-label subtractBitPowerFromInputComputePath
-memory clearSignedInt64Bit mutable clearBitPowerAccumulator I64 1
-memory clearSignedInt64Bit mutable clearBitIteration I64 0
-label clearBitPowerLoop
-call detectClearBitDoneCall math.greaterThanOrEqualI64
-argument detectClearBitDoneCall left I64 clearBitIteration
-argument detectClearBitDoneCall right I64 bitIndex
-run detectClearBitDoneCall
-bind value clearBitDone Bool detectClearBitDoneCall
-branch if condition clearBitDone target applyClearBitSubtraction
-call doubleClearBitPowerCall math.multiplyI64
-argument doubleClearBitPowerCall left I64 clearBitPowerAccumulator
-argument doubleClearBitPowerCall right I64 integerTwoBaseValue
-run doubleClearBitPowerCall
-bind value doubledClearBitPower I64 doubleClearBitPowerCall
-set memory clearBitPowerAccumulator doubledClearBitPower
-call incrementClearBitIterationCall math.addI64
-argument incrementClearBitIterationCall left I64 clearBitIteration
-argument incrementClearBitIterationCall right I64 integerOneStepValue
-run incrementClearBitIterationCall
-bind value nextClearBitIteration I64 incrementClearBitIterationCall
-set memory clearBitIteration nextClearBitIteration
-jump target clearBitPowerLoop
-label applyClearBitSubtraction
-call subtractBitPowerFromInputCall math.subtractI64
-argument subtractBitPowerFromInputCall left I64 inputValue
-argument subtractBitPowerFromInputCall right I64 clearBitPowerAccumulator
-run subtractBitPowerFromInputCall
-bind value clearBitResultValue CSignedInt64 subtractBitPowerFromInputCall
+call buildClearMaskCall math.shiftLeftI64
+argument buildClearMaskCall left I64 integerOneBitMaskSeed
+argument buildClearMaskCall right I64 bitIndex
+run buildClearMaskCall
+bind value clearBitMask CSignedInt64 buildClearMaskCall
+call invertClearMaskCall math.bitwiseNotI64
+argument invertClearMaskCall value I64 clearBitMask
+run invertClearMaskCall
+bind value invertedClearMask CSignedInt64 invertClearMaskCall
+call applyClearMaskCall math.bitwiseAndI64
+argument applyClearMaskCall left I64 inputValue
+argument applyClearMaskCall right I64 invertedClearMask
+run applyClearMaskCall
+bind value clearBitResultValue CSignedInt64 applyClearMaskCall
 return value clearBitResultValue
 
 operation toggleSignedInt64Bit
@@ -278,26 +177,18 @@ input operation toggleSignedInt64Bit bitIndex CSignedInt64
 output operation toggleSignedInt64Bit CSignedInt64
 memory toggleSignedInt64Bit heap no
 async toggleSignedInt64Bit no
-purpose operation toggleSignedInt64Bit "Returns inputValue with the k-th bit flipped (setâ†’clear / clearâ†’set)."
-invariant operation toggleSignedInt64Bit "Self-inverse: toggleSignedInt64Bit(toggleSignedInt64Bit(x, k), k) == x."
-guarantee toggleSignedInt64Bit "Total."
+purpose operation toggleSignedInt64Bit "Returns inputValue with the k-th bit flipped, computed as inputValue XOR (1 << bitIndex)."
+invariant operation toggleSignedInt64Bit "Self-inverse: toggleSignedInt64Bit(toggleSignedInt64Bit(x, k), k) == x; every other bit is preserved."
+guarantee toggleSignedInt64Bit "Total. O(1) â€” branchless XOR with a single-bit mask."
 label startToggleSignedInt64Bit
-call detectBitForToggleCall isSignedInt64BitSet
-argument detectBitForToggleCall inputValue CSignedInt64 inputValue
-argument detectBitForToggleCall bitIndex CSignedInt64 bitIndex
-run detectBitForToggleCall
-bind value bitWasSetBeforeToggle Bool detectBitForToggleCall
-branch if condition bitWasSetBeforeToggle target clearBitForToggle
-call setBitForToggleCall setSignedInt64Bit
-argument setBitForToggleCall inputValue CSignedInt64 inputValue
-argument setBitForToggleCall bitIndex CSignedInt64 bitIndex
-run setBitForToggleCall
-bind value toggledFromClearToSet CSignedInt64 setBitForToggleCall
-return value toggledFromClearToSet
-label clearBitForToggle
-call clearBitForToggleCall clearSignedInt64Bit
-argument clearBitForToggleCall inputValue CSignedInt64 inputValue
-argument clearBitForToggleCall bitIndex CSignedInt64 bitIndex
-run clearBitForToggleCall
-bind value toggledFromSetToClear CSignedInt64 clearBitForToggleCall
-return value toggledFromSetToClear
+call buildToggleMaskCall math.shiftLeftI64
+argument buildToggleMaskCall left I64 integerOneBitMaskSeed
+argument buildToggleMaskCall right I64 bitIndex
+run buildToggleMaskCall
+bind value toggleBitMask CSignedInt64 buildToggleMaskCall
+call applyToggleMaskCall math.bitwiseXorI64
+argument applyToggleMaskCall left I64 inputValue
+argument applyToggleMaskCall right I64 toggleBitMask
+run applyToggleMaskCall
+bind value toggleBitResultValue CSignedInt64 applyToggleMaskCall
+return value toggleBitResultValue

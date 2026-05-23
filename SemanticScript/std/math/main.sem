@@ -38,7 +38,7 @@ operation integerSquareRootSignedInt64
 input operation integerSquareRootSignedInt64 inputValue CSignedInt64
 output operation integerSquareRootSignedInt64 CSignedInt64
 memory integerSquareRootSignedInt64 heap no
-memoryStackLimit integerSquareRootSignedInt64 1024
+memory integerSquareRootSignedInt64 stack max 1024
 async integerSquareRootSignedInt64 no
 purpose operation integerSquareRootSignedInt64 "Returns floor(sqrt(inputValue)) for inputValue >= 0 via Newton iteration; returns 0 for inputValue <= 0."
 invariant operation integerSquareRootSignedInt64 "For n >= 0, result*result <= n < (result+1)*(result+1)."
@@ -101,7 +101,7 @@ operation factorialSignedInt64
 input operation factorialSignedInt64 inputValue CSignedInt64
 output operation factorialSignedInt64 CSignedInt64
 memory factorialSignedInt64 heap no
-memoryStackLimit factorialSignedInt64 1024
+memory factorialSignedInt64 stack max 1024
 async factorialSignedInt64 no
 purpose operation factorialSignedInt64 "Returns inputValue! by repeated multiplication. Defined for inputValue in [0, 20]; n > 20 overflows CSignedInt64 silently."
 invariant operation factorialSignedInt64 "factorialSignedInt64(0) == 1 (convention)."
@@ -150,7 +150,7 @@ operation isSignedInt64Prime
 input operation isSignedInt64Prime inputValue CSignedInt64
 output operation isSignedInt64Prime Bool
 memory isSignedInt64Prime heap no
-memoryStackLimit isSignedInt64Prime 1024
+memory isSignedInt64Prime stack max 1024
 async isSignedInt64Prime no
 purpose operation isSignedInt64Prime "Returns true when inputValue is prime; n <= 1 returns false. Tests divisibility by 2 then odd numbers up to floor(sqrt(n))."
 invariant operation isSignedInt64Prime "Exact for inputValue in [2, INT64_MAX/2]; uses integerSquareRootSignedInt64 to bound the trial-division loop."
@@ -233,14 +233,13 @@ input operation isSignedInt64PowerOfTwo inputValue CSignedInt64
 output operation isSignedInt64PowerOfTwo Bool
 memory isSignedInt64PowerOfTwo heap no
 async isSignedInt64PowerOfTwo no
-purpose operation isSignedInt64PowerOfTwo "Returns true when inputValue is a positive power of 2 (1, 2, 4, 8, ...)."
-invariant operation isSignedInt64PowerOfTwo "Halves inputValue until 1 (power-of-two) or an odd intermediate (not). Zero / negative inputs return false."
-guarantee isSignedInt64PowerOfTwo "Total."
+purpose operation isSignedInt64PowerOfTwo "Returns true when inputValue is a positive power of 2 (1, 2, 4, 8, ...), computed in O(1) as inputValue > 0 AND (inputValue AND (inputValue - 1)) == 0."
+invariant operation isSignedInt64PowerOfTwo "A positive power of two has exactly one set bit, so clearing the lowest set bit via (n & (n-1)) yields 0. Zero / negative inputs return false."
+guarantee isSignedInt64PowerOfTwo "Total. O(1) â€” one subtract, one and, two compares."
 
 label startIsSignedInt64PowerOfTwo
 storage module immutable zeroPt I64 0
 storage module immutable oneCount I64 1
-storage module immutable twoPt I64 2
 storage module immutable truePt Bool true
 storage module immutable falsePt Bool false
 
@@ -251,34 +250,25 @@ run leZeroPtCall
 bind value leZeroPt Bool leZeroPtCall
 branch if condition leZeroPt target isPowerOfTwoFalse
 
-memory isSignedInt64PowerOfTwo mutable x I64 0
-set memory x inputValue
-
-label halveLoop
-call eqOneCall math.equalI64
-argument eqOneCall left I64 x
-argument eqOneCall right I64 oneCount
-run eqOneCall
-bind value eqOne Bool eqOneCall
-branch if condition eqOne target isPowerOfTwoTrue
-call ptMod2Call math.moduloI64
-argument ptMod2Call left I64 x
-argument ptMod2Call right I64 twoPt
-run ptMod2Call
-bind value ptMod2 I64 ptMod2Call
-call ptIsOddCall math.notEqualI64
-argument ptIsOddCall left I64 ptMod2
-argument ptIsOddCall right I64 zeroPt
-run ptIsOddCall
-bind value ptIsOdd Bool ptIsOddCall
-branch if condition ptIsOdd target isPowerOfTwoFalse
-call halveXCall math.divideI64
-argument halveXCall left I64 x
-argument halveXCall right I64 twoPt
-run halveXCall
-bind value xHalved I64 halveXCall
-set memory x xHalved
-jump target halveLoop
+# Clear the lowest set bit: for a power of two (exactly one set bit) the
+# result is 0; for anything else at least one other bit survives.
+call decrementForMaskCall math.subtractI64
+argument decrementForMaskCall left I64 inputValue
+argument decrementForMaskCall right I64 oneCount
+run decrementForMaskCall
+bind value inputMinusOne I64 decrementForMaskCall
+call clearLowestSetBitCall math.bitwiseAndI64
+argument clearLowestSetBitCall left I64 inputValue
+argument clearLowestSetBitCall right I64 inputMinusOne
+run clearLowestSetBitCall
+bind value lowestSetBitCleared I64 clearLowestSetBitCall
+call detectNoRemainingBitsCall math.equalI64
+argument detectNoRemainingBitsCall left I64 lowestSetBitCleared
+argument detectNoRemainingBitsCall right I64 zeroPt
+run detectNoRemainingBitsCall
+bind value noRemainingBits Bool detectNoRemainingBitsCall
+branch if condition noRemainingBits target isPowerOfTwoTrue
+branch else target isPowerOfTwoFalse
 
 label isPowerOfTwoFalse
 return value falsePt
@@ -455,18 +445,46 @@ input operation countSetBitsInSignedInt64 inputValue CSignedInt64
 output operation countSetBitsInSignedInt64 CSignedInt64
 memory countSetBitsInSignedInt64 heap no
 async countSetBitsInSignedInt64 no
-purpose operation countSetBitsInSignedInt64 "Returns the population count of inputValue (number of 1-bits in its 64-bit representation)."
-invariant operation countSetBitsInSignedInt64 "Inspects each of the 64 bits via modulo-2 on a halving working value; increments the counter for every odd remainder."
+purpose operation countSetBitsInSignedInt64 "Returns the population count of inputValue (number of 1-bits in its full 64-bit two's-complement representation). Correct for negative inputs: countSetBitsInSignedInt64(-1) == 64."
+invariant operation countSetBitsInSignedInt64 "For inputValue >= 0, inspects each bit via modulo-2 on a halving working value. For inputValue < 0, applies popcount(n) == 64 - popcount(-n - 1) so the sign-extension bits are counted (arithmetic divide-by-two toward zero would otherwise drop them)."
 guarantee countSetBitsInSignedInt64 "Total â€” in [0, 64]."
 label startCountSetBitsInSignedInt64
 storage module immutable zeroPc I64 0
 storage module immutable onePc I64 1
 storage module immutable twoPc I64 2
 storage module immutable limitPc I64 64
+storage module immutable negOnePc I64 -1
 memory countSetBitsInSignedInt64 mutable pcVal I64 0
 set memory pcVal inputValue
+memory countSetBitsInSignedInt64 mutable pcWasNegativeFlag I64 0
 memory countSetBitsInSignedInt64 mutable pcCount I64 0
 memory countSetBitsInSignedInt64 mutable pcIter I64 0
+# Negative inputs: arithmetic divide-by-two (toward zero) collapses a
+# negative value's sign-extension bits, so the raw loop would undercount.
+# Use popcount(n) == 64 - popcount(-n - 1) for n < 0: `-n - 1` is
+# non-negative for every negative n (and wraps to INT64_MAX for INT64_MIN,
+# which is still correct), so the unsigned loop below counts it exactly.
+call pcDetectNegativeCall math.lessThanI64
+argument pcDetectNegativeCall left I64 inputValue
+argument pcDetectNegativeCall right I64 zeroPc
+run pcDetectNegativeCall
+bind value pcInputIsNegative Bool pcDetectNegativeCall
+branch if condition pcInputIsNegative target pcPrepareNegative
+branch else target pcLoop
+label pcPrepareNegative
+set memory pcWasNegativeFlag onePc
+call pcNegateInputCall math.multiplyI64
+argument pcNegateInputCall left I64 inputValue
+argument pcNegateInputCall right I64 negOnePc
+run pcNegateInputCall
+bind value pcNegatedInput I64 pcNegateInputCall
+call pcComplementSourceCall math.subtractI64
+argument pcComplementSourceCall left I64 pcNegatedInput
+argument pcComplementSourceCall right I64 onePc
+run pcComplementSourceCall
+bind value pcComplementSource I64 pcComplementSourceCall
+set memory pcVal pcComplementSource
+jump target pcLoop
 label pcLoop
 call popcountDoneCall math.greaterThanOrEqualI64
 argument popcountDoneCall left I64 pcIter
@@ -509,7 +527,20 @@ bind value pcIterNext I64 popcountIterIncrementCall
 set memory pcIter pcIterNext
 jump target pcLoop
 label pcReturn
+call pcWasNegativeCheckCall math.equalI64
+argument pcWasNegativeCheckCall left I64 pcWasNegativeFlag
+argument pcWasNegativeCheckCall right I64 onePc
+run pcWasNegativeCheckCall
+bind value pcWasNegativeResult Bool pcWasNegativeCheckCall
+branch if condition pcWasNegativeResult target pcReturnComplement
 return value pcCount
+label pcReturnComplement
+call pcFinalComplementCall math.subtractI64
+argument pcFinalComplementCall left I64 limitPc
+argument pcFinalComplementCall right I64 pcCount
+run pcFinalComplementCall
+bind value pcComplementedCount CSignedInt64 pcFinalComplementCall
+return value pcComplementedCount
 
 operation countTrailingZeroBitsInSignedInt64
 input operation countTrailingZeroBitsInSignedInt64 inputValue CSignedInt64

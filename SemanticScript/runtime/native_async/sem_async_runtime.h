@@ -8,6 +8,7 @@ extern "C" {
 typedef struct SSAsyncLoop SSAsyncLoop;
 typedef struct SSFuture SSFuture;
 typedef struct SSAsyncTimer SSAsyncTimer;
+typedef struct SSAsyncCancelToken SSAsyncCancelToken;
 
 typedef void (*SSAsyncResumeFn)(void *user_data);
 typedef void (*SSAsyncWorkFn)(void *user_data);
@@ -52,6 +53,13 @@ int ss_async_timer_start(
 );
 int ss_async_timer_cancel(SSAsyncTimer *timer);
 void ss_async_timer_destroy(SSAsyncTimer *timer);
+
+SSAsyncCancelToken *ss_async_cancel_token_create(void);
+void ss_async_cancel_token_cancel(SSAsyncCancelToken *token);
+int ss_async_cancel_token_is_cancelled(const void *token);
+int ss_async_cancel_token_retain(void *token);
+void ss_async_cancel_token_release(void *token);
+void ss_async_cancel_token_destroy(SSAsyncCancelToken *token);
 
 int ss_async_queue_work(
     SSAsyncLoop *loop,

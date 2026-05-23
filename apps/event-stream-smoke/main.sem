@@ -1,0 +1,331 @@
+project EventStreamSmoke
+target console
+runtime AgentRuntime 1.0
+entry console main
+
+module app.event_stream_smoke
+purpose module app.event_stream_smoke "Smoke app for standard.event one-emitter-to-many-listeners async event flow."
+moduleOwns app.event_stream_smoke "Opening one event stream, creating two subscriptions, appending one event, receiving it through both subscriptions, and running two named listener operations."
+moduleDoesNotOwn app.event_stream_smoke "Durable replay, SSE streaming, generic async runtime internals, or standard.event native adapter implementation."
+invariant module app.event_stream_smoke "Every event runtime operation in this app is called with start/await; no event operation uses run."
+moduleWarning app.event_stream_smoke "The smoke starts both receives before append, proving standard.event pending receives are completed by a later emit."
+
+import event standard.event
+
+exportOperation app.event_stream_smoke main
+
+capability appEventStreamReader event.stream read
+purpose operation appEventStreamReader "Authority to subscribe to the smoke app event stream."
+capability appEventStreamWriter event.stream write
+purpose operation appEventStreamWriter "Authority to append the smoke app event."
+capability appEventStreamOpener event.stream open
+purpose operation appEventStreamOpener "Authority to open the smoke app event stream."
+capability appEventStreamCloser event.stream close
+purpose operation appEventStreamCloser "Authority to close the smoke app event stream."
+capability appEventSubscriptionReader event.subscription read
+purpose operation appEventSubscriptionReader "Authority to receive smoke events from subscriptions."
+capability appEventSubscriptionOpener event.subscription open
+purpose operation appEventSubscriptionOpener "Authority to open smoke event subscriptions."
+capability appEventSubscriptionWriter event.subscription write
+purpose operation appEventSubscriptionWriter "Authority to acknowledge smoke event subscriptions."
+capability appEventSubscriptionCloser event.subscription close
+purpose operation appEventSubscriptionCloser "Authority to close smoke event subscriptions."
+capability appEventHeapAllocator heap allocate
+purpose operation appEventHeapAllocator "Authority for standard.event calls that allocate runtime handles."
+capability appEventHeapFree heap free
+purpose operation appEventHeapFree "Authority for standard.event calls that release runtime handles."
+capability appEventOutputBufferWriter memory.buffer write
+purpose operation appEventOutputBufferWriter "Authority for receiveEvent output buffer writes, even when this smoke intentionally passes null buffers."
+capability appConsoleStdoutWriter console.stdout write
+purpose operation appConsoleStdoutWriter "Authority for listener operations to print proof that they ran."
+
+storage module immutable smokeStreamName EventStreamName "app.event-stream-smoke"
+storage module immutable smokeEventType EventTypeName "smoke.event.created"
+storage module immutable smokeEventKey EventKey "demo"
+storage module immutable smokePayloadJson EventPayloadJson "{\"message\":\"hello event\"}"
+storage module immutable smokeQueueCapacity EventQueueCapacity 16
+storage module immutable zeroEventId EventId 0
+storage module immutable nullEventOutputBuffer EventOutputBuffer 0
+storage module immutable nullEventOutputCapacity EventBufferCapacity 0
+storage module immutable requestCancellationToken COpaqueMemoryAddress 0
+storage module immutable successExitCode ExitCode 0
+storage module immutable failedExitCode ExitCode 1
+storage module immutable firstListenerText CNullTerminatedByteString "listener-one handled smoke.event.created"
+storage module immutable secondListenerText CNullTerminatedByteString "listener-two handled smoke.event.created"
+
+operation eventIdGreaterThan
+input operation eventIdGreaterThan left EventId
+input operation eventIdGreaterThan right EventId
+output operation eventIdGreaterThan Bool
+memory eventIdGreaterThan heap no
+async eventIdGreaterThan yes
+operationBody eventIdGreaterThan intrinsic
+intrinsicName eventIdGreaterThan arithmetic.greaterThanI64
+purpose operation eventIdGreaterThan "Compare event ids without widening them through private standard.math primitives."
+invariant operation eventIdGreaterThan "Used only to turn EventId receive results into explicit Bool branch conditions."
+
+operation listenerOneHandleSmokeEvent
+input operation listenerOneHandleSmokeEvent console Console
+input operation listenerOneHandleSmokeEvent receivedEventId EventId
+output operation listenerOneHandleSmokeEvent CSignedInt32
+effect listenerOneHandleSmokeEvent write console.stdout
+memory listenerOneHandleSmokeEvent heap no
+async listenerOneHandleSmokeEvent yes
+purpose operation listenerOneHandleSmokeEvent "Execute listener-one code after the first subscription receives the smoke event."
+invariant operation listenerOneHandleSmokeEvent "This named operation is the first listener; it has no hidden callback closure."
+useCapability listenerOneHandleSmokeEvent appConsoleStdoutWriter
+
+call listenerOneHasEventCall eventIdGreaterThan
+argument listenerOneHasEventCall left EventId receivedEventId
+argument listenerOneHasEventCall right EventId zeroEventId
+timeout listenerOneHasEventCall 1000ms
+cancelOn listenerOneHasEventCall requestCancellationToken
+start listenerOneHasEventCall
+await listenerOneHasEventCall
+bind value listenerOneHasEvent Bool listenerOneHasEventCall
+branch if condition listenerOneHasEvent target listenerOneReceivedEvent
+storage local immutable listenerOneNoEventStatus CSignedInt32 1
+return value listenerOneNoEventStatus
+label listenerOneReceivedEvent
+
+call listenerOneWriteCall console.writeLine
+argument listenerOneWriteCall console Console console
+argument listenerOneWriteCall text CNullTerminatedByteString firstListenerText
+run listenerOneWriteCall
+ignore void source listenerOneWriteCall
+bind error listenerOneWriteError CSignedInt32 listenerOneWriteCall
+branch error source listenerOneWriteCall target listenerOneWriteFailed
+storage local immutable listenerOneSuccessStatus CSignedInt32 0
+return value listenerOneSuccessStatus
+label listenerOneWriteFailed
+return value listenerOneWriteError
+
+operation listenerTwoHandleSmokeEvent
+input operation listenerTwoHandleSmokeEvent console Console
+input operation listenerTwoHandleSmokeEvent receivedEventId EventId
+output operation listenerTwoHandleSmokeEvent CSignedInt32
+effect listenerTwoHandleSmokeEvent write console.stdout
+memory listenerTwoHandleSmokeEvent heap no
+async listenerTwoHandleSmokeEvent yes
+purpose operation listenerTwoHandleSmokeEvent "Execute listener-two code after the second subscription receives the same smoke event."
+invariant operation listenerTwoHandleSmokeEvent "This named operation is the second listener; it proves one emitted event can fan out to multiple handlers."
+useCapability listenerTwoHandleSmokeEvent appConsoleStdoutWriter
+
+call listenerTwoHasEventCall eventIdGreaterThan
+argument listenerTwoHasEventCall left EventId receivedEventId
+argument listenerTwoHasEventCall right EventId zeroEventId
+timeout listenerTwoHasEventCall 1000ms
+cancelOn listenerTwoHasEventCall requestCancellationToken
+start listenerTwoHasEventCall
+await listenerTwoHasEventCall
+bind value listenerTwoHasEvent Bool listenerTwoHasEventCall
+branch if condition listenerTwoHasEvent target listenerTwoReceivedEvent
+storage local immutable listenerTwoNoEventStatus CSignedInt32 1
+return value listenerTwoNoEventStatus
+label listenerTwoReceivedEvent
+
+call listenerTwoWriteCall console.writeLine
+argument listenerTwoWriteCall console Console console
+argument listenerTwoWriteCall text CNullTerminatedByteString secondListenerText
+run listenerTwoWriteCall
+ignore void source listenerTwoWriteCall
+bind error listenerTwoWriteError CSignedInt32 listenerTwoWriteCall
+branch error source listenerTwoWriteCall target listenerTwoWriteFailed
+storage local immutable listenerTwoSuccessStatus CSignedInt32 0
+return value listenerTwoSuccessStatus
+label listenerTwoWriteFailed
+return value listenerTwoWriteError
+
+operation main
+input operation main console Console
+output operation main ExitCode
+effect main open event.stream
+effect main read event.stream
+effect main write event.stream
+effect main close event.stream
+effect main open event.subscription
+effect main read event.subscription
+effect main write event.subscription
+effect main close event.subscription
+effect main allocate heap
+effect main free heap
+effect main write memory.buffer
+effect main write console.stdout
+memory main heap yes
+async main yes
+purpose operation main "Start two receives, append one event, observe both subscriptions complete, and start two named listener operations."
+invariant operation main "All standard.event operations are started and awaited; the only run rows are console writes inside named listener operations."
+useCapability main appEventStreamOpener
+useCapability main appEventStreamReader
+useCapability main appEventStreamWriter
+useCapability main appEventStreamCloser
+useCapability main appEventSubscriptionOpener
+useCapability main appEventSubscriptionReader
+useCapability main appEventSubscriptionWriter
+useCapability main appEventSubscriptionCloser
+useCapability main appEventHeapAllocator
+useCapability main appEventHeapFree
+useCapability main appEventOutputBufferWriter
+useCapability main appConsoleStdoutWriter
+
+label startMain
+
+call openSmokeStreamCall event.openProcessStream
+argument openSmokeStreamCall streamName EventStreamName smokeStreamName
+argument openSmokeStreamCall queueCapacity EventQueueCapacity smokeQueueCapacity
+timeout openSmokeStreamCall 1000ms
+cancelOn openSmokeStreamCall requestCancellationToken
+start openSmokeStreamCall
+await openSmokeStreamCall
+bind value smokeStream EventStreamHandle openSmokeStreamCall
+
+call firstSubscribeCall event.subscribeStream
+argument firstSubscribeCall stream EventStreamHandle smokeStream
+argument firstSubscribeCall eventType EventTypeName smokeEventType
+argument firstSubscribeCall eventKey EventKey smokeEventKey
+argument firstSubscribeCall afterEventId EventId zeroEventId
+argument firstSubscribeCall queueCapacity EventQueueCapacity smokeQueueCapacity
+timeout firstSubscribeCall 1000ms
+cancelOn firstSubscribeCall requestCancellationToken
+start firstSubscribeCall
+await firstSubscribeCall
+bind value firstSubscription EventSubscriptionHandle firstSubscribeCall
+
+call secondSubscribeCall event.subscribeStream
+argument secondSubscribeCall stream EventStreamHandle smokeStream
+argument secondSubscribeCall eventType EventTypeName smokeEventType
+argument secondSubscribeCall eventKey EventKey smokeEventKey
+argument secondSubscribeCall afterEventId EventId zeroEventId
+argument secondSubscribeCall queueCapacity EventQueueCapacity smokeQueueCapacity
+timeout secondSubscribeCall 1000ms
+cancelOn secondSubscribeCall requestCancellationToken
+start secondSubscribeCall
+await secondSubscribeCall
+bind value secondSubscription EventSubscriptionHandle secondSubscribeCall
+
+call firstReceiveCall event.receiveEvent
+argument firstReceiveCall subscription EventSubscriptionHandle firstSubscription
+argument firstReceiveCall outEventType EventOutputBuffer nullEventOutputBuffer
+argument firstReceiveCall outEventTypeCapacity EventBufferCapacity nullEventOutputCapacity
+argument firstReceiveCall outEventKey EventOutputBuffer nullEventOutputBuffer
+argument firstReceiveCall outEventKeyCapacity EventBufferCapacity nullEventOutputCapacity
+argument firstReceiveCall outPayloadJson EventOutputBuffer nullEventOutputBuffer
+argument firstReceiveCall outPayloadCapacity EventBufferCapacity nullEventOutputCapacity
+timeout firstReceiveCall 1000ms
+cancelOn firstReceiveCall requestCancellationToken
+start firstReceiveCall
+
+call secondReceiveCall event.receiveEvent
+argument secondReceiveCall subscription EventSubscriptionHandle secondSubscription
+argument secondReceiveCall outEventType EventOutputBuffer nullEventOutputBuffer
+argument secondReceiveCall outEventTypeCapacity EventBufferCapacity nullEventOutputCapacity
+argument secondReceiveCall outEventKey EventOutputBuffer nullEventOutputBuffer
+argument secondReceiveCall outEventKeyCapacity EventBufferCapacity nullEventOutputCapacity
+argument secondReceiveCall outPayloadJson EventOutputBuffer nullEventOutputBuffer
+argument secondReceiveCall outPayloadCapacity EventBufferCapacity nullEventOutputCapacity
+timeout secondReceiveCall 1000ms
+cancelOn secondReceiveCall requestCancellationToken
+start secondReceiveCall
+
+call appendSmokeEventCall event.appendEvent
+argument appendSmokeEventCall stream EventStreamHandle smokeStream
+argument appendSmokeEventCall eventType EventTypeName smokeEventType
+argument appendSmokeEventCall eventKey EventKey smokeEventKey
+argument appendSmokeEventCall payloadJson EventPayloadJson smokePayloadJson
+timeout appendSmokeEventCall 1000ms
+cancelOn appendSmokeEventCall requestCancellationToken
+start appendSmokeEventCall
+await appendSmokeEventCall
+ignore value source appendSmokeEventCall type EventId
+
+await firstReceiveCall
+bind value firstReceivedEventId EventId firstReceiveCall
+await secondReceiveCall
+bind value secondReceivedEventId EventId secondReceiveCall
+
+call firstReceivePositiveCall eventIdGreaterThan
+argument firstReceivePositiveCall left EventId firstReceivedEventId
+argument firstReceivePositiveCall right EventId zeroEventId
+timeout firstReceivePositiveCall 1000ms
+cancelOn firstReceivePositiveCall requestCancellationToken
+start firstReceivePositiveCall
+await firstReceivePositiveCall
+bind value firstReceivePositive Bool firstReceivePositiveCall
+branch if condition firstReceivePositive target firstReceiveSucceeded
+return value failedExitCode
+label firstReceiveSucceeded
+
+call secondReceivePositiveCall eventIdGreaterThan
+argument secondReceivePositiveCall left EventId secondReceivedEventId
+argument secondReceivePositiveCall right EventId zeroEventId
+timeout secondReceivePositiveCall 1000ms
+cancelOn secondReceivePositiveCall requestCancellationToken
+start secondReceivePositiveCall
+await secondReceivePositiveCall
+bind value secondReceivePositive Bool secondReceivePositiveCall
+branch if condition secondReceivePositive target secondReceiveSucceeded
+return value failedExitCode
+label secondReceiveSucceeded
+
+call firstListenerCall listenerOneHandleSmokeEvent
+argument firstListenerCall console Console console
+argument firstListenerCall receivedEventId EventId firstReceivedEventId
+timeout firstListenerCall 1000ms
+cancelOn firstListenerCall requestCancellationToken
+start firstListenerCall
+
+call secondListenerCall listenerTwoHandleSmokeEvent
+argument secondListenerCall console Console console
+argument secondListenerCall receivedEventId EventId secondReceivedEventId
+timeout secondListenerCall 1000ms
+cancelOn secondListenerCall requestCancellationToken
+start secondListenerCall
+
+await firstListenerCall
+ignore value source firstListenerCall type CSignedInt32
+await secondListenerCall
+ignore value source secondListenerCall type CSignedInt32
+
+call acknowledgeFirstCall event.acknowledgeEvent
+argument acknowledgeFirstCall subscription EventSubscriptionHandle firstSubscription
+argument acknowledgeFirstCall eventId EventId firstReceivedEventId
+timeout acknowledgeFirstCall 1000ms
+cancelOn acknowledgeFirstCall requestCancellationToken
+start acknowledgeFirstCall
+await acknowledgeFirstCall
+ignore value source acknowledgeFirstCall type EventStatusCode
+
+call acknowledgeSecondCall event.acknowledgeEvent
+argument acknowledgeSecondCall subscription EventSubscriptionHandle secondSubscription
+argument acknowledgeSecondCall eventId EventId secondReceivedEventId
+timeout acknowledgeSecondCall 1000ms
+cancelOn acknowledgeSecondCall requestCancellationToken
+start acknowledgeSecondCall
+await acknowledgeSecondCall
+ignore value source acknowledgeSecondCall type EventStatusCode
+
+call closeFirstSubscriptionCall event.closeSubscription
+argument closeFirstSubscriptionCall subscription EventSubscriptionHandle firstSubscription
+timeout closeFirstSubscriptionCall 1000ms
+cancelOn closeFirstSubscriptionCall requestCancellationToken
+start closeFirstSubscriptionCall
+await closeFirstSubscriptionCall
+ignore value source closeFirstSubscriptionCall type EventStatusCode
+
+call closeSecondSubscriptionCall event.closeSubscription
+argument closeSecondSubscriptionCall subscription EventSubscriptionHandle secondSubscription
+timeout closeSecondSubscriptionCall 1000ms
+cancelOn closeSecondSubscriptionCall requestCancellationToken
+start closeSecondSubscriptionCall
+await closeSecondSubscriptionCall
+ignore value source closeSecondSubscriptionCall type EventStatusCode
+
+call closeSmokeStreamCall event.closeStream
+argument closeSmokeStreamCall stream EventStreamHandle smokeStream
+timeout closeSmokeStreamCall 1000ms
+cancelOn closeSmokeStreamCall requestCancellationToken
+start closeSmokeStreamCall
+await closeSmokeStreamCall
+ignore value source closeSmokeStreamCall type EventStatusCode
+
+return value successExitCode

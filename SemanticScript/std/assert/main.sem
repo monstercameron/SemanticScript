@@ -62,7 +62,7 @@ output operation writeAssertionByteToStandardOutput CSignedInt32
 useCapability writeAssertionByteToStandardOutput stdoutWriteCapability
 effect writeAssertionByteToStandardOutput write console.stdout
 memory writeAssertionByteToStandardOutput heap no
-memoryStackLimit writeAssertionByteToStandardOutput 1024
+memory writeAssertionByteToStandardOutput stack max 1024
 async writeAssertionByteToStandardOutput no
 purpose operation writeAssertionByteToStandardOutput "Single-byte writer wrapping c.putchar for assertion-failure diagnostics."
 invariant operation writeAssertionByteToStandardOutput "Writes exactly one byte; returns the libc putchar return value (the character on success, EOF / negative on error which we propagate to the caller)."
@@ -91,7 +91,7 @@ output operation emitAssertionFailureBanner CSignedInt32
 useCapability emitAssertionFailureBanner stdoutWriteCapability
 effect emitAssertionFailureBanner write console.stdout
 memory emitAssertionFailureBanner heap no
-memoryStackLimit emitAssertionFailureBanner 1024
+memory emitAssertionFailureBanner stack max 1024
 async emitAssertionFailureBanner no
 purpose operation emitAssertionFailureBanner "Emit the literal 'assert!\\n' on stdout. Internal helper used by every assertion-failure path."
 invariant operation emitAssertionFailureBanner "Exactly eight bytes written: 'a', 's', 's', 'e', 'r', 't', '!', '\\n'."
@@ -147,7 +147,7 @@ output operation requireConditionTrue Result CSignedInt32 AssertionError
 useCapability requireConditionTrue stdoutWriteCapability
 effect requireConditionTrue write console.stdout
 memory requireConditionTrue heap no
-memoryStackLimit requireConditionTrue 1024
+memory requireConditionTrue stack max 1024
 async requireConditionTrue no
 purpose operation requireConditionTrue "Succeeds when conditionValue is true; emits an 'assert!\\n' banner and returns AssertionError.ConditionWasFalse otherwise."
 invariant operation requireConditionTrue "Success returns 0; failure returns a typed AssertionError variant."
@@ -171,7 +171,7 @@ output operation requireSignedInt64ValuesEqual Result CSignedInt32 AssertionErro
 useCapability requireSignedInt64ValuesEqual stdoutWriteCapability
 effect requireSignedInt64ValuesEqual write console.stdout
 memory requireSignedInt64ValuesEqual heap no
-memoryStackLimit requireSignedInt64ValuesEqual 1024
+memory requireSignedInt64ValuesEqual stack max 1024
 async requireSignedInt64ValuesEqual no
 purpose operation requireSignedInt64ValuesEqual "Asserts leftValue == rightValue."
 failure requireSignedInt64ValuesEqual ValuesWereNotEqual "Returned when the two CSignedInt64 inputs do not match."
@@ -199,7 +199,7 @@ output operation requireSignedInt64ValuesNotEqual Result CSignedInt32 AssertionE
 useCapability requireSignedInt64ValuesNotEqual stdoutWriteCapability
 effect requireSignedInt64ValuesNotEqual write console.stdout
 memory requireSignedInt64ValuesNotEqual heap no
-memoryStackLimit requireSignedInt64ValuesNotEqual 1024
+memory requireSignedInt64ValuesNotEqual stack max 1024
 async requireSignedInt64ValuesNotEqual no
 purpose operation requireSignedInt64ValuesNotEqual "Asserts leftValue != rightValue."
 failure requireSignedInt64ValuesNotEqual ValuesShouldNotMatch "Returned when the two CSignedInt64 inputs are equal."

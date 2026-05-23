@@ -31,6 +31,11 @@ typedef struct SSHttpServerConfig {
      * content-type; the dispatcher only sends what the handler
      * produced. */
     SSHttpHandler not_found_handler;
+    /* Optional fallback handler invoked when the request path matches
+     * at least one compiled route pattern but the HTTP method does not.
+     * NULL keeps the historic behavior where that request falls through
+     * to the not-found path. */
+    SSHttpHandler method_not_allowed_handler;
 } SSHttpServerConfig;
 
 /* ss_http_server_run() result codes. */
@@ -64,11 +69,22 @@ enum {
  * return from its handler and flush its one-shot response, closes the listen
  * socket, frees compiled route state, and returns SS_HTTP_OK.
  *
- * This is process-level graceful shutdown only. It does not expose a
- * SemanticScript cancellation token, does not interrupt an in-flight handler,
- * and does not make long-lived streaming responses executable.
+ * This is process-level graceful shutdown only. standard.http exposes the
+ * drain flag for SemanticScript handlers/middleware, but request cancellation
+ * tokens and in-flight handler interruption are still outside this adapter.
+ * standard.http owns the SSE stream API surface; this adapter only provides
+ * the low-level blocking socket hooks that open/write/close a stream for a
+ * handler that explicitly uses them before returning.
  */
 int ss_http_server_run(const SSHttpServerConfig *config);
+
+/*
+ * Returns 1 once process-level graceful shutdown has been requested by a
+ * signal/console handler, otherwise 0. This is the low-level ABI used by
+ * standard.http.serverIsShuttingDown; application-specific rejection policy
+ * belongs in SemanticScript.
+ */
+int ss_http_server_is_shutting_down(void);
 
 int ss_http_response_text(
     SSHttpResponse *response,
@@ -91,6 +107,22 @@ int ss_http_response_sse_event(
     const char *event_name,
     const char *event_data
 );
+
+int ss_http_sse_open(SSHttpResponse *response, int status);
+int ss_http_sse_write_event(
+    SSHttpResponse *response,
+    const char *event_name,
+    const char *event_data
+);
+int ss_http_sse_write_event_with_id(
+    SSHttpResponse *response,
+    long long event_id,
+    const char *event_name,
+    const char *event_data
+);
+int ss_http_sse_heartbeat(SSHttpResponse *response, const char *comment);
+int ss_http_sse_close(SSHttpResponse *response);
+int ss_http_client_disconnected(SSHttpResponse *response);
 
 const char *ss_http_request_method(const SSHttpRequest *request);
 const char *ss_http_request_path(const SSHttpRequest *request);
@@ -159,6 +191,29 @@ int ss_http_response_file(
  * libc time().
  */
 long long ss_http_now_millis(void);
+
+/*
+ * Outbound blocking HTTP/1.1 client. Connects to host:port, sends
+ * `method path` with a Host header, an optional caller header line
+ * (e.g. "Authorization: Bearer ..."), and an optional JSON body, then reads
+ * the full response. Returns a malloc'd null-terminated copy of the response
+ * BODY on a 2xx status, or NULL on transport error / non-2xx. Caller frees.
+ */
+const char *ss_http_client_fetch(
+    const char *method,
+    const char *host,
+    int port,
+    const char *path,
+    const char *header_line,
+    const char *body
+);
+
+/*
+ * Escape the HTML special characters & < > " ' into entities, writing into the
+ * caller's bounded out buffer (always null-terminated; truncates rather than
+ * overflows). Returns out, or NULL on bad args.
+ */
+const char *ss_http_html_escape(const char *input, char *out, int out_capacity);
 
 /*
  * Ensures the named directory exists, creating it if missing. Refuses

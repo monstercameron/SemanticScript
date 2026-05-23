@@ -140,6 +140,21 @@ branch if condition toggleBitOk target toggleBitHolds
 branch else target smokeAssertionFailed
 label toggleBitHolds
 
+# Regression (negative input): bit 63 of -1 is set. -1 is all-ones in
+# two's complement, so every bit is 1. The pre-optimization sdiv-based
+# implementation computed (-1 / 2^63) == 0 and reported the bit clear;
+# the logical-shift version reads the real bit pattern.
+storage module immutable negativeOneForBit CSignedInt64 -1
+storage module immutable bitIndexSixtyThree CSignedInt64 63
+call assertNegativeBitSetCall isSignedInt64BitSet
+argument assertNegativeBitSetCall inputValue CSignedInt64 negativeOneForBit
+argument assertNegativeBitSetCall bitIndex CSignedInt64 bitIndexSixtyThree
+run assertNegativeBitSetCall
+bind value negativeBitSetResult Bool assertNegativeBitSetCall
+branch if condition negativeBitSetResult target negativeBitSetHolds
+branch else target smokeAssertionFailed
+label negativeBitSetHolds
+
 storage module immutable successMessageText CNullTerminatedByteString "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console

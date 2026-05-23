@@ -114,7 +114,7 @@ operation isAsciiDecimalDigitCode
 input operation isAsciiDecimalDigitCode characterCode CSignedInt32
 output operation isAsciiDecimalDigitCode Bool
 memory isAsciiDecimalDigitCode heap no
-memoryStackLimit isAsciiDecimalDigitCode 1024
+memory isAsciiDecimalDigitCode stack max 1024
 async isAsciiDecimalDigitCode no
 purpose operation isAsciiDecimalDigitCode "Returns true when characterCode is an ASCII decimal digit (0x30..0x39)."
 invariant operation isAsciiDecimalDigitCode "Holds iff 48 <= characterCode <= 57."
@@ -145,7 +145,7 @@ operation isAsciiLowercaseLetterCode
 input operation isAsciiLowercaseLetterCode characterCode CSignedInt32
 output operation isAsciiLowercaseLetterCode Bool
 memory isAsciiLowercaseLetterCode heap no
-memoryStackLimit isAsciiLowercaseLetterCode 1024
+memory isAsciiLowercaseLetterCode stack max 1024
 async isAsciiLowercaseLetterCode no
 purpose operation isAsciiLowercaseLetterCode "Returns true when characterCode is an ASCII lowercase letter (0x61..0x7A)."
 invariant operation isAsciiLowercaseLetterCode "Holds iff 97 <= characterCode <= 122."
@@ -173,7 +173,7 @@ operation isAsciiUppercaseLetterCode
 input operation isAsciiUppercaseLetterCode characterCode CSignedInt32
 output operation isAsciiUppercaseLetterCode Bool
 memory isAsciiUppercaseLetterCode heap no
-memoryStackLimit isAsciiUppercaseLetterCode 1024
+memory isAsciiUppercaseLetterCode stack max 1024
 async isAsciiUppercaseLetterCode no
 purpose operation isAsciiUppercaseLetterCode "Returns true when characterCode is an ASCII uppercase letter (0x41..0x5A)."
 invariant operation isAsciiUppercaseLetterCode "Holds iff 65 <= characterCode <= 90."
@@ -201,7 +201,7 @@ operation isAsciiLetterCode
 input operation isAsciiLetterCode characterCode CSignedInt32
 output operation isAsciiLetterCode Bool
 memory isAsciiLetterCode heap no
-memoryStackLimit isAsciiLetterCode 1024
+memory isAsciiLetterCode stack max 1024
 async isAsciiLetterCode no
 purpose operation isAsciiLetterCode "Returns true when characterCode is an ASCII letter (upper or lower case)."
 invariant operation isAsciiLetterCode "Equivalent to isAsciiUppercaseLetterCode(c) OR isAsciiLowercaseLetterCode(c)."
@@ -227,7 +227,7 @@ operation isAsciiLetterOrDigitCode
 input operation isAsciiLetterOrDigitCode characterCode CSignedInt32
 output operation isAsciiLetterOrDigitCode Bool
 memory isAsciiLetterOrDigitCode heap no
-memoryStackLimit isAsciiLetterOrDigitCode 1024
+memory isAsciiLetterOrDigitCode stack max 1024
 async isAsciiLetterOrDigitCode no
 purpose operation isAsciiLetterOrDigitCode "Returns true when characterCode is an ASCII letter or decimal digit."
 invariant operation isAsciiLetterOrDigitCode "Equivalent to isAsciiLetterCode(c) OR isAsciiDecimalDigitCode(c)."
@@ -253,7 +253,7 @@ operation isAsciiHexDigitCode
 input operation isAsciiHexDigitCode characterCode CSignedInt32
 output operation isAsciiHexDigitCode Bool
 memory isAsciiHexDigitCode heap no
-memoryStackLimit isAsciiHexDigitCode 1024
+memory isAsciiHexDigitCode stack max 1024
 async isAsciiHexDigitCode no
 purpose operation isAsciiHexDigitCode "Returns true when characterCode is an ASCII hexadecimal digit (0-9, A-F, a-f)."
 invariant operation isAsciiHexDigitCode "Equivalent to digit OR uppercase A..F OR lowercase a..f."
@@ -305,7 +305,7 @@ operation isAsciiWhitespaceCode
 input operation isAsciiWhitespaceCode characterCode CSignedInt32
 output operation isAsciiWhitespaceCode Bool
 memory isAsciiWhitespaceCode heap no
-memoryStackLimit isAsciiWhitespaceCode 1024
+memory isAsciiWhitespaceCode stack max 1024
 async isAsciiWhitespaceCode no
 purpose operation isAsciiWhitespaceCode "Returns true for space, tab, LF, VT, FF, or CR (the standard ASCII whitespace set)."
 invariant operation isAsciiWhitespaceCode "Same membership as C's isspace() on ASCII inputs."
@@ -357,7 +357,7 @@ operation isAsciiBlankCode
 input operation isAsciiBlankCode characterCode CSignedInt32
 output operation isAsciiBlankCode Bool
 memory isAsciiBlankCode heap no
-memoryStackLimit isAsciiBlankCode 1024
+memory isAsciiBlankCode stack max 1024
 async isAsciiBlankCode no
 purpose operation isAsciiBlankCode "Returns true only for space or horizontal tab."
 invariant operation isAsciiBlankCode "Strict subset of isAsciiWhitespaceCode Ã¢â‚¬â€ excludes LF, VT, FF, CR."
@@ -388,12 +388,24 @@ operation isAsciiControlCode
 input operation isAsciiControlCode characterCode CSignedInt32
 output operation isAsciiControlCode Bool
 memory isAsciiControlCode heap no
-memoryStackLimit isAsciiControlCode 1024
+memory isAsciiControlCode stack max 1024
 async isAsciiControlCode no
 purpose operation isAsciiControlCode "Returns true for control characters (0x00..0x1F or 0x7F)."
 invariant operation isAsciiControlCode "Holds iff 0 <= c <= 31 OR c == 127."
 guarantee isAsciiControlCode "Total."
 label startIsAsciiControlCode
+# Floor guard: a negative input is outside the ASCII range and is not a
+# control character. A 0xFF byte loaded via pointer.loadByte sign-extends
+# to -1; without this floor, the `<= 31` low-range check below would
+# satisfy -1 <= 31 and misclassify every negative byte as control, which
+# also violates this operation's `0 <= c <= 31 OR c == 127` invariant.
+storage module immutable asciiControlRangeFloor CSignedInt32 0
+call detectBelowControlFloorCall math.lessThanI64
+argument detectBelowControlFloorCall left I64 characterCode
+argument detectBelowControlFloorCall right I64 asciiControlRangeFloor
+run detectBelowControlFloorCall
+bind value characterBelowControlFloor Bool detectBelowControlFloorCall
+branch if condition characterBelowControlFloor target returnIsControlFalse
 call detectLowControlRangeCall math.lessThanOrEqualI64
 argument detectLowControlRangeCall left I64 characterCode
 argument detectLowControlRangeCall right I64 asciiHighestControlCode
@@ -407,6 +419,7 @@ run detectEqualsDeleteCall
 bind value characterEqualsDelete Bool detectEqualsDeleteCall
 branch if condition characterEqualsDelete target returnIsControl
 storage module immutable isControlFalse Bool false
+label returnIsControlFalse
 return value isControlFalse
 label returnIsControl
 storage module immutable isControlTrue Bool true
@@ -416,7 +429,7 @@ operation isAsciiPrintableCode
 input operation isAsciiPrintableCode characterCode CSignedInt32
 output operation isAsciiPrintableCode Bool
 memory isAsciiPrintableCode heap no
-memoryStackLimit isAsciiPrintableCode 1024
+memory isAsciiPrintableCode stack max 1024
 async isAsciiPrintableCode no
 purpose operation isAsciiPrintableCode "Returns true for printable characters (0x20..0x7E)."
 invariant operation isAsciiPrintableCode "Holds iff 32 <= c <= 126 (space through tilde)."
@@ -444,7 +457,7 @@ operation isAsciiGraphicalCode
 input operation isAsciiGraphicalCode characterCode CSignedInt32
 output operation isAsciiGraphicalCode Bool
 memory isAsciiGraphicalCode heap no
-memoryStackLimit isAsciiGraphicalCode 1024
+memory isAsciiGraphicalCode stack max 1024
 async isAsciiGraphicalCode no
 purpose operation isAsciiGraphicalCode "Returns true for printable characters that are not space (0x21..0x7E)."
 invariant operation isAsciiGraphicalCode "Holds iff 33 <= c <= 126."
@@ -472,7 +485,7 @@ operation isAsciiPunctuationCode
 input operation isAsciiPunctuationCode characterCode CSignedInt32
 output operation isAsciiPunctuationCode Bool
 memory isAsciiPunctuationCode heap no
-memoryStackLimit isAsciiPunctuationCode 1024
+memory isAsciiPunctuationCode stack max 1024
 async isAsciiPunctuationCode no
 purpose operation isAsciiPunctuationCode "Returns true for printable characters that are not space or alphanumeric."
 invariant operation isAsciiPunctuationCode "Equivalent to isAsciiGraphicalCode AND NOT isAsciiLetterOrDigitCode."
@@ -504,7 +517,7 @@ operation convertAsciiLetterCodeToUppercase
 input operation convertAsciiLetterCodeToUppercase characterCode CSignedInt32
 output operation convertAsciiLetterCodeToUppercase CSignedInt32
 memory convertAsciiLetterCodeToUppercase heap no
-memoryStackLimit convertAsciiLetterCodeToUppercase 1024
+memory convertAsciiLetterCodeToUppercase stack max 1024
 async convertAsciiLetterCodeToUppercase no
 purpose operation convertAsciiLetterCodeToUppercase "Maps ASCII lowercase letters (0x61..0x7A) to uppercase; passes every other byte through unchanged."
 invariant operation convertAsciiLetterCodeToUppercase "For characterCode in 97..122, output == characterCode - 32. Otherwise output == characterCode."
@@ -535,7 +548,7 @@ operation convertAsciiLetterCodeToLowercase
 input operation convertAsciiLetterCodeToLowercase characterCode CSignedInt32
 output operation convertAsciiLetterCodeToLowercase CSignedInt32
 memory convertAsciiLetterCodeToLowercase heap no
-memoryStackLimit convertAsciiLetterCodeToLowercase 1024
+memory convertAsciiLetterCodeToLowercase stack max 1024
 async convertAsciiLetterCodeToLowercase no
 purpose operation convertAsciiLetterCodeToLowercase "Maps ASCII uppercase letters (0x41..0x5A) to lowercase; passes every other byte through unchanged."
 invariant operation convertAsciiLetterCodeToLowercase "For characterCode in 65..90, output == characterCode + 32. Otherwise output == characterCode."

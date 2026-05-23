@@ -293,6 +293,43 @@ branch if condition lastByteOk target reversedLastHolds
 branch else target smokeAssertionFailed
 label reversedLastHolds
 
+# Regression (high byte >= 128): store unsigned 200 into the buffer and
+# confirm the contains/count predicates normalize the sign-extended byte.
+# Under the pre-fix raw comparison this byte loaded as -56 and never
+# matched a targetValue of 200, so contains returned false / count 0.
+storage module immutable highByteValue CSignedInt64 200
+call storeHighByteCall pointer.storeByte
+argument storeHighByteCall buffer COpaqueMemoryAddress reverseBuffer
+argument storeHighByteCall offset CByteCount offsetZero
+argument storeHighByteCall value CSignedInt64 highByteValue
+run storeHighByteCall
+storage module immutable oneByteCountForHigh CByteCount 1
+storage module immutable highByteTarget CSignedInt32 200
+call highContainsCall bufferContainsSignedByteValue
+argument highContainsCall byteBuffer CNullTerminatedByteString reverseBuffer
+argument highContainsCall byteCount CByteCount oneByteCountForHigh
+argument highContainsCall targetValue CSignedInt32 highByteTarget
+run highContainsCall
+bind value highContainsResult Bool highContainsCall
+branch if condition highContainsResult target highByteContainsHolds
+branch else target smokeAssertionFailed
+label highByteContainsHolds
+call highCountCall countSignedByteValueInBuffer
+argument highCountCall byteBuffer CNullTerminatedByteString reverseBuffer
+argument highCountCall byteCount CByteCount oneByteCountForHigh
+argument highCountCall targetValue CSignedInt32 highByteTarget
+run highCountCall
+bind value highCountResult CSignedInt64 highCountCall
+storage module immutable oneExpectedCount CSignedInt64 1
+call checkHighCountCall math.equalI64
+argument checkHighCountCall left I64 highCountResult
+argument checkHighCountCall right I64 oneExpectedCount
+run checkHighCountCall
+bind value highCountOk Bool checkHighCountCall
+branch if condition highCountOk target highByteCountHolds
+branch else target smokeAssertionFailed
+label highByteCountHolds
+
 storage module immutable successMessageText CNullTerminatedByteString "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console

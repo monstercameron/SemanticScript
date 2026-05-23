@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #if defined(_WIN32)
@@ -336,6 +337,265 @@ static int base64url_decode(
     return SS_JWT_OK;
 }
 
+static const char *jwt_skip_ws(const char *cursor) {
+    while (*cursor == ' ' || *cursor == '\n' || *cursor == '\r' || *cursor == '\t') {
+        ++cursor;
+    }
+    return cursor;
+}
+
+static int decode_jwt_payload_json(
+    const char *token,
+    char *out_payload_buffer,
+    int out_payload_capacity
+) {
+    if (token == NULL || out_payload_buffer == NULL || out_payload_capacity <= 0) {
+        return SS_JWT_ERR_CONFIG;
+    }
+    const char *first_dot = strchr(token, '.');
+    if (first_dot == NULL) {
+        return SS_JWT_ERR_MALFORMED;
+    }
+    const char *second_dot = strchr(first_dot + 1, '.');
+    if (second_dot == NULL || strchr(second_dot + 1, '.') != NULL) {
+        return SS_JWT_ERR_MALFORMED;
+    }
+
+    int payload_len = (int)(second_dot - first_dot - 1);
+    int decoded_len = 0;
+    int status = base64url_decode(
+        first_dot + 1,
+        payload_len,
+        (uint8_t *)out_payload_buffer,
+        out_payload_capacity - 1,
+        &decoded_len);
+    if (status != SS_JWT_OK) {
+        return status;
+    }
+    out_payload_buffer[decoded_len] = '\0';
+    return SS_JWT_OK;
+}
+
+static const char *skip_json_string(const char *cursor) {
+    if (cursor == NULL || *cursor != '"') {
+        return NULL;
+    }
+    ++cursor;
+    while (*cursor != '\0') {
+        if (*cursor == '"') {
+            return cursor + 1;
+        }
+        if (*cursor == '\\') {
+            ++cursor;
+            if (*cursor == '\0') {
+                return NULL;
+            }
+            if (*cursor == 'u') {
+                for (int i = 0; i < 4; ++i) {
+                    ++cursor;
+                    if (*cursor == '\0') {
+                        return NULL;
+                    }
+                }
+            }
+            ++cursor;
+            continue;
+        }
+        ++cursor;
+    }
+    return NULL;
+}
+
+static const char *skip_json_value(const char *cursor) {
+    cursor = jwt_skip_ws(cursor);
+    if (*cursor == '"') {
+        return skip_json_string(cursor);
+    }
+    if (*cursor == '{' || *cursor == '[') {
+        char opener = *cursor;
+        char closer = opener == '{' ? '}' : ']';
+        int depth = 1;
+        ++cursor;
+        while (*cursor != '\0' && depth > 0) {
+            if (*cursor == '"') {
+                cursor = skip_json_string(cursor);
+                if (cursor == NULL) {
+                    return NULL;
+                }
+                continue;
+            }
+            if (*cursor == opener) {
+                ++depth;
+            } else if (*cursor == closer) {
+                --depth;
+            } else if ((opener == '{' && *cursor == '[')
+                || (opener == '[' && *cursor == '{')) {
+                const char *nested = skip_json_value(cursor);
+                if (nested == NULL) {
+                    return NULL;
+                }
+                cursor = nested;
+                continue;
+            }
+            ++cursor;
+        }
+        return depth == 0 ? cursor : NULL;
+    }
+    while (*cursor != '\0'
+        && *cursor != ','
+        && *cursor != '}'
+        && *cursor != ']'
+        && *cursor != ' '
+        && *cursor != '\n'
+        && *cursor != '\r'
+        && *cursor != '\t') {
+        ++cursor;
+    }
+    return cursor;
+}
+
+static int json_simple_field_name_equals(
+    const char *field_string,
+    const char *claim_name
+) {
+    if (field_string == NULL || claim_name == NULL || *field_string != '"') {
+        return 0;
+    }
+    const char *cursor = field_string + 1;
+    const char *name = claim_name;
+    while (*cursor != '\0' && *cursor != '"') {
+        if (*cursor == '\\') {
+            return 0;
+        }
+        if (*name == '\0' || *cursor != *name) {
+            return 0;
+        }
+        ++cursor;
+        ++name;
+    }
+    return *cursor == '"' && *name == '\0';
+}
+
+static const char *find_top_level_claim_value(
+    const char *payload_json,
+    const char *claim_name
+) {
+    const char *cursor = jwt_skip_ws(payload_json);
+    if (*cursor != '{') {
+        return NULL;
+    }
+    ++cursor;
+    while (*cursor != '\0') {
+        cursor = jwt_skip_ws(cursor);
+        if (*cursor == '}') {
+            return NULL;
+        }
+        if (*cursor != '"') {
+            return NULL;
+        }
+        int matches = json_simple_field_name_equals(cursor, claim_name);
+        cursor = skip_json_string(cursor);
+        if (cursor == NULL) {
+            return NULL;
+        }
+        cursor = jwt_skip_ws(cursor);
+        if (*cursor != ':') {
+            return NULL;
+        }
+        ++cursor;
+        const char *value = jwt_skip_ws(cursor);
+        if (matches) {
+            return value;
+        }
+        cursor = skip_json_value(value);
+        if (cursor == NULL) {
+            return NULL;
+        }
+        cursor = jwt_skip_ws(cursor);
+        if (*cursor == ',') {
+            ++cursor;
+            continue;
+        }
+        if (*cursor == '}') {
+            return NULL;
+        }
+        return NULL;
+    }
+    return NULL;
+}
+
+static int hex_digit_value(char ch) {
+    if (ch >= '0' && ch <= '9') {
+        return ch - '0';
+    }
+    if (ch >= 'a' && ch <= 'f') {
+        return ch - 'a' + 10;
+    }
+    if (ch >= 'A' && ch <= 'F') {
+        return ch - 'A' + 10;
+    }
+    return -1;
+}
+
+static const char *copy_json_string_claim(
+    const char *value,
+    char *out_claim_buffer,
+    int out_claim_capacity
+) {
+    if (value == NULL
+        || out_claim_buffer == NULL
+        || out_claim_capacity <= 0
+        || *value != '"') {
+        return NULL;
+    }
+    ++value;
+    int out_index = 0;
+    while (*value != '\0') {
+        if (*value == '"') {
+            if (out_index >= out_claim_capacity) {
+                return NULL;
+            }
+            out_claim_buffer[out_index] = '\0';
+            return out_claim_buffer;
+        }
+        char next = *value;
+        if (next == '\\') {
+            ++value;
+            switch (*value) {
+                case '"': next = '"'; break;
+                case '\\': next = '\\'; break;
+                case '/': next = '/'; break;
+                case 'b': next = '\b'; break;
+                case 'f': next = '\f'; break;
+                case 'n': next = '\n'; break;
+                case 'r': next = '\r'; break;
+                case 't': next = '\t'; break;
+                case 'u': {
+                    int code = 0;
+                    for (int i = 0; i < 4; ++i) {
+                        ++value;
+                        int digit = hex_digit_value(*value);
+                        if (digit < 0) {
+                            return NULL;
+                        }
+                        code = (code << 4) | digit;
+                    }
+                    next = (code >= 0 && code <= 0x7f) ? (char)code : '?';
+                    break;
+                }
+                default:
+                    return NULL;
+            }
+        }
+        if (out_index + 1 >= out_claim_capacity) {
+            return NULL;
+        }
+        out_claim_buffer[out_index++] = next;
+        ++value;
+    }
+    return NULL;
+}
+
 static int jwt_random_bytes(uint8_t *out, int byte_count) {
     if (out == NULL || byte_count <= 0) {
         return SS_JWT_ERR_CONFIG;
@@ -581,6 +841,45 @@ int ss_jwt_hs256_verify_token(
     return constant_time_equal(signature, expected_signature, 43)
         ? SS_JWT_MATCH
         : SS_JWT_MISMATCH;
+}
+
+const char *ss_jwt_read_string_claim(
+    const char *token,
+    const char *claim_name,
+    char *out_claim_buffer,
+    int out_claim_capacity
+) {
+    char payload_json[1024];
+    int decode_status = decode_jwt_payload_json(
+        token, payload_json, (int)sizeof(payload_json));
+    if (decode_status != SS_JWT_OK) {
+        return NULL;
+    }
+    const char *value = find_top_level_claim_value(payload_json, claim_name);
+    return copy_json_string_claim(value, out_claim_buffer, out_claim_capacity);
+}
+
+long long ss_jwt_read_int64_claim(
+    const char *token,
+    const char *claim_name,
+    long long missing_default
+) {
+    char payload_json[1024];
+    int decode_status = decode_jwt_payload_json(
+        token, payload_json, (int)sizeof(payload_json));
+    if (decode_status != SS_JWT_OK) {
+        return missing_default;
+    }
+    const char *value = find_top_level_claim_value(payload_json, claim_name);
+    if (value == NULL) {
+        return missing_default;
+    }
+    char *end = NULL;
+    long long parsed = strtoll(value, &end, 10);
+    if (end == value) {
+        return missing_default;
+    }
+    return parsed;
 }
 
 int ss_jwt_format_bearer_login_envelope(

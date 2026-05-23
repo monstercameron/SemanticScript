@@ -1,0 +1,176 @@
+# ============================================================
+# SEMANTICSCRIPT STANDARD LIBRARY TESTS: standard.log escapeJsonString
+# ============================================================
+#
+# rationale: regression for the log-injection defence. escapeJsonString
+#   must turn `"` into \" and `\` into \\ so caller text can never close
+#   the JSON message field and inject sibling fields. A prior version was
+#   a no-op `%s` snprintf; this test pins the real escaping behaviour.
+#
+# harness note: standard.log models libc fputs as a `console.stdout write`
+#   effect, which collides with the console builtins under the JIT --run
+#   path, so this smoke is BUILT AND RUN AS A NATIVE EXE rather than via
+#   the JIT stdlib smoke runner:
+#     python SemanticScript/compiler/semsc.py \
+#       SemanticScript/std/log/main.test.sem --emit-exe log_smoke.exe
+#     ./log_smoke.exe   # prints "OK", exit 0
+#
+# invariant: builds the 3-byte source { '"', '\', NUL } with explicit
+#   storeByte (avoids string-literal escaping ambiguity), escapes it, and
+#   asserts the output bytes are { '\', '"', '\', '\', NUL }.
+
+project StdLogTest
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+import log standard.log
+error MainError
+errorCase MainError LogSmokeAssertionFailed
+errorCase MainError MemoryAllocationFailed
+errorCase MainError ConsoleWriteFailed
+
+capability stdoutWriteCapability console.stdout write
+capability heapAllocationCapability heap allocate
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+useCapability main heapAllocationCapability
+effect main write console.stdout
+effect main allocate heap
+effect main free heap
+memory main heap auto
+async main no
+purpose operation main "Verify escapeJsonString escapes a quote and a backslash."
+invariant operation main "escape({ '\"', '\\' }) == { '\\', '\"', '\\', '\\' }."
+
+label startMain
+
+storage module immutable scratchByteSize CByteCount 64
+call allocateSourceCall c.malloc
+argument allocateSourceCall size CByteCount scratchByteSize
+run allocateSourceCall
+bind value sourceScratch COpaqueMemoryAddress allocateSourceCall
+bind error sourceAllocError CSignedInt32 allocateSourceCall
+branch error source allocateSourceCall target heapAllocationFailedHandler
+defer releaseSourceDefer c.free sourceScratch
+
+call allocateDestinationCall c.malloc
+argument allocateDestinationCall size CByteCount scratchByteSize
+run allocateDestinationCall
+bind value destinationScratch COpaqueMemoryAddress allocateDestinationCall
+bind error destinationAllocError CSignedInt32 allocateDestinationCall
+branch error source allocateDestinationCall target heapAllocationFailedHandler
+defer releaseDestinationDefer c.free destinationScratch
+
+storage module immutable offsetZero CByteCount 0
+storage module immutable offsetOne CByteCount 1
+storage module immutable offsetTwo CByteCount 2
+storage module immutable offsetThree CByteCount 3
+storage module immutable quoteByteValue CSignedInt64 34
+storage module immutable backslashByteValue CSignedInt64 92
+storage module immutable nulByteValue CSignedInt64 0
+
+# Source bytes: { '"', '\', NUL }.
+call storeSourceQuoteCall pointer.storeByte
+argument storeSourceQuoteCall buffer COpaqueMemoryAddress sourceScratch
+argument storeSourceQuoteCall offset CByteCount offsetZero
+argument storeSourceQuoteCall value CSignedInt64 quoteByteValue
+run storeSourceQuoteCall
+call storeSourceBackslashCall pointer.storeByte
+argument storeSourceBackslashCall buffer COpaqueMemoryAddress sourceScratch
+argument storeSourceBackslashCall offset CByteCount offsetOne
+argument storeSourceBackslashCall value CSignedInt64 backslashByteValue
+run storeSourceBackslashCall
+call storeSourceNulCall pointer.storeByte
+argument storeSourceNulCall buffer COpaqueMemoryAddress sourceScratch
+argument storeSourceNulCall offset CByteCount offsetTwo
+argument storeSourceNulCall value CSignedInt64 nulByteValue
+run storeSourceNulCall
+
+call escapeCall escapeJsonString
+argument escapeCall sourceText CNullTerminatedByteString sourceScratch
+argument escapeCall destinationBuffer COpaqueMemoryAddress destinationScratch
+argument escapeCall destinationCapacity CSignedInt64 scratchByteSize
+run escapeCall
+ignore value source escapeCall type CSignedInt32
+
+# Expect destination bytes { '\', '"', '\', '\' }.
+call loadEscapedZeroCall pointer.loadByte
+argument loadEscapedZeroCall buffer COpaqueMemoryAddress destinationScratch
+argument loadEscapedZeroCall offset CByteCount offsetZero
+run loadEscapedZeroCall
+bind value escapedByteZero I8 loadEscapedZeroCall
+call checkEscapedZeroCall math.equalI64
+argument checkEscapedZeroCall left I64 escapedByteZero
+argument checkEscapedZeroCall right I64 backslashByteValue
+run checkEscapedZeroCall
+bind value escapedZeroOk Bool checkEscapedZeroCall
+branch if condition escapedZeroOk target escapedZeroHolds
+branch else target smokeAssertionFailed
+label escapedZeroHolds
+
+call loadEscapedOneCall pointer.loadByte
+argument loadEscapedOneCall buffer COpaqueMemoryAddress destinationScratch
+argument loadEscapedOneCall offset CByteCount offsetOne
+run loadEscapedOneCall
+bind value escapedByteOne I8 loadEscapedOneCall
+call checkEscapedOneCall math.equalI64
+argument checkEscapedOneCall left I64 escapedByteOne
+argument checkEscapedOneCall right I64 quoteByteValue
+run checkEscapedOneCall
+bind value escapedOneOk Bool checkEscapedOneCall
+branch if condition escapedOneOk target escapedOneHolds
+branch else target smokeAssertionFailed
+label escapedOneHolds
+
+call loadEscapedTwoCall pointer.loadByte
+argument loadEscapedTwoCall buffer COpaqueMemoryAddress destinationScratch
+argument loadEscapedTwoCall offset CByteCount offsetTwo
+run loadEscapedTwoCall
+bind value escapedByteTwo I8 loadEscapedTwoCall
+call checkEscapedTwoCall math.equalI64
+argument checkEscapedTwoCall left I64 escapedByteTwo
+argument checkEscapedTwoCall right I64 backslashByteValue
+run checkEscapedTwoCall
+bind value escapedTwoOk Bool checkEscapedTwoCall
+branch if condition escapedTwoOk target escapedTwoHolds
+branch else target smokeAssertionFailed
+label escapedTwoHolds
+
+call loadEscapedThreeCall pointer.loadByte
+argument loadEscapedThreeCall buffer COpaqueMemoryAddress destinationScratch
+argument loadEscapedThreeCall offset CByteCount offsetThree
+run loadEscapedThreeCall
+bind value escapedByteThree I8 loadEscapedThreeCall
+call checkEscapedThreeCall math.equalI64
+argument checkEscapedThreeCall left I64 escapedByteThree
+argument checkEscapedThreeCall right I64 backslashByteValue
+run checkEscapedThreeCall
+bind value escapedThreeOk Bool checkEscapedThreeCall
+branch if condition escapedThreeOk target escapedThreeHolds
+branch else target smokeAssertionFailed
+label escapedThreeHolds
+
+storage module immutable successMessageText CNullTerminatedByteString "OK"
+call writeSuccessLineCall console.writeLine
+argument writeSuccessLineCall console Console console
+argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+run writeSuccessLineCall
+ignore ok source writeSuccessLineCall type CSignedInt32
+bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+branch error source writeSuccessLineCall target consoleWriteFailedHandler
+storage module immutable exitOkCode ExitCode 0
+return ok exitOkCode
+
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
+return error consoleWriteFailedFailure
+label heapAllocationFailedHandler
+makeError heapAllocationFailure MainError.MemoryAllocationFailed sourceAllocError
+return error heapAllocationFailure
+label smokeAssertionFailed
+makeError logSmokeFailure MainError.LogSmokeAssertionFailed
+return error logSmokeFailure

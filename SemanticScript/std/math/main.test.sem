@@ -175,6 +175,24 @@ branch if condition popcountOk target popcountHolds
 branch else target smokeAssertionFailed
 label popcountHolds
 
+# Regression: countSetBitsInSignedInt64(-1) == 64. Every bit of the
+# two's-complement representation of -1 is set; the pre-fix arithmetic
+# divide-by-two collapsed the sign bits and returned 1.
+storage module immutable negativeOnePopcount CSignedInt64 -1
+storage module immutable sixtyFourBits CSignedInt64 64
+call assertNegPopcountCall countSetBitsInSignedInt64
+argument assertNegPopcountCall inputValue CSignedInt64 negativeOnePopcount
+run assertNegPopcountCall
+bind value negPopcountResult CSignedInt64 assertNegPopcountCall
+call checkNegPopcountCall math.equalI64
+argument checkNegPopcountCall left I64 negPopcountResult
+argument checkNegPopcountCall right I64 sixtyFourBits
+run checkNegPopcountCall
+bind value negPopcountOk Bool checkNegPopcountCall
+branch if condition negPopcountOk target negPopcountHolds
+branch else target smokeAssertionFailed
+label negPopcountHolds
+
 # countTrailingZeroBitsInSignedInt64(16) == 4
 storage module immutable sixteenInteger CSignedInt64 16
 storage module immutable fourTrailingZeros CSignedInt64 4
