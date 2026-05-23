@@ -97,6 +97,391 @@ review. A task is only done when the linked command or artifact is clean.
   - [x] Scope 1.0 to the Python reference compiler.
   - [x] Remove the stale compiler-stage xfail workflow from the active tree.
 
+## P1 - Agent Product Contract Parity
+
+This section tracks the highest-value gaps found during the Zerolang comparison.
+The goal is not to copy their syntax or implementation. The goal is to make
+SemanticScript feel like one coherent, inspectable, repairable product for
+agents: one obvious tool surface, version-matched rules, stable JSON contracts,
+diagnostics that explain how to recover, and release checks that prove those
+contracts do not drift.
+
+The platform thesis to validate is:
+
+```text
+high-context source format
++ deterministic compiler/linter
++ JSON diagnostics
++ repair plans
++ source slicing
++ patch application
++ runnable examples
++ tight docs/skills for agents
+```
+
+If SemanticScript already has better repair geometry in the source, then the
+tooling has to prove it moment-to-moment. The winning loop is one where the
+agent never has to guess.
+
+- [ ] Make `sem check --json` the non-negotiable source of truth for structured
+      diagnostics.
+      This is table stakes. Every serious compiler or linter failure that an
+      agent is expected to respond to should surface through one stable JSON
+      contract with code, severity, message, span, expected/actual facts, and
+      repair metadata.
+  - [ ] Add a canonical schema example to the CLI docs and tests, including
+        fields equivalent to:
+        `code`, `severity`, `message`, `span.file`, `span.line`,
+        `span.column`, `expected`, `actual`, and `repair.id`.
+  - [ ] Fail command-contract tests on prose-only regressions or missing
+        machine-readable repair hints.
+
+- [ ] Add version-matched agent skills served by the local toolchain.
+      `sem skills list` and `sem skills get NAME` should expose the exact
+      language, diagnostics, stdlib, build, testing, and package guidance that
+      matches the compiler currently being used. This removes guesswork for
+      agents and prevents stale docs from silently steering edits against the
+      wrong binary or syntax contract.
+  - [ ] Define the canonical skill names:
+        `sem`, `sem-agent`, `sem-language`, `sem-diagnostics`,
+        `sem-stdlib`, `sem-builds`, `sem-packages`, and `sem-testing`.
+  - [ ] Add a bundled skill-data source tree and make release validation fail
+        when generated or embedded skill content is stale.
+  - [ ] Document the workflow in `docs/agents.md` and `README.md`: agents load
+        the matching skill from the same `sem` binary that will check or build
+        the project.
+
+- [ ] Make the agent-facing CLI contract obvious and stable.
+      The public workflow should be readable as:
+      `sem check --json`, `sem graph --json`, `sem symbols --json`,
+      `sem context --json`, `sem inspect-ir`, `sem size --json`,
+      `sem explain CODE`, and `sem fix --plan --json`. Each command should
+      have a crisp purpose, versioned JSON, and copyable examples in one CLI
+      reference page.
+  - [ ] Decide whether `symbols` becomes `graph`, whether both remain public,
+        and how their JSON responsibilities differ.
+  - [ ] Add `sem size --json` or an equivalent command that explains retained
+        runtime helpers, artifact budgets, profile policy, and optimization
+        hints without requiring users to inspect LLVM IR.
+  - [ ] Add `sem explain CODE` as the human and JSON entry point for compiler
+        and linter diagnostic codes.
+
+- [ ] Unify compiler and linter diagnostics around repair metadata.
+      Compiler diagnostics and `semlint` diagnostics should share a common
+      agent contract: stable code, severity, source span, expected/actual facts,
+      rule text, help text, fix safety, repair id, related spans, and links to
+      `sem explain`. Agents should be able to triage from JSON without scraping
+      terminal prose or guessing whether a fix is local, behavior-preserving,
+      API-changing, or requires human review.
+  - [ ] Define the shared diagnostic JSON schema and version it.
+  - [ ] Add fix-safety labels across compiler and linter output:
+        `format-only`, `behavior-preserving`, `local-edit`, `api-changing`,
+        `target-changing`, and `requires-human-review`.
+  - [ ] Map existing `SS####` linter codes and compiler/backend failures into
+        `sem explain` entries with canonical repair descriptions.
+
+- [ ] Add typed repair-plan support.
+      `sem fix --plan --json PATH` should propose reviewable repairs without
+      editing files. The first milestone can be plan-only for high-confidence
+      failures such as unknown import, missing capability proof, unchecked
+      fallible call, formatting drift, target capability mismatch, and obvious
+      typo-class unknown names. The feature is valuable only if every proposed
+      edit names its safety level and evidence.
+      The output shape should be explicit enough to drive a later patch step:
+      `diagnostic`, `repair`, `safe`, `file`, `insert_after_line`,
+      `replace_range`, and exact emitted text.
+  - [ ] Implement plan-only output before any `--apply` behavior.
+  - [ ] Add negative tests proving risky repairs are labeled
+        `requires-human-review` instead of auto-applicable.
+  - [ ] Surface repair plans through the VS Code extension as quick-fix
+        previews once the CLI contract is stable.
+
+- [ ] Add `sem slice` as the semantic-neighborhood retrieval tool.
+      This is the most important differentiator if we want to beat compact
+      languages on agent reliability. Agents rarely need the whole repo; they
+      need the right semantic neighborhood with direct links to callers,
+      callees, effects, capabilities, invariants, error paths, tests, and docs.
+  - [ ] Support operation-focused retrieval such as
+        `sem slice --operation createTodoHandler --json`.
+  - [ ] Support route, symbol, effect, and capability retrieval such as
+        `--route POST:/todos`, `--symbol TodoRecord --include-callers`,
+        `--effect database`, and `--capability session.user`.
+  - [ ] Define one stable JSON shape containing at least:
+        operation, inputs, outputs, effects, capabilities, called operations,
+        callers, types, error paths, invariants, tests, and related docs.
+
+- [ ] Add `sem graph --json` as a first-class architecture map.
+      The point is to hand agents a map instead of forcing them to reverse-
+      engineer architecture from grep. The initial kinds should cover the
+      surfaces most relevant to repair work: calls, effects, capabilities,
+      routes, auth, types, and dataflow.
+  - [ ] Add graph kinds for `calls`, `effects`, `routes`, `auth`, and
+        `dataflow`.
+  - [ ] Ensure `sem graph --kind ... --json` is contract-tested, not just
+        documented.
+
+- [ ] Add `sem patch` for safe patch application and verification.
+      `sem fix --plan --json` should propose; `sem patch` should apply or
+      preview exactly those machine-readable edits. The CLI should support both
+      dry runs and real application, followed by `sem check` and `sem test`
+      verification in the happy path.
+  - [ ] Add `sem patch --dry-run PLAN.json`.
+  - [ ] Add `sem patch --apply PLAN.json`.
+  - [ ] Reject patch plans whose target file or context no longer matches.
+
+- [ ] Add command-contract snapshot tests.
+      Release validation should assert the shape and key fields of every JSON
+      command that agents consume. These tests should fail on accidental schema
+      drift, missing fields, prose-only regressions, changed version strings,
+      unstable target facts, and lost diagnostic repair metadata.
+  - [ ] Add `SemanticScript/tests/test_command_contracts.py` or an equivalent
+        focused harness.
+  - [ ] Snapshot `sem --version --json`, `sem doctor --json`,
+        `sem context --json`, `sem symbols --json`, `sem inspect-ir`,
+        `sem lint --format json`, future `sem size --json`, future
+        `sem explain --json`, future `sem fix --plan --json`, future
+        `sem slice --json`, and future `sem graph --kind ... --json`.
+  - [ ] Wire command-contract tests into CI after the initial snapshots are
+        intentionally reviewed.
+
+- [ ] Make `sem explain SSxxxx` a teaching surface, not just a code lookup.
+      Diagnostics should explain what the rule means, why it matters, valid and
+      invalid examples, safe repairs, and related diagnostics. This is how the
+      toolchain teaches the agent the language instead of forcing it to guess.
+  - [ ] Return both text and JSON forms.
+  - [ ] Cover compiler diagnostics and `SS####` linter diagnostics.
+
+- [ ] Promote target readiness and capability facts to a first-class contract.
+      SemanticScript already models effects, capabilities, runtimes, and build
+      profiles, but agents need one direct answer to "will this build for this
+      target and why?" Add a structured target-readiness report that separates
+      source validity from backend availability, runtime adapter support,
+      required capabilities, missing toolchains, and expected artifact shape.
+  - [ ] Add target readiness to `sem check --json` or a dedicated
+        `sem targets --json` / `sem readiness --json` command.
+  - [ ] Include runtime adapter facts for HTTP, SQLite, JSON, bcrypt, GUI,
+        native async, and native HTTP client support.
+  - [ ] Add repair guidance for choosing a supported target, installing a
+        missing toolchain, or moving code behind a target-specific boundary.
+
+- [ ] Tighten the public README around the product path.
+      The README should lead with install, check, run, inspect, repair, and
+      validate before deeper philosophy. SemanticScript's philosophy is a
+      strength, but first-time users and agents need the shortest path from
+      checkout to useful compiler facts.
+  - [ ] Add a compact "Agent Workflow Interfaces" section with the canonical
+        JSON and repair commands.
+  - [ ] Move long philosophy blocks below the executable quick start or link
+        them to focused docs.
+  - [ ] Ensure every README command is copyable from a fresh checkout and has a
+        matching CI or release-validation check.
+
+- [ ] Treat `sem fmt` as mandatory platform infrastructure.
+      A verbose language needs a formatter more than a compact one. Agent output
+      has to normalize perfectly so diffs stay semantic and repair plans have
+      stable landing zones.
+  - [ ] Make formatter behavior part of the public CLI contract.
+  - [ ] Add formatter drift checks to the same command-contract discipline as
+        the JSON tools.
+
+- [ ] Move release-critical validation out of manual notes and into CI.
+      The current release process documents several app, native runtime, and
+      packaging checks as manual. Convert the stable checks into automated jobs
+      so the repository proves its public contract continuously, not only during
+      release preparation.
+  - [ ] Add CI jobs for `sem.py` command contracts, app webserver harnesses,
+        native runtime smoke checks where toolchains are available, and VS Code
+        extension behavior.
+  - [ ] Keep genuinely environment-specific checks documented as manual, but
+        require each skipped check to print a reason in release validation.
+  - [ ] Add a small benchmark smoke that records build time, run time, artifact
+        size, and output-match facts without making noisy performance claims.
+
+- [ ] Define a concrete release artifact story.
+      Users should not have to infer whether SemanticScript is a source checkout,
+      a Python tool, a release archive, or a future version manager. The first
+      artifact can remain conservative, but it should be named, checksummed,
+      documented, and validated with the same commands agents will use after
+      installation.
+  - [ ] Add a release manifest generator that records tool versions, commit,
+        artifacts, checksums, validation commands, skipped checks, and known
+        limitations.
+  - [ ] Add a smoke test for installing or unpacking the release archive and
+        running `sem --version`, `sem skills list`, `sem check`, and
+        `sem doctor --json` outside the source checkout.
+  - [ ] Decide when a Python package wrapper or native launcher becomes part of
+        the public contract instead of a future note.
+
+- [ ] Reduce visible compatibility and experiment sprawl in the public surface.
+      The repo can keep experiments, but the default path should describe one
+      current syntax, one formatter style, one package layout, and one agent
+      workflow. Legacy aliases, partial rows, and research surfaces should be
+      discoverable without looking like equal choices for new production code.
+  - [ ] Mark legacy syntax paths as transitional in the CLI and docs.
+  - [ ] Move experiment-only guidance out of first-read public docs.
+  - [ ] Add a release-hygiene check for tracked local app data, stale generated
+        files, and public docs that advertise unsupported syntax as executable.
+
+## P1 - Weakness Research From External Review
+
+This section turns the external platform review into concrete research work.
+The goal is to improve SemanticScript's weak spots without throwing away the
+source-level advantages that make it strong for long-session agent maintenance.
+The key question is not "how do we look more like zerolang?" It is "which
+parts of our current design are pulling real weight, which parts are ceremony,
+and which platform gaps are making the language feel weaker than it is?"
+
+- [ ] Research where SemanticScript's explicitness is genuinely reducing
+      hallucination risk versus where it is only increasing row count.
+      The current design may overfit to context-maximizing source shape. We
+      need evidence for which rows are paying for themselves in real editing
+      sessions and which rows mostly create consistency burden.
+  - [ ] Build a measurement pass over real app code that reports rows per
+        operation, rows per call, metadata density, and repeated declaration
+        patterns across `apps/` and serious `experiments/`.
+  - [ ] Identify the top 20 repeated row clusters that appear together often
+        enough to justify research into a more compact but still explicit form.
+  - [ ] Compare edit traces on representative tasks: one pass using the current
+        full tape, another using hand-compressed equivalent source, and record
+        which semantic mistakes become easier or harder.
+
+- [ ] Research stale-metadata risk in the semantic tape.
+      SemanticScript's biggest theoretical failure mode is authoritative-looking
+      purpose, invariant, security, timing, or capability rows that drift away
+      from executable behavior. If we cannot detect that drift, explicit source
+      context becomes a trust hazard instead of a safety feature.
+  - [ ] Inventory which metadata rows are compiler-enforced, strict-lint
+        enforced, standalone-linter-only, or completely narrative today.
+  - [ ] Add a "metadata drift" audit checklist for operations whose comments
+        claim auth scope, cleanup, route guarantees, trust boundaries, or user
+        isolation without a matching executable proof edge.
+  - [ ] Research whether some narrative rows should become structured contracts
+        with machine-checkable predicates rather than free-text annotations.
+  - [ ] Add candidate lint families for metadata drift, with examples such as:
+        invariant mentions session user but there is no session input; purpose
+        says create todo but the operation calls update paths; moduleDoesNotOwn
+        says no SQL but the operation declares database effects.
+
+- [ ] Research compact forms for high-frequency safe patterns.
+      The review is right that SemanticScript can feel ceremonious in the small.
+      We should study where compact syntax would improve flow without collapsing
+      back into opaque expression soup.
+  - [ ] Evaluate compact forms for the most common checked-call pattern:
+        `call` + `argument*` + `run` + `bind` + `branch error`.
+  - [ ] Evaluate compact forms for common local-storage boilerplate, especially
+        typed literals and single-use temporaries.
+  - [ ] Reject any compact form that hides side effects, failure paths,
+        ownership, or capability boundaries. The point is less ceremony, not
+        fewer semantics.
+  - [ ] In parallel, research command-driven canonical code generation as an
+        alternative to syntax compression:
+        `sem new operation ... --template ...`,
+        `sem add call ...`, and `sem add error-path ...`.
+
+- [ ] Research the executable-vs-refined surface split as a platform weakness.
+      The review called out a real risk: users need `SYNTAX.md` to know whether
+      a row is executable, partial, metadata-only, sync fallback, or future
+      design. That weakens trust in the language and makes the product feel
+      less coherent than it should.
+  - [ ] Design a first-class support-status report that answers, for any row or
+        target family, whether it is implemented, partial, parse-only,
+        metadata-only, or proposed.
+  - [ ] Add a CLI path for surfacing that answer directly from the toolchain
+        instead of forcing users into docs archaeology.
+  - [ ] Research whether the public language surface should narrow to one
+        smaller "current executable SemanticScript" profile for 1.x.
+  - [ ] Evaluate whether the public status taxonomy should be:
+        `implemented`, `lint-only`, `metadata-only`, `planned`, and
+        `deprecated`, with machine-readable output.
+
+- [ ] Research small-program ergonomics and first-time readability.
+      The review is also right that humans still matter. If tiny examples feel
+      bloated or alien, we lose contributors before they experience the large-
+      app auditability advantages.
+  - [ ] Build a first-30-minutes onboarding script and measure how many steps a
+        new contributor needs to install, check, run, lint, inspect, and modify
+        a minimal program.
+  - [ ] Compare `tiny.sem`, `hello.sem`, `taskforge-tui`, and one TaskForge Web
+        route against equivalent zerolang examples for line count, concept
+        count, and repair-loop steps.
+  - [ ] Add a "minimum pleasant program" target and treat regressions in that
+        experience as product bugs, not just documentation issues.
+
+- [ ] Research whether business invariants should have stronger source shape.
+      SemanticScript is strongest when the code makes auth scope, SQL scoping,
+      resource cleanup, cookie policy, and user-isolation rules impossible to
+      miss. We should push on that advantage rather than assume the current
+      free-text rows are enough.
+  - [ ] Identify the TaskForge and auction-arena invariants we most want agents
+        to preserve: session-derived user IDs, auth gates, row ownership, route
+        cleanup, and response/body guarantees.
+  - [ ] Research dedicated invariant verbs or typed contract rows for the
+        highest-value app rules that currently live only in prose.
+  - [ ] Compare whether those rules are easier to preserve than in a compact
+        static language with only diagnostics and tests.
+
+- [ ] Research platform cohesion gaps that make the language underperform.
+      Some of the score gap is not about syntax at all. It is about install
+      path, command coherence, packaging, stdlib discoverability, target story,
+      and how complete the day-to-day loop feels.
+  - [ ] Audit every public command and doc page for whether it helps the user
+        complete the loop: install, learn, write, inspect, repair, test, build,
+        ship.
+  - [ ] Inventory where the current workflow requires knowing internal file
+        names like `semsc.py`, `semlint.py`, or specific docs instead of using
+        one obvious `sem` surface.
+  - [ ] Research whether some existing product gaps are better fixed by
+        de-emphasizing subsurfaces rather than adding more commands.
+
+- [ ] Research package, stdlib, and target-story trustworthiness.
+      The review judged SemanticScript weaker on package workflow, install
+      polish, target readiness, and stdlib breadth. Some of that is feature
+      gap, but some of it is presentation and contract clarity.
+  - [ ] Measure how far a user can get building a non-trivial app using only
+        documented `standard.*` modules and `sem` commands, without reading
+        compiler internals.
+  - [ ] Identify which stdlib modules are truly app-ready, which are preview,
+        and which only exist as declared surface area.
+  - [ ] Research whether target/runtime readiness should be framed as a
+        capability matrix, a support tier matrix, or both.
+
+- [ ] Research reliability posture as part of product feel.
+      The external review scored us behind on testing and CI because some of
+      our best validation lives in app harnesses, manual notes, or broad test
+      files rather than one crisp reliability surface.
+  - [ ] Inventory which important guarantees are tested only indirectly through
+        giant integration scripts or ad hoc manual steps.
+  - [ ] Carve out smaller named reliability contracts: command contracts,
+        runtime smoke, app smoke, target smoke, metadata drift, and benchmark
+        smoke.
+  - [ ] Research how much of the current broad `test_compiler.py` surface should
+        become more searchable contract suites with narrower failure meaning.
+  - [ ] Build an agent benchmark suite around a broken TaskForge app with
+        seeded bugs: auth bug, SQL user-scope bug, missing error branch, wrong
+        HTML escaping, wrong JSON field, missing capability, wrong effect,
+        missing cleanup, bad route contract, and type mismatch.
+  - [ ] Decide the scoreboard for that benchmark:
+        pass rate, tokens used, repair attempts, semantic regressions, and
+        time to green, with zerolang and a compact-language baseline.
+
+- [ ] Produce a written design memo on the "platform vs source format" split.
+      The review's core claim is plausible: SemanticScript may already be the
+      better anti-hallucination source format while still being the weaker full
+      platform. We should document that split cleanly, decide which side we are
+      optimizing next, and avoid mixing research goals.
+  - [ ] Write one memo that names SemanticScript's protected strengths:
+        local semantic context, edit locality, effect/capability visibility,
+        auditability, and explicit failure paths.
+  - [ ] Write one memo that names the platform weaknesses to remove:
+        ceremony budget, stale metadata risk, public workflow fragmentation,
+        install/package friction, and support-surface ambiguity.
+  - [ ] Use those memos to gate future syntax work: no new surface should land
+        unless it either strengthens the protected source advantages or closes a
+        measured platform weakness.
+  - [ ] Record the working priority explicitly: pause novel syntax refinement
+        until the tool loop is strong enough to test whether the current syntax
+        already beats compact languages on agent reliability.
+
 ## P1 - Runtime And Syntax Scope
 
 - [x] Resolve or explicitly defer the 7 `Partial` rows in `SYNTAX.md`.

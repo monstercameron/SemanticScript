@@ -12,6 +12,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -44,6 +45,76 @@ CLEAN_FILE_SUFFIXES = frozenset({
     ".vsix",
 })
 CLEAN_EXACT_RELATIVE_PATHS = frozenset({"apps/taskforge-tui/todos.json"})
+SKILL_REGISTRY = (
+    {
+        "name": "language-core",
+        "description": "Core SemanticScript language shape: modules, operations, rows, types, and dataflow.",
+        "files": (
+            "docs/language/README.md",
+            "docs/language/program-structure.md",
+            "docs/language/operations-dataflow.md",
+            "docs/language/types-values.md",
+        ),
+    },
+    {
+        "name": "errors-effects-capabilities",
+        "description": "Effect, failure, capability, and authority guidance for agent-safe SemanticScript edits.",
+        "files": (
+            "docs/language/errors-effects-capabilities.md",
+            "docs/language/concurrency-time-cleanup.md",
+        ),
+    },
+    {
+        "name": "graph-and-slice",
+        "description": "Agent workflows for context retrieval, graph inspection, and semantic slicing.",
+        "files": (
+            "docs/agents.md",
+            "docs/toolchain/agent-workflows.md",
+            "experiments/agent-first-tooling-research/README.md",
+        ),
+    },
+    {
+        "name": "taskforge-web-patterns",
+        "description": "Concrete multi-user web application patterns from TaskForge Web.",
+        "files": (
+            "apps/taskforge-web/README.md",
+            "apps/taskforge-web/main.sem",
+        ),
+    },
+    {
+        "name": "sqlite-patterns",
+        "description": "SQLite usage, cleanup, and JSON CRUD patterns.",
+        "files": (
+            "docs/language/json-crud.md",
+            "docs/reference/call-targets.md",
+            "apps/taskforge-web/main.sem",
+        ),
+    },
+    {
+        "name": "http-html-patterns",
+        "description": "Native HTTP, route, handler, and HTML boundary patterns.",
+        "files": (
+            "docs/language/native-http-api.md",
+            "docs/language/records-codecs-boundaries.md",
+            "apps/taskforge-web/README.md",
+        ),
+    },
+    {
+        "name": "patch-and-repair",
+        "description": "Structured diagnostic, repair-plan, and patch-application workflow guidance.",
+        "files": (
+            "docs/toolchain/compiler.md",
+            "docs/toolchain/linter.md",
+            "experiments/agent-first-tooling-research/README.md",
+        ),
+    },
+)
+DIAGNOSTIC_INDEX_PATHS = (
+    "docs/toolchain/compiler.md",
+    "docs/toolchain/linter.md",
+    "docs/agents.md",
+    "SemanticScript/linter/test_semlint.py",
+)
 
 
 def _source_fingerprint(source: Path) -> str:
@@ -1233,6 +1304,914 @@ def _symbol_graph_payload(path: Path) -> dict:
     }
 
 
+def _version_payload() -> dict:
+    return {
+        "schemaVersion": "sem.version.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "compiler": {
+            "path": str((ROOT / "compiler" / "semsc.py").resolve()),
+            "version": _module_version_from_path(ROOT / "compiler" / "semsc.py"),
+        },
+        "linter": {
+            "path": str((ROOT / "linter" / "semlint.py").resolve()),
+            "version": _module_version_from_path(ROOT / "linter" / "semlint.py"),
+        },
+        "formatter": {
+            "path": str((ROOT / "formatter" / "semfmt.py").resolve()),
+            "version": _module_version_from_path(ROOT / "formatter" / "semfmt.py"),
+        },
+        "runtimeFeatureFlags": _runtime_feature_flags(),
+        "syntax": {
+            "schemaVersion": SYNTAX_PAYLOAD_VERSION,
+            "statusCounts": _syntax_status_counts(),
+        },
+    }
+
+
+def _collect_facts_bundle(path: Path) -> dict:
+    semlint = _load_semlint_module()
+    source_files, errors = _symbol_source_files(path)
+    bundle = []
+    for source in source_files:
+        if not source.exists() or source.suffix.lower() not in {".sem", ".sscript"}:
+            continue
+        try:
+            bundle.append({
+                "path": source,
+                "facts": semlint.parse_file(source),
+            })
+        except (OSError, RuntimeError) as exc:
+            errors.append(str(exc))
+    return {
+        "semlint": semlint,
+        "sourceFiles": source_files,
+        "files": bundle,
+        "errors": errors,
+    }
+
+
+def _diagnostic_expected_actual(diagnostic: dict) -> tuple[str, str]:
+    code = diagnostic.get("code", "")
+    kind = diagnostic.get("kind", "")
+    gap_edge = diagnostic.get("gapEdge", "")
+    subject = diagnostic.get("subjectName", "")
+    if code == "SS3104":
+        return (
+            "capability or authority covering the declared effect",
+            f"no capability proof found for {subject or 'operation'}",
+        )
+    if code == "SS3101":
+        return (
+            "purpose row describing the operation intent",
+            "purpose metadata is missing",
+        )
+    if code == "SS3102":
+        return (
+            "invariant row describing the safety or business rule",
+            "invariant metadata is missing",
+        )
+    if code.startswith("SS01"):
+        return (
+            "at least one valid use site or removal of the dead declaration",
+            "no live use sites were discovered",
+        )
+    if gap_edge:
+        return (
+            f"supporting `{gap_edge}` row or equivalent evidence",
+            "supporting row was not found",
+        )
+    if kind:
+        return (
+            f"rule `{kind}` satisfied",
+            "rule violation detected",
+        )
+    return ("valid SemanticScript row graph", "validation gap detected")
+
+
+def _normalize_lint_diagnostic(diagnostic: dict) -> dict:
+    expected, actual = _diagnostic_expected_actual(diagnostic)
+    primary = diagnostic.get("primary", {})
+    fix_candidates = list(diagnostic.get("fixCandidates", []))
+    auto_applicable = any(candidate.get("autoApplicable") for candidate in fix_candidates)
+    fix_safety = "requires-human-review"
+    if auto_applicable:
+        fix_safety = "local-edit"
+    elif diagnostic.get("code") in {"SS3104", "SS3101", "SS3102"}:
+        fix_safety = "local-edit"
+    return {
+        "code": diagnostic.get("code", ""),
+        "severity": diagnostic.get("severity", ""),
+        "source": "linter",
+        "kind": diagnostic.get("kind", ""),
+        "message": (
+            diagnostic.get("intentSlogan")
+            or diagnostic.get("invariantRule")
+            or diagnostic.get("kind")
+            or diagnostic.get("code", "")
+        ),
+        "span": {
+            "file": str(Path(primary.get("path", "")).resolve()) if primary.get("path") else "",
+            "line": int(primary.get("line", 0) or 0),
+            "column": int(primary.get("column", 0) or 0),
+            "role": primary.get("role", ""),
+        },
+        "subjectName": diagnostic.get("subjectName", ""),
+        "subjectKind": diagnostic.get("subjectKind", ""),
+        "gapEdge": diagnostic.get("gapEdge", ""),
+        "expected": expected,
+        "actual": actual,
+        "help": diagnostic.get("agentHint", ""),
+        "invariantRule": diagnostic.get("invariantRule", ""),
+        "specAnchor": diagnostic.get("specAnchor", ""),
+        "blocksCompile": bool(diagnostic.get("blocksCompile", False)),
+        "confidence": diagnostic.get("confidence", ""),
+        "effort": diagnostic.get("effort", ""),
+        "citations": list(diagnostic.get("citations", [])),
+        "fixCandidates": fix_candidates,
+        "repair": {
+            "id": fix_candidates[0].get("name", "") if fix_candidates else "",
+            "safe": auto_applicable or diagnostic.get("code") in {"SS3104"},
+            "fixSafety": fix_safety,
+        },
+    }
+
+
+def _collect_lint_diagnostics(path: Path) -> tuple[list[dict], list[str]]:
+    bundle = _collect_facts_bundle(path)
+    semlint = bundle["semlint"]
+    diagnostics: list[dict] = []
+    errors: list[str] = list(bundle["errors"])
+    for item in bundle["files"]:
+        source = item["path"]
+        try:
+            for diagnostic in semlint.lint_path(source):
+                diagnostics.append(_normalize_lint_diagnostic(diagnostic.to_json()))
+        except (OSError, RuntimeError) as exc:
+            errors.append(f"{source}: {exc}")
+    diagnostics.sort(key=lambda item: (
+        not item.get("blocksCompile", False),
+        item.get("severity", ""),
+        item.get("code", ""),
+        item.get("span", {}).get("file", ""),
+        item.get("span", {}).get("line", 0),
+        item.get("span", {}).get("column", 0),
+    ))
+    return diagnostics, errors
+
+
+def _compiler_check_probe(source: Path, compiler_args: list[str]) -> dict:
+    try:
+        proc = _capture_compiler(
+            source,
+            ["--parse-only", "--lint", "--diagnostics-format", "json", *compiler_args],
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {
+            "attempted": True,
+            "ok": False,
+            "returnCode": 2,
+            "stdout": "",
+            "stderr": str(exc),
+        }
+    return {
+        "attempted": True,
+        "ok": proc.returncode == 0,
+        "returnCode": int(proc.returncode),
+        "stdout": proc.stdout,
+        "stderr": proc.stderr,
+    }
+
+
+def _build_check_payload(path: Path, compiler_args: list[str]) -> dict:
+    context = _build_context_payload(path)
+    symbols = _symbol_graph_payload(path)
+    diagnostics, lint_errors = _collect_lint_diagnostics(path)
+    build_tape = _find_build_tape(path)
+    compiler_source = build_tape if build_tape is not None else path
+    compiler = _compiler_check_probe(compiler_source, compiler_args)
+    errors = sum(1 for item in diagnostics if item.get("severity") == "error" or item.get("blocksCompile"))
+    warnings = sum(1 for item in diagnostics if item.get("severity") == "warning" and not item.get("blocksCompile"))
+    payload = {
+        "schemaVersion": "sem.check.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "input": {
+            "requestedPath": str(path.resolve()),
+            "compilerSource": str(compiler_source.resolve()) if compiler_source.exists() else str(compiler_source),
+            "buildTape": context["project"].get("buildTape", ""),
+        },
+        "ok": bool(compiler["ok"] and errors == 0 and not lint_errors and not symbols["errors"]),
+        "status": "ok" if compiler["ok"] and errors == 0 and not lint_errors and not symbols["errors"] else "diagnostics",
+        "project": context["project"],
+        "sourceFiles": context["sourceFiles"],
+        "diagnostics": diagnostics,
+        "summary": {
+            "errors": errors + len(lint_errors),
+            "warnings": warnings,
+            "repairable": sum(1 for item in diagnostics if item.get("repair", {}).get("id")),
+            "compileBlocking": sum(1 for item in diagnostics if item.get("blocksCompile")),
+        },
+        "compiler": {
+            "attempted": compiler["attempted"],
+            "ok": compiler["ok"],
+            "returnCode": compiler["returnCode"],
+            "stdoutSnippet": (compiler["stdout"] or "")[:2000],
+            "stderrSnippet": (compiler["stderr"] or "")[:2000],
+        },
+        "unresolvedReferences": symbols["unresolvedReferences"],
+        "graphSummary": symbols["summary"],
+        "runtimeFeatureFlags": context["runtimeFeatureFlags"],
+        "supportedSyntax": context["supportedSyntax"],
+        "targetReadiness": {
+            "status": "not-yet-computed",
+            "requestedTargets": list(context["project"].get("targets", [])),
+            "note": "sem check currently validates parse/lint/context; artifact emission readiness is not yet evaluated by this wrapper.",
+        },
+        "errors": lint_errors + list(symbols["errors"]),
+    }
+    if not compiler["ok"] and payload["status"] == "diagnostics":
+        payload["status"] = "compiler-error"
+    return payload
+
+
+def _narrative_entries_for_operation(operation_name: str, facts) -> dict[str, list[dict]]:
+    entries = {
+        "purpose": [],
+        "invariant": [],
+        "warning": [],
+        "security": [],
+        "observability": [],
+    }
+    for source_line in facts.lines:
+        if not source_line.tokens:
+            continue
+        args = source_line.args
+        verb = source_line.verb
+        if verb not in {"purpose", "invariant", "warning", "security", "observability"}:
+            continue
+        text = ""
+        if len(args) >= 3 and args[0] == "operation" and args[1] == operation_name:
+            text = args[2]
+        elif len(args) >= 2 and args[0] == operation_name:
+            text = args[1]
+        if text:
+            entries[verb].append({
+                "text": text,
+                "location": _line_payload(source_line),
+            })
+    return entries
+
+
+def _module_narrative_entries(facts) -> list[dict]:
+    entries = []
+    interesting_verbs = {
+        "purpose",
+        "invariant",
+        "moduleOwns",
+        "moduleDoesNotOwn",
+        "moduleWarning",
+        "moduleSecurity",
+        "moduleObservability",
+    }
+    for source_line in facts.lines:
+        if not source_line.tokens or source_line.verb not in interesting_verbs:
+            continue
+        text = source_line.args[-1] if source_line.args else ""
+        entries.append({
+            "kind": source_line.verb,
+            "text": text,
+            "location": _line_payload(source_line),
+        })
+    return entries
+
+
+def _facts_operation_lookup(bundle: dict) -> dict[str, tuple[Path, object, object]]:
+    lookup = {}
+    for item in bundle["files"]:
+        source = item["path"]
+        facts = item["facts"]
+        for operation in facts.operations.values():
+            lookup.setdefault(operation.name, (source, facts, operation))
+    return lookup
+
+
+def _graph_payload(path: Path, kind: str) -> dict:
+    symbols = _symbol_graph_payload(path)
+    bundle = _collect_facts_bundle(path)
+    kind = kind or "summary"
+    edges = []
+    nodes = []
+
+    if kind == "summary":
+        return {
+            "schemaVersion": "sem.graph.v1",
+            "tool": {"name": "sem", "version": VERSION},
+            "kind": "summary",
+            "inputPath": str(path.resolve()),
+            "summary": symbols["summary"],
+            "sourceFiles": symbols["sourceFiles"],
+            "errors": list(symbols["errors"]) + list(bundle["errors"]),
+        }
+
+    if kind == "calls":
+        for file_payload in symbols["files"]:
+            for operation in file_payload["operations"]:
+                nodes.append({"kind": "operation", "name": operation["name"], "file": file_payload["path"]})
+                for call in operation["calls"]:
+                    edges.append({
+                        "kind": "call",
+                        "fromOperation": operation["name"],
+                        "callName": call["name"],
+                        "target": call["target"],
+                        "location": call["location"],
+                    })
+    elif kind == "effects":
+        for file_payload in symbols["files"]:
+            for operation in file_payload["operations"]:
+                for effect in operation["effects"]:
+                    edges.append({
+                        "kind": "effect",
+                        "operation": operation["name"],
+                        "action": effect["action"],
+                        "path": effect["path"],
+                        "location": effect["location"],
+                    })
+    elif kind == "capabilities":
+        for file_payload in symbols["files"]:
+            for operation in file_payload["operations"]:
+                for capability in operation["capabilities"]:
+                    edges.append({
+                        "kind": "useCapability",
+                        "operation": operation["name"],
+                        "capability": capability["name"],
+                        "location": capability["location"],
+                    })
+    elif kind == "routes":
+        for file_payload in symbols["files"]:
+            for route in file_payload["routes"]:
+                edges.append({
+                    "kind": "route",
+                    "method": route["method"],
+                    "path": route["path"],
+                    "handler": route["handler"],
+                    "location": route["location"],
+                })
+    elif kind == "dataflow":
+        for file_payload in symbols["files"]:
+            for operation in file_payload["operations"]:
+                edges.append({
+                    "kind": "operationDataflow",
+                    "operation": operation["name"],
+                    "inputs": operation["inputs"],
+                    "outputs": operation["outputs"],
+                    "calls": operation["calls"],
+                    "returns": operation["returns"],
+                })
+    elif kind == "types":
+        for item in bundle["files"]:
+            facts = item["facts"]
+            for name, fields in sorted(facts.records.items()):
+                edges.append({
+                    "kind": "record",
+                    "name": name,
+                    "fields": [{"name": field_name, "type": field_type} for field_name, field_type in fields],
+                    "file": str(item["path"].resolve()),
+                })
+            for result in facts.result_types.values():
+                edges.append({
+                    "kind": "result",
+                    "name": result.name,
+                    "okType": result.ok_type,
+                    "errorType": result.error_type,
+                    "file": str(item["path"].resolve()),
+                })
+    elif kind == "ownership":
+        for item in bundle["files"]:
+            entries = _module_narrative_entries(item["facts"])
+            if entries:
+                edges.append({
+                    "kind": "moduleOwnership",
+                    "file": str(item["path"].resolve()),
+                    "entries": entries,
+                })
+    else:
+        return {
+            "schemaVersion": "sem.graph.v1",
+            "tool": {"name": "sem", "version": VERSION},
+            "kind": kind,
+            "inputPath": str(path.resolve()),
+            "ok": False,
+            "error": f"unsupported graph kind: {kind}",
+            "supportedKinds": ["summary", "calls", "effects", "capabilities", "routes", "dataflow", "types", "ownership"],
+        }
+
+    return {
+        "schemaVersion": "sem.graph.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "kind": kind,
+        "inputPath": str(path.resolve()),
+        "sourceFiles": symbols["sourceFiles"],
+        "summary": {
+            "edgeCount": len(edges),
+            "nodeCount": len(nodes),
+            "fileCount": len(symbols["files"]),
+        },
+        "nodes": nodes,
+        "edges": edges,
+        "errors": list(symbols["errors"]) + list(bundle["errors"]),
+    }
+
+
+def _find_related_paths(root: Path, needle: str) -> list[str]:
+    if not needle:
+        return []
+    candidates = []
+    for pattern in ("**/*test*.py", "**/*.test.sem", "**/*.test.sscript", "**/README.md", "**/*.md"):
+        for path in root.glob(pattern):
+            if not path.is_file():
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            if needle in text:
+                candidates.append(str(path.resolve()))
+    return sorted(set(candidates))
+
+
+def _slice_operation_payload(path: Path, operation_name: str) -> dict:
+    bundle = _collect_facts_bundle(path)
+    symbols = _symbol_graph_payload(path)
+    lookup = _facts_operation_lookup(bundle)
+    target = lookup.get(operation_name)
+    if target is None:
+        return {
+            "schemaVersion": "sem.slice.v1",
+            "tool": {"name": "sem", "version": VERSION},
+            "ok": False,
+            "anchor": {"kind": "operation", "name": operation_name},
+            "error": f"unknown operation: {operation_name}",
+        }
+    source, facts, operation = target
+    operation_symbol = _operation_symbol(operation, bundle["semlint"], facts)
+    callers = []
+    routes = []
+    for file_payload in symbols["files"]:
+        for candidate in file_payload["operations"]:
+            for call in candidate["calls"]:
+                if call["target"] == operation_name:
+                    callers.append({
+                        "operation": candidate["name"],
+                        "callName": call["name"],
+                        "location": call["location"],
+                    })
+        for route in file_payload["routes"]:
+            if route["handler"] == operation_name:
+                routes.append(route)
+    narratives = _narrative_entries_for_operation(operation_name, facts)
+    project_root = _find_build_tape(path).parent if _find_build_tape(path) is not None else source.parent
+    related_tests = _find_related_paths(project_root, operation_name)
+    related_docs = _find_related_paths(ROOT.parent / "docs", operation_name)
+    return {
+        "schemaVersion": "sem.slice.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "ok": True,
+        "anchor": {"kind": "operation", "name": operation_name},
+        "files": [str(source.resolve())],
+        "operation": operation_symbol,
+        "effects": operation_symbol["effects"],
+        "capabilities": operation_symbol["capabilities"],
+        "calledOperations": [
+            {
+                "callName": call["name"],
+                "target": call["target"],
+                "location": call["location"],
+            }
+            for call in operation_symbol["calls"]
+        ],
+        "callers": callers,
+        "routes": routes,
+        "purposes": narratives["purpose"],
+        "invariants": narratives["invariant"],
+        "warnings": narratives["warning"],
+        "securityNotes": narratives["security"],
+        "observabilityNotes": narratives["observability"],
+        "relatedTests": related_tests[:20],
+        "relatedDocs": related_docs[:20],
+    }
+
+
+def _slice_capability_payload(path: Path, capability_name: str) -> dict:
+    symbols = _symbol_graph_payload(path)
+    uses = []
+    declarations = []
+    bundle = _collect_facts_bundle(path)
+    for item in bundle["files"]:
+        facts = item["facts"]
+        capability = facts.capabilities.get(capability_name)
+        if capability is not None:
+            declarations.append({
+                "name": capability.name,
+                "effectPath": capability.effect_path,
+                "access": capability.access,
+                "location": _line_payload(capability.line),
+            })
+    for file_payload in symbols["files"]:
+        for operation in file_payload["operations"]:
+            for capability in operation["capabilities"]:
+                if capability["name"] == capability_name:
+                    uses.append({
+                        "operation": operation["name"],
+                        "location": capability["location"],
+                    })
+    return {
+        "schemaVersion": "sem.slice.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "ok": bool(declarations or uses),
+        "anchor": {"kind": "capability", "name": capability_name},
+        "declarations": declarations,
+        "uses": uses,
+    }
+
+
+def _slice_effect_payload(path: Path, effect_query: str) -> dict:
+    symbols = _symbol_graph_payload(path)
+    matches = []
+    for file_payload in symbols["files"]:
+        for operation in file_payload["operations"]:
+            for effect in operation["effects"]:
+                effect_name = f"{effect['action']} {effect['path']}"
+                if effect_query in effect_name or effect_query == effect["path"]:
+                    matches.append({
+                        "operation": operation["name"],
+                        "action": effect["action"],
+                        "path": effect["path"],
+                        "location": effect["location"],
+                    })
+    return {
+        "schemaVersion": "sem.slice.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "ok": bool(matches),
+        "anchor": {"kind": "effect", "name": effect_query},
+        "matches": matches,
+    }
+
+
+def _slice_type_payload(path: Path, type_name: str) -> dict:
+    symbols = _symbol_graph_payload(path)
+    bundle = _collect_facts_bundle(path)
+    matches = []
+    record_fields = []
+    result_types = []
+    for file_payload in symbols["files"]:
+        for operation in file_payload["operations"]:
+            for item in operation["inputs"]:
+                if item.get("type") == type_name:
+                    matches.append({"kind": "input", "operation": operation["name"], "location": item["location"], "name": item.get("name", "")})
+            for item in operation["outputs"]:
+                if item.get("type") == type_name:
+                    matches.append({"kind": "output", "operation": operation["name"], "location": item["location"]})
+            for call in operation["calls"]:
+                for argument in call["arguments"]:
+                    if argument.get("type") == type_name:
+                        matches.append({"kind": "argument", "operation": operation["name"], "callName": call["name"], "location": argument["location"]})
+                for bind_list in call["disposition"]["bind"].values():
+                    for bind in bind_list:
+                        if bind.get("type") == type_name:
+                            matches.append({"kind": "bind", "operation": operation["name"], "callName": call["name"], "location": bind["location"], "name": bind["name"]})
+    for item in bundle["files"]:
+        facts = item["facts"]
+        if type_name in facts.records:
+            record_fields = [{"name": field_name, "type": field_type} for field_name, field_type in facts.records[type_name]]
+        if type_name in facts.result_types:
+            result = facts.result_types[type_name]
+            result_types.append({"name": result.name, "okType": result.ok_type, "errorType": result.error_type})
+    return {
+        "schemaVersion": "sem.slice.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "ok": bool(matches or record_fields or result_types),
+        "anchor": {"kind": "type", "name": type_name},
+        "uses": matches,
+        "recordFields": record_fields,
+        "resultTypes": result_types,
+    }
+
+
+def _slice_payload(path: Path, args: argparse.Namespace) -> dict:
+    if args.operation:
+        return _slice_operation_payload(path, args.operation)
+    if args.route:
+        method, _, route_path = args.route.partition(":")
+        symbols = _symbol_graph_payload(path)
+        for file_payload in symbols["files"]:
+            for route in file_payload["routes"]:
+                if route["method"].upper() == method.upper() and route["path"] == route_path:
+                    payload = _slice_operation_payload(path, route["handler"])
+                    payload["anchor"] = {"kind": "route", "name": args.route}
+                    payload["route"] = route
+                    return payload
+        return {
+            "schemaVersion": "sem.slice.v1",
+            "tool": {"name": "sem", "version": VERSION},
+            "ok": False,
+            "anchor": {"kind": "route", "name": args.route},
+            "error": f"unknown route: {args.route}",
+        }
+    if args.symbol:
+        return _slice_operation_payload(path, args.symbol)
+    if args.effect:
+        return _slice_effect_payload(path, args.effect)
+    if args.capability:
+        return _slice_capability_payload(path, args.capability)
+    if args.type_name:
+        return _slice_type_payload(path, args.type_name)
+    return {
+        "schemaVersion": "sem.slice.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "ok": False,
+        "error": "slice requires one of --operation, --route, --symbol, --effect, --capability, or --type",
+    }
+
+
+def _skill_registry_payload() -> list[dict]:
+    payload = []
+    for entry in SKILL_REGISTRY:
+        files = [str((ROOT.parent / relative).resolve()) for relative in entry["files"]]
+        payload.append({
+            "name": entry["name"],
+            "description": entry["description"],
+            "files": files,
+        })
+    return payload
+
+
+def _skill_content(name: str) -> dict | None:
+    for entry in SKILL_REGISTRY:
+        if entry["name"] != name:
+            continue
+        sections = []
+        for relative in entry["files"]:
+            path = ROOT.parent / relative
+            if not path.exists():
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            sections.append(f"# Source: {relative}\n\n{text.strip()}\n")
+        return {
+            "name": entry["name"],
+            "description": entry["description"],
+            "files": [str((ROOT.parent / relative).resolve()) for relative in entry["files"]],
+            "content": "\n".join(sections).strip() + ("\n" if sections else ""),
+        }
+    return None
+
+
+def _diagnostic_index_payload() -> dict[str, dict]:
+    index: dict[str, dict] = {
+        "SSRUN001": {
+            "code": "SSRUN001",
+            "title": "runtime panic",
+            "summary": "The program trapped with SemanticScript runtime panic context.",
+            "references": [],
+            "relatedCodes": [],
+        }
+    }
+    comment_pattern = re.compile(r"#\s*((?:SS(?:RUN)?\d{4,5})(?:\s*/\s*SS(?:RUN)?\d{4,5})*)\s+(.*)")
+    code_pattern = re.compile(r"SS(?:RUN)?\d{4,5}")
+    for relative in DIAGNOSTIC_INDEX_PATHS:
+        path = ROOT.parent / relative
+        if not path.exists():
+            continue
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for index_line, line in enumerate(lines, start=1):
+            matches = code_pattern.findall(line)
+            if not matches:
+                continue
+            title = ""
+            comment_match = comment_pattern.match(line.strip())
+            if comment_match:
+                title = comment_match.group(2).strip()
+                title = re.sub(r"\s+\(.*$", "", title).strip()
+            excerpt = line.strip()
+            for code in matches:
+                entry = index.setdefault(code, {
+                    "code": code,
+                    "title": title or code,
+                    "summary": title or code,
+                    "references": [],
+                    "relatedCodes": [],
+                })
+                if title and entry.get("title", code) == code:
+                    entry["title"] = title
+                    entry["summary"] = title
+                entry["references"].append({
+                    "path": str(path.resolve()),
+                    "line": index_line,
+                    "excerpt": excerpt,
+                })
+                related = [item for item in matches if item != code]
+                if related:
+                    current = set(entry.get("relatedCodes", []))
+                    current.update(related)
+                    entry["relatedCodes"] = sorted(current)
+    return index
+
+
+def _diagnostic_explain_payload(code: str) -> dict:
+    index = _diagnostic_index_payload()
+    entry = index.get(code)
+    if entry is None:
+        return {
+            "schemaVersion": "sem.explain.v1",
+            "tool": {"name": "sem", "version": VERSION},
+            "code": code,
+            "found": False,
+            "title": "",
+            "summary": "",
+            "references": [],
+            "relatedCodes": [],
+        }
+    return {
+        "schemaVersion": "sem.explain.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "code": code,
+        "found": True,
+        "title": entry.get("title", code),
+        "summary": entry.get("summary", entry.get("title", code)),
+        "references": entry.get("references", []),
+        "relatedCodes": entry.get("relatedCodes", []),
+        "note": "This is a repository-backed explainer built from the current docs and linter tests. Use the cited sources for full rule context.",
+    }
+
+
+def _operation_insert_anchor(operation) -> int:
+    line_numbers = [
+        source_line.number
+        for source_line in operation.lines
+        if source_line.tokens
+        and source_line.verb in {
+            "input",
+            "output",
+            "effect",
+            "useCapability",
+            "authority",
+            "memory",
+            "async",
+            "purpose",
+            "invariant",
+        }
+    ]
+    return max(line_numbers) if line_numbers else operation.line.number
+
+
+def _repair_plan_for_diagnostic(path: Path, diagnostic: dict, bundle: dict) -> dict:
+    lookup = _facts_operation_lookup(bundle)
+    code = diagnostic.get("code", "")
+    subject_name = diagnostic.get("subjectName", "")
+    subject_kind = diagnostic.get("subjectKind", "")
+    fix_candidates = list(diagnostic.get("fixCandidates", []))
+    repair = {
+        "diagnostic": code,
+        "kind": diagnostic.get("kind", ""),
+        "subjectName": subject_name,
+        "subjectKind": subject_kind,
+        "fixSafety": diagnostic.get("repair", {}).get("fixSafety", "requires-human-review"),
+        "edits": [],
+        "suggestions": [
+            {
+                "name": candidate.get("name", ""),
+                "shape": candidate.get("shape", ""),
+                "autoApplicable": bool(candidate.get("autoApplicable", False)),
+            }
+            for candidate in fix_candidates
+        ],
+        "verification": [
+            f"sem check --json {path}",
+            f"sem fmt --check {path}",
+        ],
+    }
+    operation_entry = lookup.get(subject_name)
+    if operation_entry is None and subject_kind == "operation":
+        return repair
+    if code == "SS3104" and operation_entry is not None:
+        source, _facts, operation = operation_entry
+        for source_line in operation.lines:
+            if not source_line.tokens or source_line.verb != "effect":
+                continue
+            args = source_line.args
+            if len(args) >= 3 and args[0] == subject_name:
+                repair["edits"].append({
+                    "op": "insertAfterLine",
+                    "file": str(source.resolve()),
+                    "afterLine": _operation_insert_anchor(operation),
+                    "text": f"authority {subject_name} {args[1]} {args[2]}",
+                })
+                break
+    elif code == "SS3101" and operation_entry is not None:
+        source, _facts, operation = operation_entry
+        repair["fixSafety"] = "requires-human-review"
+        repair["edits"].append({
+            "op": "insertAfterLine",
+            "file": str(source.resolve()),
+            "afterLine": _operation_insert_anchor(operation),
+            "text": f'purpose operation {subject_name} "<describe {subject_name} purpose>"',
+        })
+    elif code == "SS3102" and operation_entry is not None:
+        source, _facts, operation = operation_entry
+        repair["fixSafety"] = "requires-human-review"
+        repair["edits"].append({
+            "op": "insertAfterLine",
+            "file": str(source.resolve()),
+            "afterLine": _operation_insert_anchor(operation),
+            "text": f'invariant operation {subject_name} "<state the key invariant for {subject_name}>"',
+        })
+    return repair
+
+
+def _build_fix_plan_payload(path: Path, compiler_args: list[str]) -> dict:
+    check_payload = _build_check_payload(path, compiler_args)
+    bundle = _collect_facts_bundle(path)
+    repairs = [
+        _repair_plan_for_diagnostic(path.resolve(), diagnostic, bundle)
+        for diagnostic in check_payload["diagnostics"]
+        if diagnostic.get("repair", {}).get("id") or diagnostic.get("code") in {"SS3101", "SS3102", "SS3104"}
+    ]
+    return {
+        "schemaVersion": "sem.fixPlan.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "inputPath": str(path.resolve()),
+        "ok": bool(repairs),
+        "diagnosticCount": len(check_payload["diagnostics"]),
+        "repairs": repairs,
+        "checkSummary": check_payload["summary"],
+    }
+
+
+def _load_plan(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _apply_insert_after_line(lines: list[str], after_line: int, text: str) -> list[str]:
+    new_lines = list(lines)
+    insertion_index = max(0, min(len(new_lines), int(after_line)))
+    new_lines[insertion_index:insertion_index] = [text + "\n"]
+    return new_lines
+
+
+def _apply_replace_line(lines: list[str], line_number: int, text: str) -> list[str]:
+    new_lines = list(lines)
+    index = max(0, min(len(new_lines) - 1, int(line_number) - 1))
+    new_lines[index] = text + "\n"
+    return new_lines
+
+
+def _execute_patch_plan(plan: dict, mode: str) -> dict:
+    changed_files = {}
+    for repair in plan.get("repairs", []):
+        for edit in repair.get("edits", []):
+            target = Path(edit["file"]).resolve()
+            current = changed_files.get(target)
+            if current is None:
+                current = target.read_text(encoding="utf-8").splitlines(keepends=True)
+            if edit.get("op") == "insertAfterLine":
+                current = _apply_insert_after_line(current, int(edit.get("afterLine", 0)), edit.get("text", ""))
+            elif edit.get("op") == "replaceLine":
+                current = _apply_replace_line(current, int(edit.get("line", 1)), edit.get("text", ""))
+            changed_files[target] = current
+
+    if mode == "apply":
+        for target, lines in changed_files.items():
+            target.write_text("".join(lines), encoding="utf-8", newline="\n")
+        if changed_files:
+            semfmt_path = ROOT / "formatter" / "semfmt.py"
+            subprocess.run(
+                [sys.executable, str(semfmt_path), *[str(path) for path in changed_files]],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+    verification = {"formatOk": True, "checkOk": True, "checkSummary": {}}
+    input_path = Path(plan.get("inputPath", Path.cwd()))
+    check_payload = _build_check_payload(input_path, [])
+    verification["checkOk"] = bool(check_payload.get("ok", False))
+    verification["checkSummary"] = check_payload.get("summary", {})
+    return {
+        "schemaVersion": "sem.patch.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "ok": True,
+        "mode": mode,
+        "filesChanged": [str(path) for path in sorted(changed_files, key=lambda item: str(item).lower())],
+        "editCount": sum(len(repair.get("edits", [])) for repair in plan.get("repairs", [])),
+        "verification": verification,
+    }
+
+
 def _parse_trace_events(stderr_text: str) -> tuple[list[dict], str]:
     events = []
     non_trace_lines = []
@@ -1677,6 +2656,10 @@ def command_run(args: argparse.Namespace) -> int:
 
 
 def command_check(args: argparse.Namespace) -> int:
+    if getattr(args, "json", False):
+        payload = _build_check_payload(Path(args.path), _strip_separator(list(args.compiler_args)))
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if payload["ok"] else 1
     build_tape = _find_build_tape(Path(args.path))
     source = build_tape if build_tape is not None else Path(args.path)
     return _run_compiler(source, ["--parse-only", "--lint", *_strip_separator(list(args.compiler_args))])
@@ -1783,6 +2766,15 @@ def command_doctor(args: argparse.Namespace) -> int:
     return 0 if payload["ok"] else 1
 
 
+def command_version(args: argparse.Namespace) -> int:
+    payload = _version_payload()
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print(f"sem {VERSION}")
+    return 0
+
+
 def command_context(args: argparse.Namespace) -> int:
     payload = _build_context_payload(Path(args.path))
     if args.json:
@@ -1809,6 +2801,124 @@ def command_symbols(args: argparse.Namespace) -> int:
     print(f"unresolved references: {summary['unresolvedReferenceCount']}")
     print("use --json for machine-readable symbol graph")
     return 0 if not payload["errors"] else 1
+
+
+def command_graph(args: argparse.Namespace) -> int:
+    payload = _graph_payload(Path(args.path), args.kind)
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if payload.get("ok", True) and not payload.get("errors") else 1
+    summary = payload.get("summary", {})
+    print(f"kind: {payload.get('kind', '')}")
+    print(f"files: {summary.get('fileCount', 0)}")
+    print(f"edges: {summary.get('edgeCount', 0)}")
+    print("use --json for machine-readable graph output")
+    return 0 if payload.get("ok", True) and not payload.get("errors") else 1
+
+
+def command_slice(args: argparse.Namespace) -> int:
+    payload = _slice_payload(Path(args.path), args)
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if payload.get("ok") else 1
+    anchor = payload.get("anchor", {})
+    print(f"anchor: {anchor.get('kind', '')} {anchor.get('name', '')}")
+    if payload.get("operation"):
+        operation = payload["operation"]
+        print(f"operation: {operation.get('name', '')}")
+        print(f"calls: {len(operation.get('calls', []))}")
+        print(f"effects: {len(operation.get('effects', []))}")
+    elif payload.get("matches") is not None:
+        print(f"matches: {len(payload.get('matches', []))}")
+    elif payload.get("uses") is not None:
+        print(f"uses: {len(payload.get('uses', []))}")
+    else:
+        print(payload.get("error", "use --json for machine-readable slice output"))
+    return 0 if payload.get("ok") else 1
+
+
+def command_explain(args: argparse.Namespace) -> int:
+    payload = _diagnostic_explain_payload(args.code)
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if payload.get("found") else 1
+    if not payload.get("found"):
+        print(f"unknown diagnostic code: {args.code}", file=sys.stderr)
+        return 1
+    print(f"{payload['code']}: {payload['title']}")
+    if payload.get("summary"):
+        print(payload["summary"])
+    if payload.get("relatedCodes"):
+        print(f"related: {', '.join(payload['relatedCodes'])}")
+    for reference in payload.get("references", [])[:8]:
+        print(f"- {reference['path']}:{reference['line']}  {reference['excerpt']}")
+    return 0
+
+
+def command_fix(args: argparse.Namespace) -> int:
+    if not args.plan:
+        print("sem fix currently supports --plan only", file=sys.stderr)
+        return 2
+    payload = _build_fix_plan_payload(Path(args.path), _strip_separator(list(args.compiler_args)))
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print(f"repairs: {len(payload['repairs'])}")
+        for repair in payload["repairs"]:
+            print(f"- {repair['diagnostic']} {repair['kind']} edits={len(repair['edits'])}")
+    return 0 if payload["ok"] else 1
+
+
+def command_patch(args: argparse.Namespace) -> int:
+    mode = "apply" if args.apply else "dry-run"
+    plan = _load_plan(Path(args.plan_path))
+    payload = _execute_patch_plan(plan, mode)
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print(f"mode: {payload['mode']}")
+        print(f"files changed: {len(payload['filesChanged'])}")
+        for path in payload["filesChanged"]:
+            print(f"- {path}")
+    return 0 if payload["verification"]["checkOk"] else 1
+
+
+def command_skills(args: argparse.Namespace) -> int:
+    if args.skills_command == "list":
+        payload = {
+            "schemaVersion": "sem.skills.v1",
+            "tool": {"name": "sem", "version": VERSION},
+            "skills": _skill_registry_payload(),
+        }
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            for skill in payload["skills"]:
+                print(f"{skill['name']}: {skill['description']}")
+        return 0
+    if args.skills_command == "get":
+        names = list(args.names)
+        if args.all:
+            names = [skill["name"] for skill in _skill_registry_payload()]
+        entries = []
+        for name in names:
+            skill = _skill_content(name)
+            if skill is not None:
+                entries.append(skill)
+        payload = {
+            "schemaVersion": "sem.skills.v1",
+            "tool": {"name": "sem", "version": VERSION},
+            "skills": entries,
+        }
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            for skill in entries:
+                print(f"== {skill['name']} ==")
+                print(skill["content"])
+        return 0 if entries else 1
+    print("sem skills requires a subcommand", file=sys.stderr)
+    return 2
 
 
 def command_migrate_syntax(args: argparse.Namespace) -> int:
@@ -1857,10 +2967,20 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("compiler_args", nargs=argparse.REMAINDER)
     run.set_defaults(func=command_run)
 
+    version = subparsers.add_parser(
+        "version",
+        help="emit SemanticScript toolchain version facts",
+    )
+    version.add_argument("--json", action="store_true",
+                         help="emit machine-readable version facts")
+    version.set_defaults(func=command_version)
+
     check = subparsers.add_parser(
         "check",
         help="parse and lint a build.sem project or source file",
     )
+    check.add_argument("--json", action="store_true",
+                       help="emit machine-readable check diagnostics and context")
     check.add_argument("path", nargs="?", default=".")
     check.add_argument("compiler_args", nargs=argparse.REMAINDER)
     check.set_defaults(func=command_check)
@@ -1963,6 +3083,96 @@ def build_parser() -> argparse.ArgumentParser:
     symbols.add_argument("path", nargs="?", default=".")
     symbols.set_defaults(func=command_symbols)
 
+    graph = subparsers.add_parser(
+        "graph",
+        help="emit an agent-first architecture graph derived from SemanticScript source",
+    )
+    graph.add_argument("--kind", default="summary",
+                       choices=("summary", "calls", "effects", "capabilities", "routes", "dataflow", "types", "ownership"),
+                       help="graph view to emit")
+    graph.add_argument("--json", action="store_true",
+                       help="emit machine-readable graph payload")
+    graph.add_argument("path", nargs="?", default=".")
+    graph.set_defaults(func=command_graph)
+
+    slice_cmd = subparsers.add_parser(
+        "slice",
+        help="emit the semantic neighborhood around an operation, route, effect, capability, or type",
+    )
+    slice_cmd.add_argument("--json", action="store_true",
+                           help="emit machine-readable slice payload")
+    slice_cmd.add_argument("--operation")
+    slice_cmd.add_argument("--route",
+                           help="route anchor in METHOD:/path form, for example POST:/todos")
+    slice_cmd.add_argument("--symbol",
+                           help="symbol anchor; currently resolves operations")
+    slice_cmd.add_argument("--effect")
+    slice_cmd.add_argument("--capability")
+    slice_cmd.add_argument("--type", dest="type_name")
+    slice_cmd.add_argument("path", nargs="?", default=".")
+    slice_cmd.set_defaults(func=command_slice)
+
+    explain = subparsers.add_parser(
+        "explain",
+        help="explain a SemanticScript compiler, linter, or runtime diagnostic code",
+    )
+    explain.add_argument("--json", action="store_true",
+                         help="emit machine-readable diagnostic explanation")
+    explain.add_argument("code")
+    explain.set_defaults(func=command_explain)
+
+    fix = subparsers.add_parser(
+        "fix",
+        help="generate structured repair plans for SemanticScript diagnostics",
+    )
+    fix.add_argument("--plan", action="store_true",
+                     help="emit a reviewable repair plan instead of applying edits")
+    fix.add_argument("--json", action="store_true",
+                     help="emit machine-readable repair plans")
+    fix.add_argument("path", nargs="?", default=".")
+    fix.add_argument("compiler_args", nargs=argparse.REMAINDER)
+    fix.set_defaults(func=command_fix)
+
+    patch = subparsers.add_parser(
+        "patch",
+        help="apply or preview a structured SemanticScript repair plan",
+    )
+    mode = patch.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--dry-run", action="store_true",
+                      help="preview a plan without changing files")
+    mode.add_argument("--apply", action="store_true",
+                      help="apply a previously generated plan")
+    patch.add_argument("--json", action="store_true",
+                       help="emit machine-readable patch results")
+    patch.add_argument("plan_path")
+    patch.set_defaults(func=command_patch)
+
+    skills = subparsers.add_parser(
+        "skills",
+        help="list or load version-matched agent skills from the current repository",
+    )
+    skills_subparsers = skills.add_subparsers(dest="skills_command", required=True)
+    skills_list = skills_subparsers.add_parser(
+        "list",
+        help="list built-in SemanticScript agent skills",
+    )
+    skills_list.add_argument("--json", action="store_true",
+                             help="emit machine-readable skill inventory")
+    skills_list.set_defaults(func=command_skills)
+
+    skills_get = skills_subparsers.add_parser(
+        "get",
+        help="load one or more built-in SemanticScript agent skills",
+    )
+    skills_get.add_argument("--json", action="store_true",
+                            help="emit machine-readable skill content")
+    skills_get.add_argument("--all", action="store_true",
+                            help="return every visible built-in skill")
+    skills_get.add_argument("--full", action="store_true",
+                            help="compatibility flag; returns full content")
+    skills_get.add_argument("names", nargs="*")
+    skills_get.set_defaults(func=command_skills)
+
     migrate_syntax = subparsers.add_parser(
         "migrate-syntax",
         help="explicitly convert legacy SemanticScript row syntax",
@@ -1980,6 +3190,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+    if "--version" in argv and "--json" in argv and len(argv) == 2:
+        print(json.dumps(_version_payload(), indent=2, sort_keys=True))
+        return 0
     parser = build_parser()
     args = parser.parse_args(argv)
     return int(args.func(args))
