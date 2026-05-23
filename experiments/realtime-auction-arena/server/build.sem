@@ -11,6 +11,7 @@ registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.obse
 registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.auction_context "src/auction_context.sem"
 registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.event_context "src/event_context.sem"
 registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.chat_context "src/chat_context.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.audit_context "src/audit_context.sem"
 registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.runtime_constants "src/runtime_constants.sem"
 registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.sql_queries "src/sql_queries.sem"
 registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.wire_envelopes "src/wire_envelopes.sem"
@@ -33,6 +34,7 @@ registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.test
 registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.auction_context "src/auction_context.test.sem"
 registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.event_context "src/event_context.test.sem"
 registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.chat_context "src/chat_context.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.audit_context "src/audit_context.test.sem"
 registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.runtime_constants "src/runtime_constants.test.sem"
 registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.sql_queries "src/sql_queries.test.sem"
 registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.wire_envelopes "src/wire_envelopes.test.sem"
@@ -78,6 +80,7 @@ field BuildModules observability_context BuildModule
 field BuildModules auction_context BuildModule
 field BuildModules event_context BuildModule
 field BuildModules chat_context BuildModule
+field BuildModules audit_context BuildModule
 field BuildModules runtime_constants BuildModule
 field BuildModules sql_queries BuildModule
 field BuildModules wire_envelopes BuildModule
@@ -232,6 +235,11 @@ jsonBody realtimeAuctionArenaServerBuildPlan
               "sourcePath": "src/chat_context.sem",
               "mainFile": "chat_context.sem"
           },
+          "audit_context": {
+              "moduleName": "app.realtime_auction_arena.server.audit_context",
+              "sourcePath": "src/audit_context.sem",
+              "mainFile": "audit_context.sem"
+          },
           "runtime_constants": {
               "moduleName": "app.realtime_auction_arena.server.runtime_constants",
               "sourcePath": "src/runtime_constants.sem",
@@ -288,7 +296,7 @@ jsonBody realtimeAuctionArenaServerBuildPlan
           "metadata": {
               "apiVersion": "v1",
               "runtimeContract": "native webServer registered routes",
-              "scaffoldScope": "health|readiness|metrics|api-envelope|demo-auth|body-limit|content-type-contract|method-not-allowed|idempotency-contract|observability-contract|persistence-schema-plan|server-config-contract|shutdown-plan"
+              "scaffoldScope": "health|readiness|metrics|api-envelope|demo-auth|body-limit|content-type-contract|method-not-allowed|idempotency-contract|observability-contract|audit-replay|persistence-schema-plan|server-config-contract|shutdown-plan"
           }
       },
       "constants": {
@@ -299,7 +307,7 @@ jsonBody realtimeAuctionArenaServerBuildPlan
           "nativeHttpHost": { "type": "String", "value": "127.0.0.1" },
           "nativeHttpPort": { "type": "I64", "value": 18083 },
           "databasePath": { "type": "String", "value": "auction_arena.sqlite3" },
-          "executableRoutes": { "type": "String", "value": "healthz,readyz,metrics,apiIndex,authLogin,authRefresh,authLogout,session,auctionsList,auctionsCreate,auctionSnapshot,auctionStart,auctionExtend,auctionClose,auctionBid,auctionEvents,apiNotFound" },
+          "executableRoutes": { "type": "String", "value": "healthz,readyz,metrics,apiIndex,authLogin,authRefresh,authLogout,session,auctionsList,auctionsCreate,auctionSnapshot,auctionStart,auctionExtend,auctionClose,auctionBid,auctionEvents,auctionAudit,chatCreate,chatDelete,chatReport,apiNotFound" },
           "demoAuctioneerUsername": { "type": "String", "value": "auctioneer" },
           "demoAuctioneerUserId": { "type": "String", "value": "user_auctioneer_001" },
           "demoBidderUsername": { "type": "String", "value": "bidder" },

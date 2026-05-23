@@ -8,8 +8,8 @@ in `experiments/realtime-auction-arena/server/src`, not in native runtime code.
 
 - Native `webServer` on `127.0.0.1:18083`.
 - Registered routes for health, readiness, metrics, API index, auth, session,
-  auction list/create/snapshot/start/bid/extend/close, JSON event replay, and
-  explicit API not-found.
+  auction list/create/snapshot/start/bid/extend/close, JSON event replay,
+  bounded audit replay, chat create/delete/report, and explicit API not-found.
 - SQLite open and schema initialization from `server/sql/schema.sql` during
   readiness and command handling.
 - Stable response headers: `X-Api-Version`, `X-Request-Id`,
@@ -31,9 +31,13 @@ in `experiments/realtime-auction-arena/server/src`, not in native runtime code.
   `server/src/auth_context.sem`.
 - SQLite-backed auction create/list/snapshot/start/bid/extend/close flows with
   transaction guards, persisted `auction_events`, scoped `idempotency_keys`,
-  accepted-command `audit_events`, and bounded JSON event replay with `Last-Event-ID`,
-  `?after`, `?limit`, seeded viewer authorization, and stable `eventType` text
-  beside numeric event codes.
+  accepted-command `audit_events`, bounded JSON event replay with `Last-Event-ID`,
+  `?after`, `?limit`, seeded viewer authorization, stable `eventType` text
+  beside numeric event codes, and bounded audit replay over persisted
+  `audit_events`.
+- SQLite-backed chat create/delete/report flows with idempotency rows,
+  moderation persistence, accepted audit rows, and committed chat event rows in
+  the auction event stream.
 - Python E2E coverage for auth, refresh replay, stale access-token rejection,
   wrong-role bid denial, env-backed JWT signatures, runtime access-token time
   claims, login rate limiting, login audit rows, create/start/bid/extend/close
@@ -69,9 +73,10 @@ in `experiments/realtime-auction-arena/server/src`, not in native runtime code.
   path. The native HTTP adapter still has only one-shot response writers:
   `http.responseSseEvent` formats a single `text/event-stream` body, and the
   fallback transport sends `Content-Length` plus `Connection: close`.
-- Chat create is executable; chat delete/report are registered guard routes
-  while moderation persistence remains contract work. Audit query and admin APIs
-  are not registered handlers yet.
+- Full admin policy is still missing: the audit replay route is registered and
+  executable, but it currently accepts the seeded auctioneer bearer as the demo
+  audit operator until a seeded admin principal and decoded-scope authorization
+  are executable.
 - Request logging now writes durable finish rows for registered auction command
   accepts and bid rejects, but still needs a reusable request context,
   monotonic duration measurement, dynamic request-id generation for every path,

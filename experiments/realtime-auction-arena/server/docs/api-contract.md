@@ -146,15 +146,14 @@ remain native dispatcher/not-found behavior.
 server routes. It records method, path, handler name, auth policy, required
 scopes, required path params, revision/idempotency requirements, rejection
 codes, and current runtime status. `GET /api/v1` is the executable endpoint
-index for routes that are actually registered today. The audit query route is a
-README-level future route until it is added to the route catalog.
+index for routes that are actually registered today.
 
 ## Auction Floor Chat Contract
 
-The chat create route is executable. Chat delete/report routes are registered
-guards in `server/src/chat_context.sem` while full moderation persistence
-remains contract work. Their source of truth is `server/src/chat.sem`, with SQL
-text in `server/src/sql_queries.sem`:
+Chat create/delete/report routes are executable in `server/src/chat_context.sem`
+with SQLite moderation persistence, idempotency rows, audit rows, and committed
+auction events. Their source of truth is `server/src/chat.sem`, with SQL text in
+`server/src/sql_queries.sem`:
 
 - `POST /api/v1/auctions/:auctionId/chat/messages` requires bidder
   `chat:write`, `Idempotency-Key`, JSON text that is non-empty and at most
@@ -173,8 +172,11 @@ text in `server/src/sql_queries.sem`:
 
 ## Admin Audit Query Filter Contract
 
-`GET /api/v1/auctions/:auctionId/audit` is a planned admin-only query. It is
-not registered as an executable handler yet, but its filter contract is fixed:
+`GET /api/v1/auctions/:auctionId/audit` is registered as an executable bounded
+audit replay. The current seeded demo guard accepts the auctioneer bearer as the
+audit operator until a seeded admin principal exists. The executable query
+supports `?after=<created_at_millis>` and `?limit=1..100`; the broader
+enterprise filter contract remains:
 
 | Query parameter | Default | Rule |
 |---|---|---|
@@ -189,10 +191,14 @@ not registered as an executable handler yet, but its filter contract is fixed:
 | `limit` | `50` | integer `1..200` |
 | `cursor` | omitted | opaque cursor returned by the previous page |
 
-The response shape is `data.auditEvents[]` plus `data.page`. The page object
-contains `limit`, `count`, `nextCursor`, and `hasMore`. Raw IP addresses,
-user-agent strings, JWTs, refresh tokens, password hashes, and request bodies
-must never appear in audit query responses.
+The executable response shape is `data.auctionId`, `data.after`, `data.limit`,
+`data.count`, `data.nextAfter`, and `data.auditEvents[]`. Each audit row returns
+the durable audit id, actor, role, request id, idempotency key, action, command
+kind, auction id, bid/message id, outcome, error code, payload JSON as a string,
+and `createdAtUtcMillis`. The future full filter response shape will add
+`data.page` with `nextCursor` and `hasMore`. Raw IP addresses, user-agent
+strings, JWTs, refresh tokens, password hashes, and request bodies must never
+appear in audit query responses.
 
 ## Pagination Contract
 
@@ -291,8 +297,7 @@ drain/close hooks remain planned runtime work.
 
 ## Route Examples
 
-Examples show the contract shape. Rows marked planned are not registered
-handlers yet.
+Examples show the contract shape.
 
 | Route | Request | Response |
 |---|---|---|
@@ -312,10 +317,10 @@ handlers yet.
 | `POST /api/v1/auctions/:auctionId/close` | bearer, `Idempotency-Key`, `{"expectedRevision":4}` | `200`, closed auction with final bid/winner fields |
 | `POST /api/v1/auctions/:auctionId/bids` | bearer, `Idempotency-Key`, `{"amount":120,"expectedRevision":1}` | `201`, accepted bid and advanced revision |
 | `GET /api/v1/auctions/:auctionId/events` | bearer, optional `Last-Event-ID`, `?after`, `?limit=1..200` | `200`, bounded JSON replay of committed auction events |
-| `GET /api/v1/auctions/:auctionId/audit` | planned admin bearer query | planned audit page response |
-| `POST /api/v1/auctions/:auctionId/chat/messages` | contract-complete bidder bearer command | `chat.message.created` event response when handler is registered |
-| `DELETE /api/v1/auctions/:auctionId/chat/messages/:messageId` | contract-complete moderator bearer command | `chat.message.deleted` event response when handler is registered |
-| `POST /api/v1/auctions/:auctionId/chat/messages/:messageId/report` | contract-complete bidder bearer command | `chat.message.reported` event response when handler is registered |
+| `GET /api/v1/auctions/:auctionId/audit` | seeded audit-operator bearer, `?after`, `?limit=1..100` | `200`, bounded audit event replay |
+| `POST /api/v1/auctions/:auctionId/chat/messages` | bidder bearer, `Idempotency-Key`, `{"text":"..."}` | `201`, `chat.message.created` event response |
+| `DELETE /api/v1/auctions/:auctionId/chat/messages/:messageId` | moderator bearer, `Idempotency-Key` | `200`, `chat.message.deleted` event response |
+| `POST /api/v1/auctions/:auctionId/chat/messages/:messageId/report` | bidder bearer, `Idempotency-Key`, `{"reason":"..."}` | `200`, `chat.message.reported` event response |
 
 ## Version Compatibility
 

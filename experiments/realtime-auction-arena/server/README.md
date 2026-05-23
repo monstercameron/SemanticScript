@@ -152,9 +152,10 @@ DELETE /api/v1/auctions/:auctionId/chat/messages/:messageId
 POST /api/v1/auctions/:auctionId/chat/messages/:messageId/report
 ```
 
-Routes listed with create/list/snapshot/start/extend/close/bid/event replay are
-executable as called out above. Audit query, chat, and true long-lived SSE
-semantics remain planned enterprise routes.
+Routes listed with create/list/snapshot/start/extend/close/bid/event replay,
+bounded audit replay, and chat create/delete/report are executable as called out
+above. Full admin principal policy and true long-lived SSE semantics remain
+planned enterprise work.
 
 ## API Contract
 

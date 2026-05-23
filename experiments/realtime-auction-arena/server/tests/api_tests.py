@@ -213,6 +213,7 @@ def test_api_index_only_asserts_executable_routes():
     assert "POST /api/v1/auctions/:auctionId/close" in route_text
     assert "POST /api/v1/auctions/:auctionId/bids" in route_text
     assert "GET /api/v1/auctions/:auctionId/events" in route_text
+    assert "GET /api/v1/auctions/:auctionId/audit" in route_text
     assert "POST /api/v1/auctions/:auctionId/chat/messages" in route_text
     assert "DELETE /api/v1/auctions/:auctionId/chat/messages/:messageId" in route_text
     assert "POST /api/v1/auctions/:auctionId/chat/messages/:messageId/report" in route_text
@@ -734,6 +735,24 @@ def test_auction_create_start_bid_and_events_flow():
 
     events = expect_json(f"/api/v1/auctions/{auction_id}/events", 200, ok=True, headers=auth)
     assert [event["eventTypeCode"] for event in events["data"]["events"]] == [1, 2, 5, 5]
+
+    audit_login = login_as_auctioneer()
+    audit_auth = {"Authorization": f"Bearer {audit_login['data']['accessToken']}"}
+    audit = expect_json(f"/api/v1/auctions/{auction_id}/audit", 200, ok=True, headers=audit_auth)
+    assert audit["data"]["auctionId"] == auction_id
+    assert audit["data"]["limit"] == 100
+    assert audit["data"]["count"] >= 4
+    audit_actions = [event["action"] for event in audit["data"]["auditEvents"]]
+    assert "auction.create" in audit_actions
+    assert "auction.start" in audit_actions
+    assert "bid.accepted" in audit_actions
+    expect_json(
+        "/api/v1/auctions/auc_missing_audit/audit",
+        404,
+        ok=False,
+        code="auction_not_found",
+        headers=audit_auth,
+    )
 
 
 def test_write_routes_reject_non_json_content_type():

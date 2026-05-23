@@ -21,6 +21,7 @@ import observability_context app.realtime_auction_arena.server.observability_con
 import auction_context app.realtime_auction_arena.server.auction_context
 import event_context app.realtime_auction_arena.server.event_context
 import chat_context app.realtime_auction_arena.server.chat_context
+import audit_context app.realtime_auction_arena.server.audit_context
 
 exportCapability app.realtime_auction_arena.server httpRequestReader
 exportCapability app.realtime_auction_arena.server httpResponseWriter
@@ -40,6 +41,7 @@ exportOperation app.realtime_auction_arena.server auctionExtendHandler
 exportOperation app.realtime_auction_arena.server auctionCloseHandler
 exportOperation app.realtime_auction_arena.server auctionBidHandler
 exportOperation app.realtime_auction_arena.server auctionEventsHandler
+exportOperation app.realtime_auction_arena.server auctionAuditHandler
 exportOperation app.realtime_auction_arena.server chatCreateHandler
 exportOperation app.realtime_auction_arena.server chatDeleteHandler
 exportOperation app.realtime_auction_arena.server chatReportHandler
@@ -67,6 +69,7 @@ route realtimeAuctionArenaServer POST "/api/v1/auctions/:auctionId/extend" aucti
 route realtimeAuctionArenaServer POST "/api/v1/auctions/:auctionId/close" auctionCloseHandler
 route realtimeAuctionArenaServer POST "/api/v1/auctions/:auctionId/bids" auctionBidHandler
 route realtimeAuctionArenaServer GET "/api/v1/auctions/:auctionId/events" auctionEventsHandler
+route realtimeAuctionArenaServer GET "/api/v1/auctions/:auctionId/audit" auctionAuditHandler
 route realtimeAuctionArenaServer POST "/api/v1/auctions/:auctionId/chat/messages" chatCreateHandler
 route realtimeAuctionArenaServer DELETE "/api/v1/auctions/:auctionId/chat/messages/:messageId" chatDeleteHandler
 route realtimeAuctionArenaServer POST "/api/v1/auctions/:auctionId/chat/messages/:messageId/report" chatReportHandler
@@ -145,6 +148,11 @@ route realtimeAuctionArenaServer PUT "/api/v1/auctions/:auctionId/events" method
 route realtimeAuctionArenaServer PATCH "/api/v1/auctions/:auctionId/events" methodNotAllowedHandler
 route realtimeAuctionArenaServer DELETE "/api/v1/auctions/:auctionId/events" methodNotAllowedHandler
 route realtimeAuctionArenaServer OPTIONS "/api/v1/auctions/:auctionId/events" methodNotAllowedHandler
+route realtimeAuctionArenaServer POST "/api/v1/auctions/:auctionId/audit" methodNotAllowedHandler
+route realtimeAuctionArenaServer PUT "/api/v1/auctions/:auctionId/audit" methodNotAllowedHandler
+route realtimeAuctionArenaServer PATCH "/api/v1/auctions/:auctionId/audit" methodNotAllowedHandler
+route realtimeAuctionArenaServer DELETE "/api/v1/auctions/:auctionId/audit" methodNotAllowedHandler
+route realtimeAuctionArenaServer OPTIONS "/api/v1/auctions/:auctionId/audit" methodNotAllowedHandler
 route realtimeAuctionArenaServer GET "/api/v1/auctions/:auctionId/chat/messages" methodNotAllowedHandler
 route realtimeAuctionArenaServer PUT "/api/v1/auctions/:auctionId/chat/messages" methodNotAllowedHandler
 route realtimeAuctionArenaServer PATCH "/api/v1/auctions/:auctionId/chat/messages" methodNotAllowedHandler
@@ -178,6 +186,7 @@ routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/extend" req
 routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/close" requestTimeoutBudget
 routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/bids" requestTimeoutBudget
 routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/events" requestTimeoutBudget
+routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/audit" requestTimeoutBudget
 routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/chat/messages" requestTimeoutBudget
 routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/chat/messages/:messageId" requestTimeoutBudget
 routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/chat/messages/:messageId/report" requestTimeoutBudget
@@ -198,6 +207,7 @@ routeMiddleware realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/extend" 
 routeMiddleware realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/close" requestContextMiddleware
 routeMiddleware realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/bids" requestContextMiddleware
 routeMiddleware realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/events" requestContextMiddleware
+routeMiddleware realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/audit" requestContextMiddleware
 routeMiddleware realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/chat/messages" requestContextMiddleware
 routeMiddleware realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/chat/messages/:messageId" requestContextMiddleware
 routeMiddleware realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/chat/messages/:messageId/report" requestContextMiddleware
@@ -235,3 +245,4 @@ purpose operation processEnvironmentReader "Authority to read deployment configu
 # - auction_context.sem owns auction read/command handlers.
 # - event_context.sem owns event type naming and bounded replay.
 # - chat_context.sem owns chat command handlers.
+# - audit_context.sem owns authenticated bounded audit replay.

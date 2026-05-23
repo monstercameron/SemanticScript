@@ -253,6 +253,7 @@ def test_public_routes():
     assert "POST /api/v1/auctions/:auctionId/close" in route_text
     assert "POST /api/v1/auctions/:auctionId/bids" in route_text
     assert "GET /api/v1/auctions/:auctionId/events" in route_text
+    assert "GET /api/v1/auctions/:auctionId/audit" in route_text
     assert "POST /api/v1/auctions/:auctionId/chat/messages" in route_text
     assert "DELETE /api/v1/auctions/:auctionId/chat/messages/:messageId" in route_text
     assert "POST /api/v1/auctions/:auctionId/chat/messages/:messageId/report" in route_text
@@ -1141,6 +1142,54 @@ def test_auth_and_api_fail_closed():
     assert last_event_id_events["data"]["after"] == 3
     assert last_event_id_events["data"]["count"] == 6
     assert [event["sequence"] for event in last_event_id_events["data"]["events"]] == [4, 5, 6, 7, 8, 9]
+    expect_json(
+        f"/api/v1/auctions/{auction_id}/audit",
+        401,
+        ok=False,
+        code="unauthorized",
+        headers=active_headers,
+    )
+    audit_login = login_as("auctioneer")
+    audit_headers = {"Authorization": f"Bearer {audit_login['data']['accessToken']}"}
+    active_headers = audit_headers
+    logout_refresh_token = audit_login["data"]["refreshToken"]
+    audit = expect_json(
+        f"/api/v1/auctions/{auction_id}/audit?limit=20",
+        200,
+        ok=True,
+        headers=audit_headers,
+        route_path=f"/api/v1/auctions/{auction_id}/audit",
+    )
+    assert audit["data"]["auctionId"] == auction_id
+    assert audit["data"]["after"] == 0
+    assert audit["data"]["limit"] == 20
+    assert audit["data"]["count"] >= 8
+    assert audit["data"]["nextAfter"] > 0
+    audit_actions = [row["action"] for row in audit["data"]["auditEvents"]]
+    assert "auction.create" in audit_actions
+    assert "auction.start" in audit_actions
+    assert "auction.extend" in audit_actions
+    assert "auction.close" in audit_actions
+    assert "bid.accepted" in audit_actions
+    assert "chat.reported" in audit_actions
+    assert "chat.deleted" in audit_actions
+    chat_report_rows = [row for row in audit["data"]["auditEvents"] if row["action"] == "chat.reported"]
+    assert json.loads(chat_report_rows[0]["payloadJson"])["reason"] == "spam"
+    expect_json(
+        f"/api/v1/auctions/{auction_id}/audit?limit=0",
+        400,
+        ok=False,
+        code="validation_failed",
+        headers=audit_headers,
+        route_path=f"/api/v1/auctions/{auction_id}/audit",
+    )
+    expect_json(
+        "/api/v1/auctions/auc_missing_audit/audit",
+        404,
+        ok=False,
+        code="auction_not_found",
+        headers=audit_headers,
+    )
     db_path = SERVER_DIR / "auction_arena.sqlite3"
     with sqlite3.connect(db_path) as conn:
         seed_users = set(conn.execute("SELECT user_id, username, role FROM users").fetchall())
@@ -1360,14 +1409,14 @@ def test_auth_and_api_fail_closed():
             "SELECT outcome, error_code FROM audit_events WHERE action = 'auth.logout'"
         ).fetchall()
         assert (1, "") in logout_audit
-        revoked_bidder_refresh_after_logout = conn.execute(
+        revoked_refresh_after_logout = conn.execute(
             """
             SELECT count(*)
             FROM refresh_tokens
-            WHERE user_id = 'user_bidder_demo' AND revoked_at > 0
+            WHERE revoked_at > 0
             """
         ).fetchone()[0]
-        assert revoked_bidder_refresh_after_logout >= 1
+        assert revoked_refresh_after_logout >= 1
 
     expect_json(
         "/api/v1/session",

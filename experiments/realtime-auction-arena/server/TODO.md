@@ -21,11 +21,11 @@ write routes, local development seed data, accepted-command audit rows, and
 bounded JSON event replay are verified by the Python API harnesses. Production
 secret override loading, access-token runtime `iat`/`nbf`/`exp` issue and
 session validation, login rate limiting, durable login auth audit rows,
-runtime-backed request/command metrics, request-log rows, chat-create
-persistence, and the scripted full demo are now wired. Durable SQLite
-refresh-token/session persistence, full admin/service/viewer policy coverage,
-403 forbidden response split, long-lived SSE, chat delete/report persistence,
-refresh/logout/session audit writes, and JWT denylist lookup remain open.
+runtime-backed request/command metrics, request-log rows, chat-create/delete/report
+persistence, bounded audit replay, and the scripted full demo are now wired.
+Restart-safe durable session lookup, full admin/service/viewer policy coverage,
+403 forbidden response split, long-lived SSE, and JWT denylist lookup remain
+open.
 
 ## Verified Working Runtime
 
@@ -171,8 +171,8 @@ refresh/logout/session audit writes, and JWT denylist lookup remain open.
       token.
 - [x] Protect registered auctioneer command routes by seeded role and scope.
 - [x] Protect the registered bid route by seeded bidder role and scope.
-- [ ] Protect future admin, service, viewer-scope, and chat delete/report
-      routes by their full role/scope policies once those handlers exist.
+- [ ] Protect future admin, service, viewer-scope, and full decoded-scope
+      policies once those handlers/principals exist.
 - [x] Add live API tests for bad JWT signature, stale access token, and refresh
       replay.
 - [ ] Add live API tests for disabled user, expired token, wrong audience, and
@@ -241,7 +241,7 @@ refresh/logout/session audit writes, and JWT denylist lookup remain open.
 - [x] Return cached command response for repeated create/start/bid idempotency
       keys.
 - [x] Return stable rule-failure error codes for bid and lifecycle rejects.
-- [ ] Add API integration tests for successful auction lifecycle, unauthorized
+- [x] Add API integration tests for successful auction lifecycle, unauthorized
       requests, forbidden role requests, idempotency replay, stale revision, and
       every bid reject reason.
 - [x] Add API/E2E coverage for successful create/start/extend/close/bid/event
@@ -313,16 +313,15 @@ refresh/logout/session audit writes, and JWT denylist lookup remain open.
       `chat_messages` persistence, `chat.message.created` event append,
       replay ordering, text-only storage, and validation through
       `python experiments/realtime-auction-arena/server/scripts/full_demo.py --require-full`.
-- [x] Contract-complete
+- [x] Implement executable
       `DELETE /api/v1/auctions/:auctionId/chat/messages/:messageId`
-      in `src/chat.sem`, `src/routes.sem`, and `src/sql_queries.sem`; live
-      `chat_context.sem` route guard is registered while persistence remains
-      integration work.
-- [x] Contract-complete
+      with auctioneer moderation auth, idempotency, SQLite moderation
+      persistence, accepted audit rows, and `chat.message.deleted` event append.
+- [x] Implement executable
       `POST /api/v1/auctions/:auctionId/chat/messages/:messageId/report`
-      in `src/chat.sem`, `src/routes.sem`, and `src/sql_queries.sem`; live
-      `chat_context.sem` route guard is registered while report persistence
-      remains integration work.
+      with bidder auth, idempotency, SQLite moderation persistence, accepted
+      audit rows including the report reason, and `chat.message.reported` event
+      append.
 - [x] Require bidder role for posting in executable chat policy helpers.
 - [x] Require auctioneer/admin role for moderation in executable chat policy
       helpers.
