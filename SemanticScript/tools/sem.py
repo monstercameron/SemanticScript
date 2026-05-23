@@ -2145,8 +2145,9 @@ def _build_fix_plan_payload(path: Path, compiler_args: list[str]) -> dict:
         "schemaVersion": "sem.fixPlan.v1",
         "tool": {"name": "sem", "version": VERSION},
         "inputPath": str(path.resolve()),
-        "ok": bool(repairs),
+        "ok": True,
         "diagnosticCount": len(check_payload["diagnostics"]),
+        "repairCount": len(repairs),
         "repairs": repairs,
         "checkSummary": check_payload["summary"],
     }
@@ -2196,11 +2197,12 @@ def _execute_patch_plan(plan: dict, mode: str) -> dict:
                 text=True,
             )
 
-    verification = {"formatOk": True, "checkOk": True, "checkSummary": {}}
-    input_path = Path(plan.get("inputPath", Path.cwd()))
-    check_payload = _build_check_payload(input_path, [])
-    verification["checkOk"] = bool(check_payload.get("ok", False))
-    verification["checkSummary"] = check_payload.get("summary", {})
+    verification = {"formatOk": True, "checkOk": None, "checkSummary": {}}
+    if mode == "apply":
+        input_path = Path(plan.get("inputPath", Path.cwd()))
+        check_payload = _build_check_payload(input_path, [])
+        verification["checkOk"] = bool(check_payload.get("ok", False))
+        verification["checkSummary"] = check_payload.get("summary", {})
     return {
         "schemaVersion": "sem.patch.v1",
         "tool": {"name": "sem", "version": VERSION},
@@ -2866,7 +2868,7 @@ def command_fix(args: argparse.Namespace) -> int:
         print(f"repairs: {len(payload['repairs'])}")
         for repair in payload["repairs"]:
             print(f"- {repair['diagnostic']} {repair['kind']} edits={len(repair['edits'])}")
-    return 0 if payload["ok"] else 1
+    return 0
 
 
 def command_patch(args: argparse.Namespace) -> int:
@@ -2880,7 +2882,9 @@ def command_patch(args: argparse.Namespace) -> int:
         print(f"files changed: {len(payload['filesChanged'])}")
         for path in payload["filesChanged"]:
             print(f"- {path}")
-    return 0 if payload["verification"]["checkOk"] else 1
+    if payload["mode"] == "apply":
+        return 0 if payload["verification"]["checkOk"] else 1
+    return 0
 
 
 def command_skills(args: argparse.Namespace) -> int:
