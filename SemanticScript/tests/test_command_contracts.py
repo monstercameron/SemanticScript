@@ -312,8 +312,9 @@ class TestSemCommandContracts(unittest.TestCase):
         self.assertEqual(payload["status"], "quality-diagnostics")
         self.assertFalse(payload["ok"])
         self.assertTrue(payload["buildableSource"])
-        self.assertIn("components\\main.sem", "\n".join(payload["watch"]["files"]))
-        self.assertIn("pages\\main.sem", "\n".join(payload["watch"]["files"]))
+        normalized_watch_files = "\n".join(path.replace("\\", "/") for path in payload["watch"]["files"])
+        self.assertIn("components/main.sem", normalized_watch_files)
+        self.assertIn("pages/main.sem", normalized_watch_files)
         self.assertEqual(payload["surfaceShift"]["from"], "source-file")
         self.assertEqual(payload["surfaceShift"]["to"], "project")
         graph_action = next(item for item in payload["actions"] if item["kind"] == "graph")
@@ -460,25 +461,30 @@ class TestSemCommandContracts(unittest.TestCase):
         self.assertEqual(test_payload["skippedTests"], 1)
         self.assertFalse(test_payload["preflightCheck"]["ok"])
 
-    def test_auction_server_test_discovers_python_harnesses(self) -> None:
+    def test_auction_server_test_discovers_python_harnesses_when_runtime_harnesses_are_disabled(self) -> None:
         test_code, test_payload = _sem_json("test", "--json", "--skip-python-harnesses", str(AUCTION_SERVER_PATH))
-        self.assertEqual(test_code, 1)
-        self.assertEqual(test_payload["status"], "diagnostics")
+        self.assertEqual(test_code, 0)
+        self.assertEqual(test_payload["status"], "passed")
         self.assertGreater(test_payload["discoveredTests"], 26)
+        self.assertTrue(test_payload["preflightCheck"]["ok"])
+        self.assertIn(test_payload["preflightStatus"], {"ok", "ok-with-warnings"})
         self.assertTrue(any(result["name"] == "api_tests" for result in test_payload["results"]))
         self.assertTrue(any(result["status"] == "skipped" and result["kind"] == "python" for result in test_payload["results"]))
-        self.assertEqual(test_payload["coverageSummary"]["runtimeSignalStatus"], "deferred")
+        self.assertEqual(test_payload["coverageSummary"]["runtimeHarnessesExecuted"], 0)
+        self.assertEqual(test_payload["coverageSummary"]["runtimeSignalStatus"], "not-requested")
+        self.assertEqual(test_payload["runtimeHarnessStatus"], "not-requested")
 
-    def test_auction_server_test_can_force_runtime_harnesses_when_preflight_is_red(self) -> None:
+    def test_auction_server_test_allow_red_preflight_flag_still_runs_runtime_harnesses(self) -> None:
         test_code, test_payload = _sem_json("test", "--json", "--allow-red-preflight-harnesses", str(AUCTION_SERVER_PATH))
-        self.assertEqual(test_code, 1)
-        self.assertEqual(test_payload["status"], "diagnostics")
+        self.assertEqual(test_code, 0)
+        self.assertEqual(test_payload["status"], "passed")
+        self.assertTrue(test_payload["preflightCheck"]["ok"])
+        self.assertIn(test_payload["preflightStatus"], {"ok", "ok-with-warnings"})
         self.assertGreater(test_payload["coverageSummary"]["runtimeHarnessesExecuted"], 0)
         self.assertEqual(test_payload["coverageSummary"]["runtimeSignalStatus"], "executed")
-        self.assertIn(test_payload["preflightStatus"], {"lint-diagnostics", "compiler-error", "tool-error"})
-        self.assertIn(test_payload["compositeStatus"], {"lint-diagnostics/runtime-passed", "compiler-error/runtime-passed", "tool-error/runtime-passed", "lint-diagnostics/runtime-failed", "compiler-error/runtime-failed", "tool-error/runtime-failed"})
-        self.assertIn(test_payload["runtimeHarnessStatus"], {"passed", "failed"})
-        self.assertEqual(test_payload["coverageSummary"]["semanticContractsExecuted"], 0)
+        self.assertEqual(test_payload["compositeStatus"], "ok/runtime-passed")
+        self.assertEqual(test_payload["runtimeHarnessStatus"], "passed")
+        self.assertGreater(test_payload["coverageSummary"]["semanticContractsExecuted"], 0)
 
 
 if __name__ == "__main__":
