@@ -26,6 +26,95 @@ is real application development in the same problem space as Node, Python, Bun,
 Deno, Express, FastAPI, and Go services, but with source shaped for agentic
 maintenance instead of human terseness.
 
+## Start Here
+
+Use the `sem` wrapper first. It is the public agent-facing surface for
+validation, retrieval, repair planning, patching, and test orchestration.
+
+```powershell
+python -m pip install -r requirements.txt
+python SemanticScript\tools\sem.py --version --json
+python SemanticScript\tools\sem.py check --json SemanticScript\tests\agent_cli_demo.test.sem
+python SemanticScript\tools\sem.py graph --kind summary --json SemanticScript\tests\agent_cli_demo.test.sem
+python SemanticScript\tools\sem.py explain SS3104 --json
+python SemanticScript\tools\sem.py test --json SemanticScript\tests\agent_cli_demo.test.sem --skip-python-harnesses
+```
+
+`SemanticScript\tests\agent_cli_demo.test.sem` is the green validation fixture.
+`SemanticScript\tests\tiny.sem` is intentionally diagnostic-heavy and is useful
+for repair-plan demos.
+
+On large project surfaces, `check`, `fix`, `graph`, and `slice` JSON output is
+compact by default for agent sessions. Use `--full` when you explicitly need
+the full payload expansion.
+
+## How The Tools Help In Iteration
+
+These commands are not interchangeable. Each exists to answer one specific
+question in an agent edit loop.
+
+- `sem skills get`:
+  load version-matched repo guidance before editing so the agent does not guess
+  language rules, repair conventions, or app patterns from stale memory.
+- `sem check --json`:
+  the primary semantic gate. Use it before edits to see what is wrong and after
+  edits to verify the source state actually improved.
+- `sem graph --json`:
+  the coarse map. Use `summary` or `routes` first to decide where to drill
+  before spending context on detailed source neighborhoods.
+- `sem slice --json`:
+  the local working set. Use it to pull one operation, route, effect, or
+  capability neighborhood into context before making a targeted edit.
+- `sem explain CODE --json`:
+  the rule explainer. Use it when a diagnostic code is unfamiliar and the agent
+  needs the reasoning and safe repair shapes behind that rule.
+- `sem fix --plan --json`:
+  the proposal step. It turns diagnostics into reviewable candidate edits
+  without mutating source.
+- `sem patch --dry-run|--apply`:
+  the execution step for an already-reviewed plan. It protects against stale
+  files and re-verifies formatting and `check` after apply.
+- `sem fmt --check`:
+  the diff stabilizer. Use it to make sure the source is normalized before
+  trusting a patch or review diff.
+- `sem test --json`:
+  behavior validation after semantic preflight is clean. This is not the first
+  gate on a broken project surface.
+- `sem dev --json`:
+  the watch/restart contract once the source is close enough to runnable. Use
+  it to inspect watch files, restart conditions, and follow-up steps.
+- `sem readiness --json`:
+  the environment/target separator. Use it when you need to know whether the
+  blocker is source code, runtime support, or missing local toolchains.
+- `sem size --json`:
+  the cheap footprint probe. Use it before heavier graph work when you want a
+  quick sense of source volume and helper-family usage.
+
+In practice:
+
+```text
+skills -> check -> graph/summary -> slice -> explain -> fix --plan -> patch -> fmt/check -> test/dev
+```
+
+Copyable repair loop on a disposable copy:
+
+```powershell
+Copy-Item SemanticScript\tests\tiny.sem .\scratch.sem
+python SemanticScript\tools\sem.py check --json .\scratch.sem
+python SemanticScript\tools\sem.py explain SS3104 --json
+python SemanticScript\tools\sem.py slice --operation main --json .\scratch.sem
+python SemanticScript\tools\sem.py fix --plan --json .\scratch.sem | Out-File plan.json -Encoding utf8
+python SemanticScript\tools\sem.py patch --dry-run --json plan.json
+python SemanticScript\tools\sem.py patch --apply --json plan.json
+python SemanticScript\tools\sem.py fmt --check .\scratch.sem
+python SemanticScript\tools\sem.py check --json .\scratch.sem
+```
+
+Only apply the plan when `sem fix --plan --json` returns
+`status: "actionable"` and `planUsable: true`. The `tiny.sem` demo is useful
+for showing one machine-applicable repair; it can still leave follow-up
+warnings after that first patch.
+
 ## Why This Exists
 
 Modern codebases are increasingly read, patched, reviewed, and migrated by
@@ -476,12 +565,23 @@ Install Python dependencies:
 python -m pip install -r requirements.txt
 ```
 
-Run a small compiler smoke:
+Run the sem-first quick path:
+
+```powershell
+python SemanticScript\tools\sem.py --version --json
+python SemanticScript\tools\sem.py skills list --json
+python SemanticScript\tools\sem.py check --json SemanticScript\tests\agent_cli_demo.test.sem
+python SemanticScript\tools\sem.py fmt --check SemanticScript\tests\agent_cli_demo.test.sem
+python SemanticScript\tools\sem.py test --json SemanticScript\tests\agent_cli_demo.test.sem --skip-python-harnesses
+```
+
+Run the lower-level component smoke when working on compiler, linter, or
+formatter internals:
 
 ```powershell
 python SemanticScript\compiler\semsc.py SemanticScript\tests\tiny.sem --parse-only
 python SemanticScript\linter\semlint.py SemanticScript\tests\tiny.sem --summary
-python SemanticScript\tools\sem.py check --json SemanticScript\tests\tiny.sem
+python SemanticScript\formatter\semfmt.py --check SemanticScript\tests\tiny.sem
 ```
 
 Build and test the app demos:
@@ -511,36 +611,97 @@ Versioned rule and environment discovery:
 python SemanticScript\tools\sem.py --version --json
 python SemanticScript\tools\sem.py skills list --json
 python SemanticScript\tools\sem.py skills get sem sem-agent --json
-python SemanticScript\tools\sem.py readiness --json apps\taskforge-web
+python SemanticScript\tools\sem.py readiness --json SemanticScript\tests\agent_cli_demo.test.sem
 ```
+
+`sem skills get ... --json` is summary-first for long agent sessions. Add
+`--full` when the raw skill bodies are actually needed.
 
 Structured validation and architecture retrieval:
 
 ```powershell
-python SemanticScript\tools\sem.py check --json apps\taskforge-web
-python SemanticScript\tools\sem.py graph --kind calls --json apps\taskforge-web
+python SemanticScript\tools\sem.py check --json SemanticScript\tests\agent_cli_demo.test.sem
+python SemanticScript\tools\sem.py test --json SemanticScript\tests\agent_cli_demo.test.sem --skip-python-harnesses
+python SemanticScript\tools\sem.py graph --kind summary --json apps\taskforge-web
+python SemanticScript\tools\sem.py graph --kind routes --json apps\taskforge-web
 python SemanticScript\tools\sem.py graph --kind effects --json apps\taskforge-web
 python SemanticScript\tools\sem.py slice --operation createTodoHandler --json apps\taskforge-web
-python SemanticScript\tools\sem.py slice --route POST:/todos --json apps\taskforge-web
+python SemanticScript\tools\sem.py slice --route POST:/api/todos --json apps\taskforge-web
+python SemanticScript\tools\sem.py slice --symbol serverPortNumber --json apps\taskforge-web
 python SemanticScript\tools\sem.py explain SS3104 --json
 python SemanticScript\tools\sem.py size --json apps\taskforge-web
 ```
 
+Lower-level fallback surfaces:
+
+```powershell
+python SemanticScript\tools\sem.py context --json apps\taskforge-web
+python SemanticScript\tools\sem.py symbols --json apps\taskforge-web
+```
+
+Use `agent_cli_demo.test.sem` for a clean green-path validation loop. Use
+`apps\taskforge-web` for richer graph, slice, readiness, dev, and app-harness
+inspection.
+
 Repair, patch, and multi-step loop commands:
 
 ```powershell
-python SemanticScript\tools\sem.py fix --plan --json apps\taskforge-web
+Copy-Item SemanticScript\tests\tiny.sem .\scratch.sem
+python SemanticScript\tools\sem.py check --json .\scratch.sem
+python SemanticScript\tools\sem.py explain SS3104 --json
+python SemanticScript\tools\sem.py slice --operation main --json .\scratch.sem
+python SemanticScript\tools\sem.py fix --plan --json .\scratch.sem | Out-File plan.json -Encoding utf8
 python SemanticScript\tools\sem.py patch --dry-run --json plan.json
 python SemanticScript\tools\sem.py patch --apply --json plan.json
+python SemanticScript\tools\sem.py fmt --check .\scratch.sem
+python SemanticScript\tools\sem.py check --json .\scratch.sem
 python SemanticScript\tools\sem.py dev --json apps\taskforge-web
 python SemanticScript\tools\sem.py test --json apps\taskforge-web
 ```
 
-The current JSON contracts are versioned as:
+Use the semantic loop first:
+
+```powershell
+python SemanticScript\tools\sem.py check --json PATH
+python SemanticScript\tools\sem.py graph --kind summary --json PATH
+python SemanticScript\tools\sem.py slice --operation NAME --json PATH
+python SemanticScript\tools\sem.py explain CODE --json
+python SemanticScript\tools\sem.py fix --plan --json PATH
+python SemanticScript\tools\sem.py patch --dry-run --json PLAN.json
+python SemanticScript\tools\sem.py patch --apply --json PLAN.json
+python SemanticScript\tools\sem.py check --json PATH
+```
+
+Use the harness loop only when semantic preflight is clean:
+
+```powershell
+python SemanticScript\tools\sem.py test --json PATH
+python SemanticScript\tools\sem.py dev --json PATH
+```
+
+`sem test --json apps\taskforge-web` now carries the same preflight semantic
+status as `sem check --json apps\taskforge-web`. A passing app harness no
+longer masks project-level diagnostics. Use `--skip-python-harnesses` when the
+goal is process-free app-harness suppression rather than semantic validation;
+for project surfaces, `sem check --json` remains the primary semantic gate.
+Project surfaces still report `status: "diagnostics"` when the preflight
+semantic check is red, and Python harness execution is deferred until the
+semantic preflight is clean.
+
+`sem dev --json apps\taskforge-web` currently demonstrates a blocked watch plan
+for the flagship app, not a restart-ready loop. It is useful for inspecting
+watch files, scope, and follow-up commands while the project is diagnostic-red.
+
+Only hand `sem patch` a plan when `sem fix --plan --json` returns
+`status: "actionable"` and `planUsable: true`.
+
+Current stable `v1` JSON contracts:
 
 - `sem.version.v1`
 - `sem.skills.v1`
 - `sem.readiness.v1`
+- `sem.context.v1`
+- `sem.symbols.v1`
 - `sem.check.v1`
 - `sem.graph.v1`
 - `sem.slice.v1`
@@ -551,13 +712,19 @@ The current JSON contracts are versioned as:
 - `sem.dev.v1`
 - `sem.test.v1`
 
+Current provisional machine surface:
+
+- `sem.doctor.v0`
+
 These commands are covered by focused unit and subprocess contract tests in
 `SemanticScript/tests/test_sem_cli.py` and
 `SemanticScript/tests/test_command_contracts.py`.
 
-The machine-readable payloads also carry `nextCommands` hints so an agent can
+The core repair-loop payloads also carry `nextCommands` hints so an agent can
 move from check to explain, slice, fix-plan, patch, and test without inventing
-the loop from scratch.
+the loop from scratch. `context`, `symbols`, and `doctor` are still useful
+lower-level retrieval or environment surfaces, but they are not the main repair
+navigation path.
 
 ## Repository Layout
 

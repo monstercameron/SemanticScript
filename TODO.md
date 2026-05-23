@@ -136,7 +136,7 @@ first-pass agent contract in `SemanticScript/tools/sem.py`.
 - [x] Add `sem check --json`.
       The wrapper now emits `sem.check.v1` with project facts, diagnostics,
       summary counts, unresolved references, runtime flags, and a target-
-      readiness placeholder instead of requiring agents to scrape prose.
+      readiness contract instead of requiring agents to scrape prose.
 
 - [x] Add version-matched built-in skills through `sem skills list|get`.
       The first pass serves repository-backed skill payloads for language core,
@@ -149,7 +149,7 @@ first-pass agent contract in `SemanticScript/tools/sem.py`.
 
 - [x] Add `sem graph --kind ... --json`.
       Implemented graph kinds: `summary`, `calls`, `effects`, `capabilities`,
-      `routes`, `dataflow`, `types`, and `ownership`.
+      `auth`, `routes`, `dataflow`, `types`, and `ownership`.
 
 - [x] Add structured readiness reporting.
       `sem readiness --json` now reports requested targets, required runtime
@@ -231,13 +231,14 @@ first-pass agent contract in `SemanticScript/tools/sem.py`.
 
 - [x] Make the agent-facing CLI contract obvious and stable.
       The public workflow should be readable as:
-      `sem check --json`, `sem graph --json`, `sem symbols --json`,
-      `sem context --json`, `sem inspect-ir`, `sem size --json`,
-      `sem explain CODE`, and `sem fix --plan --json`. Each command should
-      have a crisp purpose, versioned JSON, and copyable examples in one CLI
-      reference page.
-  - [ ] Decide whether `symbols` becomes `graph`, whether both remain public,
-        and how their JSON responsibilities differ.
+      `sem check --json`, `sem graph --json`, `sem slice --json`,
+      `sem context --json`, `sem symbols --json`, `sem inspect-ir`,
+      `sem size --json`, `sem explain CODE`, and
+      `sem fix --plan --json`. Each command should have a crisp purpose,
+      versioned JSON, and copyable examples in one CLI reference page.
+  - [ ] Lock the ownership boundary between the primary retrieval surfaces
+        (`graph`, `slice`) and the lower-level public fallbacks
+        (`context`, `symbols`, `inspect-ir`).
   - [x] Add `sem size --json` or an equivalent command that explains retained
         runtime helpers, artifact budgets, profile policy, and optimization
         hints without requiring users to inspect LLVM IR.
@@ -245,13 +246,15 @@ first-pass agent contract in `SemanticScript/tools/sem.py`.
         and linter diagnostic codes.
 
 - [ ] Unify compiler and linter diagnostics around repair metadata.
-      Compiler diagnostics and `semlint` diagnostics should share a common
+      Extend the existing `sem.check.v1` diagnostic shape until compiler
+      diagnostics and `semlint` diagnostics share one common
       agent contract: stable code, severity, source span, expected/actual facts,
       rule text, help text, fix safety, repair id, related spans, and links to
       `sem explain`. Agents should be able to triage from JSON without scraping
       terminal prose or guessing whether a fix is local, behavior-preserving,
       API-changing, or requires human review.
-  - [ ] Define the shared diagnostic JSON schema and version it.
+  - [ ] Fully align compiler and linter fields inside `sem.check.v1`,
+        including safety labels, related spans, and explain coverage.
   - [ ] Add fix-safety labels across compiler and linter output:
         `format-only`, `behavior-preserving`, `local-edit`, `api-changing`,
         `target-changing`, and `requires-human-review`.
@@ -282,7 +285,7 @@ first-pass agent contract in `SemanticScript/tools/sem.py`.
   - [x] Support operation-focused retrieval such as
         `sem slice --operation createTodoHandler --json`.
   - [x] Support route, symbol, effect, and capability retrieval such as
-        `--route POST:/todos`, `--symbol TodoRecord`,
+        `--route POST:/api/todos`, `--symbol serverPortNumber`,
         `--effect database`, and `--capability session.user`.
   - [x] Define one stable JSON shape containing at least:
         operation, inputs, outputs, effects, capabilities, called operations,
@@ -327,7 +330,8 @@ first-pass agent contract in `SemanticScript/tools/sem.py`.
       toolchain teaches the agent the language instead of forcing it to guess.
   - [x] Return both text and JSON forms.
   - [ ] Expand curated coverage beyond the first-pass `SS####` and `SSRUN001`
-        entries so compiler/backend diagnostics have the same depth.
+        entries so compiler/backend diagnostics, examples, and severity
+        metadata have the same depth.
 
 - [x] Promote target readiness and capability facts to a first-class contract.
       SemanticScript already models effects, capabilities, runtimes, and build
@@ -349,16 +353,18 @@ first-pass agent contract in `SemanticScript/tools/sem.py`.
       checkout to useful compiler facts.
   - [x] Add a compact "Agent Workflow Interfaces" section with the canonical
         JSON and repair commands.
-  - [ ] Move long philosophy blocks below the executable quick start or link
-        them to focused docs.
-  - [x] Ensure every README command is copyable from a fresh checkout and has a
-        matching CI or release-validation check.
+  - [x] Add a concise top-level sem-first quick path before the long philosophy
+        sections so the first usable workflow is visible immediately.
+  - [x] Ensure the representative README command set is copyable from a fresh
+        checkout and has matching CI or release-validation coverage.
 
-- [ ] Treat `sem fmt` as mandatory platform infrastructure.
+- [x] Treat `sem fmt` as mandatory platform infrastructure.
       A verbose language needs a formatter more than a compact one. Agent output
       has to normalize perfectly so diffs stay semantic and repair plans have
       stable landing zones.
-  - [ ] Make formatter behavior part of the public CLI contract.
+  - [x] Make formatter behavior part of the public CLI contract.
+        `sem fmt --check` is now part of the documented sem-first loop and has
+        subprocess contract coverage.
   - [ ] Add formatter drift checks to the same command-contract discipline as
         the JSON tools.
 

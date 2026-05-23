@@ -71,18 +71,21 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 python -m compileall -q SemanticScript python
 python SemanticScript/tools/release_versions.py
+python SemanticScript/tools/sem.py --version --json
+python SemanticScript/tools/sem.py skills list --json
+python SemanticScript/tools/sem.py readiness --json SemanticScript/tests/agent_cli_demo.test.sem
+python SemanticScript/tools/sem.py check --json SemanticScript/tests/agent_cli_demo.test.sem
+python SemanticScript/tools/sem.py fmt --check SemanticScript/tests/agent_cli_demo.test.sem
+python SemanticScript/tools/sem.py test --json SemanticScript/tests/agent_cli_demo.test.sem --skip-python-harnesses
+python -m unittest SemanticScript.tests.test_sem_cli -v
+python -m unittest SemanticScript.tests.test_command_contracts -v
 python -m unittest SemanticScript/formatter/test_semfmt.py -v
 python SemanticScript/formatter/semfmt.py --check SemanticScript/tests/tiny.sem
 python -m unittest SemanticScript/linter/test_semlint.py -v
-python -m unittest SemanticScript.tests.test_sem_cli -v
-python -m unittest SemanticScript.tests.test_command_contracts -v
 python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sscript --parse-only
 python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sem --parse-only
 python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sscript --summary
 python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sem --summary
-python SemanticScript/tools/sem.py --version --json
-python SemanticScript/tools/sem.py skills list --json
-python SemanticScript/tools/sem.py check --json SemanticScript/tests/tiny.sem
 npm --prefix vscode-semanticscript run check
 ```
 

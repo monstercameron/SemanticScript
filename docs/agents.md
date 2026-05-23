@@ -1,7 +1,12 @@
 # SemanticScript agents.md
 
-Dense agent context. ASCII only. Truth: SYNTAX.md, semsc.py, semlint.py,
-vscode-semanticscript/extension.js. Editor support != compiler support.
+Dense agent context. ASCII only.
+
+Public truth for agents: the `sem` wrapper JSON surfaces and version-matched
+skills.
+
+Implementation truth for compiler work: `SYNTAX.md`, `semsc.py`, `semlint.py`,
+and `vscode-semanticscript/extension.js`. Editor support != compiler support.
 
 == core ==
 SemanticScript = flat semantic tape. One line = one record. First token = verb.
@@ -22,18 +27,58 @@ Load matching rules:
   python SemanticScript\tools\sem.py skills list --json
   python SemanticScript\tools\sem.py skills get sem sem-agent --json
 
+`skills get --json` is summary-first; add `--full` when raw skill bodies are
+actually needed.
+
+On large project surfaces, `check`, `fix`, `graph`, and `slice` are compact by
+default. Add `--full` when you explicitly need the full machine payload.
+
+Iteration roles:
+  skills get          load version-matched rules before editing
+  check               prove current semantic state before/after edits
+  graph summary/routes cheap map of the surface before deeper retrieval
+  slice               one local semantic neighborhood to edit
+  explain             why a rule exists and what safe repairs look like
+  fix --plan          derive candidate edits without mutating source
+  patch               preview/apply a reviewed plan with stale-file protection
+  fmt --check         keep diffs normalized and repair landings stable
+  test                behavior validation after semantic preflight is clean
+  dev                 watch/restart contract after the surface is close to runnable
+  readiness           separate source blockers from environment blockers
+  size                cheap footprint probe before expensive graph/detail hops
+
 Check and inspect:
   python SemanticScript\tools\sem.py check --json PATH
   python SemanticScript\tools\sem.py readiness --json PATH
-  python SemanticScript\tools\sem.py graph --kind calls --json PATH
+  python SemanticScript\tools\sem.py graph --kind summary --json PATH
+  python SemanticScript\tools\sem.py graph --kind routes --json PATH
   python SemanticScript\tools\sem.py slice --operation NAME --json PATH
   python SemanticScript\tools\sem.py explain SS3104 --json
 
+Lower-level fallback surfaces:
+  python SemanticScript\tools\sem.py context --json PATH   # lower-level project envelope
+  python SemanticScript\tools\sem.py symbols --json PATH   # lower-level full source graph
+
 Repair and verify:
-  python SemanticScript\tools\sem.py fix --plan --json PATH
+  python SemanticScript\tools\sem.py fix --plan --json PATH | Out-File plan.json -Encoding utf8
   python SemanticScript\tools\sem.py patch --dry-run --json PLAN.json
   python SemanticScript\tools\sem.py patch --apply --json PLAN.json
+  python SemanticScript\tools\sem.py fmt --check PATH
+  python SemanticScript\tools\sem.py check --json PATH
+
+Only apply a plan when the fix payload reports `status: "actionable"` and
+`planUsable: true`.
+
+Harness loop, only after semantic preflight is clean:
   python SemanticScript\tools\sem.py test --json PATH
+  python SemanticScript\tools\sem.py dev --json PATH
+
+`sem test --json PATH` can execute Python harnesses and app processes when PATH
+points at a project surface. Use `--skip-python-harnesses` when the goal is to
+skip process-level harness work, not when the goal is project-surface semantic
+validation; for that, use `sem check --json PATH`. Skipping Python harnesses
+does not hide preflight source diagnostics on project surfaces, and project
+Python harnesses are deferred until semantic preflight is clean.
 
 Current JSON surfaces:
   sem.version.v1
@@ -50,6 +95,7 @@ Current JSON surfaces:
   sem.patch.v1
   sem.dev.v1
   sem.test.v1
+  sem.doctor.v0  # provisional environment surface
 
 Good:
   call totalCall math.addI64
@@ -573,7 +619,7 @@ state cleanup; record align; zero array length; unawaited group/work; lock
 without cleanup; duplicate decls; metadata drift; circular type aliases.
 T0/T1/T2 correctness. T3 design debt. T4 style.
 
-== commands ==
+== internals only / compiler debugging ==
   python SemanticScript/compiler/semsc.py file.sscript --parse-only
   python SemanticScript/compiler/semsc.py file.sscript --run
   python SemanticScript/compiler/semsc.py file.sscript --emit-ir out.ll

@@ -6,7 +6,7 @@ linter internals.
 
 ## Core Loop
 
-The intended multi-step loop is:
+The intended semantic loop is:
 
 ```text
 load matching rules
@@ -16,22 +16,107 @@ explain diagnostics
 propose repairs
 preview patch
 apply patch
-re-check and re-test
+re-check
 ```
 
-The corresponding commands are:
+The corresponding semantic-loop commands are:
 
 ```powershell
 python SemanticScript\tools\sem.py --version --json
 python SemanticScript\tools\sem.py skills get sem sem-agent --json
 python SemanticScript\tools\sem.py check --json PATH
-python SemanticScript\tools\sem.py graph --kind calls --json PATH
+python SemanticScript\tools\sem.py graph --kind summary --json PATH
 python SemanticScript\tools\sem.py slice --operation NAME --json PATH
 python SemanticScript\tools\sem.py explain CODE --json
 python SemanticScript\tools\sem.py fix --plan --json PATH
 python SemanticScript\tools\sem.py patch --dry-run --json PLAN.json
 python SemanticScript\tools\sem.py patch --apply --json PLAN.json
+python SemanticScript\tools\sem.py check --json PATH
+```
+
+`skills get --json` now returns a summary/index payload by default. Use
+`--full --json` only when an agent truly needs the raw skill source bodies.
+Only apply a patch plan after confirming `status: "actionable"` and
+`planUsable: true` from `sem fix --plan --json`.
+
+On large project surfaces, `check`, `fix`, `graph`, and `slice` are compact by
+default. Add `--full` when you explicitly need the entire machine payload.
+
+Harness loop, only after semantic preflight is clean:
+
+```powershell
 python SemanticScript\tools\sem.py test --json PATH
+python SemanticScript\tools\sem.py dev --json PATH
+```
+
+## Why Each Tool Exists
+
+For a long agent session, the important question is not only "what commands
+exist?" but "what uncertainty does each command remove?"
+
+- `skills get` removes rule uncertainty.
+  It loads the repo-backed guidance for the exact tool version in use.
+- `check --json` removes source-state uncertainty.
+  It is the main semantic gate before and after edits.
+- `graph --json` removes architecture uncertainty.
+  `summary` and `routes` are the cheap first hop; richer graph kinds are
+  follow-up inspection, not the default starting point.
+- `slice --json` removes local-context uncertainty.
+  It gives the agent one semantic neighborhood to edit instead of forcing a
+  whole-project grep and reassembly pass.
+- `explain CODE --json` removes rule-meaning uncertainty.
+  It tells the agent what the diagnostic means and why the rule exists.
+- `fix --plan --json` removes repair-shape uncertainty.
+  It converts diagnostics into candidate edits without mutating files.
+- `patch --dry-run|--apply` removes execution uncertainty.
+  It previews or applies a reviewed plan with stale-file and post-apply checks.
+- `fmt --check` removes formatting uncertainty.
+  It keeps diffs stable so repair plans and review output stay comparable.
+- `test --json` removes behavior uncertainty.
+  Use it after semantic preflight is clean; it is not the first gate on a red
+  project surface.
+- `dev --json` removes watch/restart uncertainty.
+  It tells the agent what to watch, when restart is legal, and what follow-up
+  steps make sense.
+- `readiness --json` removes environment uncertainty.
+  It separates code problems from toolchain/runtime/target problems.
+- `size --json` removes footprint uncertainty.
+  It is the cheap probe before spending context on bigger graph surfaces.
+
+That is the intended order of work:
+
+```text
+load rules
+prove current source state
+map the surface cheaply
+pull one local neighborhood
+understand the rule
+propose a repair
+preview/apply it
+re-check
+only then run behavior/watch loops
+```
+
+Green validation fixture:
+
+```powershell
+python SemanticScript\tools\sem.py check --json SemanticScript\tests\agent_cli_demo.test.sem
+python SemanticScript\tools\sem.py fmt --check SemanticScript\tests\agent_cli_demo.test.sem
+python SemanticScript\tools\sem.py test --json SemanticScript\tests\agent_cli_demo.test.sem --skip-python-harnesses
+```
+
+Copyable PowerShell repair loop on a disposable file:
+
+```powershell
+Copy-Item SemanticScript\tests\tiny.sem .\scratch.sem
+python SemanticScript\tools\sem.py check --json .\scratch.sem
+python SemanticScript\tools\sem.py explain SS3104 --json
+python SemanticScript\tools\sem.py slice --operation main --json .\scratch.sem
+python SemanticScript\tools\sem.py fix --plan --json .\scratch.sem | Out-File plan.json -Encoding utf8
+python SemanticScript\tools\sem.py patch --dry-run --json plan.json
+python SemanticScript\tools\sem.py patch --apply --json plan.json
+python SemanticScript\tools\sem.py fmt --check .\scratch.sem
+python SemanticScript\tools\sem.py check --json .\scratch.sem
 ```
 
 ## Version-Matched Skills
@@ -59,15 +144,15 @@ The current public aliases map to canonical bundled skills:
 Use `skills list --json` to discover the exact file set and alias index shipped
 with the current tool version.
 
-## Fast Validation
+## Tooling Smoke
 
 Run the smallest useful validation set before and after focused edits:
 
 ```powershell
 python -m py_compile SemanticScript\compiler\semsc.py SemanticScript\linter\semlint.py SemanticScript\tools\sem.py
-python SemanticScript\tools\sem.py check --json SemanticScript\tests\tiny.sem
-python SemanticScript\tools\sem.py fmt --check SemanticScript\tests\tiny.sem
-python SemanticScript\tools\sem.py test --json SemanticScript\tests\tiny.sem --skip-python-harnesses
+python SemanticScript\tools\sem.py check --json SemanticScript\tests\agent_cli_demo.test.sem
+python SemanticScript\tools\sem.py fmt --check SemanticScript\tests\agent_cli_demo.test.sem
+python SemanticScript\tools\sem.py test --json SemanticScript\tests\agent_cli_demo.test.sem --skip-python-harnesses
 ```
 
 Use the broader release commands in `RELEASE.md` when changing compiler,
@@ -75,24 +160,17 @@ runtime, stdlib, package, or editor behavior.
 
 ## Machine-Readable Commands
 
-These commands are the current agent-first JSON surfaces:
+Primary agent-loop surfaces:
 
 ```powershell
 python SemanticScript\tools\sem.py --version --json
 python SemanticScript\tools\sem.py doctor --json
 python SemanticScript\tools\sem.py readiness --json PATH
-python SemanticScript\tools\sem.py context --json PATH
-python SemanticScript\tools\sem.py symbols --json PATH
 python SemanticScript\tools\sem.py check --json PATH
-python SemanticScript\tools\sem.py graph --kind calls --json PATH
-python SemanticScript\tools\sem.py graph --kind effects --json PATH
-python SemanticScript\tools\sem.py graph --kind capabilities --json PATH
+python SemanticScript\tools\sem.py graph --kind summary --json PATH
 python SemanticScript\tools\sem.py graph --kind routes --json PATH
-python SemanticScript\tools\sem.py graph --kind dataflow --json PATH
 python SemanticScript\tools\sem.py slice --operation NAME --json PATH
 python SemanticScript\tools\sem.py slice --route METHOD:/path --json PATH
-python SemanticScript\tools\sem.py slice --effect database --json PATH
-python SemanticScript\tools\sem.py slice --capability session.user --json PATH
 python SemanticScript\tools\sem.py size --json PATH
 python SemanticScript\tools\sem.py explain CODE --json
 python SemanticScript\tools\sem.py fix --plan --json PATH
@@ -102,10 +180,23 @@ python SemanticScript\tools\sem.py dev --json PATH
 python SemanticScript\tools\sem.py test --json PATH
 ```
 
+Lower-level fallback surfaces:
+
+```powershell
+python SemanticScript\tools\sem.py context --json PATH
+python SemanticScript\tools\sem.py symbols --json PATH
+python SemanticScript\tools\sem.py graph --kind calls --json PATH
+python SemanticScript\tools\sem.py graph --kind effects --json PATH
+python SemanticScript\tools\sem.py graph --kind capabilities --json PATH
+python SemanticScript\tools\sem.py graph --kind dataflow --json PATH
+python SemanticScript\tools\sem.py slice --effect database --json PATH
+python SemanticScript\tools\sem.py slice --capability session.user --json PATH
+```
+
 These payloads should not stop at facts. The core agent surfaces also return a
 `nextCommands` list with concrete follow-up CLI steps and reasons.
 
-Current schema versions:
+Current stable `v1` schema versions:
 
 - `sem.version.v1`
 - `sem.skills.v1`
@@ -121,6 +212,10 @@ Current schema versions:
 - `sem.patch.v1`
 - `sem.dev.v1`
 - `sem.test.v1`
+
+Current provisional machine surface:
+
+- `sem.doctor.v0`
 
 Representative `sem check --json` diagnostic shape:
 
@@ -161,13 +256,14 @@ python SemanticScript\tools\sem.py graph --kind calls --json apps\taskforge-web
 python SemanticScript\tools\sem.py graph --kind routes --json apps\taskforge-web
 python SemanticScript\tools\sem.py graph --kind capabilities --json apps\taskforge-web
 python SemanticScript\tools\sem.py slice --operation createTodoHandler --json apps\taskforge-web
-python SemanticScript\tools\sem.py slice --route POST:/todos --json apps\taskforge-web
-python SemanticScript\tools\sem.py slice --symbol TodoRecord --json apps\taskforge-web
+python SemanticScript\tools\sem.py slice --route POST:/api/todos --json apps\taskforge-web
+python SemanticScript\tools\sem.py slice --symbol serverPortNumber --json apps\taskforge-web
 python SemanticScript\tools\sem.py slice --effect database --json apps\taskforge-web
 ```
 
 Use `context --json` for project envelope facts and `symbols --json` for the
-full source graph when `graph` or `slice` is too narrow.
+full source graph when `graph` or `slice` is too narrow. They remain public,
+but `graph` and `slice` are the primary agent-repair retrieval surfaces.
 
 ## Repair And Patch
 
@@ -175,14 +271,24 @@ full source graph when `graph` or `slice` is too narrow.
 transformed before `sem patch`.
 
 ```powershell
-python SemanticScript\tools\sem.py fix --plan --json SemanticScript\tests\tiny.sem
+Copy-Item SemanticScript\tests\tiny.sem .\scratch.sem
+python SemanticScript\tools\sem.py check --json .\scratch.sem
+python SemanticScript\tools\sem.py explain SS3104 --json
+python SemanticScript\tools\sem.py slice --operation main --json .\scratch.sem
+python SemanticScript\tools\sem.py fix --plan --json .\scratch.sem | Out-File plan.json -Encoding utf8
 python SemanticScript\tools\sem.py patch --dry-run --json plan.json
 python SemanticScript\tools\sem.py patch --apply --json plan.json
+python SemanticScript\tools\sem.py fmt --check .\scratch.sem
+python SemanticScript\tools\sem.py check --json .\scratch.sem
 ```
+
+Only apply a plan when the fix payload reports `status: "actionable"` and
+`planUsable: true`.
 
 `patch` rejects stale plans when file hashes no longer match the generation
 time state. On apply, it normalizes touched files through `semfmt` and re-runs
-`sem check`.
+`sem check`. A patch plan that cannot be loaded or validated now returns a
+structured `sem.patch.v1` error payload instead of a raw Python traceback.
 
 ## Readiness, Dev, And Test
 
@@ -200,12 +306,29 @@ python SemanticScript\tools\sem.py dev --json apps\taskforge-web
 python SemanticScript\tools\sem.py dev --trace --json apps\taskforge-web
 ```
 
+For the current TaskForge checkout, this is a blocked watch-plan example, not a
+restart-ready loop. It is useful for inspecting watch scope, readiness, and
+follow-up commands while the project is diagnostic-red.
+
 Use the test payload to discover SemanticScript tests and Python app harnesses:
 
 ```powershell
 python SemanticScript\tools\sem.py test --json apps\taskforge-web
-python SemanticScript\tools\sem.py test --json SemanticScript\tests\tiny.sem --skip-python-harnesses
+python SemanticScript\tools\sem.py test --json SemanticScript\tests\agent_cli_demo.test.sem --skip-python-harnesses
 ```
+
+Passing a non-test source path is still legal, but it now reports
+`status: "no-tests"` and exits nonzero instead of pretending a validation run
+happened.
+
+When the requested surface has semantic diagnostics, `sem test --json PATH`
+surfaces that preflight state in `status` and `preflightCheck` even if a Python
+app harness succeeds. Agents should treat `check` as the source-of-truth gate
+and use `--skip-python-harnesses` only to suppress process-level harness work.
+For project-surface semantic validation, use `sem check --json PATH`. Skipping
+Python harnesses does not hide preflight source diagnostics on project
+surfaces, and project-surface Python harnesses are deferred until semantic
+preflight is clean.
 
 ## Contract Validation
 
