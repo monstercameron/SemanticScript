@@ -15,6 +15,8 @@ exportConstant app.realtime_auction_arena.server.runtime_constants authPayloadTe
 exportConstant app.realtime_auction_arena.server.runtime_constants authPayloadTemplateCapacityArg
 exportConstant app.realtime_auction_arena.server.runtime_constants authIssuePayloadTemplateOffset
 exportConstant app.realtime_auction_arena.server.runtime_constants okStatus
+exportConstant app.realtime_auction_arena.server.runtime_constants authProfileEnvName
+exportConstant app.realtime_auction_arena.server.runtime_constants authProductionProfileValue
 exportConstant app.realtime_auction_arena.server.runtime_constants createdStatus
 exportConstant app.realtime_auction_arena.server.runtime_constants acceptedStatus
 exportConstant app.realtime_auction_arena.server.runtime_constants badRequestStatus
@@ -325,6 +327,8 @@ exportConstant app.realtime_auction_arena.server.runtime_constants chatReportedS
 
 storage module immutable okStatus CSignedInt32 200
 storage module immutable authJwtSecretEnvName CNullTerminatedByteString "AUCTION_ARENA_JWT_SECRET"
+storage module immutable authProfileEnvName CNullTerminatedByteString "AUCTION_ARENA_PROFILE"
+storage module immutable authProductionProfileValue CNullTerminatedByteString "production"
 storage module immutable authAccessTokenTtlSeconds CSignedInt64 900
 storage module immutable authClockSkewSeconds CSignedInt64 30
 storage module immutable authMillisPerSecond CSignedInt64 1000

@@ -25,7 +25,7 @@ import chat_context app.realtime_auction_arena.server.chat_context
 import audit_context app.realtime_auction_arena.server.audit_context
 
 importOperation healthHandler server_context healthHandler
-importOperation readyHandler server_context readyHandler
+importOperation readyHandler auth_context authReadyHandler
 importOperation metricsHandler auth_context protectedMetricsHandler
 importOperation apiIndexHandler server_context apiIndexHandler
 importOperation methodNotAllowedHandler server_context methodNotAllowedHandler

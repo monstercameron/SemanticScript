@@ -19,6 +19,7 @@ import server_context app.realtime_auction_arena.server.server_context
 import observability_context app.realtime_auction_arena.server.observability_context
 
 importOperation openOrReuseArenaDatabase server_context openOrReuseArenaDatabase
+importOperation serverReadyHandler server_context readyHandler
 importOperation serverMetricsHandler server_context metricsHandler
 importOperation insertRequestLogEvent observability_context insertRequestLogEvent
 importOperation incrementAuthLoginAcceptedTotal observability_context incrementAuthLoginAcceptedTotal
@@ -26,6 +27,7 @@ importOperation incrementAuthLoginRejectedTotal observability_context incrementA
 importOperation incrementRateLimitHitsTotal observability_context incrementRateLimitHitsTotal
 
 exportOperation app.realtime_auction_arena.server.auth_context resolveJwtSigningSecret
+exportOperation app.realtime_auction_arena.server.auth_context authProductionConfigIsValid
 exportOperation app.realtime_auction_arena.server.auth_context insertAuthAuditEvent
 exportOperation app.realtime_auction_arena.server.auth_context authUserIsEnabled
 exportOperation app.realtime_auction_arena.server.auth_context insertRefreshTokenRow
@@ -43,6 +45,7 @@ exportOperation app.realtime_auction_arena.server.auth_context requestHasAdminBe
 exportOperation app.realtime_auction_arena.server.auth_context requestHasServiceBearerToken
 exportOperation app.realtime_auction_arena.server.auth_context requestHasChatModeratorBearerToken
 exportOperation app.realtime_auction_arena.server.auth_context protectedMetricsHandler
+exportOperation app.realtime_auction_arena.server.auth_context authReadyHandler
 exportOperation app.realtime_auction_arena.server.auth_context currentAuthUserIdValue
 exportOperation app.realtime_auction_arena.server.auth_context currentAuthRoleCodeValue
 exportOperation app.realtime_auction_arena.server.auth_context currentAuthScopesJsonValue
@@ -120,7 +123,10 @@ storage module mutable currentAuthNotBefore CSignedInt64 0
 storage module mutable currentAuthExpiresAt CSignedInt64 0
 storage module mutable cachedJwtSigningSecret JwtSecret ""
 storage module mutable cachedJwtSigningSecretReady CSignedInt32 0
+storage module mutable cachedAuthProductionConfigReady CSignedInt32 0
+storage module mutable cachedAuthProductionConfigValid CSignedInt32 0
 
+storage module immutable authInvalidJwtSigningSecret JwtSecret ""
 storage module immutable authAuctioneerTimedAccessPayloadFormat CNullTerminatedByteString "{\"iss\":\"realtime-auction-arena\",\"aud\":\"api-v1\",\"sub\":\"user_auctioneer_001\",\"role\":\"auctioneer\",\"scopes\":[\"auctions:write\",\"bids:read\",\"chat:moderate\"],\"iat\":%lld,\"nbf\":%lld,\"exp\":%lld,\"jti\":\"%%s\"}"
 storage module immutable authBidderTimedAccessPayloadFormat CNullTerminatedByteString "{\"iss\":\"realtime-auction-arena\",\"aud\":\"api-v1\",\"sub\":\"user_bidder_demo\",\"role\":\"bidder\",\"scopes\":[\"auctions:read\",\"bids:write\",\"chat:write\"],\"iat\":%lld,\"nbf\":%lld,\"exp\":%lld,\"jti\":\"%%s\"}"
 storage module immutable authAdminTimedAccessPayloadFormat CNullTerminatedByteString "{\"iss\":\"realtime-auction-arena\",\"aud\":\"api-v1\",\"sub\":\"user_admin_demo\",\"role\":\"admin\",\"scopes\":[\"auctions:write\",\"audit:read\",\"chat:moderate\",\"metrics:read\"],\"iat\":%lld,\"nbf\":%lld,\"exp\":%lld,\"jti\":\"%%s\"}"
@@ -213,6 +219,12 @@ argument cachedJwtSecretReadyCall right CSignedInt32 runtime.authActiveFlag
 run cachedJwtSecretReadyCall
 bind value cachedJwtSecretReady Bool cachedJwtSecretReadyCall
 branch if condition cachedJwtSecretReady target returnCachedJwtSigningSecret
+call authProductionConfigCall authProductionConfigIsValid
+run authProductionConfigCall
+bind value authProductionConfigAccepted Bool authProductionConfigCall
+branch if condition authProductionConfigAccepted target resolveConfiguredJwtSecret
+branch else target returnInvalidJwtSigningSecret
+label resolveConfiguredJwtSecret
 call getenvJwtSecretCall c.getenv
 argument getenvJwtSecretCall name CNullTerminatedByteString runtime.authJwtSecretEnvName
 run getenvJwtSecretCall
@@ -239,8 +251,85 @@ label returnDemoJwtSecret
 set storage cachedJwtSigningSecret runtime.demoJwtSigningSecret
 set storage cachedJwtSigningSecretReady runtime.authActiveFlag
 return value cachedJwtSigningSecret
+label returnInvalidJwtSigningSecret
+return value authInvalidJwtSigningSecret
 label returnCachedJwtSigningSecret
 return value cachedJwtSigningSecret
+
+operation authProductionConfigIsValid
+output operation authProductionConfigIsValid Bool
+effect authProductionConfigIsValid read process.environment
+effect authProductionConfigIsValid read memory.buffer
+memory authProductionConfigIsValid arena request
+async authProductionConfigIsValid no
+useCapability authProductionConfigIsValid processEnvironmentReader
+useCapability authProductionConfigIsValid memoryBufferReadWriteCapability
+purpose operation authProductionConfigIsValid "Return false only when AUCTION_ARENA_PROFILE=production and JWT secret material is absent or too short."
+invariant operation authProductionConfigIsValid "Development keeps the deterministic local fallback; production must supply non-source secret material before auth, readiness, or metrics proceed."
+label startAuthProductionConfigIsValid
+call authConfigCacheReadyCall math.equalCSignedInt32
+argument authConfigCacheReadyCall left CSignedInt32 cachedAuthProductionConfigReady
+argument authConfigCacheReadyCall right CSignedInt32 runtime.authActiveFlag
+run authConfigCacheReadyCall
+bind value authConfigCacheReady Bool authConfigCacheReadyCall
+branch if condition authConfigCacheReady target returnCachedAuthProductionConfig
+call getenvAuthProfileCall c.getenv
+argument getenvAuthProfileCall name CNullTerminatedByteString runtime.authProfileEnvName
+run getenvAuthProfileCall
+bind value authProfileValue CNullTerminatedByteString getenvAuthProfileCall
+call authProfileMissingCall pointer.isNull
+argument authProfileMissingCall ptr COpaqueMemoryAddress authProfileValue
+run authProfileMissingCall
+bind value authProfileMissing Bool authProfileMissingCall
+branch if condition authProfileMissing target cacheAuthProductionConfigValid
+call authProfileProductionCompareCall c.strcmp
+argument authProfileProductionCompareCall left CNullTerminatedByteString authProfileValue
+argument authProfileProductionCompareCall right CNullTerminatedByteString runtime.authProductionProfileValue
+run authProfileProductionCompareCall
+bind value authProfileProductionCompareResult CSignedInt32 authProfileProductionCompareCall
+call authProfileIsProductionCall math.equalCSignedInt32
+argument authProfileIsProductionCall left CSignedInt32 authProfileProductionCompareResult
+argument authProfileIsProductionCall right CSignedInt32 runtime.authSuccessCode
+run authProfileIsProductionCall
+bind value authProfileIsProduction Bool authProfileIsProductionCall
+branch if condition authProfileIsProduction target validateProductionJwtSecret
+branch else target cacheAuthProductionConfigValid
+label validateProductionJwtSecret
+call getenvProductionJwtSecretCall c.getenv
+argument getenvProductionJwtSecretCall name CNullTerminatedByteString runtime.authJwtSecretEnvName
+run getenvProductionJwtSecretCall
+bind value productionJwtSecret CNullTerminatedByteString getenvProductionJwtSecretCall
+call productionJwtSecretMissingCall pointer.isNull
+argument productionJwtSecretMissingCall ptr COpaqueMemoryAddress productionJwtSecret
+run productionJwtSecretMissingCall
+bind value productionJwtSecretMissing Bool productionJwtSecretMissingCall
+branch if condition productionJwtSecretMissing target cacheAuthProductionConfigInvalid
+call productionJwtSecretLengthCall c.strlen
+argument productionJwtSecretLengthCall s CNullTerminatedByteString productionJwtSecret
+run productionJwtSecretLengthCall
+bind value productionJwtSecretLength CSignedInt64 productionJwtSecretLengthCall
+call productionJwtSecretTooShortCall math.lessThanI64
+argument productionJwtSecretTooShortCall left I64 productionJwtSecretLength
+argument productionJwtSecretTooShortCall right I64 32
+run productionJwtSecretTooShortCall
+bind value productionJwtSecretTooShort Bool productionJwtSecretTooShortCall
+branch if condition productionJwtSecretTooShort target cacheAuthProductionConfigInvalid
+branch else target cacheAuthProductionConfigValid
+label cacheAuthProductionConfigValid
+set storage cachedAuthProductionConfigValid runtime.authActiveFlag
+set storage cachedAuthProductionConfigReady runtime.authActiveFlag
+return value runtime.boolTrue
+label cacheAuthProductionConfigInvalid
+set storage cachedAuthProductionConfigValid runtime.authInactiveFlag
+set storage cachedAuthProductionConfigReady runtime.authActiveFlag
+return value runtime.boolFalse
+label returnCachedAuthProductionConfig
+call cachedAuthConfigValidCall math.equalCSignedInt32
+argument cachedAuthConfigValidCall left CSignedInt32 cachedAuthProductionConfigValid
+argument cachedAuthConfigValidCall right CSignedInt32 runtime.authActiveFlag
+run cachedAuthConfigValidCall
+bind value cachedAuthConfigValid Bool cachedAuthConfigValidCall
+return value cachedAuthConfigValid
 
 operation insertAuthAuditEvent
 input operation insertAuthAuditEvent database SqliteDatabase
@@ -1329,6 +1418,43 @@ run metricsUnauthorizedWriteCall
 bind value metricsUnauthorizedStatus CSignedInt32 metricsUnauthorizedWriteCall
 return value metricsUnauthorizedStatus
 
+operation authReadyHandler
+input operation authReadyHandler request HttpRequest
+input operation authReadyHandler response HttpResponse
+output operation authReadyHandler CSignedInt32
+effect authReadyHandler read process.environment
+effect authReadyHandler read memory.buffer
+effect authReadyHandler write http.response
+effect authReadyHandler read http.server
+effect authReadyHandler readWrite database
+memory authReadyHandler heap yes
+async authReadyHandler no
+useCapability authReadyHandler processEnvironmentReader
+useCapability authReadyHandler memoryBufferReadWriteCapability
+useCapability authReadyHandler httpResponseWriter
+useCapability authReadyHandler sqliteDatabaseReadWriter
+purpose operation authReadyHandler "Return readiness only after production auth configuration and persistence readiness both pass."
+invariant operation authReadyHandler "Production mode must never report ready while it would sign or verify JWTs with the local demo secret."
+label startAuthReadyHandler
+call readyAuthConfigCall authProductionConfigIsValid
+run readyAuthConfigCall
+bind value readyAuthConfigAccepted Bool readyAuthConfigCall
+branch if condition readyAuthConfigAccepted target readyAuthConfigValidated
+branch else target readyAuthConfigInvalid
+label readyAuthConfigValidated
+call authReadyDelegateCall serverReadyHandler
+argument authReadyDelegateCall request HttpRequest request
+argument authReadyDelegateCall response HttpResponse response
+run authReadyDelegateCall
+bind value authReadyDelegateStatus CSignedInt32 authReadyDelegateCall
+return value authReadyDelegateStatus
+label readyAuthConfigInvalid
+call readyAuthConfigInvalidWriteCall helpers.writeAuthConfigInvalidEnvelope
+argument readyAuthConfigInvalidWriteCall response HttpResponse response
+run readyAuthConfigInvalidWriteCall
+bind value readyAuthConfigInvalidStatus CSignedInt32 readyAuthConfigInvalidWriteCall
+return value readyAuthConfigInvalidStatus
+
 operation requestHasServiceBearerToken
 input operation requestHasServiceBearerToken request HttpRequest
 output operation requestHasServiceBearerToken Bool
@@ -1422,6 +1548,12 @@ useCapability authLoginHandler processEnvironmentReader
 purpose operation authLoginHandler "Verify the seeded auctioneer demo account with bcrypt and issue an HS256 access token plus random refresh token."
 invariant operation authLoginHandler "Invalid username, invalid password, malformed JSON, and missing fields all return the same invalid_credentials envelope."
 label startAuthLoginHandler
+call loginAuthConfigCall authProductionConfigIsValid
+run loginAuthConfigCall
+bind value loginAuthConfigAccepted Bool loginAuthConfigCall
+branch if condition loginAuthConfigAccepted target loginAuthConfigValidated
+branch else target loginAuthConfigInvalid
+label loginAuthConfigValidated
 call loginContentTypeCall helpers.requestContentTypeIsJson
 argument loginContentTypeCall request HttpRequest request
 run loginContentTypeCall
@@ -2072,6 +2204,12 @@ argument loginInternalWriteCall response HttpResponse response
 run loginInternalWriteCall
 bind value loginInternalWriteStatus CSignedInt32 loginInternalWriteCall
 return value loginInternalWriteStatus
+label loginAuthConfigInvalid
+call loginAuthConfigInvalidWriteCall helpers.writeAuthConfigInvalidEnvelope
+argument loginAuthConfigInvalidWriteCall response HttpResponse response
+run loginAuthConfigInvalidWriteCall
+bind value loginAuthConfigInvalidStatus CSignedInt32 loginAuthConfigInvalidWriteCall
+return value loginAuthConfigInvalidStatus
 
 operation authRefreshHandler
 input operation authRefreshHandler request HttpRequest
