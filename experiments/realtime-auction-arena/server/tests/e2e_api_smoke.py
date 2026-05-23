@@ -44,7 +44,7 @@ def port_is_open(host="127.0.0.1", port=18083):
         return sock.connect_ex((host, port)) == 0
 
 
-def start_server(reset_db=True):
+def start_server(reset_db=True, env_overrides=None, include_test_secret=True):
     if port_is_open():
         raise RuntimeError("port 18083 is already in use; stop the existing server before E2E")
     if not EXE.exists():
@@ -52,11 +52,21 @@ def start_server(reset_db=True):
     if reset_db:
         delete_db_files()
 
+    env = {**os.environ}
+    if include_test_secret:
+        env["AUCTION_ARENA_JWT_SECRET"] = TEST_JWT_SECRET
+    if env_overrides:
+        for name, value in env_overrides.items():
+            if value is None:
+                env.pop(name, None)
+            else:
+                env[name] = value
+
     kwargs = {
         "cwd": SERVER_DIR,
         "stdout": subprocess.DEVNULL,
         "stderr": subprocess.DEVNULL,
-        "env": {**os.environ, "AUCTION_ARENA_JWT_SECRET": TEST_JWT_SECRET},
+        "env": env,
     }
     if os.name == "nt":
         kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
@@ -374,6 +384,43 @@ def test_metrics_route():
     assert "auction_server_sse_subscriber_queue_capacity 256" in text
     assert "auction_server_sse_heartbeat_millis 15000" in text
     print("PASS GET /metrics requires admin metrics scope")
+
+
+def test_production_config_validation():
+    for secret_value in [None, "short-secret"]:
+        process = start_server(
+            env_overrides={
+                "AUCTION_ARENA_PROFILE": "production",
+                "AUCTION_ARENA_JWT_SECRET": secret_value,
+            },
+            include_test_secret=False,
+        )
+        try:
+            expect_json("/readyz", 503, ok=False, code="configuration_invalid")
+            expect_json(
+                "/api/v1/auth/login",
+                503,
+                ok=False,
+                code="configuration_invalid",
+                method="POST",
+                body='{"username":"admin","password":"auctioneer-demo-password"}',
+            )
+        finally:
+            stop_server(process)
+
+    process = start_server(
+        env_overrides={
+            "AUCTION_ARENA_PROFILE": "production",
+            "AUCTION_ARENA_JWT_SECRET": TEST_JWT_SECRET,
+        },
+        include_test_secret=False,
+    )
+    try:
+        expect_json("/readyz", 200, ok=True)
+    finally:
+        stop_server(process)
+
+    print("PASS production profile requires a configured JWT secret")
 
 
 def test_auth_and_api_fail_closed():
@@ -1666,6 +1713,7 @@ def test_audit_cursor_tiebreak_endpoint_preseeded():
 
 def main():
     run_build()
+    test_production_config_validation()
     process = start_server()
     try:
         test_public_routes()
